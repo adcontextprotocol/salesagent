@@ -1,8 +1,22 @@
-from fastmcp import FastMCP
-from pydantic import BaseModel, Field
+import sqlite3
+import json
+from datetime import datetime, timedelta
 from typing import List, Optional, Dict, Any
 
-# Pydantic Models for get_proposal
+import google.generativeai as genai
+from pydantic import BaseModel, Field
+
+from database import init_db
+from fastmcp import FastMCP
+
+# --- Database and Model Initialization ---
+init_db()
+# IMPORTANT: In a real application, load the API key from a secure source
+genai.configure(api_key="AIzaSyBgMWI7SpBfuClTz32wZ-mZg-dPBA9Dbgc")
+model = genai.GenerativeModel('gemini-2.5-flash')
+
+# --- Pydantic Models ---
+
 class ProvidedSignal(BaseModel):
     id: str
     must_not_be_present: Optional[bool] = None
@@ -65,13 +79,11 @@ class Proposal(BaseModel):
     creative_formats: List[CreativeFormat]
     media_packages: List[MediaPackage]
 
-# Pydantic Models for accept_proposal
 class AcceptProposalResponse(BaseModel):
     media_buy_id: str
     status: str
     creative_deadline: str
 
-# Pydantic Models for add_creative_assets
 class CreativeAsset(BaseModel):
     creative_id: str
     format: str
@@ -90,7 +102,6 @@ class AddCreativeAssetsResponse(BaseModel):
     status: str
     assets: List[AssetStatus]
 
-# Pydantic Models for check_media_buy_status
 class FlightProgress(BaseModel):
     days_elapsed: int
     days_remaining: int
@@ -116,7 +127,6 @@ class CheckMediaBuyStatusResponse(BaseModel):
     issues: Optional[List[str]] = None
     last_updated: Optional[str] = None
 
-# Pydantic Models for update_media_buy_performance_index
 class ReportingPeriod(BaseModel):
     start: str
     end: str
@@ -129,7 +139,6 @@ class PackagePerformance(BaseModel):
 class UpdateMediaBuyPerformanceIndexResponse(BaseModel):
     acknowledged: bool
 
-# Pydantic Models for get_media_buy_delivery
 class DateRange(BaseModel):
     start: str
     end: str
@@ -152,25 +161,15 @@ class GetMediaBuyDeliveryResponse(BaseModel):
     by_package: List[PackageDelivery]
     currency: str
 
-# Pydantic Models for update_media_buy
 class UpdateMediaBuyResponse(BaseModel):
     status: str
     implementation_date: Optional[str] = None
     notes: Optional[str] = None
     reason: Optional[str] = None
 
+# --- MCP Server ---
 
 mcp = FastMCP(name="AdCPSalesAgent")
-
-import sqlite3
-import json
-from datetime import datetime, timedelta
-import google.generativeai as genai
-
-# IMPORTANT: In a real application, load the API key from a secure source
-# (e.g., environment variable or secret manager)
-genai.configure(api_key="AIzaSyBgMWI7SpBfuClTz32wZ-mZg-dPBA9Dbgc")
-model = genai.GenerativeModel('gemini-2.5-flash')
 
 @mcp.tool
 def get_proposal(
@@ -181,14 +180,19 @@ def get_proposal(
 ) -> Proposal:
     """Request a proposal from the publisher by intelligently parsing the brief."""
     
+    today = datetime.now()
     prompt = f"""
     You are a media planning assistant. Your task is to parse a campaign brief 
     and extract key parameters into a structured JSON object.
 
+    Today's date is {today.strftime('%Y-%m-%d')}. Use this to resolve relative dates.
+    - For quarters (e.g., "Q3"), assume the current year. Q1 is Jan-Mar, Q2 is Apr-Jun, Q3 is Jul-Sep, Q4 is Oct-Dec.
+    - "Rest of Q3" means from today until the end of September.
+
     The JSON object should have the following keys:
     - "geography": A list of strings for targeting (e.g., ["US", "UK-London"]). Return an empty list if not specified.
     - "budget": A dictionary with "amount" (float) and "currency" (str), or null if not specified.
-    - "dates": A dictionary with "start_date" and "end_date" (ISO format strings), or null if not specified.
+    - "dates": A dictionary with "start_date" and "end_date" (ISO format YYYY-MM-DD), or null if not specified.
     - "objectives": A list of strings describing campaign goals (e.g., ["brand awareness", "increase sales"]). Return an empty list if not specified.
     - "target_audience_keywords": A list of keywords describing the target audience (e.g., ["sports", "runners"]).
     - "min_cpm": The minimum acceptable CPM as a float, or null if not specified.
@@ -208,7 +212,6 @@ def get_proposal(
         print(f"Error parsing brief with Gemini: {e}")
         parsed_brief = {}
 
-    # --- Validation Step ---
     missing_fields = []
     if not parsed_brief.get("geography"):
         missing_fields.append("geography")
@@ -220,18 +223,7 @@ def get_proposal(
         missing_fields.append("objectives")
 
     if missing_fields:
-        notes = f"Brief is incomplete. Please provide the following missing information: {', '.join(missing_fields)}."
-        return Proposal(
-            proposal_id=f"invalid_proposal_{int(datetime.now().timestamp())}",
-            total_budget=0,
-            currency="USD",
-            start_time=datetime.now().isoformat(),
-            end_time=(datetime.now() + timedelta(days=1)).isoformat(),
-            notes=notes,
-            creative_formats=[],
-            media_packages=[],
-        )
-    # --- End Validation ---
+        raise ValueError(f"Brief is incomplete. Please provide the following missing information: {', '.join(missing_fields)}.")
 
     conn = sqlite3.connect('adcp.db')
     conn.row_factory = sqlite3.Row
@@ -426,16 +418,11 @@ def update_media_buy(
     reason: Optional[str] = None,
 ) -> UpdateMediaBuyResponse:
     """Update a media buy with various actions."""
-    # In a real implementation, you would handle the different actions.
     return UpdateMediaBuyResponse(
         status="accepted",
         implementation_date="2025-07-16T00:00:00Z",
         notes="Changes will take effect at midnight Pacific.",
     )
 
-
-from database import init_db
-
 if __name__ == "__main__":
-    init_db()
     mcp.run()
