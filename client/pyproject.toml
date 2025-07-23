@@ -1,0 +1,10 @@
+[project]
+name = "adcp-buy-client"
+version = "0.1.0"
+description = "A client for the ADCP Buy Server"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "fastmcp>=2.10.6",
+    "rich", # For pretty printing
+]
