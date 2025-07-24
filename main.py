@@ -189,7 +189,9 @@ def _get_proposal_logic(
     audiences = [dict(row) for row in cursor.fetchall()]
     
     inventory_json = json.dumps({"placements": placements, "audiences": audiences}, indent=2)
-    provided_signals_json = json.dumps(provided_signals, indent=2) if provided_signals else "None"
+    # Convert Pydantic objects to dicts for JSON serialization
+    provided_signals_dict = [signal.model_dump() for signal in provided_signals] if provided_signals else []
+    provided_signals_json = json.dumps(provided_signals_dict, indent=2) if provided_signals_dict else "None"
 
     prompt = f"""
     You are an expert media planner. Your task is to select the best media placements for a client based on their brief and our available inventory.
@@ -255,11 +257,11 @@ def _get_proposal_logic(
             excluded_ids = []
             if provided_signals:
                 for signal in provided_signals:
-                    if signal.get('must_not_be_present'):
-                        excluded_ids.append(signal['id'])
-                    elif signal.get('targeting_direction') == 'include':
-                        if signal['id'] not in included_ids:
-                            included_ids.append(signal['id'])
+                    if signal.must_not_be_present:
+                        excluded_ids.append(signal.id)
+                    elif signal.targeting_direction == 'include':
+                        if signal.id not in included_ids:
+                            included_ids.append(signal.id)
 
             package = MediaPackage(
                 package_id=f"pkg_{placement_details['id']}",
