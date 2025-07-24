@@ -45,8 +45,9 @@ class CompanionAssets(BaseModel):
     overlay_image: Dict[str, Any]
 
 class CreativeAssets(BaseModel):
-    video: VideoAssets
-    companion: CompanionAssets
+    video: Optional[VideoAssets] = None
+    companion: Optional[CompanionAssets] = None
+    image: Optional[Dict[str, Any]] = None
 
 class CreativeFormat(BaseModel):
     name: str
@@ -178,147 +179,112 @@ def get_proposal(
     proposal_id: Optional[str] = None,
     requested_changes: Optional[List[RequestedChange]] = None,
 ) -> Proposal:
-    """Request a proposal from the publisher by intelligently parsing the brief."""
+    """Request a proposal from the publisher by intelligently selecting inventory."""
     
-    today = datetime.now()
-    prompt = f"""
-    You are a media planning assistant. Your task is to parse a campaign brief 
-    and extract key parameters into a structured JSON object.
-
-    Today's date is {today.strftime('%Y-%m-%d')}. Use this to resolve relative dates.
-    - For quarters (e.g., "Q3"), assume the current year. Q1 is Jan-Mar, Q2 is Apr-Jun, Q3 is Jul-Sep, Q4 is Oct-Dec.
-    - "Rest of Q3" means from today until the end of September.
-
-    The JSON object should have the following keys:
-    - "geography": A list of strings for targeting (e.g., ["US", "UK-London"]). Return an empty list if not specified.
-    - "budget": A dictionary with "amount" (float) and "currency" (str), or null if not specified.
-    - "dates": A dictionary with "start_date" and "end_date" (ISO format YYYY-MM-DD), or null if not specified.
-    - "objectives": A list of strings describing campaign goals (e.g., ["brand awareness", "increase sales"]). Return an empty list if not specified.
-    - "target_audience_keywords": A list of keywords describing the target audience (e.g., ["sports", "runners"]).
-    - "min_cpm": The minimum acceptable CPM as a float, or null if not specified.
-    - "max_cpm": The maximum acceptable CPM as a float, or null if not specified.
-
-    Analyze the following brief and return only the JSON object.
-
-    Brief:
-    "{brief}"
-    """
-    
-    try:
-        response = model.generate_content(prompt)
-        clean_json_str = response.text.strip().replace("```json", "").replace("```", "").strip()
-        parsed_brief = json.loads(clean_json_str)
-    except (Exception, json.JSONDecodeError) as e:
-        print(f"Error parsing brief with Gemini: {e}")
-        parsed_brief = {}
-
-    missing_fields = []
-    if not parsed_brief.get("geography"):
-        missing_fields.append("geography")
-    if not parsed_brief.get("budget"):
-        missing_fields.append("budget")
-    if not parsed_brief.get("dates"):
-        missing_fields.append("dates")
-    if not parsed_brief.get("objectives"):
-        missing_fields.append("objectives")
-
-    if missing_fields:
-        raise ValueError(f"Brief is incomplete. Please provide the following missing information: {', '.join(missing_fields)}.")
-
     conn = sqlite3.connect('adcp.db')
     conn.row_factory = sqlite3.Row
     cursor = conn.cursor()
 
-    query = """
-        SELECT
-            p.id as placement_id,
-            p.name as placement_name,
-            p.base_cpm,
-            prop.name as property_name,
-            cf.name as format_name,
-            cf.spec as format_spec,
-            aud.name as audience_name,
-            aud.description as audience_description
-        FROM placements p
-        JOIN properties prop ON p.property_id = prop.id
-        JOIN placement_formats pf ON p.id = pf.placement_id
-        JOIN creative_formats cf ON pf.format_id = cf.id
-        JOIN placement_audiences pa ON p.id = pa.placement_id
-        JOIN audiences aud ON pa.audience_id = aud.id
-        WHERE 1=1
+    cursor.execute("SELECT * FROM placements")
+    placements = [dict(row) for row in cursor.fetchall()]
+    cursor.execute("SELECT * FROM audiences")
+    audiences = [dict(row) for row in cursor.fetchall()]
+    
+    inventory_json = json.dumps({"placements": placements, "audiences": audiences}, indent=2)
+
+    prompt = f"""
+    You are an expert media planner. Your task is to select the best media placements for a client based on their brief and our available inventory.
+
+    **Client Brief:**
+    "{brief}"
+
+    **Available Inventory (Placements and Audiences):**
+    {inventory_json}
+
+    **Your Task:**
+    1.  Analyze the client's brief to understand their goals and target audience.
+    2.  From the "placements" list, select the IDs of the most relevant placements.
+    3.  Determine an appropriate budget allocation for each selected placement ID.
+    4.  Your response **MUST** be a JSON object with a single key: "selected_placements".
+    5.  The value of "selected_placements" should be a list of dictionaries, where each dictionary has two keys: "placement_id" (integer) and "budget" (integer).
+    6.  If no placements are suitable, return an empty list for "selected_placements".
+
+    **Example Response:**
+    {{
+      "selected_placements": [
+        {{ "placement_id": 1, "budget": 75000 }},
+        {{ "placement_id": 2, "budget": 75000 }}
+      ]
+    }}
+
+    Return only the JSON object.
     """
-    params = []
-    
-    keywords = parsed_brief.get("target_audience_keywords", [])
-    if keywords:
-        audience_clauses = []
-        for keyword in keywords:
-            audience_clauses.append("aud.name LIKE ? OR aud.description LIKE ?")
-            params.extend([f"%{keyword}%", f"%{keyword}%"])
-        query += f" AND ({' OR '.join(audience_clauses)})"
 
-    min_cpm = parsed_brief.get("min_cpm")
-    max_cpm = parsed_brief.get("max_cpm")
-    if min_cpm is not None:
-        query += " AND p.base_cpm >= ?"
-        params.append(min_cpm)
-    if max_cpm is not None:
-        query += " AND p.base_cpm <= ?"
-        params.append(max_cpm)
+    try:
+        response = model.generate_content(prompt)
+        clean_json_str = response.text.strip().replace("```json", "").replace("```", "").strip()
+        ai_decision = json.loads(clean_json_str)
+        selected_placements = ai_decision.get("selected_placements", [])
 
-    cursor.execute(query, params)
-    rows = cursor.fetchall()
-    conn.close()
-
-    media_packages = []
-    creative_formats_dict = {}
-    notes = f"Proposal generated based on brief analysis. Found {len(rows)} potential placements."
-
-    if not rows:
-        notes = "Could not find any matching inventory for the provided brief. Please broaden your criteria."
-
-    for row in rows:
-        package_id = f"pkg_{row['placement_id']}_{row['audience_name'].replace(' ', '').lower()}"
-        package = MediaPackage(
-            package_id=package_id,
-            name=f"{row['property_name']} - {row['placement_name']}",
-            description=f"Targeting {row['audience_name']} on {row['property_name']}'s {row['placement_name']}.",
-            delivery_restrictions=", ".join(parsed_brief.get("geography", ["US"])),
-            provided_signals=ProvidedSignalsInPackage(included_ids=[row['audience_name']]),
-            cpm=row['base_cpm'],
-            budget=20000,
-            budget_capacity=100000,
-            creative_formats=row['format_name']
-        )
-        media_packages.append(package)
-
-        if row['format_name'] not in creative_formats_dict:
-            spec = json.loads(row['format_spec'])
-            assets_data = {
-                'video': spec['assets']['video'],
-                'companion': spec['assets']['companion']
-            }
-            creative_formats_dict[row['format_name']] = CreativeFormat(
-                name=row['format_name'],
-                assets=CreativeAssets(**assets_data),
-                description=spec['description']
+        if not selected_placements:
+            return Proposal(
+                proposal_id=f"no_match_{int(datetime.now().timestamp())}",
+                notes="Could not find any matching inventory for the provided brief.",
+                media_packages=[], creative_formats=[], total_budget=0, currency="USD",
+                start_time=datetime.now().isoformat(), end_time=(datetime.now() + timedelta(days=30)).isoformat()
             )
-    
-    new_proposal_id = f"proposal_{int(datetime.now().timestamp())}"
-    budget_info = parsed_brief.get("budget", {"amount": sum(p.budget for p in media_packages), "currency": "USD"})
-    dates_info = parsed_brief.get("dates", {"start_date": datetime.now().isoformat(), "end_date": (datetime.now() + timedelta(days=30)).isoformat()})
 
-    return Proposal(
-        proposal_id=new_proposal_id,
-        expiration_date=(datetime.now() + timedelta(days=7)).isoformat(),
-        total_budget=budget_info.get("amount"),
-        currency=budget_info.get("currency"),
-        start_time=dates_info.get("start_date"),
-        end_time=dates_info.get("end_date"),
-        notes=notes,
-        creative_formats=list(creative_formats_dict.values()),
-        media_packages=media_packages,
-    )
+        # 4. Build the full Proposal object from the AI's decision
+        media_packages = []
+        creative_formats_dict = {}
+        total_budget = 0
+
+        for selection in selected_placements:
+            cursor.execute("SELECT p.*, prop.name as property_name FROM placements p JOIN properties prop ON p.property_id = prop.id WHERE p.id = ?", (selection['placement_id'],))
+            placement_details = cursor.fetchone()
+            
+            # Find associated formats and audiences
+            cursor.execute("SELECT cf.* FROM placement_formats pf JOIN creative_formats cf ON pf.format_id = cf.id WHERE pf.placement_id = ?", (placement_details['id'],))
+            formats = [dict(row) for row in cursor.fetchall()]
+            cursor.execute("SELECT a.* FROM placement_audiences pa JOIN audiences a ON pa.audience_id = a.id WHERE pa.placement_id = ?", (placement_details['id'],))
+            targeted_audiences = [dict(row) for row in cursor.fetchall()]
+
+            package = MediaPackage(
+                package_id=f"pkg_{placement_details['id']}",
+                name=f"{placement_details['property_name']} - {placement_details['name']}",
+                description=f"Targeting {', '.join([a['name'] for a in targeted_audiences])} on {placement_details['property_name']}",
+                delivery_restrictions="US", # Placeholder
+                provided_signals=ProvidedSignalsInPackage(included_ids=[a['name'] for a in targeted_audiences]),
+                cpm=placement_details['base_cpm'],
+                budget=selection['budget'],
+                budget_capacity=100000, # Placeholder
+                creative_formats=", ".join([f['name'] for f in formats])
+            )
+            media_packages.append(package)
+            total_budget += selection['budget']
+
+            for f in formats:
+                if f['name'] not in creative_formats_dict:
+                    spec = json.loads(f['spec'])
+                    creative_formats_dict[f['name']] = CreativeFormat(name=f['name'], assets=spec['assets'], description=spec['description'])
+
+        conn.close()
+
+        return Proposal(
+            proposal_id=f"proposal_{int(datetime.now().timestamp())}",
+            total_budget=total_budget,
+            currency="USD",
+            start_time=datetime.now().isoformat(),
+            end_time=(datetime.now() + timedelta(days=30)).isoformat(),
+            notes="Proposal generated by AI media planner.",
+            creative_formats=list(creative_formats_dict.values()),
+            media_packages=media_packages
+        )
+
+    except (Exception, json.JSONDecodeError) as e:
+        print(f"Error processing AI proposal: {e}")
+        raise ValueError("Failed to generate or process the AI's proposal selection.")
+
 
 @mcp.tool
 def accept_proposal(
