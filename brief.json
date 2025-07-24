@@ -1,0 +1,15 @@
+{
+  "brief": "I want to spend $150K for the rest of Q3 for Purina cat food. I will measure in-store sales lift. I only sell in the US.",
+  "provided_signals": [
+    {
+      "id": "purina_purchasers_q1",
+      "description": "A list of households that purchased Purina in Q1. This should be used for at least one package, and lookalikes are encouraged to expand reach.",
+      "targeting_direction": "include"
+    },
+    {
+      "id": "competitor_purchasers",
+      "description": "A list of households that purchased competitor cat food brands. This should be excluded from all packages.",
+      "must_not_be_present": true
+    }
+  ]
+}

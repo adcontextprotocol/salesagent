@@ -172,15 +172,13 @@ class UpdateMediaBuyResponse(BaseModel):
 
 mcp = FastMCP(name="AdCPSalesAgent")
 
-@mcp.tool
-def get_proposal(
+def _get_proposal_logic(
     brief: str,
     provided_signals: Optional[List[ProvidedSignal]] = None,
     proposal_id: Optional[str] = None,
     requested_changes: Optional[List[RequestedChange]] = None,
 ) -> Proposal:
-    """Request a proposal from the publisher by intelligently selecting inventory."""
-    
+    """The core logic for generating a proposal."""
     conn = sqlite3.connect('adcp.db')
     conn.row_factory = sqlite3.Row
     cursor = conn.cursor()
@@ -191,6 +189,7 @@ def get_proposal(
     audiences = [dict(row) for row in cursor.fetchall()]
     
     inventory_json = json.dumps({"placements": placements, "audiences": audiences}, indent=2)
+    provided_signals_json = json.dumps(provided_signals, indent=2) if provided_signals else "None"
 
     prompt = f"""
     You are an expert media planner. Your task is to select the best media placements for a client based on their brief and our available inventory.
@@ -198,16 +197,21 @@ def get_proposal(
     **Client Brief:**
     "{brief}"
 
+    **Client-Provided Signals (for targeting and exclusion):**
+    {provided_signals_json}
+
     **Available Inventory (Placements and Audiences):**
     {inventory_json}
 
     **Your Task:**
-    1.  Analyze the client's brief to understand their goals and target audience.
+    1.  Analyze the client's brief and provided signals.
     2.  From the "placements" list, select the IDs of the most relevant placements.
-    3.  Determine an appropriate budget allocation for each selected placement ID.
-    4.  Your response **MUST** be a JSON object with a single key: "selected_placements".
-    5.  The value of "selected_placements" should be a list of dictionaries, where each dictionary has two keys: "placement_id" (integer) and "budget" (integer).
-    6.  If no placements are suitable, return an empty list for "selected_placements".
+    3.  If the client provided an inclusion signal (e.g., "purina_purchasers_q1"), you **must** include it in at least one of the selected placements. You can mention that lookalikes can be used to expand this audience.
+    4.  If the client provided an exclusion signal (e.g., "competitor_purchasers"), you **must** ensure it is excluded from all selected placements.
+    5.  Determine an appropriate budget allocation for each selected placement ID.
+    6.  Your response **MUST** be a JSON object with a single key: "selected_placements".
+    7.  The value of "selected_placements" should be a list of dictionaries, where each dictionary has two keys: "placement_id" (integer) and "budget" (integer).
+    8.  If no placements are suitable, return an empty list for "selected_placements".
 
     **Example Response:**
     {{
@@ -234,7 +238,6 @@ def get_proposal(
                 start_time=datetime.now().isoformat(), end_time=(datetime.now() + timedelta(days=30)).isoformat()
             )
 
-        # 4. Build the full Proposal object from the AI's decision
         media_packages = []
         creative_formats_dict = {}
         total_budget = 0
@@ -243,21 +246,33 @@ def get_proposal(
             cursor.execute("SELECT p.*, prop.name as property_name FROM placements p JOIN properties prop ON p.property_id = prop.id WHERE p.id = ?", (selection['placement_id'],))
             placement_details = cursor.fetchone()
             
-            # Find associated formats and audiences
             cursor.execute("SELECT cf.* FROM placement_formats pf JOIN creative_formats cf ON pf.format_id = cf.id WHERE pf.placement_id = ?", (placement_details['id'],))
             formats = [dict(row) for row in cursor.fetchall()]
             cursor.execute("SELECT a.* FROM placement_audiences pa JOIN audiences a ON pa.audience_id = a.id WHERE pa.placement_id = ?", (placement_details['id'],))
             targeted_audiences = [dict(row) for row in cursor.fetchall()]
+            
+            included_ids = [a['name'] for a in targeted_audiences]
+            excluded_ids = []
+            if provided_signals:
+                for signal in provided_signals:
+                    if signal.get('must_not_be_present'):
+                        excluded_ids.append(signal['id'])
+                    elif signal.get('targeting_direction') == 'include':
+                        if signal['id'] not in included_ids:
+                            included_ids.append(signal['id'])
 
             package = MediaPackage(
                 package_id=f"pkg_{placement_details['id']}",
                 name=f"{placement_details['property_name']} - {placement_details['name']}",
-                description=f"Targeting {', '.join([a['name'] for a in targeted_audiences])} on {placement_details['property_name']}",
-                delivery_restrictions="US", # Placeholder
-                provided_signals=ProvidedSignalsInPackage(included_ids=[a['name'] for a in targeted_audiences]),
+                description=f"Targeting {', '.join(included_ids)} on {placement_details['property_name']}",
+                delivery_restrictions="US",
+                provided_signals=ProvidedSignalsInPackage(
+                    included_ids=included_ids,
+                    excluded_ids=excluded_ids if excluded_ids else None
+                ),
                 cpm=placement_details['base_cpm'],
                 budget=selection['budget'],
-                budget_capacity=100000, # Placeholder
+                budget_capacity=100000,
                 creative_formats=", ".join([f['name'] for f in formats])
             )
             media_packages.append(package)
@@ -266,7 +281,7 @@ def get_proposal(
             for f in formats:
                 if f['name'] not in creative_formats_dict:
                     spec = json.loads(f['spec'])
-                    creative_formats_dict[f['name']] = CreativeFormat(name=f['name'], assets=spec['assets'], description=spec['description'])
+                    creative_formats_dict[f['name']] = CreativeFormat(name=f['name'], assets=spec, description=spec.get('description', ''))
 
         conn.close()
 
@@ -284,6 +299,17 @@ def get_proposal(
     except (Exception, json.JSONDecodeError) as e:
         print(f"Error processing AI proposal: {e}")
         raise ValueError("Failed to generate or process the AI's proposal selection.")
+
+@mcp.tool
+def get_proposal(
+    brief: str,
+    provided_signals: Optional[List[ProvidedSignal]] = None,
+    proposal_id: Optional[str] = None,
+    requested_changes: Optional[List[RequestedChange]] = None,
+) -> Proposal:
+    """Request a proposal from the publisher by intelligently selecting inventory."""
+    return _get_proposal_logic(brief, provided_signals, proposal_id, requested_changes)
+
 
 
 @mcp.tool

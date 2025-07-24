@@ -88,8 +88,15 @@ async def negotiate_proposal(client: Client, brief: str, proposal: Dict[str, Any
 
 # --- Main Execution ---
 
-async def main(brief: str):
+async def main(brief_path: str):
     """A client to negotiate media buys with an ADCP server."""
+    
+    with open(brief_path, 'r') as f:
+        brief_data = json.load(f)
+    
+    brief = brief_data.get("brief")
+    provided_signals = brief_data.get("provided_signals")
+
     server_script = "main.py"
     console.print(f"Connecting to server via local script: [bold cyan]{server_script}[/]...")
     
@@ -100,7 +107,10 @@ async def main(brief: str):
             console.print(f"\n[magenta]Sending brief to server:[/] [italic]{brief}[/italic]")
             try:
                 # 1. Get initial proposal
-                initial_proposal = await client.call_tool("get_proposal", {"brief": brief})
+                initial_proposal = await client.call_tool(
+                    "get_proposal", 
+                    {"brief": brief, "provided_signals": provided_signals}
+                )
                 
                 console.print(Panel("[bold green]Initial Proposal Received![/bold green]", expand=False))
                 console.print(Pretty(initial_proposal.structured_content))
@@ -121,7 +131,7 @@ async def main(brief: str):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="ADCP Client for testing media buys.")
-    parser.add_argument("brief", type=str, help="The campaign brief to send to the server.")
+    parser.add_argument("brief_path", type=str, help="The path to the JSON file containing the campaign brief.")
     args = parser.parse_args()
     
-    asyncio.run(main(args.brief))
+    asyncio.run(main(args.brief_path))
