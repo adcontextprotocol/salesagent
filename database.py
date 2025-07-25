@@ -27,8 +27,7 @@ def init_db():
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         name TEXT UNIQUE NOT NULL,
         description TEXT,
-        targeting_type TEXT NOT NULL,
-        gam_id INTEGER
+        ad_server_targeting TEXT NOT NULL
     );
     """)
 
@@ -95,10 +94,26 @@ def init_db():
     cursor.execute("INSERT OR IGNORE INTO creative_formats (name, spec) VALUES (?, ?)", ('Standard Banner', json.dumps(banner_spec)))
 
     # Audiences
-    cursor.execute("INSERT OR IGNORE INTO audiences (name, description, targeting_type, gam_id) VALUES (?, ?, ?, ?)", ('Cat Lovers', 'Users who own cats or show strong interest in cat-related content.', 'audience_segment', 12345))
-    cursor.execute("INSERT OR IGNORE INTO audiences (name, description, targeting_type, gam_id) VALUES (?, ?, ?, ?)", ('Dog Lovers', 'Users who own dogs or show strong interest in dog-related content.', 'audience_segment', 12346))
-    cursor.execute("INSERT OR IGNORE INTO audiences (name, description, targeting_type, gam_id) VALUES (?, ?, ?, ?)", ('High-Income Earners', 'Users in the top 20% of household income.', 'custom_key', 54321))
-    cursor.execute("INSERT OR IGNORE INTO audiences (name, description, targeting_type, gam_id) VALUES (?, ?, ?, ?)", ('Sports Fans', 'Users who frequent sports content.', 'audience_segment', 12347))
+    cat_lovers_targeting = json.dumps({
+        "gam": {"type": "audience_segment", "id": 12345},
+        "triton": {"type": "station", "id": "CATSFM"}
+    })
+    dog_lovers_targeting = json.dumps({
+        "gam": {"type": "audience_segment", "id": 12346},
+        "triton": {"type": "station", "id": "DOGSXM"}
+    })
+    income_targeting = json.dumps({
+        "gam": {"type": "custom_key", "key_name": "income_bracket", "value_id": 54321}
+    })
+    sports_fans_targeting = json.dumps({
+        "gam": {"type": "audience_segment", "id": 12347},
+        "triton": {"type": "genre", "name": "Sports"}
+    })
+
+    cursor.execute("INSERT OR IGNORE INTO audiences (name, description, ad_server_targeting) VALUES (?, ?, ?)", ('Cat Lovers', 'Users who own cats or show strong interest in cat-related content.', cat_lovers_targeting))
+    cursor.execute("INSERT OR IGNORE INTO audiences (name, description, ad_server_targeting) VALUES (?, ?, ?)", ('Dog Lovers', 'Users who own dogs or show strong interest in dog-related content.', dog_lovers_targeting))
+    cursor.execute("INSERT OR IGNORE INTO audiences (name, description, ad_server_targeting) VALUES (?, ?, ?)", ('High-Income Earners', 'Users in the top 20% of household income.', income_targeting))
+    cursor.execute("INSERT OR IGNORE INTO audiences (name, description, ad_server_targeting) VALUES (?, ?, ?)", ('Sports Fans', 'Users who frequent sports content.', sports_fans_targeting))
 
 
     # Properties

@@ -105,17 +105,17 @@ def get_proposal(
 
     **Available Inventory (Placements and Audiences):**
     {inventory_json}
-    Note: Each audience has a `targeting_type` and a `gam_id`. `audience_segment` corresponds to GAM Audience Segments. `custom_key` corresponds to GAM Custom Key-Values.
+    Note: Each audience has an `ad_server_targeting` JSON object. You must use this to inform your selections.
 
     ** Today's Date: {today.strftime('%Y-%m-%d')} **
 
     **Your Task:**
     1.  Analyze the client's brief and provided signals.
     2.  From the "placements" list, select the IDs of the most relevant placements.
-    3.  For each selected placement, choose the audiences to target. You **must** include the `gam_id` and `targeting_type` for each audience you select.
+    3.  For each selected placement, choose the audiences to target. You **must** include the full `ad_server_targeting` JSON object for each audience you select.
     4.  Your response **MUST** be a JSON object with "start_time", "end_time", and "selected_placements" keys.
     5.  Each object in "selected_placements" must contain "placement_id", "budget", and "targeted_audiences".
-    6.  "targeted_audiences" must be a list of objects, each with "name", "gam_id", and "targeting_type".
+    6.  "targeted_audiences" must be a list of objects, each with "name" and the corresponding "ad_server_targeting" object from the inventory.
 
     **Example Response:**
     {{
@@ -126,7 +126,7 @@ def get_proposal(
           "placement_id": 1, 
           "budget": 50000,
           "targeted_audiences": [
-            {{ "name": "Cat Lovers", "gam_id": 12345, "targeting_type": "audience_segment" }}
+            {{ "name": "Cat Lovers", "ad_server_targeting": {{"gam": {{"type": "audience_segment", "id": 12345}}, "triton": {{"type": "station", "id": "CATSFM"}}}} }}
           ]
         }}
       ]
@@ -165,7 +165,7 @@ def get_proposal(
                 provided_signals=ProvidedSignalsInPackage(
                     included_ids=[aud['name'] for aud in selection.get('targeted_audiences', [])],
                     excluded_ids=[], # Simplified for now
-                    gam_targeting=selection.get('targeted_audiences', [])
+                    ad_server_targeting=selection.get('targeted_audiences', [])
                 ),
                 cpm=placement_details['base_cpm'],
                 budget=selection['budget'],

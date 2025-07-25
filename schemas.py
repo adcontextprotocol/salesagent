@@ -44,7 +44,7 @@ class CreativeFormat(BaseModel):
 class ProvidedSignalsInPackage(BaseModel):
     included_ids: Optional[List[str]] = None
     excluded_ids: Optional[List[str]] = None
-    gam_targeting: Optional[List[Dict[str, Any]]] = None
+    ad_server_targeting: Optional[List[Dict[str, Any]]] = None
 
 class MediaPackage(BaseModel):
     package_id: str

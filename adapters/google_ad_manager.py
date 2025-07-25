@@ -70,25 +70,25 @@ class GoogleAdManager(AdServerAdapter):
                 if package.package_id not in accepted_packages:
                     continue
 
-                # Build targeting based on the new gam_targeting data
+                # Build targeting based on the new ad_server_targeting data
                 targeting = {}
-                gam_targeting_data = package.provided_signals.gam_targeting
-                if gam_targeting_data:
-                    # Audience Segment Targeting
-                    audience_segment_ids = [t['gam_id'] for t in gam_targeting_data if t['targeting_type'] == 'audience_segment']
+                ad_server_targeting = package.provided_signals.ad_server_targeting
+                if ad_server_targeting:
+                    gam_targets = [t.get('gam') for t in ad_server_targeting if 'gam' in t]
+                    
+                    audience_segment_ids = [t['id'] for t in gam_targets if t.get('type') == 'audience_segment']
                     if audience_segment_ids:
                         targeting['audienceSegmentIds'] = audience_segment_ids
 
-                    # Custom Key-Value Targeting
                     custom_targeting = {'children': []}
-                    for t in gam_targeting_data:
-                        if t['targeting_type'] == 'custom_key':
-                            key_id = targeting_map.get('custom_keys', {}).get(t['name'])
+                    for t in gam_targets:
+                        if t.get('type') == 'custom_key':
+                            key_id = targeting_map.get('custom_keys', {}).get(t['key_name'])
                             if key_id:
                                 custom_targeting['children'].append({
                                     'xsi_type': 'CustomCriteriaSet',
                                     'logicalOperator': 'OR',
-                                    'children': [{'xsi_type': 'CustomCriteria', 'keyId': key_id, 'valueIds': [t['gam_id']], 'operator': 'IS'}]
+                                    'children': [{'xsi_type': 'CustomCriteria', 'keyId': key_id, 'valueIds': [t['value_id']], 'operator': 'IS'}]
                                 })
                     if custom_targeting['children']:
                         targeting['customTargeting'] = custom_targeting
