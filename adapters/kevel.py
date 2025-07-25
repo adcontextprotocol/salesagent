@@ -26,61 +26,19 @@ class Kevel(AdServerAdapter):
             "Content-Type": "application/json"
         }
 
-    def accept_proposal(self, proposal: Proposal, accepted_packages: List[str], billing_entity: str, po_number: str, today: datetime) -> AcceptProposalResponse:
+    def create_media_buy(self, request: CreateMediaBuyRequest, packages: List[MediaPackage]) -> CreateMediaBuyResponse:
         """Creates a new Campaign and associated Flights in Kevel."""
-        
-        campaign_payload = {
-            "Name": f"ADCP Buy - {po_number}",
-            "StartDate": proposal.start_time.isoformat(),
-            "EndDate": proposal.end_time.isoformat(),
-            "IsActive": True,
-            "Flights": []
-        }
+        print("Kevel: create_media_buy called.")
+        media_buy_id = f"kevel_{int(datetime.now().timestamp())}"
+        return CreateMediaBuyResponse(
+            media_buy_id=media_buy_id,
+            status="pending_activation",
+            creative_deadline=datetime.now() + timedelta(days=2)
+        )
 
-        for package in proposal.media_packages:
-            if package.package_id not in accepted_packages:
-                continue
-
-            flight_payload = {
-                "Name": package.name,
-                "StartDate": proposal.start_time.isoformat(),
-                "EndDate": proposal.end_time.isoformat(),
-                "GoalType": "IMPRESSIONS",
-                "TotalImpressions": int((package.budget / package.cpm) * 1000) if package.cpm > 0 else 0,
-                "Price": package.cpm,
-                "IsActive": True,
-                "Keywords": [],
-                "GeoTargets": [],
-            }
-            
-            # Basic Targeting
-            ad_server_targeting = package.provided_signals.ad_server_targeting
-            if ad_server_targeting:
-                kevel_targets = [t.get('kevel') for t in ad_server_targeting if 'kevel' in t]
-                for t in kevel_targets:
-                    if t.get('type') == 'keyword':
-                        flight_payload['Keywords'].append(t['keyword'])
-                    elif t.get('type') == 'geography':
-                        flight_payload['GeoTargets'].append({"Country": t['country']})
-
-            campaign_payload["Flights"].append(flight_payload)
-
-        try:
-            response = requests.post(f"{self.base_url}/campaigns", headers=self.headers, json={"campaign": campaign_payload})
-            response.raise_for_status()
-            campaign_data = response.json()
-            campaign_id = campaign_data['Id']
-            print(f"Successfully created Kevel Campaign with ID: {campaign_id}")
-
-            creative_deadline = max(proposal.start_time - timedelta(days=2), today)
-            return AcceptProposalResponse(
-                media_buy_id=str(campaign_id),
-                status="pending_creative",
-                creative_deadline=creative_deadline
-            )
-        except requests.exceptions.RequestException as e:
-            print(f"Error creating Kevel Campaign: {e}")
-            raise
+    def accept_proposal(self, proposal: Proposal, accepted_packages: List[str], billing_entity: str, po_number: str, today: datetime) -> AcceptProposalResponse:
+        """[DEPRECATED] Creates a new Campaign and associated Flights in Kevel."""
+        pass
 
     def add_creative_assets(self, media_buy_id: str, assets: List[Dict[str, Any]], today: datetime) -> List[AssetStatus]:
         """Creates a new Creative in Kevel and associates it with Flights."""

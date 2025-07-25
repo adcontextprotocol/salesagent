@@ -1,101 +1,95 @@
-from typing import List, Optional, Dict, Any
-from pydantic import BaseModel, Field, FutureDatetime
+from typing import List, Optional, Dict, Any, Literal
+from pydantic import BaseModel, Field
 from datetime import datetime
 
-# --- Pydantic Models ---
+# --- V2 Pydantic Models ---
 
-class ProvidedSignal(BaseModel):
+# --- Creative Specifications (OpenRTB 2.6 Inspired) ---
+
+class CompanionAd(BaseModel):
+    w: int
+    h: int
+
+class CreativeAsset(BaseModel):
     id: str
-    must_not_be_present: Optional[bool] = None
-    targeting_direction: Optional[str] = None
-    description: Optional[str] = None
-    required_aee_fields: Optional[str] = None
+    media_type: Literal["video", "audio", "display", "dooh"]
+    mime: str
+    w: Optional[int] = None
+    h: Optional[int] = None
+    dur: Optional[int] = None # Duration in seconds
+    protocols: Optional[List[int]] = None # VAST versions
+    api: Optional[List[int]] = None # OMID, etc.
+    companionad: Optional[CompanionAd] = None
+    # Audio specific
+    feed: Optional[int] = None
+    stitched: Optional[bool] = None
+    nvol: Optional[int] = None
+    # DOOH specific
+    venuetype: Optional[int] = None
+    pxratio: Optional[float] = None
 
-class RequestedChange(BaseModel):
-    package_id: str
-    field: str
-    notes: str
+# --- Package Discovery (get_packages) ---
 
-class VideoResolution(BaseModel):
-    width: int
-    height: int
-    label: str
+class Targeting(BaseModel):
+    provided_signals: List[Dict[str, Any]]
 
-class VideoAssets(BaseModel):
-    formats: List[str]
-    resolutions: List[VideoResolution]
-    max_file_size_mb: int
-    duration_options: List[int]
+class GetPackagesRequest(BaseModel):
+    budget: float
+    currency: str
+    start_time: datetime
+    end_time: datetime
+    creatives: List[CreativeAsset]
+    targeting: Targeting
 
-class CompanionAssets(BaseModel):
-    logo: Dict[str, Any]
-    overlay_image: Dict[str, Any]
+class CreativeCompatibility(BaseModel):
+    compatible: bool
+    requires_approval: bool
+    reason: Optional[str] = None
 
-class CreativeAssets(BaseModel):
-    video: Optional[VideoAssets] = None
-    companion: Optional[CompanionAssets] = None
-    image: Optional[Dict[str, Any]] = None
+class PricingGuidance(BaseModel):
+    floor_cpm: Optional[float] = None
+    suggested_cpm: float
+    p25: float
+    p50: float
+    p75: float
+    p90: float
 
-class CreativeFormatField(BaseModel):
-    name: str
-    type: str
-    required: bool
-
-class CreativeFormat(BaseModel):
-    name: str
-    description: str
-    ad_server: Optional[str] = None
-    template_id: Optional[int] = None
-    fields: Optional[List[CreativeFormatField]] = None
-    assets: Optional[CreativeAssets] = None
-
-class ProvidedSignalsInPackage(BaseModel):
-    included_ids: Optional[List[str]] = None
-    excluded_ids: Optional[List[str]] = None
-    ad_server_targeting: Optional[List[Dict[str, Any]]] = None
+class DeliveryEstimate(BaseModel):
+    impressions: int
+    win_rate: float
 
 class MediaPackage(BaseModel):
     package_id: str
     name: str
     description: str
-    delivery_restrictions: str
-    provided_signals: ProvidedSignalsInPackage
-    cpm: float
-    budget: int
-    budget_capacity: int
-    creative_formats: List[str]
+    type: Literal["custom", "catalog"]
+    delivery_type: Literal["guaranteed", "non_guaranteed"]
+    creative_compatibility: Dict[str, CreativeCompatibility]
+    cpm: Optional[float] = None # For guaranteed
+    budget: Optional[float] = None # For guaranteed
+    pricing: Optional[PricingGuidance] = None # For non-guaranteed
+    delivery_estimates: Optional[Dict[str, DeliveryEstimate]] = None # For non-guaranteed
 
-class Proposal(BaseModel):
-    proposal_id: str
-    expiration_date: Optional[datetime] = None
-    total_budget: int
-    currency: str
-    start_time: datetime
-    end_time: datetime
-    notes: Optional[str] = None
-    creative_formats: List[CreativeFormat]
-    media_packages: List[MediaPackage]
+class GetPackagesResponse(BaseModel):
+    packages: List[MediaPackage]
 
-class AcceptProposalResponse(BaseModel):
+# --- Media Buy Creation (create_media_buy) ---
+
+class SelectedPackage(BaseModel):
+    package_id: str
+    max_cpm: Optional[float] = None # Required for non-guaranteed
+
+class CreateMediaBuyRequest(BaseModel):
+    selected_packages: List[SelectedPackage]
+    billing_entity: str
+    po_number: str
+
+class CreateMediaBuyResponse(BaseModel):
     media_buy_id: str
     status: str
-    creative_deadline: datetime
+    creative_deadline: Optional[datetime] = None
 
-class CreativeAsset(BaseModel):
-    creative_id: str
-    format: str # 'image', 'video', 'audio', 'html5', 'custom'
-    name: str
-    media_url: Optional[str] = None # For standard image/video/audio
-    click_url: Optional[str] = None
-    width: Optional[int] = None
-    height: Optional[int] = None
-    duration: Optional[int] = None # in milliseconds
-    companion_assets: Optional[Dict[str, str]] = None
-    package_assignments: List[str]
-    
-    # For Kevel custom templates
-    template_id: Optional[int] = None
-    template_data: Optional[Dict[str, Any]] = None
+# --- Status and Reporting ---
 
 class AssetStatus(BaseModel):
     creative_id: str
@@ -115,6 +109,7 @@ class Delivery(BaseModel):
     impressions: int
     spend: float
     pacing: str
+    win_rate: Optional[float] = None # For non-guaranteed
 
 class PackageStatus(BaseModel):
     package_id: str

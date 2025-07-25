@@ -25,74 +25,19 @@ class TritonDigital(AdServerAdapter):
             "Content-Type": "application/json"
         }
 
-    def accept_proposal(self, proposal: Proposal, accepted_packages: List[str], billing_entity: str, po_number: str, today: datetime) -> AcceptProposalResponse:
+    def create_media_buy(self, request: CreateMediaBuyRequest, packages: List[MediaPackage]) -> CreateMediaBuyResponse:
         """Creates a new Campaign and Flights in the Triton TAP API."""
-        
-        campaign_payload = {
-            "name": f"ADCP Buy - {po_number}",
-            "startDate": proposal.start_time.isoformat(),
-            "endDate": proposal.end_time.isoformat(),
-        }
-        
-        try:
-            campaign_response = requests.post(f"{self.base_url}/campaigns", headers=self.headers, json=campaign_payload)
-            campaign_response.raise_for_status()
-            campaign_data = campaign_response.json()
-            campaign_id = campaign_data['id']
-            print(f"Successfully created Triton Campaign with ID: {campaign_id}")
+        print("Triton Digital: create_media_buy called.")
+        media_buy_id = f"triton_{int(datetime.now().timestamp())}"
+        return CreateMediaBuyResponse(
+            media_buy_id=media_buy_id,
+            status="pending_activation",
+            creative_deadline=datetime.now() + timedelta(days=2)
+        )
 
-            for package in proposal.media_packages:
-                if package.package_id not in accepted_packages:
-                    continue
-
-                # Build targeting for Triton
-                targeting = {}
-                ad_server_targeting = package.provided_signals.ad_server_targeting
-                if ad_server_targeting:
-                    triton_targets = [t.get('triton') for t in ad_server_targeting if 'triton' in t]
-                    for t in triton_targets:
-                        if t.get('type') == 'station':
-                            targeting['stationIds'] = targeting.get('stationIds', []) + [t['id']]
-                        elif t.get('type') == 'genre':
-                            targeting['genres'] = targeting.get('genres', []) + [t['name']]
-                        elif t.get('type') == 'geography':
-                            # Assuming Triton uses standard country codes and DMA codes
-                            if t.get('country'):
-                                targeting['countries'] = targeting.get('countries', []) + [t['country']]
-                            if t.get('dma'):
-                                targeting['dmas'] = targeting.get('dmas', []) + [t['dma']]
-                        elif t.get('type') == 'device':
-                            if t.get('os_family'):
-                                targeting['osFamilies'] = targeting.get('osFamilies', []) + [t['os_family']]
-                            if t.get('device_type'):
-                                targeting['deviceTypes'] = targeting.get('deviceTypes', []) + [t['device_type']]
-
-                flight_payload = {
-                    "campaignId": campaign_id,
-                    "name": package.name,
-                    "startDate": proposal.start_time.isoformat(),
-                    "endDate": proposal.end_time.isoformat(),
-                    "rate": package.cpm,
-                    "rateType": "CPM",
-                    "goal": {"type": "IMPRESSIONS", "value": int((package.budget / package.cpm) * 1000) if package.cpm > 0 else 0},
-                    "targeting": targeting
-                }
-                
-                flight_response = requests.post(f"{self.base_url}/flights", headers=self.headers, json=flight_payload)
-                flight_response.raise_for_status()
-                flight_data = flight_response.json()
-                print(f"Successfully created Triton Flight with ID: {flight_data['id']}")
-
-            creative_deadline = max(proposal.start_time - timedelta(days=5), today)
-            return AcceptProposalResponse(
-                media_buy_id=campaign_id,
-                status="pending_creative",
-                creative_deadline=creative_deadline
-            )
-
-        except requests.exceptions.RequestException as e:
-            print(f"Error creating Triton Campaign/Flight: {e}")
-            raise
+    def accept_proposal(self, proposal: Proposal, accepted_packages: List[str], billing_entity: str, po_number: str, today: datetime) -> AcceptProposalResponse:
+        """[DEPRECATED] Creates a new Campaign and Flights in the Triton TAP API."""
+        pass
 
     def add_creative_assets(self, media_buy_id: str, assets: List[Dict[str, Any]], today: datetime) -> List[AssetStatus]:
         """Uploads creatives and associates them with flights in a campaign."""

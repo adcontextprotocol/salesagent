@@ -1,18 +1,15 @@
 import sqlite3
 import json
 import importlib
-from datetime import datetime, timedelta
-from typing import List, Optional, Dict, Any
+from datetime import datetime
+from typing import List, Dict, Any
 
-import google.generativeai as genai
 from fastmcp import FastMCP
 from rich.console import Console
-from rich.pretty import Pretty
 
 from database import init_db
 from schemas import *
 from adapters.base import AdServerAdapter
-from adapters.creative_engine import CreativeEngineAdapter
 
 # --- Configuration and Initialization ---
 
@@ -28,13 +25,8 @@ def load_config():
         print("Error: Could not decode config.json. Please check its format.")
         exit(1)
 
-def initialize_services(config: Dict[str, Any]):
-    """Initializes and configures all external services."""
-    api_key = config.get("gemini_api_key")
-    if not api_key or api_key == "YOUR_API_KEY_HERE":
-        print("Error: Gemini API key not found in config.json. Please add it.")
-        exit(1)
-    genai.configure(api_key=api_key)
+def initialize_services():
+    """Initializes the database."""
     init_db()
 
 def load_adapter(adapter_type: str, config: Dict[str, Any], **kwargs) -> Any:
@@ -49,7 +41,6 @@ def load_adapter(adapter_type: str, config: Dict[str, Any], **kwargs) -> Any:
         module = importlib.import_module(f"adapters.{adapter_name}")
         class_name = ''.join(word.capitalize() for word in adapter_name.split('_'))
         adapter_class = getattr(module, class_name)
-        # Pass both the specific adapter config and any extra kwargs (like other adapters)
         return adapter_class(adapter_config, **kwargs)
     except (ImportError, AttributeError) as e:
         print(f"Error loading {adapter_type} adapter '{adapter_name}': {e}")
@@ -57,239 +48,136 @@ def load_adapter(adapter_type: str, config: Dict[str, Any], **kwargs) -> Any:
 
 # --- Main Application Setup ---
 config = load_config()
-initialize_services(config)
+initialize_services()
 
-creative_engine: CreativeEngineAdapter = load_adapter("creative_engine", config)
-ad_server: AdServerAdapter = load_adapter("ad_server", config, creative_engine=creative_engine)
+# For V2, we assume a single ad server is configured for the buy-side agent
+ad_server: AdServerAdapter = load_adapter("ad_server", config)
 
-model = genai.GenerativeModel('gemini-2.5-flash')
-mcp = FastMCP(name="AdCPSalesAgent")
+mcp = FastMCP(name="AdCPBuySideV2")
 console = Console()
 
-# --- In-Memory Proposal Cache (Temporary) ---
-proposals_cache: Dict[str, Proposal] = {}
+# --- In-Memory Cache (Temporary) ---
+# Caches the packages returned from a get_packages call to be used in create_media_buy
+packages_cache: Dict[str, List[MediaPackage]] = {}
 
-# --- MCP Tools ---
+# --- MCP Tools (V2) ---
+
+def _check_creative_compatibility(creative: CreativeAsset, placement_formats: List[Dict[str, Any]]) -> CreativeCompatibility:
+    """Checks if a creative is compatible with the formats supported by a placement."""
+    for format_spec in placement_formats:
+        spec = json.loads(format_spec['spec'])
+        # This is a simplified compatibility check. A real implementation would be more robust.
+        if (creative.media_type == spec.get('media_type') and
+            creative.w == spec.get('w') and
+            creative.h == spec.get('h')):
+            return CreativeCompatibility(compatible=True, requires_approval=True) # Defaulting to requires_approval
+    
+    return CreativeCompatibility(
+        compatible=False, 
+        requires_approval=False,
+        reason=f"Creative dimensions ({creative.w}x{creative.h}) or type do not match any supported format."
+    )
 
 @mcp.tool
-def get_proposal(
-    brief: str,
-    provided_signals: Optional[List[ProvidedSignal]] = None,
-    proposal_id: Optional[str] = None,
-    requested_changes: Optional[List[RequestedChange]] = None,
-    today: Optional[datetime] = None,
-) -> Proposal:
-    """Request a proposal from the publisher by intelligently selecting inventory."""
-    today = today or datetime.now().astimezone()
+def get_packages(request: GetPackagesRequest) -> GetPackagesResponse:
+    """Discover all available packages based on media buy criteria."""
     conn = sqlite3.connect('adcp.db')
     conn.row_factory = sqlite3.Row
     cursor = conn.cursor()
 
-    cursor.execute("SELECT * FROM placements")
+    # For now, we return all catalog packages. A real implementation would filter based on request.
+    cursor.execute("SELECT * FROM placements WHERE type = 'catalog'")
     placements = [dict(row) for row in cursor.fetchall()]
-    cursor.execute("SELECT * FROM audiences")
-    audiences = [dict(row) for row in cursor.fetchall()]
     
-    inventory_json = json.dumps({"placements": placements, "audiences": audiences}, indent=2)
-    provided_signals_dict = [signal.model_dump() for signal in provided_signals] if provided_signals else []
-    provided_signals_json = json.dumps(provided_signals_dict, indent=2) if provided_signals_dict else "None"
+    media_packages = []
+    for placement in placements:
+        # Get the creative formats supported by this placement
+        cursor.execute("""
+            SELECT cf.spec FROM creative_formats cf
+            JOIN placement_formats pf ON cf.id = pf.format_id
+            WHERE pf.placement_id = ?
+        """, (placement['id'],))
+        supported_formats = [dict(row) for row in cursor.fetchall()]
 
-    prompt = f"""
-    You are an expert media planner. Your task is to create a media proposal based on a client brief and available inventory.
+        # Check compatibility for each creative provided in the request
+        compatibility_map = {}
+        for creative in request.creatives:
+            compatibility_map[creative.id] = _check_creative_compatibility(creative, supported_formats)
+
+        package_data = {
+            "package_id": f"pkg_{placement['id']}",
+            "name": placement['name'],
+            "description": f"A {placement['delivery_type']} package.",
+            "type": placement['type'],
+            "delivery_type": placement['delivery_type'],
+            "creative_compatibility": compatibility_map,
+        }
+
+        if placement['delivery_type'] == 'guaranteed':
+            package_data['cpm'] = placement['base_cpm']
+        else:
+            package_data['pricing'] = json.loads(placement['pricing_guidance'])
+
+        media_packages.append(MediaPackage(**package_data))
+
+    conn.close()
     
-    **Client Brief:**
-    "{brief}"
+    # Cache the packages for the create_media_buy step
+    query_id = f"query_{int(datetime.now().timestamp())}"
+    packages_cache[query_id] = media_packages
+    
+    # We need a way to return the query_id to the client.
+    # For now, we'll print it and assume the client can use it.
+    console.print(f"[bold yellow]Generated Query ID for this package set:[/bold yellow] {query_id}")
 
-    **Client-Provided Signals (for targeting and exclusion):**
-    {provided_signals_json}
+    return GetPackagesResponse(packages=media_packages)
 
-    **Available Inventory (Placements and Audiences):**
-    {inventory_json}
-    Note: Each audience has an `ad_server_targeting` JSON object. You must use this to inform your selections.
-
-    ** Today's Date: {today.strftime('%Y-%m-%d')} **
-
-    **Your Task:**
-    1.  Analyze the client's brief and provided signals.
-    2.  From the "placements" list, select the IDs of the most relevant placements.
-    3.  For each selected placement, choose the audiences to target. You **must** include the full `ad_server_targeting` JSON object for each audience you select.
-    4.  Your response **MUST** be a JSON object with "start_time", "end_time", and "selected_placements" keys.
-    5.  Each object in "selected_placements" must contain "placement_id", "budget", and "targeted_audiences".
-    6.  "targeted_audiences" must be a list of objects, each with "name" and the corresponding "ad_server_targeting" object from the inventory.
-
-    **Example Response:**
-    {{
-      "start_time": "2025-07-25T00:00:00Z",
-      "end_time": "2025-08-25T23:59:59Z",
-      "selected_placements": [
-        {{ 
-          "placement_id": 1, 
-          "budget": 50000,
-          "targeted_audiences": [
-            {{ "name": "Cat Lovers", "ad_server_targeting": {{"gam": {{"type": "audience_segment", "id": 12345}}, "triton": {{"type": "station", "id": "CATSFM"}}}} }}
-          ]
-        }}
-      ]
-    }}
-    Return only the JSON object.
-    """
-
-    try:
-        response = model.generate_content(prompt)
-        clean_json_str = response.text.strip().replace("```json", "").replace("```", "").strip()
-        ai_decision = json.loads(clean_json_str)
+@mcp.tool
+def create_media_buy(request: CreateMediaBuyRequest, query_id: str) -> CreateMediaBuyResponse:
+    """Create a media buy from a set of selected packages."""
+    if query_id not in packages_cache:
+        raise ValueError(f"Query ID '{query_id}' not found or expired.")
+    
+    available_packages = {p.package_id: p for p in packages_cache[query_id]}
+    
+    # This would be passed to the ad server adapter in a real implementation
+    selected_packages_full = []
+    for selected in request.selected_packages:
+        if selected.package_id not in available_packages:
+            raise ValueError(f"Package ID '{selected.package_id}' not found in the original query.")
         
-        selected_placements = ai_decision.get("selected_placements", [])
-        start_time_str = ai_decision.get("start_time")
-        end_time_str = ai_decision.get("end_time")
+        full_package = available_packages[selected.package_id]
+        # Here you would combine the full package data with the user's bid (max_cpm)
+        # and pass it to a new ad_server.create_media_buy method.
+        selected_packages_full.append(full_package)
 
-        if not all([selected_placements, start_time_str, end_time_str]):
-            raise ValueError("AI response missing required fields.")
+    # For this simulation, we'll just return a success response.
+    # The ad_server.create_media_buy call would happen here.
+    
+    media_buy_id = f"mb_{int(datetime.now().timestamp())}"
+    console.print(f"Simulating media buy creation for PO: {request.po_number}. Media Buy ID: {media_buy_id}")
+    
+    del packages_cache[query_id] # Clean up cache
 
-        start_time = datetime.fromisoformat(start_time_str)
-        end_time = datetime.fromisoformat(end_time_str)
+    return CreateMediaBuyResponse(
+        media_buy_id=media_buy_id,
+        status="pending_activation", # A more complex status would be determined by the adapter
+        creative_deadline=datetime.now() + timedelta(days=2)
+    )
 
-        media_packages = []
-        creative_formats_dict = {}
-        total_budget = 0
-        all_placement_ids = [sel['placement_id'] for sel in selected_placements]
-
-        # Get all unique creative formats for the selected placements
-        if all_placement_ids:
-            placeholders = ','.join('?' for _ in all_placement_ids)
-            query = f"""
-                SELECT DISTINCT cf.name, cf.spec
-                FROM creative_formats cf
-                JOIN placement_formats pf ON cf.id = pf.format_id
-                WHERE pf.placement_id IN ({placeholders})
-            """
-            cursor.execute(query, all_placement_ids)
-            for row in cursor.fetchall():
-                if row['name'] not in creative_formats_dict:
-                    spec = json.loads(row['spec'])
-                    creative_formats_dict[row['name']] = CreativeFormat(name=row['name'], **spec)
-
-        for selection in selected_placements:
-            cursor.execute("SELECT p.*, prop.name as property_name FROM placements p JOIN properties prop ON p.property_id = prop.id WHERE p.id = ?", (selection['placement_id'],))
-            placement_details = cursor.fetchone()
-            
-            # Find the names of the creative formats for this specific placement
-            cursor.execute("SELECT cf.name FROM creative_formats cf JOIN placement_formats pf ON cf.id = pf.format_id WHERE pf.placement_id = ?", (selection['placement_id'],))
-            placement_format_names = [row['name'] for row in cursor.fetchall()]
-
-            package = MediaPackage(
-                package_id=f"pkg_{placement_details['id']}",
-                name=f"{placement_details['property_name']} - {placement_details['name']}",
-                description=f"Targeting on {placement_details['property_name']}",
-                delivery_restrictions="US",
-                provided_signals=ProvidedSignalsInPackage(
-                    included_ids=[aud['name'] for aud in selection.get('targeted_audiences', [])],
-                    excluded_ids=[], # Simplified for now
-                    ad_server_targeting=selection.get('targeted_audiences', [])
-                ),
-                cpm=placement_details['base_cpm'],
-                budget=selection['budget'],
-                budget_capacity=placement_details['daily_impression_capacity'] * 30, # Estimate capacity
-                creative_formats=placement_format_names
-            )
-            media_packages.append(package)
-            total_budget += selection['budget']
-
-        conn.close()
-
-        proposal = Proposal(
-            proposal_id=f"proposal_{int(datetime.now().timestamp())}",
-            total_budget=total_budget,
-            currency="USD",
-            start_time=start_time,
-            end_time=end_time,
-            notes="Proposal generated by AI media planner.",
-            creative_formats=list(creative_formats_dict.values()),
-            media_packages=media_packages
-        )
-        proposals_cache[proposal.proposal_id] = proposal
-        return proposal
-
-    except (Exception, json.JSONDecodeError, ValueError) as e:
-        print(f"Error processing AI proposal: {e}")
-        raise ValueError("Failed to generate or process the AI's proposal selection.")
-
+# --- Other Tools (to be updated or removed) ---
 
 @mcp.tool
-def accept_proposal(
-    proposal_id: str,
-    accepted_packages: List[str],
-    billing_entity: str,
-    po_number: str,
-    today: Optional[datetime] = None,
-) -> AcceptProposalResponse:
-    """Accept a proposal and convert it into a media buy."""
-    today = today or datetime.now().astimezone()
-    if proposal_id not in proposals_cache:
-        raise ValueError(f"Proposal with ID '{proposal_id}' not found or expired.")
-    
-    proposal = proposals_cache[proposal_id]
-    response = ad_server.accept_proposal(proposal, accepted_packages, billing_entity, po_number, today)
-    del proposals_cache[proposal_id]
-    
-    console.print(f"[bold cyan]Ad Server Response:[/bold cyan] {response}")
-    return response
-
-@mcp.tool
-def add_creative_assets(
-    media_buy_id: str,
-    assets: List[CreativeAsset],
-    today: Optional[datetime] = None,
-) -> AddCreativeAssetsResponse:
+def add_creative_assets(media_buy_id: str, assets: List[CreativeAsset]) -> AddCreativeAssetsResponse:
     """Submits creative assets to the ad server for processing."""
-    today = today or datetime.now().astimezone()
     asset_dicts = [asset.model_dump() for asset in assets]
-    
-    # Delegate directly to the ad server, which will manage the approval workflow
-    submitted_assets = ad_server.add_creative_assets(media_buy_id, asset_dicts, today)
-    
+    submitted_assets = ad_server.add_creative_assets(media_buy_id, asset_dicts, datetime.now())
     return AddCreativeAssetsResponse(status="submitted", assets=submitted_assets)
 
 @mcp.tool
-def check_media_buy_status(
-    media_buy_id: str, 
-    today: Optional[datetime] = None
-) -> CheckMediaBuyStatusResponse:
+def check_media_buy_status(media_buy_id: str) -> CheckMediaBuyStatusResponse:
     """Check the status of a media buy."""
-    today = today or datetime.now().astimezone()
-    return ad_server.check_media_buy_status(media_buy_id, today)
-
-@mcp.tool
-def get_media_buy_delivery(
-    media_buy_id: str,
-    date_range: ReportingPeriod,
-    today: Optional[datetime] = None,
-) -> GetMediaBuyDeliveryResponse:
-    """Get the delivery data for a media buy."""
-    today = today or datetime.now().astimezone()
-    return ad_server.get_media_buy_delivery(media_buy_id, date_range, today)
-
-@mcp.tool
-def update_media_buy_performance_index(
-    media_buy_id: str,
-    package_performance: List[PackagePerformance],
-    today: Optional[datetime] = None,
-) -> UpdateMediaBuyPerformanceIndexResponse:
-    """Update the performance index for a media buy."""
-    acknowledged = ad_server.update_media_buy_performance_index(media_buy_id, package_performance)
-    return UpdateMediaBuyPerformanceIndexResponse(acknowledged=acknowledged)
-
-@mcp.tool
-def update_media_buy(
-    media_buy_id: str,
-    action: str,
-    package_id: Optional[str] = None,
-    budget: Optional[int] = None,
-    today: Optional[datetime] = None,
-) -> UpdateMediaBuyResponse:
-    """Update a media buy with various actions."""
-    today = today or datetime.now().astimezone()
-    return ad_server.update_media_buy(media_buy_id, action, package_id, budget, today)
+    return ad_server.check_media_buy_status(media_buy_id, datetime.now())
 
 if __name__ == "__main__":
     mcp.run()

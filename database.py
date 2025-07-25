@@ -4,26 +4,32 @@ import json
 DB_FILE = "adcp.db"
 
 def init_db():
-    """Initializes the database and creates tables with sample data."""
+    """Initializes the database and creates tables with sample data for V2 spec."""
     conn = sqlite3.connect(DB_FILE)
     cursor = conn.cursor()
     
-    # Enable foreign key support
     cursor.execute("PRAGMA foreign_keys = ON;")
 
-    # -- Creative Formats --
-    # Storing the detailed spec as a JSON string for flexibility.
+    # Drop existing tables for a clean slate on each init
+    cursor.execute("DROP TABLE IF EXISTS placement_audiences;")
+    cursor.execute("DROP TABLE IF EXISTS placement_formats;")
+    cursor.execute("DROP TABLE IF EXISTS placements;")
+    cursor.execute("DROP TABLE IF EXISTS properties;")
+    cursor.execute("DROP TABLE IF EXISTS audiences;")
+    cursor.execute("DROP TABLE IF EXISTS creative_formats;")
+
+    # --- Core Tables ---
+
     cursor.execute("""
-    CREATE TABLE IF NOT EXISTS creative_formats (
+    CREATE TABLE creative_formats (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         name TEXT UNIQUE NOT NULL,
-        spec TEXT NOT NULL 
+        spec TEXT NOT NULL
     );
     """)
 
-    # -- Audiences --
     cursor.execute("""
-    CREATE TABLE IF NOT EXISTS audiences (
+    CREATE TABLE audiences (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         name TEXT UNIQUE NOT NULL,
         description TEXT,
@@ -31,34 +37,32 @@ def init_db():
     );
     """)
 
-    # -- Properties --
-    # e.g., a website or app
     cursor.execute("""
-    CREATE TABLE IF NOT EXISTS properties (
+    CREATE TABLE properties (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         name TEXT UNIQUE NOT NULL,
         description TEXT
     );
     """)
 
-    # -- Placements --
-    # A specific ad slot on a property
     cursor.execute("""
-    CREATE TABLE IF NOT EXISTS placements (
+    CREATE TABLE placements (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         name TEXT NOT NULL,
         property_id INTEGER NOT NULL,
-        base_cpm REAL NOT NULL,
-        daily_impression_capacity INTEGER NOT NULL,
+        type TEXT NOT NULL, -- 'custom' or 'catalog'
+        delivery_type TEXT NOT NULL, -- 'guaranteed' or 'non_guaranteed'
+        base_cpm REAL, -- For guaranteed
+        pricing_guidance TEXT, -- JSON for non_guaranteed
+        daily_impression_capacity INTEGER,
         FOREIGN KEY (property_id) REFERENCES properties (id)
     );
     """)
 
-    # -- Linking Tables (Many-to-Many) --
+    # --- Linking Tables ---
 
-    # Link placements to the creative formats they support
     cursor.execute("""
-    CREATE TABLE IF NOT EXISTS placement_formats (
+    CREATE TABLE placement_formats (
         placement_id INTEGER,
         format_id INTEGER,
         PRIMARY KEY (placement_id, format_id),
@@ -67,9 +71,8 @@ def init_db():
     );
     """)
 
-    # Link placements to the audiences they can target
     cursor.execute("""
-    CREATE TABLE IF NOT EXISTS placement_audiences (
+    CREATE TABLE placement_audiences (
         placement_id INTEGER,
         audience_id INTEGER,
         PRIMARY KEY (placement_id, audience_id),
@@ -78,105 +81,49 @@ def init_db():
     );
     """)
 
-    # -- Sample Data --
-    # Using INSERT OR IGNORE to prevent errors on subsequent runs
-    
-    # Creative Formats
-    kevel_template_spec = {
-        "ad_server": "kevel",
-        "template_id": 78910,
-        "fields": [
-            {"name": "title", "type": "string", "required": True},
-            {"name": "description", "type": "string", "required": True},
-            {"name": "imageUrl", "type": "url", "required": True},
-            {"name": "impressionTracker", "type": "url", "required": False}
-        ],
-        "description": "A custom native ad format for Kevel."
-    }
-    e2e_video_spec = {
-        "assets": { "video": { "formats": ["mp4", "webm"], "resolutions": [{"width": 1080, "height": 1080, "label": "square"}], "max_file_size_mb": 50, "duration_options": [6, 15]}, "companion": { "logo": {"size": "300x300", "format": "png"}, "overlay_image": {"size": "1080x1080", "format": "jpg", "optional": True}}},
-        "description": "An immersive mobile video that scrolls in-feed"
-    }
-    banner_spec = {
-        "assets": {"image": {"sizes": ["300x250", "728x90"], "format": "png"}},
-        "description": "A standard display banner ad."
-    }
-    cursor.execute("INSERT OR IGNORE INTO creative_formats (name, spec) VALUES (?, ?)", ('Kevel Native Ad', json.dumps(kevel_template_spec)))
-    cursor.execute("INSERT OR IGNORE INTO creative_formats (name, spec) VALUES (?, ?)", ('E2E mobile video', json.dumps(e2e_video_spec)))
-    cursor.execute("INSERT OR IGNORE INTO creative_formats (name, spec) VALUES (?, ?)", ('Standard Banner', json.dumps(banner_spec)))
+    # --- Sample Data ---
+
+    # Creative Formats (OpenRTB style)
+    video_spec = {"media_type": "video", "mime": "video/mp4", "w": 1920, "h": 1080, "dur": 30}
+    banner_spec = {"media_type": "display", "mime": "image/png", "w": 300, "h": 250}
+    cursor.execute("INSERT INTO creative_formats (name, spec) VALUES (?, ?)", ('Standard Video', json.dumps(video_spec)))
+    cursor.execute("INSERT INTO creative_formats (name, spec) VALUES (?, ?)", ('Standard Banner', json.dumps(banner_spec)))
 
     # Audiences
-    cat_lovers_targeting = json.dumps({
-        "gam": {"type": "audience_segment", "id": 12345},
-        "triton": {"type": "station", "id": "CATSFM"}
-    })
-    dog_lovers_targeting = json.dumps({
-        "gam": {"type": "audience_segment", "id": 12346},
-        "triton": {"type": "station", "id": "DOGSXM"}
-    })
-    income_targeting = json.dumps({
-        "gam": {"type": "custom_key", "key_name": "income_bracket", "value_id": 54321}
-    })
-    sports_fans_targeting = json.dumps({
-        "gam": {"type": "audience_segment", "id": 12347},
-        "triton": {"type": "genre", "name": "Sports"}
-    })
-    kevel_keyword_targeting = json.dumps({
-        "kevel": {"type": "keyword", "keyword": "cats"}
-    })
-
-    cursor.execute("INSERT OR IGNORE INTO audiences (name, description, ad_server_targeting) VALUES (?, ?, ?)", ('Cat Lovers', 'Users who own cats or show strong interest in cat-related content.', cat_lovers_targeting))
-    cursor.execute("INSERT OR IGNORE INTO audiences (name, description, ad_server_targeting) VALUES (?, ?, ?)", ('Dog Lovers', 'Users who own dogs or show strong interest in dog-related content.', dog_lovers_targeting))
-    cursor.execute("INSERT OR IGNORE INTO audiences (name, description, ad_server_targeting) VALUES (?, ?, ?)", ('High-Income Earners', 'Users in the top 20% of household income.', income_targeting))
-    cursor.execute("INSERT OR IGNORE INTO audiences (name, description, ad_server_targeting) VALUES (?, ?, ?)", ('Sports Fans', 'Users who frequent sports content.', sports_fans_targeting))
-    cursor.execute("INSERT OR IGNORE INTO audiences (name, description, ad_server_targeting) VALUES (?, ?, ?)", ('Kevel Cat Keyword', 'Keyword targeting for "cats" in Kevel.', kevel_keyword_targeting))
-
+    cat_lovers_targeting = json.dumps([{"gam": {"type": "audience_segment", "id": 12345}}])
+    sports_fans_targeting = json.dumps([{"gam": {"type": "audience_segment", "id": 12347}}])
+    cursor.execute("INSERT INTO audiences (name, description, ad_server_targeting) VALUES (?, ?, ?)", ('Cat Lovers', 'Users interested in cats.', cat_lovers_targeting))
+    cursor.execute("INSERT INTO audiences (name, description, ad_server_targeting) VALUES (?, ?, ?)", ('Sports Fans', 'Users interested in sports.', sports_fans_targeting))
 
     # Properties
-    cursor.execute("INSERT OR IGNORE INTO properties (name, description) VALUES (?, ?)", ('Cat World', 'The #1 online destination for cat lovers.'))
-    cursor.execute("INSERT OR IGNORE INTO properties (name, description) VALUES (?, ?)", ('Dog Weekly', 'Your weekly source for everything dog-related.'))
-    cursor.execute("INSERT OR IGNORE INTO properties (name, description) VALUES (?, ?)", ('The Finance Times', 'Global news and analysis for business leaders.'))
-    cursor.execute("INSERT OR IGNORE INTO properties (name, description) VALUES (?, ?)", ('Sports Yelling', 'Loud opinions about sports.'))
-
+    cursor.execute("INSERT INTO properties (name, description) VALUES (?, ?)", ('Cat World', 'The #1 online destination for cat lovers.'))
+    cursor.execute("INSERT INTO properties (name, description) VALUES (?, ?)", ('Sports Yelling', 'Loud opinions about sports.'))
 
     # Placements
-    cursor.execute("INSERT OR IGNORE INTO placements (name, property_id, base_cpm, daily_impression_capacity) VALUES (?, ?, ?, ?)", ('Homepage Banner', 1, 25.00, 100000)) # Cat World
-    cursor.execute("INSERT OR IGNORE INTO placements (name, property_id, base_cpm, daily_impression_capacity) VALUES (?, ?, ?, ?)", ('Article In-Feed Video', 1, 35.00, 80000)) # Cat World
-    cursor.execute("INSERT OR IGNORE INTO placements (name, property_id, base_cpm, daily_impression_capacity) VALUES (?, ?, ?, ?)", ('Homepage Banner', 2, 22.00, 120000)) # Dog Weekly
-    cursor.execute("INSERT OR IGNORE INTO placements (name, property_id, base_cpm, daily_impression_capacity) VALUES (?, ?, ?, ?)", ('Homepage Leaderboard', 3, 45.00, 50000)) # Finance Times
-    cursor.execute("INSERT OR IGNORE INTO placements (name, property_id, base_cpm, daily_impression_capacity) VALUES (?, ?, ?, ?)", ('Homepage Video', 4, 30.00, 90000)) # Sports Yelling
-    cursor.execute("INSERT OR IGNORE INTO placements (name, property_id, base_cpm, daily_impression_capacity) VALUES (?, ?, ?, ?)", ('Native Ad Slot', 1, 40.00, 75000)) # Cat World, for Kevel
+    pricing_guidance = {
+        "floor_cpm": 5.0, "suggested_cpm": 7.5,
+        "p25": 5.5, "p50": 7.0, "p75": 8.0, "p90": 9.5
+    }
+    cursor.execute("""
+    INSERT INTO placements (name, property_id, type, delivery_type, base_cpm, daily_impression_capacity) 
+    VALUES (?, ?, ?, ?, ?, ?)
+    """, ('Homepage Banner (Guaranteed)', 1, 'catalog', 'guaranteed', 25.00, 100000))
+    
+    cursor.execute("""
+    INSERT INTO placements (name, property_id, type, delivery_type, pricing_guidance, daily_impression_capacity) 
+    VALUES (?, ?, ?, ?, ?, ?)
+    """, ('In-Feed Video (Non-Guaranteed)', 2, 'catalog', 'non_guaranteed', json.dumps(pricing_guidance), 500000))
 
     # Link them together
-    # Cat World (Property ID 1)
-    # Placement ID 1 ('Homepage Banner') supports Banner (Format ID 3) and targets Cat Lovers (Audience ID 1)
-    cursor.execute("INSERT OR IGNORE INTO placement_formats (placement_id, format_id) VALUES (1, 3)")
-    cursor.execute("INSERT OR IGNORE INTO placement_audiences (placement_id, audience_id) VALUES (1, 1)")
-    # Placement ID 2 ('Article In-Feed Video') supports Video (Format ID 2) and targets Cat Lovers (Audience ID 1)
-    cursor.execute("INSERT OR IGNORE INTO placement_formats (placement_id, format_id) VALUES (2, 2)")
-    cursor.execute("INSERT OR IGNORE INTO placement_audiences (placement_id, audience_id) VALUES (2, 1)")
-    # Placement ID 6 ('Native Ad Slot') supports Kevel Native (Format ID 1) and Kevel Keyword (Audience ID 5)
-    cursor.execute("INSERT OR IGNORE INTO placement_formats (placement_id, format_id) VALUES (6, 1)")
-    cursor.execute("INSERT OR IGNORE INTO placement_audiences (placement_id, audience_id) VALUES (6, 5)")
-    
-    # Dog Weekly (Property ID 2)
-    # Placement ID 3 ('Homepage Banner') supports Banner (Format ID 3) and targets Dog Lovers (Audience ID 2)
-    cursor.execute("INSERT OR IGNORE INTO placement_formats (placement_id, format_id) VALUES (3, 3)")
-    cursor.execute("INSERT OR IGNORE INTO placement_audiences (placement_id, audience_id) VALUES (3, 2)")
+    cursor.execute("INSERT INTO placement_formats (placement_id, format_id) VALUES (1, 2)") # Banner
+    cursor.execute("INSERT INTO placement_audiences (placement_id, audience_id) VALUES (1, 1)") # Cat Lovers
 
-    # The Finance Times (Property ID 3)
-    # Placement ID 4 ('Homepage Leaderboard') supports Banner (Format ID 3) and targets High-Income (Audience ID 3)
-    cursor.execute("INSERT OR IGNORE INTO placement_formats (placement_id, format_id) VALUES (4, 3)")
-    cursor.execute("INSERT OR IGNORE INTO placement_audiences (placement_id, audience_id) VALUES (4, 3)")
-
-    # Sports Yelling (Property ID 4)
-    # Placement ID 5 ('Homepage Video') supports Video (Format ID 2) and targets Sports Fans (Audience ID 4)
-    cursor.execute("INSERT OR IGNORE INTO placement_formats (placement_id, format_id) VALUES (5, 2)")
-    cursor.execute("INSERT OR IGNORE INTO placement_audiences (placement_id, audience_id) VALUES (5, 4)")
+    cursor.execute("INSERT INTO placement_formats (placement_id, format_id) VALUES (2, 1)") # Video
+    cursor.execute("INSERT INTO placement_audiences (placement_id, audience_id) VALUES (2, 2)") # Sports Fans
 
     conn.commit()
     conn.close()
-    print("Database initialized successfully.")
+    print("Database initialized successfully for V2 spec.")
 
 if __name__ == '__main__':
     init_db()

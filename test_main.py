@@ -1,60 +1,62 @@
 import unittest
 import json
 import os
-from main import get_proposal, init_db
-from schemas import Proposal, ProvidedSignal
+from datetime import datetime, timedelta
 
-class TestAdcpServer(unittest.TestCase):
+from main import get_packages, create_media_buy, _check_creative_compatibility
+from schemas import *
+from database import init_db
+
+class TestAdcpServerV2(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
         """Set up the database once for all tests."""
-        # Ensure a clean database for each test run
         if os.path.exists("adcp.db"):
             os.remove("adcp.db")
         init_db()
 
-    def test_proposal_validation(self):
+    def test_get_packages(self):
         """
-        Tests that get_proposal returns a valid Proposal object,
-        even with non-deterministic AI responses. This is the most crucial test.
+        Tests that get_packages returns a valid GetPackagesResponse object
+        with correctly structured packages and creative compatibility.
         """
-        with open('brief.json', 'r') as f:
-            brief_data = json.load(f)
-        
-        brief = brief_data.get("brief")
-        provided_signals_data = brief_data.get("provided_signals")
+        request = GetPackagesRequest(
+            budget=100000,
+            currency="USD",
+            start_time=datetime.now(),
+            end_time=datetime.now() + timedelta(days=30),
+            creatives=[
+                CreativeAsset(id="cr-1", media_type="display", mime="image/png", w=300, h=250),
+                CreativeAsset(id="cr-2", media_type="video", mime="video/mp4", w=1920, h=1080, dur=30),
+                CreativeAsset(id="cr-3", media_type="display", mime="image/jpeg", w=728, h=90) # Incompatible
+            ],
+            targeting={"provided_signals": []}
+        )
 
-        # Convert the raw signal data into Pydantic models
-        provided_signals = [ProvidedSignal(**signal) for signal in provided_signals_data] if provided_signals_data else None
-
-        # Call the tool's underlying function directly for testing
         try:
-            proposal = get_proposal.fn(brief=brief, provided_signals=provided_signals)
+            response = get_packages.fn(request=request)
             
-            # The primary assertion: does the output conform to our Pydantic model?
-            self.assertIsInstance(proposal, Proposal)
-            
-            # We can also do some basic sanity checks that don't depend on the AI's exact choices
-            self.assertGreaterEqual(proposal.total_budget, 0)
-            self.assertIsInstance(proposal.media_packages, list)
-            
-            print("\n--- Test Proposal Validation Passed ---")
-            print(f"Generated Proposal ID: {proposal.proposal_id}")
-            print(f"Total Packages: {len(proposal.media_packages)}")
-            print("------------------------------------")
+            self.assertIsInstance(response, GetPackagesResponse)
+            self.assertEqual(len(response.packages), 2)
+
+            # Test guaranteed package
+            guaranteed_pkg = next(p for p in response.packages if p.delivery_type == 'guaranteed')
+            self.assertEqual(guaranteed_pkg.type, 'catalog')
+            self.assertIsNotNone(guaranteed_pkg.cpm)
+            self.assertTrue(guaranteed_pkg.creative_compatibility['cr-1'].compatible)
+            self.assertFalse(guaranteed_pkg.creative_compatibility['cr-2'].compatible)
+
+            # Test non-guaranteed package
+            non_guaranteed_pkg = next(p for p in response.packages if p.delivery_type == 'non_guaranteed')
+            self.assertEqual(non_guaranteed_pkg.type, 'catalog')
+            self.assertIsNotNone(non_guaranteed_pkg.pricing)
+            self.assertEqual(non_guaranteed_pkg.pricing.suggested_cpm, 7.5)
+            self.assertFalse(non_guaranteed_pkg.creative_compatibility['cr-1'].compatible)
+            self.assertTrue(non_guaranteed_pkg.creative_compatibility['cr-2'].compatible)
 
         except Exception as e:
-            self.fail(f"get_proposal raised an exception: {e}")
-
-    def test_database_initialization(self):
-        """
-        Tests the deterministic database initialization.
-        """
-        db_file = "adcp.db"
-        # Ensure the file exists after init
-        self.assertTrue(os.path.exists(db_file))
-        print(f"\n--- Test Database Initialization Passed ---")
+            self.fail(f"get_packages raised an exception: {e}")
 
 if __name__ == '__main__':
     unittest.main()
