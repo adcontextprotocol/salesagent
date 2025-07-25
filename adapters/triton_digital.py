@@ -55,6 +55,17 @@ class TritonDigital(AdServerAdapter):
                             targeting['stationIds'] = targeting.get('stationIds', []) + [t['id']]
                         elif t.get('type') == 'genre':
                             targeting['genres'] = targeting.get('genres', []) + [t['name']]
+                        elif t.get('type') == 'geography':
+                            # Assuming Triton uses standard country codes and DMA codes
+                            if t.get('country'):
+                                targeting['countries'] = targeting.get('countries', []) + [t['country']]
+                            if t.get('dma'):
+                                targeting['dmas'] = targeting.get('dmas', []) + [t['dma']]
+                        elif t.get('type') == 'device':
+                            if t.get('os_family'):
+                                targeting['osFamilies'] = targeting.get('osFamilies', []) + [t['os_family']]
+                            if t.get('device_type'):
+                                targeting['deviceTypes'] = targeting.get('deviceTypes', []) + [t['device_type']]
 
                 flight_payload = {
                     "campaignId": campaign_id,
@@ -87,15 +98,24 @@ class TritonDigital(AdServerAdapter):
         """Uploads creatives and associates them with flights in a campaign."""
         created_asset_statuses = []
 
-        for asset in assets:
-            # This is a simplified example for an audio creative.
-            creative_payload = {
-                "name": asset['name'],
-                "type": "AUDIO",
-                "url": asset['video_url'] # Assuming video_url is a placeholder for the audio file url
-            }
-            
-            try:
+        try:
+            # Get all flights for the campaign to map package names to flight IDs
+            flights_response = requests.get(f"{self.base_url}/flights?campaignId={media_buy_id}", headers=self.headers)
+            flights_response.raise_for_status()
+            flights = flights_response.json()
+            flight_map = {flight['name']: flight['id'] for flight in flights}
+
+            for asset in assets:
+                if asset['format'] != 'audio':
+                    print(f"Skipping asset {asset['creative_id']} with unsupported format for Triton: {asset['format']}")
+                    continue
+
+                creative_payload = {
+                    "name": asset['name'],
+                    "type": "AUDIO", # Triton primarily handles audio
+                    "url": asset['media_url']
+                }
+                
                 creative_response = requests.post(
                     f"{self.base_url}/creatives",
                     headers=self.headers,
@@ -106,28 +126,34 @@ class TritonDigital(AdServerAdapter):
                 creative_id = creative_data['id']
                 print(f"Successfully created Triton Creative with ID: {creative_id}")
 
-                # Associate the creative with all flights in the campaign
-                flights_response = requests.get(f"{self.base_url}/flights?campaignId={media_buy_id}", headers=self.headers)
-                flights_response.raise_for_status()
-                flights = flights_response.json()
+                # Associate the creative with the assigned flights (packages)
+                flight_ids_to_associate = [flight_map[pkg_id] for pkg_id in asset['package_assignments'] if pkg_id in flight_map]
 
-                for flight in flights:
-                    flight_id = flight['id']
-                    association_payload = {"creativeIds": [creative_id]}
-                    assoc_response = requests.put(
-                        f"{self.base_url}/flights/{flight_id}",
-                        headers=self.headers,
-                        json=association_payload
-                    )
-                    assoc_response.raise_for_status()
-                    print(f"Associated creative {creative_id} with flight {flight_id}")
+                if flight_ids_to_associate:
+                    # The Triton API seems to associate creatives with flights by updating the flight
+                    for flight_id in flight_ids_to_associate:
+                        association_payload = {"creativeIds": [creative_id]} # Assuming you can add a list of creatives
+                        assoc_response = requests.put(
+                            f"{self.base_url}/flights/{flight_id}",
+                            headers=self.headers,
+                            json=association_payload
+                        )
+                        assoc_response.raise_for_status()
+                        print(f"Associated creative {creative_id} with flight {flight_id}")
+                else:
+                    print(f"Warning: No matching flights found for creative {creative_id} package assignments.")
 
                 created_asset_statuses.append(AssetStatus(creative_id=asset['creative_id'], status="approved"))
 
-            except requests.exceptions.RequestException as e:
-                print(f"Error creating Triton Creative or associating with flight: {e}")
-                created_asset_statuses.append(AssetStatus(creative_id=asset['creative_id'], status="failed"))
-
+        except requests.exceptions.RequestException as e:
+            print(f"Error creating Triton Creative or associating with flight: {e}")
+            # Mark all remaining assets as failed if a request fails
+            for asset in assets:
+                if not any(s.creative_id == asset['creative_id'] for s in created_asset_statuses):
+                     created_asset_statuses.append(AssetStatus(creative_id=asset['creative_id'], status="failed"))
+            # It might be better to not re-raise, but to return the statuses
+            # so the caller knows which ones succeeded or failed.
+        
         return created_asset_statuses
 
     def check_media_buy_status(self, media_buy_id: str, today: datetime) -> CheckMediaBuyStatusResponse:

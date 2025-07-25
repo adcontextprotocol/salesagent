@@ -1,15 +1,18 @@
 # TODO
 
+## Creative upload
+- Support Kevel creative templates & the ability to traffic a native ad in
+  Kevel
+
+## New adapters
+- Add support for Kevel: https://dev.kevel.com/reference/campaign-api-overview
+
 ## Targeting Features Roadmap
 
 ### Google Ad Manager
-- [ ] Geography (Country, Region, City, Postal Code)
-- [ ] Device (Category, Browser, Manufacturer, Model)
 - [ ] Inventory (Ad Units, Placements)
 - [ ] Day & Time (Dayparting)
 
 ### Triton Digital
-- [ ] Geography (Country, DMA)
-- [ ] Device (Type, OS Family)
 - [ ] Advanced Audience (3rd-party data segments)
 - [ ] Contextual Targeting

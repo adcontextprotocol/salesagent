@@ -75,11 +75,14 @@ class AcceptProposalResponse(BaseModel):
 
 class CreativeAsset(BaseModel):
     creative_id: str
-    format: str
+    format: str # 'image', 'video', 'audio'
     name: str
-    video_url: str
-    companion_assets: Dict[str, str]
+    media_url: str
     click_url: str
+    width: Optional[int] = None
+    height: Optional[int] = None
+    duration: Optional[int] = None # in milliseconds
+    companion_assets: Optional[Dict[str, str]] = None
     package_assignments: List[str]
 
 class AssetStatus(BaseModel):

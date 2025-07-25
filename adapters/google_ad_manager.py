@@ -72,15 +72,17 @@ class GoogleAdManager(AdServerAdapter):
                     continue
 
                 # Build targeting based on the new ad_server_targeting data
-                targeting = {}
+                targeting = {'geoTargeting': {}, 'deviceCapabilityTargeting': {}}
                 ad_server_targeting = package.provided_signals.ad_server_targeting
                 if ad_server_targeting:
                     gam_targets = [t.get('gam') for t in ad_server_targeting if 'gam' in t]
                     
+                    # Audience Segment Targeting
                     audience_segment_ids = [t['id'] for t in gam_targets if t.get('type') == 'audience_segment']
                     if audience_segment_ids:
                         targeting['audienceSegmentIds'] = audience_segment_ids
 
+                    # Custom Key-Value Targeting
                     custom_targeting = {'children': []}
                     for t in gam_targets:
                         if t.get('type') == 'custom_key':
@@ -93,6 +95,22 @@ class GoogleAdManager(AdServerAdapter):
                                 })
                     if custom_targeting['children']:
                         targeting['customTargeting'] = custom_targeting
+
+                    # Geography Targeting
+                    geo_locations = []
+                    for t in gam_targets:
+                        if t.get('type') == 'geography':
+                            geo_locations.append({'id': t['id']})
+                    if geo_locations:
+                        targeting['geoTargeting']['targetedLocations'] = geo_locations
+
+                    # Device Targeting
+                    device_capabilities = []
+                    for t in gam_targets:
+                        if t.get('type') == 'device_capability':
+                            device_capabilities.append({'id': t['id']})
+                    if device_capabilities:
+                        targeting['deviceCapabilityTargeting']['targetedDeviceCapabilities'] = device_capabilities
 
                 line_item = {
                     'orderId': order_id,
@@ -130,22 +148,35 @@ class GoogleAdManager(AdServerAdapter):
         """Creates a new Creative in GAM and associates it with LineItems."""
         creative_service = self.client.GetService('CreativeService')
         lica_service = self.client.GetService('LineItemCreativeAssociationService')
+        line_item_service = self.client.GetService('LineItemService')
 
         created_asset_statuses = []
 
+        # Create a mapping from package_id (which is the line item name) to line_item_id
+        statement = (self.client.new_statement_builder()
+                     .where('orderId = :orderId')
+                     .with_bind_variable('orderId', int(media_buy_id)))
+        response = line_item_service.getLineItemsByStatement(statement.to_statement())
+        line_item_map = {item['name']: item['id'] for item in response.get('results', [])}
+
         for asset in assets:
-            # This is a simplified example for an image creative.
-            # A real implementation would need to handle different creative types.
             creative = {
-                'xsi_type': 'ImageCreative',
-                'name': asset['name'],
                 'advertiserId': self.company_id,
-                'size': {'width': 300, 'height': 250}, # Placeholder size
+                'name': asset['name'],
+                'size': {'width': asset.get('width', 300), 'height': asset.get('height', 250)}, # Use provided or default size
                 'destinationUrl': asset['click_url'],
-                'primaryImageAsset': {
-                    'assetUrl': asset['video_url'] # Assuming video_url is a placeholder for image url
-                }
             }
+
+            if asset['format'] == 'image':
+                creative['xsi_type'] = 'ImageCreative'
+                creative['primaryImageAsset'] = {'assetUrl': asset['media_url']}
+            elif asset['format'] == 'video':
+                creative['xsi_type'] = 'VideoCreative'
+                creative['videoSourceUrl'] = asset['media_url']
+                creative['duration'] = asset.get('duration', 0) # Duration in milliseconds
+            else:
+                print(f"Skipping asset {asset['creative_id']} with unsupported format: {asset['format']}")
+                continue
 
             try:
                 created_creatives = creative_service.createCreatives([creative])
@@ -155,21 +186,15 @@ class GoogleAdManager(AdServerAdapter):
                 creative_id = created_creatives[0]['id']
                 print(f"Successfully created GAM Creative with ID: {creative_id}")
 
-                # Associate the creative with the line items in the media buy (order)
-                # For simplicity, we're associating with all line items in the order.
-                # A real implementation might use the package_assignments from the asset.
-                statement = (self.client.new_statement_builder()
-                             .where('orderId = :orderId')
-                             .with_bind_variable('orderId', int(media_buy_id)))
-                
-                line_item_service = self.client.GetService('LineItemService')
-                response = line_item_service.getLineItemsByStatement(statement.to_statement())
-                line_item_ids = [item['id'] for item in response.get('results', [])]
+                # Associate the creative with the assigned line items
+                line_item_ids_to_associate = [line_item_map[pkg_id] for pkg_id in asset['package_assignments'] if pkg_id in line_item_map]
 
-                licas = [{'lineItemId': line_item_id, 'creativeId': creative_id} for line_item_id in line_item_ids]
-                if licas:
+                if line_item_ids_to_associate:
+                    licas = [{'lineItemId': line_item_id, 'creativeId': creative_id} for line_item_id in line_item_ids_to_associate]
                     lica_service.createLineItemCreativeAssociations(licas)
-                    print(f"Associated creative {creative_id} with {len(line_item_ids)} line items.")
+                    print(f"Associated creative {creative_id} with {len(line_item_ids_to_associate)} line items.")
+                else:
+                    print(f"Warning: No matching line items found for creative {creative_id} package assignments.")
 
                 created_asset_statuses.append(AssetStatus(creative_id=asset['creative_id'], status="approved"))
 
