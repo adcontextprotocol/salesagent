@@ -26,7 +26,9 @@ def init_db():
     CREATE TABLE IF NOT EXISTS audiences (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         name TEXT UNIQUE NOT NULL,
-        description TEXT
+        description TEXT,
+        targeting_type TEXT NOT NULL,
+        gam_id INTEGER
     );
     """)
 
@@ -93,10 +95,10 @@ def init_db():
     cursor.execute("INSERT OR IGNORE INTO creative_formats (name, spec) VALUES (?, ?)", ('Standard Banner', json.dumps(banner_spec)))
 
     # Audiences
-    cursor.execute("INSERT OR IGNORE INTO audiences (name, description) VALUES (?, ?)", ('Cat Lovers', 'Users who own cats or show strong interest in cat-related content.'))
-    cursor.execute("INSERT OR IGNORE INTO audiences (name, description) VALUES (?, ?)", ('Dog Lovers', 'Users who own dogs or show strong interest in dog-related content.'))
-    cursor.execute("INSERT OR IGNORE INTO audiences (name, description) VALUES (?, ?)", ('High-Income Earners', 'Users in the top 20% of household income.'))
-    cursor.execute("INSERT OR IGNORE INTO audiences (name, description) VALUES (?, ?)", ('Sports Fans', 'Users who frequent sports content.'))
+    cursor.execute("INSERT OR IGNORE INTO audiences (name, description, targeting_type, gam_id) VALUES (?, ?, ?, ?)", ('Cat Lovers', 'Users who own cats or show strong interest in cat-related content.', 'audience_segment', 12345))
+    cursor.execute("INSERT OR IGNORE INTO audiences (name, description, targeting_type, gam_id) VALUES (?, ?, ?, ?)", ('Dog Lovers', 'Users who own dogs or show strong interest in dog-related content.', 'audience_segment', 12346))
+    cursor.execute("INSERT OR IGNORE INTO audiences (name, description, targeting_type, gam_id) VALUES (?, ?, ?, ?)", ('High-Income Earners', 'Users in the top 20% of household income.', 'custom_key', 54321))
+    cursor.execute("INSERT OR IGNORE INTO audiences (name, description, targeting_type, gam_id) VALUES (?, ?, ?, ?)", ('Sports Fans', 'Users who frequent sports content.', 'audience_segment', 12347))
 
 
     # Properties

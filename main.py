@@ -96,13 +96,41 @@ def get_proposal(
 
     prompt = f"""
     You are an expert media planner. Your task is to create a media proposal based on a client brief and available inventory.
-    Client Brief: "{brief}"
-    Provided Signals: {provided_signals_json}
-    Available Inventory: {inventory_json}
-    Today's Date: {today.strftime('%Y-%m-%d')}
-    Your task is to select the most relevant placements and allocate a budget for each.
-    Your response MUST be a JSON object with "start_time", "end_time", and "selected_placements" keys.
-    Example: {{ "start_time": "2025-07-25T00:00:00Z", "end_time": "2025-08-25T23:59:59Z", "selected_placements": [{{ "placement_id": 1, "budget": 50000 }}] }}
+    
+    **Client Brief:**
+    "{brief}"
+
+    **Client-Provided Signals (for targeting and exclusion):**
+    {provided_signals_json}
+
+    **Available Inventory (Placements and Audiences):**
+    {inventory_json}
+    Note: Each audience has a `targeting_type` and a `gam_id`. `audience_segment` corresponds to GAM Audience Segments. `custom_key` corresponds to GAM Custom Key-Values.
+
+    ** Today's Date: {today.strftime('%Y-%m-%d')} **
+
+    **Your Task:**
+    1.  Analyze the client's brief and provided signals.
+    2.  From the "placements" list, select the IDs of the most relevant placements.
+    3.  For each selected placement, choose the audiences to target. You **must** include the `gam_id` and `targeting_type` for each audience you select.
+    4.  Your response **MUST** be a JSON object with "start_time", "end_time", and "selected_placements" keys.
+    5.  Each object in "selected_placements" must contain "placement_id", "budget", and "targeted_audiences".
+    6.  "targeted_audiences" must be a list of objects, each with "name", "gam_id", and "targeting_type".
+
+    **Example Response:**
+    {{
+      "start_time": "2025-07-25T00:00:00Z",
+      "end_time": "2025-08-25T23:59:59Z",
+      "selected_placements": [
+        {{ 
+          "placement_id": 1, 
+          "budget": 50000,
+          "targeted_audiences": [
+            {{ "name": "Cat Lovers", "gam_id": 12345, "targeting_type": "audience_segment" }}
+          ]
+        }}
+      ]
+    }}
     Return only the JSON object.
     """
 
@@ -129,16 +157,19 @@ def get_proposal(
             cursor.execute("SELECT p.*, prop.name as property_name FROM placements p JOIN properties prop ON p.property_id = prop.id WHERE p.id = ?", (selection['placement_id'],))
             placement_details = cursor.fetchone()
             
-            # ... (rest of the package creation logic is the same)
             package = MediaPackage(
                 package_id=f"pkg_{placement_details['id']}",
                 name=f"{placement_details['property_name']} - {placement_details['name']}",
                 description=f"Targeting on {placement_details['property_name']}",
                 delivery_restrictions="US",
-                provided_signals=ProvidedSignalsInPackage(included_ids=[], excluded_ids=[]),
+                provided_signals=ProvidedSignalsInPackage(
+                    included_ids=[aud['name'] for aud in selection.get('targeted_audiences', [])],
+                    excluded_ids=[], # Simplified for now
+                    gam_targeting=selection.get('targeted_audiences', [])
+                ),
                 cpm=placement_details['base_cpm'],
                 budget=selection['budget'],
-                budget_capacity=100000,
+                budget_capacity=placement_details['daily_impression_capacity'] * 30, # Estimate capacity
                 creative_formats=str(placement_details['id']) # Simplified
             )
             media_packages.append(package)

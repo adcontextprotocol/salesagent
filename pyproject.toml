@@ -8,4 +8,5 @@ dependencies = [
     "fastmcp>=2.10.6",
     "google-generativeai>=0.5.4",
     "rich>=13.7.1",
+    "google-ads>=24.1.0",
 ]
