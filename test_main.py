@@ -1,7 +1,8 @@
 import unittest
 import json
 import os
-from main import _get_proposal_logic, Proposal, init_db
+from main import _get_proposal_logic, init_db
+from schemas import Proposal
 
 class TestAdcpServer(unittest.TestCase):
 

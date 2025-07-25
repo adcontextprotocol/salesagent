@@ -4,172 +4,28 @@ from datetime import datetime, timedelta
 from typing import List, Optional, Dict, Any
 
 import google.generativeai as genai
-from pydantic import BaseModel, Field
-
-from database import init_db
 from fastmcp import FastMCP
 
+from database import init_db
 # --- Database and Model Initialization ---
 init_db()
 # IMPORTANT: In a real application, load the API key from a secure source
 genai.configure(api_key="AIzaSyBgMWI7SpBfuClTz32wZ-mZg-dPBA9Dbgc")
 model = genai.GenerativeModel('gemini-2.5-flash')
 
-# --- Pydantic Models ---
+from rich.console import Console
+from rich.pretty import Pretty
 
-class ProvidedSignal(BaseModel):
-    id: str
-    must_not_be_present: Optional[bool] = None
-    targeting_direction: Optional[str] = None
-    description: Optional[str] = None
-    required_aee_fields: Optional[str] = None
+from schemas import *
+from mock_ad_server import MockAdServer
 
-class RequestedChange(BaseModel):
-    package_id: str
-    field: str
-    notes: str
+# --- In-Memory State ---
+proposals_cache: Dict[str, Proposal] = {}
+media_buys: Dict[str, Any] = {}
+console = Console()
 
-class VideoResolution(BaseModel):
-    width: int
-    height: int
-    label: str
-
-class VideoAssets(BaseModel):
-    formats: List[str]
-    resolutions: List[VideoResolution]
-    max_file_size_mb: int
-    duration_options: List[int]
-
-class CompanionAssets(BaseModel):
-    logo: Dict[str, Any]
-    overlay_image: Dict[str, Any]
-
-class CreativeAssets(BaseModel):
-    video: Optional[VideoAssets] = None
-    companion: Optional[CompanionAssets] = None
-    image: Optional[Dict[str, Any]] = None
-
-class CreativeFormat(BaseModel):
-    name: str
-    assets: CreativeAssets
-    description: str
-
-class ProvidedSignalsInPackage(BaseModel):
-    included_ids: Optional[List[str]] = None
-    excluded_ids: Optional[List[str]] = None
-
-class MediaPackage(BaseModel):
-    package_id: str
-    name: str
-    description: str
-    delivery_restrictions: str
-    provided_signals: ProvidedSignalsInPackage
-    cpm: float
-    budget: int
-    budget_capacity: int
-    creative_formats: str
-
-class Proposal(BaseModel):
-    proposal_id: str
-    expiration_date: Optional[str] = None
-    total_budget: int
-    currency: str
-    start_time: str
-    end_time: str
-    notes: Optional[str] = None
-    creative_formats: List[CreativeFormat]
-    media_packages: List[MediaPackage]
-
-class AcceptProposalResponse(BaseModel):
-    media_buy_id: str
-    status: str
-    creative_deadline: str
-
-class CreativeAsset(BaseModel):
-    creative_id: str
-    format: str
-    name: str
-    video_url: str
-    companion_assets: Dict[str, str]
-    click_url: str
-    package_assignments: List[str]
-
-class AssetStatus(BaseModel):
-    creative_id: str
-    status: str
-    estimated_approval_time: str
-
-class AddCreativeAssetsResponse(BaseModel):
-    status: str
-    assets: List[AssetStatus]
-
-class FlightProgress(BaseModel):
-    days_elapsed: int
-    days_remaining: int
-    percentage_complete: int
-
-class Delivery(BaseModel):
-    impressions: int
-    spend: int
-    pacing: str
-
-class PackageStatus(BaseModel):
-    package_id: str
-    status: str
-    spend: int
-    pacing: str
-
-class CheckMediaBuyStatusResponse(BaseModel):
-    media_buy_id: str
-    status: str
-    flight_progress: Optional[FlightProgress] = None
-    delivery: Optional[Delivery] = None
-    packages: Optional[List[PackageStatus]] = None
-    issues: Optional[List[str]] = None
-    last_updated: Optional[str] = None
-
-class ReportingPeriod(BaseModel):
-    start: str
-    end: str
-
-class PackagePerformance(BaseModel):
-    package_id: str
-    performance_index: int
-    sufficient_data: Optional[bool] = True
-
-class UpdateMediaBuyPerformanceIndexResponse(BaseModel):
-    acknowledged: bool
-
-class DateRange(BaseModel):
-    start: str
-    end: str
-
-class DeliveryTotals(BaseModel):
-    impressions: int
-    spend: float
-    clicks: int
-    video_completions: int
-
-class PackageDelivery(BaseModel):
-    package_id: str
-    impressions: int
-    spend: float
-
-class GetMediaBuyDeliveryResponse(BaseModel):
-    media_buy_id: str
-    reporting_period: ReportingPeriod
-    totals: DeliveryTotals
-    by_package: List[PackageDelivery]
-    currency: str
-
-class UpdateMediaBuyResponse(BaseModel):
-    status: str
-    implementation_date: Optional[str] = None
-    notes: Optional[str] = None
-    reason: Optional[str] = None
 
 # --- MCP Server ---
-
 mcp = FastMCP(name="AdCPSalesAgent")
 
 def _get_proposal_logic(
@@ -214,6 +70,7 @@ def _get_proposal_logic(
     6.  Your response **MUST** be a JSON object with a single key: "selected_placements".
     7.  The value of "selected_placements" should be a list of dictionaries, where each dictionary has two keys: "placement_id" (integer) and "budget" (integer).
     8.  If no placements are suitable, return an empty list for "selected_placements".
+    9.  **Crucially, you must use the flight dates from the brief when generating the proposal.**
 
     **Example Response:**
     {{
@@ -287,18 +144,39 @@ def _get_proposal_logic(
 
         conn.close()
 
-        return Proposal(
+        # Extract dates from the brief to use in the proposal
+        today = datetime.now()
+        prompt_for_dates = f"""
+        Today's date is {today.strftime('%Y-%m-%d')}.
+        Analyze the following brief and extract the start and end dates for the campaign.
+        Return a JSON object with "start_date" and "end_date" in ISO format (YYYY-MM-DD).
+        Brief: "{brief}"
+        """
+        try:
+            date_response = model.generate_content(prompt_for_dates)
+            clean_date_str = date_response.text.strip().replace("```json", "").replace("```", "").strip()
+            dates = json.loads(clean_date_str)
+            start_time = dates.get("start_date", today.isoformat())
+            end_time = dates.get("end_date", (today + timedelta(days=30)).isoformat())
+        except (Exception, json.JSONDecodeError):
+            start_time = today.isoformat()
+            end_time = (today + timedelta(days=30)).isoformat()
+
+
+        proposal = Proposal(
             proposal_id=f"proposal_{int(datetime.now().timestamp())}",
             total_budget=total_budget,
             currency="USD",
-            start_time=datetime.now().isoformat(),
-            end_time=(datetime.now() + timedelta(days=30)).isoformat(),
+            start_time=start_time,
+            end_time=end_time,
             notes="Proposal generated by AI media planner.",
             creative_formats=list(creative_formats_dict.values()),
             media_packages=media_packages
         )
+        proposals_cache[proposal.proposal_id] = proposal
+        return proposal
 
-    except (Exception, json.JSONDecodeError) as e:
+    except (Exception, json.JSONDecodeError, ValueError) as e:
         print(f"Error processing AI proposal: {e}")
         raise ValueError("Failed to generate or process the AI's proposal selection.")
 
@@ -313,110 +191,209 @@ def get_proposal(
     return _get_proposal_logic(brief, provided_signals, proposal_id, requested_changes)
 
 
-
 @mcp.tool
 def accept_proposal(
     proposal_id: str,
     accepted_packages: List[str],
     billing_entity: str,
     po_number: str,
+    today: Optional[str] = None,
 ) -> AcceptProposalResponse:
     """Accept a proposal and convert it into a media buy."""
+    
+    proposal_to_accept = proposals_cache.get(proposal_id)
+    if not proposal_to_accept:
+        raise ValueError(f"Proposal with ID '{proposal_id}' not found or expired.")
+
+    media_buy_id = f"buy_{po_number.lower().replace(' ', '_')}"
+    
+    # Filter to only include the accepted packages
+    final_packages = [pkg for pkg in proposal_to_accept.media_packages if pkg.package_id in accepted_packages]
+
+    # Extract dates from the brief to use in the media buy
+    prompt_for_dates = f"""
+    Today's date is {today.strftime('%Y-%m-%d')}.
+    Analyze the following brief and extract the start and end dates for the campaign.
+    Return a JSON object with "start_date" and "end_date" in ISO format (YYYY-MM-DD).
+    Brief: "{proposal_to_accept.notes}"
+    """
+    try:
+        date_response = model.generate_content(prompt_for_dates)
+        clean_date_str = date_response.text.strip().replace("```json", "").replace("```", "").strip()
+        dates = json.loads(clean_date_str)
+        start_time = dates.get("start_date", today.isoformat())
+        end_time = dates.get("end_date", (today + timedelta(days=30)).isoformat())
+    except (Exception, json.JSONDecodeError):
+        start_time = today.isoformat()
+        end_time = (today + timedelta(days=30)).isoformat()
+
+    media_buys[media_buy_id] = {
+        "media_buy_id": media_buy_id,
+        "status": "pending_creative",
+        "billing_entity": billing_entity,
+        "po_number": po_number,
+        "accepted_packages": accepted_packages,
+        "creatives": [],
+        "start_time": start_time,
+        "end_time": end_time,
+        "total_budget": sum(pkg.budget for pkg in final_packages),
+        "media_packages": [pkg.model_dump() for pkg in final_packages]
+    }
+    
+    # Clean up the cache
+    del proposals_cache[proposal_id]
+
     return AcceptProposalResponse(
-        media_buy_id="buy_nike_sports_2025_07",
+        media_buy_id=media_buy_id,
         status="pending_creative",
-        creative_deadline="2025-06-25T00:00:00Z",
+        creative_deadline=(datetime.fromisoformat(start_time) - timedelta(days=5)).isoformat(),
     )
+
 
 @mcp.tool
 def add_creative_assets(
     media_buy_id: str,
-    packages: List[str],
     assets: List[CreativeAsset],
+    today: Optional[str] = None,
 ) -> AddCreativeAssetsResponse:
     """Add creative assets to a media buy."""
-    return AddCreativeAssetsResponse(
-        status="received",
-        assets=[
+    if media_buy_id not in media_buys:
+        raise ValueError(f"Media buy with ID '{media_buy_id}' not found.")
+    
+    media_buy = media_buys[media_buy_id]
+    today_dt = datetime.fromisoformat(today) if today else datetime.now()
+    
+    response_assets = []
+    for asset in assets:
+        media_buy["creatives"].append(asset.model_dump())
+        # Simulate a 2-day approval time
+        approval_date = today_dt + timedelta(days=2)
+        response_assets.append(
             AssetStatus(
                 creative_id=asset.creative_id,
                 status="pending_review",
-                estimated_approval_time="2025-06-26T18:00:00Z",
+                estimated_approval_time=approval_date.isoformat()
             )
-            for asset in assets
-        ],
+        )
+    
+    media_buy["status"] = "pending_approval"
+    return AddCreativeAssetsResponse(status="received", assets=response_assets)
+
+@mcp.tool
+def check_media_buy_status(
+    media_buy_id: str, 
+    today: Optional[str] = None
+) -> CheckMediaBuyStatusResponse:
+    """Check the status of a media buy."""
+    if media_buy_id not in media_buys:
+        raise ValueError(f"Media buy with ID '{media_buy_id}' not found.")
+
+    media_buy = media_buys[media_buy_id]
+    today_dt = datetime.fromisoformat(today) if today else datetime.now()
+    start_dt = datetime.fromisoformat(media_buy['start_time'])
+
+    # Check creative approval status
+    # This is a simple check; a real system would be more complex
+    if media_buy["status"] == "pending_approval":
+         # Let's assume creatives are approved 2 days after submission
+        if today_dt >= (start_dt - timedelta(days=3)): # Simplified logic
+             media_buy["status"] = "ready"
+        else:
+            return CheckMediaBuyStatusResponse(media_buy_id=media_buy_id, status="pending_approval")
+
+    if today_dt < start_dt:
+        return CheckMediaBuyStatusResponse(media_buy_id=media_buy_id, status="ready")
+
+    # If campaign is live, get data from mock server
+    ad_server = MockAdServer(media_buy)
+    delivery_data = ad_server.get_status(today_dt)
+    
+    return CheckMediaBuyStatusResponse(
+        media_buy_id=media_buy_id,
+        status=delivery_data['status'],
+        delivery=Delivery(**delivery_data),
+        last_updated=today_dt.isoformat()
     )
 
 @mcp.tool
-def check_media_buy_status(media_buy_id: str) -> CheckMediaBuyStatusResponse:
-    """Check the status of a media buy."""
-    return CheckMediaBuyStatusResponse(
+def get_media_buy_delivery(
+    media_buy_id: str,
+    date_range: ReportingPeriod,
+    today: Optional[str] = None,
+) -> GetMediaBuyDeliveryResponse:
+    """Get the delivery data for a media buy."""
+    if media_buy_id not in media_buys:
+        raise ValueError(f"Media buy with ID '{media_buy_id}' not found.")
+    
+    media_buy = media_buys[media_buy_id]
+    today_dt = datetime.fromisoformat(today) if today else datetime.now()
+    
+    ad_server = MockAdServer(media_buy)
+    package_delivery = ad_server.get_package_delivery(today_dt)
+    total_spend = sum(p['spend'] for p in package_delivery)
+    total_impressions = sum(p['impressions'] for p in package_delivery)
+
+    return GetMediaBuyDeliveryResponse(
         media_buy_id=media_buy_id,
-        status="live",
-        flight_progress=FlightProgress(
-            days_elapsed=14,
-            days_remaining=17,
-            percentage_complete=45,
+        reporting_period=date_range,
+        totals=DeliveryTotals(
+            impressions=total_impressions,
+            spend=total_spend,
+            clicks=int(total_impressions * 0.01), # Assume 1% CTR
+            video_completions=int(total_impressions * 0.7) # Assume 70% VCR
         ),
-        delivery=Delivery(
-            impressions=3409091,
-            spend=75000,
-            pacing="on_track",
-        ),
-        packages=[
-            PackageStatus(package_id="abcd1", status="delivering", spend=12500, pacing="on_track"),
-            PackageStatus(package_id="abcd2", status="delivering", spend=32500, pacing="slightly_behind"),
-        ],
-        issues=[],
-        last_updated="2025-07-15T12:00:00Z",
+        by_package=package_delivery,
+        currency="USD"
     )
 
 @mcp.tool
 def update_media_buy_performance_index(
     media_buy_id: str,
-    reporting_period: ReportingPeriod,
     package_performance: List[PackagePerformance],
+    today: Optional[str] = None,
 ) -> UpdateMediaBuyPerformanceIndexResponse:
     """Update the performance index for a media buy."""
+    if media_buy_id not in media_buys:
+        raise ValueError(f"Media buy with ID '{media_buy_id}' not found.")
+    
+    media_buy = media_buys[media_buy_id]
+    for perf in package_performance:
+        for pkg in media_buy["media_packages"]:
+            if pkg["package_id"] == perf.package_id:
+                pkg["performance_index"] = perf.performance_index
+                break
+                
     return UpdateMediaBuyPerformanceIndexResponse(acknowledged=True)
-
-@mcp.tool
-def get_media_buy_delivery(
-    media_buy_id: str,
-    date_range: DateRange,
-) -> GetMediaBuyDeliveryResponse:
-    """Get the delivery data for a media buy."""
-    return GetMediaBuyDeliveryResponse(
-        media_buy_id=media_buy_id,
-        reporting_period=ReportingPeriod(start=date_range.start, end=date_range.end),
-        totals=DeliveryTotals(
-            impressions=3409091,
-            spend=75000.00,
-            clicks=40909,
-            video_completions=2236364,
-        ),
-        by_package=[
-            PackageDelivery(package_id="abcd1", impressions=568182, spend=12500.00),
-            PackageDelivery(package_id="abcd2", impressions=1805556, spend=32500.00),
-        ],
-        currency="USD",
-    )
 
 @mcp.tool
 def update_media_buy(
     media_buy_id: str,
     action: str,
-    creative_id: Optional[str] = None,
     package_id: Optional[str] = None,
     budget: Optional[int] = None,
-    reason: Optional[str] = None,
+    today: Optional[str] = None,
 ) -> UpdateMediaBuyResponse:
     """Update a media buy with various actions."""
+    if media_buy_id not in media_buys:
+        raise ValueError(f"Media buy with ID '{media_buy_id}' not found.")
+    
+    media_buy = media_buys[media_buy_id]
+    
+    if action == "change_package_budget" and package_id and budget is not None:
+        for pkg in media_buy["media_packages"]:
+            if pkg["package_id"] == package_id:
+                pkg["budget"] = budget
+                break
+        # Recalculate total budget
+        media_buy["total_budget"] = sum(pkg["budget"] for pkg in media_buy["media_packages"])
+    else:
+        raise ValueError(f"Action '{action}' not supported by this mock server.")
+
     return UpdateMediaBuyResponse(
         status="accepted",
-        implementation_date="2025-07-16T00:00:00Z",
-        notes="Changes will take effect at midnight Pacific.",
+        implementation_date=(datetime.fromisoformat(today) + timedelta(days=1)).isoformat() if today else datetime.now().isoformat()
     )
+
 
 if __name__ == "__main__":
     mcp.run()
