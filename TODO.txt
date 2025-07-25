@@ -1,12 +1,5 @@
 # TODO
 
-## Creative upload
-- Support Kevel creative templates & the ability to traffic a native ad in
-  Kevel
-
-## New adapters
-- Add support for Kevel: https://dev.kevel.com/reference/campaign-api-overview
-
 ## Targeting Features Roadmap
 
 ### Google Ad Manager
@@ -16,3 +9,7 @@
 ### Triton Digital
 - [ ] Advanced Audience (3rd-party data segments)
 - [ ] Contextual Targeting
+
+### Kevel
+- [ ] More advanced targeting (e.g., custom attributes, user-level targeting)
+- [ ] Full implementation of status checks, delivery reporting, and updates

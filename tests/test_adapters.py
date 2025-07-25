@@ -391,3 +391,84 @@ def test_triton_adapter_add_creatives(mocker, sample_proposal):
     update_flight_call = mock_requests_put.call_args_list[0]
     assert update_flight_call[0][0] == "https://fake-tap-api.tritondigital.com/v1/flights/flight-456"
     assert update_flight_call[1]['json']['creativeIds'] == ['creative-xyz']
+
+def test_kevel_adapter_accept_proposal(mocker, sample_proposal):
+    """
+    Tests that the Kevel adapter correctly creates a campaign and flights.
+    """
+    # Arrange
+    mock_post = mocker.patch('requests.post')
+    mock_response = mocker.Mock()
+    mock_response.raise_for_status.return_value = None
+    mock_response.json.return_value = {'Id': 'kevel-campaign-789'}
+    mock_post.return_value = mock_response
+
+    kevel_config = {"network_id": "123", "api_key": "fake-key"}
+    from adapters.kevel import Kevel
+    adapter = Kevel(kevel_config)
+
+    # Act
+    response = adapter.accept_proposal(
+        proposal=sample_proposal, accepted_packages=["pkg_1"],
+        billing_entity="Test Buyer", po_number="PO-kevel-1", today=datetime.now().astimezone()
+    )
+
+    # Assert
+    assert response.media_buy_id == "kevel-campaign-789"
+    mock_post.assert_called_once()
+    campaign_payload = mock_post.call_args[1]['json']['campaign']
+    assert campaign_payload['Name'] == "ADCP Buy - PO-kevel-1"
+    assert len(campaign_payload['Flights']) == 1
+    assert campaign_payload['Flights'][0]['Name'] == "Test Package 1"
+
+def test_kevel_adapter_add_creatives(mocker, sample_proposal):
+    """
+    Tests that the Kevel adapter correctly creates a creative from a custom template
+    and associates it with the correct flight.
+    """
+    # Arrange
+    mock_requests_get = mocker.patch('requests.get')
+    mock_requests_post = mocker.patch('requests.post')
+
+    # Simulate getting the flights for the campaign
+    mock_flights_response = mocker.Mock()
+    mock_flights_response.raise_for_status.return_value = None
+    mock_flights_response.json.return_value = {'flights': [{'name': 'Test Package 1', 'id': 'flight-789'}]}
+    mock_requests_get.return_value = mock_flights_response
+
+    # Simulate creative and ad creation
+    mock_creative_response = mocker.Mock()
+    mock_creative_response.raise_for_status.return_value = None
+    mock_creative_response.json.side_effect = [{'Id': 'creative-uvw'}, {'Id': 'ad-xyz'}]
+    mock_requests_post.return_value = mock_creative_response
+
+    assets_to_add = [
+        {
+            "creative_id": "c3", "format": "custom", "name": "Test Custom Ad",
+            "template_id": 12345, "template_data": {"title": "My Ad", "description": "Click here!"},
+            "package_assignments": ["Test Package 1"]
+        }
+    ]
+
+    kevel_config = {"network_id": "123", "api_key": "fake-key"}
+    from adapters.kevel import Kevel
+    adapter = Kevel(kevel_config)
+
+    # Act
+    response = adapter.add_creative_assets(media_buy_id="kevel-campaign-789", assets=assets_to_add, today=datetime.now().astimezone())
+
+    # Assert
+    assert len(response) == 1
+    assert response[0].status == "approved"
+
+    # Verify creative was created correctly
+    create_creative_call = mock_requests_post.call_args_list[0]
+    assert create_creative_call[0][0].endswith("/creatives")
+    assert create_creative_call[1]['json']['creative']['TemplateId'] == 12345
+    assert create_creative_call[1]['json']['creative']['Data']['title'] == "My Ad"
+
+    # Verify ad was created to associate creative with flight
+    create_ad_call = mock_requests_post.call_args_list[1]
+    assert create_ad_call[0][0].endswith("/ads")
+    assert create_ad_call[1]['json']['ad']['CreativeId'] == 'creative-uvw'
+    assert create_ad_call[1]['json']['ad']['FlightId'] == 'flight-789'

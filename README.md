@@ -16,6 +16,10 @@ The server can currently translate abstract targeting signals from a proposal in
     *   `genres`: Targets specific content genres.
     *   **Geography:** Country, DMA (Designated Market Area).
     *   **Device:** Device type, OS family.
+*   **Kevel:**
+    *   `Keywords`: Targets flights based on keywords.
+    *   `GeoTargets`: Targets flights based on country.
+    *   **Creatives:** Supports standard image creatives and custom creative templates.
 
 ### Planned Features
 

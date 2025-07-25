@@ -75,15 +75,19 @@ class AcceptProposalResponse(BaseModel):
 
 class CreativeAsset(BaseModel):
     creative_id: str
-    format: str # 'image', 'video', 'audio'
+    format: str # 'image', 'video', 'audio', 'html5', 'custom'
     name: str
-    media_url: str
-    click_url: str
+    media_url: Optional[str] = None # For standard image/video/audio
+    click_url: Optional[str] = None
     width: Optional[int] = None
     height: Optional[int] = None
     duration: Optional[int] = None # in milliseconds
     companion_assets: Optional[Dict[str, str]] = None
     package_assignments: List[str]
+    
+    # For Kevel custom templates
+    template_id: Optional[int] = None
+    template_data: Optional[Dict[str, Any]] = None
 
 class AssetStatus(BaseModel):
     creative_id: str
