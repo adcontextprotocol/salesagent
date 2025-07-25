@@ -16,7 +16,7 @@ class MockAdServer(AdServerAdapter):
         """Simulates the creation of a media buy."""
         media_buy_id = f"buy_{request.po_number}"
         
-        total_budget = sum(p.budget for p in packages if p.delivery_type == 'guaranteed')
+        total_budget = sum(p.cpm for p in packages if p.delivery_type == 'guaranteed')
         # In a real scenario, non-guaranteed budget would be handled differently
         
         self._media_buys[media_buy_id] = {

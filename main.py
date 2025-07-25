@@ -1,7 +1,7 @@
 import sqlite3
 import json
 import importlib
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import List, Dict, Any
 
 from fastmcp import FastMCP
@@ -127,10 +127,9 @@ def get_packages(request: GetPackagesRequest) -> GetPackagesResponse:
     packages_cache[query_id] = media_packages
     
     # We need a way to return the query_id to the client.
-    # For now, we'll print it and assume the client can use it.
     console.print(f"[bold yellow]Generated Query ID for this package set:[/bold yellow] {query_id}")
 
-    return GetPackagesResponse(packages=media_packages)
+    return GetPackagesResponse(query_id=query_id, packages=media_packages)
 
 @mcp.tool
 def create_media_buy(request: CreateMediaBuyRequest, query_id: str) -> CreateMediaBuyResponse:
@@ -140,30 +139,25 @@ def create_media_buy(request: CreateMediaBuyRequest, query_id: str) -> CreateMed
     
     available_packages = {p.package_id: p for p in packages_cache[query_id]}
     
-    # This would be passed to the ad server adapter in a real implementation
-    selected_packages_full = []
-    for selected in request.selected_packages:
-        if selected.package_id not in available_packages:
-            raise ValueError(f"Package ID '{selected.package_id}' not found in the original query.")
-        
-        full_package = available_packages[selected.package_id]
-        # Here you would combine the full package data with the user's bid (max_cpm)
-        # and pass it to a new ad_server.create_media_buy method.
-        selected_packages_full.append(full_package)
-
-    # For this simulation, we'll just return a success response.
-    # The ad_server.create_media_buy call would happen here.
+    selected_package_ids = [p.package_id for p in request.selected_packages]
     
-    media_buy_id = f"mb_{int(datetime.now().timestamp())}"
-    console.print(f"Simulating media buy creation for PO: {request.po_number}. Media Buy ID: {media_buy_id}")
+    # Filter the full package objects based on the selected IDs
+    packages_for_buy = [available_packages[pkg_id] for pkg_id in selected_package_ids if pkg_id in available_packages]
+    
+    if len(packages_for_buy) != len(selected_package_ids):
+        raise ValueError("One or more selected package IDs were not found in the original query.")
+
+    # Get start and end times from the original request (this is a simplification)
+    # In a real scenario, this might be stored with the query_id
+    start_time = datetime.now()
+    end_time = start_time + timedelta(days=30)
+
+    # Delegate to the configured ad server adapter
+    response = ad_server.create_media_buy(request, packages_for_buy, start_time, end_time)
     
     del packages_cache[query_id] # Clean up cache
-
-    return CreateMediaBuyResponse(
-        media_buy_id=media_buy_id,
-        status="pending_activation", # A more complex status would be determined by the adapter
-        creative_deadline=datetime.now() + timedelta(days=2)
-    )
+    
+    return response
 
 # --- Other Tools (to be updated or removed) ---
 

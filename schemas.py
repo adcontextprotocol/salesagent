@@ -71,6 +71,7 @@ class MediaPackage(BaseModel):
     delivery_estimates: Optional[Dict[str, DeliveryEstimate]] = None # For non-guaranteed
 
 class GetPackagesResponse(BaseModel):
+    query_id: str
     packages: List[MediaPackage]
 
 # --- Media Buy Creation (create_media_buy) ---

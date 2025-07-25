@@ -20,7 +20,9 @@ class AdServerAdapter(ABC):
     def create_media_buy(
         self,
         request: CreateMediaBuyRequest,
-        packages: List[MediaPackage]
+        packages: List[MediaPackage],
+        start_time: datetime,
+        end_time: datetime
     ) -> CreateMediaBuyResponse:
         """Creates a new media buy on the ad server from selected packages."""
         pass
