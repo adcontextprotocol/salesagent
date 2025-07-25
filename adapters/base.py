@@ -1,12 +1,12 @@
 from abc import ABC, abstractmethod
 from typing import List, Dict, Any, Optional
 from datetime import datetime
-from schemas import AcceptProposalResponse, CheckMediaBuyStatusResponse, GetMediaBuyDeliveryResponse, UpdateMediaBuyResponse, Proposal, ReportingPeriod, PackagePerformance
+from schemas import AcceptProposalResponse, CheckMediaBuyStatusResponse, GetMediaBuyDeliveryResponse, UpdateMediaBuyResponse, Proposal, ReportingPeriod, PackagePerformance, AssetStatus
 
 class CreativeEngineAdapter(ABC):
     """Abstract base class for creative engine adapters."""
     @abstractmethod
-    def process_assets(self, media_buy_id: str, assets: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    def process_assets(self, media_buy_id: str, assets: List[Dict[str, Any]]) -> List['AssetStatus']:
         pass
 
 class AdServerAdapter(ABC):
@@ -34,7 +34,7 @@ class AdServerAdapter(ABC):
         media_buy_id: str,
         assets: List[Dict[str, Any]],
         today: datetime
-    ) -> List[Dict[str, Any]]:
+    ) -> List['AssetStatus']:
         """Adds creative assets to an existing media buy."""
         pass
 

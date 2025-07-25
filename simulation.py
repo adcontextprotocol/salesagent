@@ -37,11 +37,15 @@ class Simulation:
             await self.step(self.check_creative_status_pass, "Check Creative Status (Approved)", "2025-06-24")
 
             console.rule("[bold magenta]Phase 3: Execution & Reporting[/bold magenta]")
-            await self.step(self.check_delivery_lag, "Check Delivery (Lag Day)", "2025-07-01")
-            await self.step(self.check_first_day_delivery, "Check Delivery (First Day)", "2025-07-02")
-            await self.step(self.update_performance, "Update Performance Index", "2025-07-08")
-            await self.step(self.reallocate_budget, "Reallocate Budget", "2025-07-10")
-            await self.step(self.check_delivery_post_realloc, "Check Delivery (Post-Reallocation)", "2025-07-12")
+            # Note: The start_time of the campaign is determined by the AI proposal,
+            # which is usually the current date. We simulate a few days passing.
+            start_date = datetime.fromisoformat(self.proposal.structured_content['start_time'].replace('Z', '+00:00'))
+            
+            await self.step(self.check_delivery_lag, "Check Delivery (Lag Day)", (start_date + timedelta(days=1)).strftime('%Y-%m-%d'))
+            await self.step(self.check_first_day_delivery, "Check Delivery (First Day)", (start_date + timedelta(days=2)).strftime('%Y-%m-%d'))
+            await self.step(self.update_performance, "Update Performance Index", (start_date + timedelta(days=8)).strftime('%Y-%m-%d'))
+            await self.step(self.reallocate_budget, "Reallocate Budget", (start_date + timedelta(days=10)).strftime('%Y-%m-%d'))
+            await self.step(self.check_delivery_post_realloc, "Check Delivery (Post-Reallocation)", (start_date + timedelta(days=12)).strftime('%Y-%m-%d'))
 
     async def step(self, func, title: str, date_str: str):
         """Executes a single step in the simulation."""

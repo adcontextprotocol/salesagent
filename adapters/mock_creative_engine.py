@@ -14,11 +14,12 @@ class MockCreativeEngine(CreativeEngineAdapter):
     def process_assets(
         self,
         media_buy_id: str,
-        assets: List[CreativeAsset]
+        assets: List[Dict[str, Any]]
     ) -> List[AssetStatus]:
         """Simulates processing assets, returning their status."""
         processed_assets = []
-        for asset in assets:
+        for asset_data in assets:
+            asset = CreativeAsset(**asset_data)
             status = "pending_review" if self.human_review_required else "approved"
             estimated_approval = datetime.now().astimezone() + timedelta(days=2) if self.human_review_required else datetime.now().astimezone()
             

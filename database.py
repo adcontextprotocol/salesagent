@@ -48,6 +48,7 @@ def init_db():
         name TEXT NOT NULL,
         property_id INTEGER NOT NULL,
         base_cpm REAL NOT NULL,
+        daily_impression_capacity INTEGER NOT NULL,
         FOREIGN KEY (property_id) REFERENCES properties (id)
     );
     """)
@@ -106,11 +107,11 @@ def init_db():
 
 
     # Placements
-    cursor.execute("INSERT OR IGNORE INTO placements (name, property_id, base_cpm) VALUES (?, ?, ?)", ('Homepage Banner', 1, 25.00)) # Cat World
-    cursor.execute("INSERT OR IGNORE INTO placements (name, property_id, base_cpm) VALUES (?, ?, ?)", ('Article In-Feed Video', 1, 35.00)) # Cat World
-    cursor.execute("INSERT OR IGNORE INTO placements (name, property_id, base_cpm) VALUES (?, ?, ?)", ('Homepage Banner', 2, 22.00)) # Dog Weekly
-    cursor.execute("INSERT OR IGNORE INTO placements (name, property_id, base_cpm) VALUES (?, ?, ?)", ('Homepage Leaderboard', 3, 45.00)) # Finance Times
-    cursor.execute("INSERT OR IGNORE INTO placements (name, property_id, base_cpm) VALUES (?, ?, ?)", ('Homepage Video', 4, 30.00)) # Sports Yelling
+    cursor.execute("INSERT OR IGNORE INTO placements (name, property_id, base_cpm, daily_impression_capacity) VALUES (?, ?, ?, ?)", ('Homepage Banner', 1, 25.00, 100000)) # Cat World
+    cursor.execute("INSERT OR IGNORE INTO placements (name, property_id, base_cpm, daily_impression_capacity) VALUES (?, ?, ?, ?)", ('Article In-Feed Video', 1, 35.00, 80000)) # Cat World
+    cursor.execute("INSERT OR IGNORE INTO placements (name, property_id, base_cpm, daily_impression_capacity) VALUES (?, ?, ?, ?)", ('Homepage Banner', 2, 22.00, 120000)) # Dog Weekly
+    cursor.execute("INSERT OR IGNORE INTO placements (name, property_id, base_cpm, daily_impression_capacity) VALUES (?, ?, ?, ?)", ('Homepage Leaderboard', 3, 45.00, 50000)) # Finance Times
+    cursor.execute("INSERT OR IGNORE INTO placements (name, property_id, base_cpm, daily_impression_capacity) VALUES (?, ?, ?, ?)", ('Homepage Video', 4, 30.00, 90000)) # Sports Yelling
 
     # Link them together
     # Cat World (Property ID 1)

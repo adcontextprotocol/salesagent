@@ -1,2 +1,4 @@
 # Local configuration
-config.json\n# Python cache\n__pycache__/\n\n# Local database\nadcp.db
+config.json
+__pycache__
+adcp.db
