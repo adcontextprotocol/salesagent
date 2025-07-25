@@ -1,8 +1,8 @@
 from typing import List, Optional, Dict, Any, Literal, Union
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field
 from datetime import datetime
 
-# --- V2.1 Pydantic Models ---
+# --- V2.2 Pydantic Models ---
 
 # --- Creative Format Discovery ---
 
@@ -14,53 +14,16 @@ class CreativeFormat(BaseModel):
 class GetPublisherCreativeFormatsResponse(BaseModel):
     formats: List[CreativeFormat]
 
-# --- Creative Specifications ---
-
-class StandardCreative(BaseModel):
-    format_type: Literal["standard"]
-    media_type: Literal["video", "audio", "display", "dooh"]
-    mime: str
-    w: Optional[int] = None
-    h: Optional[int] = None
-    dur: Optional[int] = None
-    protocols: Optional[List[int]] = None
-    api: Optional[List[int]] = None
-
-class CustomCreative(BaseModel):
-    format_type: Literal["custom"]
-    assets: Dict[str, Any]
-
-class CreativeAsset(BaseModel):
-    id: str
-    format_id: str
-    spec: Union[StandardCreative, CustomCreative] = Field(..., discriminator='format_type')
-
 # --- Package Discovery (get_packages) ---
 
+class BudgetRange(BaseModel):
+    min: float
+    max: float
+
 class GetPackagesRequest(BaseModel):
-    budget: float
-    currency: str
-    start_time: datetime
-    end_time: datetime
-    creatives: List[CreativeAsset]
-    targeting: Dict[str, Any]
-
-class CreativeCompatibility(BaseModel):
-    compatible: bool
-    requires_approval: bool
-    reason: Optional[str] = None
-
-class PricingGuidance(BaseModel):
-    floor_cpm: Optional[float] = None
-    suggested_cpm: float
-    p25: float
-    p50: float
-    p75: float
-    p90: float
-
-class DeliveryEstimate(BaseModel):
-    impressions: int
-    win_rate: float
+    brief: Optional[str] = None
+    media_types: Optional[List[str]] = None
+    budget_range: Optional[BudgetRange] = None
 
 class MediaPackage(BaseModel):
     package_id: str
@@ -68,11 +31,8 @@ class MediaPackage(BaseModel):
     description: str
     type: Literal["custom", "catalog"]
     delivery_type: Literal["guaranteed", "non_guaranteed"]
-    creative_compatibility: Dict[str, CreativeCompatibility]
     cpm: Optional[float] = None
-    budget: Optional[float] = None
-    pricing: Optional[PricingGuidance] = None
-    delivery_estimates: Optional[Dict[str, DeliveryEstimate]] = None
+    pricing: Optional[Dict[str, Any]] = None # Simplified for now
 
 class GetPackagesResponse(BaseModel):
     query_id: str
@@ -80,33 +40,41 @@ class GetPackagesResponse(BaseModel):
 
 # --- Media Buy Creation (create_media_buy) ---
 
-class SelectedPackage(BaseModel):
+class GeoTargeting(BaseModel):
+    countries: Optional[List[str]] = None
+    exclude_regions: Optional[List[str]] = None
+
+class ScheduleTargeting(BaseModel):
+    days: Optional[List[str]] = None # e.g., ["mon-fri"]
+    hours: Optional[str] = None # e.g., "6am-11pm"
+
+class ContentPreferences(BaseModel):
+    avoid: Optional[List[str]] = None
+
+class TargetingOverlay(BaseModel):
+    geo: Optional[GeoTargeting] = None
+    schedule: Optional[ScheduleTargeting] = None
+    content_preferences: Optional[ContentPreferences] = None
+
+class CreativeAssignment(BaseModel):
     package_id: str
-    max_cpm: Optional[float] = None
+    creative_id: str
 
 class CreateMediaBuyRequest(BaseModel):
-    selected_packages: List[SelectedPackage]
-    billing_entity: str
+    query_id: str
+    selected_packages: List[Dict[str, Any]] # e.g., [{"package_id": "pkg_1"}]
     po_number: str
+    targeting: Optional[TargetingOverlay] = None
+    creatives: List[Dict[str, Any]] # Full creative specs
+    creative_assignments: List[CreativeAssignment]
 
 class CreateMediaBuyResponse(BaseModel):
     media_buy_id: str
     status: str
-    creative_deadline: Optional[datetime] = None
 
 # --- Status and Reporting ---
-# (These models remain largely the same as V2)
-
-class AssetStatus(BaseModel):
-    creative_id: str
-    status: str
-    estimated_approval_time: Optional[datetime] = None
-
-class AddCreativeAssetsResponse(BaseModel):
-    status: str
-    assets: List[AssetStatus]
 
 class CheckMediaBuyStatusResponse(BaseModel):
     media_buy_id: str
     status: str
-    last_updated: Optional[datetime] = None
+    packages: List[Dict[str, Any]]
