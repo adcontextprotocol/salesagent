@@ -1,44 +1,29 @@
-# ADCP Buy-Side Server
+## Targeting Features
 
-This project is a Python-based reference implementation of an Agentic Digital Content Protocol (ADCP) buy-side server. It uses a mock ad server and an AI media planner (powered by Gemini 2.5 Flash) to simulate the entire lifecycle of a media buy, from negotiation to final reporting.
+This section outlines the ad server targeting features currently supported by the ADCP Buy-Side Server and those planned for future development.
 
-The primary entry point for testing and demonstration is the `simulation.py` script, which orchestrates a complete, multi-step campaign flow.
+### Currently Supported
 
-## Getting Started
+The server can currently translate abstract targeting signals from a proposal into the following concrete parameters for each supported ad server:
 
-### 1. Installation
+*   **Google Ad Manager:**
+    *   `audienceSegmentIds`: Targets specific first- or third-party audience segments.
+    *   `customTargeting`: Targets custom key-value pairs.
+*   **Triton Digital:**
+    *   `stationIds`: Targets specific audio stations.
+    *   `genres`: Targets specific content genres.
 
-This project uses `uv` for package management. First, ensure `uv` is installed:
-```bash
-pip install uv
-```
+### Planned Features
 
-Then, install the project dependencies from the root directory:
-```bash
-uv pip install -r pyproject.toml
-```
+The following targeting capabilities are on the roadmap to provide more comprehensive and granular control over media buys.
 
-### 2. Configuration
-
-The server uses the Google Gemini API. You must have an API key for the service. The key is currently hardcoded in `main.py`. Please replace the placeholder with your actual key.
-
-**IMPORTANT:** In a production environment, this key should be stored securely (e.g., as an environment variable or in a secret manager).
-
-## How to Run the Simulation
-
-The primary way to interact with this project is through the end-to-end simulation script. This script acts as the client and runs through a complete media buying lifecycle, from proposal to reporting, using a mock `brief.json` file.
-
-To run the simulation, execute the following command from the project root:
-```bash
-python simulation.py
-```
-The script will print the actions it's taking and the results from the server at each step of the simulated timeline. For a detailed explanation of the simulation flow, please see `TESTING_FLOW.md`.
-
-## How to Run the Tests
-
-The project includes a test suite that validates the core functionality. The most important test ensures that the AI-generated proposals conform to the required Pydantic data schemas.
-
-To run the tests, execute the following command from the project root:
-```bash
-python -m unittest test_main.py
-```
+*   **Google Ad Manager:**
+    *   **Geography:** Country, region, city, and postal code.
+    *   **Device:** Device category (desktop, mobile, tablet), browser, manufacturer, and model.
+    *   **Inventory:** Specific ad units and placements.
+    *   **Day & Time (Dayparting):** Specific days of the week and times of day.
+*   **Triton Digital:**
+    *   **Geography:** Country, DMA (Designated Market Area).
+    *   **Device:** Device type, OS family.
+    *   **Advanced Audience:** Leveraging third-party data segments for more precise audience targeting.
+    *   **Contextual Targeting:** Targeting based on the content of the audio stream or podcast.

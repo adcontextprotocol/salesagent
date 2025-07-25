@@ -1,6 +1,6 @@
-from datetime import datetime
+from datetime import datetime, timedelta, timedelta
 from typing import List, Dict, Any, Optional
-import google.ads.ad_manager
+from googleads import ad_manager
 import google.oauth2.service_account
 
 from adapters.base import AdServerAdapter, CreativeEngineAdapter
@@ -19,6 +19,7 @@ class GoogleAdManager(AdServerAdapter):
         self.key_file = self.config.get("service_account_key_file")
         self.advertiser_id = self.config.get("advertiser_id")
         self.company_id = self.config.get("company_id")
+        self.trafficker_id = self.config.get("trafficker_id", None)
 
         if not all([self.network_code, self.key_file, self.advertiser_id, self.trafficker_id, self.company_id]):
             raise ValueError("GAM config is missing one of 'network_code', 'service_account_key_file', 'advertiser_id', 'trafficker_id', or 'company_id'")
@@ -32,7 +33,7 @@ class GoogleAdManager(AdServerAdapter):
                 self.key_file,
                 scopes=['https.www.googleapis.com/auth/dfp']
             )
-            return google.ads.ad_manager.AdManagerClient(
+            return google.ads.ad_manager.GoogleAdManagerClient(
                 oauth2_credentials,
                 application_name=f"ADCP-Buy-Side-Agent-{self.network_code}"
             )
@@ -295,40 +296,6 @@ class GoogleAdManager(AdServerAdapter):
                 by_package=[{'package_id': k, **v} for k, v in by_package.items()],
                 currency="USD"
             )
-
-        except Exception as e:
-            print(f"Error getting delivery report from GAM: {e}")
-            raise
-            }
-        }
-
-        try:
-            report_job_id = report_service.runReportJob(report_job)
-            
-            # Wait for the report to complete.
-            import time
-            while report_service.getReportJobStatus(report_job_id) == 'IN_PROGRESS':
-                time.sleep(1)
-
-            if report_service.getReportJobStatus(report_job_id) == 'COMPLETED':
-                report_url = report_service.getReportDownloadUrlWithOptions(
-                    report_job_id, {'exportFormat': 'CSV_DUMP'}
-                )
-                
-                # In a real app, you'd download and parse the CSV.
-                # For this simulation, we'll just print the URL.
-                print(f"GAM Report ready for download: {report_url}")
-
-                # Return dummy data for now, as parsing the report is complex.
-                return GetMediaBuyDeliveryResponse(
-                    media_buy_id=media_buy_id,
-                    reporting_period=date_range,
-                    totals={'impressions': 0, 'spend': 0.0, 'clicks': 0, 'video_completions': 0},
-                    by_package=[],
-                    currency="USD"
-                )
-            else:
-                raise Exception("GAM report failed to complete.")
 
         except Exception as e:
             print(f"Error getting delivery report from GAM: {e}")

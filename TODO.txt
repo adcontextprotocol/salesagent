@@ -1,6 +1,15 @@
-- Build a Google Ad Manager adapter
-- Rename this project "AdCP Sales Agent" and use that terminology throughout
-- Implement a test suite that can be used to validate a new ad server adapter (that should pass for the mock ad server and the GAM one)
-- Implement token-based authentication (supported by FastMCP) and add the concept of a "principal" that would get different pricing, see different media buys, etc. This would correlate to an advertiser in GAM (I think)
-- Implement admin tools so that the publisher can easily see and debug what proposals are coming in and out, and follow along as things are happening
-- Implement production features like logging and metrics
+# TODO
+
+## Targeting Features Roadmap
+
+### Google Ad Manager
+- [ ] Geography (Country, Region, City, Postal Code)
+- [ ] Device (Category, Browser, Manufacturer, Model)
+- [ ] Inventory (Ad Units, Placements)
+- [ ] Day & Time (Dayparting)
+
+### Triton Digital
+- [ ] Geography (Country, DMA)
+- [ ] Device (Type, OS Family)
+- [ ] Advanced Audience (3rd-party data segments)
+- [ ] Contextual Targeting

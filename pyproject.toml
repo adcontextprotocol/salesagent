@@ -4,10 +4,26 @@ version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.12"
+
 dependencies = [
     "fastmcp>=2.10.6",
     "google-generativeai>=0.5.4",
     "rich>=13.7.1",
     "google-ads>=24.1.0",
     "requests>=2.32.3",
+    "googleads>=46.0.0",
+]
+
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.3.2",
+    "pytest-mock>=3.14.0",
+]
+
+[dependency-groups]
+dev = [
+    "mocker>=1.1.1",
+    "pytest>=8.4.1",
+    "pytest-mock>=3.14.1",
 ]

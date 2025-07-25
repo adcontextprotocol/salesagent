@@ -1,8 +1,8 @@
 import unittest
 import json
 import os
-from main import _get_proposal_logic, init_db
-from schemas import Proposal
+from main import get_proposal, init_db
+from schemas import Proposal, ProvidedSignal
 
 class TestAdcpServer(unittest.TestCase):
 
@@ -21,11 +21,14 @@ class TestAdcpServer(unittest.TestCase):
             brief_data = json.load(f)
         
         brief = brief_data.get("brief")
-        provided_signals = brief_data.get("provided_signals")
+        provided_signals_data = brief_data.get("provided_signals")
+
+        # Convert the raw signal data into Pydantic models
+        provided_signals = [ProvidedSignal(**signal) for signal in provided_signals_data] if provided_signals_data else None
 
         # Call the tool's underlying function directly for testing
         try:
-            proposal = _get_proposal_logic(brief=brief, provided_signals=provided_signals)
+            proposal = get_proposal.fn(brief=brief, provided_signals=provided_signals)
             
             # The primary assertion: does the output conform to our Pydantic model?
             self.assertIsInstance(proposal, Proposal)
