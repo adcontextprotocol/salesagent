@@ -1,11 +1,2 @@
-# Python-generated files
-__pycache__/
-*.py[oc]
-build/
-dist/
-wheels/
-*.egg-info
-
-# Virtual environments
-.venv
-adcp.db
+# Local configuration
+config.json\n# Python cache\n__pycache__/\n\n# Local database\nadcp.db

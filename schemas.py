@@ -1,5 +1,6 @@
 from typing import List, Optional, Dict, Any
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, FutureDatetime
+from datetime import datetime
 
 # --- Pydantic Models ---
 
@@ -57,11 +58,11 @@ class MediaPackage(BaseModel):
 
 class Proposal(BaseModel):
     proposal_id: str
-    expiration_date: Optional[str] = None
+    expiration_date: Optional[datetime] = None
     total_budget: int
     currency: str
-    start_time: str
-    end_time: str
+    start_time: datetime
+    end_time: datetime
     notes: Optional[str] = None
     creative_formats: List[CreativeFormat]
     media_packages: List[MediaPackage]
@@ -69,7 +70,7 @@ class Proposal(BaseModel):
 class AcceptProposalResponse(BaseModel):
     media_buy_id: str
     status: str
-    creative_deadline: str
+    creative_deadline: datetime
 
 class CreativeAsset(BaseModel):
     creative_id: str
@@ -83,7 +84,7 @@ class CreativeAsset(BaseModel):
 class AssetStatus(BaseModel):
     creative_id: str
     status: str
-    estimated_approval_time: str
+    estimated_approval_time: Optional[datetime] = None
 
 class AddCreativeAssetsResponse(BaseModel):
     status: str
@@ -92,17 +93,17 @@ class AddCreativeAssetsResponse(BaseModel):
 class FlightProgress(BaseModel):
     days_elapsed: int
     days_remaining: int
-    percentage_complete: int
+    percentage_complete: float
 
 class Delivery(BaseModel):
     impressions: int
-    spend: int
+    spend: float
     pacing: str
 
 class PackageStatus(BaseModel):
     package_id: str
     status: str
-    spend: int
+    spend: float
     pacing: str
 
 class CheckMediaBuyStatusResponse(BaseModel):
@@ -112,11 +113,11 @@ class CheckMediaBuyStatusResponse(BaseModel):
     delivery: Optional[Delivery] = None
     packages: Optional[List[PackageStatus]] = None
     issues: Optional[List[str]] = None
-    last_updated: Optional[str] = None
+    last_updated: Optional[datetime] = None
 
 class ReportingPeriod(BaseModel):
-    start: str
-    end: str
+    start: datetime
+    end: datetime
 
 class PackagePerformance(BaseModel):
     package_id: str
@@ -146,6 +147,6 @@ class GetMediaBuyDeliveryResponse(BaseModel):
 
 class UpdateMediaBuyResponse(BaseModel):
     status: str
-    implementation_date: Optional[str] = None
+    implementation_date: Optional[datetime] = None
     notes: Optional[str] = None
     reason: Optional[str] = None

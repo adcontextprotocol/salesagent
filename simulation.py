@@ -45,7 +45,10 @@ class Simulation:
 
     async def step(self, func, title: str, date_str: str):
         """Executes a single step in the simulation."""
-        self.today = datetime.fromisoformat(date_str)
+        # Ensure the datetime is timezone-aware
+        tz = datetime.now().astimezone().tzinfo
+        self.today = datetime.fromisoformat(date_str).replace(tzinfo=tz)
+        
         spinner = Spinner("dots", text=f" [bold yellow]Executing:[/bold yellow] {title} (Simulated Date: {date_str})...")
         with Live(spinner, console=console, transient=True, vertical_overflow="visible"):
             await asyncio.sleep(1) # For dramatic effect
@@ -88,7 +91,7 @@ class Simulation:
             "accepted_packages": [p["package_id"] for p in prop["media_packages"]],
             "billing_entity": "Purina Inc.",
             "po_number": "PUR-2025-Q3-001",
-            "today": self.today.isoformat()
+            "today": self.today
         })
         self.media_buy_id = result.structured_content["media_buy_id"]
         return result
@@ -98,23 +101,23 @@ class Simulation:
         return await self.client.call_tool("add_creative_assets", {
             "media_buy_id": self.media_buy_id,
             "assets": [{"creative_id": "cat_video_15s", "format": "E2E mobile video", "name": "Cat Food Ad", "video_url": "...", "companion_assets": {}, "click_url": "...", "package_assignments": []}],
-            "today": self.today.isoformat()
+            "today": self.today
         })
 
     async def check_creative_status_fail(self):
         console.print("--> Calling tool: [bold]check_media_buy_status[/bold]")
-        return await self.client.call_tool("check_media_buy_status", {"media_buy_id": self.media_buy_id, "today": self.today.isoformat()})
+        return await self.client.call_tool("check_media_buy_status", {"media_buy_id": self.media_buy_id, "today": self.today})
 
     async def check_creative_status_pass(self):
         console.print("--> Calling tool: [bold]check_media_buy_status[/bold]")
-        return await self.client.call_tool("check_media_buy_status", {"media_buy_id": self.media_buy_id, "today": self.today.isoformat()})
+        return await self.client.call_tool("check_media_buy_status", {"media_buy_id": self.media_buy_id, "today": self.today})
 
     async def check_delivery_lag(self):
         console.print("--> Calling tool: [bold]get_media_buy_delivery[/bold]")
         return await self.client.call_tool("get_media_buy_delivery", {
             "media_buy_id": self.media_buy_id,
             "date_range": {"start": "2025-07-01", "end": "2025-07-01"},
-            "today": self.today.isoformat()
+            "today": self.today
         })
 
     async def check_first_day_delivery(self):
@@ -122,7 +125,7 @@ class Simulation:
         return await self.client.call_tool("get_media_buy_delivery", {
             "media_buy_id": self.media_buy_id,
             "date_range": {"start": "2025-07-01", "end": "2025-07-01"},
-            "today": self.today.isoformat()
+            "today": self.today
         })
         
     async def update_performance(self):
@@ -131,7 +134,7 @@ class Simulation:
         return await self.client.call_tool("update_media_buy_performance_index", {
             "media_buy_id": self.media_buy_id,
             "package_performance": [{"package_id": p["package_id"], "performance_index": 120 if "Cat" in p["name"] else 80} for p in prop["media_packages"]],
-            "today": self.today.isoformat()
+            "today": self.today
         })
 
     async def reallocate_budget(self):
@@ -143,7 +146,7 @@ class Simulation:
             "action": "change_package_budget",
             "package_id": best_pkg["package_id"],
             "budget": best_pkg["budget"] + 20000,
-            "today": self.today.isoformat()
+            "today": self.today
         })
 
     async def check_delivery_post_realloc(self):
@@ -151,7 +154,7 @@ class Simulation:
         return await self.client.call_tool("get_media_buy_delivery", {
             "media_buy_id": self.media_buy_id,
             "date_range": {"start": "2025-07-01", "end": "2025-07-11"},
-            "today": self.today.isoformat()
+            "today": self.today
         })
 
 if __name__ == "__main__":
