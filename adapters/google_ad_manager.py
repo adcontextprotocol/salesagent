@@ -339,5 +339,43 @@ class GoogleAdManager(AdServerAdapter):
         return True
 
     def update_media_buy(self, media_buy_id: str, action: str, package_id: Optional[str], budget: Optional[int], today: datetime) -> UpdateMediaBuyResponse:
-        print("GAM Adapter: update_media_buy called. (Not yet implemented)")
-        return UpdateMediaBuyResponse(status="accepted", implementation_date=today)
+        """Updates a LineItem in GAM."""
+        if action != "change_package_budget" or not package_id or budget is None:
+            raise ValueError(f"Action '{action}' is not supported or required parameters are missing.")
+
+        line_item_service = self.client.GetService('LineItemService')
+        
+        # To map our package_id to a GAM LineItem, we'll need to find the LineItem by name.
+        # This assumes the package name is unique within the order.
+        # A more robust solution might store the mapping of package_id to line_item_id.
+        statement = (self.client.new_statement_builder()
+                     .where('orderId = :orderId AND name = :name')
+                     .with_bind_variable('orderId', int(media_buy_id))
+                     .with_bind_variable('name', package_id)) # Assuming package_id is the name for now
+
+        try:
+            response = line_item_service.getLineItemsByStatement(statement.to_statement())
+            line_items = response.get('results', [])
+
+            if not line_items:
+                raise ValueError(f"Could not find LineItem with name '{package_id}' in Order '{media_buy_id}'")
+
+            line_item_to_update = line_items[0]
+            
+            # Calculate new impression goal based on the new budget
+            cpm = line_item_to_update['costPerUnit']['microAmount'] / 1000000
+            new_impression_goal = int((budget / cpm) * 1000) if cpm > 0 else 0
+            
+            line_item_to_update['primaryGoal']['units'] = new_impression_goal
+
+            updated_line_items = line_item_service.updateLineItems([line_item_to_update])
+
+            if not updated_line_items:
+                raise Exception("Failed to update LineItem in GAM.")
+
+            print(f"Successfully updated budget for LineItem {line_item_to_update['id']}")
+            return UpdateMediaBuyResponse(status="accepted", implementation_date=today + timedelta(days=1))
+
+        except Exception as e:
+            print(f"Error updating LineItem in GAM: {e}")
+            raise
