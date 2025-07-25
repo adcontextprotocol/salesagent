@@ -1,15 +1,14 @@
 from abc import ABC, abstractmethod
 from typing import List, Dict, Any
-from schemas import CreativeAsset
+from schemas import Creative, CreativeStatus
 
 class CreativeEngineAdapter(ABC):
     """Abstract base class for creative engine adapters."""
 
     @abstractmethod
-    def process_assets(
+    def process_creatives(
         self,
-        media_buy_id: str,
-        assets: List[CreativeAsset]
-    ) -> List[Dict[str, Any]]:
+        creatives: List[Creative]
+    ) -> List[CreativeStatus]:
         """Processes creative assets, returning their status."""
         pass

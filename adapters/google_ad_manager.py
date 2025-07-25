@@ -35,7 +35,7 @@ class GoogleAdManager(AdServerAdapter):
             )
             return google.ads.ad_manager.GoogleAdManagerClient(
                 oauth2_credentials,
-                application_name=f"ADCP-Buy-Side-Agent-{self.network_code}"
+                application_name=f"AdCP-Buy-Side-Agent-{self.network_code}"
             )
         except FileNotFoundError:
             print(f"Error: Service account key file not found at '{self.key_file}'.")

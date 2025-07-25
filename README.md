@@ -1,33 +1,46 @@
-## Targeting Features
+# AdCP Buy-Side Server (V2.3)
 
-This section outlines the ad server targeting features currently supported by the ADCP Buy-Side Server and those planned for future development.
+This project is a Python-based reference implementation of an Advertising Context Protocol (AdCP) V2.3 buy-side server. It demonstrates how a publisher can expose its advertising inventory to an AI-driven client.
 
-### Currently Supported
+The server can:
+-   Receive a natural language brief describing campaign goals.
+-   Use a Large Language Model (Gemini 1.5 Flash) to recommend suitable advertising products.
+-   Accept a media buy request to purchase those products.
+-   Simulate the entire 90-day lifecycle of the campaign.
 
-The server can currently translate abstract targeting signals from a proposal into the following concrete parameters for each supported ad server:
+## How to Run the Simulation
 
-*   **Google Ad Manager:**
-    *   `audienceSegmentIds`: Targets specific first- or third-party audience segments.
-    *   `customTargeting`: Targets custom key-value pairs.
-    *   **Geography:** Country, region, city, and postal code.
-    *   **Device:** Device category (desktop, mobile, tablet), browser, manufacturer, and model.
-*   **Triton Digital:**
-    *   `stationIds`: Targets specific audio stations.
-    *   `genres`: Targets specific content genres.
-    *   **Geography:** Country, DMA (Designated Market Area).
-    *   **Device:** Device type, OS family.
-*   **Kevel:**
-    *   `Keywords`: Targets flights based on keywords.
-    *   `GeoTargets`: Targets flights based on country.
-    *   **Creatives:** Supports standard image creatives and custom creative templates.
+This project is designed to be run as a self-contained, end-to-end simulation that showcases the entire media buying lifecycle.
 
-### Planned Features
+1.  **Prerequisites:**
+    -   Python 3.10+
+    -   `uv` (or `pip`) for package installation.
 
-The following targeting capabilities are on the roadmap to provide more comprehensive and granular control over media buys.
+2.  **Installation:**
+    ```bash
+    uv pip install -r requirements.txt
+    ```
 
-*   **Google Ad Manager:**
-    *   **Inventory:** Specific ad units and placements.
-    *   **Day & Time (Dayparting):** Specific days of the week and times of day.
-*   **Triton Digital:**
-    *   **Advanced Audience:** Leveraging third-party data segments for more precise audience targeting.
-    *   **Contextual Targeting:** Targeting based on the content of the audio stream or podcast.
+3.  **Configuration:**
+    -   Copy `config.json.sample` to `config.json`.
+    -   Add your Gemini API key to `config.json`.
+    ```json
+    {
+      "gemini_api_key": "YOUR_API_KEY_HERE"
+    }
+    ```
+
+4.  **Run the Simulation:**
+    Execute the simulation script from the project root directory. This will start the server, run the client, and print a step-by-step log of the entire process.
+    ```bash
+    python3 simulation.py
+    ```
+
+## Core V2.3 Architecture
+
+-   **`main.py` (Server):** A `FastMCP` server that exposes the AdCP tools (`list_products`, `create_media_buy`).
+-   **`simulation.py` (Client):** An orchestrator that calls the server's tools in sequence to simulate a real-world buying process.
+-   **`schemas.py`:** Contains all the Pydantic models that define the V2.3 API data contracts (e.g., `Product`, `Targeting`, `CreateMediaBuyRequest`).
+-   **`database.py`:** Initializes a simple SQLite database with a catalog of advertising `products`.
+-   **`mock_ad_server.py`:** A simulator that calculates campaign delivery metrics (spend, impressions, etc.) over time.
+-   **`test_main.py`:** A unit test that validates the AI's output against the Pydantic schemas, ensuring structural correctness.

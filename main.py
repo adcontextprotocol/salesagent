@@ -1,108 +1,134 @@
-import sqlite3
 import json
-from datetime import datetime
-from typing import List, Dict
+from datetime import datetime, date, timedelta
+import uuid
+import sqlite3
 
-import google.generativeai as genai
 from fastmcp import FastMCP
 from rich.console import Console
 
 from database import init_db
+from mock_ad_server import MockAdServer
+from adapters.mock_creative_engine import MockCreativeEngine
 from schemas import *
 
 # --- Configuration and Initialization ---
-def load_config():
-    try:
-        with open('config.json', 'r') as f:
-            return json.load(f)
-    except FileNotFoundError:
-        return {}
-
-config = load_config()
-api_key = config.get("gemini_api_key")
-if api_key:
-    genai.configure(api_key=api_key)
-
+config = {"gemini_api_key": None, "creative_engine": {}}
 init_db()
-mcp = FastMCP(name="AdCPBuySideV2_2")
+mcp = FastMCP(name="AdCPBuySideV2_3_Final")
 console = Console()
-packages_cache: Dict[str, List[MediaPackage]] = {}
+creative_engine = MockCreativeEngine(config.get("creative_engine", {}))
 
-# --- MCP Tools ---
+# --- In-Memory State ---
+media_buys: Dict[str, CreateMediaBuyRequest] = {}
+creative_assignments: Dict[str, Dict[str, List[str]]] = {}
+creative_statuses: Dict[str, CreativeStatus] = {}
+product_catalog: List[Product] = []
+custom_products: Dict[str, Product] = {}
 
-@mcp.tool
-def get_publisher_creative_formats() -> GetPublisherCreativeFormatsResponse:
-    # ... (implementation remains the same)
-    pass
-
-@mcp.tool
-def get_packages(request: GetPackagesRequest) -> GetPackagesResponse:
-    """Discovers catalog packages and generates custom packages from a brief."""
-    conn = sqlite3.connect('adcp.db')
-    conn.row_factory = sqlite3.Row
-    cursor = conn.cursor()
-
-    # 1. Fetch all packages from the database
-    cursor.execute("SELECT * FROM placements")
-    placements = [dict(row) for row in cursor.fetchall()]
-    
-    all_packages = []
-    for p in placements:
-        pkg_data = {
-            "package_id": f"pkg_{p['id']}", "name": p['name'], "description": "...",
-            "type": p['type'], "delivery_type": p['delivery_type'],
-            "cpm": p['base_cpm'], "pricing": json.loads(p['pricing_guidance']) if p['pricing_guidance'] else None
-        }
-        all_packages.append(MediaPackage(**pkg_data))
-
-    # 2. If a brief is provided, generate additional custom packages
-    if request.brief and api_key:
-        model = genai.GenerativeModel('gemini-2.5-flash')
-        prompt = f"""
-        Based on the following brief, generate 1-2 custom media packages.
-        Brief: "{request.brief}"
-        Available inventory types: In-Feed Video, Homepage Takeover, Sponsored Article.
-        For each package, provide a name, description, delivery_type ('guaranteed'), and a suggested CPM.
-        Respond in a JSON array format: 
-        [
-            {{"name": "...", "description": "...", "cpm": ...}},
-            ...
-        ]
-        """
-        response = model.generate_content(prompt)
-        clean_json_str = response.text.strip().replace("```json", "").replace("```", "").strip()
-        custom_packages_data = json.loads(clean_json_str)
+# --- Helper Functions ---
+def get_product_catalog() -> List[Product]:
+    global product_catalog
+    if not product_catalog:
+        conn = sqlite3.connect('adcp.db')
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM products")
+        rows = cursor.fetchall()
+        conn.close()
         
-        for i, custom_data in enumerate(custom_packages_data):
-            custom_pkg = MediaPackage(
-                package_id=f"custom_{i+1}",
-                name=custom_data['name'],
-                description=custom_data['description'],
-                type="custom",
-                delivery_type="guaranteed",
-                cpm=custom_data['cpm']
-            )
-            all_packages.append(custom_pkg)
+        loaded_products = []
+        for row in rows:
+            product_data = dict(row)
+            product_data['formats'] = json.loads(product_data['formats'])
+            product_data['targeting_template'] = json.loads(product_data['targeting_template'])
+            if product_data.get('price_guidance'):
+                product_data['price_guidance'] = json.loads(product_data['price_guidance'])
+            loaded_products.append(Product(**product_data))
+        product_catalog = loaded_products
+    return product_catalog
 
-    conn.close()
-    
-    query_id = f"query_{int(datetime.now().timestamp())}"
-    packages_cache[query_id] = all_packages
-    console.print(f"[bold yellow]Generated Query ID:[/bold yellow] {query_id}")
-
-    return GetPackagesResponse(query_id=query_id, packages=all_packages)
+# --- MCP Tools (V2.3 Final Lifecycle) ---
 
 @mcp.tool
-def create_media_buy(request: CreateMediaBuyRequest) -> CreateMediaBuyResponse:
-    """Creates a media buy, passing the rich request to the ad server adapter."""
-    # In a real implementation, this would call the ad server adapter.
-    # The adapter would be responsible for translating the targeting overlay
-    # and other parameters into ad server specific objects.
-    console.print(f"Received request to create media buy for PO: {request.po_number}")
-    console.print("Targeting Overlay:", request.targeting)
+def list_products(req: ListProductsRequest) -> ListProductsResponse:
+    console.print(f"\n[green]Received list_products for principal '{req.principal_id}'[/green]")
+    catalog = get_product_catalog()
+    # In a real system, this would involve an LLM call to select products.
+    # For simulation, we return a mix of guaranteed and non-guaranteed.
+    return ListProductsResponse(products=catalog)
+
+@mcp.tool
+def create_media_buy(req: CreateMediaBuyRequest) -> CreateMediaBuyResponse:
+    console.print(f"\n[green]Received create_media_buy for PO# {req.po_number or 'N/A'} with '{req.pacing}' pacing.[/green]")
+    media_buy_id = f"mb_{uuid.uuid4().hex[:8]}"
+    media_buys[media_buy_id] = req
     
-    media_buy_id = f"mb_{request.po_number}"
-    return CreateMediaBuyResponse(media_buy_id=media_buy_id, status="pending_activation")
+    if req.creatives:
+        statuses = creative_engine.process_creatives(req.creatives)
+        for status in statuses:
+            creative_statuses[status.creative_id] = status
+        console.print(f"Submitted {len(req.creatives)} initial creatives for processing.")
+        
+    return CreateMediaBuyResponse(media_buy_id=media_buy_id, status="created", detail="Media buy created.")
+
+@mcp.tool
+def submit_creatives(req: SubmitCreativesRequest) -> SubmitCreativesResponse:
+    console.print(f"\n[green]Received submit_creatives for buy {req.media_buy_id}[/green]")
+    if req.media_buy_id not in media_buys:
+        raise ValueError("Media buy not found.")
+    
+    statuses = creative_engine.process_creatives(req.creatives)
+    for status in statuses:
+        creative_statuses[status.creative_id] = status
+        
+    return SubmitCreativesResponse(statuses=statuses)
+
+@mcp.tool
+def check_creative_status(req: CheckCreativeStatusRequest) -> CheckCreativeStatusResponse:
+    console.print(f"\n[green]Checking status for creatives: {req.creative_ids}[/green]")
+    statuses = [creative_statuses.get(cid) for cid in req.creative_ids if cid in creative_statuses]
+    return CheckCreativeStatusResponse(statuses=statuses)
+
+@mcp.tool
+def adapt_creative(req: AdaptCreativeRequest) -> CreativeStatus:
+    console.print(f"\n[green]Adapting creative {req.original_creative_id} to format {req.target_format_id}[/green]")
+    status = creative_engine.adapt_creative(req)
+    creative_statuses[req.new_creative_id] = status
+    return status
+
+@mcp.tool
+def update_media_buy(req: UpdateMediaBuyRequest):
+    console.print(f"\n[green]Updating media buy {req.media_buy_id}[/green]")
+    buy = media_buys.get(req.media_buy_id)
+    if not buy:
+        raise ValueError("Media buy not found.")
+    
+    if req.new_total_budget:
+        console.print(f"Budget updated to ${req.new_total_budget}")
+        buy.total_budget = req.new_total_budget
+    if req.new_targeting_overlay:
+        console.print(f"Targeting overlay updated.")
+        buy.targeting_overlay = req.new_targeting_overlay
+    if req.creative_assignments:
+        console.print(f"Creative assignments updated for {len(req.creative_assignments)} products.")
+        creative_assignments[req.media_buy_id] = req.creative_assignments
+        
+    return {"status": "success", "detail": "Media buy updated."}
+
+@mcp.tool
+def get_media_buy_delivery(media_buy_id: str, today: date) -> GetMediaBuyDeliveryResponse:
+    buy = media_buys.get(media_buy_id)
+    if not buy:
+        raise ValueError("Media buy not found.")
+    
+    catalog = get_product_catalog()
+    products_in_buy = [p for p in catalog if p.product_id in buy.product_ids]
+    
+    ad_server = MockAdServer(buy, products_in_buy)
+    delivery = ad_server.get_delivery_status(today)
+    
+    return GetMediaBuyDeliveryResponse(media_buy_id=media_buy_id, **delivery)
 
 if __name__ == "__main__":
+    get_product_catalog()
     mcp.run()

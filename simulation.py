@@ -1,109 +1,75 @@
 import asyncio
-from datetime import datetime, timedelta
+from datetime import date, timedelta
+import uuid
+
 from fastmcp.client import Client
 from rich.console import Console
 from rich.panel import Panel
 from rich.pretty import Pretty
+from rich.rule import Rule
+
+from schemas import *
 
 console = Console()
 
-class SimulationV2_2:
-    """Orchestrates a full lifecycle simulation for the V2.2 API."""
+class FinalSim:
+    """A simulation for the final V2.3 protocol with advanced pricing and pacing."""
 
     def __init__(self, server_script: str):
         self.client = Client(server_script)
-        self.today = datetime(2025, 7, 1)
+        self.today = date(2025, 7, 25)
+        self.media_buy_id: str = ""
+        self.products: List[Product] = []
+        self.buy_request: CreateMediaBuyRequest = None
 
     async def run(self):
-        """Executes all simulation scenarios."""
+        console.print(Rule("[bold magenta]AdCP V2.3 Final Simulation[/bold magenta]", style="magenta"))
         async with self.client:
-            await self.run_scenario_1()
-            await self.run_scenario_2()
-            await self.run_scenario_3()
+            await self._phase_1_discover_and_buy()
+            if not self.media_buy_id: return
+            await self._phase_2_reporting()
 
-    async def step(self, title: str, tool_name: str, params: dict = {}):
-        """Executes a single tool call and prints the result."""
-        console.print(f"\n[bold yellow]>> Executing Step:[/bold yellow] {title}")
+    async def _step(self, title: str, tool_name: str, params: dict = {}) -> Dict:
+        console.print(f"\n[bold yellow]>> {title}[/bold yellow]")
         console.print(f"--> Calling tool: [bold]{tool_name}[/bold]")
         result = await self.client.call_tool(tool_name, params)
-        console.print(f"[green] \u2713 Result:[/green]")
-        console.print(Panel(Pretty(result.structured_content if result else "No result"), expand=False))
-        return result.structured_content if result else None
+        content = result.structured_content if result else {}
+        console.print(Panel(Pretty(content), expand=False, border_style="green"))
+        return content
 
-    async def run_scenario_1(self):
-        """Scenario 1: Standard Catalog Buy"""
-        console.rule("[bold magenta]Scenario 1: Standard Catalog Buy[/bold magenta]")
-        
-        # 1. Discover packages without a brief
-        discover_req = {"media_types": ["display"]}
-        packages_res = await self.step("Discover Catalog Packages", "get_packages", {"request": discover_req})
-        
-        # 2. Select a catalog package and create a media buy with a targeting overlay
-        catalog_pkg = next(p for p in packages_res['packages'] if p['type'] == 'catalog')
-        buy_req = {
-            "query_id": packages_res['query_id'],
-            "selected_packages": [{"package_id": catalog_pkg['package_id']}],
-            "po_number": "SCENARIO-1-PO",
-            "targeting": {
-                "geo": {"countries": ["US"]},
-                "schedule": {"days": ["mon-fri"]}
-            },
-            "creatives": [{"id": "cr-1", "format_id": "std_banner_300x250", "spec": {}}],
-            "creative_assignments": [{"package_id": catalog_pkg['package_id'], "creative_id": "cr-1"}]
-        }
-        await self.step("Create Media Buy", "create_media_buy", {"request": buy_req})
+    async def _phase_1_discover_and_buy(self):
+        console.print(Rule("Phase 1: Discovery and Purchase", style="cyan"))
+        list_req = ListProductsRequest(brief="Brief for a mix of guaranteed and non-guaranteed products.")
+        list_res = await self._step("Discover Products", "list_products", {"req": list_req.model_dump()})
+        self.products = [Product(**p) for p in list_res.get("products", [])]
 
-    async def run_scenario_2(self):
-        """Scenario 2: Brief-Driven Mixed Buy"""
-        console.rule("[bold magenta]Scenario 2: Brief-Driven Mixed Buy[/bold magenta]")
-        
-        # 1. Discover packages with a brief
-        discover_req = {"brief": "I want to reach cat lovers with a new brand campaign."}
-        packages_res = await self.step("Discover Custom & Catalog Packages", "get_packages", {"request": discover_req})
-        
-        # 2. Select one custom and one catalog package
-        custom_pkg = next(p for p in packages_res['packages'] if p['type'] == 'custom')
-        catalog_pkg = next(p for p in packages_res['packages'] if p['type'] == 'catalog')
-        
-        buy_req = {
-            "query_id": packages_res['query_id'],
-            "selected_packages": [
-                {"package_id": custom_pkg['package_id']},
-                {"package_id": catalog_pkg['package_id']}
-            ],
-            "po_number": "SCENARIO-2-PO",
-            "creatives": [], "creative_assignments": []
-        }
-        await self.step("Create Mixed Media Buy", "create_media_buy", {"request": buy_req})
+        self.buy_request = CreateMediaBuyRequest(
+            product_ids=[p.product_id for p in self.products],
+            flight_start_date=self.today,
+            flight_end_date=self.today + timedelta(days=30),
+            total_budget=250000.00,
+            targeting_overlay=Targeting(geography=["USA-NY"]),
+            pacing="daily_budget",
+            daily_budget=8000.00
+        )
+        create_res = await self._step("Create Media Buy with Daily Budget", "create_media_buy", {"req": self.buy_request.model_dump(mode='json')})
+        self.media_buy_id = create_res.get("media_buy_id")
 
-    async def run_scenario_3(self):
-        """Scenario 3: Custom Format Buy"""
-        console.rule("[bold magenta]Scenario 3: Custom Format Buy[/bold magenta]")
-        
-        # 1. Discover packages
-        packages_res = await self.step("Discover Packages", "get_packages", {"request": {}})
-        
-        # 2. Find the custom format package
-        custom_format_pkg = next(p for p in packages_res['packages'] if p['package_id'] == 'pkg_3')
-        
-        # 3. Create the media buy with a custom creative
-        buy_req = {
-            "query_id": packages_res['query_id'],
-            "selected_packages": [{"package_id": custom_format_pkg['package_id']}],
-            "po_number": "SCENARIO-3-PO",
-            "creatives": [
-                {
-                    "id": "cr-custom-e2e", "format_id": "custom_e2e_video",
-                    "spec": {
-                        "format_type": "custom",
-                        "assets": {"primary_video": {"url": "..."}, "end_card": {"url": "..."}}
-                    }
-                }
-            ],
-            "creative_assignments": [{"package_id": custom_format_pkg['package_id'], "creative_id": "cr-custom-e2e"}]
-        }
-        await self.step("Create Custom Format Media Buy", "create_media_buy", {"request": buy_req})
+    async def _phase_2_reporting(self):
+        console.print(Rule("Phase 2: Reporting Flight", style="cyan"))
+        flight_duration = (self.buy_request.flight_end_date - self.buy_request.flight_start_date).days
+        for week in range(0, (flight_duration // 7) + 2):
+            sim_date = self.buy_request.flight_start_date + timedelta(weeks=week)
+            if sim_date > self.buy_request.flight_end_date + timedelta(days=1): break
+            
+            console.print(f"\n--- Reporting for Week {week+1} (Simulated Date: {sim_date}) ---")
+            await self._step(
+                f"Get Delivery Data",
+                "get_media_buy_delivery",
+                {"media_buy_id": self.media_buy_id, "today": sim_date.isoformat()}
+            )
+            await asyncio.sleep(0.1)
 
 if __name__ == "__main__":
-    sim = SimulationV2_2(server_script="main.py")
+    sim = FinalSim(server_script="main.py")
     asyncio.run(sim.run())

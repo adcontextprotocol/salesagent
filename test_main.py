@@ -1,62 +1,64 @@
 import unittest
-import json
 import os
-from datetime import datetime, timedelta
+import json
 
-from main import get_packages, create_media_buy, _check_creative_compatibility
-from schemas import *
+# Ensure the main module can be imported
+from main import list_products, get_product_catalog
+from schemas import ListProductsRequest, ListProductsResponse, Product
 from database import init_db
 
-class TestAdcpServerV2(unittest.TestCase):
+class TestAdcpServerV2_3(unittest.TestCase):
+    """
+    Tests for the V2.3 AdCP Buy-Side Server.
+    Focuses on schema conformance for AI-driven tools.
+    """
 
     @classmethod
     def setUpClass(cls):
-        """Set up the database once for all tests."""
-        if os.path.exists("adcp.db"):
-            os.remove("adcp.db")
+        """Set up the database once for all tests for the V2.3 spec."""
+        db_file = "adcp.db"
+        if os.path.exists(db_file):
+            os.remove(db_file)
         init_db()
+        # Load the full product catalog once for all tests
+        cls.product_catalog = get_product_catalog()
+        cls.product_catalog_ids = {p.product_id for p in cls.product_catalog}
 
-    def test_get_packages(self):
+
+    def test_list_products_schema_conformance(self):
         """
-        Tests that get_packages returns a valid GetPackagesResponse object
-        with correctly structured packages and creative compatibility.
+        Tests that the AI-driven list_products tool returns a response that
+        successfully validates against the ListProductsResponse Pydantic model.
+        This is the most critical test for ensuring reliable AI output.
         """
-        request = GetPackagesRequest(
-            budget=100000,
-            currency="USD",
-            start_time=datetime.now(),
-            end_time=datetime.now() + timedelta(days=30),
-            creatives=[
-                CreativeAsset(id="cr-1", media_type="display", mime="image/png", w=300, h=250),
-                CreativeAsset(id="cr-2", media_type="video", mime="video/mp4", w=1920, h=1080, dur=30),
-                CreativeAsset(id="cr-3", media_type="display", mime="image/jpeg", w=728, h=90) # Incompatible
-            ],
-            targeting={"provided_signals": []}
-        )
+        # Use the same brief as the simulation for consistency
+        with open('brief.json', 'r') as f:
+            brief_data = json.load(f)
+        
+        request = ListProductsRequest(brief=brief_data['brief'])
 
         try:
-            response = get_packages.fn(request=request)
+            # Directly call the tool's function
+            response = list_products.fn(request=request)
             
-            self.assertIsInstance(response, GetPackagesResponse)
-            self.assertEqual(len(response.packages), 2)
+            # 1. Primary Assertion: The response must be a valid ListProductsResponse object.
+            # Pydantic will raise a ValidationError if the JSON from the AI does not
+            # match the schema, causing the test to fail as intended.
+            self.assertIsInstance(response, ListProductsResponse)
 
-            # Test guaranteed package
-            guaranteed_pkg = next(p for p in response.packages if p.delivery_type == 'guaranteed')
-            self.assertEqual(guaranteed_pkg.type, 'catalog')
-            self.assertIsNotNone(guaranteed_pkg.cpm)
-            self.assertTrue(guaranteed_pkg.creative_compatibility['cr-1'].compatible)
-            self.assertFalse(guaranteed_pkg.creative_compatibility['cr-2'].compatible)
+            # 2. Secondary Assertion: The response should not be empty.
+            self.assertIsInstance(response.products, list)
+            self.assertGreater(len(response.products), 0, "The AI should have recommended at least one product.")
 
-            # Test non-guaranteed package
-            non_guaranteed_pkg = next(p for p in response.packages if p.delivery_type == 'non_guaranteed')
-            self.assertEqual(non_guaranteed_pkg.type, 'catalog')
-            self.assertIsNotNone(non_guaranteed_pkg.pricing)
-            self.assertEqual(non_guaranteed_pkg.pricing.suggested_cpm, 7.5)
-            self.assertFalse(non_guaranteed_pkg.creative_compatibility['cr-1'].compatible)
-            self.assertTrue(non_guaranteed_pkg.creative_compatibility['cr-2'].compatible)
+            # 3. Tertiary Assertion: Every product in the response must exist in the original catalog.
+            # This verifies the AI followed the instruction to not invent products.
+            for product in response.products:
+                self.assertIsInstance(product, Product)
+                self.assertIn(product.product_id, self.product_catalog_ids,
+                              f"AI returned a product_id '{product.product_id}' that does not exist in the catalog.")
 
         except Exception as e:
-            self.fail(f"get_packages raised an exception: {e}")
+            self.fail(f"list_products.fn raised an unexpected exception: {e}")
 
 if __name__ == '__main__':
     unittest.main()
