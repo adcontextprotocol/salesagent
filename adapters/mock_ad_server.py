@@ -2,23 +2,22 @@ from datetime import datetime, timedelta
 import random
 from typing import List, Dict, Any, Optional
 
-from adapters.base import AdServerAdapter
+from adapters.base import AdServerAdapter, CreativeEngineAdapter
 from schemas import (
     AcceptProposalResponse, CheckMediaBuyStatusResponse, GetMediaBuyDeliveryResponse,
     UpdateMediaBuyResponse, Proposal, ReportingPeriod, PackagePerformance,
-    AssetStatus, Delivery, PackageStatus, DeliveryTotals
+    AssetStatus, Delivery, PackageStatus, DeliveryTotals, CreativeAsset
 )
 
 class MockAdServer(AdServerAdapter):
     """
     A mock ad server that simulates the entire media buy lifecycle.
-    It manages the state of media buys in-memory.
+    It manages the state of media buys in-memory and orchestrates creative approval.
     """
     _media_buys: Dict[str, Any] = {}
 
-    def __init__(self, config: Dict[str, Any]):
-        # In a real scenario, config might contain API keys, endpoints, etc.
-        self.config = config
+    def __init__(self, config: Dict[str, Any], creative_engine: CreativeEngineAdapter):
+        super().__init__(config, creative_engine)
 
     def accept_proposal(
         self,
@@ -37,7 +36,7 @@ class MockAdServer(AdServerAdapter):
             "billing_entity": billing_entity,
             "po_number": po_number,
             "accepted_packages": accepted_packages,
-            "creatives": [],
+            "creatives": [], # This will store the asset dicts with their statuses
             "start_time": proposal.start_time,
             "end_time": proposal.end_time,
             "total_budget": sum(pkg.budget for pkg in final_packages),
@@ -61,20 +60,18 @@ class MockAdServer(AdServerAdapter):
             raise ValueError(f"Media buy with ID '{media_buy_id}' not found.")
         
         media_buy = self._media_buys[media_buy_id]
-        response_assets = []
-        for asset in assets:
-            media_buy["creatives"].append(asset)
-            approval_date = today + timedelta(days=2)
-            response_assets.append(
-                AssetStatus(
-                    creative_id=asset['creative_id'],
-                    status="pending_review",
-                    estimated_approval_time=approval_date
-                )
-            )
-        
+        initial_statuses = []
+        for asset_data in assets:
+            # Store the full asset data along with an initial processing status
+            asset_with_status = {
+                "data": asset_data,
+                "status": "pending_processing" # Initial state before creative engine review
+            }
+            media_buy["creatives"].append(asset_with_status)
+            initial_statuses.append(AssetStatus(creative_id=asset_data['creative_id'], status="submitted"))
+
         media_buy["status"] = "pending_approval"
-        return response_assets
+        return initial_statuses
 
     def check_media_buy_status(
         self,
@@ -87,15 +84,32 @@ class MockAdServer(AdServerAdapter):
         media_buy = self._media_buys[media_buy_id]
         start_dt = media_buy['start_time']
 
+        # --- Creative Approval Workflow ---
         if media_buy["status"] == "pending_approval":
-            if today >= (start_dt - timedelta(days=3)):
-                media_buy["status"] = "ready"
+            assets_to_process = [
+                CreativeAsset(**c['data']) for c in media_buy['creatives'] if c['status'] == 'pending_processing'
+            ]
+            if assets_to_process and self.creative_engine:
+                processed_statuses = self.creative_engine.process_assets(media_buy_id, assets_to_process)
+                # Update the status in our media_buy state
+                for p_status in processed_statuses:
+                    for c in media_buy['creatives']:
+                        if c['data']['creative_id'] == p_status.creative_id:
+                            c['status'] = p_status.status
+                            c['estimated_approval_time'] = p_status.estimated_approval_time
+            
+            # Check if all creatives are now approved
+            all_approved = all(c['status'] == 'approved' for c in media_buy['creatives'])
+            if all_approved:
+                 media_buy["status"] = "ready"
             else:
+                # Return a pending status if still waiting for approvals
                 return CheckMediaBuyStatusResponse(media_buy_id=media_buy_id, status="pending_approval")
 
         if today < start_dt:
             return CheckMediaBuyStatusResponse(media_buy_id=media_buy_id, status="ready")
 
+        # --- Delivery Reporting ---
         delivery_data = self._get_delivery_status(media_buy, today)
         package_data = self._get_package_delivery_status(media_buy, today)
 
@@ -106,7 +120,8 @@ class MockAdServer(AdServerAdapter):
             packages=[PackageStatus(**pkg) for pkg in package_data],
             last_updated=today
         )
-
+    
+    # ... (The rest of the methods remain largely the same)
     def get_media_buy_delivery(
         self,
         media_buy_id: str,

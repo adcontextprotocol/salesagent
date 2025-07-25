@@ -3,8 +3,18 @@ from typing import List, Dict, Any, Optional
 from datetime import datetime
 from schemas import AcceptProposalResponse, CheckMediaBuyStatusResponse, GetMediaBuyDeliveryResponse, UpdateMediaBuyResponse, Proposal, ReportingPeriod, PackagePerformance
 
+class CreativeEngineAdapter(ABC):
+    """Abstract base class for creative engine adapters."""
+    @abstractmethod
+    def process_assets(self, media_buy_id: str, assets: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        pass
+
 class AdServerAdapter(ABC):
     """Abstract base class for ad server adapters."""
+
+    def __init__(self, config: Dict[str, Any], creative_engine: Optional[CreativeEngineAdapter] = None):
+        self.config = config
+        self.creative_engine = creative_engine
 
     @abstractmethod
     def accept_proposal(
