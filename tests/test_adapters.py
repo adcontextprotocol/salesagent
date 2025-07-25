@@ -26,7 +26,7 @@ def sample_proposal():
                 cpm=10.0,
                 budget=1000,
                 budget_capacity=50000,
-                creative_formats="Banner"
+                creative_formats=["Banner"]
             )
         ]
     )

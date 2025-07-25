@@ -9,7 +9,9 @@ class TestAdcpServer(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         """Set up the database once for all tests."""
-        # Use an in-memory database for testing to not interfere with the main db
+        # Ensure a clean database for each test run
+        if os.path.exists("adcp.db"):
+            os.remove("adcp.db")
         init_db()
 
     def test_proposal_validation(self):

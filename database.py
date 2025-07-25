@@ -82,6 +82,17 @@ def init_db():
     # Using INSERT OR IGNORE to prevent errors on subsequent runs
     
     # Creative Formats
+    kevel_template_spec = {
+        "ad_server": "kevel",
+        "template_id": 78910,
+        "fields": [
+            {"name": "title", "type": "string", "required": True},
+            {"name": "description", "type": "string", "required": True},
+            {"name": "imageUrl", "type": "url", "required": True},
+            {"name": "impressionTracker", "type": "url", "required": False}
+        ],
+        "description": "A custom native ad format for Kevel."
+    }
     e2e_video_spec = {
         "assets": { "video": { "formats": ["mp4", "webm"], "resolutions": [{"width": 1080, "height": 1080, "label": "square"}], "max_file_size_mb": 50, "duration_options": [6, 15]}, "companion": { "logo": {"size": "300x300", "format": "png"}, "overlay_image": {"size": "1080x1080", "format": "jpg", "optional": True}}},
         "description": "An immersive mobile video that scrolls in-feed"
@@ -90,6 +101,7 @@ def init_db():
         "assets": {"image": {"sizes": ["300x250", "728x90"], "format": "png"}},
         "description": "A standard display banner ad."
     }
+    cursor.execute("INSERT OR IGNORE INTO creative_formats (name, spec) VALUES (?, ?)", ('Kevel Native Ad', json.dumps(kevel_template_spec)))
     cursor.execute("INSERT OR IGNORE INTO creative_formats (name, spec) VALUES (?, ?)", ('E2E mobile video', json.dumps(e2e_video_spec)))
     cursor.execute("INSERT OR IGNORE INTO creative_formats (name, spec) VALUES (?, ?)", ('Standard Banner', json.dumps(banner_spec)))
 
@@ -109,11 +121,15 @@ def init_db():
         "gam": {"type": "audience_segment", "id": 12347},
         "triton": {"type": "genre", "name": "Sports"}
     })
+    kevel_keyword_targeting = json.dumps({
+        "kevel": {"type": "keyword", "keyword": "cats"}
+    })
 
     cursor.execute("INSERT OR IGNORE INTO audiences (name, description, ad_server_targeting) VALUES (?, ?, ?)", ('Cat Lovers', 'Users who own cats or show strong interest in cat-related content.', cat_lovers_targeting))
     cursor.execute("INSERT OR IGNORE INTO audiences (name, description, ad_server_targeting) VALUES (?, ?, ?)", ('Dog Lovers', 'Users who own dogs or show strong interest in dog-related content.', dog_lovers_targeting))
     cursor.execute("INSERT OR IGNORE INTO audiences (name, description, ad_server_targeting) VALUES (?, ?, ?)", ('High-Income Earners', 'Users in the top 20% of household income.', income_targeting))
     cursor.execute("INSERT OR IGNORE INTO audiences (name, description, ad_server_targeting) VALUES (?, ?, ?)", ('Sports Fans', 'Users who frequent sports content.', sports_fans_targeting))
+    cursor.execute("INSERT OR IGNORE INTO audiences (name, description, ad_server_targeting) VALUES (?, ?, ?)", ('Kevel Cat Keyword', 'Keyword targeting for "cats" in Kevel.', kevel_keyword_targeting))
 
 
     # Properties
@@ -129,29 +145,33 @@ def init_db():
     cursor.execute("INSERT OR IGNORE INTO placements (name, property_id, base_cpm, daily_impression_capacity) VALUES (?, ?, ?, ?)", ('Homepage Banner', 2, 22.00, 120000)) # Dog Weekly
     cursor.execute("INSERT OR IGNORE INTO placements (name, property_id, base_cpm, daily_impression_capacity) VALUES (?, ?, ?, ?)", ('Homepage Leaderboard', 3, 45.00, 50000)) # Finance Times
     cursor.execute("INSERT OR IGNORE INTO placements (name, property_id, base_cpm, daily_impression_capacity) VALUES (?, ?, ?, ?)", ('Homepage Video', 4, 30.00, 90000)) # Sports Yelling
+    cursor.execute("INSERT OR IGNORE INTO placements (name, property_id, base_cpm, daily_impression_capacity) VALUES (?, ?, ?, ?)", ('Native Ad Slot', 1, 40.00, 75000)) # Cat World, for Kevel
 
     # Link them together
     # Cat World (Property ID 1)
-    # Placement ID 1 ('Homepage Banner') supports Banner (Format ID 2) and targets Cat Lovers (Audience ID 1)
-    cursor.execute("INSERT OR IGNORE INTO placement_formats (placement_id, format_id) VALUES (1, 2)")
+    # Placement ID 1 ('Homepage Banner') supports Banner (Format ID 3) and targets Cat Lovers (Audience ID 1)
+    cursor.execute("INSERT OR IGNORE INTO placement_formats (placement_id, format_id) VALUES (1, 3)")
     cursor.execute("INSERT OR IGNORE INTO placement_audiences (placement_id, audience_id) VALUES (1, 1)")
-    # Placement ID 2 ('Article In-Feed Video') supports Video (Format ID 1) and targets Cat Lovers (Audience ID 1)
-    cursor.execute("INSERT OR IGNORE INTO placement_formats (placement_id, format_id) VALUES (2, 1)")
+    # Placement ID 2 ('Article In-Feed Video') supports Video (Format ID 2) and targets Cat Lovers (Audience ID 1)
+    cursor.execute("INSERT OR IGNORE INTO placement_formats (placement_id, format_id) VALUES (2, 2)")
     cursor.execute("INSERT OR IGNORE INTO placement_audiences (placement_id, audience_id) VALUES (2, 1)")
+    # Placement ID 6 ('Native Ad Slot') supports Kevel Native (Format ID 1) and Kevel Keyword (Audience ID 5)
+    cursor.execute("INSERT OR IGNORE INTO placement_formats (placement_id, format_id) VALUES (6, 1)")
+    cursor.execute("INSERT OR IGNORE INTO placement_audiences (placement_id, audience_id) VALUES (6, 5)")
     
     # Dog Weekly (Property ID 2)
-    # Placement ID 3 ('Homepage Banner') supports Banner (Format ID 2) and targets Dog Lovers (Audience ID 2)
-    cursor.execute("INSERT OR IGNORE INTO placement_formats (placement_id, format_id) VALUES (3, 2)")
+    # Placement ID 3 ('Homepage Banner') supports Banner (Format ID 3) and targets Dog Lovers (Audience ID 2)
+    cursor.execute("INSERT OR IGNORE INTO placement_formats (placement_id, format_id) VALUES (3, 3)")
     cursor.execute("INSERT OR IGNORE INTO placement_audiences (placement_id, audience_id) VALUES (3, 2)")
 
     # The Finance Times (Property ID 3)
-    # Placement ID 4 ('Homepage Leaderboard') supports Banner (Format ID 2) and targets High-Income (Audience ID 3)
-    cursor.execute("INSERT OR IGNORE INTO placement_formats (placement_id, format_id) VALUES (4, 2)")
+    # Placement ID 4 ('Homepage Leaderboard') supports Banner (Format ID 3) and targets High-Income (Audience ID 3)
+    cursor.execute("INSERT OR IGNORE INTO placement_formats (placement_id, format_id) VALUES (4, 3)")
     cursor.execute("INSERT OR IGNORE INTO placement_audiences (placement_id, audience_id) VALUES (4, 3)")
 
     # Sports Yelling (Property ID 4)
-    # Placement ID 5 ('Homepage Video') supports Video (Format ID 1) and targets Sports Fans (Audience ID 4)
-    cursor.execute("INSERT OR IGNORE INTO placement_formats (placement_id, format_id) VALUES (5, 1)")
+    # Placement ID 5 ('Homepage Video') supports Video (Format ID 2) and targets Sports Fans (Audience ID 4)
+    cursor.execute("INSERT OR IGNORE INTO placement_formats (placement_id, format_id) VALUES (5, 2)")
     cursor.execute("INSERT OR IGNORE INTO placement_audiences (placement_id, audience_id) VALUES (5, 4)")
 
     conn.commit()

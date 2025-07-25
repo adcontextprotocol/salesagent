@@ -36,10 +36,18 @@ class CreativeAssets(BaseModel):
     companion: Optional[CompanionAssets] = None
     image: Optional[Dict[str, Any]] = None
 
+class CreativeFormatField(BaseModel):
+    name: str
+    type: str
+    required: bool
+
 class CreativeFormat(BaseModel):
     name: str
-    assets: CreativeAssets
     description: str
+    ad_server: Optional[str] = None
+    template_id: Optional[int] = None
+    fields: Optional[List[CreativeFormatField]] = None
+    assets: Optional[CreativeAssets] = None
 
 class ProvidedSignalsInPackage(BaseModel):
     included_ids: Optional[List[str]] = None
@@ -55,7 +63,7 @@ class MediaPackage(BaseModel):
     cpm: float
     budget: int
     budget_capacity: int
-    creative_formats: str
+    creative_formats: List[str]
 
 class Proposal(BaseModel):
     proposal_id: str

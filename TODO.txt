@@ -1,4 +1,6 @@
 # TODO
+- Separate audiences from placements, so a package could have custom audiences
+  or not
 
 ## Targeting Features Roadmap
 
