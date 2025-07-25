@@ -1,17 +1,9 @@
 {
     "gemini_api_key": "YOUR_API_KEY_HERE",
     "ad_server": {
-        "adapter": "google_ad_manager",
-        "network_code": "YOUR_NETWORK_CODE",
-        "service_account_key_file": "/path/to/your/service-account-key.json",
-        "advertiser_id": "YOUR_ADVERTISER_ID",
-        "trafficker_id": "YOUR_TRAFFICKER_ID",
-        "company_id": "YOUR_COMPANY_ID",
-        "targeting_mapping": {
-            "custom_keys": {
-                "High-Income-Earners": "YOUR_INCOME_KEY_ID"
-            }
-        }
+        "adapter": "triton_digital",
+        "base_url": "https://tap-api.tritondigital.com/v1",
+        "auth_token": "YOUR_TRITON_AUTH_TOKEN"
     },
     "creative_engine": {
         "adapter": "mock_creative_engine",
