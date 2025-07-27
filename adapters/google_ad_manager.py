@@ -12,6 +12,7 @@ from schemas import (
     PackageDelivery, Principal
 )
 from adapters.constants import UPDATE_ACTIONS, REQUIRED_UPDATE_ACTIONS
+from targeting_utils import TargetingMapper, TargetingValidator
 
 class GoogleAdManager(AdServerAdapter):
     """
@@ -64,15 +65,22 @@ class GoogleAdManager(AdServerAdapter):
     
     def _build_targeting(self, targeting_overlay):
         """Build GAM targeting criteria from AdCP targeting."""
-        targeting = {}
+        if not targeting_overlay:
+            return {}
         
-        if targeting_overlay.geography:
-            # In real implementation, would map to GAM geo targeting IDs
-            targeting['geoTargeting'] = {
-                'targetedLocations': [{'id': '2840'} for _ in targeting_overlay.geography]  # US for demo
-            }
+        # Validate targeting first
+        validation_issues = TargetingValidator.validate_targeting(targeting_overlay)
+        if validation_issues:
+            self.log(f"[yellow]Targeting validation warnings: {validation_issues}[/yellow]")
         
-        return targeting
+        # Use the targeting mapper to convert to GAM format
+        gam_targeting = TargetingMapper.to_gam_targeting(targeting_overlay)
+        
+        # Log what we're applying
+        if gam_targeting:
+            self.log(f"Applying GAM targeting: {list(gam_targeting.keys())}")
+        
+        return gam_targeting
 
     def create_media_buy(self, request: CreateMediaBuyRequest, packages: List[MediaPackage], start_time: datetime, end_time: datetime) -> CreateMediaBuyResponse:
         """Creates a new Order and associated LineItems in Google Ad Manager."""

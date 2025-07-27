@@ -17,13 +17,64 @@ class Format(BaseModel):
     specs: Dict[str, Any]
     delivery_options: DeliveryOptions
 
+class DaypartSchedule(BaseModel):
+    """Time-based targeting schedule."""
+    days: List[int] = Field(..., description="Days of week (0=Sunday, 6=Saturday)")
+    start_hour: int = Field(..., ge=0, le=23, description="Start hour (0-23)")
+    end_hour: int = Field(..., ge=0, le=23, description="End hour (0-23)")
+    timezone: Optional[str] = Field("UTC", description="Timezone for schedule")
+
+class Dayparting(BaseModel):
+    """Dayparting configuration for time-based targeting."""
+    timezone: str = Field("UTC", description="Default timezone for all schedules")
+    schedules: List[DaypartSchedule] = Field(..., description="List of time windows")
+    # Special presets for audio
+    presets: Optional[List[str]] = Field(None, description="Named presets like 'drive_time_morning'")
+
+class FrequencyCap(BaseModel):
+    """Frequency capping configuration."""
+    impressions: int = Field(..., gt=0, description="Maximum impressions")
+    period: Literal["hour", "day", "week", "month", "lifetime"] = Field(..., description="Time period")
+    per: Literal["user", "ip", "household", "device"] = Field("user", description="Tracking level")
+
 class Targeting(BaseModel):
-    geography: Optional[List[str]] = None
-    exclude_geography: Optional[List[str]] = None
+    """Comprehensive targeting options for media buys.
+    
+    All fields are optional and can be combined for precise audience targeting.
+    Platform adapters will map these to their specific targeting capabilities.
+    """
+    # Geographic targeting
+    geography: Optional[List[str]] = None  # Countries, states, DMAs, cities, postal codes
+    geography_exclude: Optional[List[str]] = None  # Exclude specific geos
+    
+    # Device and platform targeting
+    device_types: Optional[List[str]] = None  # desktop, mobile, tablet, ctv, audio_player
+    platforms: Optional[List[str]] = None  # ios, android, windows, macos
+    browsers: Optional[List[str]] = None  # chrome, safari, firefox, edge
+    
+    # Content and contextual targeting
+    content_categories_include: Optional[List[str]] = None  # IAB categories to target
+    content_categories_exclude: Optional[List[str]] = None  # IAB categories to exclude
+    keywords_include: Optional[List[str]] = None  # Positive keyword targeting
+    keywords_exclude: Optional[List[str]] = None  # Negative keyword targeting
+    
+    # Audience targeting
+    audiences: Optional[List[str]] = None  # First-party, third-party, behavioral segments
+    
+    # Time-based targeting
+    dayparting: Optional[Dayparting] = None  # Schedule by day of week and hour
+    
+    # Frequency control
+    frequency_cap: Optional[FrequencyCap] = None  # Impression limits per user/period
+    
+    # Technology targeting (backwards compatibility)
+    technology: Optional[List[str]] = None  # Connection types, carriers
+    
+    # Legacy field (use dayparting instead)
     day_parts: Optional[List[str]] = None
-    technology: Optional[List[str]] = None
-    content_categories_include: Optional[List[str]] = None
-    content_categories_exclude: Optional[List[str]] = None
+    
+    # Platform-specific custom targeting
+    custom: Optional[Dict[str, Any]] = None  # Platform-specific targeting options
 
 class PriceGuidance(BaseModel):
     floor: float

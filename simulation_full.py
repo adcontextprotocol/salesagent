@@ -136,9 +136,39 @@ class FullLifecycleSimulation:
             "end_date": self.flight_end.isoformat(),
             "budget": 50000.00,
             "targeting_overlay": {
-                "geography": ["US-CA", "US-NY"],
-                "audiences": ["pet_owners"],
-                "content_categories_exclude": ["controversial", "politics"]
+                "geography": ["US-CA", "US-NY", "DMA-501", "DMA-803"],  # States + major DMAs
+                "device_types": ["ctv", "mobile", "desktop"],
+                "platforms": ["ios", "android"],
+                "audiences": ["3p:pet_owners", "behavior:pet_supplies_shoppers"],
+                "content_categories_include": ["IAB8", "IAB16"],  # Pets, Family
+                "content_categories_exclude": ["IAB7", "IAB14"],  # Health, Society
+                "keywords_include": ["dogs", "cats", "pet care"],
+                "keywords_exclude": ["controversial", "politics"],
+                "dayparting": {
+                    "timezone": "America/New_York",
+                    "schedules": [
+                        {
+                            "days": [1, 2, 3, 4, 5],  # Weekdays
+                            "start_hour": 6,
+                            "end_hour": 9
+                        },
+                        {
+                            "days": [1, 2, 3, 4, 5],  # Weekday evenings
+                            "start_hour": 18,
+                            "end_hour": 22
+                        },
+                        {
+                            "days": [0, 6],  # Weekends
+                            "start_hour": 8,
+                            "end_hour": 22
+                        }
+                    ]
+                },
+                "frequency_cap": {
+                    "impressions": 5,
+                    "period": "day",
+                    "per": "user"
+                }
             }
         }
         
@@ -148,7 +178,12 @@ class FullLifecycleSimulation:
             f"  products: video + audio\n"
             f"  dates: {self.flight_start} to {self.flight_end}\n"
             f"  budget: $50,000\n"
-            f"  targeting: CA/NY pet owners",
+            f"  targeting:\n"
+            f"    • geo: CA/NY + DMAs 501/803\n"
+            f"    • devices: CTV, mobile, desktop\n"
+            f"    • audiences: pet owners & shoppers\n"
+            f"    • dayparts: weekday mornings/evenings + weekends\n"
+            f"    • frequency: 5/day/user",
             title="API Call",
             border_style="dim"
         ))
@@ -415,21 +450,41 @@ class FullLifecycleSimulation:
             update_request = {
                 "media_buy_id": self.media_buy_id,
                 "targeting_overlay": {
-                    "geography": ["US-CA", "US-NY", "US-TX", "US-FL"],  # Add more states
-                    "content_categories_exclude": ["controversial"]  # Reduce exclusions
+                    "geography": ["US-CA", "US-NY", "US-TX", "US-FL", "DMA-602", "DMA-623"],  # Expand
+                    "device_types": ["ctv", "mobile", "desktop", "tablet"],  # Add tablet
+                    "audiences": ["3p:pet_owners", "behavior:pet_supplies_shoppers", "demo:families_with_children"],
+                    "content_categories_exclude": ["IAB7"],  # Remove politics exclusion
+                    "dayparting": {
+                        "timezone": "America/New_York",
+                        "schedules": [
+                            {
+                                "days": [0, 1, 2, 3, 4, 5, 6],  # All days
+                                "start_hour": 6,
+                                "end_hour": 23  # Extended hours
+                            }
+                        ]
+                    }
                 },
                 "packages": [
                     {
                         "package_id": "pkg_video_sports",
                         "budget": 30000,  # Increase budget
-                        "pacing": "asap"  # Accelerate delivery
+                        "pacing": "asap",  # Accelerate delivery
+                        "targeting_overlay": {  # Package-specific refinement
+                            "keywords_include": ["puppy", "kitten", "pet adoption"]
+                        }
                     }
                 ]
             }
             
             console.print(Panel(
                 f"[cyan]update_media_buy Request:[/cyan]\n"
-                f"  Campaign: Expand geo to TX, FL\n"
+                f"  Campaign Updates:\n"
+                f"    • Expand geo: +TX, FL, DMAs 602/623\n"
+                f"    • Add device: tablet\n"
+                f"    • Add audience: families w/ children\n"
+                f"    • Extend dayparts: 6am-11pm all days\n"
+                f"  Package Updates (video_sports only):\n"
                 f"  Package: Increase budget to $30k\n"
                 f"  Pacing: Switch to ASAP\n"
                 f"  [dim]Other packages unchanged[/dim]",

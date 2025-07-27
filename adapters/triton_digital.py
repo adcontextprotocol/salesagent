@@ -6,6 +6,7 @@ import json
 from adapters.base import AdServerAdapter, CreativeEngineAdapter
 from schemas import *
 from adapters.constants import UPDATE_ACTIONS, REQUIRED_UPDATE_ACTIONS
+from targeting_utils import TargetingMapper, TargetingValidator
 
 class TritonDigital(AdServerAdapter):
     """
@@ -40,6 +41,33 @@ class TritonDigital(AdServerAdapter):
                 "Authorization": f"Bearer {self.auth_token}",
                 "Content-Type": "application/json"
             }
+    
+    def _build_targeting(self, targeting_overlay):
+        """Build Triton targeting criteria from AdCP targeting."""
+        if not targeting_overlay:
+            return {}
+        
+        # Validate targeting first
+        validation_issues = TargetingValidator.validate_targeting(targeting_overlay)
+        if validation_issues:
+            self.log(f"[yellow]Targeting validation warnings: {validation_issues}[/yellow]")
+        
+        # Use the targeting mapper to convert to Triton format
+        triton_targeting = TargetingMapper.to_triton_targeting(targeting_overlay)
+        
+        # Check platform compatibility - Triton is audio-only
+        compatibility = TargetingMapper.check_platform_compatibility(targeting_overlay, 'triton_digital')
+        if compatibility['unsupported']:
+            self.log(f"[yellow]Unsupported targeting features for Triton Digital: {compatibility['unsupported']}[/yellow]")
+        if compatibility['warnings']:
+            for warning in compatibility['warnings']:
+                self.log(f"[yellow]Warning: {warning}[/yellow]")
+        
+        # Log what we're applying
+        if triton_targeting:
+            self.log(f"Applying Triton targeting: {list(triton_targeting.keys())}")
+        
+        return triton_targeting
 
     def create_media_buy(
         self,
@@ -83,6 +111,13 @@ class TritonDigital(AdServerAdapter):
                 self.log(f"    'rateType': 'CPM',")
                 self.log(f"    'startDate': '{start_time.date().isoformat()}',")
                 self.log(f"    'endDate': '{end_time.date().isoformat()}'")
+                
+                # Add targeting if provided
+                if request.targeting_overlay:
+                    targeting = self._build_targeting(request.targeting_overlay)
+                    if targeting:
+                        self.log(f"    'targeting': {json.dumps(targeting, indent=6)}")
+                
                 self.log(f"  }}")
         else:
             # Create campaign in Triton
@@ -119,6 +154,16 @@ class TritonDigital(AdServerAdapter):
                     "startDate": start_time.date().isoformat(),
                     "endDate": end_time.date().isoformat()
                 }
+                
+                # Add targeting if provided
+                if request.targeting_overlay:
+                    targeting = self._build_targeting(request.targeting_overlay)
+                    if targeting and 'targeting' in targeting:
+                        flight_payload['targeting'] = targeting['targeting']
+                    if targeting and 'dayparts' in targeting:
+                        flight_payload['dayparts'] = targeting['dayparts']
+                    if targeting and 'stationIds' in targeting:
+                        flight_payload['stationIds'] = targeting['stationIds']
                 
                 flight_response = requests.post(
                     f"{self.base_url}/flights",

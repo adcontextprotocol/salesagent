@@ -14,6 +14,7 @@ Note: with all of these we should update the overall AdCP:Buy spec that is in do
 Adapters
 - Have the default creative engine be configurable to allow certain formats (generally the standard ones) be auto-approved vs pending.
 - Add an adapter for Xandr/Microsoft Monetize as an ad server
+- Make sure that all adapters are adding key-val pairs for AEE signal integration properly
 
 Agent vs human config
 - We should allow some capabilities of an adapter are provided by a human. For instance, I could set up GAM to allow the agent to read objects and run reports, but require a human to make changes. This should be done at the overall agent level. There should be a task queue that Admin users can see like "Principal Nike requests Media Buy 1234 have daily pacing updated to $1023".
@@ -26,3 +27,6 @@ Log level data or automated reporting for AEE
 
 Multi-tenant
 - Scope3 may offer a hosted version of the Sales Agent for publishers that don't want to manage their own instance. How could we make it possible to build a multi-tenant version of this platform so multiple publishers could be live at the same time? It seems like a maintenance nightmare for Scope3 to have to have a different instance for each publisher.
+
+Research
+- understand core and common targeting capabilities across all ad servers

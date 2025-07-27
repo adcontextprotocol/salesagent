@@ -6,6 +6,7 @@ import json
 from adapters.base import AdServerAdapter, CreativeEngineAdapter
 from schemas import *
 from adapters.constants import UPDATE_ACTIONS, REQUIRED_UPDATE_ACTIONS
+from targeting_utils import TargetingMapper, TargetingValidator
 
 class Kevel(AdServerAdapter):
     """
@@ -41,6 +42,30 @@ class Kevel(AdServerAdapter):
                 "X-Adzerk-ApiKey": self.api_key,
                 "Content-Type": "application/json"
             }
+    
+    def _build_targeting(self, targeting_overlay):
+        """Build Kevel targeting criteria from AdCP targeting."""
+        if not targeting_overlay:
+            return {}
+        
+        # Validate targeting first
+        validation_issues = TargetingValidator.validate_targeting(targeting_overlay)
+        if validation_issues:
+            self.log(f"[yellow]Targeting validation warnings: {validation_issues}[/yellow]")
+        
+        # Use the targeting mapper to convert to Kevel format
+        kevel_targeting = TargetingMapper.to_kevel_targeting(targeting_overlay)
+        
+        # Check platform compatibility
+        compatibility = TargetingMapper.check_platform_compatibility(targeting_overlay, 'kevel')
+        if compatibility['unsupported']:
+            self.log(f"[yellow]Unsupported targeting features for Kevel: {compatibility['unsupported']}[/yellow]")
+        
+        # Log what we're applying
+        if kevel_targeting:
+            self.log(f"Applying Kevel targeting: {list(kevel_targeting.keys())}")
+        
+        return kevel_targeting
 
     def create_media_buy(
         self,
@@ -81,6 +106,13 @@ class Kevel(AdServerAdapter):
                 self.log(f"    'Price': {package.cpm},")  # Price is CPM in Kevel
                 self.log(f"    'StartDate': '{start_time.isoformat()}',")
                 self.log(f"    'EndDate': '{end_time.isoformat()}'")
+                
+                # Add targeting if provided
+                if request.targeting_overlay:
+                    targeting = self._build_targeting(request.targeting_overlay)
+                    if targeting:
+                        self.log(f"    'Targeting': {json.dumps(targeting, indent=6)}")
+                
                 self.log(f"  }}")
         else:
             # Create campaign in Kevel
@@ -115,6 +147,12 @@ class Kevel(AdServerAdapter):
                     "EndDate": end_time.isoformat(),
                     "IsActive": True
                 }
+                
+                # Add targeting if provided
+                if request.targeting_overlay:
+                    targeting = self._build_targeting(request.targeting_overlay)
+                    if targeting:
+                        flight_payload.update(targeting)
                 
                 flight_response = requests.post(
                     f"{self.base_url}/flight",
