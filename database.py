@@ -24,13 +24,23 @@ def init_db():
         {
             "principal_id": "purina",
             "name": "Purina Pet Foods",
-            "platform_mappings": {"gam_advertiser_id": 12345},
+            "platform_mappings": {
+                "gam_advertiser_id": 12345,
+                "kevel_advertiser_id": "purina-pet-foods",
+                "triton_advertiser_id": "ADV-PUR-001",
+                "mock_advertiser_id": "mock-purina"
+            },
             "access_token": "purina_secret_token_abc123"
         },
         {
             "principal_id": "acme_corp",
             "name": "Acme Corporation",
-            "platform_mappings": {"gam_advertiser_id": 67890},
+            "platform_mappings": {
+                "gam_advertiser_id": 67890,
+                "kevel_advertiser_id": "acme-corporation",
+                "triton_advertiser_id": "ADV-ACM-002",
+                "mock_advertiser_id": "mock-acme"
+            },
             "access_token": "acme_secret_token_xyz789"
         }
     ]

@@ -29,6 +29,32 @@ def get_principal_from_token(token: str) -> Optional[str]:
     conn.close()
     return result[0] if result else None
 
+def get_principal_adapter_mapping(principal_id: str) -> Dict[str, Any]:
+    """Get the platform mappings for a principal."""
+    conn = sqlite3.connect(DB_FILE)
+    cursor = conn.cursor()
+    cursor.execute("SELECT platform_mappings FROM principals WHERE principal_id = ?", (principal_id,))
+    result = cursor.fetchone()
+    conn.close()
+    return json.loads(result[0]) if result else {}
+
+def get_adapter_principal_id(principal_id: str, adapter: str) -> Optional[str]:
+    """Get the adapter-specific ID for a principal."""
+    mappings = get_principal_adapter_mapping(principal_id)
+    
+    # Map adapter names to their specific fields
+    adapter_field_map = {
+        "gam": "gam_advertiser_id",
+        "kevel": "kevel_advertiser_id", 
+        "triton": "triton_advertiser_id",
+        "mock": "mock_advertiser_id"
+    }
+    
+    field_name = adapter_field_map.get(adapter)
+    if field_name:
+        return str(mappings.get(field_name, "")) if mappings.get(field_name) else None
+    return None
+
 # --- Initialization ---
 init_db()
 mcp = FastMCP(name="AdCPBuySideV2_3_CustomAuth_Final")
@@ -41,11 +67,21 @@ creative_assignments: Dict[str, Dict[str, List[str]]] = {}
 creative_statuses: Dict[str, CreativeStatus] = {}
 product_catalog: List[Product] = []
 
+# --- Adapter Configuration ---
+SELECTED_ADAPTER = os.getenv("ADCP_ADAPTER", "mock").lower()
+AVAILABLE_ADAPTERS = ["mock", "gam", "kevel", "triton"]
+
 # --- Dry Run Mode ---
 DRY_RUN_MODE = os.getenv("ADCP_DRY_RUN", "false").lower() == "true"
 dry_run_logs: List[str] = []
 if DRY_RUN_MODE:
     console.print("[bold yellow]🏃 DRY RUN MODE ENABLED - Adapter calls will be logged[/bold yellow]")
+
+# Display selected adapter
+if SELECTED_ADAPTER not in AVAILABLE_ADAPTERS:
+    console.print(f"[bold red]❌ Invalid adapter '{SELECTED_ADAPTER}'. Using 'mock' instead.[/bold red]")
+    SELECTED_ADAPTER = "mock"
+console.print(f"[bold cyan]🔌 Using adapter: {SELECTED_ADAPTER.upper()}[/bold cyan]")
 
 def log_dry_run(action: str, details: Dict[str, Any]):
     """Log actions that would be taken in dry run mode."""
@@ -89,10 +125,16 @@ def create_media_buy(req: CreateMediaBuyRequest, context: Context) -> CreateMedi
     media_buy_id = f"mb_{uuid.uuid4().hex[:8]}"
     media_buys[media_buy_id] = (req, principal_id)
     
+    # Get adapter-specific principal ID
+    adapter_principal_id = get_adapter_principal_id(principal_id, SELECTED_ADAPTER)
+    if not adapter_principal_id:
+        console.print(f"[bold red]⚠️  Warning: No {SELECTED_ADAPTER} mapping for principal {principal_id}[/bold red]")
+    
     # Log what adapter calls would be made
     log_dry_run("AdServerAdapter.create_campaign", {
-        "adapter": "MockAdServer",
+        "adapter": SELECTED_ADAPTER.upper(),
         "principal": principal_id,
+        "adapter_principal_id": adapter_principal_id,
         "products": req.product_ids,
         "budget": req.total_budget,
         "flight_dates": f"{req.flight_start_date} to {req.flight_end_date}",
@@ -147,12 +189,16 @@ def update_media_buy(req: UpdateMediaBuyRequest, context: Context):
 @mcp.tool
 def get_media_buy_delivery(req: GetMediaBuyDeliveryRequest, context: Context) -> GetMediaBuyDeliveryResponse:
     _verify_principal(req.media_buy_id, context)
-    buy_request, _ = media_buys[req.media_buy_id]
+    buy_request, principal_id = media_buys[req.media_buy_id]
     catalog = get_product_catalog()
     products_in_buy = [p for p in catalog if p.product_id in buy_request.product_ids]
     
+    # Get adapter-specific principal ID for logging
+    adapter_principal_id = get_adapter_principal_id(principal_id, SELECTED_ADAPTER)
+    
     log_dry_run("AdServerAdapter.get_delivery_report", {
-        "adapter": "MockAdServer",
+        "adapter": SELECTED_ADAPTER.upper(),
+        "adapter_principal_id": adapter_principal_id,
         "media_buy_id": req.media_buy_id,
         "reporting_date": str(req.today),
         "products": buy_request.product_ids

@@ -30,12 +30,13 @@ def find_free_port() -> int:
 
 
 class SimulationRunner:
-    def __init__(self, simulation_type: str = "basic", dry_run: bool = False):
+    def __init__(self, simulation_type: str = "basic", dry_run: bool = False, adapter: str = "mock"):
         self.port = find_free_port()
         self.server_process = None
         self.server_url = f"http://127.0.0.1:{self.port}"
         self.simulation_type = simulation_type
         self.dry_run = dry_run
+        self.adapter = adapter
         self.server_logs = []
         
     async def _capture_server_logs(self):
@@ -75,10 +76,11 @@ class SimulationRunner:
             )
             main_py.write_text(modified_content)
             
-            # Set environment for dry run if needed
+            # Set environment for dry run and adapter if needed
             env = os.environ.copy()
             if self.dry_run:
                 env["ADCP_DRY_RUN"] = "true"
+            env["ADCP_ADAPTER"] = self.adapter
             
             # Start server process
             if self.dry_run:
@@ -196,6 +198,7 @@ class SimulationRunner:
         console.print(Panel.fit(
             f"[bold cyan]AdCP:Buy Automated Simulation Runner[/bold cyan]\n"
             f"Type: {title}{dry_run_text}\n"
+            f"Adapter: {self.adapter.upper()}\n"
             f"Port: {self.port}",
             border_style="cyan"
         ))
@@ -250,10 +253,16 @@ async def main():
         action='store_true',
         help='Enable dry run mode to see adapter calls that would be made'
     )
+    parser.add_argument(
+        '--adapter',
+        choices=['mock', 'gam', 'kevel', 'triton'],
+        default='mock',
+        help='Select the ad server adapter to use (default: mock)'
+    )
     args = parser.parse_args()
     
     simulation_type = "full" if args.full else "basic"
-    runner = SimulationRunner(simulation_type, dry_run=args.dry_run)
+    runner = SimulationRunner(simulation_type, dry_run=args.dry_run, adapter=args.adapter)
     await runner.run()
 
 
