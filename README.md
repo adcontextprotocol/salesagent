@@ -42,5 +42,5 @@ This project is designed to be run as a self-contained, end-to-end simulation th
 -   **`simulation.py` (Client):** An orchestrator that calls the server's tools in sequence to simulate a real-world buying process.
 -   **`schemas.py`:** Contains all the Pydantic models that define the V2.3 API data contracts (e.g., `Product`, `Targeting`, `CreateMediaBuyRequest`).
 -   **`database.py`:** Initializes a simple SQLite database with a catalog of advertising `products`.
--   **`mock_ad_server.py`:** A simulator that calculates campaign delivery metrics (spend, impressions, etc.) over time.
+-   **`adapters/`:** Directory containing adapter implementations for various ad servers (mock, GAM, Kevel, Triton).
 -   **`test_main.py`:** A unit test that validates the AI's output against the Pydantic schemas, ensuring structural correctness.

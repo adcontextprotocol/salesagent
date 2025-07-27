@@ -56,6 +56,25 @@ class PrincipalSummary(BaseModel):
 class GetPrincipalSummaryResponse(BaseModel):
     principals: List[PrincipalSummary]
 
+class Principal(BaseModel):
+    """Principal object containing authentication and adapter mapping information."""
+    principal_id: str
+    name: str
+    platform_mappings: Dict[str, Any]
+    
+    def get_adapter_id(self, adapter_name: str) -> Optional[str]:
+        """Get the adapter-specific ID for this principal."""
+        adapter_field_map = {
+            "gam": "gam_advertiser_id",
+            "kevel": "kevel_advertiser_id", 
+            "triton": "triton_advertiser_id",
+            "mock": "mock_advertiser_id"
+        }
+        field_name = adapter_field_map.get(adapter_name)
+        if field_name and field_name in self.platform_mappings:
+            return str(self.platform_mappings[field_name]) if self.platform_mappings[field_name] else None
+        return None
+
 # --- Performance Index ---
 class ProductPerformance(BaseModel):
     product_id: str
@@ -125,6 +144,7 @@ class CreateMediaBuyResponse(BaseModel):
     media_buy_id: str
     status: str
     detail: str
+    creative_deadline: Optional[datetime] = None
 
 class UpdateMediaBuyRequest(BaseModel):
     media_buy_id: str
@@ -144,3 +164,55 @@ class GetMediaBuyDeliveryResponse(BaseModel):
     pacing: str
     days_elapsed: int
     total_days: int
+
+# --- Additional Schema Classes ---
+class MediaPackage(BaseModel):
+    package_id: str
+    name: str
+    delivery_type: Literal["guaranteed", "non_guaranteed"]
+    cpm: float
+    impressions: int
+    format_ids: List[str]
+
+class ReportingPeriod(BaseModel):
+    start: datetime
+    end: datetime
+    start_date: Optional[date] = None  # For compatibility
+    end_date: Optional[date] = None  # For compatibility
+
+class DeliveryTotals(BaseModel):
+    impressions: int
+    spend: float
+    clicks: Optional[int] = 0
+    video_completions: Optional[int] = 0
+
+class PackagePerformance(BaseModel):
+    package_id: str
+    performance_index: float
+
+class AssetStatus(BaseModel):
+    creative_id: str
+    status: str
+
+class CheckMediaBuyStatusResponse(BaseModel):
+    media_buy_id: str
+    status: str
+    last_updated: Optional[datetime] = None
+
+class UpdateMediaBuyResponse(BaseModel):
+    status: str
+    implementation_date: Optional[datetime] = None
+
+# Adapter-specific response schemas
+class PackageDelivery(BaseModel):
+    package_id: str
+    impressions: int
+    spend: float
+
+class AdapterGetMediaBuyDeliveryResponse(BaseModel):
+    """Response from adapter's get_media_buy_delivery method"""
+    media_buy_id: str
+    reporting_period: ReportingPeriod
+    totals: DeliveryTotals
+    by_package: List[PackageDelivery]
+    currency: str

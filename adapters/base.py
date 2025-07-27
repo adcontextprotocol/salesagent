@@ -1,6 +1,7 @@
 from abc import ABC, abstractmethod
 from typing import List, Dict, Any, Optional
 from datetime import datetime
+from rich.console import Console
 from schemas import *
 
 class CreativeEngineAdapter(ABC):
@@ -12,9 +13,32 @@ class CreativeEngineAdapter(ABC):
 class AdServerAdapter(ABC):
     """Abstract base class for ad server adapters."""
 
-    def __init__(self, config: Dict[str, Any], creative_engine: Optional[CreativeEngineAdapter] = None):
+    def __init__(
+        self, 
+        config: Dict[str, Any], 
+        principal: Principal,
+        dry_run: bool = False,
+        creative_engine: Optional[CreativeEngineAdapter] = None
+    ):
         self.config = config
+        self.principal = principal
+        self.principal_id = principal.principal_id  # For backward compatibility
+        self.dry_run = dry_run
         self.creative_engine = creative_engine
+        self.console = Console()
+        
+        # Set adapter_principal_id after initialization when adapter_name is available
+        if hasattr(self.__class__, 'adapter_name'):
+            self.adapter_principal_id = principal.get_adapter_id(self.__class__.adapter_name)
+        else:
+            self.adapter_principal_id = None
+        
+    def log(self, message: str, dry_run_prefix: bool = True):
+        """Log a message, with optional dry-run prefix."""
+        if self.dry_run and dry_run_prefix:
+            self.console.print(f"[dim](dry-run)[/dim] {message}")
+        else:
+            self.console.print(message)
 
     @abstractmethod
     def create_media_buy(
@@ -52,7 +76,7 @@ class AdServerAdapter(ABC):
         media_buy_id: str,
         date_range: ReportingPeriod,
         today: datetime
-    ) -> GetMediaBuyDeliveryResponse:
+    ) -> AdapterGetMediaBuyDeliveryResponse:
         """Gets delivery data for a media buy."""
         pass
 

@@ -1,18 +1,21 @@
 # TODO
-- Make sure that every call to an ad server has a principal included. Every principal should have a "primary ad server object ID" that limits its ability to see and update what the ad server is doing. So for instance "Nike" as the principal might only be able to see the advertiser_id "23432" in GAM. The GAM adapter should add the parameter "advertiser_id = 23432" to every call it makes. There will be a different object name in different systems; we should see what the equivalent is in Kevel, Triton, Xandr Monetize, and others.
 
+Security and permissions
+- Make sure each adapter is limited to its principal, and add documentation for each adapter in its directory that is clear about the security perimeter that is being enforced (eg "every principal is mapped to an advertiser_id, and calls are made with that advertiser_id. For instance: ... ")
+- Add an admin token so that an admin user can see additional tools
 
+Functionality
+Note: with all of these we should update the overall AdCP:Buy spec that is in docs-adcp as well as making the changes locally.
+- make the get media buy delivery tool capable of pulling down all active media buys at once to make performance better
+- look into creative grouping across ad servers and consider adding a creative group hierarchy layer
+- add a "get creatives" call that can show all active creatives, potentially limited to a creative group if we go that route
+- add a mechanism for an admin to see pending creatives and approve them
 
-## Targeting Features Roadmap
+Adapters
+- Have the default creative engine be configurable to allow certain formats (generally the standard ones) be auto-approved vs pending.
+- Add an adapter for Xandr/Microsoft Monetize as an ad server
 
-### Google Ad Manager
-- [ ] Inventory (Ad Units, Placements)
-- [ ] Day & Time (Dayparting)
-
-### Triton Digital
-- [ ] Advanced Audience (3rd-party data segments)
-- [ ] Contextual Targeting
-
-### Kevel
-- [ ] More advanced targeting (e.g., custom attributes, user-level targeting)
-- [ ] Full implementation of status checks, delivery reporting, and updates
+Agent vs human config
+- We should allow some capabilities of an adapter are provided by a human. For instance, I could set up GAM to allow the agent to read objects and run reports, but require a human to make changes. This should be done at the overall agent level. There should be a task queue that Admin users can see like "Principal Nike requests Media Buy 1234 have daily pacing updated to $1023".
+- The orchestrator should not know a human is doing things, so we should in general have the concept for all CRUD requests that they may be asynchronous. The orchestrator should generally assume that they submit requests and then check for completion, and they should be able to query "open requests" and see what their status is.
+- The AI should be able to check task completion for the user, so if a request is like "update media buy daily budget to $100/day" it should be able to query the media buy and see what the daily budget is, and if it's not $100/day, it should show the task as incomplete. An admin should be able to call "mark_task_complete XYZ" and the AI should double check it, basically (which the human should be able to override)

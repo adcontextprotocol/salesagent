@@ -2,7 +2,7 @@ import json
 import os
 import sqlite3
 import uuid
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from typing import Dict, List, Optional, Tuple
 
 from fastmcp import FastMCP
@@ -13,8 +13,9 @@ from starlette.requests import Request
 from rich.console import Console
 
 from adapters.mock_creative_engine import MockCreativeEngine
+from adapters.mock_ad_server import MockAdServer as MockAdServerAdapter
+from adapters.google_ad_manager import GoogleAdManager
 from database import init_db
-from mock_ad_server import MockAdServer
 from schemas import *
 
 # --- Authentication ---
@@ -38,6 +39,22 @@ def get_principal_adapter_mapping(principal_id: str) -> Dict[str, Any]:
     conn.close()
     return json.loads(result[0]) if result else {}
 
+def get_principal_object(principal_id: str) -> Optional[Principal]:
+    """Get a Principal object for the given principal_id."""
+    conn = sqlite3.connect(DB_FILE)
+    cursor = conn.cursor()
+    cursor.execute("SELECT principal_id, name, platform_mappings FROM principals WHERE principal_id = ?", (principal_id,))
+    result = cursor.fetchone()
+    conn.close()
+    
+    if result:
+        return Principal(
+            principal_id=result[0],
+            name=result[1],
+            platform_mappings=json.loads(result[2])
+        )
+    return None
+
 def get_adapter_principal_id(principal_id: str, adapter: str) -> Optional[str]:
     """Get the adapter-specific ID for a principal."""
     mappings = get_principal_adapter_mapping(principal_id)
@@ -55,9 +72,29 @@ def get_adapter_principal_id(principal_id: str, adapter: str) -> Optional[str]:
         return str(mappings.get(field_name, "")) if mappings.get(field_name) else None
     return None
 
+def get_adapter(principal: Principal, dry_run: bool = False):
+    """Get the appropriate adapter instance for the selected adapter type."""
+    adapter_config = {}  # Could load from config file if needed
+    
+    if SELECTED_ADAPTER == "mock":
+        return MockAdServerAdapter(adapter_config, principal, dry_run)
+    elif SELECTED_ADAPTER == "gam":
+        # Provide mock config for dry-run mode
+        if dry_run:
+            adapter_config = {
+                'network_code': '123456789',
+                'service_account_key_file': '/path/to/service-account.json',
+                'company_id': '987654321',
+                'trafficker_id': '555555555'
+            }
+        return GoogleAdManager(adapter_config, principal, dry_run)
+    else:
+        # Default to mock for unsupported adapters
+        return MockAdServerAdapter(adapter_config, principal, dry_run)
+
 # --- Initialization ---
 init_db()
-mcp = FastMCP(name="AdCPBuySideV2_3_CustomAuth_Final")
+mcp = FastMCP(name="AdCPBuyServer")
 console = Console()
 creative_engine = MockCreativeEngine({})
 
@@ -73,7 +110,6 @@ AVAILABLE_ADAPTERS = ["mock", "gam", "kevel", "triton"]
 
 # --- Dry Run Mode ---
 DRY_RUN_MODE = os.getenv("ADCP_DRY_RUN", "false").lower() == "true"
-dry_run_logs: List[str] = []
 if DRY_RUN_MODE:
     console.print("[bold yellow]🏃 DRY RUN MODE ENABLED - Adapter calls will be logged[/bold yellow]")
 
@@ -82,13 +118,6 @@ if SELECTED_ADAPTER not in AVAILABLE_ADAPTERS:
     console.print(f"[bold red]❌ Invalid adapter '{SELECTED_ADAPTER}'. Using 'mock' instead.[/bold red]")
     SELECTED_ADAPTER = "mock"
 console.print(f"[bold cyan]🔌 Using adapter: {SELECTED_ADAPTER.upper()}[/bold cyan]")
-
-def log_dry_run(action: str, details: Dict[str, Any]):
-    """Log actions that would be taken in dry run mode."""
-    if DRY_RUN_MODE:
-        log_entry = f"[DRY RUN] {action}: {json.dumps(details, default=str)}"
-        dry_run_logs.append(log_entry)
-        console.print(f"[dim]{log_entry}[/dim]")
 
 # --- Security Helper ---
 def _get_principal_id_from_context(context: Context) -> str:
@@ -122,45 +151,69 @@ def list_products(req: ListProductsRequest, context: Context) -> ListProductsRes
 @mcp.tool
 def create_media_buy(req: CreateMediaBuyRequest, context: Context) -> CreateMediaBuyResponse:
     principal_id = _get_principal_id_from_context(context)
-    media_buy_id = f"mb_{uuid.uuid4().hex[:8]}"
-    media_buys[media_buy_id] = (req, principal_id)
     
-    # Get adapter-specific principal ID
-    adapter_principal_id = get_adapter_principal_id(principal_id, SELECTED_ADAPTER)
-    if not adapter_principal_id:
-        console.print(f"[bold red]⚠️  Warning: No {SELECTED_ADAPTER} mapping for principal {principal_id}[/bold red]")
+    # Get the Principal object
+    principal = get_principal_object(principal_id)
+    if not principal:
+        raise ToolError(f"Principal {principal_id} not found")
     
-    # Log what adapter calls would be made
-    log_dry_run("AdServerAdapter.create_campaign", {
-        "adapter": SELECTED_ADAPTER.upper(),
-        "principal": principal_id,
-        "adapter_principal_id": adapter_principal_id,
-        "products": req.product_ids,
-        "budget": req.total_budget,
-        "flight_dates": f"{req.flight_start_date} to {req.flight_end_date}",
-        "targeting": req.targeting_overlay
-    })
+    # Get the appropriate adapter
+    adapter = get_adapter(principal, dry_run=DRY_RUN_MODE)
     
+    # Get products for the media buy
+    catalog = get_product_catalog()
+    products_in_buy = [p for p in catalog if p.product_id in req.product_ids]
+    
+    # Convert products to MediaPackages (simplified for now)
+    packages = []
+    for product in products_in_buy:
+        # Use the first format for now
+        format_info = product.formats[0] if product.formats else None
+        packages.append(MediaPackage(
+            package_id=product.product_id,
+            name=product.name,
+            delivery_type=product.delivery_type,
+            cpm=product.cpm if product.cpm else 10.0,  # Default CPM
+            impressions=int(req.total_budget / (product.cpm if product.cpm else 10.0) * 1000),
+            format_ids=[format_info.format_id] if format_info else []
+        ))
+    
+    # Create the media buy using the adapter
+    start_time = datetime.combine(req.flight_start_date, datetime.min.time())
+    end_time = datetime.combine(req.flight_end_date, datetime.max.time())
+    response = adapter.create_media_buy(req, packages, start_time, end_time)
+    
+    # Store the media buy
+    media_buys[response.media_buy_id] = (req, principal_id)
+    
+    # Handle creatives if provided
     if req.creatives:
-        log_dry_run("CreativeEngine.submit_creatives", {
-            "engine": "MockCreativeEngine",
-            "creative_count": len(req.creatives),
-            "creative_ids": [c.creative_id for c in req.creatives]
-        })
-        statuses = creative_engine.process_creatives(req.creatives)
-        for status in statuses: creative_statuses[status.creative_id] = status
+        # Convert Creative to asset format expected by adapter
+        assets = []
+        for creative in req.creatives:
+            assets.append({
+                'id': creative.creative_id,
+                'name': f"Creative {creative.creative_id}",
+                'format': 'image',  # Simplified - would need to determine from format_id
+                'media_url': creative.content_uri,
+                'click_url': 'https://example.com',  # Placeholder
+                'package_assignments': req.product_ids
+            })
+        statuses = adapter.add_creative_assets(response.media_buy_id, assets, datetime.now())
+        for status in statuses:
+            creative_statuses[status.creative_id] = CreativeStatus(
+                creative_id=status.creative_id,
+                status="approved" if status.status == "approved" else "pending_review",
+                detail="Creative submitted to ad server"
+            )
     
-    return CreateMediaBuyResponse(media_buy_id=media_buy_id, status="created", detail="Media buy created.")
+    return response
 
 @mcp.tool
 def submit_creatives(req: SubmitCreativesRequest, context: Context) -> SubmitCreativesResponse:
     _verify_principal(req.media_buy_id, context)
     
-    log_dry_run("CreativeEngine.process_creatives", {
-        "media_buy_id": req.media_buy_id,
-        "creatives": [{"id": c.creative_id, "format": c.format_id} for c in req.creatives]
-    })
-    
+    # Process creatives through the creative engine
     statuses = creative_engine.process_creatives(req.creatives)
     for status in statuses: creative_statuses[status.creative_id] = status
     return SubmitCreativesResponse(statuses=statuses)
@@ -190,23 +243,63 @@ def update_media_buy(req: UpdateMediaBuyRequest, context: Context):
 def get_media_buy_delivery(req: GetMediaBuyDeliveryRequest, context: Context) -> GetMediaBuyDeliveryResponse:
     _verify_principal(req.media_buy_id, context)
     buy_request, principal_id = media_buys[req.media_buy_id]
-    catalog = get_product_catalog()
-    products_in_buy = [p for p in catalog if p.product_id in buy_request.product_ids]
     
-    # Get adapter-specific principal ID for logging
-    adapter_principal_id = get_adapter_principal_id(principal_id, SELECTED_ADAPTER)
+    # Get the Principal object
+    principal = get_principal_object(principal_id)
+    if not principal:
+        raise ToolError(f"Principal {principal_id} not found")
     
-    log_dry_run("AdServerAdapter.get_delivery_report", {
-        "adapter": SELECTED_ADAPTER.upper(),
-        "adapter_principal_id": adapter_principal_id,
-        "media_buy_id": req.media_buy_id,
-        "reporting_date": str(req.today),
-        "products": buy_request.product_ids
-    })
+    # Get the appropriate adapter
+    adapter = get_adapter(principal, dry_run=DRY_RUN_MODE)
     
-    ad_server = MockAdServer(buy_request, products_in_buy)
-    delivery = ad_server.get_delivery_status(req.today)
-    return GetMediaBuyDeliveryResponse(media_buy_id=req.media_buy_id, **delivery)
+    # Create a ReportingPeriod for the adapter
+    reporting_period = ReportingPeriod(
+        start=datetime.combine(req.today - timedelta(days=1), datetime.min.time()),
+        end=datetime.combine(req.today, datetime.min.time()),
+        start_date=req.today - timedelta(days=1),
+        end_date=req.today
+    )
+    
+    # Get delivery data from the adapter
+    # Use the requested date for simulation, not the current time
+    simulation_datetime = datetime.combine(req.today, datetime.min.time())
+    delivery_response = adapter.get_media_buy_delivery(req.media_buy_id, reporting_period, simulation_datetime)
+    
+    # Convert adapter response to expected format
+    # Calculate totals from the adapter response
+    total_spend = delivery_response.totals.spend if hasattr(delivery_response, 'totals') else 0
+    total_impressions = delivery_response.totals.impressions if hasattr(delivery_response, 'totals') else 0
+    
+    # Calculate days elapsed
+    days_elapsed = (req.today - buy_request.flight_start_date).days
+    total_days = (buy_request.flight_end_date - buy_request.flight_start_date).days
+    
+    # Determine pacing
+    expected_spend = (buy_request.total_budget / total_days) * days_elapsed if total_days > 0 else 0
+    if total_spend > expected_spend * 1.1:
+        pacing = "ahead"
+    elif total_spend < expected_spend * 0.9:
+        pacing = "behind"
+    else:
+        pacing = "on_track"
+    
+    # Determine status
+    if req.today < buy_request.flight_start_date:
+        status = "pending_start"
+    elif req.today > buy_request.flight_end_date:
+        status = "completed"
+    else:
+        status = "delivering"
+    
+    return GetMediaBuyDeliveryResponse(
+        media_buy_id=req.media_buy_id,
+        status=status,
+        spend=total_spend,
+        impressions=total_impressions,
+        pacing=pacing,
+        days_elapsed=days_elapsed,
+        total_days=total_days
+    )
 
 @mcp.tool
 def get_principal_summary(context: Context) -> GetPrincipalSummaryResponse:
@@ -225,11 +318,29 @@ def get_principal_summary(context: Context) -> GetPrincipalSummaryResponse:
 @mcp.tool
 def update_performance_index(req: UpdatePerformanceIndexRequest, context: Context) -> UpdatePerformanceIndexResponse:
     _verify_principal(req.media_buy_id, context)
+    buy_request, principal_id = media_buys[req.media_buy_id]
     
-    # In a real implementation, this would send the performance data to the ad server
-    # For simulation, we'll log it and acknowledge receipt
-    buy_request, _ = media_buys[req.media_buy_id]
+    # Get the Principal object
+    principal = get_principal_object(principal_id)
+    if not principal:
+        raise ToolError(f"Principal {principal_id} not found")
     
+    # Get the appropriate adapter
+    adapter = get_adapter(principal, dry_run=DRY_RUN_MODE)
+    
+    # Convert ProductPerformance to PackagePerformance for the adapter
+    package_performance = [
+        PackagePerformance(
+            package_id=perf.product_id,
+            performance_index=perf.performance_index
+        )
+        for perf in req.performance_data
+    ]
+    
+    # Call the adapter's update method
+    success = adapter.update_media_buy_performance_index(req.media_buy_id, package_performance)
+    
+    # Log the performance update
     console.print(f"[bold green]Performance Index Update for {req.media_buy_id}:[/bold green]")
     for perf in req.performance_data:
         status_emoji = "📈" if perf.performance_index > 1.0 else "📉" if perf.performance_index < 1.0 else "➡️"
@@ -240,15 +351,11 @@ def update_performance_index(req: UpdatePerformanceIndexRequest, context: Contex
         console.print("  [yellow]⚠️  Low performance detected - optimization recommended[/yellow]")
     
     return UpdatePerformanceIndexResponse(
-        status="success", 
+        status="success" if success else "failed", 
         detail=f"Performance index updated for {len(req.performance_data)} products"
     )
 
-@mcp.tool  
-def get_dry_run_logs(context: Context) -> Dict[str, List[str]]:
-    """Retrieve dry run logs showing what adapter calls would have been made."""
-    _get_principal_id_from_context(context)  # Authenticate
-    return {"dry_run_logs": dry_run_logs}
+# Dry run logs are now handled by the adapters themselves
 
 def get_product_catalog() -> List[Product]:
     global product_catalog
@@ -274,5 +381,4 @@ def get_product_catalog() -> List[Product]:
 if __name__ == "__main__":
     init_db()
     get_product_catalog()
-    # Run the FastMCP server as HTTP server
-    mcp.run(transport="http", host="127.0.0.1", port=8000)
+    # Server is now run via run_server.py script

@@ -58,8 +58,8 @@ class FullLifecycleSimulation:
             await self._phase_6_optimization()
             await self._phase_7_completion()
             
-            # Show dry run logs if available
-            await self._show_dry_run_logs()
+            # Dry run logs are now shown by adapters during execution
+            # await self._show_dry_run_logs()
     
     async def _call_tool(self, tool_name: str, params: dict = {}) -> Dict:
         """Call a tool and return structured content."""
@@ -122,7 +122,8 @@ class FullLifecycleSimulation:
             "targeting_overlay": {
                 "geography": ["USA-CA", "USA-NY"],
                 "content_categories_exclude": ["controversial", "politics"]
-            }
+            },
+            "po_number": f"PO-{self.principal_id.upper()}-{self.flight_start.year}-{self.flight_start.month:02d}"
         }
         
         console.print("\n[yellow]Creating media buy...[/yellow]")
@@ -138,6 +139,8 @@ class FullLifecycleSimulation:
             console.print(f"\n[green]✓ Media buy created: {self.media_buy_id}[/green]")
         else:
             console.print("[red]✗ Failed to create media buy[/red]")
+            console.print(f"[red]Response: {buy_response}[/red]")
+            raise Exception("Media buy creation failed - cannot continue simulation")
     
     async def _phase_3_creatives(self):
         """Phase 3: Submit and monitor creative approval."""
