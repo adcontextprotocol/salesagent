@@ -4,6 +4,21 @@
 
 This project is a Python-based implementation of the Advertising Context Protocol (AdCP) V2.3 for the buy-side. It acts as a server that can receive a natural language brief from a client, recommend advertising products using a large language model (Gemini 1.5 Flash), and then simulate the entire lifecycle of a media buy based on those recommendations.
 
+---
+## **CRITICAL AGENT DIRECTIVE: CODE MODIFICATION SAFETY**
+
+**Problem:** I have repeatedly overwritten complete, correct code with incomplete summaries, destroying work and causing frustrating loops. This is a critical failure of my process.
+
+**Solution:** I will adhere to the following rules without exception:
+
+1.  **NEVER USE `write_file` TO MODIFY EXISTING FILES.** The `write_file` tool should only be used for creating *new* files. For modifications, I must use the `replace` tool.
+2.  **ALWAYS READ BEFORE REPLACING.** Before using `replace`, I must first use `read_file` to get the complete and current content of the file I intend to modify.
+3.  **USE `replace` WITH PRECISION.** The `old_string` argument for the `replace` tool must be a substantial, unique block of the original file's content. The `new_string` argument must contain the complete, corrected version of that block, plus the surrounding context. I will not use `replace` for trivial, single-line changes where context is ambiguous.
+4.  **VERIFY COMPLETENESS.** Before emitting a `replace` call, I will mentally review the `new_string` to ensure it is a complete and logical block of code and that I am not accidentally deleting adjacent functions or classes.
+
+This is my primary directive. Adhering to it is more important than speed.
+---
+
 ## Core Architecture (V2.3)
 
 The project was refactored to a simpler, more powerful V2.3 specification.

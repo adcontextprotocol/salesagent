@@ -1,0 +1,132 @@
+
+
+╭─ FastMCP 2.0 ──────────────────────────────────────────────────────────────╮
+│                                                                            │
+│        _ __ ___ ______           __  __  _____________    ____    ____     │
+│       _ __ ___ / ____/___ ______/ /_/  |/  / ____/ __ \  |___ \  / __ \    │
+│      _ __ ___ / /_  / __ `/ ___/ __/ /|_/ / /   / /_/ /  ___/ / / / / /    │
+│     _ __ ___ / __/ / /_/ (__  ) /_/ /  / / /___/ ____/  /  __/_/ /_/ /     │
+│    _ __ ___ /_/    \__,_/____/\__/_/  /_/\____/_/      /_____(_)____/      │
+│                                                                            │
+│                                                                            │
+│                                                                            │
+│    🖥️  Server name:     AdCPBuySideV2_3_CustomAuth_Final                    │
+│    📦 Transport:       Streamable-HTTP                                     │
+│    🔗 Server URL:      http://127.0.0.1:8000/mcp/                          │
+│                                                                            │
+│    📚 Docs:            https://gofastmcp.com                               │
+│    🚀 Deploy:          https://fastmcp.cloud                               │
+│                                                                            │
+│    🏎️  FastMCP version: 2.10.6                                              │
+│    🤝 MCP version:     1.12.2                                              │
+│                                                                            │
+╰────────────────────────────────────────────────────────────────────────────╯
+
+
+[07/27/25 06:58:56] INFO     Starting MCP server                  server.py:1448
+                             'AdCPBuySideV2_3_CustomAuth_Final'                 
+                             with transport 'http' on                           
+                             http://127.0.0.1:8000/mcp/                         
+INFO:     Started server process [44545]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://127.0.0.1:8000 (Press CTRL+C to quit)
+Database initialized with principals and access tokens.
+Database initialized with principals and access tokens.
+INFO:     127.0.0.1:63056 - "POST /mcp/ HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63057 - "POST /mcp/ HTTP/1.1" 202 Accepted
+INFO:     127.0.0.1:63058 - "GET /mcp/ HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63059 - "POST /mcp/ HTTP/1.1" 200 OK
+Authenticated principal 'purina'
+INFO:     127.0.0.1:63060 - "POST /mcp/ HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63061 - "DELETE /mcp/ HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63103 - "POST /mcp/ HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63104 - "POST /mcp/ HTTP/1.1" 202 Accepted
+INFO:     127.0.0.1:63105 - "GET /mcp/ HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63106 - "POST /mcp/ HTTP/1.1" 200 OK
+Authenticated principal 'purina'
+INFO:     127.0.0.1:63107 - "POST /mcp/ HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63108 - "POST /mcp/ HTTP/1.1" 200 OK
+Authenticated principal 'purina'
+INFO:     127.0.0.1:63109 - "POST /mcp/ HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63111 - "GET /mcp/ HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63110 - "POST /mcp/ HTTP/1.1" 202 Accepted
+INFO:     127.0.0.1:63112 - "POST /mcp/ HTTP/1.1" 200 OK
+Authenticated principal 'acme_corp'
+[07/27/25 06:59:19] ERROR    Error calling tool              tool_manager.py:193
+                             'get_media_buy_delivery'                           
+                             ╭─ Traceback (most recent cal─╮                    
+                             │ /Users/brianokelley/Documen │                    
+                             │ ts/src/adcp-buy-server/.ven │                    
+                             │ v/lib/python3.12/site-packa │                    
+                             │ ges/fastmcp/tools/tool_mana │                    
+                             │ ger.py:184 in call_tool     │                    
+                             │                             │                    
+                             │   181 │   │   │   │   raise │                    
+                             │   182 │   │   │             │                    
+                             │   183 │   │   │   try:      │                    
+                             │ ❱ 184 │   │   │   │   retur │                    
+                             │   185 │   │   │             │                    
+                             │   186 │   │   │   # raise T │                    
+                             │   187 │   │   │   except To │                    
+                             │                             │                    
+                             │ /Users/brianokelley/Documen │                    
+                             │ ts/src/adcp-buy-server/.ven │                    
+                             │ v/lib/python3.12/site-packa │                    
+                             │ ges/fastmcp/tools/tool.py:2 │                    
+                             │ 75 in run                   │                    
+                             │                             │                    
+                             │   272 │   │   │   arguments │                    
+                             │   273 │   │                 │                    
+                             │   274 │   │   type_adapter  │                    
+                             │ ❱ 275 │   │   result = type │                    
+                             │   276 │   │                 │                    
+                             │   277 │   │   if inspect.is │                    
+                             │   278 │   │   │   result =  │                    
+                             │                             │                    
+                             │ /Users/brianokelley/Documen │                    
+                             │ ts/src/adcp-buy-server/.ven │                    
+                             │ v/lib/python3.12/site-packa │                    
+                             │ ges/pydantic/type_adapter.p │                    
+                             │ y:421 in validate_python    │                    
+                             │                             │                    
+                             │   418 │   │   │   │   code= │                    
+                             │   419 │   │   │   )         │                    
+                             │   420 │   │                 │                    
+                             │ ❱ 421 │   │   return self.v │                    
+                             │   422 │   │   │   object,   │                    
+                             │   423 │   │   │   strict=st │                    
+                             │   424 │   │   │   from_attr │                    
+                             │                             │                    
+                             │ /Users/brianokelley/Documen │                    
+                             │ ts/src/adcp-buy-server/main │                    
+                             │ .py:112 in                  │                    
+                             │ get_media_buy_delivery      │                    
+                             │                             │                    
+                             │   109                       │                    
+                             │   110 @mcp.tool             │                    
+                             │   111 def get_media_buy_del │                    
+                             │       GetMediaBuyDeliveryRe │                    
+                             │ ❱ 112 │   _verify_principal │                    
+                             │   113 │   buy_request, _ =  │                    
+                             │   114 │   catalog = get_pro │                    
+                             │   115 │   products_in_buy = │                    
+                             │                             │                    
+                             │ /Users/brianokelley/Documen │                    
+                             │ ts/src/adcp-buy-server/main │                    
+                             │ .py:63 in _verify_principal │                    
+                             │                             │                    
+                             │    60 │   if media_buy_id n │                    
+                             │    61 │   │   raise ValueEr │                    
+                             │    62 │   if media_buys[med │                    
+                             │ ❱  63 │   │   raise Permiss │                    
+                             │       '{media_buy_id}'.")   │                    
+                             │    64                       │                    
+                             │    65 # --- MCP Tools (Full │                    
+                             │    66                       │                    
+                             ╰─────────────────────────────╯                    
+                             PermissionError: Principal                         
+                             'acme_corp' does not own media                     
+                             buy 'mb_865b2959'.                                 
+INFO:     127.0.0.1:63113 - "DELETE /mcp/ HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63114 - "DELETE /mcp/ HTTP/1.1" 200 OK

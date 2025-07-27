@@ -1,6 +1,7 @@
 # TODO
-- Separate audiences from placements, so a package could have custom audiences
-  or not
+- Make sure that every call to an ad server has a principal included. Every principal should have a "primary ad server object ID" that limits its ability to see and update what the ad server is doing. So for instance "Nike" as the principal might only be able to see the advertiser_id "23432" in GAM. The GAM adapter should add the parameter "advertiser_id = 23432" to every call it makes. There will be a different object name in different systems; we should see what the equivalent is in Kevel, Triton, Xandr Monetize, and others.
+
+
 
 ## Targeting Features Roadmap
 

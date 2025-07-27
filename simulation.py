@@ -1,75 +1,73 @@
 import asyncio
-from datetime import date, timedelta
-import uuid
-
+from datetime import date
 from fastmcp.client import Client
+from fastmcp.client.transports import StreamableHttpTransport
 from rich.console import Console
-from rich.panel import Panel
-from rich.pretty import Pretty
 from rich.rule import Rule
+from typing import Dict
 
 from schemas import *
 
 console = Console()
+PURINA_TOKEN = "purina_secret_token_abc123"
+ACME_TOKEN = "acme_secret_token_xyz789"
 
-class FinalSim:
-    """A simulation for the final V2.3 protocol with advanced pricing and pacing."""
+class CustomAuthSimulation:
+    """A simulation demonstrating the custom header authentication model."""
 
-    def __init__(self, server_script: str):
-        self.client = Client(server_script)
-        self.today = date(2025, 7, 25)
+    def __init__(self, server_url: str, token: str, principal_id: str):
+        # Add the custom auth header to the transport
+        headers = {"x-adcp-auth": token}
+        transport = StreamableHttpTransport(url=f"{server_url}/mcp/", headers=headers)
+        self.client = Client(transport=transport)
+        self.principal_id = principal_id
         self.media_buy_id: str = ""
-        self.products: List[Product] = []
-        self.buy_request: CreateMediaBuyRequest = None
 
     async def run(self):
-        console.print(Rule("[bold magenta]AdCP V2.3 Final Simulation[/bold magenta]", style="magenta"))
+        console.print(Rule(f"[bold magenta]AdCP V2.3 Custom Auth Simulation (Principal: {self.principal_id})[/bold magenta]", style="magenta"))
         async with self.client:
-            await self._phase_1_discover_and_buy()
+            await self._phase_1_buy()
             if not self.media_buy_id: return
-            await self._phase_2_reporting()
+            await self._phase_2_verify_access()
 
     async def _step(self, title: str, tool_name: str, params: dict = {}) -> Dict:
-        console.print(f"\n[bold yellow]>> {title}[/bold yellow]")
-        console.print(f"--> Calling tool: [bold]{tool_name}[/bold]")
-        result = await self.client.call_tool(tool_name, params)
-        content = result.structured_content if result else {}
-        console.print(Panel(Pretty(content), expand=False, border_style="green"))
-        return content
+        console.print(f"\n[bold cyan]{title}[/bold cyan]")
+        try:
+            result = await self.client.call_tool(tool_name, params)
+            console.print(f"[green]✓ Success[/green]: {result.structured_content}")
+            return result.structured_content if hasattr(result, 'structured_content') else {}
+        except Exception as e:
+            console.print(f"[red]✗ Error[/red]: {e}")
+            return {}
 
-    async def _phase_1_discover_and_buy(self):
-        console.print(Rule("Phase 1: Discovery and Purchase", style="cyan"))
-        list_req = ListProductsRequest(brief="Brief for a mix of guaranteed and non-guaranteed products.")
-        list_res = await self._step("Discover Products", "list_products", {"req": list_req.model_dump()})
-        self.products = [Product(**p) for p in list_res.get("products", [])]
-
-        self.buy_request = CreateMediaBuyRequest(
-            product_ids=[p.product_id for p in self.products],
-            flight_start_date=self.today,
-            flight_end_date=self.today + timedelta(days=30),
-            total_budget=250000.00,
-            targeting_overlay=Targeting(geography=["USA-NY"]),
-            pacing="daily_budget",
-            daily_budget=8000.00
+    async def _phase_1_buy(self):
+        buy_req = CreateMediaBuyRequest(
+            product_ids=["prod_video_guaranteed_sports"],
+            flight_start_date=date(2025, 8, 1),
+            flight_end_date=date(2025, 8, 15),
+            total_budget=50000.00,
+            targeting_overlay=Targeting(geography=["USA-CA"])
         )
-        create_res = await self._step("Create Media Buy with Daily Budget", "create_media_buy", {"req": self.buy_request.model_dump(mode='json')})
+        create_res = await self._step("Create Media Buy", "create_media_buy", {"req": buy_req.model_dump(mode='json')})
         self.media_buy_id = create_res.get("media_buy_id")
 
-    async def _phase_2_reporting(self):
-        console.print(Rule("Phase 2: Reporting Flight", style="cyan"))
-        flight_duration = (self.buy_request.flight_end_date - self.buy_request.flight_start_date).days
-        for week in range(0, (flight_duration // 7) + 2):
-            sim_date = self.buy_request.flight_start_date + timedelta(weeks=week)
-            if sim_date > self.buy_request.flight_end_date + timedelta(days=1): break
-            
-            console.print(f"\n--- Reporting for Week {week+1} (Simulated Date: {sim_date}) ---")
-            await self._step(
-                f"Get Delivery Data",
-                "get_media_buy_delivery",
-                {"media_buy_id": self.media_buy_id, "today": sim_date.isoformat()}
-            )
-            await asyncio.sleep(0.1)
+    async def _phase_2_verify_access(self):
+        console.print(Rule("Phase 2: Verify Access Controls", style="cyan"))
+        
+        console.print("\n[yellow]Attempting access with CORRECT token... (should succeed)[/yellow]")
+        delivery_req = GetMediaBuyDeliveryRequest(media_buy_id=self.media_buy_id, today=date(2025, 8, 5))
+        await self._step("Get Delivery (Correct Token)", "get_media_buy_delivery", {"req": delivery_req.model_dump(mode='json')})
+
+        console.print("\n[bold red]Attempting access with INCORRECT token... (should fail)[/bold red]")
+        acme_headers = {"x-adcp-auth": ACME_TOKEN}
+        acme_transport = StreamableHttpTransport(url="http://127.0.0.1:8000/mcp/", headers=acme_headers)
+        acme_client = Client(transport=acme_transport)
+        async with acme_client:
+            try:
+                await acme_client.call_tool("get_media_buy_delivery", {"req": delivery_req.model_dump(mode='json')})
+            except Exception as e:
+                console.print(f"[bold green] \u2713 Successfully failed as expected.[/bold green]")
 
 if __name__ == "__main__":
-    sim = FinalSim(server_script="main.py")
+    sim = CustomAuthSimulation(server_url="http://127.0.0.1:8000", token=PURINA_TOKEN, principal_id="purina")
     asyncio.run(sim.run())
