@@ -1,0 +1,44 @@
+#!/usr/bin/env python3
+"""Run the AdCP Sales Agent with HTTP transport."""
+
+import os
+import sys
+import subprocess
+
+def main():
+    """Run the server with configurable port."""
+    port = os.environ.get('ADCP_SALES_PORT', '8000')
+    host = os.environ.get('ADCP_SALES_HOST', '0.0.0.0')
+    
+    # Check if we're in production (Fly.io sets FLY_APP_NAME)
+    is_production = bool(os.environ.get('FLY_APP_NAME'))
+    
+    if is_production:
+        # In production, bind to all interfaces
+        host = '0.0.0.0'
+    
+    print(f"Starting AdCP Sales Agent on {host}:{port}")
+    print(f"Server endpoint: http://{host}:{port}/mcp/")
+    
+    # Run the server using uv
+    cmd = [
+        "uv", "run", "python", "-c",
+        f"""
+import sys
+sys.path.insert(0, '.')
+from main import mcp
+mcp.run(transport='http', host='{host}', port={port})
+"""
+    ]
+    
+    try:
+        subprocess.run(cmd, check=True)
+    except KeyboardInterrupt:
+        print("\nServer stopped.")
+        sys.exit(0)
+    except subprocess.CalledProcessError as e:
+        print(f"Error running server: {e}")
+        sys.exit(1)
+
+if __name__ == "__main__":
+    main()

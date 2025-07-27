@@ -8,8 +8,6 @@ from typing import Dict, List, Optional, Tuple
 from fastmcp import FastMCP
 from fastmcp.exceptions import ToolError
 from fastmcp.server.context import Context
-from fastmcp.server.dependencies import get_http_request
-from starlette.requests import Request
 from rich.console import Console
 
 from adapters.mock_creative_engine import MockCreativeEngine
@@ -17,6 +15,7 @@ from adapters.mock_ad_server import MockAdServer as MockAdServerAdapter
 from adapters.google_ad_manager import GoogleAdManager
 from database import init_db
 from schemas import *
+from config_loader import load_config
 
 # --- Authentication ---
 DB_FILE = "adcp.db"
@@ -29,6 +28,28 @@ def get_principal_from_token(token: str) -> Optional[str]:
     result = cursor.fetchone()
     conn.close()
     return result[0] if result else None
+
+def get_principal_from_context(context: Optional[Context]) -> Optional[str]:
+    """Extract principal ID from the FastMCP context using x-adcp-auth header."""
+    if not context:
+        return None
+    
+    try:
+        # Get the HTTP request from context
+        request = context.get_http_request()
+        if not request:
+            return None
+        
+        # Get the x-adcp-auth header
+        auth_token = request.headers.get('x-adcp-auth')
+        if not auth_token:
+            return None
+        
+        # Validate token and get principal
+        return get_principal_from_token(auth_token)
+    except Exception as e:
+        print(f"Auth error: {e}")
+        return None
 
 def get_principal_adapter_mapping(principal_id: str) -> Dict[str, Any]:
     """Get the platform mappings for a principal."""
@@ -74,13 +95,18 @@ def get_adapter_principal_id(principal_id: str, adapter: str) -> Optional[str]:
 
 def get_adapter(principal: Principal, dry_run: bool = False):
     """Get the appropriate adapter instance for the selected adapter type."""
-    adapter_config = {}  # Could load from config file if needed
+    # Get adapter config from global config
+    adapter_config = config.get('ad_server', {})
     
     if SELECTED_ADAPTER == "mock":
         return MockAdServerAdapter(adapter_config, principal, dry_run)
     elif SELECTED_ADAPTER == "gam":
-        # Provide mock config for dry-run mode
-        if dry_run:
+        # Get GAM-specific config
+        gam_config = config.get('gam', {})
+        adapter_config.update(gam_config)
+        
+        # Provide mock config for dry-run mode if needed
+        if dry_run and not adapter_config.get('network_code'):
             adapter_config = {
                 'network_code': '123456789',
                 'service_account_key_file': '/path/to/service-account.json',
@@ -88,13 +114,17 @@ def get_adapter(principal: Principal, dry_run: bool = False):
                 'trafficker_id': '555555555'
             }
         return GoogleAdManager(adapter_config, principal, dry_run)
+    elif SELECTED_ADAPTER in ["triton", "triton_digital"]:
+        # Triton uses the base ad_server config
+        return MockAdServerAdapter(adapter_config, principal, dry_run)  # Replace with TritonAdapter when ready
     else:
         # Default to mock for unsupported adapters
         return MockAdServerAdapter(adapter_config, principal, dry_run)
 
 # --- Initialization ---
 init_db()
-mcp = FastMCP(name="AdCPBuyServer")
+config = load_config()
+mcp = FastMCP(name="AdCPSalesAgent")
 console = Console()
 creative_engine = MockCreativeEngine({})
 
@@ -105,11 +135,12 @@ creative_statuses: Dict[str, CreativeStatus] = {}
 product_catalog: List[Product] = []
 
 # --- Adapter Configuration ---
-SELECTED_ADAPTER = os.getenv("ADCP_ADAPTER", "mock").lower()
-AVAILABLE_ADAPTERS = ["mock", "gam", "kevel", "triton"]
+# Get adapter from config, fallback to mock
+SELECTED_ADAPTER = config.get('ad_server', {}).get('adapter', 'mock').lower()
+AVAILABLE_ADAPTERS = ["mock", "gam", "kevel", "triton", "triton_digital"]
 
 # --- Dry Run Mode ---
-DRY_RUN_MODE = os.getenv("ADCP_DRY_RUN", "false").lower() == "true"
+DRY_RUN_MODE = config.get('dry_run', False)
 if DRY_RUN_MODE:
     console.print("[bold yellow]🏃 DRY RUN MODE ENABLED - Adapter calls will be logged[/bold yellow]")
 
@@ -122,14 +153,9 @@ console.print(f"[bold cyan]🔌 Using adapter: {SELECTED_ADAPTER.upper()}[/bold 
 # --- Security Helper ---
 def _get_principal_id_from_context(context: Context) -> str:
     """Extracts the token from the header and returns a principal_id."""
-    http_request: Request = get_http_request()
-    token = http_request.headers.get("x-adcp-auth")
-    if not token:
-        raise ToolError("Missing x-adcp-auth header for authentication.")
-    
-    principal_id = get_principal_from_token(token)
+    principal_id = get_principal_from_context(context)
     if not principal_id:
-        raise PermissionError("Invalid token in x-adcp-auth header.")
+        raise ToolError("Missing or invalid x-adcp-auth header for authentication.")
     
     console.print(f"[bold green]Authenticated principal '{principal_id}'[/bold green]")
     return principal_id

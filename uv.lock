@@ -7,7 +7,7 @@ resolution-markers = [
 ]
 
 [[package]]
-name = "adcp-buy-server"
+name = "adcp-sales-agent"
 version = "0.1.0"
 source = { virtual = "." }
 dependencies = [

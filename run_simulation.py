@@ -67,40 +67,22 @@ class SimulationRunner:
             # Start the server
             console.print(f"🚀 Starting server on port {self.port}...")
             
-            # Modify main.py temporarily to use our port
-            main_py = Path("main.py")
-            original_content = main_py.read_text()
-            modified_content = original_content.replace(
-                'mcp.run(transport="http", host="127.0.0.1", port=8000)',
-                f'mcp.run(transport="http", host="127.0.0.1", port={self.port})'
-            )
-            main_py.write_text(modified_content)
-            
             # Set environment for dry run and adapter if needed
             env = os.environ.copy()
+            env["ADCP_SALES_PORT"] = str(self.port)
+            env["ADCP_SALES_HOST"] = "127.0.0.1"
             if self.dry_run:
                 env["ADCP_DRY_RUN"] = "true"
             env["ADCP_ADAPTER"] = self.adapter
             
-            # Start server process
-            if self.dry_run:
-                # In dry run mode, show output
-                self.server_process = subprocess.Popen(
-                    [sys.executable, "main.py"],
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.PIPE,
-                    text=True,
-                    env=env
-                )
-            else:
-                # Normal mode, hide output
-                self.server_process = subprocess.Popen(
-                    [sys.executable, "main.py"],
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.PIPE,
-                    text=True,
-                    env=env
-                )
+            # Start server process using run_server.py
+            self.server_process = subprocess.Popen(
+                [sys.executable, "run_server.py"],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                env=env
+            )
             
             # Wait for server to start
             max_attempts = 30
@@ -108,14 +90,10 @@ class SimulationRunner:
                 try:
                     with socket.create_connection(("127.0.0.1", self.port), timeout=1):
                         console.print(f"[green]✓ Server started successfully on port {self.port}[/green]")
-                        # Restore original main.py
-                        main_py.write_text(original_content)
                         return True
                 except (socket.error, ConnectionRefusedError):
                     await asyncio.sleep(0.5)
             
-            # Restore original main.py if server didn't start
-            main_py.write_text(original_content)
             console.print("[red]✗ Server failed to start[/red]")
             return False
             
