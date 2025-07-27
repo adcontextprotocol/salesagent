@@ -13,6 +13,8 @@ from rich.console import Console
 from adapters.mock_creative_engine import MockCreativeEngine
 from adapters.mock_ad_server import MockAdServer as MockAdServerAdapter
 from adapters.google_ad_manager import GoogleAdManager
+from adapters.kevel import Kevel
+from adapters.triton_digital import TritonDigital
 from database import init_db
 from schemas import *
 from config_loader import load_config
@@ -114,9 +116,10 @@ def get_adapter(principal: Principal, dry_run: bool = False):
                 'trafficker_id': '555555555'
             }
         return GoogleAdManager(adapter_config, principal, dry_run)
+    elif SELECTED_ADAPTER == "kevel":
+        return Kevel(adapter_config, principal, dry_run)
     elif SELECTED_ADAPTER in ["triton", "triton_digital"]:
-        # Triton uses the base ad_server config
-        return MockAdServerAdapter(adapter_config, principal, dry_run)  # Replace with TritonAdapter when ready
+        return TritonDigital(adapter_config, principal, dry_run)
     else:
         # Default to mock for unsupported adapters
         return MockAdServerAdapter(adapter_config, principal, dry_run)
@@ -257,13 +260,152 @@ def adapt_creative(req: AdaptCreativeRequest, context: Context) -> CreativeStatu
     return status
 
 @mcp.tool
-def update_media_buy(req: UpdateMediaBuyRequest, context: Context):
+def legacy_update_media_buy(req: LegacyUpdateMediaBuyRequest, context: Context):
+    """Legacy tool for backward compatibility."""
     _verify_principal(req.media_buy_id, context)
     buy_request, _ = media_buys[req.media_buy_id]
     if req.new_total_budget: buy_request.total_budget = req.new_total_budget
     if req.new_targeting_overlay: buy_request.targeting_overlay = req.new_targeting_overlay
     if req.creative_assignments: creative_assignments[req.media_buy_id] = req.creative_assignments
     return {"status": "success"}
+
+# Unified update tools
+@mcp.tool
+def update_media_buy(req: UpdateMediaBuyRequest, context: Context) -> UpdateMediaBuyResponse:
+    """Update a media buy with campaign-level and/or package-level changes."""
+    _verify_principal(req.media_buy_id, context)
+    _, principal_id = media_buys[req.media_buy_id]
+    
+    principal = get_principal_object(principal_id)
+    if not principal:
+        raise ToolError(f"Principal {principal_id} not found")
+    
+    adapter = get_adapter(principal, dry_run=DRY_RUN_MODE)
+    today = req.today or date.today()
+    
+    # Handle campaign-level updates
+    if req.active is not None:
+        action = "resume_media_buy" if req.active else "pause_media_buy"
+        result = adapter.update_media_buy(
+            media_buy_id=req.media_buy_id,
+            action=action,
+            package_id=None,
+            budget=None,
+            today=datetime.combine(today, datetime.min.time())
+        )
+        if result.status == "failed":
+            return result
+    
+    # Handle package-level updates
+    if req.packages:
+        for pkg_update in req.packages:
+            # Handle active/pause state
+            if pkg_update.active is not None:
+                action = "resume_package" if pkg_update.active else "pause_package"
+                result = adapter.update_media_buy(
+                    media_buy_id=req.media_buy_id,
+                    action=action,
+                    package_id=pkg_update.package_id,
+                    budget=None,
+                    today=datetime.combine(today, datetime.min.time())
+                )
+                if result.status == "failed":
+                    return result
+            
+            # Handle budget updates
+            if pkg_update.impressions is not None:
+                result = adapter.update_media_buy(
+                    media_buy_id=req.media_buy_id,
+                    action="update_package_impressions",
+                    package_id=pkg_update.package_id,
+                    budget=pkg_update.impressions,
+                    today=datetime.combine(today, datetime.min.time())
+                )
+                if result.status == "failed":
+                    return result
+            elif pkg_update.budget is not None:
+                result = adapter.update_media_buy(
+                    media_buy_id=req.media_buy_id,
+                    action="update_package_budget",
+                    package_id=pkg_update.package_id,
+                    budget=int(pkg_update.budget),
+                    today=datetime.combine(today, datetime.min.time())
+                )
+                if result.status == "failed":
+                    return result
+    
+    # Update stored metadata if needed
+    buy_request, _ = media_buys[req.media_buy_id]
+    if req.total_budget is not None:
+        buy_request.total_budget = req.total_budget
+    if req.targeting_overlay is not None:
+        buy_request.targeting_overlay = req.targeting_overlay
+    if req.creative_assignments:
+        creative_assignments[req.media_buy_id] = req.creative_assignments
+    
+    return UpdateMediaBuyResponse(
+        status="accepted",
+        implementation_date=datetime.combine(today, datetime.min.time()),
+        detail="Media buy updated successfully"
+    )
+
+@mcp.tool
+def update_package(req: UpdatePackageRequest, context: Context) -> UpdateMediaBuyResponse:
+    """Update one or more packages within a media buy."""
+    _verify_principal(req.media_buy_id, context)
+    _, principal_id = media_buys[req.media_buy_id]
+    
+    principal = get_principal_object(principal_id)
+    if not principal:
+        raise ToolError(f"Principal {principal_id} not found")
+    
+    adapter = get_adapter(principal, dry_run=DRY_RUN_MODE)
+    today = req.today or date.today()
+    
+    # Process each package update
+    for pkg_update in req.packages:
+        # Handle active/pause state
+        if pkg_update.active is not None:
+            action = "resume_package" if pkg_update.active else "pause_package"
+            result = adapter.update_media_buy(
+                media_buy_id=req.media_buy_id,
+                action=action,
+                package_id=pkg_update.package_id,
+                budget=None,
+                today=datetime.combine(today, datetime.min.time())
+            )
+            if result.status == "failed":
+                return result
+        
+        # Handle budget/impression updates
+        if pkg_update.impressions is not None:
+            result = adapter.update_media_buy(
+                media_buy_id=req.media_buy_id,
+                action="update_package_impressions",
+                package_id=pkg_update.package_id,
+                budget=pkg_update.impressions,
+                today=datetime.combine(today, datetime.min.time())
+            )
+            if result.status == "failed":
+                return result
+        elif pkg_update.budget is not None:
+            result = adapter.update_media_buy(
+                media_buy_id=req.media_buy_id,
+                action="update_package_budget",
+                package_id=pkg_update.package_id,
+                budget=int(pkg_update.budget),
+                today=datetime.combine(today, datetime.min.time())
+            )
+            if result.status == "failed":
+                return result
+        
+        # TODO: Handle other updates (daily caps, pacing, targeting) when adapters support them
+    
+    return UpdateMediaBuyResponse(
+        status="accepted",
+        implementation_date=datetime.combine(today, datetime.min.time()),
+        detail=f"Updated {len(req.packages)} package(s) successfully"
+    )
 
 @mcp.tool
 def get_media_buy_delivery(req: GetMediaBuyDeliveryRequest, context: Context) -> GetMediaBuyDeliveryResponse:

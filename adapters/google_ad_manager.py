@@ -11,6 +11,7 @@ from schemas import (
     CreateMediaBuyResponse, CreateMediaBuyRequest, MediaPackage, DeliveryTotals,
     PackageDelivery, Principal
 )
+from adapters.constants import UPDATE_ACTIONS, REQUIRED_UPDATE_ACTIONS
 
 class GoogleAdManager(AdServerAdapter):
     """
@@ -405,43 +406,136 @@ class GoogleAdManager(AdServerAdapter):
         return True
 
     def update_media_buy(self, media_buy_id: str, action: str, package_id: Optional[str], budget: Optional[int], today: datetime) -> UpdateMediaBuyResponse:
-        """Updates a LineItem in GAM."""
-        if action != "change_package_budget" or not package_id or budget is None:
-            raise ValueError(f"Action '{action}' is not supported or required parameters are missing.")
-
-        line_item_service = self.client.GetService('LineItemService')
+        """Updates an Order or LineItem in GAM using standardized actions."""
+        self.log(f"[bold]GoogleAdManager.update_media_buy[/bold] for {media_buy_id} with action {action}", dry_run_prefix=False)
         
-        # To map our package_id to a GAM LineItem, we'll need to find the LineItem by name.
-        # This assumes the package name is unique within the order.
-        # A more robust solution might store the mapping of package_id to line_item_id.
-        statement = (self.client.new_statement_builder()
-                     .where('orderId = :orderId AND name = :name')
-                     .with_bind_variable('orderId', int(media_buy_id))
-                     .with_bind_variable('name', package_id)) # Assuming package_id is the name for now
-
-        try:
-            response = line_item_service.getLineItemsByStatement(statement.to_statement())
-            line_items = response.get('results', [])
-
-            if not line_items:
-                raise ValueError(f"Could not find LineItem with name '{package_id}' in Order '{media_buy_id}'")
-
-            line_item_to_update = line_items[0]
+        if action not in REQUIRED_UPDATE_ACTIONS:
+            return UpdateMediaBuyResponse(
+                status="failed", 
+                reason=f"Action '{action}' not supported. Supported actions: {REQUIRED_UPDATE_ACTIONS}"
+            )
+        
+        if self.dry_run:
+            if action == "pause_media_buy":
+                self.log(f"Would pause Order {media_buy_id}")
+                self.log(f"Would call: order_service.performOrderAction(PauseOrders, {media_buy_id})")
+            elif action == "resume_media_buy":
+                self.log(f"Would resume Order {media_buy_id}")
+                self.log(f"Would call: order_service.performOrderAction(ResumeOrders, {media_buy_id})")
+            elif action == "pause_package" and package_id:
+                self.log(f"Would pause LineItem '{package_id}' in Order {media_buy_id}")
+                self.log(f"Would call: line_item_service.performLineItemAction(PauseLineItems, WHERE orderId={media_buy_id} AND name='{package_id}')")
+            elif action == "resume_package" and package_id:
+                self.log(f"Would resume LineItem '{package_id}' in Order {media_buy_id}")
+                self.log(f"Would call: line_item_service.performLineItemAction(ResumeLineItems, WHERE orderId={media_buy_id} AND name='{package_id}')")
+            elif action in ["update_package_budget", "update_package_impressions"] and package_id and budget is not None:
+                self.log(f"Would update budget for LineItem '{package_id}' to ${budget}")
+                if action == "update_package_impressions":
+                    self.log(f"Would directly set impression goal")
+                else:
+                    self.log(f"Would calculate new impression goal based on CPM")
+                self.log(f"Would call: line_item_service.updateLineItems([updated_line_item])")
             
-            # Calculate new impression goal based on the new budget
-            cpm = line_item_to_update['costPerUnit']['microAmount'] / 1000000
-            new_impression_goal = int((budget / cpm) * 1000) if cpm > 0 else 0
-            
-            line_item_to_update['primaryGoal']['units'] = new_impression_goal
-
-            updated_line_items = line_item_service.updateLineItems([line_item_to_update])
-
-            if not updated_line_items:
-                raise Exception("Failed to update LineItem in GAM.")
-
-            print(f"Successfully updated budget for LineItem {line_item_to_update['id']}")
-            return UpdateMediaBuyResponse(status="accepted", implementation_date=today + timedelta(days=1))
-
-        except Exception as e:
-            print(f"Error updating LineItem in GAM: {e}")
-            raise
+            return UpdateMediaBuyResponse(
+                status="accepted",
+                implementation_date=today + timedelta(days=1),
+                detail=f"Would {action} in Google Ad Manager"
+            )
+        else:
+            try:
+                if action in ["pause_media_buy", "resume_media_buy"]:
+                    order_service = self.client.GetService('OrderService')
+                    
+                    if action == "pause_media_buy":
+                        order_action = {'xsi_type': 'PauseOrders'}
+                    else:
+                        order_action = {'xsi_type': 'ResumeOrders'}
+                    
+                    statement = (self.client.new_statement_builder()
+                                .where('id = :orderId')
+                                .with_bind_variable('orderId', int(media_buy_id)))
+                    
+                    result = order_service.performOrderAction(order_action, statement.to_statement())
+                    
+                    if result and result['numChanges'] > 0:
+                        self.log(f"✓ Successfully performed {action} on Order {media_buy_id}")
+                    else:
+                        return UpdateMediaBuyResponse(
+                            status="failed",
+                            reason=f"No orders were updated"
+                        )
+                
+                elif action in ["pause_package", "resume_package"] and package_id:
+                    line_item_service = self.client.GetService('LineItemService')
+                    
+                    if action == "pause_package":
+                        line_item_action = {'xsi_type': 'PauseLineItems'}
+                    else:
+                        line_item_action = {'xsi_type': 'ResumeLineItems'}
+                    
+                    statement = (self.client.new_statement_builder()
+                                .where('orderId = :orderId AND name = :name')
+                                .with_bind_variable('orderId', int(media_buy_id))
+                                .with_bind_variable('name', package_id))
+                    
+                    result = line_item_service.performLineItemAction(line_item_action, statement.to_statement())
+                    
+                    if result and result['numChanges'] > 0:
+                        self.log(f"✓ Successfully performed {action} on LineItem '{package_id}'")
+                    else:
+                        return UpdateMediaBuyResponse(
+                            status="failed",
+                            reason=f"No line items were updated"
+                        )
+                
+                elif action in ["update_package_budget", "update_package_impressions"] and package_id and budget is not None:
+                    line_item_service = self.client.GetService('LineItemService')
+                    
+                    statement = (self.client.new_statement_builder()
+                                .where('orderId = :orderId AND name = :name')
+                                .with_bind_variable('orderId', int(media_buy_id))
+                                .with_bind_variable('name', package_id))
+                    
+                    response = line_item_service.getLineItemsByStatement(statement.to_statement())
+                    line_items = response.get('results', [])
+                    
+                    if not line_items:
+                        return UpdateMediaBuyResponse(
+                            status="failed",
+                            reason=f"Could not find LineItem with name '{package_id}' in Order '{media_buy_id}'"
+                        )
+                    
+                    line_item_to_update = line_items[0]
+                    
+                    if action == "update_package_budget":
+                        # Calculate new impression goal based on the new budget
+                        cpm = line_item_to_update['costPerUnit']['microAmount'] / 1000000
+                        new_impression_goal = int((budget / cpm) * 1000) if cpm > 0 else 0
+                    else:  # update_package_impressions
+                        # Direct impression update
+                        new_impression_goal = budget  # In this case, budget parameter contains impressions
+                    
+                    line_item_to_update['primaryGoal']['units'] = new_impression_goal
+                    
+                    updated_line_items = line_item_service.updateLineItems([line_item_to_update])
+                    
+                    if not updated_line_items:
+                        return UpdateMediaBuyResponse(
+                            status="failed",
+                            reason="Failed to update LineItem in GAM"
+                        )
+                    
+                    self.log(f"✓ Successfully updated budget for LineItem {line_item_to_update['id']}")
+                
+                return UpdateMediaBuyResponse(
+                    status="accepted",
+                    implementation_date=today + timedelta(days=1),
+                    detail=f"Successfully executed {action} in Google Ad Manager"
+                )
+                
+            except Exception as e:
+                self.log(f"[red]Error updating GAM Order/LineItem: {e}[/red]")
+                return UpdateMediaBuyResponse(
+                    status="failed",
+                    reason=str(e)
+                )

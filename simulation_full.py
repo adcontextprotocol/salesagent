@@ -81,9 +81,18 @@ class FullLifecycleSimulation:
         
         self._show_day(self.planning_date, "Beginning campaign planning")
         
-        # List available products
-        console.print("\n[yellow]Discovering available media products...[/yellow]")
-        products_response = await self._call_tool("list_products", {"req": {"brief": "Looking for video and audio inventory for pet food campaign"}})
+        # Explain the discovery process
+        console.print("\n[dim]💡 The discover_products tool uses natural language to find relevant inventory.[/dim]")
+        console.print("[dim]   This abstracts away platform-specific terminology and product codes.[/dim]\n")
+        
+        # Natural language discovery
+        brief = "Looking for video and audio inventory to reach pet owners during prime time and drive time"
+        console.print(f"[yellow]Campaign Brief:[/yellow] {brief}")
+        
+        console.print("\n[yellow]Calling list_products...[/yellow]")
+        products_response = await self._call_tool("list_products", {
+            "req": {"brief": brief}
+        })
         self.products = products_response.get("products", [])
         
         if self.products:
@@ -92,6 +101,7 @@ class FullLifecycleSimulation:
             table.add_column("Name", style="green")
             table.add_column("Type", style="yellow")
             table.add_column("Price", style="magenta")
+            table.add_column("Match Reason", style="dim")
             
             for product in self.products:
                 price = f"${product.get('cpm', 'Variable')} CPM" if product.get('is_fixed_price') else "Variable"
@@ -99,7 +109,8 @@ class FullLifecycleSimulation:
                     product.get('product_id', ''),
                     product.get('name', ''),
                     product.get('delivery_type', ''),
-                    price
+                    price,
+                    "AI-matched based on brief"
                 )
             
             console.print(table)
@@ -113,26 +124,66 @@ class FullLifecycleSimulation:
         
         self._show_day(self.buy_date, "Executing media buy")
         
-        # Create media buy
-        buy_request = {
-            "product_ids": ["prod_video_guaranteed_sports"],
-            "flight_start_date": self.flight_start.isoformat(),
-            "flight_end_date": self.flight_end.isoformat(),
-            "total_budget": 50000.00,
+        # Explain the buying process
+        console.print("\n[dim]💡 The create_media_buy tool converts product selections into platform-specific[/dim]")
+        console.print("[dim]   campaigns (Orders in GAM, Campaigns in Kevel/Triton).[/dim]\n")
+        
+        # First, get availability and pricing
+        console.print("[yellow]Step 1: Checking availability and pricing...[/yellow]")
+        avails_request = {
+            "product_ids": ["prod_video_guaranteed_sports", "prod_audio_streaming_targeted"],
+            "start_date": self.flight_start.isoformat(),
+            "end_date": self.flight_end.isoformat(),
+            "budget": 50000.00,
             "targeting_overlay": {
-                "geography": ["USA-CA", "USA-NY"],
+                "geography": ["US-CA", "US-NY"],
+                "audiences": ["pet_owners"],
                 "content_categories_exclude": ["controversial", "politics"]
-            },
-            "po_number": f"PO-{self.principal_id.upper()}-{self.flight_start.year}-{self.flight_start.month:02d}"
+            }
         }
         
-        console.print("\n[yellow]Creating media buy...[/yellow]")
-        console.print(f"  • Products: Sports Video - Guaranteed")
-        console.print(f"  • Budget: $50,000")
-        console.print(f"  • Flight: {self.flight_start} to {self.flight_end}")
-        console.print(f"  • Targeting: CA, NY (excluding controversial content)")
+        # Show the API call structure
+        console.print(Panel(
+            f"[cyan]get_avails Request:[/cyan]\n"
+            f"  products: video + audio\n"
+            f"  dates: {self.flight_start} to {self.flight_end}\n"
+            f"  budget: $50,000\n"
+            f"  targeting: CA/NY pet owners",
+            title="API Call",
+            border_style="dim"
+        ))
         
-        buy_response = await self._call_tool("create_media_buy", {"req": buy_request})
+        avails_response = await self._call_tool("get_avails", avails_request)
+        packages = avails_response.get("packages", [])
+        
+        if packages:
+            console.print(f"\n[green]✓ Found {len(packages)} available packages[/green]")
+            for pkg in packages:
+                console.print(f"  • {pkg.get('name')}: {pkg.get('impressions'):,} imps @ ${pkg.get('cpm')} CPM = ${pkg.get('total_cost'):,.2f}")
+        
+        # Now create the buy from selected packages
+        console.print("\n[yellow]Step 2: Creating media buy from selected packages...[/yellow]")
+        selected_packages = [pkg["package_id"] for pkg in packages[:2]]  # Select first 2
+        
+        buy_request = {
+            "packages": selected_packages,
+            "po_number": f"PO-{self.principal_id.upper()}-{self.flight_start.year}-{self.flight_start.month:02d}",
+            "total_budget": 50000.00,
+            "targeting_overlay": avails_request["targeting_overlay"],
+            "pacing": "even"
+        }
+        
+        console.print(Panel(
+            f"[cyan]create_media_buy Request:[/cyan]\n"
+            f"  packages: {len(selected_packages)} selected\n"
+            f"  po_number: {buy_request['po_number']}\n"
+            f"  pacing: even delivery\n"
+            f"  [dim]Note: Platform will create Order/Campaign[/dim]",
+            title="API Call",
+            border_style="dim"
+        ))
+        
+        buy_response = await self._call_tool("create_media_buy", buy_request)
         self.media_buy_id = buy_response.get("media_buy_id")
         
         if self.media_buy_id:
@@ -148,7 +199,13 @@ class FullLifecycleSimulation:
         
         self._show_day(self.creative_date, "Submitting creative assets")
         
-        # Submit creatives
+        # Explain creative submission
+        console.print("\n[dim]💡 The add_creative_assets tool handles platform-specific creative formats:[/dim]")
+        console.print("[dim]   - GAM: VAST XML for video, image URLs for display[/dim]")
+        console.print("[dim]   - Kevel: Template-based or direct URLs[/dim]")
+        console.print("[dim]   - Triton: Audio files only[/dim]\n")
+        
+        # Check current implementation - using legacy submit_creatives for now
         creatives_request = {
             "media_buy_id": self.media_buy_id,
             "creatives": [
@@ -164,6 +221,15 @@ class FullLifecycleSimulation:
                 }
             ]
         }
+        
+        console.print(Panel(
+            f"[cyan]submit_creatives Request:[/cyan]\n"
+            f"  Format: VAST XML for video\n"
+            f"  Count: 2 creatives (dog & cat variants)\n"
+            f"  [dim]Platform will validate and approve[/dim]",
+            title="API Call",
+            border_style="dim"
+        ))
         
         console.print("\n[yellow]Submitting 2 video creatives for approval...[/yellow]")
         submit_response = await self._call_tool("submit_creatives", {"req": creatives_request})
@@ -340,19 +406,38 @@ class FullLifecycleSimulation:
         if pacing == "under_delivery":
             console.print("\n[yellow]⚠️  Campaign under-delivering. Applying optimizations...[/yellow]")
             
-            # Update targeting to expand reach
+            # Explain the update semantics
+            console.print("\n[dim]💡 The update_media_buy tool uses PATCH semantics:[/dim]")
+            console.print("[dim]   - Only fields provided are updated[/dim]")
+            console.print("[dim]   - Unlisted packages remain unchanged[/dim]\n")
+            
+            # Use the new update_media_buy API to expand reach
             update_request = {
                 "media_buy_id": self.media_buy_id,
-                "new_targeting_overlay": {
-                    "geography": ["USA-CA", "USA-NY", "USA-TX", "USA-FL"],  # Add more states
+                "targeting_overlay": {
+                    "geography": ["US-CA", "US-NY", "US-TX", "US-FL"],  # Add more states
                     "content_categories_exclude": ["controversial"]  # Reduce exclusions
-                }
+                },
+                "packages": [
+                    {
+                        "package_id": "pkg_video_sports",
+                        "budget": 30000,  # Increase budget
+                        "pacing": "asap"  # Accelerate delivery
+                    }
+                ]
             }
             
-            console.print("  • Expanding geographic targeting: +TX, +FL")
-            console.print("  • Reducing content exclusions")
+            console.print(Panel(
+                f"[cyan]update_media_buy Request:[/cyan]\n"
+                f"  Campaign: Expand geo to TX, FL\n"
+                f"  Package: Increase budget to $30k\n"
+                f"  Pacing: Switch to ASAP\n"
+                f"  [dim]Other packages unchanged[/dim]",
+                title="API Call",
+                border_style="dim"
+            ))
             
-            update_response = await self._call_tool("update_media_buy", {"req": update_request})
+            update_response = await self._call_tool("update_media_buy", update_request)
             
             if update_response.get("status") == "success":
                 console.print("\n[green]✓ Optimizations applied successfully[/green]")

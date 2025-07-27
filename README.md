@@ -158,6 +158,17 @@ fly deploy --app adcp-sales-agent
 
 For detailed deployment instructions, see [FLY_DEPLOYMENT.md](FLY_DEPLOYMENT.md).
 
+## Documentation
+
+### Protocol Specification
+- **[AdCP:Buy Specification](adcp-spec/)**: Complete protocol specification, API reference, and design decisions
+
+### Implementation Guides  
+- **[Platform Mapping Guide](docs/platform-mapping-guide.md)**: How AdCP concepts map to ad servers
+- **[Targeting Implementation](docs/targeting-implementation.md)**: Targeting capabilities and examples
+- **[Adapter Development](docs/adapter-development.md)**: How to add new ad server support
+- **[Deployment Guide](FLY_DEPLOYMENT.md)**: Production deployment instructions
+
 ### Docker
 
 A Dockerfile is included for containerized deployment:

@@ -146,7 +146,8 @@ class CreateMediaBuyResponse(BaseModel):
     detail: str
     creative_deadline: Optional[datetime] = None
 
-class UpdateMediaBuyRequest(BaseModel):
+class LegacyUpdateMediaBuyRequest(BaseModel):
+    """Legacy update request - kept for backward compatibility."""
     media_buy_id: str
     new_total_budget: Optional[float] = None
     new_targeting_overlay: Optional[Targeting] = None
@@ -202,6 +203,59 @@ class CheckMediaBuyStatusResponse(BaseModel):
 class UpdateMediaBuyResponse(BaseModel):
     status: str
     implementation_date: Optional[datetime] = None
+    reason: Optional[str] = None
+    detail: Optional[str] = None
+
+# Unified update models
+class PackageUpdate(BaseModel):
+    """Updates to apply to a specific package."""
+    package_id: str
+    active: Optional[bool] = None  # True to activate, False to pause
+    budget: Optional[float] = None  # New budget in dollars
+    impressions: Optional[int] = None  # Direct impression goal (overrides budget calculation)
+    cpm: Optional[float] = None  # Update CPM rate
+    daily_budget: Optional[float] = None  # Daily spend cap
+    daily_impressions: Optional[int] = None  # Daily impression cap
+    pacing: Optional[Literal["even", "asap", "front_loaded"]] = None
+    creative_ids: Optional[List[str]] = None  # Update creative assignments
+    targeting_overlay: Optional[Targeting] = None  # Package-specific targeting refinements
+    
+    
+class UpdatePackageRequest(BaseModel):
+    """Update one or more packages within a media buy.
+    
+    Uses PATCH semantics: Only packages mentioned are affected.
+    Omitted packages remain unchanged.
+    To remove a package from delivery, set active=false.
+    To add new packages, use create_media_buy or add_packages (future tool).
+    """
+    media_buy_id: str
+    packages: List[PackageUpdate]  # List of package updates
+    today: Optional[date] = None  # For testing/simulation
+    
+class UpdateMediaBuyRequest(BaseModel):
+    """Update a media buy - mirrors CreateMediaBuyRequest structure.
+    
+    Uses PATCH semantics: Only fields provided are updated.
+    Package updates only affect packages explicitly mentioned.
+    To pause all packages, set active=false at campaign level.
+    To pause specific packages, include them in packages list with active=false.
+    """
+    media_buy_id: str
+    # Campaign-level updates
+    active: Optional[bool] = None  # True to activate, False to pause entire campaign
+    flight_start_date: Optional[date] = None  # Change start date (if not started)
+    flight_end_date: Optional[date] = None  # Extend or shorten campaign
+    total_budget: Optional[float] = None  # Update total budget
+    targeting_overlay: Optional[Targeting] = None  # Update global targeting
+    pacing: Optional[Literal["even", "asap", "daily_budget"]] = None
+    daily_budget: Optional[float] = None  # Daily spend cap across all packages
+    # Package-level updates
+    packages: Optional[List[PackageUpdate]] = None  # Package-specific updates (only these are affected)
+    # Creative updates
+    creatives: Optional[List[Creative]] = None  # Add new creatives
+    creative_assignments: Optional[Dict[str, List[str]]] = None  # Update creative-to-package mapping
+    today: Optional[date] = None  # For testing/simulation
 
 # Adapter-specific response schemas
 class PackageDelivery(BaseModel):

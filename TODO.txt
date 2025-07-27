@@ -19,3 +19,10 @@ Agent vs human config
 - We should allow some capabilities of an adapter are provided by a human. For instance, I could set up GAM to allow the agent to read objects and run reports, but require a human to make changes. This should be done at the overall agent level. There should be a task queue that Admin users can see like "Principal Nike requests Media Buy 1234 have daily pacing updated to $1023".
 - The orchestrator should not know a human is doing things, so we should in general have the concept for all CRUD requests that they may be asynchronous. The orchestrator should generally assume that they submit requests and then check for completion, and they should be able to query "open requests" and see what their status is.
 - The AI should be able to check task completion for the user, so if a request is like "update media buy daily budget to $100/day" it should be able to query the media buy and see what the daily budget is, and if it's not $100/day, it should show the task as incomplete. An admin should be able to call "mark_task_complete XYZ" and the AI should double check it, basically (which the human should be able to override)
+
+Creative macros for AEE
+
+Log level data or automated reporting for AEE
+
+Multi-tenant
+- Scope3 may offer a hosted version of the Sales Agent for publishers that don't want to manage their own instance. How could we make it possible to build a multi-tenant version of this platform so multiple publishers could be live at the same time? It seems like a maintenance nightmare for Scope3 to have to have a different instance for each publisher.
