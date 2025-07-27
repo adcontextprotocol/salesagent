@@ -30,7 +30,7 @@ def find_free_port() -> int:
 
 
 class SimulationRunner:
-    def __init__(self, simulation_type: str = "basic", dry_run: bool = False, adapter: str = "mock"):
+    def __init__(self, simulation_type: str = "full", dry_run: bool = False, adapter: str = "mock"):
         self.port = find_free_port()
         self.server_process = None
         self.server_url = f"http://127.0.0.1:{self.port}"
@@ -126,12 +126,15 @@ class SimulationRunner:
     async def run_simulation(self) -> bool:
         """Run the simulation script."""
         try:
-            if self.simulation_type == "full":
-                console.print("\n🧪 Running full lifecycle simulation...")
-                script_name = "simulation_full.py"
-            else:
-                console.print("\n🧪 Running basic authentication simulation...")
-                script_name = "simulation.py"
+            console.print(f"\n🧪 Running {self.simulation_type} simulation...")
+            
+            # Map simulation types to scripts
+            simulation_scripts = {
+                "full": "simulation_full.py",
+                "auth": "test_auth.py"  # Auth test if explicitly requested
+            }
+            
+            script_name = simulation_scripts.get(self.simulation_type, "simulation_full.py")
             
             # Create a modified simulation script that uses our port
             sim_py = Path(script_name)
@@ -193,10 +196,14 @@ class SimulationRunner:
     
     async def run(self):
         """Run the complete simulation cycle."""
-        title = "Full Lifecycle" if self.simulation_type == "full" else "Basic Auth"
+        simulation_titles = {
+            "full": "Full Lifecycle",
+            "auth": "Authentication Test"
+        }
+        title = simulation_titles.get(self.simulation_type, self.simulation_type.title())
         dry_run_text = " (DRY RUN)" if self.dry_run else ""
         console.print(Panel.fit(
-            f"[bold cyan]AdCP:Buy Automated Simulation Runner[/bold cyan]\n"
+            f"[bold cyan]AdCP:Buy Simulation Runner[/bold cyan]\n"
             f"Type: {title}{dry_run_text}\n"
             f"Adapter: {self.adapter.upper()}\n"
             f"Port: {self.port}",
@@ -244,9 +251,10 @@ async def main():
     """Main entry point."""
     parser = argparse.ArgumentParser(description='Run AdCP:Buy simulations')
     parser.add_argument(
-        '--full', 
-        action='store_true',
-        help='Run the full lifecycle simulation (default: basic auth test)'
+        '--simulation',
+        choices=['full', 'auth'],
+        default='full',
+        help='Select simulation type (default: full lifecycle)'
     )
     parser.add_argument(
         '--dry-run',
@@ -261,8 +269,7 @@ async def main():
     )
     args = parser.parse_args()
     
-    simulation_type = "full" if args.full else "basic"
-    runner = SimulationRunner(simulation_type, dry_run=args.dry_run, adapter=args.adapter)
+    runner = SimulationRunner(args.simulation, dry_run=args.dry_run, adapter=args.adapter)
     await runner.run()
 
 
