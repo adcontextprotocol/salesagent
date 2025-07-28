@@ -28,5 +28,24 @@ Log level data or automated reporting for AEE
 Multi-tenant
 - Scope3 may offer a hosted version of the Sales Agent for publishers that don't want to manage their own instance. How could we make it possible to build a multi-tenant version of this platform so multiple publishers could be live at the same time? It seems like a maintenance nightmare for Scope3 to have to have a different instance for each publisher.
 
-Research
-- understand core and common targeting capabilities across all ad servers
+Targeting:
+Here's an initial list of targeting dimensions that we might want to support. This could use more research especially for DOOH, CTV, and Audio.
+- `AUDIENCE`
+- `PLACEMENT` (aka ad slot)
+- Property (means Station in radio context?)
+- Audio or CTV Channel
+- `DAY_PART`
+- Country
+- `REGION`
+- `CITY`
+- `DMA`
+- `POSTAL_CODE`
+- `DEVICES` (include smartspeaker)
+- Lat/long + radius
+- `BROWSERS`
+- `OPERATING_SYSTEMS`
+- `LANGUAGES`
+- `GENRE`
+- `CONTENT_DURATION`
+- `RATING`
+- `Podcast Episode ID` <-- the GUID of the episode
