@@ -148,6 +148,13 @@ creative_library: Dict[str, Creative] = {}  # creative_id -> Creative
 creative_groups: Dict[str, CreativeGroup] = {}  # group_id -> CreativeGroup
 creative_assignments_v2: Dict[str, CreativeAssignment] = {}  # assignment_id -> CreativeAssignment
 
+# Initialize audit logger (import needed at top)
+from audit_logger import AuditLogger
+audit_logger = AuditLogger(log_directory="audit_logs")
+
+# Human task queue (in-memory for now, would be database in production)
+human_tasks: Dict[str, HumanTask] = {}
+
 # --- Adapter Configuration ---
 # Get adapter from config, fallback to mock
 SELECTED_ADAPTER = config.get('ad_server', {}).get('adapter', 'mock').lower()
@@ -205,6 +212,13 @@ def create_media_buy(req: CreateMediaBuyRequest, context: Context) -> CreateMedi
     principal = get_principal_object(principal_id)
     if not principal:
         raise ToolError(f"Principal {principal_id} not found")
+    
+    # Validate targeting doesn't use managed-only dimensions
+    if req.targeting_overlay:
+        from targeting_capabilities import validate_overlay_targeting
+        violations = validate_overlay_targeting(req.targeting_overlay.model_dump(exclude_none=True))
+        if violations:
+            raise ToolError(f"Targeting validation failed: {'; '.join(violations)}")
     
     # Get the appropriate adapter
     adapter = get_adapter(principal, dry_run=DRY_RUN_MODE)
@@ -359,6 +373,14 @@ def update_media_buy(req: UpdateMediaBuyRequest, context: Context) -> UpdateMedi
     if req.total_budget is not None:
         buy_request.total_budget = req.total_budget
     if req.targeting_overlay is not None:
+        # Validate targeting doesn't use managed-only dimensions
+        from targeting_capabilities import validate_overlay_targeting
+        violations = validate_overlay_targeting(req.targeting_overlay.model_dump(exclude_none=True))
+        if violations:
+            return UpdateMediaBuyResponse(
+                status="failed",
+                detail=f"Targeting validation failed: {'; '.join(violations)}"
+            )
         buy_request.targeting_overlay = req.targeting_overlay
     if req.creative_assignments:
         creative_assignments[req.media_buy_id] = req.creative_assignments
@@ -1000,6 +1022,231 @@ def update_performance_index(req: UpdatePerformanceIndexRequest, context: Contex
         status="success" if success else "failed", 
         detail=f"Performance index updated for {len(req.performance_data)} products"
     )
+
+
+# --- Human-in-the-Loop Task Queue Tools ---
+
+@mcp.tool
+def create_human_task(req: CreateHumanTaskRequest, context: Context) -> CreateHumanTaskResponse:
+    """Create a task requiring human intervention."""
+    principal_id = get_principal_from_context(context)
+    if not principal_id:
+        raise ToolError("AUTHENTICATION_REQUIRED", "You must provide a valid x-adcp-auth header")
+    
+    # Generate task ID
+    task_id = f"task_{uuid.uuid4().hex[:8]}"
+    
+    # Calculate due date
+    due_by = None
+    if req.due_in_hours:
+        due_by = datetime.now() + timedelta(hours=req.due_in_hours)
+    elif req.priority == "urgent":
+        due_by = datetime.now() + timedelta(hours=4)
+    elif req.priority == "high":
+        due_by = datetime.now() + timedelta(hours=24)
+    elif req.priority == "medium":
+        due_by = datetime.now() + timedelta(hours=48)
+    
+    # Create task
+    task = HumanTask(
+        task_id=task_id,
+        task_type=req.task_type,
+        principal_id=principal_id,
+        adapter_name=req.adapter_name,
+        status="pending",
+        priority=req.priority,
+        media_buy_id=req.media_buy_id,
+        creative_id=req.creative_id,
+        operation=req.operation,
+        error_detail=req.error_detail,
+        context_data=req.context_data,
+        created_at=datetime.now(),
+        updated_at=datetime.now(),
+        due_by=due_by
+    )
+    
+    # Store task
+    human_tasks[task_id] = task
+    
+    # Log task creation
+    audit_logger.log_operation(
+        operation="create_human_task",
+        principal_name=principal_id,
+        principal_id=principal_id,
+        adapter_id="task_queue",
+        success=True,
+        details={
+            "task_id": task_id,
+            "task_type": req.task_type,
+            "priority": req.priority
+        }
+    )
+    
+    # Log high priority tasks
+    if req.priority in ["high", "urgent"]:
+        console.print(f"[bold red]🚨 HIGH PRIORITY TASK CREATED: {task_id}[/bold red]")
+        console.print(f"   Type: {req.task_type}")
+        console.print(f"   Error: {req.error_detail}")
+    
+    # Send webhook notification for urgent tasks (if configured)
+    webhook_url = config.get("hitl_webhook_url")
+    if webhook_url and req.priority == "urgent":
+        try:
+            import requests
+            requests.post(webhook_url, json={
+                "task_id": task_id,
+                "type": req.task_type,
+                "priority": req.priority,
+                "principal": principal_id,
+                "error": req.error_detail
+            }, timeout=5)
+        except:
+            pass  # Don't fail task creation if webhook fails
+    
+    return CreateHumanTaskResponse(
+        task_id=task_id,
+        status="pending",
+        due_by=due_by
+    )
+
+
+@mcp.tool
+def get_pending_tasks(req: GetPendingTasksRequest, context: Context) -> GetPendingTasksResponse:
+    """Get pending human tasks with optional filtering."""
+    # Check if requester is admin
+    principal_id = get_principal_from_context(context)
+    is_admin = principal_id == "admin"
+    
+    # Filter tasks
+    filtered_tasks = []
+    overdue_count = 0
+    now = datetime.now()
+    
+    for task in human_tasks.values():
+        # Only show tasks for current principal unless admin
+        if not is_admin and task.principal_id != principal_id:
+            continue
+            
+        # Apply filters
+        if req.principal_id and task.principal_id != req.principal_id:
+            continue
+        if req.task_type and task.task_type != req.task_type:
+            continue
+        if req.assigned_to and task.assigned_to != req.assigned_to:
+            continue
+        
+        # Skip completed/failed unless looking for specific assignee
+        if task.status in ["completed", "failed"] and not req.assigned_to:
+            continue
+            
+        # Priority filter (minimum priority)
+        priority_levels = {"low": 0, "medium": 1, "high": 2, "urgent": 3}
+        if req.priority:
+            if priority_levels.get(task.priority, 0) < priority_levels.get(req.priority, 0):
+                continue
+        
+        # Check if overdue
+        if task.due_by and task.due_by < now and task.status not in ["completed", "failed"]:
+            overdue_count += 1
+            if not req.include_overdue:
+                continue
+                
+        filtered_tasks.append(task)
+    
+    # Sort by priority and due date
+    filtered_tasks.sort(key=lambda t: (
+        -priority_levels.get(t.priority, 0),
+        t.due_by or datetime.max
+    ))
+    
+    return GetPendingTasksResponse(
+        tasks=filtered_tasks,
+        total_count=len(filtered_tasks),
+        overdue_count=overdue_count
+    )
+
+
+@mcp.tool
+def assign_task(req: AssignTaskRequest, context: Context) -> Dict[str, str]:
+    """Assign a task to a human operator."""
+    # Admin only
+    principal_id = get_principal_from_context(context)
+    if principal_id != "admin":
+        raise ToolError("PERMISSION_DENIED", "Only administrators can assign tasks")
+    
+    if req.task_id not in human_tasks:
+        raise ToolError("NOT_FOUND", f"Task {req.task_id} not found")
+    
+    task = human_tasks[req.task_id]
+    task.assigned_to = req.assigned_to
+    task.assigned_at = datetime.now()
+    task.status = "assigned"
+    task.updated_at = datetime.now()
+    
+    audit_logger.log_operation(
+        operation="assign_task",
+        principal_name="admin",
+        principal_id="admin",
+        adapter_id="task_queue",
+        success=True,
+        details={
+            "task_id": req.task_id,
+            "assigned_to": req.assigned_to
+        }
+    )
+    
+    return {
+        "status": "success",
+        "detail": f"Task {req.task_id} assigned to {req.assigned_to}"
+    }
+
+
+@mcp.tool
+def complete_task(req: CompleteTaskRequest, context: Context) -> Dict[str, str]:
+    """Complete a human task with resolution details."""
+    # Admin only
+    principal_id = get_principal_from_context(context)
+    if principal_id != "admin":
+        raise ToolError("PERMISSION_DENIED", "Only administrators can complete tasks")
+    
+    if req.task_id not in human_tasks:
+        raise ToolError("NOT_FOUND", f"Task {req.task_id} not found")
+    
+    task = human_tasks[req.task_id]
+    task.resolution = req.resolution
+    task.resolution_detail = req.resolution_detail
+    task.resolved_by = req.resolved_by
+    task.completed_at = datetime.now()
+    task.status = "completed" if req.resolution in ["approved", "completed"] else "failed"
+    task.updated_at = datetime.now()
+    
+    audit_logger.log_operation(
+        operation="complete_task",
+        principal_name="admin",
+        principal_id="admin",
+        adapter_id="task_queue",
+        success=True,
+        details={
+            "task_id": req.task_id,
+            "resolution": req.resolution,
+            "resolved_by": req.resolved_by
+        }
+    )
+    
+    # Handle specific task types
+    if task.task_type == "creative_approval" and task.creative_id:
+        if req.resolution == "approved":
+            # Update creative status
+            if task.creative_id in creative_statuses:
+                creative_statuses[task.creative_id].status = "approved"
+                creative_statuses[task.creative_id].detail = "Manually approved by " + req.resolved_by
+                console.print(f"[green]✅ Creative {task.creative_id} approved[/green]")
+    
+    return {
+        "status": "success",
+        "detail": f"Task {req.task_id} completed with resolution: {req.resolution}"
+    }
+
 
 # Dry run logs are now handled by the adapters themselves
 

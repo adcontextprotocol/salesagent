@@ -267,8 +267,21 @@ class GoogleAdManager(AdServerAdapter):
             gam_targeting['dayPartTargeting'] = daypart_targeting
         
         # Custom key-value targeting
+        custom_targeting = {}
+        
+        # Platform-specific custom targeting
         if targeting_overlay.custom and 'gam' in targeting_overlay.custom:
-            gam_targeting['customTargeting'] = targeting_overlay.custom['gam'].get('key_values', {})
+            custom_targeting.update(targeting_overlay.custom['gam'].get('key_values', {}))
+        
+        # AEE signal integration via key-value pairs (managed-only)
+        if targeting_overlay.key_value_pairs:
+            self.log("[bold cyan]Adding AEE signals to GAM key-value targeting[/bold cyan]")
+            for key, value in targeting_overlay.key_value_pairs.items():
+                custom_targeting[key] = value
+                self.log(f"  {key}: {value}")
+        
+        if custom_targeting:
+            gam_targeting['customTargeting'] = custom_targeting
         
         self.log(f"Applying GAM targeting: {list(gam_targeting.keys())}")
         return gam_targeting

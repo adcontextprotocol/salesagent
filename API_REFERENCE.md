@@ -439,3 +439,109 @@ While the API provides a unified interface, some features vary by platform:
 3. **Monitor Status**: Regular status checks ensure smooth delivery
 4. **Handle Deadlines**: Submit creatives before the deadline
 5. **Use Performance Indices**: Regular updates improve AI optimization
+
+## Human-in-the-Loop Task Queue
+
+### create_human_task
+
+Creates a task requiring human intervention.
+
+**Request:**
+```json
+{
+  "task_type": "creative_approval",
+  "priority": "high",
+  "creative_id": "creative_123",
+  "error_detail": "Format requires manual review",
+  "context_data": {
+    "format": "dooh_billboard"
+  },
+  "due_in_hours": 24
+}
+```
+
+**Response:**
+```json
+{
+  "task_id": "task_a1b2c3d4",
+  "status": "pending",
+  "due_by": "2025-07-29T18:00:00Z"
+}
+```
+
+### get_pending_tasks
+
+Retrieves pending human tasks with optional filtering.
+
+**Request:**
+```json
+{
+  "principal_id": null,
+  "task_type": "creative_approval",
+  "priority": "high",
+  "include_overdue": true
+}
+```
+
+**Response:**
+```json
+{
+  "tasks": [
+    {
+      "task_id": "task_a1b2c3d4",
+      "task_type": "creative_approval",
+      "principal_id": "acme_corp",
+      "status": "pending",
+      "priority": "high",
+      "creative_id": "creative_123",
+      "error_detail": "Format requires manual review",
+      "created_at": "2025-07-28T12:00:00Z",
+      "due_by": "2025-07-29T18:00:00Z"
+    }
+  ],
+  "total_count": 1,
+  "overdue_count": 0
+}
+```
+
+### assign_task
+
+Assigns a task to a human operator (admin only).
+
+**Request:**
+```json
+{
+  "task_id": "task_a1b2c3d4",
+  "assigned_to": "reviewer@company.com"
+}
+```
+
+**Response:**
+```json
+{
+  "status": "success",
+  "detail": "Task task_a1b2c3d4 assigned to reviewer@company.com"
+}
+```
+
+### complete_task
+
+Completes a human task with resolution details (admin only).
+
+**Request:**
+```json
+{
+  "task_id": "task_a1b2c3d4",
+  "resolution": "approved",
+  "resolution_detail": "Creative meets brand safety guidelines",
+  "resolved_by": "reviewer@company.com"
+}
+```
+
+**Response:**
+```json
+{
+  "status": "success",
+  "detail": "Task task_a1b2c3d4 completed with resolution: approved"
+}
+```

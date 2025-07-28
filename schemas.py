@@ -40,14 +40,25 @@ class FrequencyCap(BaseModel):
     suppress_minutes: int = Field(..., gt=0, description="Suppress impressions for this many minutes after serving")
     scope: Literal["media_buy", "package"] = Field("media_buy", description="Apply at media buy or package level")
 
+class TargetingCapability(BaseModel):
+    """Defines targeting dimension capabilities and restrictions."""
+    dimension: str  # e.g., "geo_country", "key_value"
+    access: Literal["overlay", "managed_only", "both"] = "overlay"
+    description: Optional[str] = None
+    allowed_values: Optional[List[str]] = None  # For restricted value sets
+    aee_signal: Optional[bool] = False  # Whether this is an AEE signal dimension
+
 class Targeting(BaseModel):
     """Comprehensive targeting options for media buys.
     
     All fields are optional and can be combined for precise audience targeting.
     Platform adapters will map these to their specific targeting capabilities.
     Uses any_of/none_of pattern for consistent include/exclude across all dimensions.
+    
+    Note: Some targeting dimensions are managed-only and cannot be set via overlay.
+    These are typically used for AEE signal integration.
     """
-    # Geographic targeting - aligned with OpenRTB
+    # Geographic targeting - aligned with OpenRTB (overlay access)
     geo_country_any_of: Optional[List[str]] = None  # ISO country codes: ["US", "CA", "GB"]
     geo_country_none_of: Optional[List[str]] = None
     
@@ -100,6 +111,10 @@ class Targeting(BaseModel):
     
     # Platform-specific custom targeting
     custom: Optional[Dict[str, Any]] = None  # Platform-specific targeting options
+    
+    # Key-value targeting (managed-only for AEE signals)
+    # These are not exposed in overlay - only set by orchestrator/AEE
+    key_value_pairs: Optional[Dict[str, str]] = None  # e.g., {"aee_segment": "high_value", "aee_score": "0.85"}
 
 class PriceGuidance(BaseModel):
     floor: float
@@ -468,3 +483,90 @@ class AdapterGetMediaBuyDeliveryResponse(BaseModel):
     totals: DeliveryTotals
     by_package: List[PackageDelivery]
     currency: str
+
+
+# --- Human-in-the-Loop Task Queue ---
+
+class HumanTask(BaseModel):
+    """Task requiring human intervention."""
+    task_id: str
+    task_type: str  # creative_approval, permission_exception, configuration_required, compliance_review
+    principal_id: str
+    adapter_name: Optional[str] = None
+    status: str = "pending"  # pending, assigned, in_progress, completed, failed, escalated
+    priority: str = "medium"  # low, medium, high, urgent
+    
+    # Context
+    media_buy_id: Optional[str] = None
+    creative_id: Optional[str] = None
+    operation: Optional[str] = None
+    error_detail: Optional[str] = None
+    context_data: Optional[Dict[str, Any]] = None
+    
+    # Assignment
+    assigned_to: Optional[str] = None
+    assigned_at: Optional[datetime] = None
+    
+    # Timing
+    created_at: datetime
+    updated_at: datetime
+    due_by: Optional[datetime] = None
+    completed_at: Optional[datetime] = None
+    
+    # Resolution
+    resolution: Optional[str] = None  # approved, rejected, completed, cannot_complete
+    resolution_detail: Optional[str] = None
+    resolved_by: Optional[str] = None
+
+
+class CreateHumanTaskRequest(BaseModel):
+    """Request to create a human task."""
+    task_type: str
+    priority: str = "medium"
+    
+    # Context
+    media_buy_id: Optional[str] = None
+    creative_id: Optional[str] = None
+    operation: Optional[str] = None
+    error_detail: Optional[str] = None
+    context_data: Optional[Dict[str, Any]] = None
+    
+    # SLA
+    due_in_hours: Optional[int] = None  # Hours until due
+
+
+class CreateHumanTaskResponse(BaseModel):
+    """Response from creating a human task."""
+    task_id: str
+    status: str
+    due_by: Optional[datetime] = None
+    
+    
+class GetPendingTasksRequest(BaseModel):
+    """Request for pending human tasks."""
+    principal_id: Optional[str] = None  # Filter by principal
+    task_type: Optional[str] = None  # Filter by type
+    priority: Optional[str] = None  # Filter by minimum priority
+    assigned_to: Optional[str] = None  # Filter by assignee
+    include_overdue: bool = True
+
+
+class GetPendingTasksResponse(BaseModel):
+    """Response with pending tasks."""
+    tasks: List[HumanTask]
+    total_count: int
+    overdue_count: int
+
+
+class AssignTaskRequest(BaseModel):
+    """Request to assign a task."""
+    task_id: str
+    assigned_to: str
+    
+    
+class CompleteTaskRequest(BaseModel):
+    """Request to complete a task."""
+    task_id: str
+    resolution: str  # approved, rejected, completed, cannot_complete
+    resolution_detail: Optional[str] = None
+    resolved_by: str

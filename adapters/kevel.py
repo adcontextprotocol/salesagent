@@ -175,6 +175,23 @@ class Kevel(AdServerAdapter):
             if 'custom_targeting' in kevel_custom:
                 kevel_targeting['CustomTargeting'] = kevel_custom['custom_targeting']
         
+        # AEE signal integration via CustomTargeting (managed-only)
+        if targeting_overlay.key_value_pairs:
+            self.log("[bold cyan]Adding AEE signals to Kevel CustomTargeting[/bold cyan]")
+            aee_expressions = []
+            for key, value in targeting_overlay.key_value_pairs.items():
+                # Convert key-value pairs to Kevel CustomTargeting expressions
+                # e.g., {"aee_segment": "high_value"} becomes "$user.aee_segment CONTAINS \"high_value\""
+                expression = f'$user.{key} CONTAINS "{value}"'
+                aee_expressions.append(expression)
+                self.log(f"  {expression}")
+            
+            # Combine with existing CustomTargeting if any
+            if 'CustomTargeting' in kevel_targeting:
+                kevel_targeting['CustomTargeting'] = f"{kevel_targeting['CustomTargeting']} AND ({' AND '.join(aee_expressions)})"
+            else:
+                kevel_targeting['CustomTargeting'] = " AND ".join(aee_expressions)
+        
         self.log(f"Applying Kevel targeting: {list(kevel_targeting.keys())}")
         return kevel_targeting
 
