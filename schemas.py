@@ -490,7 +490,7 @@ class AdapterGetMediaBuyDeliveryResponse(BaseModel):
 class HumanTask(BaseModel):
     """Task requiring human intervention."""
     task_id: str
-    task_type: str  # creative_approval, permission_exception, configuration_required, compliance_review
+    task_type: str  # creative_approval, permission_exception, configuration_required, compliance_review, manual_approval
     principal_id: str
     adapter_name: Optional[str] = None
     status: str = "pending"  # pending, assigned, in_progress, completed, failed, escalated

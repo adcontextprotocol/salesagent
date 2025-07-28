@@ -223,6 +223,32 @@ def create_media_buy(req: CreateMediaBuyRequest, context: Context) -> CreateMedi
     # Get the appropriate adapter
     adapter = get_adapter(principal, dry_run=DRY_RUN_MODE)
     
+    # Check if manual approval is required
+    if adapter.manual_approval_required and 'create_media_buy' in adapter.manual_approval_operations:
+        # Create a human task instead of executing immediately
+        task_req = CreateHumanTaskRequest(
+            task_type="manual_approval",
+            priority="high",
+            media_buy_id=f"pending_{uuid.uuid4().hex[:8]}",
+            operation="create_media_buy",
+            error_detail="Publisher requires manual approval for all media buy creation",
+            context_data={
+                "request": req.model_dump(),
+                "principal_id": principal_id,
+                "adapter": adapter.__class__.adapter_name
+            },
+            due_in_hours=4
+        )
+        
+        task_response = create_human_task(task_req, context)
+        
+        return CreateMediaBuyResponse(
+            media_buy_id=task_req.media_buy_id,
+            status="pending_manual",
+            detail=f"Manual approval required. Task ID: {task_response.task_id}",
+            creative_deadline=None
+        )
+    
     # Get products for the media buy
     catalog = get_product_catalog()
     products_in_buy = [p for p in catalog if p.product_id in req.product_ids]
@@ -316,6 +342,30 @@ def update_media_buy(req: UpdateMediaBuyRequest, context: Context) -> UpdateMedi
     
     adapter = get_adapter(principal, dry_run=DRY_RUN_MODE)
     today = req.today or date.today()
+    
+    # Check if manual approval is required
+    if adapter.manual_approval_required and 'update_media_buy' in adapter.manual_approval_operations:
+        # Create a human task instead of executing immediately
+        task_req = CreateHumanTaskRequest(
+            task_type="manual_approval",
+            priority="high",
+            media_buy_id=req.media_buy_id,
+            operation="update_media_buy",
+            error_detail="Publisher requires manual approval for all media buy updates",
+            context_data={
+                "request": req.model_dump(),
+                "principal_id": principal_id,
+                "adapter": adapter.__class__.adapter_name
+            },
+            due_in_hours=2
+        )
+        
+        task_response = create_human_task(task_req, context)
+        
+        return UpdateMediaBuyResponse(
+            status="pending_manual",
+            detail=f"Manual approval required. Task ID: {task_response.task_id}"
+        )
     
     # Handle campaign-level updates
     if req.active is not None:
@@ -1241,6 +1291,79 @@ def complete_task(req: CompleteTaskRequest, context: Context) -> Dict[str, str]:
                 creative_statuses[task.creative_id].status = "approved"
                 creative_statuses[task.creative_id].detail = "Manually approved by " + req.resolved_by
                 console.print(f"[green]✅ Creative {task.creative_id} approved[/green]")
+    
+    elif task.task_type == "manual_approval" and task.operation:
+        if req.resolution == "approved":
+            # Execute the deferred operation
+            console.print(f"[green]✅ Executing deferred operation: {task.operation}[/green]")
+            
+            # Get principal for the operation
+            principal = get_principal_object(task.principal_id)
+            if principal:
+                adapter = get_adapter(principal, dry_run=DRY_RUN_MODE)
+                
+                if task.operation == "create_media_buy":
+                    # Reconstruct and execute the create_media_buy request
+                    original_req = CreateMediaBuyRequest(**task.context_data["request"])
+                    
+                    # Get products for the media buy
+                    catalog = get_product_catalog()
+                    products_in_buy = [p for p in catalog if p.product_id in original_req.product_ids]
+                    
+                    # Convert products to MediaPackages
+                    packages = []
+                    for product in products_in_buy:
+                        format_info = product.formats[0] if product.formats else None
+                        packages.append(MediaPackage(
+                            package_id=product.product_id,
+                            name=product.name,
+                            delivery_type=product.delivery_type,
+                            cpm=product.cpm if product.cpm else 10.0,
+                            impressions=int(original_req.total_budget / (product.cpm if product.cpm else 10.0) * 1000),
+                            format_ids=[format_info.format_id] if format_info else []
+                        ))
+                    
+                    # Execute the actual creation
+                    start_time = datetime.combine(original_req.flight_start_date, datetime.min.time())
+                    end_time = datetime.combine(original_req.flight_end_date, datetime.max.time())
+                    response = adapter.create_media_buy(original_req, packages, start_time, end_time)
+                    
+                    # Store the media buy
+                    media_buys[response.media_buy_id] = (original_req, task.principal_id)
+                    console.print(f"[green]Media buy {response.media_buy_id} created after manual approval[/green]")
+                    
+                elif task.operation == "update_media_buy":
+                    # Reconstruct and execute the update_media_buy request
+                    original_req = UpdateMediaBuyRequest(**task.context_data["request"])
+                    today = original_req.today or date.today()
+                    
+                    # Execute the updates
+                    if original_req.active is not None:
+                        action = "resume_media_buy" if original_req.active else "pause_media_buy"
+                        adapter.update_media_buy(
+                            media_buy_id=original_req.media_buy_id,
+                            action=action,
+                            package_id=None,
+                            budget=None,
+                            today=datetime.combine(today, datetime.min.time())
+                        )
+                    
+                    # Handle package updates
+                    if original_req.packages:
+                        for pkg_update in original_req.packages:
+                            if pkg_update.active is not None:
+                                action = "resume_package" if pkg_update.active else "pause_package"
+                                adapter.update_media_buy(
+                                    media_buy_id=original_req.media_buy_id,
+                                    action=action,
+                                    package_id=pkg_update.package_id,
+                                    budget=None,
+                                    today=datetime.combine(today, datetime.min.time())
+                                )
+                    
+                    console.print(f"[green]Media buy {original_req.media_buy_id} updated after manual approval[/green]")
+        else:
+            console.print(f"[red]❌ Manual approval rejected for {task.operation}[/red]")
     
     return {
         "status": "success",

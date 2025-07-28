@@ -38,6 +38,12 @@ class AdServerAdapter(ABC):
         adapter_name = getattr(self.__class__, 'adapter_name', self.__class__.__name__)
         self.audit_logger = get_audit_logger(adapter_name)
         
+        # Manual approval mode - requires human approval for all operations
+        self.manual_approval_required = config.get('manual_approval_required', False)
+        self.manual_approval_operations = set(config.get('manual_approval_operations', [
+            'create_media_buy', 'update_media_buy', 'add_creative_assets'
+        ]))
+        
     def log(self, message: str, dry_run_prefix: bool = True):
         """Log a message, with optional dry-run prefix."""
         if self.dry_run and dry_run_prefix:

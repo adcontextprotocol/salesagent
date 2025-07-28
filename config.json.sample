@@ -32,3 +32,17 @@
 //         "trafficker_id": "YOUR_TRAFFICKER_ID"
 //     }
 // }
+
+// Example with manual approval required:
+// {
+//     "ad_server": {
+//         "adapter": "google_ad_manager",
+//         "network_code": "YOUR_NETWORK_CODE",
+//         "service_account_key_file": "/path/to/key.json",
+//         "company_id": "YOUR_COMPANY_ID",
+//         "trafficker_id": "YOUR_TRAFFICKER_ID",
+//         "manual_approval_required": true,
+//         "manual_approval_operations": ["create_media_buy", "update_media_buy"]
+//     },
+//     "hitl_webhook_url": "https://your-webhook.com/tasks"
+// }
