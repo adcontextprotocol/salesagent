@@ -16,7 +16,7 @@ This project is a Python-based reference implementation of the Advertising Campa
 ### Prerequisites
 - Python 3.12+
 - `uv` for package management
-- Optional: PostgreSQL or MySQL for production deployments
+- Optional: PostgreSQL for production deployments
 
 ### Installation
 ```bash
@@ -26,9 +26,6 @@ pip install uv
 # Install dependencies (with PostgreSQL support)
 uv sync --extra postgresql
 
-# Or install with all database drivers
-uv sync --extra all-databases
-
 # Initialize database
 uv run python database.py
 ```
@@ -37,14 +34,14 @@ uv run python database.py
 
 By default, the server uses SQLite with data stored in `~/.adcp/adcp.db` for persistence.
 
-For production, configure PostgreSQL or MySQL:
+For production, configure PostgreSQL:
 
 ```bash
 # PostgreSQL (recommended for production)
 export DATABASE_URL=postgresql://user:pass@localhost/adcp
 
-# MySQL
-export DB_TYPE=mysql
+# Or use individual environment variables
+export DB_TYPE=postgresql
 export DB_HOST=localhost
 export DB_USER=adcp_user
 export DB_PASSWORD=secure_password

@@ -2,11 +2,10 @@
 
 ## Overview
 
-The AdCP:Buy server supports multiple database backends for flexibility in different deployment scenarios:
+The AdCP:Buy server supports two database backends for flexibility in different deployment scenarios:
 
 - **SQLite** (default) - Great for development and single-server deployments
 - **PostgreSQL** - Recommended for production multi-tenant deployments
-- **MySQL** - Alternative for organizations with MySQL expertise
 
 ## Configuration Methods
 
@@ -27,14 +26,6 @@ export DB_NAME=adcp
 export DB_USER=adcp_user
 export DB_PASSWORD=secure_password
 export DB_SSLMODE=require  # For production
-
-# MySQL
-export DB_TYPE=mysql
-export DB_HOST=localhost
-export DB_PORT=3306
-export DB_NAME=adcp
-export DB_USER=adcp_user
-export DB_PASSWORD=secure_password
 ```
 
 ### 2. DATABASE_URL (Heroku/Cloud Compatible)
@@ -44,9 +35,6 @@ For cloud deployments, use a single DATABASE_URL:
 ```bash
 # PostgreSQL
 export DATABASE_URL=postgresql://user:password@host:5432/database?sslmode=require
-
-# MySQL
-export DATABASE_URL=mysql://user:password@host:3306/database
 
 # SQLite
 export DATABASE_URL=sqlite:///path/to/database.db
@@ -128,34 +116,6 @@ PostgreSQL supports various HA configurations:
 - Logical replication
 - Patroni for automatic failover
 
-## MySQL Configuration
-
-### Basic Setup
-
-1. Create database and user:
-
-```sql
-CREATE DATABASE adcp CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-CREATE USER 'adcp_user'@'%' IDENTIFIED BY 'secure_password';
-GRANT ALL PRIVILEGES ON adcp.* TO 'adcp_user'@'%';
-FLUSH PRIVILEGES;
-```
-
-2. Configure environment:
-
-```bash
-export DB_TYPE=mysql
-export DB_HOST=mysql.example.com
-export DB_PORT=3306
-export DB_NAME=adcp
-export DB_USER=adcp_user
-export DB_PASSWORD=secure_password
-```
-
-### Character Set
-
-The system uses `utf8mb4` for full Unicode support including emojis.
-
 ## Migration Between Databases
 
 ### Export from SQLite
@@ -188,11 +148,6 @@ psql -U adcp_user -d adcp -f adcp_backup.sql
 - Built-in connection pooling
 - Advanced indexing options
 
-### MySQL
-- Good alternative to PostgreSQL
-- Slightly different SQL dialect
-- Consider InnoDB for transactions
-
 ## Backup Strategies
 
 ### SQLite
@@ -216,19 +171,6 @@ pg_dump -U adcp_user -d adcp | gzip > adcp_backup.sql.gz
 
 # Custom format (allows selective restore)
 pg_dump -U adcp_user -d adcp -Fc > adcp_backup.dump
-```
-
-### MySQL
-
-```bash
-# Basic backup
-mysqldump -u adcp_user -p adcp > adcp_backup.sql
-
-# Compressed backup
-mysqldump -u adcp_user -p adcp | gzip > adcp_backup.sql.gz
-
-# With stored procedures and triggers
-mysqldump -u adcp_user -p --routines --triggers adcp > adcp_backup.sql
 ```
 
 ## Monitoring
@@ -262,9 +204,6 @@ env | grep DB_
 ```bash
 # PostgreSQL
 psql -h $DB_HOST -U $DB_USER -d $DB_NAME
-
-# MySQL
-mysql -h $DB_HOST -u $DB_USER -p $DB_NAME
 ```
 
 3. Check logs for detailed errors
@@ -277,9 +216,6 @@ Ensure the database user has proper permissions:
 -- PostgreSQL
 GRANT ALL ON ALL TABLES IN SCHEMA public TO adcp_user;
 GRANT ALL ON ALL SEQUENCES IN SCHEMA public TO adcp_user;
-
--- MySQL
-GRANT ALL PRIVILEGES ON adcp.* TO 'adcp_user'@'%';
 ```
 
 ### Migration Issues

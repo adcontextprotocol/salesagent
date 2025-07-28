@@ -6,7 +6,7 @@ from urllib.parse import urlparse
 import sqlite3
 
 class DatabaseConfig:
-    """Flexible database configuration supporting multiple backends."""
+    """Flexible database configuration supporting SQLite and PostgreSQL."""
     
     @staticmethod
     def get_db_config() -> Dict[str, Any]:
@@ -42,19 +42,8 @@ class DatabaseConfig:
                 'sslmode': os.environ.get('DB_SSLMODE', 'prefer')
             }
         
-        elif db_type == 'mysql':
-            return {
-                'type': 'mysql',
-                'host': os.environ.get('DB_HOST', 'localhost'),
-                'port': int(os.environ.get('DB_PORT', '3306')),
-                'database': os.environ.get('DB_NAME', 'adcp'),
-                'user': os.environ.get('DB_USER', 'adcp'),
-                'password': os.environ.get('DB_PASSWORD', ''),
-                'charset': 'utf8mb4'
-            }
-        
         else:
-            raise ValueError(f"Unsupported database type: {db_type}")
+            raise ValueError(f"Unsupported database type: {db_type}. Use 'sqlite' or 'postgresql'")
     
     @staticmethod
     def _parse_database_url(url: str) -> Dict[str, Any]:
@@ -79,19 +68,8 @@ class DatabaseConfig:
                 'sslmode': 'require' if 'sslmode=require' in url else 'prefer'
             }
         
-        elif parsed.scheme == 'mysql':
-            return {
-                'type': 'mysql',
-                'host': parsed.hostname,
-                'port': parsed.port or 3306,
-                'database': parsed.path.lstrip('/'),
-                'user': parsed.username,
-                'password': parsed.password or '',
-                'charset': 'utf8mb4'
-            }
-        
         else:
-            raise ValueError(f"Unsupported database scheme: {parsed.scheme}")
+            raise ValueError(f"Unsupported database scheme: {parsed.scheme}. Use 'sqlite' or 'postgresql'")
     
     @staticmethod
     def get_connection_string() -> str:
@@ -110,16 +88,6 @@ class DatabaseConfig:
             
             return (f"postgresql://{auth}@{config['host']}:{config['port']}"
                    f"/{config['database']}?sslmode={config['sslmode']}")
-        
-        elif config['type'] == 'mysql':
-            password = config['password']
-            if password:
-                auth = f"{config['user']}:{password}"
-            else:
-                auth = config['user']
-            
-            return (f"mysql+pymysql://{auth}@{config['host']}:{config['port']}"
-                   f"/{config['database']}?charset={config['charset']}")
         
         else:
             raise ValueError(f"Unsupported database type: {config['type']}")
@@ -153,17 +121,6 @@ class DatabaseConnection:
                 sslmode=self.config['sslmode']
             )
         
-        elif self.config['type'] == 'mysql':
-            import pymysql
-            self.connection = pymysql.connect(
-                host=self.config['host'],
-                port=self.config['port'],
-                database=self.config['database'],
-                user=self.config['user'],
-                password=self.config['password'],
-                charset=self.config['charset']
-            )
-        
         return self.connection
     
     def execute(self, query: str, params: Optional[tuple] = None):
@@ -171,8 +128,8 @@ class DatabaseConnection:
         cursor = self.connection.cursor()
         
         # Convert parameter placeholders based on database type
-        if self.config['type'] in ['postgresql', 'mysql'] and '?' in query:
-            # Convert SQLite-style ? to %s for PostgreSQL/MySQL
+        if self.config['type'] == 'postgresql' and '?' in query:
+            # Convert SQLite-style ? to %s for PostgreSQL
             query = query.replace('?', '%s')
         
         if params:
