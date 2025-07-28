@@ -3,6 +3,7 @@ from typing import List, Dict, Any, Optional
 from datetime import datetime
 from rich.console import Console
 from schemas import *
+from audit_logger import get_audit_logger
 
 class CreativeEngineAdapter(ABC):
     """Abstract base class for creative engine adapters."""
@@ -32,6 +33,10 @@ class AdServerAdapter(ABC):
             self.adapter_principal_id = principal.get_adapter_id(self.__class__.adapter_name)
         else:
             self.adapter_principal_id = None
+            
+        # Initialize audit logger with adapter name
+        adapter_name = getattr(self.__class__, 'adapter_name', self.__class__.__name__)
+        self.audit_logger = get_audit_logger(adapter_name)
         
     def log(self, message: str, dry_run_prefix: bool = True):
         """Log a message, with optional dry-run prefix."""

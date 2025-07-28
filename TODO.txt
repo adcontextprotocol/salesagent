@@ -1,12 +1,10 @@
 # TODO
 
 Security and permissions
-- Make sure each adapter is limited to its principal, and add documentation for each adapter in its directory that is clear about the security perimeter that is being enforced (eg "every principal is mapped to an advertiser_id, and calls are made with that advertiser_id. For instance: ... ")
 - Add an admin token so that an admin user can see additional tools
 
 Functionality
 Note: with all of these we should update the overall AdCP:Buy spec that is in docs-adcp as well as making the changes locally.
-- make the get media buy delivery tool capable of pulling down all active media buys at once to make performance better
 - look into creative grouping across ad servers and consider adding a creative group hierarchy layer
 - add a "get creatives" call that can show all active creatives, potentially limited to a creative group if we go that route
 - add a mechanism for an admin to see pending creatives and approve them

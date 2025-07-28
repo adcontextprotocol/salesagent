@@ -168,6 +168,15 @@ def _verify_principal(media_buy_id: str, context: Context):
     if media_buy_id not in media_buys:
         raise ValueError(f"Media buy '{media_buy_id}' not found.")
     if media_buys[media_buy_id][1] != principal_id:
+        # Log security violation
+        from audit_logger import get_audit_logger
+        security_logger = get_audit_logger("AdCP")
+        security_logger.log_security_violation(
+            operation="access_media_buy",
+            principal_id=principal_id,
+            resource_id=media_buy_id,
+            reason=f"Principal does not own media buy (owner: {media_buys[media_buy_id][1]})"
+        )
         raise PermissionError(f"Principal '{principal_id}' does not own media buy '{media_buy_id}'.")
 
 # --- MCP Tools (Full Implementation) ---

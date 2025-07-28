@@ -275,6 +275,19 @@ class GoogleAdManager(AdServerAdapter):
 
     def create_media_buy(self, request: CreateMediaBuyRequest, packages: List[MediaPackage], start_time: datetime, end_time: datetime) -> CreateMediaBuyResponse:
         """Creates a new Order and associated LineItems in Google Ad Manager."""
+        # Log operation
+        self.audit_logger.log_operation(
+            operation="create_media_buy",
+            principal_name=self.principal.name,
+            principal_id=self.principal.principal_id,
+            adapter_id=self.advertiser_id,
+            success=True,
+            details={
+                "po_number": request.po_number,
+                "flight_dates": f"{start_time.date()} to {end_time.date()}"
+            }
+        )
+        
         self.log(f"[bold]GoogleAdManager.create_media_buy[/bold] for principal '{self.principal.name}' (GAM advertiser ID: {self.advertiser_id})", dry_run_prefix=False)
         
         # Validate targeting
@@ -332,6 +345,7 @@ class GoogleAdManager(AdServerAdapter):
             if created_orders:
                 media_buy_id = str(created_orders[0]['id'])
                 self.log(f"✓ Created GAM Order ID: {media_buy_id}")
+                self.audit_logger.log_success(f"Created GAM Order ID: {media_buy_id}")
         
         # Create LineItems for each package
         for package in packages:
@@ -367,6 +381,7 @@ class GoogleAdManager(AdServerAdapter):
                 created_line_items = line_item_service.createLineItems([line_item])
                 if created_line_items:
                     self.log(f"✓ Created LineItem ID: {created_line_items[0]['id']} for {package.name}")
+                    self.audit_logger.log_success(f"Created GAM LineItem ID: {created_line_items[0]['id']}")
         
         return CreateMediaBuyResponse(
             media_buy_id=media_buy_id,

@@ -23,7 +23,19 @@ class MockAdServer(AdServerAdapter):
 
     def create_media_buy(self, request: CreateMediaBuyRequest, packages: List[MediaPackage], start_time: datetime, end_time: datetime) -> CreateMediaBuyResponse:
         """Simulates the creation of a media buy."""
-        self.log(f"[bold]MockAdServer.create_media_buy[/bold] for principal '{self.principal.name}' (adapter ID: {self.adapter_principal_id})", dry_run_prefix=False)
+        # Log operation start
+        self.audit_logger.log_operation(
+            operation="create_media_buy",
+            principal_name=self.principal.name,
+            principal_id=self.principal.principal_id,
+            adapter_id=self.adapter_principal_id,
+            success=True,
+            details={
+                "media_buy_id": f"buy_{request.po_number}",
+                "po_number": request.po_number,
+                "flight_dates": f"{start_time.date()} to {end_time.date()}"
+            }
+        )
         
         media_buy_id = f"buy_{request.po_number}"
         
@@ -70,6 +82,8 @@ class MockAdServer(AdServerAdapter):
             }
             self.log("✓ Media buy created successfully")
             self.log(f"  Campaign ID: {media_buy_id}")
+            # Log successful creation
+            self.audit_logger.log_success(f"Created Mock Order ID: {media_buy_id}")
         else:
             self.log(f"Would return: Campaign ID '{media_buy_id}' with status 'pending_creative'")
         
@@ -82,6 +96,19 @@ class MockAdServer(AdServerAdapter):
 
     def add_creative_assets(self, media_buy_id: str, assets: List[Dict[str, Any]], today: datetime) -> List[AssetStatus]:
         """Simulates adding creatives and returns an 'approved' status."""
+        # Log operation
+        self.audit_logger.log_operation(
+            operation="add_creative_assets",
+            principal_name=self.principal.name,
+            principal_id=self.principal.principal_id,
+            adapter_id=self.adapter_principal_id,
+            success=True,
+            details={
+                "media_buy_id": media_buy_id,
+                "creative_count": len(assets)
+            }
+        )
+        
         self.log(f"[bold]MockAdServer.add_creative_assets[/bold] for campaign '{media_buy_id}'", dry_run_prefix=False)
         self.log(f"Adding {len(assets)} creative assets")
         

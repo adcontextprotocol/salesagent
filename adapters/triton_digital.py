@@ -146,6 +146,19 @@ class TritonDigital(AdServerAdapter):
         end_time: datetime
     ) -> CreateMediaBuyResponse:
         """Creates a new Campaign and Flights in the Triton TAP API."""
+        # Log operation
+        self.audit_logger.log_operation(
+            operation="create_media_buy",
+            principal_name=self.principal.name,
+            principal_id=self.principal.principal_id,
+            adapter_id=self.advertiser_id,
+            success=True,
+            details={
+                "po_number": request.po_number,
+                "flight_dates": f"{start_time.date()} to {end_time.date()}"
+            }
+        )
+        
         self.log(f"TritonDigital.create_media_buy for principal '{self.principal.name}' (Triton advertiser ID: {self.advertiser_id})", dry_run_prefix=False)
         
         # Validate targeting

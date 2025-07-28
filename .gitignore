@@ -2,5 +2,15 @@
 config.json
 __pycache__
 adcp.db
-\n# Build artifacts\n*.egg-info/
+
+# Build artifacts
+*.egg-info/
 *.egg-info
+
+# Logs
+logs/
+*.log
+
+# Virtual environment
+.venv/
+venv/

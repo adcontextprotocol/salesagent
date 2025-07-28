@@ -186,6 +186,19 @@ class Kevel(AdServerAdapter):
         end_time: datetime
     ) -> CreateMediaBuyResponse:
         """Creates a new Campaign and associated Flights in Kevel."""
+        # Log operation
+        self.audit_logger.log_operation(
+            operation="create_media_buy",
+            principal_name=self.principal.name,
+            principal_id=self.principal.principal_id,
+            adapter_id=self.advertiser_id,
+            success=True,
+            details={
+                "po_number": request.po_number,
+                "flight_dates": f"{start_time.date()} to {end_time.date()}"
+            }
+        )
+        
         self.log(f"Kevel.create_media_buy for principal '{self.principal.name}' (Kevel advertiser ID: {self.advertiser_id})", dry_run_prefix=False)
         
         # Validate targeting
@@ -263,6 +276,7 @@ class Kevel(AdServerAdapter):
             response.raise_for_status()
             campaign_data = response.json()
             campaign_id = campaign_data["Id"]
+            self.audit_logger.log_success(f"Created Kevel Campaign ID: {campaign_id}")
             
             # Create flights for each package
             for package in packages:
