@@ -1,6 +1,5 @@
 import json
 import os
-import sqlite3
 import uuid
 from datetime import date, datetime, timedelta
 from typing import Dict, List, Optional, Tuple
@@ -17,21 +16,26 @@ from adapters.kevel import Kevel
 from adapters.triton_digital import TritonDigital
 from database import init_db
 from schemas import *
-from config_loader import load_config
+from config_loader import (
+    load_config, get_current_tenant, set_current_tenant,
+    get_tenant_config, current_tenant
+)
+from db_config import get_db_connection
 
 # --- Authentication ---
-DB_FILE = "adcp.db"
 
-def get_principal_from_token(token: str) -> Optional[str]:
+def get_principal_from_token(token: str, tenant_id: str) -> Optional[str]:
     """Looks up a principal_id from the database using a token."""
-    # Check for admin token first
-    admin_token = config.get('admin', {}).get('token')
-    if admin_token and token == admin_token:
-        return "admin"
+    # Check for tenant admin token first
+    tenant = get_current_tenant()
+    if tenant and token == tenant['config'].get('admin_token'):
+        return f"{tenant['tenant_id']}_admin"
     
-    conn = sqlite3.connect(DB_FILE)
-    cursor = conn.cursor()
-    cursor.execute("SELECT principal_id FROM principals WHERE access_token = ?", (token,))
+    conn = get_db_connection()
+    cursor = conn.execute(
+        "SELECT principal_id FROM principals WHERE access_token = ? AND tenant_id = ?", 
+        (token, tenant_id)
+    )
     result = cursor.fetchone()
     conn.close()
     return result[0] if result else None
@@ -47,31 +51,63 @@ def get_principal_from_context(context: Optional[Context]) -> Optional[str]:
         if not request:
             return None
         
+        # Extract tenant from host header
+        host = request.headers.get('host', '')
+        subdomain = host.split('.')[0] if '.' in host else 'localhost'
+        
+        # Load tenant by subdomain
+        conn = get_db_connection()
+        cursor = conn.execute(
+            "SELECT tenant_id, name, subdomain, config FROM tenants WHERE subdomain = ? AND is_active = ?",
+            (subdomain, True)
+        )
+        row = cursor.fetchone()
+        conn.close()
+        
+        if not row:
+            print(f"No active tenant found for subdomain: {subdomain}")
+            return None
+            
+        # Set tenant context
+        tenant_dict = {
+            'tenant_id': row[0],
+            'name': row[1],
+            'subdomain': row[2],
+            'config': json.loads(row[3])
+        }
+        set_current_tenant(tenant_dict)
+        
         # Get the x-adcp-auth header
         auth_token = request.headers.get('x-adcp-auth')
         if not auth_token:
             return None
         
         # Validate token and get principal
-        return get_principal_from_token(auth_token)
+        return get_principal_from_token(auth_token, tenant_dict['tenant_id'])
     except Exception as e:
         print(f"Auth error: {e}")
         return None
 
 def get_principal_adapter_mapping(principal_id: str) -> Dict[str, Any]:
     """Get the platform mappings for a principal."""
-    conn = sqlite3.connect(DB_FILE)
-    cursor = conn.cursor()
-    cursor.execute("SELECT platform_mappings FROM principals WHERE principal_id = ?", (principal_id,))
+    tenant = get_current_tenant()
+    conn = get_db_connection()
+    cursor = conn.execute(
+        "SELECT platform_mappings FROM principals WHERE principal_id = ? AND tenant_id = ?", 
+        (principal_id, tenant['tenant_id'])
+    )
     result = cursor.fetchone()
     conn.close()
     return json.loads(result[0]) if result else {}
 
 def get_principal_object(principal_id: str) -> Optional[Principal]:
     """Get a Principal object for the given principal_id."""
-    conn = sqlite3.connect(DB_FILE)
-    cursor = conn.cursor()
-    cursor.execute("SELECT principal_id, name, platform_mappings FROM principals WHERE principal_id = ?", (principal_id,))
+    tenant = get_current_tenant()
+    conn = get_db_connection()
+    cursor = conn.execute(
+        "SELECT principal_id, name, platform_mappings FROM principals WHERE principal_id = ? AND tenant_id = ?", 
+        (principal_id, tenant['tenant_id'])
+    )
     result = cursor.fetchone()
     conn.close()
     
@@ -102,28 +138,33 @@ def get_adapter_principal_id(principal_id: str, adapter: str) -> Optional[str]:
 
 def get_adapter(principal: Principal, dry_run: bool = False):
     """Get the appropriate adapter instance for the selected adapter type."""
-    # Get adapter config from global config
-    adapter_config = config.get('ad_server', {})
+    # Get tenant-specific adapter config
+    tenant = get_current_tenant()
+    adapters_config = tenant['config'].get('adapters', {})
     
-    if SELECTED_ADAPTER == "mock":
+    # Find the first enabled adapter
+    selected_adapter = None
+    adapter_config = {}
+    
+    for adapter_name, config in adapters_config.items():
+        if config.get('enabled'):
+            selected_adapter = adapter_name
+            adapter_config = config.copy()
+            break
+    
+    if not selected_adapter:
+        # Default to mock if no adapters enabled
+        selected_adapter = 'mock'
+        adapter_config = {'enabled': True}
+    
+    # Create the appropriate adapter instance
+    if selected_adapter == "mock":
         return MockAdServerAdapter(adapter_config, principal, dry_run)
-    elif SELECTED_ADAPTER == "gam":
-        # Get GAM-specific config
-        gam_config = config.get('gam', {})
-        adapter_config.update(gam_config)
-        
-        # Provide mock config for dry-run mode if needed
-        if dry_run and not adapter_config.get('network_code'):
-            adapter_config = {
-                'network_code': '123456789',
-                'service_account_key_file': '/path/to/service-account.json',
-                'company_id': '987654321',
-                'trafficker_id': '555555555'
-            }
+    elif selected_adapter == "google_ad_manager":
         return GoogleAdManager(adapter_config, principal, dry_run)
-    elif SELECTED_ADAPTER == "kevel":
+    elif selected_adapter == "kevel":
         return Kevel(adapter_config, principal, dry_run)
-    elif SELECTED_ADAPTER in ["triton", "triton_digital"]:
+    elif selected_adapter in ["triton", "triton_digital"]:
         return TritonDigital(adapter_config, principal, dry_run)
     else:
         # Default to mock for unsupported adapters
@@ -224,7 +265,10 @@ def create_media_buy(req: CreateMediaBuyRequest, context: Context) -> CreateMedi
     adapter = get_adapter(principal, dry_run=DRY_RUN_MODE)
     
     # Check if manual approval is required
-    if adapter.manual_approval_required and 'create_media_buy' in adapter.manual_approval_operations:
+    manual_approval_required = adapter.manual_approval_required if hasattr(adapter, 'manual_approval_required') else False
+    manual_approval_operations = adapter.manual_approval_operations if hasattr(adapter, 'manual_approval_operations') else []
+    
+    if manual_approval_required and 'create_media_buy' in manual_approval_operations:
         # Create a human task instead of executing immediately
         task_req = CreateHumanTaskRequest(
             task_type="manual_approval",
@@ -302,6 +346,11 @@ def create_media_buy(req: CreateMediaBuyRequest, context: Context) -> CreateMedi
 def submit_creatives(req: SubmitCreativesRequest, context: Context) -> SubmitCreativesResponse:
     _verify_principal(req.media_buy_id, context)
     
+    # Initialize creative engine with tenant config
+    tenant = get_current_tenant()
+    creative_engine_config = tenant['config'].get('creative_engine', {})
+    creative_engine = MockCreativeEngine(creative_engine_config)
+    
     # Process creatives through the creative engine
     statuses = creative_engine.process_creatives(req.creatives)
     for status in statuses: creative_statuses[status.creative_id] = status
@@ -315,6 +364,12 @@ def check_creative_status(req: CheckCreativeStatusRequest, context: Context) -> 
 @mcp.tool
 def adapt_creative(req: AdaptCreativeRequest, context: Context) -> CreativeStatus:
     _verify_principal(req.media_buy_id, context)
+    
+    # Initialize creative engine with tenant config
+    tenant = get_current_tenant()
+    creative_engine_config = tenant['config'].get('creative_engine', {})
+    creative_engine = MockCreativeEngine(creative_engine_config)
+    
     status = creative_engine.adapt_creative(req)
     creative_statuses[req.new_creative_id] = status
     return status
@@ -344,7 +399,10 @@ def update_media_buy(req: UpdateMediaBuyRequest, context: Context) -> UpdateMedi
     today = req.today or date.today()
     
     # Check if manual approval is required
-    if adapter.manual_approval_required and 'update_media_buy' in adapter.manual_approval_operations:
+    manual_approval_required = adapter.manual_approval_required if hasattr(adapter, 'manual_approval_required') else False
+    manual_approval_operations = adapter.manual_approval_operations if hasattr(adapter, 'manual_approval_operations') else []
+    
+    if manual_approval_required and 'update_media_buy' in manual_approval_operations:
         # Create a human task instead of executing immediately
         task_req = CreateHumanTaskRequest(
             task_type="manual_approval",
@@ -800,6 +858,11 @@ def create_creative(req: CreateCreativeRequest, context: Context) -> CreateCreat
     
     creative_library[creative.creative_id] = creative
     
+    # Initialize creative engine with tenant config
+    tenant = get_current_tenant()
+    creative_engine_config = tenant['config'].get('creative_engine', {})
+    creative_engine = MockCreativeEngine(creative_engine_config)
+    
     # Process through creative engine for approval
     status = creative_engine.process_creatives([creative])[0]
     creative_statuses[creative.creative_id] = status
@@ -936,7 +999,7 @@ def get_pending_creatives(req: GetPendingCreativesRequest, context: Context) -> 
     logger.log_operation(
         operation="get_pending_creatives",
         principal_name="Admin",
-        principal_id="admin",
+        principal_id=principal_id,
         adapter_id="N/A",
         success=True,
         details={
@@ -977,7 +1040,7 @@ def approve_creative(req: ApproveCreativeRequest, context: Context) -> ApproveCr
     logger.log_operation(
         operation="approve_creative",
         principal_name="Admin",
-        principal_id="admin",
+        principal_id=get_principal_from_context(context),
         adapter_id="N/A",
         success=True,
         details={
@@ -1021,9 +1084,14 @@ def approve_creative(req: ApproveCreativeRequest, context: Context) -> ApproveCr
 
 @mcp.tool
 def get_principal_summary(context: Context) -> GetPrincipalSummaryResponse:
-    conn = sqlite3.connect(DB_FILE)
-    cursor = conn.cursor()
-    cursor.execute("SELECT principal_id, name, platform_mappings FROM principals")
+    _get_principal_id_from_context(context)  # Authenticate and set tenant
+    tenant = get_current_tenant()
+    
+    conn = get_db_connection()
+    cursor = conn.execute(
+        "SELECT principal_id, name, platform_mappings FROM principals WHERE tenant_id = ?",
+        (tenant['tenant_id'],)
+    )
     rows = cursor.fetchall()
     conn.close()
     summaries = [PrincipalSummary(
@@ -1139,7 +1207,8 @@ def create_human_task(req: CreateHumanTaskRequest, context: Context) -> CreateHu
         console.print(f"   Error: {req.error_detail}")
     
     # Send webhook notification for urgent tasks (if configured)
-    webhook_url = config.get("hitl_webhook_url")
+    tenant = get_current_tenant()
+    webhook_url = tenant['config'].get("features", {}).get("hitl_webhook_url")
     if webhook_url and req.priority == "urgent":
         try:
             import requests
@@ -1148,7 +1217,8 @@ def create_human_task(req: CreateHumanTaskRequest, context: Context) -> CreateHu
                 "type": req.task_type,
                 "priority": req.priority,
                 "principal": principal_id,
-                "error": req.error_detail
+                "error": req.error_detail,
+                "tenant": tenant['tenant_id']
             }, timeout=5)
         except:
             pass  # Don't fail task creation if webhook fails
@@ -1165,7 +1235,8 @@ def get_pending_tasks(req: GetPendingTasksRequest, context: Context) -> GetPendi
     """Get pending human tasks with optional filtering."""
     # Check if requester is admin
     principal_id = get_principal_from_context(context)
-    is_admin = principal_id == "admin"
+    tenant = get_current_tenant()
+    is_admin = principal_id == f"{tenant['tenant_id']}_admin"
     
     # Filter tasks
     filtered_tasks = []
@@ -1221,7 +1292,8 @@ def assign_task(req: AssignTaskRequest, context: Context) -> Dict[str, str]:
     """Assign a task to a human operator."""
     # Admin only
     principal_id = get_principal_from_context(context)
-    if principal_id != "admin":
+    tenant = get_current_tenant()
+    if principal_id != f"{tenant['tenant_id']}_admin":
         raise ToolError("PERMISSION_DENIED", "Only administrators can assign tasks")
     
     if req.task_id not in human_tasks:
@@ -1236,7 +1308,7 @@ def assign_task(req: AssignTaskRequest, context: Context) -> Dict[str, str]:
     audit_logger.log_operation(
         operation="assign_task",
         principal_name="admin",
-        principal_id="admin",
+        principal_id=principal_id,
         adapter_id="task_queue",
         success=True,
         details={
@@ -1256,7 +1328,8 @@ def complete_task(req: CompleteTaskRequest, context: Context) -> Dict[str, str]:
     """Complete a human task with resolution details."""
     # Admin only
     principal_id = get_principal_from_context(context)
-    if principal_id != "admin":
+    tenant = get_current_tenant()
+    if principal_id != f"{tenant['tenant_id']}_admin":
         raise ToolError("PERMISSION_DENIED", "Only administrators can complete tasks")
     
     if req.task_id not in human_tasks:
@@ -1273,7 +1346,7 @@ def complete_task(req: CompleteTaskRequest, context: Context) -> Dict[str, str]:
     audit_logger.log_operation(
         operation="complete_task",
         principal_name="admin",
-        principal_id="admin",
+        principal_id=principal_id,
         adapter_id="task_queue",
         success=True,
         details={
@@ -1448,7 +1521,8 @@ def mark_task_complete(req: MarkTaskCompleteRequest, context: Context) -> Dict[s
     """Mark a task as complete with automatic verification."""
     # Admin only
     principal_id = get_principal_from_context(context)
-    if principal_id != "admin":
+    tenant = get_current_tenant()
+    if principal_id != f"{tenant['tenant_id']}_admin":
         raise ToolError("PERMISSION_DENIED", "Only administrators can mark tasks complete")
     
     if req.task_id not in human_tasks:
@@ -1481,7 +1555,7 @@ def mark_task_complete(req: MarkTaskCompleteRequest, context: Context) -> Dict[s
     audit_logger.log_operation(
         operation="mark_task_complete",
         principal_name="admin",
-        principal_id="admin",
+        principal_id=principal_id,
         adapter_id="task_queue",
         success=True,
         details={
@@ -1508,27 +1582,30 @@ def mark_task_complete(req: MarkTaskCompleteRequest, context: Context) -> Dict[s
 # Dry run logs are now handled by the adapters themselves
 
 def get_product_catalog() -> List[Product]:
-    global product_catalog
-    if not product_catalog:
-        conn = sqlite3.connect('adcp.db')
-        conn.row_factory = sqlite3.Row
-        cursor = conn.cursor()
-        cursor.execute("SELECT * FROM products")
-        rows = cursor.fetchall()
-        conn.close()
-        
-        loaded_products = []
-        for row in rows:
-            product_data = dict(row)
-            product_data['formats'] = json.loads(product_data['formats'])
-            product_data['targeting_template'] = json.loads(product_data['targeting_template'])
-            if product_data.get('price_guidance'):
-                product_data['price_guidance'] = json.loads(product_data['price_guidance'])
-            loaded_products.append(Product(**product_data))
-        product_catalog = loaded_products
-    return product_catalog
+    """Get products for the current tenant."""
+    tenant = get_current_tenant()
+    
+    conn = get_db_connection()
+    cursor = conn.execute(
+        "SELECT * FROM products WHERE tenant_id = ?",
+        (tenant['tenant_id'],)
+    )
+    rows = cursor.fetchall()
+    conn.close()
+    
+    loaded_products = []
+    for row in rows:
+        product_data = dict(row)
+        # Remove tenant_id as it's not in the Product schema
+        product_data.pop('tenant_id', None)
+        product_data['formats'] = json.loads(product_data['formats'])
+        product_data['targeting_template'] = json.loads(product_data['targeting_template'])
+        if product_data.get('price_guidance'):
+            product_data['price_guidance'] = json.loads(product_data['price_guidance'])
+        loaded_products.append(Product(**product_data))
+    
+    return loaded_products
 
 if __name__ == "__main__":
     init_db()
-    get_product_catalog()
     # Server is now run via run_server.py script

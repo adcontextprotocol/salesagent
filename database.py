@@ -1,60 +1,92 @@
-import sqlite3
 import json
 import os
-
-DB_FILE = "adcp.db"
+import secrets
+from datetime import datetime
+from db_config import get_db_connection, DatabaseConfig
+from database_schema import get_schema
 
 def init_db():
-    """Initializes the database with principals (including access tokens) and products."""
-    conn = sqlite3.connect(DB_FILE)
-    cursor = conn.cursor()
+    """Initialize database with multi-tenant support."""
+    db_config = DatabaseConfig.get_db_config()
+    conn = get_db_connection()
     
-    # Check if we're in production mode
-    is_production = os.environ.get('PRODUCTION') == 'true'
+    # Get the appropriate schema for this database type
+    schema = get_schema(db_config['type'])
     
-    cursor.execute("DROP TABLE IF EXISTS products;")
-    cursor.execute("DROP TABLE IF EXISTS principals;")
-
-    # --- Principals Table with access_token ---
-    cursor.execute("""
-    CREATE TABLE principals (
-        principal_id TEXT PRIMARY KEY,
-        name TEXT NOT NULL,
-        platform_mappings TEXT NOT NULL,
-        access_token TEXT NOT NULL UNIQUE
-    );
-    """)
-
-    # --- Products Table ---
-    cursor.execute("""
-    CREATE TABLE products (
-        product_id TEXT PRIMARY KEY,
-        name TEXT NOT NULL,
-        description TEXT NOT NULL,
-        formats TEXT NOT NULL,
-        targeting_template TEXT NOT NULL,
-        delivery_type TEXT NOT NULL,
-        is_fixed_price BOOLEAN NOT NULL,
-        cpm REAL,
-        price_guidance TEXT,
-        is_custom BOOLEAN DEFAULT 0
-    );
-    """)
-
-    # Only insert sample data if not in production
-    if not is_production:
-        principals_data = [
-            {
-                "principal_id": "purina",
-                "name": "Purina Pet Foods",
-                "platform_mappings": {
-                    "gam_advertiser_id": 12345,
-                    "kevel_advertiser_id": "purina-pet-foods",
-                    "triton_advertiser_id": "ADV-PUR-001",
-                    "mock_advertiser_id": "mock-purina"
-                },
-                "access_token": "purina_secret_token_abc123"
+    # For PostgreSQL/MySQL, we need to execute statements one at a time
+    if db_config['type'] in ['postgresql', 'mysql']:
+        statements = [s.strip() for s in schema.split(';') if s.strip()]
+        for statement in statements:
+            try:
+                conn.execute(statement)
+            except Exception as e:
+                # Ignore errors for indexes that already exist
+                if 'already exists' not in str(e).lower():
+                    print(f"Warning executing statement: {e}")
+    else:
+        # SQLite can handle multiple statements
+        conn.connection.executescript(schema)
+    
+    # Check if we need to create a default tenant
+    cursor = conn.execute("SELECT COUNT(*) FROM tenants")
+    tenant_count = cursor.fetchone()[0]
+    
+    if tenant_count == 0:
+        # No tenants exist - create a default one for simple use case
+        admin_token = secrets.token_urlsafe(32)
+        api_token = secrets.token_urlsafe(32)
+        
+        default_config = {
+            "adapters": {
+                "mock": {
+                    "enabled": True,
+                    "dry_run": False
+                }
             },
+            "creative_engine": {
+                "auto_approve_formats": ["display_300x250", "display_728x90", "video_30s"],
+                "human_review_required": False
+            },
+            "features": {
+                "max_daily_budget": 10000,
+                "enable_aee_signals": True
+            },
+            "admin_token": admin_token
+        }
+        
+        # Create default tenant
+        conn.execute("""
+            INSERT INTO tenants (
+                tenant_id, name, subdomain, config,
+                created_at, updated_at, is_active, billing_plan
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """, (
+            "default",
+            "Default Publisher",
+            "localhost",  # Works with localhost:8080
+            json.dumps(default_config),
+            datetime.now().isoformat(),
+            datetime.now().isoformat(),
+            True if db_config['type'] == 'sqlite' else 1,  # Boolean handling
+            "standard"
+        ))
+        
+        # Create default admin principal
+        conn.execute("""
+            INSERT INTO principals (
+                tenant_id, principal_id, name,
+                platform_mappings, access_token
+            ) VALUES (?, ?, ?, ?, ?)
+        """, (
+            "default",
+            "default_admin",
+            "Default Admin",
+            json.dumps({}),
+            admin_token  # Admin uses same token for admin operations
+        ))
+        
+        # Create sample advertisers
+        principals_data = [
             {
                 "principal_id": "acme_corp",
                 "name": "Acme Corporation",
@@ -64,110 +96,133 @@ def init_db():
                     "triton_advertiser_id": "ADV-ACM-002",
                     "mock_advertiser_id": "mock-acme"
                 },
-                "access_token": "acme_secret_token_xyz789"
+                "access_token": "acme_corp_token"
+            },
+            {
+                "principal_id": "purina",
+                "name": "Purina Pet Foods",
+                "platform_mappings": {
+                    "gam_advertiser_id": 12345,
+                    "kevel_advertiser_id": "purina-pet-foods",
+                    "triton_advertiser_id": "ADV-PUR-001",
+                    "mock_advertiser_id": "mock-purina"
+                },
+                "access_token": "purina_token"
             }
         ]
         
         for p in principals_data:
-            cursor.execute("INSERT INTO principals VALUES (?, ?, ?, ?)",
-                           (p["principal_id"], p["name"], json.dumps(p["platform_mappings"]), p["access_token"]))
-
+            conn.execute("""
+                INSERT INTO principals (
+                    tenant_id, principal_id, name,
+                    platform_mappings, access_token
+                ) VALUES (?, ?, ?, ?, ?)
+            """, (
+                "default",
+                p["principal_id"],
+                p["name"],
+                json.dumps(p["platform_mappings"]),
+                p["access_token"]
+            ))
+        
+        # Create sample products
         products_data = [
             {
-                "product_id": "prod_video_guaranteed_sports",
-                "name": "Sports Video - Guaranteed",
-                "description": "Premium sports content video inventory with guaranteed delivery",
-                "formats": [
-                    {
-                        "format_id": "fmt_video_30s",
-                        "name": "30-second Video",
-                        "type": "video",
-                        "description": "Standard 30-second video ad",
-                        "specs": {
-                            "duration_seconds": 30,
-                            "placement": "instream",
-                            "resolution": "1920x1080",
-                            "bitrate": "2500kbps"
-                        },
-                        "delivery_options": {
-                            "vast": {
-                                "versions": ["2.0", "3.0", "4.0"]
-                            }
-                        }
-                    }
-                ],
+                "product_id": "prod_1",
+                "name": "Premium Display - News",
+                "description": "Premium news site display inventory",
+                "formats": [{
+                    "format_id": "display_300x250",
+                    "name": "Medium Rectangle",
+                    "type": "display",
+                    "description": "Standard medium rectangle display ad",
+                    "specs": {"width": 300, "height": 250},
+                    "delivery_options": {"hosted": {}}
+                }],
                 "targeting_template": {
-                    "content_categories_include": ["sports"],
-                    "geography": ["USA"]
+                    "content_cat_any_of": ["news", "politics"],
+                    "geo_country_any_of": ["US"]
                 },
                 "delivery_type": "guaranteed",
                 "is_fixed_price": False,
                 "cpm": None,
                 "price_guidance": {
-                    "floor": 35.0,
-                    "p25": 40.0,
-                    "p50": 45.0,
-                    "p75": 50.0,
-                    "p90": 60.0
-                },
-                "is_custom": False
+                    "floor": 5.0,
+                    "p50": 8.0,
+                    "p75": 10.0
+                }
             },
             {
-                "product_id": "prod_audio_podcast_tech",
-                "name": "Tech Podcast Audio - Non-Guaranteed",
-                "description": "Technology-focused podcast inventory with flexible delivery",
-                "formats": [
-                    {
-                        "format_id": "fmt_audio_30s",
-                        "name": "30-second Audio",
-                        "type": "audio",
-                        "description": "Standard 30-second audio ad for podcasts",
-                        "specs": {
-                            "duration_seconds": 30,
-                            "placement": "podcast",
-                            "format": "mp3",
-                            "bitrate": "128kbps"
-                        },
-                        "delivery_options": {
-                            "hosted": {
-                                "delivery_method": "dynamic_insertion"
-                            }
-                        }
-                    }
-                ],
+                "product_id": "prod_2",
+                "name": "Run of Site Display",
+                "description": "Run of site display inventory",
+                "formats": [{
+                    "format_id": "display_728x90",
+                    "name": "Leaderboard",
+                    "type": "display",
+                    "description": "Standard leaderboard display ad",
+                    "specs": {"width": 728, "height": 90},
+                    "delivery_options": {"hosted": {}}
+                }],
                 "targeting_template": {
-                    "content_categories_include": ["technology", "business"],
-                    "geography": ["USA", "CAN"]
+                    "geo_country_any_of": ["US", "CA"]
                 },
                 "delivery_type": "non_guaranteed",
                 "is_fixed_price": True,
-                "cpm": 25.0,
-                "price_guidance": None,
-                "is_custom": False
+                "cpm": 2.5,
+                "price_guidance": None
             }
         ]
-
+        
         for p in products_data:
-            cursor.execute("""
-                INSERT INTO products VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            conn.execute("""
+                INSERT INTO products (
+                    tenant_id, product_id, name, description,
+                    formats, targeting_template, delivery_type,
+                    is_fixed_price, cpm, price_guidance
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
+                "default",
                 p["product_id"],
                 p["name"],
                 p["description"],
                 json.dumps(p["formats"]),
                 json.dumps(p["targeting_template"]),
                 p["delivery_type"],
-                p["is_fixed_price"],
+                p["is_fixed_price"] if db_config['type'] == 'sqlite' else int(p["is_fixed_price"]),
                 p.get("cpm"),
-                json.dumps(p["price_guidance"]) if p.get("price_guidance") else None,
-                p["is_custom"]
+                json.dumps(p["price_guidance"]) if p.get("price_guidance") else None
             ))
         
-        print("Database initialized with sample data.")
+        print(f"""
+╔══════════════════════════════════════════════════════════════════╗
+║                    🚀 ADCP:BUY SERVER INITIALIZED                ║
+╠══════════════════════════════════════════════════════════════════╣
+║                                                                  ║
+║  A default tenant has been created for quick start:              ║
+║                                                                  ║
+║  🏢 Tenant: Default Publisher                                    ║
+║  🌐 URL: http://localhost:8080                                   ║
+║                                                                  ║
+║  🔑 Admin Token (x-adcp-auth header):                            ║
+║     {admin_token}  ║
+║                                                                  ║
+║  👤 Sample Advertiser Tokens:                                    ║
+║     • Acme Corp: acme_corp_token                                 ║
+║     • Purina: purina_token                                       ║
+║                                                                  ║
+║  💡 To create additional tenants:                                ║
+║     python setup_tenant.py "Publisher Name"                      ║
+║                                                                  ║
+║  📚 To use with a different tenant:                              ║
+║     http://[subdomain].localhost:8080                            ║
+║                                                                  ║
+╚══════════════════════════════════════════════════════════════════╝
+        """)
     else:
-        print("Database initialized (production mode - no sample data).")
-
-    conn.commit()
+        print(f"Database ready ({tenant_count} tenant(s) configured)")
+    
+    conn.connection.commit()
     conn.close()
 
 if __name__ == "__main__":

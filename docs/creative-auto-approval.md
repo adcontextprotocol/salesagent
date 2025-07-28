@@ -8,20 +8,28 @@ The AdCP:Buy platform supports configurable auto-approval for creative formats. 
 
 ### Basic Setup
 
-In your `config.json`, configure the creative engine with auto-approval formats:
+When creating a tenant with `setup_tenant.py`, configure the creative engine with auto-approval formats:
+
+```bash
+python setup_tenant.py "Publisher Name" \
+  --adapter google_ad_manager \
+  --gam-network-code 123456 \
+  --auto-approve-all  # Or use default auto-approval for specific formats
+```
+
+Or configure manually in the database:
 
 ```json
 {
   "creative_engine": {
-    "adapter": "mock_creative_engine",
-    "human_review_required": true,
     "auto_approve_formats": [
       "display_320x50",
       "display_728x90",
       "display_300x250",
       "display_160x600",
       "native_standard"
-    ]
+    ],
+    "human_review_required": true
   }
 }
 ```
@@ -145,6 +153,18 @@ To enable auto-approval in an existing system:
 1. Identify most common creative formats
 2. Review historical approval rates
 3. Select formats with >95% approval rate
-4. Add to auto-approve list
+4. Update tenant configuration:
+   ```python
+   # Update tenant's creative engine config
+   python manage_tenant.py update [tenant_id] \
+     --key "creative_engine.auto_approve_formats" \
+     --value '["display_300x250", "display_728x90"]'
+   ```
 5. Monitor for 30 days
 6. Expand list based on results
+
+## Multi-Tenant Considerations
+
+- Each tenant can have different auto-approval settings
+- Premium tenants might have more formats auto-approved
+- Configure per-tenant based on trust level and history

@@ -20,6 +20,16 @@ dev = [
     "pytest>=8.3.2",
     "pytest-mock>=3.14.0",
 ]
+postgresql = [
+    "psycopg2-binary>=2.9.9",
+]
+mysql = [
+    "pymysql>=1.1.0",
+]
+all-databases = [
+    "psycopg2-binary>=2.9.9",
+    "pymysql>=1.1.0",
+]
 
 [dependency-groups]
 dev = [
