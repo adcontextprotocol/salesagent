@@ -550,6 +550,26 @@ class FullLifecycleSimulation:
             border_style="green"
         ))
         
+        # Test the new bulk delivery tool
+        console.print("\n[yellow]Testing bulk delivery retrieval...[/yellow]")
+        bulk_response = await self._call_tool("get_all_media_buy_delivery", {
+            "req": {
+                "today": completion_date.isoformat()
+            }
+        })
+        
+        if bulk_response:
+            console.print("\n[bold cyan]📊 All Media Buys Summary[/bold cyan]")
+            console.print(f"  Total active buys: {bulk_response.get('active_count', 0)}")
+            console.print(f"  Total spend across all buys: ${bulk_response.get('total_spend', 0):,.2f}")
+            console.print(f"  Total impressions: {bulk_response.get('total_impressions', 0):,}")
+            
+            deliveries = bulk_response.get('deliveries', [])
+            if deliveries:
+                console.print("\n  Individual buy statuses:")
+                for delivery in deliveries:
+                    console.print(f"    - {delivery['media_buy_id']}: {delivery['status']} ({delivery['pacing']})")
+        
         # Calculate delivery percentage
         budget = 50000.00
         delivery_pct = (final_response.get('spend', 0) / budget * 100) if budget > 0 else 0

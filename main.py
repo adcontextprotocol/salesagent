@@ -470,6 +470,120 @@ def get_media_buy_delivery(req: GetMediaBuyDeliveryRequest, context: Context) ->
     )
 
 @mcp.tool
+def get_all_media_buy_delivery(req: GetAllMediaBuyDeliveryRequest, context: Context) -> GetAllMediaBuyDeliveryResponse:
+    """Get delivery data for all active media buys owned by the principal.
+    
+    This is optimized for performance by batching requests when possible.
+    """
+    principal_id = _get_principal_id_from_context(context)
+    
+    # Get the Principal object
+    principal = get_principal_object(principal_id)
+    if not principal:
+        raise ToolError(f"Principal {principal_id} not found")
+    
+    # Get the appropriate adapter
+    adapter = get_adapter(principal, dry_run=DRY_RUN_MODE)
+    
+    # Filter media buys for this principal
+    principal_media_buys = []
+    if req.media_buy_ids:
+        # Use specific IDs if provided
+        for media_buy_id in req.media_buy_ids:
+            if media_buy_id in media_buys:
+                buy_request, buy_principal_id = media_buys[media_buy_id]
+                if buy_principal_id == principal_id:
+                    principal_media_buys.append((media_buy_id, buy_request))
+                else:
+                    console.print(f"[yellow]Skipping {media_buy_id} - not owned by principal[/yellow]")
+    else:
+        # Get all media buys for this principal
+        for media_buy_id, (buy_request, buy_principal_id) in media_buys.items():
+            if buy_principal_id == principal_id:
+                principal_media_buys.append((media_buy_id, buy_request))
+    
+    # Collect delivery data for each media buy
+    deliveries = []
+    total_spend = 0.0
+    total_impressions = 0
+    active_count = 0
+    
+    for media_buy_id, buy_request in principal_media_buys:
+        # Create a ReportingPeriod for the adapter
+        reporting_period = ReportingPeriod(
+            start=datetime.combine(req.today - timedelta(days=1), datetime.min.time()),
+            end=datetime.combine(req.today, datetime.min.time()),
+            start_date=req.today - timedelta(days=1),
+            end_date=req.today
+        )
+        
+        try:
+            # Get delivery data from the adapter
+            simulation_datetime = datetime.combine(req.today, datetime.min.time())
+            delivery_response = adapter.get_media_buy_delivery(media_buy_id, reporting_period, simulation_datetime)
+            
+            # Calculate totals from the adapter response
+            spend = delivery_response.totals.spend if hasattr(delivery_response, 'totals') else 0
+            impressions = delivery_response.totals.impressions if hasattr(delivery_response, 'totals') else 0
+            
+            # Calculate days elapsed
+            days_elapsed = (req.today - buy_request.flight_start_date).days
+            total_days = (buy_request.flight_end_date - buy_request.flight_start_date).days
+            
+            # Determine pacing
+            expected_spend = (buy_request.total_budget / total_days) * days_elapsed if total_days > 0 else 0
+            if spend > expected_spend * 1.1:
+                pacing = "ahead"
+            elif spend < expected_spend * 0.9:
+                pacing = "behind"
+            else:
+                pacing = "on_track"
+            
+            # Determine status
+            if req.today < buy_request.flight_start_date:
+                status = "pending_start"
+            elif req.today > buy_request.flight_end_date:
+                status = "completed"
+            else:
+                status = "delivering"
+                active_count += 1
+            
+            # Add to results
+            deliveries.append(GetMediaBuyDeliveryResponse(
+                media_buy_id=media_buy_id,
+                status=status,
+                spend=spend,
+                impressions=impressions,
+                pacing=pacing,
+                days_elapsed=days_elapsed,
+                total_days=total_days
+            ))
+            
+            total_spend += spend
+            total_impressions += impressions
+            
+        except Exception as e:
+            console.print(f"[red]Error fetching delivery for {media_buy_id}: {e}[/red]")
+            # Add a placeholder response
+            deliveries.append(GetMediaBuyDeliveryResponse(
+                media_buy_id=media_buy_id,
+                status="error",
+                spend=0,
+                impressions=0,
+                pacing="unknown",
+                days_elapsed=0,
+                total_days=0
+            ))
+    
+    return GetAllMediaBuyDeliveryResponse(
+        deliveries=deliveries,
+        total_spend=total_spend,
+        total_impressions=total_impressions,
+        active_count=active_count,
+        summary_date=req.today
+    )
+
+@mcp.tool
 def get_principal_summary(context: Context) -> GetPrincipalSummaryResponse:
     conn = sqlite3.connect(DB_FILE)
     cursor = conn.cursor()

@@ -242,6 +242,19 @@ class GetMediaBuyDeliveryResponse(BaseModel):
     days_elapsed: int
     total_days: int
 
+class GetAllMediaBuyDeliveryRequest(BaseModel):
+    """Request delivery data for all active media buys owned by the principal."""
+    today: date
+    media_buy_ids: Optional[List[str]] = None  # If provided, only fetch these specific buys
+
+class GetAllMediaBuyDeliveryResponse(BaseModel):
+    """Bulk response containing delivery data for multiple media buys."""
+    deliveries: List[GetMediaBuyDeliveryResponse]
+    total_spend: float
+    total_impressions: int
+    active_count: int
+    summary_date: date
+
 # --- Additional Schema Classes ---
 class MediaPackage(BaseModel):
     package_id: str
