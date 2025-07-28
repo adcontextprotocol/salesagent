@@ -12,7 +12,6 @@ from schemas import (
     PackageDelivery, Principal
 )
 from adapters.constants import UPDATE_ACTIONS, REQUIRED_UPDATE_ACTIONS
-from targeting_utils import TargetingMapper, TargetingValidator
 
 class GoogleAdManager(AdServerAdapter):
     """
@@ -63,28 +62,135 @@ class GoogleAdManager(AdServerAdapter):
             print(f"Error initializing GAM client: {e}")
             raise
     
+    # Supported device types and their GAM mappings
+    DEVICE_TYPE_MAP = {
+        "mobile": "MOBILE",
+        "desktop": "DESKTOP", 
+        "tablet": "TABLET",
+        "ctv": "CONNECTED_TV",
+        "dooh": "SET_TOP_BOX"
+    }
+    
+    # Supported media types
+    SUPPORTED_MEDIA_TYPES = {"video", "display", "native"}
+    
+    def _validate_targeting(self, targeting_overlay):
+        """Validate targeting and return unsupported features."""
+        unsupported = []
+        
+        if not targeting_overlay:
+            return unsupported
+        
+        # Check device types
+        if targeting_overlay.device_type_any_of:
+            for device in targeting_overlay.device_type_any_of:
+                if device not in self.DEVICE_TYPE_MAP:
+                    unsupported.append(f"Device type '{device}' not supported")
+        
+        # Check media types
+        if targeting_overlay.media_type_any_of:
+            for media in targeting_overlay.media_type_any_of:
+                if media not in self.SUPPORTED_MEDIA_TYPES:
+                    unsupported.append(f"Media type '{media}' not supported")
+        
+        # Audio-specific targeting not supported
+        if targeting_overlay.media_type_any_of and "audio" in targeting_overlay.media_type_any_of:
+            unsupported.append("Audio media type not supported by Google Ad Manager")
+        
+        # GAM supports all other standard targeting dimensions
+        
+        return unsupported
+
     def _build_targeting(self, targeting_overlay):
         """Build GAM targeting criteria from AdCP targeting."""
         if not targeting_overlay:
             return {}
         
-        # Validate targeting first
-        validation_issues = TargetingValidator.validate_targeting(targeting_overlay)
-        if validation_issues:
-            self.log(f"[yellow]Targeting validation warnings: {validation_issues}[/yellow]")
+        gam_targeting = {}
         
-        # Use the targeting mapper to convert to GAM format
-        gam_targeting = TargetingMapper.to_gam_targeting(targeting_overlay)
+        # Geographic targeting
+        geo_targeting = {}
         
-        # Log what we're applying
-        if gam_targeting:
-            self.log(f"Applying GAM targeting: {list(gam_targeting.keys())}")
+        # For demo purposes, we'll structure the geo data
+        # In production, this would map to GAM geo IDs
+        if any([targeting_overlay.geo_country_any_of, targeting_overlay.geo_region_any_of,
+                targeting_overlay.geo_metro_any_of, targeting_overlay.geo_city_any_of]):
+            geo_targeting['targetedLocations'] = []
+            
+            # Add demo geo IDs - real implementation would lookup actual GAM IDs
+            if targeting_overlay.geo_country_any_of:
+                geo_targeting['targetedLocations'].append({'id': '2840'})  # US
+                
+        if any([targeting_overlay.geo_country_none_of, targeting_overlay.geo_region_none_of]):
+            geo_targeting['excludedLocations'] = []
+            
+        if geo_targeting:
+            gam_targeting['geoTargeting'] = geo_targeting
         
+        # Technology/Device targeting
+        tech_targeting = {}
+        
+        if targeting_overlay.device_type_any_of:
+            device_categories = []
+            for device in targeting_overlay.device_type_any_of:
+                if device in self.DEVICE_TYPE_MAP:
+                    device_categories.append(self.DEVICE_TYPE_MAP[device])
+            if device_categories:
+                tech_targeting['deviceCategories'] = device_categories
+        
+        if targeting_overlay.os_any_of:
+            tech_targeting['operatingSystems'] = [os.upper() for os in targeting_overlay.os_any_of]
+            
+        if targeting_overlay.browser_any_of:
+            tech_targeting['browsers'] = [b.upper() for b in targeting_overlay.browser_any_of]
+            
+        if tech_targeting:
+            gam_targeting['technologyTargeting'] = tech_targeting
+        
+        # Content targeting
+        if targeting_overlay.content_cat_any_of or targeting_overlay.keywords_any_of:
+            content_targeting = {}
+            if targeting_overlay.content_cat_any_of:
+                content_targeting['targetedContentCategories'] = targeting_overlay.content_cat_any_of
+            if targeting_overlay.keywords_any_of:
+                content_targeting['targetedKeywords'] = targeting_overlay.keywords_any_of
+            gam_targeting['contentTargeting'] = content_targeting
+        
+        # Dayparting
+        if targeting_overlay.dayparting:
+            daypart_targeting = []
+            
+            for schedule in targeting_overlay.dayparting.schedules:
+                daypart_targeting.append({
+                    'dayOfWeek': [f'DAY_{d}' for d in schedule.days],
+                    'startTime': {'hour': schedule.start_hour, 'minute': 0},
+                    'endTime': {'hour': schedule.end_hour, 'minute': 0},
+                    'timeZone': schedule.timezone or targeting_overlay.dayparting.timezone
+                })
+            
+            gam_targeting['dayPartTargeting'] = daypart_targeting
+        
+        # Custom key-value targeting
+        if targeting_overlay.custom and 'gam' in targeting_overlay.custom:
+            gam_targeting['customTargeting'] = targeting_overlay.custom['gam'].get('key_values', {})
+        
+        self.log(f"Applying GAM targeting: {list(gam_targeting.keys())}")
         return gam_targeting
 
     def create_media_buy(self, request: CreateMediaBuyRequest, packages: List[MediaPackage], start_time: datetime, end_time: datetime) -> CreateMediaBuyResponse:
         """Creates a new Order and associated LineItems in Google Ad Manager."""
         self.log(f"[bold]GoogleAdManager.create_media_buy[/bold] for principal '{self.principal.name}' (GAM advertiser ID: {self.advertiser_id})", dry_run_prefix=False)
+        
+        # Validate targeting
+        unsupported_features = self._validate_targeting(request.targeting_overlay)
+        if unsupported_features:
+            error_msg = f"Unsupported targeting features for Google Ad Manager: {', '.join(unsupported_features)}"
+            self.log(f"[red]Error: {error_msg}[/red]")
+            return CreateMediaBuyResponse(
+                media_buy_id="",
+                status="failed",
+                detail=error_msg
+            )
         
         media_buy_id = f"gam_{int(datetime.now().timestamp())}"
         

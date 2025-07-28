@@ -136,14 +136,23 @@ class FullLifecycleSimulation:
             "end_date": self.flight_end.isoformat(),
             "budget": 50000.00,
             "targeting_overlay": {
-                "geography": ["US-CA", "US-NY", "DMA-501", "DMA-803"],  # States + major DMAs
-                "device_types": ["ctv", "mobile", "desktop"],
-                "platforms": ["ios", "android"],
-                "audiences": ["3p:pet_owners", "behavior:pet_supplies_shoppers"],
-                "content_categories_include": ["IAB8", "IAB16"],  # Pets, Family
-                "content_categories_exclude": ["IAB7", "IAB14"],  # Health, Society
-                "keywords_include": ["dogs", "cats", "pet care"],
-                "keywords_exclude": ["controversial", "politics"],
+                # Geographic targeting (OpenRTB aligned)
+                "geo_country_any_of": ["US"],
+                "geo_region_any_of": ["CA", "NY"],  # California, New York
+                "geo_metro_any_of": ["501", "803"],  # NYC, LA DMAs
+                # Device targeting
+                "device_type_any_of": ["mobile", "desktop", "ctv"],
+                "os_any_of": ["iOS", "Android"],
+                # Media types
+                "media_type_any_of": ["video", "display"],
+                # Audience targeting
+                "audiences_any_of": ["3p:pet_owners", "behavior:pet_supplies_shoppers"],
+                # Content targeting
+                "content_cat_any_of": ["IAB8", "IAB16"],  # Pets, Family & Parenting
+                "content_cat_none_of": ["IAB7", "IAB14"],  # Health, Society
+                "keywords_any_of": ["dogs", "cats", "pet care"],
+                "keywords_none_of": ["controversial", "politics"],
+                # Time-based targeting
                 "dayparting": {
                     "timezone": "America/New_York",
                     "schedules": [
@@ -164,6 +173,7 @@ class FullLifecycleSimulation:
                         }
                     ]
                 },
+                # Frequency control
                 "frequency_cap": {
                     "impressions": 5,
                     "period": "day",
@@ -179,8 +189,9 @@ class FullLifecycleSimulation:
             f"  dates: {self.flight_start} to {self.flight_end}\n"
             f"  budget: $50,000\n"
             f"  targeting:\n"
-            f"    • geo: CA/NY + DMAs 501/803\n"
-            f"    • devices: CTV, mobile, desktop\n"
+            f"    • geo: US (CA, NY) + metros 501, 803\n"
+            f"    • devices: mobile, desktop, ctv\n"
+            f"    • media: video, display\n"
             f"    • audiences: pet owners & shoppers\n"
             f"    • dayparts: weekday mornings/evenings + weekends\n"
             f"    • frequency: 5/day/user",
@@ -450,10 +461,16 @@ class FullLifecycleSimulation:
             update_request = {
                 "media_buy_id": self.media_buy_id,
                 "targeting_overlay": {
-                    "geography": ["US-CA", "US-NY", "US-TX", "US-FL", "DMA-602", "DMA-623"],  # Expand
-                    "device_types": ["ctv", "mobile", "desktop", "tablet"],  # Add tablet
-                    "audiences": ["3p:pet_owners", "behavior:pet_supplies_shoppers", "demo:families_with_children"],
-                    "content_categories_exclude": ["IAB7"],  # Remove politics exclusion
+                    # Expand geographic reach
+                    "geo_region_any_of": ["CA", "NY", "TX", "FL"],  # Add Texas, Florida
+                    "geo_metro_any_of": ["501", "803", "602", "623"],  # Add Chicago, Dallas
+                    # Add more devices (including tablet)
+                    "device_type_any_of": ["mobile", "desktop", "ctv", "tablet"],
+                    # Expand audiences
+                    "audiences_any_of": ["3p:pet_owners", "behavior:pet_supplies_shoppers", "demo:families_with_children"],
+                    # Relax content exclusions
+                    "content_cat_none_of": ["IAB7"],  # Only exclude health/fitness
+                    # Extend dayparting
                     "dayparting": {
                         "timezone": "America/New_York",
                         "schedules": [
@@ -471,7 +488,7 @@ class FullLifecycleSimulation:
                         "budget": 30000,  # Increase budget
                         "pacing": "asap",  # Accelerate delivery
                         "targeting_overlay": {  # Package-specific refinement
-                            "keywords_include": ["puppy", "kitten", "pet adoption"]
+                            "keywords_any_of": ["puppy", "kitten", "pet adoption"]
                         }
                     }
                 ]

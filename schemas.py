@@ -42,24 +42,48 @@ class Targeting(BaseModel):
     
     All fields are optional and can be combined for precise audience targeting.
     Platform adapters will map these to their specific targeting capabilities.
+    Uses any_of/none_of pattern for consistent include/exclude across all dimensions.
     """
-    # Geographic targeting
-    geography: Optional[List[str]] = None  # Countries, states, DMAs, cities, postal codes
-    geography_exclude: Optional[List[str]] = None  # Exclude specific geos
+    # Geographic targeting - aligned with OpenRTB
+    geo_country_any_of: Optional[List[str]] = None  # ISO country codes: ["US", "CA", "GB"]
+    geo_country_none_of: Optional[List[str]] = None
+    
+    geo_region_any_of: Optional[List[str]] = None  # Region codes: ["NY", "CA", "ON"]
+    geo_region_none_of: Optional[List[str]] = None
+    
+    geo_metro_any_of: Optional[List[str]] = None  # Metro/DMA codes: ["501", "803"]
+    geo_metro_none_of: Optional[List[str]] = None
+    
+    geo_city_any_of: Optional[List[str]] = None  # City names: ["New York", "Los Angeles"]
+    geo_city_none_of: Optional[List[str]] = None
+    
+    geo_zip_any_of: Optional[List[str]] = None  # Postal codes: ["10001", "90210"]
+    geo_zip_none_of: Optional[List[str]] = None
     
     # Device and platform targeting
-    device_types: Optional[List[str]] = None  # desktop, mobile, tablet, ctv, audio_player
-    platforms: Optional[List[str]] = None  # ios, android, windows, macos
-    browsers: Optional[List[str]] = None  # chrome, safari, firefox, edge
+    device_type_any_of: Optional[List[str]] = None  # ["mobile", "desktop", "tablet", "ctv", "audio", "dooh"]
+    device_type_none_of: Optional[List[str]] = None
+    
+    os_any_of: Optional[List[str]] = None  # Operating systems: ["iOS", "Android", "Windows"]
+    os_none_of: Optional[List[str]] = None
+    
+    browser_any_of: Optional[List[str]] = None  # Browsers: ["Chrome", "Safari", "Firefox"]
+    browser_none_of: Optional[List[str]] = None
     
     # Content and contextual targeting
-    content_categories_include: Optional[List[str]] = None  # IAB categories to target
-    content_categories_exclude: Optional[List[str]] = None  # IAB categories to exclude
-    keywords_include: Optional[List[str]] = None  # Positive keyword targeting
-    keywords_exclude: Optional[List[str]] = None  # Negative keyword targeting
+    content_cat_any_of: Optional[List[str]] = None  # IAB content categories
+    content_cat_none_of: Optional[List[str]] = None
+    
+    keywords_any_of: Optional[List[str]] = None  # Keyword targeting
+    keywords_none_of: Optional[List[str]] = None
     
     # Audience targeting
-    audiences: Optional[List[str]] = None  # First-party, third-party, behavioral segments
+    audiences_any_of: Optional[List[str]] = None  # Audience segments
+    audiences_none_of: Optional[List[str]] = None
+    
+    # Media type targeting
+    media_type_any_of: Optional[List[str]] = None  # ["video", "audio", "display", "native"]
+    media_type_none_of: Optional[List[str]] = None
     
     # Time-based targeting
     dayparting: Optional[Dayparting] = None  # Schedule by day of week and hour
@@ -67,11 +91,9 @@ class Targeting(BaseModel):
     # Frequency control
     frequency_cap: Optional[FrequencyCap] = None  # Impression limits per user/period
     
-    # Technology targeting (backwards compatibility)
-    technology: Optional[List[str]] = None  # Connection types, carriers
-    
-    # Legacy field (use dayparting instead)
-    day_parts: Optional[List[str]] = None
+    # Connection type targeting
+    connection_type_any_of: Optional[List[int]] = None  # OpenRTB connection types
+    connection_type_none_of: Optional[List[int]] = None
     
     # Platform-specific custom targeting
     custom: Optional[Dict[str, Any]] = None  # Platform-specific targeting options

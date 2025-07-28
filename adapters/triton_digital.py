@@ -6,7 +6,6 @@ import json
 from adapters.base import AdServerAdapter, CreativeEngineAdapter
 from schemas import *
 from adapters.constants import UPDATE_ACTIONS, REQUIRED_UPDATE_ACTIONS
-from targeting_utils import TargetingMapper, TargetingValidator
 
 class TritonDigital(AdServerAdapter):
     """
@@ -42,31 +41,101 @@ class TritonDigital(AdServerAdapter):
                 "Content-Type": "application/json"
             }
     
+    # Only audio device types supported
+    SUPPORTED_DEVICE_TYPES = {"mobile", "desktop", "audio"}
+    
+    # Only audio media type supported
+    SUPPORTED_MEDIA_TYPES = {"audio"}
+    
+    # Audio daypart presets
+    AUDIO_PRESETS = {
+        'drive_time_morning': {'days': [1,2,3,4,5], 'start_hour': 6, 'end_hour': 10},
+        'drive_time_evening': {'days': [1,2,3,4,5], 'start_hour': 16, 'end_hour': 19},
+        'midday': {'days': [1,2,3,4,5], 'start_hour': 10, 'end_hour': 15},
+        'evening': {'days': [0,1,2,3,4,5,6], 'start_hour': 19, 'end_hour': 24},
+        'overnight': {'days': [0,1,2,3,4,5,6], 'start_hour': 0, 'end_hour': 6},
+        'weekend': {'days': [0,6], 'start_hour': 0, 'end_hour': 24},
+    }
+    
+    def _validate_targeting(self, targeting_overlay):
+        """Validate targeting and return unsupported features."""
+        unsupported = []
+        
+        if not targeting_overlay:
+            return unsupported
+        
+        # Check device types - only audio-capable devices
+        if targeting_overlay.device_type_any_of:
+            for device in targeting_overlay.device_type_any_of:
+                if device not in self.SUPPORTED_DEVICE_TYPES:
+                    unsupported.append(f"Device type '{device}' not supported (Triton supports audio-capable devices only)")
+        
+        # Check media types - only audio
+        if targeting_overlay.media_type_any_of:
+            non_audio = [m for m in targeting_overlay.media_type_any_of if m != "audio"]
+            if non_audio:
+                unsupported.append(f"Media types {non_audio} not supported (Triton is audio-only)")
+        
+        # Video/display targeting makes no sense for audio
+        if targeting_overlay.content_cat_any_of:
+            unsupported.append("IAB content categories not supported (use custom genres for audio)")
+        
+        # Browser targeting not relevant for audio
+        if targeting_overlay.browser_any_of:
+            unsupported.append("Browser targeting not supported for audio platform")
+        
+        return unsupported
+
     def _build_targeting(self, targeting_overlay):
         """Build Triton targeting criteria from AdCP targeting."""
         if not targeting_overlay:
             return {}
         
-        # Validate targeting first
-        validation_issues = TargetingValidator.validate_targeting(targeting_overlay)
-        if validation_issues:
-            self.log(f"[yellow]Targeting validation warnings: {validation_issues}[/yellow]")
+        triton_targeting = {}
         
-        # Use the targeting mapper to convert to Triton format
-        triton_targeting = TargetingMapper.to_triton_targeting(targeting_overlay)
+        # Geographic targeting (audio market focused)
+        targeting_obj = {}
+        if targeting_overlay.geo_country_any_of:
+            targeting_obj['countries'] = targeting_overlay.geo_country_any_of
+        if targeting_overlay.geo_region_any_of:
+            targeting_obj['states'] = targeting_overlay.geo_region_any_of
+        if targeting_overlay.geo_metro_any_of:
+            # Map to audio market names if possible
+            targeting_obj['markets'] = []  # Would need metro-to-market mapping
+            
+        if targeting_obj:
+            triton_targeting['targeting'] = targeting_obj
         
-        # Check platform compatibility - Triton is audio-only
-        compatibility = TargetingMapper.check_platform_compatibility(targeting_overlay, 'triton_digital')
-        if compatibility['unsupported']:
-            self.log(f"[yellow]Unsupported targeting features for Triton Digital: {compatibility['unsupported']}[/yellow]")
-        if compatibility['warnings']:
-            for warning in compatibility['warnings']:
-                self.log(f"[yellow]Warning: {warning}[/yellow]")
+        # Dayparting (special audio presets)
+        if targeting_overlay.dayparting:
+            if targeting_overlay.dayparting.presets:
+                triton_targeting['dayparts'] = targeting_overlay.dayparting.presets
+            else:
+                # Try to map schedules to presets
+                daypart_names = []
+                for schedule in targeting_overlay.dayparting.schedules:
+                    # Check if schedule matches any preset
+                    for preset_name, preset_data in self.AUDIO_PRESETS.items():
+                        if (schedule.days == preset_data['days'] and
+                            schedule.start_hour == preset_data['start_hour'] and
+                            schedule.end_hour == preset_data['end_hour']):
+                            daypart_names.append(preset_name)
+                            break
+                
+                if daypart_names:
+                    triton_targeting['dayparts'] = daypart_names
         
-        # Log what we're applying
-        if triton_targeting:
-            self.log(f"Applying Triton targeting: {list(triton_targeting.keys())}")
+        # Audio-specific targeting from custom field
+        if targeting_overlay.custom and 'triton' in targeting_overlay.custom:
+            triton_custom = targeting_overlay.custom['triton']
+            if 'station_ids' in triton_custom:
+                triton_targeting['stationIds'] = triton_custom['station_ids']
+            if 'genres' in triton_custom:
+                triton_targeting['genres'] = triton_custom['genres']
+            if 'stream_types' in triton_custom:
+                triton_targeting['streamTypes'] = triton_custom['stream_types']
         
+        self.log(f"Applying Triton targeting: {list(triton_targeting.keys())}")
         return triton_targeting
 
     def create_media_buy(
@@ -78,6 +147,17 @@ class TritonDigital(AdServerAdapter):
     ) -> CreateMediaBuyResponse:
         """Creates a new Campaign and Flights in the Triton TAP API."""
         self.log(f"TritonDigital.create_media_buy for principal '{self.principal.name}' (Triton advertiser ID: {self.advertiser_id})", dry_run_prefix=False)
+        
+        # Validate targeting
+        unsupported_features = self._validate_targeting(request.targeting_overlay)
+        if unsupported_features:
+            error_msg = f"Unsupported targeting features for Triton Digital: {'; '.join(unsupported_features)}"
+            self.log(f"[red]Error: {error_msg}[/red]")
+            return CreateMediaBuyResponse(
+                media_buy_id="",
+                status="failed",
+                detail=error_msg
+            )
         
         # Generate a media buy ID
         media_buy_id = f"triton_{request.po_number}" if request.po_number else f"triton_{int(datetime.now().timestamp())}"

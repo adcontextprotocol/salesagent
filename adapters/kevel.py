@@ -6,7 +6,6 @@ import json
 from adapters.base import AdServerAdapter, CreativeEngineAdapter
 from schemas import *
 from adapters.constants import UPDATE_ACTIONS, REQUIRED_UPDATE_ACTIONS
-from targeting_utils import TargetingMapper, TargetingValidator
 
 class Kevel(AdServerAdapter):
     """
@@ -43,28 +42,90 @@ class Kevel(AdServerAdapter):
                 "Content-Type": "application/json"
             }
     
+    # Supported device types (Kevel doesn't support CTV)
+    SUPPORTED_DEVICE_TYPES = {"mobile", "desktop", "tablet"}
+    
+    # Supported media types
+    SUPPORTED_MEDIA_TYPES = {"display", "native"}
+    
+    def _validate_targeting(self, targeting_overlay):
+        """Validate targeting and return unsupported features."""
+        unsupported = []
+        
+        if not targeting_overlay:
+            return unsupported
+        
+        # Check device types
+        if targeting_overlay.device_type_any_of:
+            for device in targeting_overlay.device_type_any_of:
+                if device not in self.SUPPORTED_DEVICE_TYPES:
+                    unsupported.append(f"Device type '{device}' not supported (Kevel supports: {', '.join(self.SUPPORTED_DEVICE_TYPES)})")
+        
+        # Check media types
+        if targeting_overlay.media_type_any_of:
+            for media in targeting_overlay.media_type_any_of:
+                if media not in self.SUPPORTED_MEDIA_TYPES:
+                    unsupported.append(f"Media type '{media}' not supported (Kevel supports: {', '.join(self.SUPPORTED_MEDIA_TYPES)})")
+        
+        # Audience targeting requires UserDB
+        if targeting_overlay.audiences_any_of:
+            unsupported.append("Audience targeting requires Kevel UserDB integration")
+        
+        # Frequency capping at household level not supported
+        if targeting_overlay.frequency_cap and targeting_overlay.frequency_cap.per == "household":
+            unsupported.append("Household-level frequency capping not supported (use 'user' or 'ip')")
+        
+        # Dayparting not supported
+        if targeting_overlay.dayparting:
+            unsupported.append("Dayparting not supported by Kevel")
+        
+        return unsupported
+
     def _build_targeting(self, targeting_overlay):
         """Build Kevel targeting criteria from AdCP targeting."""
         if not targeting_overlay:
             return {}
         
-        # Validate targeting first
-        validation_issues = TargetingValidator.validate_targeting(targeting_overlay)
-        if validation_issues:
-            self.log(f"[yellow]Targeting validation warnings: {validation_issues}[/yellow]")
+        kevel_targeting = {}
         
-        # Use the targeting mapper to convert to Kevel format
-        kevel_targeting = TargetingMapper.to_kevel_targeting(targeting_overlay)
+        # Geographic targeting
+        geo = {}
+        if targeting_overlay.geo_country_any_of:
+            geo['countries'] = targeting_overlay.geo_country_any_of
+        if targeting_overlay.geo_region_any_of:
+            geo['regions'] = targeting_overlay.geo_region_any_of
+        if targeting_overlay.geo_metro_any_of:
+            # Convert string metro codes to integers
+            geo['metros'] = [int(m) for m in targeting_overlay.geo_metro_any_of]
+        if targeting_overlay.geo_city_any_of:
+            geo['cities'] = targeting_overlay.geo_city_any_of
+            
+        if geo:
+            kevel_targeting['geo'] = geo
         
-        # Check platform compatibility
-        compatibility = TargetingMapper.check_platform_compatibility(targeting_overlay, 'kevel')
-        if compatibility['unsupported']:
-            self.log(f"[yellow]Unsupported targeting features for Kevel: {compatibility['unsupported']}[/yellow]")
+        # Keywords
+        if targeting_overlay.keywords_any_of:
+            kevel_targeting['keywords'] = targeting_overlay.keywords_any_of
         
-        # Log what we're applying
-        if kevel_targeting:
-            self.log(f"Applying Kevel targeting: {list(kevel_targeting.keys())}")
+        # Device targeting (map to Kevel format)
+        if targeting_overlay.device_type_any_of:
+            # Kevel uses strings for device targeting
+            devices = []
+            for device in targeting_overlay.device_type_any_of:
+                if device in self.SUPPORTED_DEVICE_TYPES:
+                    devices.append(device)
+            if devices:
+                kevel_targeting['devices'] = devices
         
+        # Custom targeting
+        if targeting_overlay.custom and 'kevel' in targeting_overlay.custom:
+            kevel_custom = targeting_overlay.custom['kevel']
+            if 'site_ids' in kevel_custom:
+                kevel_targeting['siteIds'] = kevel_custom['site_ids']
+            if 'zone_ids' in kevel_custom:
+                kevel_targeting['zoneIds'] = kevel_custom['zone_ids']
+        
+        self.log(f"Applying Kevel targeting: {list(kevel_targeting.keys())}")
         return kevel_targeting
 
     def create_media_buy(
@@ -76,6 +137,17 @@ class Kevel(AdServerAdapter):
     ) -> CreateMediaBuyResponse:
         """Creates a new Campaign and associated Flights in Kevel."""
         self.log(f"Kevel.create_media_buy for principal '{self.principal.name}' (Kevel advertiser ID: {self.advertiser_id})", dry_run_prefix=False)
+        
+        # Validate targeting
+        unsupported_features = self._validate_targeting(request.targeting_overlay)
+        if unsupported_features:
+            error_msg = f"Unsupported targeting features for Kevel: {'; '.join(unsupported_features)}"
+            self.log(f"[red]Error: {error_msg}[/red]")
+            return CreateMediaBuyResponse(
+                media_buy_id="",
+                status="failed",
+                detail=error_msg
+            )
         
         # Generate a media buy ID
         media_buy_id = f"kevel_{request.po_number}" if request.po_number else f"kevel_{int(datetime.now().timestamp())}"
