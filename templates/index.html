@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+
+{% block title %}Tenants - AdCP Admin{% endblock %}
+
+{% block content %}
+<div class="card">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+        <h2>Tenants</h2>
+        <a href="/create_tenant" class="btn">Create New Tenant</a>
+    </div>
+    
+    {% if tenants %}
+    <table>
+        <thead>
+            <tr>
+                <th>Name</th>
+                <th>Subdomain</th>
+                <th>Billing Plan</th>
+                <th>Status</th>
+                <th>Created</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for tenant in tenants %}
+            <tr>
+                <td><strong>{{ tenant.name }}</strong></td>
+                <td>
+                    <code>{{ tenant.subdomain }}</code>
+                    {% if tenant.subdomain == 'localhost' %}
+                    <br><small style="color: #666;">http://localhost:8080</small>
+                    {% else %}
+                    <br><small style="color: #666;">http://{{ tenant.subdomain }}.localhost:8080</small>
+                    {% endif %}
+                </td>
+                <td>{{ tenant.billing_plan }}</td>
+                <td>
+                    {% if tenant.is_active %}
+                    <span class="status status-active">Active</span>
+                    {% else %}
+                    <span class="status status-inactive">Inactive</span>
+                    {% endif %}
+                </td>
+                <td>{{ tenant.created_at[:10] }}</td>
+                <td>
+                    <a href="/tenant/{{ tenant.tenant_id }}" class="btn btn-small">Manage</a>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <p>No tenants found. <a href="/create_tenant">Create your first tenant</a>.</p>
+    {% endif %}
+</div>
+
+<div class="card">
+    <h2>Quick Start</h2>
+    <ol>
+        <li>Create or select a tenant above</li>
+        <li>Copy the admin token from the tenant details</li>
+        <li>Use the token in the <code>x-adcp-auth</code> header for API requests</li>
+        <li>Access the MCP server at the tenant's subdomain URL</li>
+    </ol>
+    
+    <h3 style="margin-top: 1.5rem;">Example API Request</h3>
+    <pre>curl -H "x-adcp-auth: YOUR_ADMIN_TOKEN" \
+     http://localhost:8080/principals/summary</pre>
+</div>
+{% endblock %}

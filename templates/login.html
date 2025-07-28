@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+
+{% block title %}Login - AdCP Admin{% endblock %}
+
+{% block content %}
+<div class="card" style="max-width: 400px; margin: 4rem auto;">
+    <h2>Admin Login</h2>
+    
+    {% if error %}
+    <div class="alert alert-error">{{ error }}</div>
+    {% endif %}
+    
+    <form method="POST">
+        <div class="form-group">
+            <label for="password">Password</label>
+            <input type="password" id="password" name="password" required autofocus>
+        </div>
+        <button type="submit" class="btn">Login</button>
+    </form>
+    
+    <p style="margin-top: 2rem; color: #666; font-size: 14px;">
+        Default password: <code>admin</code><br>
+        Set <code>ADMIN_UI_PASSWORD</code> environment variable to change.
+    </p>
+</div>
+{% endblock %}

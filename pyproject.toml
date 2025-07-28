@@ -12,6 +12,8 @@ dependencies = [
     "google-ads>=24.1.0",
     "requests>=2.32.3",
     "googleads>=46.0.0",
+    "flask>=3.0.0",
+    "psycopg2-binary>=2.9.9",
 ]
 
 
@@ -19,9 +21,6 @@ dependencies = [
 dev = [
     "pytest>=8.3.2",
     "pytest-mock>=3.14.0",
-]
-postgresql = [
-    "psycopg2-binary>=2.9.9",
 ]
 
 [dependency-groups]

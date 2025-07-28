@@ -7,22 +7,22 @@ import subprocess
 
 def main():
     """Run the server with configurable port."""
-    port = os.environ.get('ADCP_SALES_PORT', '8000')
+    port = os.environ.get('ADCP_SALES_PORT', '8080')
     host = os.environ.get('ADCP_SALES_HOST', '0.0.0.0')
     
-    # Check if we're in production (Fly.io sets FLY_APP_NAME)
-    is_production = bool(os.environ.get('FLY_APP_NAME'))
+    # Check if we're in production (Docker or Fly.io)
+    is_production = bool(os.environ.get('FLY_APP_NAME') or os.environ.get('PRODUCTION'))
     
     if is_production:
         # In production, bind to all interfaces
         host = '0.0.0.0'
     
     print(f"Starting AdCP Sales Agent on {host}:{port}")
-    print(f"Server endpoint: http://{host}:{port}/mcp/")
+    print(f"Server endpoint: http://{host}:{port}/")
     
-    # Run the server using uv
+    # Run the server
     cmd = [
-        "uv", "run", "python", "-c",
+        sys.executable, "-c",
         f"""
 import sys
 sys.path.insert(0, '.')

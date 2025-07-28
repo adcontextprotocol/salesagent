@@ -1,0 +1,68 @@
+services:
+  postgres:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_DB: adcp
+      POSTGRES_USER: adcp_user
+      POSTGRES_PASSWORD: secure_password_change_me
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U adcp_user -d adcp"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  adcp-server:
+    build: .
+    environment:
+      # Database configuration
+      DATABASE_URL: postgresql://adcp_user:secure_password_change_me@postgres:5432/adcp?sslmode=disable
+      
+      # Optional: Individual DB vars instead of DATABASE_URL
+      # DB_TYPE: postgresql
+      # DB_HOST: postgres
+      # DB_PORT: 5432
+      # DB_NAME: adcp
+      # DB_USER: adcp_user
+      # DB_PASSWORD: secure_password_change_me
+      
+      # Gemini API key (required for AI features)
+      GEMINI_API_KEY: ${GEMINI_API_KEY}
+      
+      # Optional: Dry run mode
+      # ADCP_DRY_RUN: true
+    
+    depends_on:
+      postgres:
+        condition: service_healthy
+    
+    ports:
+      - "8080:8080"
+    
+    volumes:
+      # Optional: Mount audit logs
+      - ./audit_logs:/app/audit_logs
+      
+      # Optional: Mount for development
+      # - .:/app
+
+  admin-ui:
+    build: .
+    command: python admin_ui.py
+    environment:
+      DATABASE_URL: postgresql://adcp_user:secure_password_change_me@postgres:5432/adcp?sslmode=disable
+      ADMIN_UI_PASSWORD: ${ADMIN_UI_PASSWORD:-admin}
+      ADMIN_UI_PORT: 8081
+    
+    depends_on:
+      postgres:
+        condition: service_healthy
+    
+    ports:
+      - "8081:8081"
+
+volumes:
+  postgres_data:
