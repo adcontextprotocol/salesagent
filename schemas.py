@@ -286,6 +286,26 @@ class GetCreativesResponse(BaseModel):
     creatives: List[Creative]
     assignments: Optional[List[CreativeAssignment]] = None
 
+# Admin tools
+class GetPendingCreativesRequest(BaseModel):
+    """Admin-only: Get all pending creatives across all principals."""
+    principal_id: Optional[str] = None  # Filter by principal if specified
+    limit: Optional[int] = 100
+
+class GetPendingCreativesResponse(BaseModel):
+    pending_creatives: List[Dict[str, Any]]  # Includes creative + principal info
+
+class ApproveCreativeRequest(BaseModel):
+    """Admin-only: Approve or reject a creative."""
+    creative_id: str
+    action: Literal["approve", "reject"]
+    reason: Optional[str] = None
+
+class ApproveCreativeResponse(BaseModel):
+    creative_id: str
+    new_status: str
+    detail: str
+
 class AdaptCreativeRequest(BaseModel):
     media_buy_id: str
     original_creative_id: str

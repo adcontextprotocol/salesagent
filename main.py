@@ -24,6 +24,11 @@ DB_FILE = "adcp.db"
 
 def get_principal_from_token(token: str) -> Optional[str]:
     """Looks up a principal_id from the database using a token."""
+    # Check for admin token first
+    admin_token = config.get('admin', {}).get('token')
+    if admin_token and token == admin_token:
+        return "admin"
+    
     conn = sqlite3.connect(DB_FILE)
     cursor = conn.cursor()
     cursor.execute("SELECT principal_id FROM principals WHERE access_token = ?", (token,))
@@ -129,7 +134,10 @@ init_db()
 config = load_config()
 mcp = FastMCP(name="AdCPSalesAgent")
 console = Console()
-creative_engine = MockCreativeEngine({})
+
+# Initialize creative engine with config
+creative_engine_config = config.get('creative_engine', {})
+creative_engine = MockCreativeEngine(creative_engine_config)
 
 # --- In-Memory State ---
 media_buys: Dict[str, Tuple[CreateMediaBuyRequest, str]] = {}
@@ -799,6 +807,145 @@ def assign_creative(req: AssignCreativeRequest, context: Context) -> AssignCreat
     )
     
     return AssignCreativeResponse(assignment=assignment)
+
+# --- Admin Tools ---
+
+def _require_admin(context: Context) -> None:
+    """Verify the request is from an admin user."""
+    principal_id = get_principal_from_context(context)
+    if principal_id != "admin":
+        raise PermissionError("This operation requires admin privileges")
+
+@mcp.tool
+def get_pending_creatives(req: GetPendingCreativesRequest, context: Context) -> GetPendingCreativesResponse:
+    """Admin-only: Get all pending creatives across all principals.
+    
+    This allows admins to review and approve/reject creatives.
+    """
+    _require_admin(context)
+    
+    pending_creatives = []
+    
+    for creative_id, status in creative_statuses.items():
+        if status.status == "pending_review":
+            creative = creative_library.get(creative_id)
+            if creative:
+                # Filter by principal if specified
+                if req.principal_id and creative.principal_id != req.principal_id:
+                    continue
+                
+                # Get principal info
+                principal = get_principal_object(creative.principal_id)
+                
+                pending_creatives.append({
+                    "creative": creative.model_dump(),
+                    "status": status.model_dump(),
+                    "principal": {
+                        "principal_id": principal.principal_id,
+                        "name": principal.name
+                    } if principal else None,
+                    "media_buy_assignments": [
+                        {
+                            "media_buy_id": a.media_buy_id,
+                            "package_id": a.package_id
+                        }
+                        for a in creative_assignments_v2.values()
+                        if a.creative_id == creative_id
+                    ]
+                })
+    
+    # Apply limit
+    if req.limit:
+        pending_creatives = pending_creatives[:req.limit]
+    
+    # Log admin action
+    from audit_logger import get_audit_logger
+    logger = get_audit_logger("AdCP")
+    logger.log_operation(
+        operation="get_pending_creatives",
+        principal_name="Admin",
+        principal_id="admin",
+        adapter_id="N/A",
+        success=True,
+        details={
+            "count": len(pending_creatives),
+            "filter_principal": req.principal_id
+        }
+    )
+    
+    return GetPendingCreativesResponse(pending_creatives=pending_creatives)
+
+@mcp.tool
+def approve_creative(req: ApproveCreativeRequest, context: Context) -> ApproveCreativeResponse:
+    """Admin-only: Approve or reject a creative.
+    
+    This updates the creative status and notifies the principal.
+    """
+    _require_admin(context)
+    
+    if req.creative_id not in creative_library:
+        raise ValueError(f"Creative '{req.creative_id}' not found")
+    
+    creative = creative_library[req.creative_id]
+    
+    # Update status
+    new_status = "approved" if req.action == "approve" else "rejected"
+    detail = req.reason or f"Creative {req.action}d by admin"
+    
+    creative_statuses[req.creative_id] = CreativeStatus(
+        creative_id=req.creative_id,
+        status=new_status,
+        detail=detail,
+        estimated_approval_time=None
+    )
+    
+    # Log admin action
+    from audit_logger import get_audit_logger
+    logger = get_audit_logger("AdCP")
+    logger.log_operation(
+        operation="approve_creative",
+        principal_name="Admin",
+        principal_id="admin",
+        adapter_id="N/A",
+        success=True,
+        details={
+            "creative_id": req.creative_id,
+            "action": req.action,
+            "new_status": new_status,
+            "creative_owner": creative.principal_id
+        }
+    )
+    
+    # If approved and assigned to media buys, push to ad servers
+    if new_status == "approved":
+        assignments = [a for a in creative_assignments_v2.values() if a.creative_id == req.creative_id]
+        for assignment in assignments:
+            # Get the media buy and principal
+            if assignment.media_buy_id in media_buys:
+                buy_request, principal_id = media_buys[assignment.media_buy_id]
+                principal = get_principal_object(principal_id)
+                if principal:
+                    try:
+                        adapter = get_adapter(principal, dry_run=DRY_RUN_MODE)
+                        # Push creative to ad server
+                        assets = [{
+                            'id': creative.creative_id,
+                            'name': creative.name,
+                            'format': creative.format_id,
+                            'media_url': creative.content_uri,
+                            'click_url': assignment.override_click_url or creative.click_through_url or '',
+                            'package_assignments': [assignment.package_id]
+                        }]
+                        adapter.add_creative_assets(assignment.media_buy_id, assets, datetime.now())
+                        console.print(f"[green]✓ Pushed creative {creative.creative_id} to {assignment.media_buy_id}[/green]")
+                    except Exception as e:
+                        console.print(f"[red]Failed to push creative to ad server: {e}[/red]")
+    
+    return ApproveCreativeResponse(
+        creative_id=req.creative_id,
+        new_status=new_status,
+        detail=detail
+    )
 
 @mcp.tool
 def get_principal_summary(context: Context) -> GetPrincipalSummaryResponse:

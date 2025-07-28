@@ -1,0 +1,28 @@
+{
+    "admin": {
+        "token": "your-secure-admin-token-here"
+    },
+    "ad_server": {
+        "adapter": "mock"
+    },
+    "creative_engine": {
+        "adapter": "mock_creative_engine",
+        "human_review_required": true,
+        "auto_approve_formats": ["display_320x50", "display_728x90"]
+    },
+    "gam": {
+        "network_code": "YOUR_NETWORK_CODE",
+        "service_account_key_file": "/path/to/service-account.json"
+    },
+    "kevel": {
+        "network_id": "YOUR_NETWORK_ID",
+        "api_key": "YOUR_API_KEY",
+        "userdb_enabled": false,
+        "frequency_capping_enabled": false
+    },
+    "triton": {
+        "base_url": "https://tap-api.tritondigital.com/v1",
+        "auth_token": "YOUR_AUTH_TOKEN"
+    },
+    "dry_run": false
+}

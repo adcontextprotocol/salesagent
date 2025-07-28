@@ -11,14 +11,31 @@ class MockCreativeEngine(CreativeEngineAdapter):
         self.config = config
         self.human_review_required = config.get("human_review_required", True)
         self.adaptation_time_days = config.get("adaptation_time_days", 3)
+        # Formats that can be auto-approved
+        self.auto_approve_formats = set(config.get("auto_approve_formats", []))
 
     def process_creatives(self, creatives: List[Creative]) -> List[CreativeStatus]:
         """Simulates processing creatives, returning their status."""
         processed = []
         for creative in creatives:
-            status = "pending_review" if self.human_review_required else "approved"
-            detail = "Awaiting manual review from creative team." if self.human_review_required else "Creative auto-approved by system."
-            est_approval = datetime.now().astimezone() + timedelta(days=2) if self.human_review_required else datetime.now().astimezone()
+            # Check if format is auto-approvable
+            is_auto_approvable = creative.format_id in self.auto_approve_formats
+            
+            # Determine status based on format and configuration
+            if is_auto_approvable and not self.human_review_required:
+                status = "approved"
+                detail = f"Creative auto-approved - format '{creative.format_id}' is in auto-approve list."
+                est_approval = None
+            elif is_auto_approvable and self.human_review_required:
+                # Even with human review required, auto-approve formats bypass it
+                status = "approved"
+                detail = f"Creative auto-approved - format '{creative.format_id}' bypasses human review."
+                est_approval = None
+            else:
+                # Requires human review
+                status = "pending_review"
+                detail = f"Awaiting manual review - format '{creative.format_id}' requires human approval."
+                est_approval = datetime.now().astimezone() + timedelta(days=2)
             
             processed.append(
                 CreativeStatus(
