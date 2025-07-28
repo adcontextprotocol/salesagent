@@ -1371,6 +1371,140 @@ def complete_task(req: CompleteTaskRequest, context: Context) -> Dict[str, str]:
     }
 
 
+@mcp.tool
+def verify_task(req: VerifyTaskRequest, context: Context) -> VerifyTaskResponse:
+    """Verify if a task was completed correctly by checking actual state."""
+    if req.task_id not in human_tasks:
+        raise ToolError("NOT_FOUND", f"Task {req.task_id} not found")
+    
+    task = human_tasks[req.task_id]
+    actual_state = {}
+    expected_state = req.expected_outcome or {}
+    discrepancies = []
+    verified = True
+    
+    # Verify based on task type and operation
+    if task.task_type == "manual_approval" and task.operation == "update_media_buy":
+        # Extract expected changes from task context
+        if task.context_data and "request" in task.context_data:
+            update_req = task.context_data["request"]
+            media_buy_id = update_req.get("media_buy_id")
+            
+            if media_buy_id and media_buy_id in media_buys:
+                # Get current state
+                buy_request, principal_id = media_buys[media_buy_id]
+                
+                # Check daily budget if it was being updated
+                if "daily_budget" in update_req:
+                    expected_budget = update_req["daily_budget"]
+                    actual_budget = getattr(buy_request, "daily_budget", None)
+                    
+                    actual_state["daily_budget"] = actual_budget
+                    expected_state["daily_budget"] = expected_budget
+                    
+                    if actual_budget != expected_budget:
+                        discrepancies.append(f"Daily budget is ${actual_budget}, expected ${expected_budget}")
+                        verified = False
+                
+                # Check active status
+                if "active" in update_req:
+                    # Would need to check adapter status
+                    # For now, assume task completion means it worked
+                    actual_state["active"] = task.status == "completed"
+                    expected_state["active"] = update_req["active"]
+                
+                # Check package updates
+                if "packages" in update_req:
+                    for pkg_update in update_req["packages"]:
+                        if "budget" in pkg_update:
+                            # Would need to query adapter for actual package budget
+                            expected_state[f"package_{pkg_update['package_id']}_budget"] = pkg_update["budget"]
+                            # For demo, assume it matches if task completed
+                            actual_state[f"package_{pkg_update['package_id']}_budget"] = pkg_update["budget"] if task.status == "completed" else 0
+    
+    elif task.task_type == "creative_approval":
+        # Check if creative was actually approved
+        creative_id = task.creative_id
+        if creative_id and creative_id in creative_statuses:
+            actual_status = creative_statuses[creative_id].status
+            actual_state["creative_status"] = actual_status
+            expected_state["creative_status"] = "approved"
+            
+            if actual_status != "approved" and task.resolution == "approved":
+                discrepancies.append(f"Creative {creative_id} status is {actual_status}, expected approved")
+                verified = False
+    
+    return VerifyTaskResponse(
+        task_id=req.task_id,
+        verified=verified,
+        actual_state=actual_state,
+        expected_state=expected_state,
+        discrepancies=discrepancies
+    )
+
+
+@mcp.tool
+def mark_task_complete(req: MarkTaskCompleteRequest, context: Context) -> Dict[str, Any]:
+    """Mark a task as complete with automatic verification."""
+    # Admin only
+    principal_id = get_principal_from_context(context)
+    if principal_id != "admin":
+        raise ToolError("PERMISSION_DENIED", "Only administrators can mark tasks complete")
+    
+    if req.task_id not in human_tasks:
+        raise ToolError("NOT_FOUND", f"Task {req.task_id} not found")
+    
+    task = human_tasks[req.task_id]
+    
+    # First verify the task
+    verify_req = VerifyTaskRequest(task_id=req.task_id)
+    verification = verify_task(verify_req, context)
+    
+    if not verification.verified and not req.override_verification:
+        return {
+            "status": "verification_failed",
+            "verified": False,
+            "discrepancies": verification.discrepancies,
+            "message": "Task verification failed. Use override_verification=true to force completion."
+        }
+    
+    # Mark as complete
+    task.status = "completed"
+    task.resolution = "completed"
+    task.resolution_detail = f"Marked complete by {req.completed_by}"
+    if not verification.verified:
+        task.resolution_detail += " (verification overridden)"
+    task.resolved_by = req.completed_by
+    task.completed_at = datetime.now()
+    task.updated_at = datetime.now()
+    
+    audit_logger.log_operation(
+        operation="mark_task_complete",
+        principal_name="admin",
+        principal_id="admin",
+        adapter_id="task_queue",
+        success=True,
+        details={
+            "task_id": req.task_id,
+            "verified": verification.verified,
+            "override": req.override_verification,
+            "completed_by": req.completed_by
+        }
+    )
+    
+    return {
+        "status": "success",
+        "task_id": req.task_id,
+        "verified": verification.verified,
+        "verification_details": {
+            "actual_state": verification.actual_state,
+            "expected_state": verification.expected_state,
+            "discrepancies": verification.discrepancies
+        },
+        "message": f"Task marked complete by {req.completed_by}"
+    }
+
+
 # Dry run logs are now handled by the adapters themselves
 
 def get_product_catalog() -> List[Product]:

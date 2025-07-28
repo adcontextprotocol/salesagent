@@ -545,3 +545,77 @@ Completes a human task with resolution details (admin only).
   "detail": "Task task_a1b2c3d4 completed with resolution: approved"
 }
 ```
+
+### verify_task
+
+Verifies if a task was completed correctly by checking actual state against expected outcome.
+
+**Request:**
+```json
+{
+  "task_id": "task_a1b2c3d4",
+  "expected_outcome": {
+    "daily_budget": 100.0,
+    "package_premium_sports_budget": 500.0
+  }
+}
+```
+
+**Response:**
+```json
+{
+  "task_id": "task_a1b2c3d4",
+  "verified": false,
+  "actual_state": {
+    "daily_budget": null,
+    "package_premium_sports_budget": 0
+  },
+  "expected_state": {
+    "daily_budget": 100.0,
+    "package_premium_sports_budget": 500.0
+  },
+  "discrepancies": [
+    "Daily budget is $null, expected $100.0"
+  ]
+}
+```
+
+### mark_task_complete
+
+Marks a task as complete with automatic verification (admin only).
+
+**Request:**
+```json
+{
+  "task_id": "task_a1b2c3d4",
+  "override_verification": false,
+  "completed_by": "admin@publisher.com"
+}
+```
+
+**Response (Success):**
+```json
+{
+  "status": "success",
+  "task_id": "task_a1b2c3d4",
+  "verified": true,
+  "verification_details": {
+    "actual_state": {"daily_budget": 100.0},
+    "expected_state": {"daily_budget": 100.0},
+    "discrepancies": []
+  },
+  "message": "Task marked complete by admin@publisher.com"
+}
+```
+
+**Response (Verification Failed):**
+```json
+{
+  "status": "verification_failed",
+  "verified": false,
+  "discrepancies": [
+    "Daily budget is $50, expected $100"
+  ],
+  "message": "Task verification failed. Use override_verification=true to force completion."
+}
+```

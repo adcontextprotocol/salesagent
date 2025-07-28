@@ -570,3 +570,25 @@ class CompleteTaskRequest(BaseModel):
     resolution: str  # approved, rejected, completed, cannot_complete
     resolution_detail: Optional[str] = None
     resolved_by: str
+
+
+class VerifyTaskRequest(BaseModel):
+    """Request to verify if a task was completed correctly."""
+    task_id: str
+    expected_outcome: Optional[Dict[str, Any]] = None  # What the task should have accomplished
+    
+
+class VerifyTaskResponse(BaseModel):
+    """Response from task verification."""
+    task_id: str
+    verified: bool
+    actual_state: Dict[str, Any]
+    expected_state: Optional[Dict[str, Any]] = None
+    discrepancies: List[str] = []
+    
+    
+class MarkTaskCompleteRequest(BaseModel):
+    """Admin request to mark a task as complete with verification."""
+    task_id: str
+    override_verification: bool = False  # Force complete even if verification fails
+    completed_by: str
