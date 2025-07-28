@@ -173,16 +173,55 @@ class ListProductsResponse(BaseModel):
     products: List[Product]
 
 # --- Creative Lifecycle ---
+class CreativeGroup(BaseModel):
+    """Groups creatives for organizational and management purposes."""
+    group_id: str
+    principal_id: str
+    name: str
+    description: Optional[str] = None
+    created_at: datetime
+    tags: Optional[List[str]] = []
+
 class Creative(BaseModel):
+    """Individual creative asset in the creative library."""
     creative_id: str
+    principal_id: str
+    group_id: Optional[str] = None  # Optional group membership
     format_id: str
     content_uri: str
+    name: str
+    click_through_url: Optional[str] = None
+    metadata: Optional[Dict[str, Any]] = {}  # Platform-specific metadata
+    created_at: datetime
+    updated_at: datetime
 
 class CreativeStatus(BaseModel):
     creative_id: str
     status: Literal["pending_review", "approved", "rejected", "adaptation_required"]
     detail: str
     estimated_approval_time: Optional[datetime] = None
+
+class CreativeAssignment(BaseModel):
+    """Maps creatives to packages with distribution control."""
+    assignment_id: str
+    media_buy_id: str
+    package_id: str
+    creative_id: str
+    
+    # Distribution control
+    weight: Optional[int] = 100  # Relative weight for rotation
+    percentage_goal: Optional[float] = None  # Percentage of impressions
+    rotation_type: Optional[Literal["weighted", "sequential", "even"]] = "weighted"
+    
+    # Override settings (platform-specific)
+    override_click_url: Optional[str] = None
+    override_start_date: Optional[datetime] = None
+    override_end_date: Optional[datetime] = None
+    
+    # Targeting override (creative-specific targeting)
+    targeting_overlay: Optional[Targeting] = None
+    
+    is_active: bool = True
 
 class SubmitCreativesRequest(BaseModel):
     media_buy_id: str
@@ -196,6 +235,56 @@ class CheckCreativeStatusRequest(BaseModel):
 
 class CheckCreativeStatusResponse(BaseModel):
     statuses: List[CreativeStatus]
+
+# New creative management endpoints
+class CreateCreativeGroupRequest(BaseModel):
+    name: str
+    description: Optional[str] = None
+    tags: Optional[List[str]] = []
+
+class CreateCreativeGroupResponse(BaseModel):
+    group: CreativeGroup
+
+class CreateCreativeRequest(BaseModel):
+    """Create a creative in the library (not tied to a media buy)."""
+    group_id: Optional[str] = None
+    format_id: str
+    content_uri: str
+    name: str
+    click_through_url: Optional[str] = None
+    metadata: Optional[Dict[str, Any]] = {}
+
+class CreateCreativeResponse(BaseModel):
+    creative: Creative
+    status: CreativeStatus
+
+class AssignCreativeRequest(BaseModel):
+    """Assign a creative from the library to a package."""
+    media_buy_id: str
+    package_id: str
+    creative_id: str
+    weight: Optional[int] = 100
+    percentage_goal: Optional[float] = None
+    rotation_type: Optional[Literal["weighted", "sequential", "even"]] = "weighted"
+    override_click_url: Optional[str] = None
+    override_start_date: Optional[datetime] = None
+    override_end_date: Optional[datetime] = None
+    targeting_overlay: Optional[Targeting] = None
+
+class AssignCreativeResponse(BaseModel):
+    assignment: CreativeAssignment
+
+class GetCreativesRequest(BaseModel):
+    """Get creatives with optional filtering."""
+    group_id: Optional[str] = None
+    media_buy_id: Optional[str] = None
+    status: Optional[str] = None
+    tags: Optional[List[str]] = None
+    include_assignments: bool = False
+
+class GetCreativesResponse(BaseModel):
+    creatives: List[Creative]
+    assignments: Optional[List[CreativeAssignment]] = None
 
 class AdaptCreativeRequest(BaseModel):
     media_buy_id: str

@@ -136,6 +136,9 @@ media_buys: Dict[str, Tuple[CreateMediaBuyRequest, str]] = {}
 creative_assignments: Dict[str, Dict[str, List[str]]] = {}
 creative_statuses: Dict[str, CreativeStatus] = {}
 product_catalog: List[Product] = []
+creative_library: Dict[str, Creative] = {}  # creative_id -> Creative
+creative_groups: Dict[str, CreativeGroup] = {}  # group_id -> CreativeGroup
+creative_assignments_v2: Dict[str, CreativeAssignment] = {}  # assignment_id -> CreativeAssignment
 
 # --- Adapter Configuration ---
 # Get adapter from config, fallback to mock
@@ -591,6 +594,211 @@ def get_all_media_buy_delivery(req: GetAllMediaBuyDeliveryRequest, context: Cont
         active_count=active_count,
         summary_date=req.today
     )
+
+@mcp.tool
+def get_creatives(req: GetCreativesRequest, context: Context) -> GetCreativesResponse:
+    """Get creatives from the library with optional filtering.
+    
+    Can filter by:
+    - group_id: Get creatives in a specific group
+    - media_buy_id: Get creatives assigned to a specific media buy
+    - status: Filter by approval status
+    - tags: Filter by creative group tags
+    """
+    principal_id = _get_principal_id_from_context(context)
+    
+    # Filter creatives by principal first
+    principal_creatives = [
+        creative for creative in creative_library.values() 
+        if creative.principal_id == principal_id
+    ]
+    
+    # Apply optional filters
+    filtered_creatives = principal_creatives
+    
+    if req.group_id:
+        filtered_creatives = [c for c in filtered_creatives if c.group_id == req.group_id]
+    
+    if req.status:
+        # Check creative status
+        filtered_creatives = [
+            c for c in filtered_creatives 
+            if creative_statuses.get(c.creative_id, CreativeStatus(
+                creative_id=c.creative_id,
+                status="pending_review",
+                detail="Not yet reviewed"
+            )).status == req.status
+        ]
+    
+    if req.tags and len(req.tags) > 0:
+        # Filter by group tags
+        tagged_groups = {
+            g.group_id for g in creative_groups.values() 
+            if g.principal_id == principal_id and any(tag in g.tags for tag in req.tags)
+        }
+        filtered_creatives = [c for c in filtered_creatives if c.group_id in tagged_groups]
+    
+    # Get assignments if requested
+    assignments = None
+    if req.include_assignments:
+        if req.media_buy_id:
+            # Get assignments for specific media buy
+            assignments = [
+                a for a in creative_assignments_v2.values()
+                if a.media_buy_id == req.media_buy_id and a.creative_id in [c.creative_id for c in filtered_creatives]
+            ]
+        else:
+            # Get all assignments for these creatives
+            creative_ids = {c.creative_id for c in filtered_creatives}
+            assignments = [
+                a for a in creative_assignments_v2.values()
+                if a.creative_id in creative_ids
+            ]
+    
+    return GetCreativesResponse(
+        creatives=filtered_creatives,
+        assignments=assignments
+    )
+
+@mcp.tool
+def create_creative_group(req: CreateCreativeGroupRequest, context: Context) -> CreateCreativeGroupResponse:
+    """Create a new creative group for organizing creatives."""
+    principal_id = _get_principal_id_from_context(context)
+    
+    group = CreativeGroup(
+        group_id=f"group_{uuid.uuid4().hex[:8]}",
+        principal_id=principal_id,
+        name=req.name,
+        description=req.description,
+        created_at=datetime.now(),
+        tags=req.tags or []
+    )
+    
+    creative_groups[group.group_id] = group
+    
+    # Log the creation
+    from audit_logger import get_audit_logger
+    logger = get_audit_logger("AdCP")
+    logger.log_operation(
+        operation="create_creative_group",
+        principal_name=get_principal_object(principal_id).name,
+        principal_id=principal_id,
+        adapter_id="N/A",
+        success=True,
+        details={
+            "group_id": group.group_id,
+            "name": group.name
+        }
+    )
+    
+    return CreateCreativeGroupResponse(group=group)
+
+@mcp.tool
+def create_creative(req: CreateCreativeRequest, context: Context) -> CreateCreativeResponse:
+    """Create a creative in the library (not tied to a specific media buy)."""
+    principal_id = _get_principal_id_from_context(context)
+    principal = get_principal_object(principal_id)
+    
+    # Verify group ownership if specified
+    if req.group_id and req.group_id in creative_groups:
+        group = creative_groups[req.group_id]
+        if group.principal_id != principal_id:
+            raise PermissionError(f"Principal does not own group '{req.group_id}'")
+    
+    creative = Creative(
+        creative_id=f"creative_{uuid.uuid4().hex[:8]}",
+        principal_id=principal_id,
+        group_id=req.group_id,
+        format_id=req.format_id,
+        content_uri=req.content_uri,
+        name=req.name,
+        click_through_url=req.click_through_url,
+        metadata=req.metadata or {},
+        created_at=datetime.now(),
+        updated_at=datetime.now()
+    )
+    
+    creative_library[creative.creative_id] = creative
+    
+    # Process through creative engine for approval
+    status = creative_engine.process_creatives([creative])[0]
+    creative_statuses[creative.creative_id] = status
+    
+    # Log the creation
+    from audit_logger import get_audit_logger
+    logger = get_audit_logger("AdCP")
+    logger.log_operation(
+        operation="create_creative",
+        principal_name=principal.name,
+        principal_id=principal_id,
+        adapter_id="N/A",
+        success=True,
+        details={
+            "creative_id": creative.creative_id,
+            "name": creative.name,
+            "format": creative.format_id
+        }
+    )
+    
+    return CreateCreativeResponse(creative=creative, status=status)
+
+@mcp.tool
+def assign_creative(req: AssignCreativeRequest, context: Context) -> AssignCreativeResponse:
+    """Assign a creative from the library to a package in a media buy."""
+    _verify_principal(req.media_buy_id, context)
+    principal_id = _get_principal_id_from_context(context)
+    
+    # Verify creative ownership
+    if req.creative_id not in creative_library:
+        raise ValueError(f"Creative '{req.creative_id}' not found")
+    
+    creative = creative_library[req.creative_id]
+    if creative.principal_id != principal_id:
+        raise PermissionError(f"Principal does not own creative '{req.creative_id}'")
+    
+    # Create assignment
+    assignment = CreativeAssignment(
+        assignment_id=f"assign_{uuid.uuid4().hex[:8]}",
+        media_buy_id=req.media_buy_id,
+        package_id=req.package_id,
+        creative_id=req.creative_id,
+        weight=req.weight,
+        percentage_goal=req.percentage_goal,
+        rotation_type=req.rotation_type,
+        override_click_url=req.override_click_url,
+        override_start_date=req.override_start_date,
+        override_end_date=req.override_end_date,
+        targeting_overlay=req.targeting_overlay,
+        is_active=True
+    )
+    
+    creative_assignments_v2[assignment.assignment_id] = assignment
+    
+    # Also update legacy creative_assignments for backward compatibility
+    if req.media_buy_id not in creative_assignments:
+        creative_assignments[req.media_buy_id] = {}
+    if req.package_id not in creative_assignments[req.media_buy_id]:
+        creative_assignments[req.media_buy_id][req.package_id] = []
+    creative_assignments[req.media_buy_id][req.package_id].append(req.creative_id)
+    
+    # Log the assignment
+    from audit_logger import get_audit_logger
+    logger = get_audit_logger("AdCP")
+    logger.log_operation(
+        operation="assign_creative",
+        principal_name=get_principal_object(principal_id).name,
+        principal_id=principal_id,
+        adapter_id="N/A",
+        success=True,
+        details={
+            "assignment_id": assignment.assignment_id,
+            "creative_id": req.creative_id,
+            "package_id": req.package_id,
+            "media_buy_id": req.media_buy_id
+        }
+    )
+    
+    return AssignCreativeResponse(assignment=assignment)
 
 @mcp.tool
 def get_principal_summary(context: Context) -> GetPrincipalSummaryResponse:
