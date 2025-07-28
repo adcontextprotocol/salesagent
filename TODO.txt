@@ -10,11 +10,12 @@ Note: with all of these we should update the overall AdCP:Buy spec that is in do
 - look into creative grouping across ad servers and consider adding a creative group hierarchy layer
 - add a "get creatives" call that can show all active creatives, potentially limited to a creative group if we go that route
 - add a mechanism for an admin to see pending creatives and approve them
+- we need to mark targeting features as managed-only vs available in an overlay. For instance key-value targeting should not be externally available, but orchestrator should be able to specifically target AEE signals.
 
 Adapters
 - Have the default creative engine be configurable to allow certain formats (generally the standard ones) be auto-approved vs pending.
 - Add an adapter for Xandr/Microsoft Monetize as an ad server
-- Make sure that all adapters are adding key-val pairs for AEE signal integration properly
+- Make sure that all adapters are adding key-val pairs for AEE signal integration properly and have AEE signals as a primary capability
 
 Agent vs human config
 - We should allow some capabilities of an adapter are provided by a human. For instance, I could set up GAM to allow the agent to read objects and run reports, but require a human to make changes. This should be done at the overall agent level. There should be a task queue that Admin users can see like "Principal Nike requests Media Buy 1234 have daily pacing updated to $1023".
@@ -29,7 +30,7 @@ Multi-tenant
 - Scope3 may offer a hosted version of the Sales Agent for publishers that don't want to manage their own instance. How could we make it possible to build a multi-tenant version of this platform so multiple publishers could be live at the same time? It seems like a maintenance nightmare for Scope3 to have to have a different instance for each publisher.
 
 Targeting:
-Here's an initial list of targeting dimensions that we might want to support. This could use more research especially for DOOH, CTV, and Audio.
+Here's an possible list of targeting dimensions that we might want to support. This could use more research especially for DOOH, CTV, and Audio. Need to think through which are exposed as targeting vs used behind the scenes.
 - `AUDIENCE`
 - `PLACEMENT` (aka ad slot)
 - Property (means Station in radio context?)

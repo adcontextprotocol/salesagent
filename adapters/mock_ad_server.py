@@ -12,6 +12,14 @@ class MockAdServer(AdServerAdapter):
     """
     adapter_name = "mock"
     _media_buys: Dict[str, Dict[str, Any]] = {}
+    
+    # Supported targeting dimensions (mock supports everything)
+    SUPPORTED_DEVICE_TYPES = {"mobile", "desktop", "tablet", "ctv", "dooh", "audio"}
+    SUPPORTED_MEDIA_TYPES = {"video", "display", "native", "audio", "dooh"}
+    
+    def _validate_targeting(self, targeting_overlay):
+        """Mock adapter accepts all targeting."""
+        return []  # No unsupported features
 
     def create_media_buy(self, request: CreateMediaBuyRequest, packages: List[MediaPackage], start_time: datetime, end_time: datetime) -> CreateMediaBuyResponse:
         """Simulates the creation of a media buy."""
@@ -38,10 +46,15 @@ class MockAdServer(AdServerAdapter):
             self.log(f"    'start_date': '{start_time.isoformat()}',")
             self.log(f"    'end_date': '{end_time.isoformat()}',")
             self.log(f"    'targeting': {{")
-            if request.targeting_overlay.geography:
-                self.log(f"      'geo': {request.targeting_overlay.geography},")
-            if request.targeting_overlay.content_categories_exclude:
-                self.log(f"      'exclude_categories': {request.targeting_overlay.content_categories_exclude}")
+            if request.targeting_overlay:
+                if request.targeting_overlay.geo_country_any_of:
+                    self.log(f"      'countries': {request.targeting_overlay.geo_country_any_of},")
+                if request.targeting_overlay.geo_region_any_of:
+                    self.log(f"      'regions': {request.targeting_overlay.geo_region_any_of},")
+                if request.targeting_overlay.device_type_any_of:
+                    self.log(f"      'devices': {request.targeting_overlay.device_type_any_of},")
+                if request.targeting_overlay.media_type_any_of:
+                    self.log(f"      'media_types': {request.targeting_overlay.media_type_any_of},")
             self.log(f"    }}")
             self.log(f"  }}")
         

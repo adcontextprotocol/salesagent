@@ -32,6 +32,10 @@ class Kevel(AdServerAdapter):
         self.api_key = self.config.get("api_key")
         self.base_url = "https://api.kevel.co/v1"
         
+        # Feature flags
+        self.userdb_enabled = self.config.get("userdb_enabled", False)
+        self.frequency_capping_enabled = self.config.get("frequency_capping_enabled", False)
+        
         if self.dry_run:
             self.log("Running in dry-run mode - Kevel API calls will be simulated", dry_run_prefix=False)
         elif not self.network_id or not self.api_key:
@@ -68,16 +72,18 @@ class Kevel(AdServerAdapter):
                     unsupported.append(f"Media type '{media}' not supported (Kevel supports: {', '.join(self.SUPPORTED_MEDIA_TYPES)})")
         
         # Audience targeting requires UserDB
-        if targeting_overlay.audiences_any_of:
-            unsupported.append("Audience targeting requires Kevel UserDB integration")
+        if targeting_overlay.audience_segment_any_of and not self.userdb_enabled:
+            unsupported.append("Audience targeting requires UserDB to be enabled (set userdb_enabled=true in config)")
         
-        # Frequency capping at household level not supported
-        if targeting_overlay.frequency_cap and targeting_overlay.frequency_cap.per == "household":
-            unsupported.append("Household-level frequency capping not supported (use 'user' or 'ip')")
+        # Frequency capping validation
+        if targeting_overlay.frequency_cap:
+            if not self.frequency_capping_enabled:
+                unsupported.append("Frequency capping requires this feature to be enabled (set frequency_capping_enabled=true in config)")
+            elif targeting_overlay.frequency_cap.scope == "media_buy":
+                # Kevel doesn't have campaign-level frequency capping, only flight-level
+                unsupported.append("Media buy level frequency capping not supported (Kevel only supports package/flight level)")
         
-        # Dayparting not supported
-        if targeting_overlay.dayparting:
-            unsupported.append("Dayparting not supported by Kevel")
+        # Kevel supports dayparting - removing this check
         
         return unsupported
 
@@ -117,6 +123,47 @@ class Kevel(AdServerAdapter):
             if devices:
                 kevel_targeting['devices'] = devices
         
+        # Dayparting - Kevel supports day/hour targeting
+        if targeting_overlay.dayparting:
+            dayparting = []
+            for schedule in targeting_overlay.dayparting.schedules:
+                # Convert our day numbers (0=Sunday) to Kevel format
+                # Kevel uses 0=Monday, so we need to adjust
+                kevel_days = []
+                for day in schedule.days:
+                    # Convert: our 0=Sun becomes Kevel 6, our 1=Mon becomes Kevel 0, etc.
+                    kevel_day = (day + 6) % 7
+                    kevel_days.append(kevel_day)
+                
+                # Add hour range
+                for hour in range(schedule.start_hour, schedule.end_hour):
+                    dayparting.append({
+                        'days': kevel_days,
+                        'hours': [hour]
+                    })
+            
+            if dayparting:
+                kevel_targeting['dayparting'] = dayparting
+        
+        # Audience/Interest targeting via UserDB
+        if targeting_overlay.audience_segment_any_of and self.userdb_enabled:
+            # Build custom targeting expressions for interests
+            custom_targeting = []
+            for segment in targeting_overlay.audience_segment_any_of:
+                # Convert segment IDs to Kevel interest targeting format
+                # Example: "3p:sports_fans" becomes "$user.interests CONTAINS \"Sports Fans\""
+                if ":" in segment:
+                    provider, interest = segment.split(":", 1)
+                    # Convert snake_case to Title Case for Kevel
+                    interest_name = interest.replace("_", " ").title()
+                    custom_targeting.append(f'$user.interests CONTAINS "{interest_name}"')
+                else:
+                    custom_targeting.append(f'$user.interests CONTAINS "{segment}"')
+            
+            if custom_targeting:
+                # Combine with OR logic
+                kevel_targeting['CustomTargeting'] = " OR ".join(custom_targeting)
+        
         # Custom targeting
         if targeting_overlay.custom and 'kevel' in targeting_overlay.custom:
             kevel_custom = targeting_overlay.custom['kevel']
@@ -124,6 +171,9 @@ class Kevel(AdServerAdapter):
                 kevel_targeting['siteIds'] = kevel_custom['site_ids']
             if 'zone_ids' in kevel_custom:
                 kevel_targeting['zoneIds'] = kevel_custom['zone_ids']
+            # Allow direct CustomTargeting override
+            if 'custom_targeting' in kevel_custom:
+                kevel_targeting['CustomTargeting'] = kevel_custom['custom_targeting']
         
         self.log(f"Applying Kevel targeting: {list(kevel_targeting.keys())}")
         return kevel_targeting
@@ -184,6 +234,14 @@ class Kevel(AdServerAdapter):
                     targeting = self._build_targeting(request.targeting_overlay)
                     if targeting:
                         self.log(f"    'Targeting': {json.dumps(targeting, indent=6)}")
+                    
+                    # Log frequency capping if enabled
+                    if request.targeting_overlay.frequency_cap and self.frequency_capping_enabled:
+                        freq_cap = request.targeting_overlay.frequency_cap
+                        if freq_cap.scope == "package":
+                            self.log(f"    'FreqCap': 1,  # Suppress after 1 impression")
+                            self.log(f"    'FreqCapDuration': {max(1, freq_cap.suppress_minutes // 60)},  # {freq_cap.suppress_minutes} minutes")
+                            self.log(f"    'FreqCapType': 1  # per user")
                 
                 self.log(f"  }}")
         else:
@@ -225,6 +283,16 @@ class Kevel(AdServerAdapter):
                     targeting = self._build_targeting(request.targeting_overlay)
                     if targeting:
                         flight_payload.update(targeting)
+                    
+                    # Add frequency capping if enabled (package level only)
+                    if request.targeting_overlay.frequency_cap and self.frequency_capping_enabled:
+                        freq_cap = request.targeting_overlay.frequency_cap
+                        if freq_cap.scope == "package":
+                            # Kevel's FreqCap = 1 impression
+                            # FreqCapDuration in hours, convert from minutes
+                            flight_payload["FreqCap"] = 1
+                            flight_payload["FreqCapDuration"] = max(1, freq_cap.suppress_minutes // 60)  # Convert to hours, minimum 1
+                            flight_payload["FreqCapType"] = 1  # 1 = per user (cookie-based)
                 
                 flight_response = requests.post(
                     f"{self.base_url}/flight",

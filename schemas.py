@@ -32,10 +32,13 @@ class Dayparting(BaseModel):
     presets: Optional[List[str]] = Field(None, description="Named presets like 'drive_time_morning'")
 
 class FrequencyCap(BaseModel):
-    """Frequency capping configuration."""
-    impressions: int = Field(..., gt=0, description="Maximum impressions")
-    period: Literal["hour", "day", "week", "month", "lifetime"] = Field(..., description="Time period")
-    per: Literal["user", "ip", "household", "device"] = Field("user", description="Tracking level")
+    """Simple frequency capping configuration.
+    
+    Provides basic impression suppression at the media buy or package level.
+    More sophisticated frequency management is handled by the AEE layer.
+    """
+    suppress_minutes: int = Field(..., gt=0, description="Suppress impressions for this many minutes after serving")
+    scope: Literal["media_buy", "package"] = Field("media_buy", description="Apply at media buy or package level")
 
 class Targeting(BaseModel):
     """Comprehensive targeting options for media buys.

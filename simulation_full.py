@@ -146,12 +146,11 @@ class FullLifecycleSimulation:
                 # Media types
                 "media_type_any_of": ["video", "display"],
                 # Audience targeting
-                "audiences_any_of": ["3p:pet_owners", "behavior:pet_supplies_shoppers"],
+                "audience_segment_any_of": ["3p:pet_owners", "behavior:pet_supplies_shoppers"],
                 # Content targeting
-                "content_cat_any_of": ["IAB8", "IAB16"],  # Pets, Family & Parenting
-                "content_cat_none_of": ["IAB7", "IAB14"],  # Health, Society
-                "keywords_any_of": ["dogs", "cats", "pet care"],
-                "keywords_none_of": ["controversial", "politics"],
+                "content_category_any_of": ["IAB8", "IAB16"],  # Pets, Family & Parenting
+                "content_category_none_of": ["IAB7", "IAB14"],  # Health, Society
+                # Keywords targeting not in standard schema - would go in custom
                 # Time-based targeting
                 "dayparting": {
                     "timezone": "America/New_York",
@@ -173,11 +172,10 @@ class FullLifecycleSimulation:
                         }
                     ]
                 },
-                # Frequency control
+                # Frequency control - suppress for 30 minutes after impression
                 "frequency_cap": {
-                    "impressions": 5,
-                    "period": "day",
-                    "per": "user"
+                    "suppress_minutes": 30,
+                    "scope": "media_buy"
                 }
             }
         }
@@ -467,9 +465,9 @@ class FullLifecycleSimulation:
                     # Add more devices (including tablet)
                     "device_type_any_of": ["mobile", "desktop", "ctv", "tablet"],
                     # Expand audiences
-                    "audiences_any_of": ["3p:pet_owners", "behavior:pet_supplies_shoppers", "demo:families_with_children"],
+                    "audience_segment_any_of": ["3p:pet_owners", "behavior:pet_supplies_shoppers", "demo:families_with_children"],
                     # Relax content exclusions
-                    "content_cat_none_of": ["IAB7"],  # Only exclude health/fitness
+                    "content_category_none_of": ["IAB7"],  # Only exclude health/fitness
                     # Extend dayparting
                     "dayparting": {
                         "timezone": "America/New_York",
@@ -488,7 +486,10 @@ class FullLifecycleSimulation:
                         "budget": 30000,  # Increase budget
                         "pacing": "asap",  # Accelerate delivery
                         "targeting_overlay": {  # Package-specific refinement
-                            "keywords_any_of": ["puppy", "kitten", "pet adoption"]
+                            # Keywords would go in custom targeting
+                            "custom": {
+                                "keywords": ["puppy", "kitten", "pet adoption"]
+                            }
                         }
                     }
                 ]

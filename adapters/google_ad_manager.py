@@ -1,5 +1,7 @@
 from datetime import datetime, timedelta
 import random
+import json
+import os
 from typing import List, Dict, Any, Optional
 from googleads import ad_manager
 import google.oauth2.service_account
@@ -42,6 +44,9 @@ class GoogleAdManager(AdServerAdapter):
         else:
             self.client = None
             self.log("[yellow]Running in dry-run mode - GAM client not initialized[/yellow]")
+        
+        # Load geo mappings
+        self._load_geo_mappings()
 
     def _init_client(self):
         """Initializes the Ad Manager client."""
@@ -71,6 +76,36 @@ class GoogleAdManager(AdServerAdapter):
         "dooh": "SET_TOP_BOX"
     }
     
+    def _load_geo_mappings(self):
+        """Load geo mappings from JSON file."""
+        try:
+            mapping_file = os.path.join(os.path.dirname(__file__), 'gam_geo_mappings.json')
+            with open(mapping_file, 'r') as f:
+                geo_data = json.load(f)
+                
+            self.GEO_COUNTRY_MAP = geo_data.get('countries', {})
+            self.GEO_REGION_MAP = geo_data.get('regions', {})
+            self.GEO_METRO_MAP = geo_data.get('metros', {}).get('US', {})  # Currently only US metros
+            
+            self.log(f"Loaded GAM geo mappings: {len(self.GEO_COUNTRY_MAP)} countries, "
+                    f"{sum(len(v) for v in self.GEO_REGION_MAP.values())} regions, "
+                    f"{len(self.GEO_METRO_MAP)} metros")
+        except Exception as e:
+            self.log(f"[yellow]Warning: Could not load geo mappings file: {e}[/yellow]")
+            self.log("[yellow]Using empty geo mappings - geo targeting will not work properly[/yellow]")
+            self.GEO_COUNTRY_MAP = {}
+            self.GEO_REGION_MAP = {}
+            self.GEO_METRO_MAP = {}
+    
+    def _lookup_region_id(self, region_code):
+        """Look up region ID across all countries."""
+        # First check if we have country context (not implemented yet)
+        # For now, search across all countries
+        for country, regions in self.GEO_REGION_MAP.items():
+            if region_code in regions:
+                return regions[region_code]
+        return None
+    
     # Supported media types
     SUPPORTED_MEDIA_TYPES = {"video", "display", "native"}
     
@@ -97,6 +132,12 @@ class GoogleAdManager(AdServerAdapter):
         if targeting_overlay.media_type_any_of and "audio" in targeting_overlay.media_type_any_of:
             unsupported.append("Audio media type not supported by Google Ad Manager")
         
+        # City and postal targeting require GAM API lookups (not implemented)
+        if targeting_overlay.geo_city_any_of or targeting_overlay.geo_city_none_of:
+            unsupported.append("City targeting requires GAM geo service integration (not implemented)")
+        if targeting_overlay.geo_zip_any_of or targeting_overlay.geo_zip_none_of:
+            unsupported.append("Postal code targeting requires GAM geo service integration (not implemented)")
+        
         # GAM supports all other standard targeting dimensions
         
         return unsupported
@@ -111,18 +152,73 @@ class GoogleAdManager(AdServerAdapter):
         # Geographic targeting
         geo_targeting = {}
         
-        # For demo purposes, we'll structure the geo data
-        # In production, this would map to GAM geo IDs
+        # Build targeted locations
         if any([targeting_overlay.geo_country_any_of, targeting_overlay.geo_region_any_of,
-                targeting_overlay.geo_metro_any_of, targeting_overlay.geo_city_any_of]):
+                targeting_overlay.geo_metro_any_of, targeting_overlay.geo_city_any_of,
+                targeting_overlay.geo_zip_any_of]):
             geo_targeting['targetedLocations'] = []
             
-            # Add demo geo IDs - real implementation would lookup actual GAM IDs
+            # Map countries
             if targeting_overlay.geo_country_any_of:
-                geo_targeting['targetedLocations'].append({'id': '2840'})  # US
+                for country in targeting_overlay.geo_country_any_of:
+                    if country in self.GEO_COUNTRY_MAP:
+                        geo_targeting['targetedLocations'].append({'id': self.GEO_COUNTRY_MAP[country]})
+                    else:
+                        self.log(f"[yellow]Warning: Country code '{country}' not in GAM mapping[/yellow]")
+            
+            # Map regions
+            if targeting_overlay.geo_region_any_of:
+                for region in targeting_overlay.geo_region_any_of:
+                    region_id = self._lookup_region_id(region)
+                    if region_id:
+                        geo_targeting['targetedLocations'].append({'id': region_id})
+                    else:
+                        self.log(f"[yellow]Warning: Region code '{region}' not in GAM mapping[/yellow]")
+            
+            # Map metros (DMAs)
+            if targeting_overlay.geo_metro_any_of:
+                for metro in targeting_overlay.geo_metro_any_of:
+                    if metro in self.GEO_METRO_MAP:
+                        geo_targeting['targetedLocations'].append({'id': self.GEO_METRO_MAP[metro]})
+                    else:
+                        self.log(f"[yellow]Warning: Metro code '{metro}' not in GAM mapping[/yellow]")
+            
+            # City and postal require real GAM API lookup - for now we log a warning
+            if targeting_overlay.geo_city_any_of:
+                self.log("[yellow]Warning: City targeting requires GAM geo service lookup (not implemented)[/yellow]")
+            if targeting_overlay.geo_zip_any_of:
+                self.log("[yellow]Warning: Postal code targeting requires GAM geo service lookup (not implemented)[/yellow]")
                 
-        if any([targeting_overlay.geo_country_none_of, targeting_overlay.geo_region_none_of]):
+        # Build excluded locations
+        if any([targeting_overlay.geo_country_none_of, targeting_overlay.geo_region_none_of,
+                targeting_overlay.geo_metro_none_of, targeting_overlay.geo_city_none_of,
+                targeting_overlay.geo_zip_none_of]):
             geo_targeting['excludedLocations'] = []
+            
+            # Map excluded countries
+            if targeting_overlay.geo_country_none_of:
+                for country in targeting_overlay.geo_country_none_of:
+                    if country in self.GEO_COUNTRY_MAP:
+                        geo_targeting['excludedLocations'].append({'id': self.GEO_COUNTRY_MAP[country]})
+            
+            # Map excluded regions
+            if targeting_overlay.geo_region_none_of:
+                for region in targeting_overlay.geo_region_none_of:
+                    region_id = self._lookup_region_id(region)
+                    if region_id:
+                        geo_targeting['excludedLocations'].append({'id': region_id})
+            
+            # Map excluded metros
+            if targeting_overlay.geo_metro_none_of:
+                for metro in targeting_overlay.geo_metro_none_of:
+                    if metro in self.GEO_METRO_MAP:
+                        geo_targeting['excludedLocations'].append({'id': self.GEO_METRO_MAP[metro]})
+            
+            # City and postal exclusions
+            if targeting_overlay.geo_city_none_of:
+                self.log("[yellow]Warning: City exclusion requires GAM geo service lookup (not implemented)[/yellow]")
+            if targeting_overlay.geo_zip_none_of:
+                self.log("[yellow]Warning: Postal code exclusion requires GAM geo service lookup (not implemented)[/yellow]")
             
         if geo_targeting:
             gam_targeting['geoTargeting'] = geo_targeting

@@ -6,18 +6,47 @@ AdCP provides a unified targeting interface that maps to platform-specific capab
 
 ## Current Targeting Schema
 
+AdCP uses a consistent any_of/none_of pattern for all targeting dimensions:
+
 ```python
 class Targeting(BaseModel):
-    content_categories_include: List[str] = []
-    content_categories_exclude: List[str] = []
-    keywords_include: List[str] = []
-    keywords_exclude: List[str] = []
-    geography: List[str] = []
-    device_types: List[str] = []
-    platforms: List[str] = []
-    audiences: List[str] = []
-    dayparting: Optional[Dict[str, Any]] = None
-    frequency_cap: Optional[Dict[str, Any]] = None
+    # Geographic targeting
+    geo_country_any_of: Optional[List[str]] = None
+    geo_country_none_of: Optional[List[str]] = None
+    geo_region_any_of: Optional[List[str]] = None  
+    geo_region_none_of: Optional[List[str]] = None
+    geo_metro_any_of: Optional[List[str]] = None
+    geo_metro_none_of: Optional[List[str]] = None
+    geo_city_any_of: Optional[List[str]] = None
+    geo_city_none_of: Optional[List[str]] = None
+    geo_zip_any_of: Optional[List[str]] = None
+    geo_zip_none_of: Optional[List[str]] = None
+    
+    # Device and platform targeting
+    device_type_any_of: Optional[List[str]] = None
+    device_type_none_of: Optional[List[str]] = None
+    os_any_of: Optional[List[str]] = None
+    os_none_of: Optional[List[str]] = None
+    browser_any_of: Optional[List[str]] = None
+    browser_none_of: Optional[List[str]] = None
+    
+    # Content and contextual targeting
+    content_category_any_of: Optional[List[str]] = None
+    content_category_none_of: Optional[List[str]] = None
+    language_any_of: Optional[List[str]] = None
+    language_none_of: Optional[List[str]] = None
+    
+    # Audience targeting
+    audience_segment_any_of: Optional[List[str]] = None
+    audience_segment_none_of: Optional[List[str]] = None
+    
+    # Time-based targeting
+    dayparting: Optional[Dayparting] = None
+    
+    # Frequency control
+    frequency_cap: Optional[FrequencyCap] = None
+    
+    # Platform-specific custom targeting
     custom: Optional[Dict[str, Any]] = None
 ```
 
@@ -26,22 +55,25 @@ class Targeting(BaseModel):
 ### 1. Geographic Targeting
 
 **Supported Formats:**
-- Country codes: `"US"`, `"CA"`, `"GB"`
-- State/Province: `"US-CA"`, `"CA-ON"`
-- DMA codes: `"DMA-501"` (New York)
-- City names: `"city:New York,NY"`
-- Postal codes: `"postal:10001"`
+- Country codes: `"US"`, `"CA"`, `"GB"` (ISO 3166-1)
+- Region/State codes: `"NY"`, `"CA"`, `"ON"` (no country prefix)
+- Metro/DMA codes: `"501"`, `"803"` (numeric strings)
+- City names: `"New York"`, `"Los Angeles"`
+- Postal codes: `"10001"`, `"90210"`
 
 **Platform Support:**
-| Platform | Country | State | DMA | City | Postal |
-|----------|---------|-------|-----|------|--------|
-| GAM | ✓ | ✓ | ✓ | ✓ | ✓ |
+| Platform | Country | Region | Metro/DMA | City | Postal |
+|----------|---------|--------|-----------|------|--------|
+| GAM | ✓ | ✓ | ✓ | API Required | API Required |
 | Kevel | ✓ | ✓ | ✓ | ✓ | Limited |
 | Triton | ✓ | ✓ | ✓ | ✓ | - |
 
 **Example:**
 ```python
-"geography": ["US", "US-CA", "US-NY", "DMA-501"]
+"geo_country_any_of": ["US", "CA"],
+"geo_region_any_of": ["NY", "CA", "TX"],
+"geo_metro_any_of": ["501", "803"],
+"geo_city_none_of": ["Las Vegas"]
 ```
 
 ### 2. Device Targeting
@@ -152,19 +184,22 @@ class Targeting(BaseModel):
 
 ### 8. Frequency Capping
 
+AdCP provides basic time-based impression suppression:
+
 **Format:**
 ```python
 "frequency_cap": {
-    "impressions": 3,
-    "period": "day",  # "hour", "day", "week", "month"
-    "per": "user"     # "user", "ip", "household"
+    "suppress_minutes": 30,      # Suppress for 30 minutes after impression
+    "scope": "media_buy"         # "media_buy" or "package"
 }
 ```
 
 **Platform Support:**
-- **GAM**: Full support, including cross-device
-- **Kevel**: User-level and IP-based
-- **Triton**: Session and day-level for audio
+- **GAM**: Supports at Order (media_buy) and LineItem (package) level
+- **Kevel**: Only supports Flight (package) level - will reject media_buy scope
+- **Triton**: Session-based suppression for audio
+
+**Note**: This provides simple suppression. More sophisticated frequency management (cross-device, complex attribution windows, household-level) is handled by the AEE layer.
 
 ### 9. Custom Targeting
 
@@ -225,9 +260,8 @@ targeting = {
         ]
     },
     "frequency_cap": {
-        "impressions": 5,
-        "period": "day",
-        "per": "user"
+        "suppress_minutes": 60,
+        "scope": "media_buy"
     }
 }
 ```
