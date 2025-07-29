@@ -11,7 +11,7 @@ This project is a Python-based reference implementation of the Advertising Conte
 - **Creative Management**: Auto-approval workflows, creative groups, and multi-format support
 - **Human-in-the-Loop**: Optional manual approval mode for sensitive operations
 - **Security & Compliance**: Comprehensive audit logging, principal-based authentication, and adapter security boundaries
-- **Slack Integration**: Real-time notifications for tasks, approvals, and system events
+- **Slack Integration**: Tenant-specific webhooks for task notifications and audit logs, configurable via UI
 - **AEE Integration**: Built-in support for Ad Effectiveness Engine signals via key-value targeting
 - **Admin UI**: Secure web-based interface with Google OAuth authentication for tenant management
 - **Operations Dashboard**: Real-time monitoring of media buys, tasks, and audit trails
@@ -166,6 +166,7 @@ The system includes a comprehensive web-based administration interface:
 - **Ad Server Setup**: Guided configuration for GAM, Kevel, Triton adapters
 - **Principal Management**: Create API clients and map to ad server entities
 - **Operations Dashboard**: Real-time monitoring and reporting
+- **Slack Integration**: Configure webhooks for notifications per tenant
 
 ### Accessing the Admin UI
 ```bash
@@ -273,6 +274,25 @@ For publishers requiring manual approval:
 ```
 
 Operations create tasks for human review instead of executing immediately.
+
+### Slack Integration
+
+Each tenant can configure Slack notifications through the Admin UI:
+
+1. **Navigate to Integrations Tab**: In tenant management, click on the Integrations tab
+2. **Configure Webhooks**:
+   - **Task Notifications**: Receives alerts for new tasks and creative approvals
+   - **Audit Log Channel** (optional): Separate channel for security events and high-value transactions
+3. **Test Configuration**: Use the "Send Test Message" button to verify webhook setup
+
+Notifications are sent for:
+- New tasks requiring attention
+- Creative approval requests
+- Security violations (audit channel)
+- Failed operations (audit channel)
+- High-value transactions over $10,000 (audit channel)
+
+Configuration is stored per-tenant in the database - no environment variables required.
 
 ### Adapter Pattern
 

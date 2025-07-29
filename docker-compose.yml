@@ -32,10 +32,6 @@ services:
       # Gemini API key (required for AI features)
       GEMINI_API_KEY: ${GEMINI_API_KEY}
       
-      # Slack integration (optional)
-      SLACK_WEBHOOK_URL: ${SLACK_WEBHOOK_URL:-}
-      SLACK_AUDIT_WEBHOOK_URL: ${SLACK_AUDIT_WEBHOOK_URL:-}
-      
       # Optional: Dry run mode
       # ADCP_DRY_RUN: true
     
@@ -63,9 +59,6 @@ services:
       # Super admin authorization (set these via .env file)
       SUPER_ADMIN_EMAILS: ${SUPER_ADMIN_EMAILS}
       SUPER_ADMIN_DOMAINS: ${SUPER_ADMIN_DOMAINS}
-      # Slack integration (optional)
-      SLACK_WEBHOOK_URL: ${SLACK_WEBHOOK_URL:-}
-      SLACK_AUDIT_WEBHOOK_URL: ${SLACK_AUDIT_WEBHOOK_URL:-}
       # Optional: Google OAuth credentials via environment
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
       GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
