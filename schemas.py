@@ -605,3 +605,39 @@ class MarkTaskCompleteRequest(BaseModel):
     task_id: str
     override_verification: bool = False  # Force complete even if verification fails
     completed_by: str
+
+# Targeting capabilities
+class GetTargetingCapabilitiesRequest(BaseModel):
+    """Query targeting capabilities for channels."""
+    channels: Optional[List[str]] = None  # If None, return all channels
+    include_aee_dimensions: bool = True
+
+class TargetingDimensionInfo(BaseModel):
+    """Information about a single targeting dimension."""
+    key: str
+    display_name: str
+    description: str
+    data_type: str
+    required: bool = False
+    values: Optional[List[str]] = None
+
+class ChannelTargetingCapabilities(BaseModel):
+    """Targeting capabilities for a specific channel."""
+    channel: str
+    overlay_dimensions: List[TargetingDimensionInfo]
+    aee_dimensions: Optional[List[TargetingDimensionInfo]] = None
+
+class GetTargetingCapabilitiesResponse(BaseModel):
+    """Response with targeting capabilities."""
+    capabilities: List[ChannelTargetingCapabilities]
+
+class CheckAEERequirementsRequest(BaseModel):
+    """Check if required AEE dimensions are supported."""
+    channel: str
+    required_dimensions: List[str]
+
+class CheckAEERequirementsResponse(BaseModel):
+    """Response for AEE requirements check."""
+    supported: bool
+    missing_dimensions: List[str]
+    available_dimensions: List[str]

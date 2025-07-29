@@ -1917,6 +1917,90 @@ def get_product_catalog() -> List[Product]:
     
     return loaded_products
 
+@mcp.tool
+def get_targeting_capabilities(req: GetTargetingCapabilitiesRequest, context: Context) -> GetTargetingCapabilitiesResponse:
+    """Get available targeting dimensions for specified channels."""
+    from targeting_dimensions import (
+        get_channel_capabilities, get_supported_channels, Channel,
+        TargetingDimensionInfo, ChannelTargetingCapabilities
+    )
+    
+    # Determine which channels to return
+    channels = req.channels if req.channels else [c.value for c in get_supported_channels()]
+    
+    capabilities = []
+    for channel_str in channels:
+        try:
+            channel = Channel(channel_str)
+            caps = get_channel_capabilities(channel)
+            
+            # Convert to response format
+            overlay_dims = [
+                TargetingDimensionInfo(
+                    key=d.key,
+                    display_name=d.display_name,
+                    description=d.description,
+                    data_type=d.data_type,
+                    required=d.required,
+                    values=d.values
+                )
+                for d in caps.overlay_dimensions
+            ]
+            
+            aee_dims = None
+            if req.include_aee_dimensions:
+                aee_dims = [
+                    TargetingDimensionInfo(
+                        key=d.key,
+                        display_name=d.display_name,
+                        description=d.description,
+                        data_type=d.data_type,
+                        required=d.required,
+                        values=d.values
+                    )
+                    for d in caps.aee_dimensions
+                ]
+            
+            capabilities.append(
+                ChannelTargetingCapabilities(
+                    channel=channel_str,
+                    overlay_dimensions=overlay_dims,
+                    aee_dimensions=aee_dims
+                )
+            )
+        except ValueError:
+            # Skip invalid channel names
+            continue
+    
+    return GetTargetingCapabilitiesResponse(capabilities=capabilities)
+
+@mcp.tool
+def check_aee_requirements(req: CheckAEERequirementsRequest, context: Context) -> CheckAEERequirementsResponse:
+    """Check if required AEE dimensions are supported for a channel."""
+    from targeting_dimensions import get_aee_dimensions, Channel
+    
+    try:
+        channel = Channel(req.channel)
+    except ValueError:
+        return CheckAEERequirementsResponse(
+            supported=False,
+            missing_dimensions=req.required_dimensions,
+            available_dimensions=[]
+        )
+    
+    # Get available AEE dimensions
+    aee_dims = get_aee_dimensions(channel)
+    available_keys = [d.key for d in aee_dims]
+    
+    # Check which are missing
+    missing = [dim for dim in req.required_dimensions if dim not in available_keys]
+    
+    return CheckAEERequirementsResponse(
+        supported=len(missing) == 0,
+        missing_dimensions=missing,
+        available_dimensions=available_keys
+    )
+
 if __name__ == "__main__":
     init_db()
     # Server is now run via run_server.py script

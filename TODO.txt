@@ -28,8 +28,8 @@ Log level data or automated reporting for AEE
 
 
 Targeting:
-We need to articulate which targeting dimensions are available by channel in the AdCP spec for targeting overlay, which won't be the full set available in the ad server. This is because 1) publishers will want to generally bundle many of these capabilities in their media products and 2) buyers can do most of their own targeting via AEE without pushing it to the pub.
-So we should specify for each channel (audio, web, mobile app, CTV, DOOH):
+[DONE] We need to articulate which targeting dimensions are available by channel in the AdCP spec for targeting overlay, which won't be the full set available in the ad server. This is because 1) publishers will want to generally bundle many of these capabilities in their media products and 2) buyers can do most of their own targeting via AEE without pushing it to the pub.
+[DONE] So we should specify for each channel (audio, web, mobile app, CTV, DOOH):
 - Which dimensions should the publisher make available for targeting_overlays
   * All channels should support dayparting based on the user's timezone
   * All channels should support browser, device, OS, and language when available
@@ -47,7 +47,7 @@ So we should specify for each channel (audio, web, mobile app, CTV, DOOH):
   * Web should provide the ad slot or global placement ID (GPID) for each placement on the page
   * Mobile app should provide the URL for any content that is also available on the web, or an equivalent content ID for adjacent content
 
-We should also make it clear how a publisher can share which dimensions they support - for instance, an orchestrator should be able to ask "do you support RampID or CoreID for AEE" and get a response. A media buy should specify which dimensions it requires for AEE and if those aren't available, the buy should be rejected.
+[DONE] We should also make it clear how a publisher can share which dimensions they support - for instance, an orchestrator should be able to ask "do you support RampID or CoreID for AEE" and get a response. A media buy should specify which dimensions it requires for AEE and if those aren't available, the buy should be rejected.
 
 
 Creative adaptation
