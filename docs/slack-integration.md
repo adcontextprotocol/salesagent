@@ -23,6 +23,12 @@ The AdCP Sales Agent includes built-in Slack integration for real-time notificat
    - Shows creative format and associated principal
    - Direct link to review in Admin UI
 
+4. **Audit Log Notifications**
+   - Sends audit logs to a separate Slack channel
+   - Monitors failed operations and security violations
+   - Alerts on sensitive operations (create/update media buys)
+   - Highlights high-value transactions (>$10,000)
+
 ## Setup
 
 ### 1. Create Slack Webhook
@@ -35,17 +41,22 @@ The AdCP Sales Agent includes built-in Slack integration for real-time notificat
 6. Select the channel for notifications
 7. Copy the webhook URL
 
-### 2. Configure Environment Variable
+### 2. Configure Environment Variables
 
-Set the webhook URL as an environment variable:
+Set the webhook URLs as environment variables:
 
 ```bash
+# Main notifications (tasks, creatives)
 export SLACK_WEBHOOK_URL="https://hooks.slack.com/services/YOUR/WEBHOOK/URL"
+
+# Audit log notifications (optional, separate channel)
+export SLACK_AUDIT_WEBHOOK_URL="https://hooks.slack.com/services/YOUR/AUDIT/WEBHOOK"
 ```
 
 Or add to your `.env` file:
 ```
 SLACK_WEBHOOK_URL=https://hooks.slack.com/services/YOUR/WEBHOOK/URL
+SLACK_AUDIT_WEBHOOK_URL=https://hooks.slack.com/services/YOUR/AUDIT/WEBHOOK
 ```
 
 ### 3. Docker Configuration
@@ -57,6 +68,7 @@ services:
   adcp-server:
     environment:
       - SLACK_WEBHOOK_URL=${SLACK_WEBHOOK_URL}
+      - SLACK_AUDIT_WEBHOOK_URL=${SLACK_AUDIT_WEBHOOK_URL}
 ```
 
 ## Message Formats
@@ -99,6 +111,36 @@ Media Buy: mb_12345
 [Review Creative]
 ```
 
+### Audit Log Entry
+
+![Audit Log](slack-audit-log.png)
+
+```
+📝 Audit Log
+Operation: create_media_buy
+Principal: Acme Corp
+Tenant: Sports Publisher
+Status: ✅ Success
+Details:
+• Media Buy ID: `mb_12345`
+• Total Budget: `$50,000.00`
+Logged at 2025-01-15 10:30:45 UTC | Adapter: mock
+```
+
+### Security Alert
+
+![Security Alert](slack-security-alert.png)
+
+```
+🚨 Security Alert
+Operation: update_media_buy
+Principal: UNAUTHORIZED: unknown_user
+Tenant: Sports Publisher
+Status: ❌ Failed
+Error: Security violation: Principal not found in system
+Logged at 2025-01-15 10:30:45 UTC | Adapter: AdCP
+```
+
 ## Testing
 
 ### Send Test Notification
@@ -137,10 +179,21 @@ You can configure different webhook URLs per tenant by updating the tenant confi
 ```json
 {
   "features": {
-    "slack_webhook_url": "https://hooks.slack.com/services/TENANT/SPECIFIC/URL"
+    "slack_webhook_url": "https://hooks.slack.com/services/TENANT/SPECIFIC/URL",
+    "slack_audit_webhook_url": "https://hooks.slack.com/services/TENANT/AUDIT/URL"
   }
 }
 ```
+
+### Audit Log Filtering
+
+The audit logger automatically sends notifications for:
+- All failed operations
+- Security violations
+- Sensitive operations (create/update/delete media buys, creative approvals)
+- High-value transactions (budgets over $10,000)
+
+To customize notification criteria, modify the filtering logic in `audit_logger.py`.
 
 ### Channel Routing
 

@@ -17,15 +17,18 @@ logger = logging.getLogger(__name__)
 class SlackNotifier:
     """Handles sending notifications to Slack channels via webhooks."""
     
-    def __init__(self, webhook_url: Optional[str] = None):
+    def __init__(self, webhook_url: Optional[str] = None, audit_webhook_url: Optional[str] = None):
         """
         Initialize Slack notifier.
         
         Args:
             webhook_url: Slack webhook URL. If not provided, uses SLACK_WEBHOOK_URL env var.
+            audit_webhook_url: Separate webhook for audit logs. If not provided, uses SLACK_AUDIT_WEBHOOK_URL env var.
         """
         self.webhook_url = webhook_url or os.getenv('SLACK_WEBHOOK_URL')
+        self.audit_webhook_url = audit_webhook_url or os.getenv('SLACK_AUDIT_WEBHOOK_URL')
         self.enabled = bool(self.webhook_url)
+        self.audit_enabled = bool(self.audit_webhook_url)
         
         if self.enabled:
             # Validate webhook URL format
@@ -35,6 +38,15 @@ class SlackNotifier:
                 self.enabled = False
         else:
             logger.info("Slack notifications disabled (no webhook URL configured)")
+            
+        if self.audit_enabled:
+            # Validate audit webhook URL format
+            parsed = urlparse(self.audit_webhook_url)
+            if not all([parsed.scheme, parsed.netloc]):
+                logger.error(f"Invalid Slack audit webhook URL format: {self.audit_webhook_url}")
+                self.audit_enabled = False
+            else:
+                logger.info("Slack audit logging enabled")
     
     def send_message(self, text: str, blocks: Optional[List[Dict[str, Any]]] = None) -> bool:
         """
@@ -338,6 +350,150 @@ class SlackNotifier:
         
         return self.send_message(fallback_text, blocks)
     
+    def notify_audit_log(
+        self,
+        operation: str,
+        principal_name: str,
+        success: bool,
+        adapter_id: str,
+        tenant_name: Optional[str] = None,
+        error_message: Optional[str] = None,
+        details: Optional[Dict[str, Any]] = None,
+        security_alert: bool = False
+    ) -> bool:
+        """
+        Send audit log entry to Slack audit channel.
+        
+        Args:
+            operation: Operation performed (e.g., 'create_media_buy', 'update_media_buy')
+            principal_name: Principal who performed the operation
+            success: Whether operation succeeded
+            adapter_id: Adapter used for the operation
+            tenant_name: Tenant/publisher name
+            error_message: Error message if operation failed
+            details: Additional operation details
+            security_alert: Whether this is a security-related event
+            
+        Returns:
+            True if notification sent successfully
+        """
+        if not self.audit_enabled:
+            return False
+        
+        # Determine emoji and color based on event type
+        if security_alert:
+            emoji = "🚨"
+            color = "danger"
+            header_text = "Security Alert"
+        elif not success:
+            emoji = "❌"
+            color = "danger"
+            header_text = "Operation Failed"
+        else:
+            emoji = "📝"
+            color = "good"
+            header_text = "Audit Log"
+        
+        # Create message blocks
+        blocks = [
+            {
+                "type": "header",
+                "text": {
+                    "type": "plain_text",
+                    "text": f"{emoji} {header_text}"
+                }
+            }
+        ]
+        
+        # Add main info section
+        fields = [
+            {
+                "type": "mrkdwn",
+                "text": f"*Operation:*\n{operation}"
+            },
+            {
+                "type": "mrkdwn",
+                "text": f"*Principal:*\n{principal_name}"
+            }
+        ]
+        
+        if tenant_name:
+            fields.append({
+                "type": "mrkdwn",
+                "text": f"*Tenant:*\n{tenant_name}"
+            })
+            
+        fields.append({
+            "type": "mrkdwn",
+            "text": f"*Status:*\n{'✅ Success' if success else '❌ Failed'}"
+        })
+        
+        blocks.append({
+            "type": "section",
+            "fields": fields
+        })
+        
+        # Add error message if present
+        if error_message:
+            blocks.append({
+                "type": "section",
+                "text": {
+                    "type": "mrkdwn",
+                    "text": f"*Error:*\n```{error_message}```"
+                }
+            })
+        
+        # Add details if present
+        if details:
+            detail_text = self._format_audit_details(details)
+            if detail_text:
+                blocks.append({
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": f"*Details:*\n{detail_text}"
+                    }
+                })
+        
+        # Add color attachment for visual indicator
+        attachments = [{
+            "color": color,
+            "blocks": blocks
+        }]
+        
+        # Add timestamp
+        blocks.append({
+            "type": "context",
+            "elements": [
+                {
+                    "type": "mrkdwn",
+                    "text": f"Logged at {datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S UTC')} | Adapter: {adapter_id}"
+                }
+            ]
+        })
+        
+        # Fallback text
+        fallback_text = f"{emoji} {operation} by {principal_name} - {'Success' if success else 'Failed'}"
+        
+        # Send to audit webhook
+        payload = {
+            "text": fallback_text,
+            "attachments": attachments
+        }
+        
+        try:
+            response = requests.post(
+                self.audit_webhook_url,
+                json=payload,
+                headers={"Content-Type": "application/json"},
+                timeout=10
+            )
+            response.raise_for_status()
+            return True
+        except requests.exceptions.RequestException as e:
+            logger.error(f"Failed to send Slack audit notification: {e}")
+            return False
+    
     def _format_details(self, details: Dict[str, Any]) -> str:
         """Format task details for Slack message."""
         formatted_parts = []
@@ -360,6 +516,33 @@ class SlackNotifier:
                 formatted_parts.append(f"• {field_name}: {value}")
         
         return "\n".join(formatted_parts) if formatted_parts else None
+    
+    def _format_audit_details(self, details: Dict[str, Any]) -> str:
+        """Format audit details for Slack message."""
+        formatted_parts = []
+        
+        # Important audit fields
+        important_fields = [
+            'media_buy_id', 'creative_id', 'task_id',
+            'budget', 'total_budget', 'daily_budget',
+            'action', 'resolution', 'package_id'
+        ]
+        
+        for field in important_fields:
+            if field in details:
+                value = details[field]
+                if 'budget' in field and isinstance(value, (int, float)):
+                    value = f"${value:,.2f}"
+                field_name = field.replace('_', ' ').title()
+                formatted_parts.append(f"• {field_name}: `{value}`")
+        
+        # Add any custom fields not in the important list
+        for field, value in details.items():
+            if field not in important_fields and not field.startswith('_'):
+                field_name = field.replace('_', ' ').title()
+                formatted_parts.append(f"• {field_name}: {value}")
+        
+        return "\n".join(formatted_parts[:5]) if formatted_parts else None  # Limit to 5 items
 
 
 # Global instance

@@ -128,6 +128,60 @@ class AuditLogger:
             error=error,
             tenant_id=tenant_id
         )
+        
+        # Send to Slack audit channel if configured
+        try:
+            # Lazy import to avoid circular dependency
+            from slack_notifier import slack_notifier
+            
+            # Get tenant name for context
+            tenant_name = None
+            if tenant_id:
+                try:
+                    conn = get_db_connection()
+                    cursor = conn.execute("SELECT name FROM tenants WHERE tenant_id = ?", (tenant_id,))
+                    result = cursor.fetchone()
+                    if result:
+                        tenant_name = result[0]
+                    conn.close()
+                except:
+                    pass
+            
+            # Send notification based on criteria
+            should_notify = False
+            security_alert = False
+            
+            # Always notify on failures
+            if not success:
+                should_notify = True
+                
+            # Notify on sensitive operations
+            sensitive_ops = ['create_media_buy', 'update_media_buy', 'delete_media_buy', 
+                           'approve_creative', 'reject_creative', 'manual_approval']
+            if operation in sensitive_ops:
+                should_notify = True
+                
+            # Check for high-value operations
+            if details and isinstance(details, dict):
+                if 'budget' in details and isinstance(details['budget'], (int, float)) and details['budget'] > 10000:
+                    should_notify = True
+                if 'total_budget' in details and isinstance(details['total_budget'], (int, float)) and details['total_budget'] > 10000:
+                    should_notify = True
+            
+            if should_notify:
+                slack_notifier.notify_audit_log(
+                    operation=operation,
+                    principal_name=principal_name,
+                    success=success,
+                    adapter_id=adapter_id,
+                    tenant_name=tenant_name,
+                    error_message=error,
+                    details=details,
+                    security_alert=security_alert
+                )
+        except Exception as e:
+            # Don't let Slack failures affect core functionality
+            pass
     
     def log_security_violation(
         self,
@@ -179,6 +233,38 @@ class AuditLogger:
             reason=reason,
             tenant_id=tenant_id
         )
+        
+        # Send security alert to Slack
+        try:
+            # Lazy import to avoid circular dependency
+            from slack_notifier import slack_notifier
+            
+            # Get tenant name
+            tenant_name = None
+            if tenant_id:
+                try:
+                    conn = get_db_connection()
+                    cursor = conn.execute("SELECT name FROM tenants WHERE tenant_id = ?", (tenant_id,))
+                    result = cursor.fetchone()
+                    if result:
+                        tenant_name = result[0]
+                    conn.close()
+                except:
+                    pass
+            
+            slack_notifier.notify_audit_log(
+                operation=operation,
+                principal_name=f"UNAUTHORIZED: {principal_id}",
+                success=False,
+                adapter_id=self.adapter_name,
+                tenant_name=tenant_name,
+                error_message=f"Security violation: {reason}",
+                details={"resource_id": resource_id, "violation_type": "unauthorized_access"},
+                security_alert=True
+            )
+        except Exception as e:
+            # Don't let Slack failures affect core functionality
+            pass
     
     def log_success(self, message: str):
         """Log a success message with checkmark."""
