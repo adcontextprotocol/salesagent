@@ -12,7 +12,9 @@ This project is a Python-based reference implementation of the Advertising Conte
 - **Human-in-the-Loop**: Optional manual approval mode for sensitive operations
 - **Security & Compliance**: Comprehensive audit logging, principal-based authentication, and adapter security boundaries
 - **AEE Integration**: Built-in support for Ad Effectiveness Engine signals via key-value targeting
-- **Admin UI**: Secure web-based interface with Google OAuth authentication
+- **Admin UI**: Secure web-based interface with Google OAuth authentication for tenant management
+- **Operations Dashboard**: Real-time monitoring of media buys, tasks, and audit trails
+- **Database Persistence**: All operations logged to database with full audit trail
 - **Dry-Run Mode**: Preview exact API calls without executing them
 - **Production Ready**: PostgreSQL support, Docker deployment, and health monitoring
 
@@ -153,6 +155,33 @@ async with client:
 - `list_human_tasks` - View manual approval queue (admin only)
 - `complete_human_task` - Process manual approvals (admin only)
 
+## Admin UI & Operations Dashboard
+
+The system includes a comprehensive web-based administration interface:
+
+### Admin UI Features
+- **Tenant Management**: Create and configure multi-tenant publishers
+- **User Management**: OAuth-based user authentication with role-based access
+- **Ad Server Setup**: Guided configuration for GAM, Kevel, Triton adapters
+- **Principal Management**: Create API clients and map to ad server entities
+- **Operations Dashboard**: Real-time monitoring and reporting
+
+### Accessing the Admin UI
+```bash
+# Start with Docker
+docker-compose up -d
+
+# Access at http://localhost:8001
+# Login with Google OAuth
+```
+
+### Operations Dashboard
+The Operations Dashboard provides comprehensive visibility:
+- **Summary Metrics**: Active media buys, total spend, pending tasks
+- **Media Buys**: List all campaigns with filtering by status
+- **Tasks**: Track manual approvals and pending operations
+- **Audit Logs**: Complete audit trail with security violation alerts
+
 ## Architecture Overview
 
 ### Core Components
@@ -161,22 +190,34 @@ async with client:
   - Authentication via `x-adcp-auth` headers
   - Principal-based multi-tenancy
   - Tools: `list_products`, `create_media_buy`, `get_media_buy_delivery`, `update_performance_index`
+  - Database persistence for all operations
+
+- **`admin_ui.py`**: Flask-based administration interface
+  - Google OAuth authentication
+  - Tenant and user management
+  - Operations monitoring dashboard
+  - Secure role-based access control
 
 - **`adapters/`**: Ad server integrations following the adapter pattern
   - `base.py`: Abstract base class defining the interface
   - `mock_ad_server.py`: Full-featured mock implementation
   - `google_ad_manager.py`: Google Ad Manager integration
-  - Each adapter handles its own dry-run logging
+  - Each adapter handles its own dry-run logging and audit trail
 
 - **`schemas.py`**: Pydantic models for API contracts
   - `Principal`: Encapsulates identity and adapter mappings
   - Request/Response models for all operations
   - Strict validation ensuring data integrity
 
-- **`database.py`**: SQLite database initialization
-  - Principals table with authentication tokens
-  - Products catalog with targeting templates
-  - Sample data for testing
+- **`database_schema.py`**: Multi-database schema definitions
+  - Support for SQLite (development) and PostgreSQL (production)
+  - Tables: tenants, users, principals, products, media_buys, tasks, audit_logs
+  - Full referential integrity and indexing
+
+- **`audit_logger.py`**: Comprehensive audit logging system
+  - Database-backed audit trail with tenant isolation
+  - Security violation tracking
+  - File backup for redundancy
 
 - **`simulation_full.py`**: Comprehensive lifecycle simulation
   - 7 phases: Discovery → Planning → Buying → Creatives → Pre-flight → Monitoring → Optimization

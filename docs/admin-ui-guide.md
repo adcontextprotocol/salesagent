@@ -86,6 +86,7 @@ For each tenant, you can:
 - **See Principals** - List of advertisers and admins
 - **View Products** - Available ad inventory
 - **Access Tokens** - Copy tokens for API access
+- **Operations Dashboard** - Monitor media buys, tasks, and audit logs
 
 ### 4. API Tokens Tab
 
@@ -93,6 +94,16 @@ The most important section! Shows:
 - **Admin Token** - For admin operations
 - **Principal Tokens** - For each advertiser
 - **Example API calls** - Copy-paste ready
+
+### 5. Operations Dashboard
+
+Real-time monitoring and management:
+- **Summary Cards** - Active media buys, total spend, pending tasks
+- **Media Buys Tab** - List all campaigns with status filtering
+- **Tasks Tab** - View and manage manual approval tasks
+- **Audit Logs Tab** - Complete audit trail with security alerts
+- **Live Filtering** - Filter by status without page reloads
+- **Database Persistence** - All data stored persistently
 
 ## Workflow Example
 

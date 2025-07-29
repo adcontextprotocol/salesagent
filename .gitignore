@@ -2,10 +2,20 @@
 config.json
 __pycache__
 adcp.db
+*.db
+.env
+.env.local
+.env.production
+
+# OAuth credentials
+client_secret*.json
+credentials*.json
 
 # Build artifacts
 *.egg-info/
 *.egg-info
+dist/
+build/
 
 # Logs
 logs/
@@ -14,3 +24,42 @@ logs/
 # Virtual environment
 .venv/
 venv/
+env/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Python
+*.pyc
+*.pyo
+*.pyd
+.Python
+pip-log.txt
+pip-delete-this-directory.txt
+.tox/
+.coverage
+.coverage.*
+.cache
+.pytest_cache/
+nosetests.xml
+coverage.xml
+*.cover
+.hypothesis/
+
+# Docker
+docker-compose.override.yml
+
+# Temporary files
+*.tmp
+*.bak
+*.backup
+temp/
+tmp/

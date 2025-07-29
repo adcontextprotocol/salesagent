@@ -47,10 +47,13 @@ services:
     environment:
       DATABASE_URL: postgresql://adcp_user:${DB_PASSWORD}@postgres:5432/adcp
       GEMINI_API_KEY: ${GEMINI_API_KEY}
+      ADCP_SALES_PORT: 8080
+      ADMIN_UI_PORT: 8001
     depends_on:
       - postgres
     ports:
-      - "8080:8080"
+      - "8080:8080"  # MCP Server
+      - "8001:8001"  # Admin UI
     volumes:
       - ./audit_logs:/app/audit_logs
     restart: unless-stopped
@@ -107,6 +110,10 @@ docker run -d \
 | `GEMINI_API_KEY` | Google Gemini API key (required) | - |
 | `ADCP_DRY_RUN` | Enable dry-run mode | `false` |
 | `DATA_DIR` | SQLite data directory | `~/.adcp` |
+| `ADCP_SALES_PORT` | MCP server port | `8080` |
+| `ADMIN_UI_PORT` | Admin UI port | `8001` |
+| `SUPER_ADMIN_EMAILS` | Comma-separated super admin emails | - |
+| `SUPER_ADMIN_DOMAINS` | Comma-separated admin domains | - |
 
 ### Volumes
 

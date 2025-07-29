@@ -227,6 +227,28 @@ If database schema is out of sync:
 3. Re-import data
 4. Run any migration scripts
 
+## Database Schema
+
+The system uses the following core tables:
+
+### Multi-Tenant Tables
+- **tenants** - Publisher configuration and metadata
+- **users** - Admin users with OAuth credentials
+- **principals** - API clients (advertisers) with access tokens
+- **products** - Available ad inventory per tenant
+
+### Operational Tables
+- **media_buys** - Campaign records with full configuration
+- **tasks** - Task tracking for campaigns
+- **human_tasks** - Manual approval queue
+- **audit_logs** - Complete audit trail
+
+### Creative Management
+- **creatives** - Creative assets and metadata
+- **creative_associations** - Links creatives to media buys
+
+All tables include tenant_id for data isolation.
+
 ## Best Practices
 
 1. **Use PostgreSQL for Production** - Better performance and features
@@ -236,6 +258,7 @@ If database schema is out of sync:
 5. **Test Migrations** - Always test database changes in staging
 6. **Use Connection Pooling** - Reduce connection overhead
 7. **Set Resource Limits** - Prevent runaway queries
+8. **Audit Log Retention** - Implement rotation policy for audit_logs table
 
 ## Docker Compose Example
 

@@ -63,7 +63,16 @@ The server provides:
 
 ## Recent Major Changes
 
-### Multi-Tenant Architecture (Latest)
+### Operations Dashboard & Database Persistence (Latest)
+- Added comprehensive operations dashboard in Admin UI
+- Moved all operational data to database (media_buys, tasks, audit_logs tables)
+- Migrated audit logging from file-based to database-backed with redundancy
+- Real-time filtering and monitoring of all media buys and tasks
+- Summary metrics showing active campaigns, total spend, pending approvals
+- Complete audit trail with security violation tracking
+- Database persistence for all MCP operations
+
+### Multi-Tenant Architecture
 - Moved from file-based config to database-backed tenant management
 - Added `tenants`, `products`, `media_buys`, `creatives` tables
 - Implemented subdomain-based routing for tenant isolation
@@ -143,10 +152,12 @@ The server provides:
 tenants (tenant_id, name, subdomain, config, billing_plan)
 principals (tenant_id, principal_id, name, access_token, platform_mappings)
 products (tenant_id, product_id, name, formats, targeting_template)
-media_buys (tenant_id, media_buy_id, principal_id, status, config)
+media_buys (tenant_id, media_buy_id, principal_id, status, config, budget, dates)
 creatives (tenant_id, creative_id, principal_id, status, format)
 creative_associations (media_buy_id, package_id, creative_id)
 human_tasks (tenant_id, task_id, task_type, status, assigned_to)
+tasks (tenant_id, task_id, media_buy_id, task_type, status, details)
+audit_logs (tenant_id, timestamp, operation, principal_id, success, details)
 ```
 
 ### Tenant Configuration
@@ -269,9 +280,10 @@ async with client:
 - **`schemas.py`**: All data models and API contracts
 - **`config_loader.py`**: Tenant resolution and configuration
 - **`targeting_capabilities.py`**: Complete targeting system definition
-- **`audit_logger.py`**: Security logging implementation
+- **`audit_logger.py`**: Security logging implementation (now database-backed)
 - **`database_schema.py`**: Multi-database schema support
-- **`admin_ui.py`**: Flask-based admin interface
+- **`admin_ui.py`**: Flask-based admin interface with operations dashboard
+- **`templates/operations.html`**: Operations dashboard UI implementation
 
 ## Testing Checklist
 
@@ -281,9 +293,12 @@ When making changes, test:
 3. ✅ Targeting translation for each adapter
 4. ✅ Creative approval workflow
 5. ✅ Human-in-the-loop task creation
-6. ✅ Audit logging for security events
+6. ✅ Audit logging for security events (database persistence)
 7. ✅ Admin UI with Google OAuth authentication
-8. ✅ Docker deployment
+8. ✅ Operations dashboard functionality (filtering, metrics)
+9. ✅ Docker deployment
+10. ✅ Media buy persistence to database
+11. ✅ Task persistence and status updates
 
 ## Recent Improvements Summary
 
