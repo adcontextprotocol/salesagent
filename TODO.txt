@@ -21,7 +21,7 @@ Agent vs human config
 - [DONE] The AI should be able to check task completion for the user, so if a request is like "update media buy daily budget to $100/day" it should be able to query the media buy and see what the daily budget is, and if it's not $100/day, it should show the task as incomplete. An admin should be able to call "mark_task_complete XYZ" and the AI should double check it, basically (which the human should be able to override)
 - [DONE] Add Slack integration for notifications of new tasks and potentially for approval of them
 
-Creative macros for AEE
+[DONE] Creative macros for AEE
 - Add a third provided signal category for "creative macros" that will fill out a macro provided in the creative. This could be used for DCO, for measurement, etc
 
 Log level data or automated reporting for AEE

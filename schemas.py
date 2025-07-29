@@ -357,7 +357,7 @@ class CreateMediaBuyRequest(BaseModel):
     creatives: Optional[List[Creative]] = None
     # AEE signal requirements
     required_aee_signals: Optional[List[str]] = None  # Required targeting signals
-    creative_macros: Optional[Dict[str, List[str]]] = None  # {"requested": [...], "required": [...]}
+    enable_creative_macro: Optional[bool] = False  # Enable AEE to provide creative_macro signal
 
 class CreateMediaBuyResponse(BaseModel):
     media_buy_id: str
@@ -648,65 +648,4 @@ class CheckAEERequirementsResponse(BaseModel):
     missing_dimensions: List[str]
     available_dimensions: List[str]
 
-# Creative Macros
-class GetCreativeMacrosRequest(BaseModel):
-    """Request to get available creative macros."""
-    category: Optional[str] = None  # Filter by category: dco, measurement, privacy
-
-class CreativeMacroInfo(BaseModel):
-    """Information about a creative macro."""
-    macro: str
-    syntax: str
-    name: str
-    description: str
-    category: str
-
-class GetCreativeMacrosResponse(BaseModel):
-    """Response with available creative macros."""
-    macros: List[CreativeMacroInfo]
-    categories: List[str]
-
-class ValidateCreativeMacrosRequest(BaseModel):
-    """Request to validate macros in creative content."""
-    creative_content: str
-
-class ValidateCreativeMacrosResponse(BaseModel):
-    """Response for macro validation."""
-    valid: bool
-    macros_found: List[str]
-    unknown_macros: List[str]
-    required_aee_fields: List[str]
-    warnings: List[str]
-
-class ProcessCreativeMacrosRequest(BaseModel):
-    """Request to process creative macros (admin only)."""
-    principal_id: str
-    creative_content: str
-    aee_context: Dict[str, Any]
-
-class ProcessCreativeMacrosResponse(BaseModel):
-    """Response with processed creative content."""
-    processed_content: str
-    macros_replaced: List[str]
-
-# Publisher macro capabilities
-class GetPublisherMacroCapabilitiesRequest(BaseModel):
-    """Request publisher's creative macro capabilities."""
-    pass  # No parameters needed
-
-class GetPublisherMacroCapabilitiesResponse(BaseModel):
-    """Publisher's supported creative macros."""
-    supported_macros: List[str]
-    macro_definitions: Dict[str, Dict[str, Any]]
-
-class ValidateMacroRequirementsRequest(BaseModel):
-    """Validate if publisher can fulfill macro requirements."""
-    requested_macros: Optional[List[str]] = None
-    required_macros: Optional[List[str]] = None
-
-class ValidateMacroRequirementsResponse(BaseModel):
-    """Result of macro requirement validation."""
-    can_fulfill: bool
-    missing_required_macros: List[str]
-    available_macros: List[str]
-    all_supported_macros: List[str]
+# Creative macro is now a simple string passed via AEE provided_signals
