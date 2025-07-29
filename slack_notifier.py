@@ -17,16 +17,25 @@ logger = logging.getLogger(__name__)
 class SlackNotifier:
     """Handles sending notifications to Slack channels via webhooks."""
     
-    def __init__(self, webhook_url: Optional[str] = None, audit_webhook_url: Optional[str] = None):
+    def __init__(self, webhook_url: Optional[str] = None, audit_webhook_url: Optional[str] = None, tenant_config: Optional[Dict[str, Any]] = None):
         """
         Initialize Slack notifier.
         
         Args:
-            webhook_url: Slack webhook URL. If not provided, uses SLACK_WEBHOOK_URL env var.
-            audit_webhook_url: Separate webhook for audit logs. If not provided, uses SLACK_AUDIT_WEBHOOK_URL env var.
+            webhook_url: Slack webhook URL. If not provided, checks tenant config then SLACK_WEBHOOK_URL env var.
+            audit_webhook_url: Separate webhook for audit logs. If not provided, checks tenant config then SLACK_AUDIT_WEBHOOK_URL env var.
+            tenant_config: Tenant configuration dict to check for webhook URLs
         """
-        self.webhook_url = webhook_url or os.getenv('SLACK_WEBHOOK_URL')
-        self.audit_webhook_url = audit_webhook_url or os.getenv('SLACK_AUDIT_WEBHOOK_URL')
+        # Only use tenant config - no fallback to env vars
+        if tenant_config and tenant_config.get('features'):
+            features = tenant_config['features']
+            self.webhook_url = webhook_url or features.get('slack_webhook_url')
+            self.audit_webhook_url = audit_webhook_url or features.get('slack_audit_webhook_url')
+        else:
+            # If no tenant config, disable Slack
+            self.webhook_url = webhook_url
+            self.audit_webhook_url = audit_webhook_url
+            
         self.enabled = bool(self.webhook_url)
         self.audit_enabled = bool(self.audit_webhook_url)
         
@@ -545,5 +554,9 @@ class SlackNotifier:
         return "\n".join(formatted_parts[:5]) if formatted_parts else None  # Limit to 5 items
 
 
-# Global instance
+# Global instance (will be overridden per-tenant in actual usage)
 slack_notifier = SlackNotifier()
+
+def get_slack_notifier(tenant_config: Optional[Dict[str, Any]] = None) -> SlackNotifier:
+    """Get a Slack notifier instance configured for the specific tenant."""
+    return SlackNotifier(tenant_config=tenant_config)

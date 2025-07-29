@@ -83,7 +83,15 @@
             {% endif %}
         </div>
         <div>
-            Created {{ tenant.created_at.strftime('%Y-%m-%d') if tenant.created_at else 'N/A' }}
+            {% if tenant.created_at %}
+                {% if tenant.created_at is string %}
+                    Created {{ tenant.created_at[:10] }}
+                {% else %}
+                    Created {{ tenant.created_at.strftime('%Y-%m-%d') }}
+                {% endif %}
+            {% else %}
+                Created N/A
+            {% endif %}
         </div>
     </div>
 </div>
@@ -100,6 +108,7 @@
     <div class="tab" data-tab="users">Users</div>
     <div class="tab" data-tab="principals">Principals</div>
     <div class="tab" data-tab="products">Products</div>
+    <div class="tab" data-tab="integrations">Integrations</div>
     <div class="tab" data-tab="tokens">API Tokens</div>
     <a href="/tenant/{{ tenant.tenant_id }}/operations" class="tab" style="text-decoration: none; color: inherit;">Operations →</a>
 </div>
@@ -474,7 +483,17 @@
                             {% endif %}
                         </div>
                     </td>
-                    <td>{{ principal.created_at.strftime('%Y-%m-%d') if principal.created_at and principal.created_at != 'None' else 'N/A' }}</td>
+                    <td>
+                        {% if principal.created_at and principal.created_at != 'None' %}
+                            {% if principal.created_at is string %}
+                                {{ principal.created_at[:10] }}
+                            {% else %}
+                                {{ principal.created_at.strftime('%Y-%m-%d') }}
+                            {% endif %}
+                        {% else %}
+                            N/A
+                        {% endif %}
+                    </td>
                     <td>
                         {% if principal.principal_id.endswith('_admin') %}
                         <span class="status status-active">Admin</span>
@@ -549,6 +568,40 @@
         {% else %}
         <p>No products found.</p>
         {% endif %}
+    </div>
+</div>
+
+<div id="integrations" class="tab-content">
+    <div class="card">
+        <h3>Slack Integration</h3>
+        <p>Configure Slack notifications for tasks, approvals, and audit logs.</p>
+        
+        <form id="slackForm" method="POST" action="/tenant/{{ tenant.tenant_id }}/update_slack">
+            <div class="form-group">
+                <label for="slack_webhook_url">Task Notifications Webhook URL</label>
+                <input type="url" id="slack_webhook_url" name="slack_webhook_url" 
+                       value="{{ tenant.config.get('features', {}).get('slack_webhook_url', '') }}"
+                       placeholder="https://hooks.slack.com/services/YOUR/WEBHOOK/URL">
+                <small>Receives notifications for new tasks and creative approvals</small>
+            </div>
+            
+            <div class="form-group">
+                <label for="slack_audit_webhook_url">Audit Log Webhook URL (Optional)</label>
+                <input type="url" id="slack_audit_webhook_url" name="slack_audit_webhook_url" 
+                       value="{{ tenant.config.get('features', {}).get('slack_audit_webhook_url', '') }}"
+                       placeholder="https://hooks.slack.com/services/YOUR/AUDIT/WEBHOOK">
+                <small>Separate channel for audit logs and security alerts</small>
+            </div>
+            
+            <div style="display: flex; gap: 10px; align-items: center;">
+                <button type="submit" class="btn">Save Slack Configuration</button>
+                <button type="button" onclick="testSlack()" class="btn btn-secondary">Send Test Message</button>
+            </div>
+        </form>
+        
+        <div id="slackTestResult" style="margin-top: 20px; display: none;">
+            <div class="alert" id="slackTestMessage"></div>
+        </div>
     </div>
 </div>
 
@@ -725,6 +778,47 @@ function toggleAdapterSetup() {
     } else {
         setupDiv.style.display = 'none';
     }
+}
+
+// Slack Integration Functions
+function testSlack() {
+    const webhookUrl = document.getElementById('slack_webhook_url').value;
+    const resultDiv = document.getElementById('slackTestResult');
+    const messageDiv = document.getElementById('slackTestMessage');
+    
+    if (!webhookUrl) {
+        resultDiv.style.display = 'block';
+        messageDiv.className = 'alert alert-error';
+        messageDiv.textContent = 'Please enter a webhook URL first';
+        return;
+    }
+    
+    // Send test request to backend
+    fetch('/tenant/{{ tenant.tenant_id }}/test_slack', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+            webhook_url: webhookUrl
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        resultDiv.style.display = 'block';
+        if (data.success) {
+            messageDiv.className = 'alert alert-success';
+            messageDiv.textContent = '✅ Test message sent successfully! Check your Slack channel.';
+        } else {
+            messageDiv.className = 'alert alert-error';
+            messageDiv.textContent = '❌ Failed to send test message: ' + (data.error || 'Unknown error');
+        }
+    })
+    .catch(error => {
+        resultDiv.style.display = 'block';
+        messageDiv.className = 'alert alert-error';
+        messageDiv.textContent = '❌ Error: ' + error;
+    });
 }
 </script>
 {% endblock %}

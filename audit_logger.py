@@ -132,17 +132,25 @@ class AuditLogger:
         # Send to Slack audit channel if configured
         try:
             # Lazy import to avoid circular dependency
-            from slack_notifier import slack_notifier
+            from slack_notifier import get_slack_notifier
             
-            # Get tenant name for context
+            # Get tenant name and config for context
             tenant_name = None
+            tenant_config = None
             if tenant_id:
                 try:
                     conn = get_db_connection()
-                    cursor = conn.execute("SELECT name FROM tenants WHERE tenant_id = ?", (tenant_id,))
+                    cursor = conn.execute("SELECT name, config FROM tenants WHERE tenant_id = ?", (tenant_id,))
                     result = cursor.fetchone()
                     if result:
                         tenant_name = result[0]
+                        # Handle both string and dict config
+                        config_data = result[1]
+                        if isinstance(config_data, str):
+                            import json
+                            tenant_config = json.loads(config_data)
+                        else:
+                            tenant_config = config_data
                     conn.close()
                 except:
                     pass

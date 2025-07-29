@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Admin UI with Google OAuth2 authentication."""
 
-from flask import Flask, render_template, request, jsonify, redirect, url_for, session
+from flask import Flask, render_template, request, jsonify, redirect, url_for, session, flash
 import secrets
 import json
 import os
@@ -613,6 +613,117 @@ def update_tenant(tenant_id):
     except Exception as e:
         conn.close()
         return f"Error: {e}", 400
+
+@app.route('/tenant/<tenant_id>/update_slack', methods=['POST'])
+@require_auth()
+def update_slack(tenant_id):
+    """Update Slack webhook configuration."""
+    # Check if tenant admin is trying to update another tenant
+    if session.get('role') == 'tenant_admin' and session.get('tenant_id') != tenant_id:
+        return "Access denied", 403
+    
+    try:
+        # Get current config
+        conn = get_db_connection()
+        cursor = conn.execute("SELECT config FROM tenants WHERE tenant_id = ?", (tenant_id,))
+        config = cursor.fetchone()[0]
+        if isinstance(config, str):
+            config = json.loads(config)
+        
+        # Update Slack webhooks in features
+        if 'features' not in config:
+            config['features'] = {}
+        
+        slack_webhook = request.form.get('slack_webhook_url', '').strip()
+        audit_webhook = request.form.get('slack_audit_webhook_url', '').strip()
+        
+        if slack_webhook:
+            config['features']['slack_webhook_url'] = slack_webhook
+        elif 'slack_webhook_url' in config['features']:
+            del config['features']['slack_webhook_url']
+            
+        if audit_webhook:
+            config['features']['slack_audit_webhook_url'] = audit_webhook
+        elif 'slack_audit_webhook_url' in config['features']:
+            del config['features']['slack_audit_webhook_url']
+        
+        # Save updated config
+        conn.execute("""
+            UPDATE tenants 
+            SET config = ?, updated_at = ?
+            WHERE tenant_id = ?
+        """, (json.dumps(config), datetime.now().isoformat(), tenant_id))
+        conn.connection.commit()
+        conn.close()
+        
+        flash('Slack configuration updated successfully', 'success')
+        return redirect(url_for('tenant_detail', tenant_id=tenant_id))
+    except Exception as e:
+        if 'conn' in locals():
+            conn.close()
+        return f"Error: {e}", 400
+
+@app.route('/tenant/<tenant_id>/test_slack', methods=['POST'])
+@require_auth()
+def test_slack(tenant_id):
+    """Test Slack webhook."""
+    # Check if tenant admin is trying to test another tenant
+    if session.get('role') == 'tenant_admin' and session.get('tenant_id') != tenant_id:
+        return jsonify({"success": False, "error": "Access denied"}), 403
+    
+    try:
+        data = request.get_json()
+        webhook_url = data.get('webhook_url')
+        
+        if not webhook_url:
+            return jsonify({"success": False, "error": "No webhook URL provided"})
+        
+        # Send test message
+        import requests
+        from datetime import datetime
+        
+        test_message = {
+            "text": f"🎉 Test message from AdCP Sales Agent",
+            "blocks": [
+                {
+                    "type": "header",
+                    "text": {
+                        "type": "plain_text",
+                        "text": "✅ Slack Integration Test Successful!"
+                    }
+                },
+                {
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": f"This is a test message from tenant *{tenant_id}*\n\nYour Slack integration is working correctly!"
+                    }
+                },
+                {
+                    "type": "context",
+                    "elements": [
+                        {
+                            "type": "mrkdwn",
+                            "text": f"Sent at {datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S UTC')}"
+                        }
+                    ]
+                }
+            ]
+        }
+        
+        response = requests.post(webhook_url, json=test_message, timeout=10)
+        
+        if response.status_code == 200:
+            return jsonify({"success": True})
+        else:
+            return jsonify({"success": False, "error": f"Slack returned status {response.status_code}"})
+            
+    except requests.exceptions.Timeout:
+        return jsonify({"success": False, "error": "Request timed out"})
+    except requests.exceptions.RequestException as e:
+        return jsonify({"success": False, "error": str(e)})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)})
 
 @app.route('/create_tenant', methods=['GET', 'POST'])
 @require_auth(admin_only=True)

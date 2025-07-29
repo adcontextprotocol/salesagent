@@ -21,7 +21,7 @@ from config_loader import (
     get_tenant_config, current_tenant
 )
 from db_config import get_db_connection
-from slack_notifier import slack_notifier
+from slack_notifier import get_slack_notifier
 
 # --- Authentication ---
 
@@ -1335,6 +1335,7 @@ def create_human_task(req: CreateHumanTaskRequest, context: Context) -> CreateHu
     
     # Send Slack notification for new tasks
     try:
+        slack_notifier = get_slack_notifier(tenant['config'])
         slack_notifier.notify_new_task(
             task_id=task_id,
             task_type=req.task_type,
@@ -1511,6 +1512,7 @@ def complete_task(req: CompleteTaskRequest, context: Context) -> Dict[str, str]:
     
     # Send Slack notification for task completion
     try:
+        slack_notifier = get_slack_notifier(tenant['config'])
         slack_notifier.notify_task_completed(
             task_id=req.task_id,
             task_type=task.task_type,

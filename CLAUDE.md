@@ -4,15 +4,18 @@
 
 This is a Python-based reference implementation of the Advertising Context Protocol (AdCP) V2.3 sales agent. It demonstrates how publishers expose advertising inventory to AI-driven clients through a standardized MCP (Model Context Protocol) interface.
 
+**Primary Deployment Method**: Docker Compose with PostgreSQL, MCP Server, and Admin UI
+
 The server provides:
-- **MCP Server**: FastMCP-based server exposing tools for AI agents
+- **MCP Server**: FastMCP-based server exposing tools for AI agents (port 8080)
+- **Admin UI**: Secure web interface with Google OAuth authentication (port 8001)
 - **Multi-Tenant Architecture**: Database-backed tenant isolation with subdomain routing
 - **Advanced Targeting**: Comprehensive targeting system with overlay and managed-only dimensions
 - **Creative Management**: Auto-approval workflows, creative groups, and admin review
 - **Human-in-the-Loop**: Optional manual approval mode for sensitive operations
 - **Security & Compliance**: Audit logging, principal-based auth, adapter security boundaries
-- **Production Ready**: PostgreSQL support, Docker deployment, health monitoring
-- **Admin UI**: Secure web interface with Google OAuth authentication
+- **Slack Integration**: Per-tenant webhook configuration (no env vars needed)
+- **Production Ready**: PostgreSQL database, Docker deployment, health monitoring
 
 ## Key Architecture Decisions
 
@@ -133,18 +136,39 @@ The server provides:
 
 ## Configuration
 
-### Environment Variables
-- `DATABASE_URL`: Full database connection string (overrides all DB_*)
-- `DB_TYPE`: Database type: `sqlite` or `postgresql` (default: sqlite)
-- `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PASSWORD`: PostgreSQL config
-- `DATA_DIR`: SQLite data directory (default: ~/.adcp)
+### Docker Setup (Primary Method)
+
+The system runs with Docker Compose, which manages all services:
+
+```yaml
+# docker-compose.yml services:
+postgres      # PostgreSQL database
+adcp-server   # MCP server on port 8080  
+admin-ui      # Admin interface on port 8001
+```
+
+### Required Configuration (.env file)
+
+```bash
+# Minimal .env for Docker deployment
+GEMINI_API_KEY=your-gemini-api-key-here
+SUPER_ADMIN_EMAILS=bokelley@scope3.com
+```
+
+### Important Configuration Notes
+
+1. **Slack Webhooks**: Configure per-tenant in Admin UI, NOT via environment variables
+2. **Database**: Docker Compose manages PostgreSQL automatically
+3. **OAuth**: Mount your `client_secret*.json` file (see docker-compose.yml)
+4. **Ports**: 8080 (MCP), 8001 (Admin UI), 5432 (PostgreSQL)
+
+### Legacy Environment Variables (Standalone Only)
+
+For standalone development without Docker:
+- `DATABASE_URL`: Full database connection string
+- `DB_TYPE`: Database type: `sqlite` or `postgresql`
 - `ADCP_SALES_PORT`: MCP server port (default: 8080)
 - `ADMIN_UI_PORT`: Admin UI port (default: 8001)
-- `SUPER_ADMIN_EMAILS`: Comma-separated list of super admin emails
-- `SUPER_ADMIN_DOMAINS`: Comma-separated list of super admin domains
-- `GEMINI_API_KEY`: Google Gemini API key (for AI recommendations)
-- `ADCP_DRY_RUN`: Enable dry-run mode globally
-- `ADCP_ADAPTER`: Default adapter when not specified in tenant config
 
 ### Database Schema
 ```sql
@@ -185,26 +209,39 @@ Each tenant has a JSON config in the database:
 
 ## Common Operations
 
-### Running the Server
+### Running the Server (Docker - Recommended)
+```bash
+# Start all services with Docker Compose
+docker-compose up -d
+
+# View logs
+docker-compose logs -f
+
+# Stop services
+docker-compose down
+
+# Rebuild after code changes
+docker-compose build
+docker-compose up -d
+```
+
+### Running Standalone (Development Only)
 ```bash
 # Initialize database
 python database.py
 
 # Start MCP server and Admin UI
 python run_server.py
-
-# Or use Docker Compose
-docker-compose up -d
 ```
 
 ### Managing Tenants
 ```bash
-# Create new tenant
-python setup_tenant.py "Publisher Name" \
+# Create new tenant (inside Docker container)
+docker exec -it adcp-buy-server-adcp-server-1 python setup_tenant.py "Publisher Name" \
   --adapter google_ad_manager \
   --gam-network-code 123456
 
-# List tenants (via Admin UI with Google OAuth)
+# Access Admin UI
 open http://localhost:8001
 ```
 
