@@ -1,6 +1,6 @@
-# AdCP:Buy Server Documentation
+# AdCP Sales Agent Server Documentation
 
-This directory contains documentation for running and extending the AdCP:Buy reference server implementation.
+This directory contains documentation for running and extending the AdCP Sales Agent reference server implementation.
 
 ## Documentation Structure
 
@@ -23,7 +23,7 @@ This directory contains documentation for running and extending the AdCP:Buy ref
 
 ```
 ┌─────────────────┐     ┌──────────────────┐
-│   AI Agent      │────▶│  AdCP:Buy Server │
+│   AI Agent      │────▶│  AdCP Sales Agent│
 └─────────────────┘     └──────────────────┘
                                │
                  ┌─────────────┼─────────────┐

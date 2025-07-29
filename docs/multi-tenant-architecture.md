@@ -2,7 +2,7 @@
 
 ## Overview
 
-A multi-tenant AdCP:Buy platform would allow Scope3 to host a single instance serving multiple publishers, reducing operational overhead while maintaining security isolation between tenants.
+A multi-tenant AdCP Sales Agent platform would allow Scope3 to host a single instance serving multiple publishers, reducing operational overhead while maintaining security isolation between tenants.
 
 ## Key Design Considerations
 
@@ -364,7 +364,7 @@ class ResourceTracker:
 
 ### 12. Conclusion
 
-For Scope3's hosted AdCP:Buy platform, I recommend:
+For Scope3's hosted AdCP Sales Agent platform, I recommend:
 
 1. **Database-level isolation** for security and simplicity
 2. **Subdomain-based tenant identification** for clarity

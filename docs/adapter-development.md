@@ -1,6 +1,6 @@
 # Adapter Development Guide
 
-This guide explains how to create new ad server adapters for the AdCP:Buy server.
+This guide explains how to create new ad server adapters for the AdCP Sales Agent server.
 
 ## Overview
 

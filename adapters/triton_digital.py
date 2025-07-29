@@ -18,9 +18,10 @@ class TritonDigital(AdServerAdapter):
         config: Dict[str, Any], 
         principal: Principal,
         dry_run: bool = False,
-        creative_engine: Optional[CreativeEngineAdapter] = None
+        creative_engine: Optional[CreativeEngineAdapter] = None,
+        tenant_id: Optional[str] = None
     ):
-        super().__init__(config, principal, dry_run, creative_engine)
+        super().__init__(config, principal, dry_run, creative_engine, tenant_id)
         
         # Get Triton-specific principal ID
         self.advertiser_id = self.principal.get_adapter_id("triton")

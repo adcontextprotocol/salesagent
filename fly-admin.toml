@@ -1,0 +1,29 @@
+# fly.toml app configuration file for AdCP Admin UI
+#
+# See https://fly.io/docs/reference/configuration/ for information about how to use this file.
+#
+
+app = "adcp-admin-ui"
+primary_region = "iad"
+
+[build]
+
+[http_service]
+  internal_port = 8001
+  force_https = true
+  auto_stop_machines = "stop"
+  auto_start_machines = true
+  min_machines_running = 0
+  processes = ["app"]
+
+[[vm]]
+  memory = "512mb"
+  cpu_kind = "shared"
+  cpus = 1
+
+[env]
+  PRODUCTION = "true"
+  ADMIN_UI_PORT = "8001"
+  ADMIN_UI_HOST = "0.0.0.0"
+  # Point to the MCP server
+  MCP_BASE_URL = "https://adcp-mcp-server.fly.dev"

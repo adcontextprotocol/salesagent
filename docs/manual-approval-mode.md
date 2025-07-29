@@ -2,7 +2,7 @@
 
 ## Overview
 
-Some publishers require manual approval for all automated ad operations to maintain full control over their inventory. The AdCP:Buy platform supports a manual approval mode that intercepts operations and creates human tasks instead of executing them immediately.
+Some publishers require manual approval for all automated ad operations to maintain full control over their inventory. The AdCP Sales Agent platform supports a manual approval mode that intercepts operations and creates human tasks instead of executing them immediately.
 
 ## Configuration
 
@@ -211,7 +211,7 @@ WHERE task_type = 'manual_approval';
 To enable manual approval for existing integrations:
 
 1. Update adapter configuration
-2. Deploy updated AdCP:Buy server
+2. Deploy updated AdCP Sales Agent server
 3. Test with a single principal first
 4. Monitor task queue and approval times
 5. Gradually enable for more principals

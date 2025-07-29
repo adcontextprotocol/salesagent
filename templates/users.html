@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>User Management - {{ tenant_name }}</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        h1, h2 {
+            color: #333;
+        }
+        .container {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+        .user-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+        }
+        .user-table th, .user-table td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid #ddd;
+        }
+        .user-table th {
+            background-color: #f8f9fa;
+            font-weight: bold;
+        }
+        .user-table tr:hover {
+            background-color: #f8f9fa;
+        }
+        .role-badge {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: bold;
+            text-transform: uppercase;
+        }
+        .role-admin {
+            background-color: #dc3545;
+            color: white;
+        }
+        .role-manager {
+            background-color: #fd7e14;
+            color: white;
+        }
+        .role-viewer {
+            background-color: #6c757d;
+            color: white;
+        }
+        .status-active {
+            color: #28a745;
+            font-weight: bold;
+        }
+        .status-inactive {
+            color: #dc3545;
+            font-weight: bold;
+        }
+        .btn {
+            display: inline-block;
+            padding: 8px 16px;
+            margin: 4px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            text-decoration: none;
+            font-size: 14px;
+        }
+        .btn-primary {
+            background-color: #007bff;
+            color: white;
+        }
+        .btn-danger {
+            background-color: #dc3545;
+            color: white;
+        }
+        .btn-success {
+            background-color: #28a745;
+            color: white;
+        }
+        .btn-secondary {
+            background-color: #6c757d;
+            color: white;
+        }
+        .btn:hover {
+            opacity: 0.9;
+        }
+        .add-user-form {
+            background-color: #f8f9fa;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+        .form-group {
+            margin-bottom: 15px;
+        }
+        .form-group label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+        .form-group input, .form-group select {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            box-sizing: border-box;
+        }
+        .actions {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+        .inline-form {
+            display: inline;
+        }
+    </style>
+</head>
+<body>
+    <h1>User Management</h1>
+    
+    <div class="container">
+        <h2>{{ tenant_name }}</h2>
+        <a href="/tenant/{{ tenant_id }}" class="btn btn-secondary">← Back to Tenant</a>
+    </div>
+
+    <div class="container">
+        <h3>Add New User</h3>
+        <form method="POST" action="/tenant/{{ tenant_id }}/users/add" class="add-user-form">
+            <div class="form-group">
+                <label for="email">Email Address</label>
+                <input type="email" id="email" name="email" required placeholder="user@example.com">
+            </div>
+            <div class="form-group">
+                <label for="name">Full Name</label>
+                <input type="text" id="name" name="name" required placeholder="John Doe">
+            </div>
+            <div class="form-group">
+                <label for="role">Role</label>
+                <select id="role" name="role" required>
+                    <option value="viewer">Viewer (Read-only)</option>
+                    <option value="manager">Manager (View & Approve)</option>
+                    <option value="admin">Admin (Full Access)</option>
+                </select>
+            </div>
+            <button type="submit" class="btn btn-primary">Add User</button>
+        </form>
+    </div>
+
+    <div class="container">
+        <h3>Current Users</h3>
+        <table class="user-table">
+            <thead>
+                <tr>
+                    <th>Email</th>
+                    <th>Name</th>
+                    <th>Role</th>
+                    <th>Status</th>
+                    <th>Last Login</th>
+                    <th>Created</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for user in users %}
+                <tr>
+                    <td>{{ user.email }}</td>
+                    <td>{{ user.name }}</td>
+                    <td>
+                        <span class="role-badge role-{{ user.role }}">{{ user.role }}</span>
+                    </td>
+                    <td>
+                        {% if user.is_active %}
+                            <span class="status-active">Active</span>
+                        {% else %}
+                            <span class="status-inactive">Inactive</span>
+                        {% endif %}
+                    </td>
+                    <td>{{ user.last_login or 'Never' }}</td>
+                    <td>{{ user.created_at }}</td>
+                    <td>
+                        <div class="actions">
+                            <!-- Toggle Active/Inactive -->
+                            <form method="POST" action="/tenant/{{ tenant_id }}/users/{{ user.user_id }}/toggle" class="inline-form">
+                                {% if user.is_active %}
+                                    <button type="submit" class="btn btn-danger" onclick="return confirm('Disable this user?')">Disable</button>
+                                {% else %}
+                                    <button type="submit" class="btn btn-success" onclick="return confirm('Enable this user?')">Enable</button>
+                                {% endif %}
+                            </form>
+                            
+                            <!-- Change Role -->
+                            {% if user.role != 'admin' %}
+                                <form method="POST" action="/tenant/{{ tenant_id }}/users/{{ user.user_id }}/update_role" class="inline-form">
+                                    <select name="role" onchange="this.form.submit()">
+                                        <option value="">Change Role</option>
+                                        {% if user.role != 'admin' %}
+                                            <option value="admin">→ Admin</option>
+                                        {% endif %}
+                                        {% if user.role != 'manager' %}
+                                            <option value="manager">→ Manager</option>
+                                        {% endif %}
+                                        {% if user.role != 'viewer' %}
+                                            <option value="viewer">→ Viewer</option>
+                                        {% endif %}
+                                    </select>
+                                </form>
+                            {% endif %}
+                        </div>
+                    </td>
+                </tr>
+                {% endfor %}
+                {% if not users %}
+                <tr>
+                    <td colspan="7" style="text-align: center; padding: 40px;">
+                        No users yet. Add the first user above.
+                    </td>
+                </tr>
+                {% endif %}
+            </tbody>
+        </table>
+    </div>
+
+    <div class="container">
+        <h3>Role Permissions</h3>
+        <ul>
+            <li><strong>Viewer:</strong> Can view dashboards, reports, and campaign data</li>
+            <li><strong>Manager:</strong> Viewer permissions + can approve/reject campaigns</li>
+            <li><strong>Admin:</strong> Full access including user management and tenant configuration</li>
+        </ul>
+    </div>
+</body>
+</html>

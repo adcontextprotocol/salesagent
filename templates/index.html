@@ -41,7 +41,7 @@
                     <span class="status status-inactive">Inactive</span>
                     {% endif %}
                 </td>
-                <td>{{ tenant.created_at[:10] }}</td>
+                <td>{{ tenant.created_at.strftime('%Y-%m-%d') if tenant.created_at else 'N/A' }}</td>
                 <td>
                     <a href="/tenant/{{ tenant.tenant_id }}" class="btn btn-small">Manage</a>
                 </td>

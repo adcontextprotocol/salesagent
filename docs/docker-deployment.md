@@ -2,7 +2,7 @@
 
 ## Quick Start with Docker Compose
 
-The easiest way to deploy AdCP:Buy Server with PostgreSQL:
+The easiest way to deploy AdCP Sales Agent with PostgreSQL:
 
 ```bash
 # Clone the repository

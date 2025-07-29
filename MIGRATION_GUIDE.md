@@ -4,7 +4,7 @@
 
 ### Overview
 
-The AdCP:Buy server now uses a multi-tenant architecture by default. This guide helps existing users migrate their data.
+The AdCP Sales Agent server now uses a multi-tenant architecture by default. This guide helps existing users migrate their data.
 
 ### What Changed?
 

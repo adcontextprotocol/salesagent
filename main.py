@@ -51,21 +51,34 @@ def get_principal_from_context(context: Optional[Context]) -> Optional[str]:
         if not request:
             return None
         
-        # Extract tenant from host header
-        host = request.headers.get('host', '')
-        subdomain = host.split('.')[0] if '.' in host else 'localhost'
+        # Extract tenant from multiple sources
+        tenant_id = None
         
-        # Load tenant by subdomain
+        # 1. Check x-adcp-tenant header (set by middleware for path-based routing)
+        tenant_id = request.headers.get('x-adcp-tenant')
+        
+        # 2. If not found, check host header for subdomain
+        if not tenant_id:
+            host = request.headers.get('host', '')
+            subdomain = host.split('.')[0] if '.' in host else None
+            if subdomain and subdomain != 'localhost':
+                tenant_id = subdomain
+        
+        # 3. Default to 'default' tenant if none specified
+        if not tenant_id:
+            tenant_id = 'default'
+        
+        # Load tenant by ID
         conn = get_db_connection()
         cursor = conn.execute(
-            "SELECT tenant_id, name, subdomain, config FROM tenants WHERE subdomain = ? AND is_active = ?",
-            (subdomain, True)
+            "SELECT tenant_id, name, subdomain, config FROM tenants WHERE tenant_id = ? AND is_active = ?",
+            (tenant_id, True)
         )
         row = cursor.fetchone()
         conn.close()
         
         if not row:
-            print(f"No active tenant found for subdomain: {subdomain}")
+            print(f"No active tenant found for ID: {tenant_id}")
             return None
             
         # Set tenant context
@@ -157,18 +170,19 @@ def get_adapter(principal: Principal, dry_run: bool = False):
         selected_adapter = 'mock'
         adapter_config = {'enabled': True}
     
-    # Create the appropriate adapter instance
+    # Create the appropriate adapter instance with tenant_id
+    tenant_id = tenant['tenant_id']
     if selected_adapter == "mock":
-        return MockAdServerAdapter(adapter_config, principal, dry_run)
+        return MockAdServerAdapter(adapter_config, principal, dry_run, tenant_id=tenant_id)
     elif selected_adapter == "google_ad_manager":
-        return GoogleAdManager(adapter_config, principal, dry_run)
+        return GoogleAdManager(adapter_config, principal, dry_run, tenant_id=tenant_id)
     elif selected_adapter == "kevel":
-        return Kevel(adapter_config, principal, dry_run)
+        return Kevel(adapter_config, principal, dry_run, tenant_id=tenant_id)
     elif selected_adapter in ["triton", "triton_digital"]:
-        return TritonDigital(adapter_config, principal, dry_run)
+        return TritonDigital(adapter_config, principal, dry_run, tenant_id=tenant_id)
     else:
         # Default to mock for unsupported adapters
-        return MockAdServerAdapter(adapter_config, principal, dry_run)
+        return MockAdServerAdapter(adapter_config, principal, dry_run, tenant_id=tenant_id)
 
 # --- Initialization ---
 init_db()
@@ -180,6 +194,15 @@ console = Console()
 creative_engine_config = config.get('creative_engine', {})
 creative_engine = MockCreativeEngine(creative_engine_config)
 
+def load_media_buys_from_db():
+    """Load existing media buys from database into memory on startup."""
+    try:
+        # We can't load tenant-specific media buys at startup since we don't have tenant context
+        # Media buys will be loaded on-demand when needed
+        console.print("[dim]Media buys will be loaded on-demand from database[/dim]")
+    except Exception as e:
+        console.print(f"[yellow]Warning: Could not initialize media buys from database: {e}[/yellow]")
+
 # --- In-Memory State ---
 media_buys: Dict[str, Tuple[CreateMediaBuyRequest, str]] = {}
 creative_assignments: Dict[str, Dict[str, List[str]]] = {}
@@ -189,9 +212,8 @@ creative_library: Dict[str, Creative] = {}  # creative_id -> Creative
 creative_groups: Dict[str, CreativeGroup] = {}  # group_id -> CreativeGroup
 creative_assignments_v2: Dict[str, CreativeAssignment] = {}  # assignment_id -> CreativeAssignment
 
-# Initialize audit logger (import needed at top)
-from audit_logger import AuditLogger
-audit_logger = AuditLogger(log_directory="audit_logs")
+# Import audit logger for later use
+from audit_logger import AuditLogger, get_audit_logger
 
 # Human task queue (in-memory for now, would be database in production)
 human_tasks: Dict[str, HumanTask] = {}
@@ -229,7 +251,8 @@ def _verify_principal(media_buy_id: str, context: Context):
     if media_buys[media_buy_id][1] != principal_id:
         # Log security violation
         from audit_logger import get_audit_logger
-        security_logger = get_audit_logger("AdCP")
+        tenant = get_current_tenant()
+        security_logger = get_audit_logger("AdCP", tenant['tenant_id'])
         security_logger.log_security_violation(
             operation="access_media_buy",
             principal_id=principal_id,
@@ -316,8 +339,36 @@ def create_media_buy(req: CreateMediaBuyRequest, context: Context) -> CreateMedi
     end_time = datetime.combine(req.flight_end_date, datetime.max.time())
     response = adapter.create_media_buy(req, packages, start_time, end_time)
     
-    # Store the media buy
+    # Store the media buy in memory (for backward compatibility)
     media_buys[response.media_buy_id] = (req, principal_id)
+    
+    # Store the media buy in database
+    tenant = get_current_tenant()
+    conn = get_db_connection()
+    try:
+        conn.execute("""
+            INSERT INTO media_buys (
+                media_buy_id, tenant_id, principal_id, order_name,
+                advertiser_name, campaign_objective, kpi_goal, budget,
+                start_date, end_date, status, raw_request
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (
+            response.media_buy_id,
+            tenant['tenant_id'],
+            principal_id,
+            req.po_number or f"Order-{response.media_buy_id}",
+            principal.name,
+            req.campaign_objective,
+            req.kpi_goal,
+            req.total_budget,
+            req.flight_start_date.isoformat(),
+            req.flight_end_date.isoformat(),
+            response.status or 'active',
+            json.dumps(req.model_dump())
+        ))
+        conn.connection.commit()
+    finally:
+        conn.close()
     
     # Handle creatives if provided
     if req.creatives:
@@ -816,7 +867,8 @@ def create_creative_group(req: CreateCreativeGroupRequest, context: Context) -> 
     
     # Log the creation
     from audit_logger import get_audit_logger
-    logger = get_audit_logger("AdCP")
+    tenant = get_current_tenant()
+    logger = get_audit_logger("AdCP", tenant['tenant_id'])
     logger.log_operation(
         operation="create_creative_group",
         principal_name=get_principal_object(principal_id).name,
@@ -869,7 +921,8 @@ def create_creative(req: CreateCreativeRequest, context: Context) -> CreateCreat
     
     # Log the creation
     from audit_logger import get_audit_logger
-    logger = get_audit_logger("AdCP")
+    tenant = get_current_tenant()
+    logger = get_audit_logger("AdCP", tenant['tenant_id'])
     logger.log_operation(
         operation="create_creative",
         principal_name=principal.name,
@@ -926,7 +979,8 @@ def assign_creative(req: AssignCreativeRequest, context: Context) -> AssignCreat
     
     # Log the assignment
     from audit_logger import get_audit_logger
-    logger = get_audit_logger("AdCP")
+    tenant = get_current_tenant()
+    logger = get_audit_logger("AdCP", tenant['tenant_id'])
     logger.log_operation(
         operation="assign_creative",
         principal_name=get_principal_object(principal_id).name,
@@ -995,7 +1049,8 @@ def get_pending_creatives(req: GetPendingCreativesRequest, context: Context) -> 
     
     # Log admin action
     from audit_logger import get_audit_logger
-    logger = get_audit_logger("AdCP")
+    tenant = get_current_tenant()
+    logger = get_audit_logger("AdCP", tenant['tenant_id'])
     logger.log_operation(
         operation="get_pending_creatives",
         principal_name="Admin",
@@ -1036,7 +1091,8 @@ def approve_creative(req: ApproveCreativeRequest, context: Context) -> ApproveCr
     
     # Log admin action
     from audit_logger import get_audit_logger
-    logger = get_audit_logger("AdCP")
+    tenant = get_current_tenant()
+    logger = get_audit_logger("AdCP", tenant['tenant_id'])
     logger.log_operation(
         operation="approve_creative",
         principal_name="Admin",
@@ -1183,10 +1239,45 @@ def create_human_task(req: CreateHumanTaskRequest, context: Context) -> CreateHu
         due_by=due_by
     )
     
-    # Store task
+    # Store task in memory
     human_tasks[task_id] = task
     
+    # Store task in database
+    tenant = get_current_tenant()
+    conn = get_db_connection()
+    try:
+        conn.execute("""
+            INSERT INTO tasks (
+                task_id, tenant_id, media_buy_id, task_type,
+                title, description, status, assigned_to,
+                due_date, metadata, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (
+            task_id,
+            tenant['tenant_id'],
+            req.media_buy_id or '',
+            req.task_type,
+            f"{req.task_type}: {req.error_detail[:50] if req.error_detail else 'Manual approval required'}",
+            req.error_detail,
+            'pending',
+            None,  # assigned_to
+            due_by.isoformat() if due_by else None,
+            json.dumps({
+                "principal_id": principal_id,
+                "adapter_name": req.adapter_name,
+                "creative_id": req.creative_id,
+                "operation": req.operation,
+                "context_data": req.context_data,
+                "priority": req.priority
+            }),
+            datetime.now().isoformat()
+        ))
+        conn.connection.commit()
+    finally:
+        conn.close()
+    
     # Log task creation
+    audit_logger = get_audit_logger("AdCP", tenant['tenant_id'])
     audit_logger.log_operation(
         operation="create_human_task",
         principal_name=principal_id,
@@ -1343,6 +1434,31 @@ def complete_task(req: CompleteTaskRequest, context: Context) -> Dict[str, str]:
     task.status = "completed" if req.resolution in ["approved", "completed"] else "failed"
     task.updated_at = datetime.now()
     
+    # Update task in database
+    tenant = get_current_tenant()
+    conn = get_db_connection()
+    try:
+        conn.execute("""
+            UPDATE tasks 
+            SET status = ?, completed_at = ?, completed_by = ?, metadata = ?
+            WHERE task_id = ? AND tenant_id = ?
+        """, (
+            task.status,
+            task.completed_at.isoformat() if task.completed_at else None,
+            task.resolved_by,
+            json.dumps({
+                "resolution": task.resolution,
+                "resolution_detail": task.resolution_detail,
+                "original_metadata": json.loads(human_tasks[req.task_id].metadata) if hasattr(human_tasks[req.task_id], 'metadata') else {}
+            }),
+            req.task_id,
+            tenant['tenant_id']
+        ))
+        conn.connection.commit()
+    finally:
+        conn.close()
+    
+    audit_logger = get_audit_logger("AdCP", tenant['tenant_id'])
     audit_logger.log_operation(
         operation="complete_task",
         principal_name="admin",
@@ -1401,8 +1517,37 @@ def complete_task(req: CompleteTaskRequest, context: Context) -> Dict[str, str]:
                     end_time = datetime.combine(original_req.flight_end_date, datetime.max.time())
                     response = adapter.create_media_buy(original_req, packages, start_time, end_time)
                     
-                    # Store the media buy
+                    # Store the media buy in memory (for backward compatibility)
                     media_buys[response.media_buy_id] = (original_req, task.principal_id)
+                    
+                    # Store the media buy in database
+                    tenant = get_current_tenant()
+                    conn = get_db_connection()
+                    try:
+                        principal = get_principal_object(task.principal_id)
+                        conn.execute("""
+                            INSERT INTO media_buys (
+                                media_buy_id, tenant_id, principal_id, order_name,
+                                advertiser_name, campaign_objective, kpi_goal, budget,
+                                start_date, end_date, status, raw_request
+                            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        """, (
+                            response.media_buy_id,
+                            tenant['tenant_id'],
+                            task.principal_id,
+                            original_req.po_number or f"Order-{response.media_buy_id}",
+                            principal.name if principal else "Unknown",
+                            original_req.campaign_objective,
+                            original_req.kpi_goal,
+                            original_req.total_budget,
+                            original_req.flight_start_date.isoformat(),
+                            original_req.flight_end_date.isoformat(),
+                            response.status or 'active',
+                            json.dumps(original_req.model_dump())
+                        ))
+                        conn.connection.commit()
+                    finally:
+                        conn.close()
                     console.print(f"[green]Media buy {response.media_buy_id} created after manual approval[/green]")
                     
                 elif task.operation == "update_media_buy":
@@ -1552,6 +1697,31 @@ def mark_task_complete(req: MarkTaskCompleteRequest, context: Context) -> Dict[s
     task.completed_at = datetime.now()
     task.updated_at = datetime.now()
     
+    # Update task in database
+    tenant = get_current_tenant()
+    conn = get_db_connection()
+    try:
+        conn.execute("""
+            UPDATE tasks 
+            SET status = ?, completed_at = ?, completed_by = ?, metadata = ?
+            WHERE task_id = ? AND tenant_id = ?
+        """, (
+            task.status,
+            task.completed_at.isoformat(),
+            task.resolved_by,
+            json.dumps({
+                "resolution": task.resolution,
+                "resolution_detail": task.resolution_detail,
+                "verification": verification.model_dump()
+            }),
+            req.task_id,
+            tenant['tenant_id']
+        ))
+        conn.connection.commit()
+    finally:
+        conn.close()
+    
+    audit_logger = get_audit_logger("AdCP", tenant['tenant_id'])
     audit_logger.log_operation(
         operation="mark_task_complete",
         principal_name="admin",
@@ -1609,3 +1779,52 @@ def get_product_catalog() -> List[Product]:
 if __name__ == "__main__":
     init_db()
     # Server is now run via run_server.py script
+
+# Add admin UI routes when running unified
+if os.environ.get('ADCP_UNIFIED_MODE'):
+    from fastapi import Request
+    from fastapi.responses import RedirectResponse, HTMLResponse
+    from fastapi.middleware.wsgi import WSGIMiddleware
+    from admin_ui import app as flask_admin_app
+    
+    # Create WSGI middleware for Flask app
+    admin_wsgi = WSGIMiddleware(flask_admin_app)
+    
+    @mcp.custom_route("/", methods=["GET"])
+    async def root(request: Request):
+        """Redirect root to admin."""
+        return RedirectResponse(url="/admin/")
+    
+    @mcp.custom_route("/admin/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS", "HEAD"])
+    async def admin_handler(request: Request, path: str = ""):
+        """Handle admin UI requests."""
+        # Forward to Flask app
+        scope = request.scope.copy()
+        scope["path"] = f"/{path}" if path else "/"
+        
+        receive = request.receive
+        send = request._send
+        
+        await admin_wsgi(scope, receive, send)
+    
+    @mcp.custom_route("/tenant/{tenant_id}/admin/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS", "HEAD"])
+    async def tenant_admin_handler(request: Request, tenant_id: str, path: str = ""):
+        """Handle tenant-specific admin requests."""
+        # Forward to Flask app with tenant context
+        scope = request.scope.copy()
+        scope["path"] = f"/tenant/{tenant_id}/{path}" if path else f"/tenant/{tenant_id}"
+        
+        receive = request.receive
+        send = request._send
+        
+        await admin_wsgi(scope, receive, send)
+    
+    @mcp.custom_route("/tenant/{tenant_id}", methods=["GET"])
+    async def tenant_root(request: Request, tenant_id: str):
+        """Redirect to tenant admin."""
+        return RedirectResponse(url=f"/tenant/{tenant_id}/admin/")
+    
+    @mcp.custom_route("/health", methods=["GET"])
+    async def health(request: Request):
+        """Unified health check."""
+        return {"status": "healthy", "mode": "unified"}

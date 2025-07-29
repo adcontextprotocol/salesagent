@@ -19,13 +19,15 @@ class AdServerAdapter(ABC):
         config: Dict[str, Any], 
         principal: Principal,
         dry_run: bool = False,
-        creative_engine: Optional[CreativeEngineAdapter] = None
+        creative_engine: Optional[CreativeEngineAdapter] = None,
+        tenant_id: Optional[str] = None
     ):
         self.config = config
         self.principal = principal
         self.principal_id = principal.principal_id  # For backward compatibility
         self.dry_run = dry_run
         self.creative_engine = creative_engine
+        self.tenant_id = tenant_id
         self.console = Console()
         
         # Set adapter_principal_id after initialization when adapter_name is available
@@ -34,9 +36,9 @@ class AdServerAdapter(ABC):
         else:
             self.adapter_principal_id = None
             
-        # Initialize audit logger with adapter name
+        # Initialize audit logger with adapter name and tenant_id
         adapter_name = getattr(self.__class__, 'adapter_name', self.__class__.__name__)
-        self.audit_logger = get_audit_logger(adapter_name)
+        self.audit_logger = get_audit_logger(adapter_name, tenant_id)
         
         # Manual approval mode - requires human approval for all operations
         self.manual_approval_required = config.get('manual_approval_required', False)

@@ -38,11 +38,16 @@ def get_default_tenant() -> Optional[Dict[str, Any]]:
     conn.close()
     
     if row:
+        # PostgreSQL returns JSONB as dict, SQLite as string
+        config = row[3]
+        if isinstance(config, str):
+            config = json.loads(config)
+        
         return {
             'tenant_id': row[0],
             'name': row[1],
             'subdomain': row[2],
-            'config': json.loads(row[3])
+            'config': config
         }
     return None
 

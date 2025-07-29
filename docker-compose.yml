@@ -54,15 +54,26 @@ services:
     command: python admin_ui.py
     environment:
       DATABASE_URL: postgresql://adcp_user:secure_password_change_me@postgres:5432/adcp?sslmode=disable
-      ADMIN_UI_PASSWORD: ${ADMIN_UI_PASSWORD:-admin}
-      ADMIN_UI_PORT: 8081
+      ADMIN_UI_PORT: 8001
+      FLASK_ENV: production
+      # Super admin authorization (set these via .env file)
+      SUPER_ADMIN_EMAILS: ${SUPER_ADMIN_EMAILS}
+      SUPER_ADMIN_DOMAINS: ${SUPER_ADMIN_DOMAINS}
+      # Optional: Google OAuth credentials via environment
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+      GOOGLE_OAUTH_CREDENTIALS_FILE: ${GOOGLE_OAUTH_CREDENTIALS_FILE:-/app/client_secret.json}
     
     depends_on:
       postgres:
         condition: service_healthy
     
     ports:
-      - "8081:8081"
+      - "8001:8001"
+    
+    volumes:
+      # Mount OAuth credentials file
+      - ./client_secret_1002878641006-1balq5ha6fq3fq58bsho78gst2da4e6u.apps.googleusercontent.com.json:/app/client_secret.json:ro
 
 volumes:
   postgres_data:

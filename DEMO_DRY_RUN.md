@@ -1,4 +1,4 @@
-# AdCP:Buy Dry-Run Mode Demonstration
+# AdCP Sales Agent Dry-Run Mode Demonstration
 
 This demonstrates the adapter-based dry-run logging functionality.
 

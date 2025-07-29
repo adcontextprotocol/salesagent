@@ -2,7 +2,7 @@
 
 ## Overview
 
-The AdCP:Buy platform supports configurable auto-approval for creative formats. This allows standard, low-risk formats to bypass human review while maintaining oversight for complex or high-risk formats.
+The AdCP Sales Agent platform supports configurable auto-approval for creative formats. This allows standard, low-risk formats to bypass human review while maintaining oversight for complex or high-risk formats.
 
 ## Configuration
 

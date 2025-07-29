@@ -48,15 +48,15 @@ ENV PATH="/app/.venv/bin:$PATH"
 ENV PYTHONUNBUFFERED=1
 
 # Default port
-ENV ADCP_SALES_PORT=8080
-ENV ADCP_SALES_HOST=0.0.0.0
+ENV ADCP_PORT=8080
+ENV ADCP_HOST=0.0.0.0
 
-# Expose port
-EXPOSE 8080
+# Expose ports
+EXPOSE 8080 8001
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
     CMD curl -f http://localhost:8080/health || exit 1
 
-# Run the server (database will be initialized on first run)
+# Run the MCP server by default (database will be initialized on first run)
 CMD ["python", "run_server.py"]

@@ -1,6 +1,6 @@
-# AdCP:Buy API Reference
+# AdCP Sales Agent API Reference
 
-This document provides a complete reference for all MCP tools available in the AdCP:Buy server.
+This document provides a complete reference for all MCP tools available in the AdCP Sales Agent server.
 
 ## Table of Contents
 

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Simple CLI to set up a tenant for AdCP:Buy server.
+Simple CLI to set up a tenant for AdCP Sales Agent server.
 Makes multi-tenant setup as easy as single-tenant.
 """
 
@@ -132,7 +132,7 @@ Subdomain: {subdomain}
 """)
 
 def main():
-    parser = argparse.ArgumentParser(description='Set up AdCP:Buy tenant')
+    parser = argparse.ArgumentParser(description='Set up AdCP Sales Agent tenant')
     parser.add_argument('name', help='Tenant display name (e.g., "New York Times")')
     parser.add_argument('--tenant-id', help='Tenant ID (default: generated from name)')
     parser.add_argument('--subdomain', help='Subdomain (default: same as tenant ID)')

@@ -6,14 +6,75 @@
 <div class="card">
     <h2>{{ tenant.name }}</h2>
     
-    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 1rem; margin-top: 1rem;">
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1.5rem; margin-top: 1.5rem;">
         <div>
-            <strong>Tenant ID:</strong> <code>{{ tenant.tenant_id }}</code>
+            <strong style="color: #666; font-size: 0.9em;">Ad Server</strong>
+            <div style="font-size: 1.2em; margin-top: 0.25rem;">
+                {% if tenant.active_adapter %}
+                    {% if tenant.active_adapter == 'mock' %}
+                        <span style="color: #95a5a6;">Mock (Testing)</span>
+                    {% elif tenant.active_adapter == 'gam' %}
+                        <span style="color: #3498db;">Google Ad Manager</span>
+                    {% elif tenant.active_adapter == 'kevel' %}
+                        <span style="color: #9b59b6;">Kevel</span>
+                    {% elif tenant.active_adapter == 'triton' %}
+                        <span style="color: #e67e22;">Triton Digital</span>
+                    {% else %}
+                        {{ tenant.active_adapter|upper }}
+                    {% endif %}
+                {% else %}
+                    <span style="color: #e74c3c;">Not Configured</span>
+                {% endif %}
+            </div>
         </div>
+        
         <div>
-            <strong>Subdomain:</strong> <code>{{ tenant.subdomain }}</code>
+            <strong style="color: #666; font-size: 0.9em;">Active Media Buys</strong>
+            <div style="font-size: 1.8em; font-weight: bold; margin-top: 0.25rem; color: #2c3e50;">
+                {{ tenant.active_media_buys }}
+            </div>
         </div>
+        
         <div>
+            <strong style="color: #666; font-size: 0.9em;">Active Spend</strong>
+            <div style="font-size: 1.5em; font-weight: bold; margin-top: 0.25rem; color: #27ae60;">
+                ${{ "{:,.0f}".format(tenant.total_active_spend) }}
+            </div>
+        </div>
+        
+        <div>
+            <strong style="color: #666; font-size: 0.9em;">Pending Tasks</strong>
+            <div style="font-size: 1.8em; font-weight: bold; margin-top: 0.25rem;">
+                {% if tenant.pending_tasks > 0 %}
+                    <span style="color: #f39c12;">{{ tenant.pending_tasks }}</span>
+                {% else %}
+                    <span style="color: #27ae60;">0</span>
+                {% endif %}
+            </div>
+        </div>
+        
+        <div>
+            <strong style="color: #666; font-size: 0.9em;">Active Users</strong>
+            <div style="font-size: 1.8em; font-weight: bold; margin-top: 0.25rem; color: #2c3e50;">
+                {{ tenant.active_users }}
+            </div>
+        </div>
+        
+        <div>
+            <strong style="color: #666; font-size: 0.9em;">Status</strong>
+            <div style="margin-top: 0.5rem;">
+                {% if tenant.is_active %}
+                <span class="status status-active" style="font-size: 1.1em;">Active</span>
+                {% else %}
+                <span class="status status-inactive" style="font-size: 1.1em;">Inactive</span>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    
+    <div style="margin-top: 1.5rem; padding-top: 1rem; border-top: 1px solid #e0e0e0; display: flex; justify-content: space-between; align-items: center; color: #666; font-size: 0.85em;">
+        <div>
+            <strong>Tenant ID:</strong> <code>{{ tenant.tenant_id }}</code> &nbsp;&nbsp;|&nbsp;&nbsp;
             <strong>URL:</strong> 
             {% if tenant.subdomain == 'localhost' %}
             <code>http://localhost:8080</code>
@@ -22,36 +83,337 @@
             {% endif %}
         </div>
         <div>
-            <strong>Status:</strong> 
-            {% if tenant.is_active %}
-            <span class="status status-active">Active</span>
-            {% else %}
-            <span class="status status-inactive">Inactive</span>
-            {% endif %}
-        </div>
-        <div>
-            <strong>Billing Plan:</strong> {{ tenant.billing_plan }}
-        </div>
-        <div>
-            <strong>Created:</strong> {{ tenant.created_at[:10] }}
+            Created {{ tenant.created_at.strftime('%Y-%m-%d') if tenant.created_at else 'N/A' }}
         </div>
     </div>
 </div>
 
 <div class="tabs">
-    <div class="tab active" data-tab="config">Configuration</div>
+    {% if session.role == 'super_admin' %}
+    <div class="tab active" data-tab="authorization">Authorization</div>
+    <div class="tab" data-tab="adserver">Ad Server Setup</div>
+    <div class="tab" data-tab="config">Configuration</div>
+    {% else %}
+    <div class="tab active" data-tab="adserver">Ad Server Setup</div>
+    <div class="tab" data-tab="config">Configuration</div>
+    {% endif %}
+    <div class="tab" data-tab="users">Users</div>
     <div class="tab" data-tab="principals">Principals</div>
     <div class="tab" data-tab="products">Products</div>
     <div class="tab" data-tab="tokens">API Tokens</div>
+    <a href="/tenant/{{ tenant.tenant_id }}/operations" class="tab" style="text-decoration: none; color: inherit;">Operations →</a>
 </div>
 
-<div id="config" class="tab-content active">
+{% if session.role == 'super_admin' %}
+<div id="authorization" class="tab-content active">
+    <div class="card">
+        <h3>User Authorization</h3>
+        
+        <div style="margin-bottom: 2rem; padding: 1rem; background: #f0f8ff; border-radius: 4px;">
+            <h4 style="margin-top: 0;">Tenant Login URL</h4>
+            <code style="font-size: 14px;">http://localhost:8001/tenant/{{ tenant.tenant_id }}/login</code>
+            <p style="margin: 0.5rem 0 0 0; color: #666; font-size: 13px;">
+                Share this URL with authorized users to access this tenant directly.
+            </p>
+        </div>
+        
+        <div style="margin-bottom: 2rem;">
+            <h4>Authorized Email Addresses</h4>
+            {% set auth_emails = tenant.config.get('authorized_emails', []) %}
+            {% if auth_emails %}
+            <ul style="list-style: none; padding: 0;">
+                {% for email in auth_emails %}
+                <li style="padding: 0.5rem; background: #f8f9fa; margin-bottom: 0.25rem; border-radius: 4px;">
+                    <code>{{ email }}</code>
+                </li>
+                {% endfor %}
+            </ul>
+            {% else %}
+            <p style="color: #666;">No specific email addresses authorized.</p>
+            {% endif %}
+        </div>
+        
+        <div style="margin-bottom: 2rem;">
+            <h4>Authorized Email Domains</h4>
+            {% set auth_domains = tenant.config.get('authorized_domains', []) %}
+            {% if auth_domains %}
+            <ul style="list-style: none; padding: 0;">
+                {% for domain in auth_domains %}
+                <li style="padding: 0.5rem; background: #f8f9fa; margin-bottom: 0.25rem; border-radius: 4px;">
+                    <code>@{{ domain }}</code> <span style="color: #666;">(anyone with this email domain)</span>
+                </li>
+                {% endfor %}
+            </ul>
+            {% else %}
+            <p style="color: #666;">No email domains authorized.</p>
+            {% endif %}
+        </div>
+        
+        <p style="color: #666; font-size: 14px;">
+            To modify authorization settings, update the JSON configuration in the Configuration tab.
+        </p>
+    </div>
+</div>
+{% endif %}
+
+<div id="adserver" class="tab-content {% if session.role != 'super_admin' %}active{% endif %}">
+    <div class="card">
+        <h3>Ad Server Setup</h3>
+        
+        {% set adapters = tenant.config.get('adapters', {}) %}
+        {% set active_adapter = None %}
+        {% set adapter_config = None %}
+        
+        {% for adapter_name, config in adapters.items() %}
+            {% if config.get('enabled', False) %}
+                {% set active_adapter = adapter_name %}
+                {% set adapter_config = config %}
+            {% endif %}
+        {% endfor %}
+        
+        {% if active_adapter %}
+            <!-- Show current adapter configuration -->
+            <div style="background: #e8f5e9; padding: 1rem; border-radius: 8px; margin-bottom: 2rem;">
+                <h4 style="margin: 0 0 0.5rem 0; color: #2e7d32;">
+                    ✅ Active Ad Server: {{ active_adapter.upper() }}
+                </h4>
+                
+                {% if active_adapter == 'mock' %}
+                <p style="margin: 0.5rem 0;">
+                    You're using the Mock adapter for testing. This doesn't connect to a real ad server.
+                </p>
+                <ul style="margin: 0.5rem 0; padding-left: 1.5rem;">
+                    <li>Perfect for development and testing</li>
+                    <li>No external dependencies required</li>
+                    <li>Simulates real ad server responses</li>
+                </ul>
+                
+                {% elif active_adapter == 'gam' %}
+                <p style="margin: 0.5rem 0;">
+                    Connected to Google Ad Manager
+                </p>
+                <div style="margin-top: 1rem;">
+                    <strong>Configuration Status:</strong>
+                    <ul style="margin: 0.5rem 0; padding-left: 1.5rem;">
+                        {% if adapter_config.get('network_id') %}
+                        <li>✅ Network ID: {{ adapter_config.get('network_id') }}</li>
+                        {% else %}
+                        <li>❌ Network ID: Not configured</li>
+                        {% endif %}
+                        
+                        {% if adapter_config.get('api_version') %}
+                        <li>✅ API Version: {{ adapter_config.get('api_version') }}</li>
+                        {% else %}
+                        <li>✅ API Version: Using default</li>
+                        {% endif %}
+                    </ul>
+                </div>
+                
+                {% elif active_adapter == 'kevel' %}
+                <p style="margin: 0.5rem 0;">
+                    Connected to Kevel (formerly Adzerk)
+                </p>
+                <div style="margin-top: 1rem;">
+                    <strong>Configuration Status:</strong>
+                    <ul style="margin: 0.5rem 0; padding-left: 1.5rem;">
+                        {% if adapter_config.get('network_id') %}
+                        <li>✅ Network ID: {{ adapter_config.get('network_id') }}</li>
+                        {% else %}
+                        <li>❌ Network ID: Not configured</li>
+                        {% endif %}
+                        
+                        {% if adapter_config.get('api_key') %}
+                        <li>✅ API Key: Configured</li>
+                        {% else %}
+                        <li>❌ API Key: Not configured</li>
+                        {% endif %}
+                    </ul>
+                </div>
+                
+                {% elif active_adapter == 'triton' %}
+                <p style="margin: 0.5rem 0;">
+                    Connected to Triton Digital
+                </p>
+                <div style="margin-top: 1rem;">
+                    <strong>Configuration Status:</strong>
+                    <ul style="margin: 0.5rem 0; padding-left: 1.5rem;">
+                        {% if adapter_config.get('station_id') %}
+                        <li>✅ Station ID: {{ adapter_config.get('station_id') }}</li>
+                        {% else %}
+                        <li>❌ Station ID: Not configured</li>
+                        {% endif %}
+                        
+                        {% if adapter_config.get('api_key') %}
+                        <li>✅ API Key: Configured</li>
+                        {% else %}
+                        <li>❌ API Key: Not configured</li>
+                        {% endif %}
+                    </ul>
+                </div>
+                {% endif %}
+                
+                {% if active_adapter != 'mock' %}
+                <div style="margin-top: 1rem;">
+                    <button onclick="toggleAdapterSetup()" class="btn btn-secondary">Reconfigure</button>
+                </div>
+                {% endif %}
+            </div>
+        {% else %}
+            <!-- No adapter configured - show setup flow -->
+            <div style="background: #fff3cd; padding: 1rem; border-radius: 8px; margin-bottom: 2rem;">
+                <h4 style="margin: 0 0 0.5rem 0; color: #856404;">
+                    ⚠️ No Ad Server Configured
+                </h4>
+                <p style="margin: 0;">
+                    You need to connect an ad server to start using the Sales Agent. Choose one below to get started.
+                </p>
+            </div>
+        {% endif %}
+        
+        <div id="adapterSetup" style="{% if active_adapter %}display: none;{% endif %}">
+            <h4>Choose Your Ad Server</h4>
+            
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 1rem; margin-bottom: 2rem;">
+                <!-- Mock Adapter -->
+                <div class="card" style="border: 2px solid #ddd; cursor: pointer;" onclick="selectAdapter('mock')">
+                    <h5>Mock (Testing)</h5>
+                    <p style="color: #666; font-size: 14px;">
+                        Perfect for development and testing. No external setup required.
+                    </p>
+                </div>
+                
+                <!-- Google Ad Manager -->
+                <div class="card" style="border: 2px solid #ddd; cursor: pointer;" onclick="selectAdapter('gam')">
+                    <h5>Google Ad Manager</h5>
+                    <p style="color: #666; font-size: 14px;">
+                        Enterprise ad serving platform from Google.
+                    </p>
+                </div>
+                
+                <!-- Kevel -->
+                <div class="card" style="border: 2px solid #ddd; cursor: pointer;" onclick="selectAdapter('kevel')">
+                    <h5>Kevel</h5>
+                    <p style="color: #666; font-size: 14px;">
+                        API-first ad serving for developers.
+                    </p>
+                </div>
+                
+                <!-- Triton Digital -->
+                <div class="card" style="border: 2px solid #ddd; cursor: pointer;" onclick="selectAdapter('triton')">
+                    <h5>Triton Digital</h5>
+                    <p style="color: #666; font-size: 14px;">
+                        Audio and podcast advertising platform.
+                    </p>
+                </div>
+            </div>
+            
+            <!-- Setup forms for each adapter -->
+            <div id="mockSetup" class="adapter-setup" style="display: none;">
+                <h4>Mock Adapter Setup</h4>
+                <p>The mock adapter is ready to use! No configuration needed.</p>
+                <form method="POST" action="/tenant/{{ tenant.tenant_id }}/setup_adapter">
+                    <input type="hidden" name="adapter" value="mock">
+                    <button type="submit" class="btn">Enable Mock Adapter</button>
+                </form>
+            </div>
+            
+            <div id="gamSetup" class="adapter-setup" style="display: none;">
+                <h4>Google Ad Manager Setup</h4>
+                <form method="POST" action="/tenant/{{ tenant.tenant_id }}/setup_adapter">
+                    <input type="hidden" name="adapter" value="gam">
+                    
+                    <div class="form-group">
+                        <label for="gam_network_id">Network ID</label>
+                        <input type="text" id="gam_network_id" name="network_id" required 
+                               placeholder="e.g., 123456789">
+                        <small>Found in GAM under Admin → Global Settings</small>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="gam_credentials">Service Account Credentials</label>
+                        <textarea id="gam_credentials" name="credentials" required 
+                                  placeholder="Paste your service account JSON here"></textarea>
+                        <small>
+                            <a href="https://developers.google.com/ad-manager/api/authentication" target="_blank">
+                                How to create service account credentials
+                            </a>
+                        </small>
+                    </div>
+                    
+                    <button type="submit" class="btn">Connect Google Ad Manager</button>
+                    <button type="button" onclick="cancelSetup()" class="btn btn-secondary">Cancel</button>
+                </form>
+            </div>
+            
+            <div id="kevelSetup" class="adapter-setup" style="display: none;">
+                <h4>Kevel Setup</h4>
+                <form method="POST" action="/tenant/{{ tenant.tenant_id }}/setup_adapter">
+                    <input type="hidden" name="adapter" value="kevel">
+                    
+                    <div class="form-group">
+                        <label for="kevel_network_id">Network ID</label>
+                        <input type="text" id="kevel_network_id" name="network_id" required 
+                               placeholder="e.g., 12345">
+                        <small>Found in your Kevel dashboard</small>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="kevel_api_key">API Key</label>
+                        <input type="password" id="kevel_api_key" name="api_key" required>
+                        <small>
+                            <a href="https://dev.kevel.com/reference/authentication" target="_blank">
+                                Get your API key from Kevel
+                            </a>
+                        </small>
+                    </div>
+                    
+                    <button type="submit" class="btn">Connect Kevel</button>
+                    <button type="button" onclick="cancelSetup()" class="btn btn-secondary">Cancel</button>
+                </form>
+            </div>
+            
+            <div id="tritonSetup" class="adapter-setup" style="display: none;">
+                <h4>Triton Digital Setup</h4>
+                <form method="POST" action="/tenant/{{ tenant.tenant_id }}/setup_adapter">
+                    <input type="hidden" name="adapter" value="triton">
+                    
+                    <div class="form-group">
+                        <label for="triton_station_id">Station ID</label>
+                        <input type="text" id="triton_station_id" name="station_id" required>
+                        <small>Your Triton station identifier</small>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="triton_api_key">API Key</label>
+                        <input type="password" id="triton_api_key" name="api_key" required>
+                        <small>Contact Triton support for API access</small>
+                    </div>
+                    
+                    <button type="submit" class="btn">Connect Triton Digital</button>
+                    <button type="button" onclick="cancelSetup()" class="btn btn-secondary">Cancel</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div id="config" class="tab-content">
     <div class="card">
         <h3>Configuration</h3>
         <form method="POST" action="/tenant/{{ tenant.tenant_id }}/update">
             <div class="form-group">
                 <label for="config">JSON Configuration</label>
-                <textarea name="config" id="config" required>{{ tenant.config | tojson(indent=2) }}</textarea>
+                <textarea name="config" id="config" required>{{ config_for_editing | tojson(indent=2) }}</textarea>
+                {% if session.role == 'super_admin' %}
+                <small style="color: #666;">
+                    Includes authorization settings: "authorized_emails" and "authorized_domains"<br>
+                    Note: Ad server adapters are configured in the "Ad Server Setup" tab
+                </small>
+                {% else %}
+                <small style="color: #666;">
+                    Note: Ad server configuration is managed in the "Ad Server Setup" tab
+                </small>
+                {% endif %}
             </div>
             <button type="submit" class="btn">Update Configuration</button>
             <a href="/" class="btn btn-secondary">Cancel</a>
@@ -59,17 +421,32 @@
     </div>
 </div>
 
+<div id="users" class="tab-content">
+    <div class="card">
+        <h3>Users</h3>
+        <p>Manage operational staff who have access to this tenant's admin interface.</p>
+        <a href="/tenant/{{ tenant.tenant_id }}/users" class="btn">Manage Users</a>
+    </div>
+</div>
+
 <div id="principals" class="tab-content">
     <div class="card">
-        <h3>Principals (Advertisers)</h3>
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+            <h3 style="margin: 0;">Principals (Advertisers)</h3>
+            {% if active_adapter and session.role != 'viewer' %}
+            <a href="/tenant/{{ tenant.tenant_id }}/principals/create" class="btn">Create Principal</a>
+            {% endif %}
+        </div>
         {% if principals %}
         <table>
             <thead>
                 <tr>
                     <th>ID</th>
                     <th>Name</th>
+                    <th>Platform Mappings</th>
                     <th>Created</th>
                     <th>Type</th>
+                    <th>Actions</th>
                 </tr>
             </thead>
             <tbody>
@@ -77,7 +454,27 @@
                 <tr>
                     <td><code>{{ principal.principal_id }}</code></td>
                     <td>{{ principal.name }}</td>
-                    <td>{{ principal.created_at[:10] if principal.created_at else 'N/A' }}</td>
+                    <td>
+                        <div style="font-size: 0.9em;">
+                            {% if principal.platform_mappings %}
+                                {% if principal.platform_mappings.gam %}
+                                    <div><strong>GAM:</strong> {{ principal.platform_mappings.gam.advertiser_id }}</div>
+                                {% endif %}
+                                {% if principal.platform_mappings.kevel %}
+                                    <div><strong>Kevel:</strong> {{ principal.platform_mappings.kevel.advertiser_id }}</div>
+                                {% endif %}
+                                {% if principal.platform_mappings.triton %}
+                                    <div><strong>Triton:</strong> {{ principal.platform_mappings.triton.advertiser_id }}</div>
+                                {% endif %}
+                                {% if not principal.platform_mappings.gam and not principal.platform_mappings.kevel and not principal.platform_mappings.triton %}
+                                    <span style="color: #999;">No mappings</span>
+                                {% endif %}
+                            {% else %}
+                                <span style="color: #999;">No mappings</span>
+                            {% endif %}
+                        </div>
+                    </td>
+                    <td>{{ principal.created_at.strftime('%Y-%m-%d') if principal.created_at and principal.created_at != 'None' else 'N/A' }}</td>
                     <td>
                         {% if principal.principal_id.endswith('_admin') %}
                         <span class="status status-active">Admin</span>
@@ -85,12 +482,42 @@
                         <span class="status">Advertiser</span>
                         {% endif %}
                     </td>
+                    <td>
+                        <button onclick="editMappings('{{ principal.principal_id }}', '{{ principal.name }}', {{ principal.platform_mappings | tojson }})" 
+                                class="btn" style="padding: 4px 8px; font-size: 12px;">
+                            Edit Mappings
+                        </button>
+                    </td>
                 </tr>
                 {% endfor %}
             </tbody>
         </table>
         {% else %}
-        <p>No principals found.</p>
+        <div style="text-align: center; padding: 40px; background: #f8f9fa; border-radius: 8px;">
+            <h4 style="margin-bottom: 20px;">No Principals Yet</h4>
+            
+            {% if active_adapter %}
+            <p style="margin-bottom: 20px;">
+                Principals represent your advertisers or API clients who will create campaigns through the Sales Agent.
+            </p>
+            <p style="margin-bottom: 30px;">
+                Each principal gets their own API access token to interact with the MCP server.
+            </p>
+            <a href="/tenant/{{ tenant.tenant_id }}/principals/create" class="btn">
+                Create Your First Principal
+            </a>
+            {% else %}
+            <p style="margin-bottom: 20px; color: #856404;">
+                ⚠️ You need to set up your ad server before creating principals.
+            </p>
+            <p style="margin-bottom: 30px;">
+                Principals are your advertisers who will create campaigns through the Sales Agent.
+            </p>
+            <a href="#" onclick="document.querySelector('[data-tab=adserver]').click(); return false;" class="btn">
+                Set Up Ad Server First
+            </a>
+            {% endif %}
+        </div>
         {% endif %}
     </div>
 </div>
@@ -127,12 +554,32 @@
 
 <div id="tokens" class="tab-content">
     <div class="card">
-        <h3>API Access Tokens</h3>
+        <h3>API Tokens</h3>
+        <p>Each principal has their own API token for accessing the MCP server.</p>
         
-        <h4>Admin Token</h4>
-        <p>Use this token for admin operations:</p>
-        <pre>{{ tenant.config.admin_token }}</pre>
-        
+        <h4>Using the MCP Python client</h4>
+        <pre style="background: #f4f4f4; padding: 1rem; border-radius: 4px; overflow-x: auto;">
+# Install the client
+pip install fastmcp
+
+# Using the MCP Python client
+from fastmcp.client import Client
+from fastmcp.client.transports import StreamableHttpTransport
+
+# Connect to the AdCP Sales Agent MCP server
+headers = {"x-adcp-auth": "YOUR_ACCESS_TOKEN"}
+transport = StreamableHttpTransport(
+    url="{% if tenant.subdomain == 'localhost' %}http://localhost:8080/mcp/{% else %}http://{{ tenant.subdomain }}.localhost:8080/mcp/{% endif %}", 
+    headers=headers
+)
+client = Client(transport=transport)
+
+# Example: Discover available products
+result = client.use_tool("discover_products", {
+    "natural_query": "video ads on news sites"
+})
+print(result)</pre>
+
         <h4>Principal Tokens</h4>
         {% if principals %}
         <table>
@@ -145,8 +592,10 @@
             <tbody>
                 {% for principal in principals %}
                 <tr>
-                    <td>{{ principal.name }}</td>
-                    <td><code style="font-size: 12px;">{{ principal.access_token }}</code></td>
+                    <td>{{ principal.name }} (<code>{{ principal.principal_id }}</code>)</td>
+                    <td>
+                        <code style="font-size: 12px;">{{ principal.access_token }}</code>
+                    </td>
                 </tr>
                 {% endfor %}
             </tbody>
@@ -154,17 +603,128 @@
         {% else %}
         <p>No principals found.</p>
         {% endif %}
-        
-        <h4 style="margin-top: 2rem;">Example Usage</h4>
-        <pre># List products (using admin token)
-curl -H "x-adcp-auth: {{ tenant.config.admin_token }}" \
-     http://{{ tenant.subdomain }}.localhost:8080/tools/list_products
-
-# Create media buy (using advertiser token)
-curl -H "x-adcp-auth: ADVERTISER_TOKEN" \
-     -H "Content-Type: application/json" \
-     -d '{"product_ids": ["prod_1"], "total_budget": 1000, ...}' \
-     http://{{ tenant.subdomain }}.localhost:8080/tools/create_media_buy</pre>
     </div>
 </div>
+
+<!-- Modal for editing platform mappings -->
+<div id="mappingModal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000;">
+    <div style="position: relative; background: white; margin: 50px auto; padding: 20px; width: 500px; max-width: 90%; border-radius: 8px;">
+        <h3>Edit Platform Mappings</h3>
+        <p id="principalInfo" style="margin-bottom: 20px;"></p>
+        
+        <form id="mappingForm" method="POST" action="">
+            <div style="margin-bottom: 20px;">
+                <h4 style="margin-bottom: 10px;">Google Ad Manager (GAM)</h4>
+                <div class="form-group">
+                    <label for="gam_advertiser_id">Advertiser ID</label>
+                    <input type="text" id="gam_advertiser_id" name="gam_advertiser_id" 
+                           placeholder="e.g., 123456789" style="width: 100%;">
+                </div>
+                <div class="form-group">
+                    <label for="gam_network_id">Network ID (optional)</label>
+                    <input type="text" id="gam_network_id" name="gam_network_id" 
+                           placeholder="e.g., 21234567890" style="width: 100%;">
+                </div>
+            </div>
+            
+            <div style="margin-bottom: 20px;">
+                <h4 style="margin-bottom: 10px;">Kevel</h4>
+                <div class="form-group">
+                    <label for="kevel_advertiser_id">Advertiser ID</label>
+                    <input type="text" id="kevel_advertiser_id" name="kevel_advertiser_id" 
+                           placeholder="e.g., 789012" style="width: 100%;">
+                </div>
+            </div>
+            
+            <div style="margin-bottom: 20px;">
+                <h4 style="margin-bottom: 10px;">Triton Digital</h4>
+                <div class="form-group">
+                    <label for="triton_advertiser_id">Advertiser ID</label>
+                    <input type="text" id="triton_advertiser_id" name="triton_advertiser_id" 
+                           placeholder="e.g., ABC123" style="width: 100%;">
+                </div>
+            </div>
+            
+            <div style="display: flex; gap: 10px; justify-content: flex-end;">
+                <button type="button" onclick="closeModal()" class="btn btn-secondary">Cancel</button>
+                <button type="submit" class="btn">Save Mappings</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<script>
+function editMappings(principalId, principalName, currentMappings) {
+    // Set form action
+    document.getElementById('mappingForm').action = `/tenant/{{ tenant.tenant_id }}/principal/${principalId}/update_mappings`;
+    
+    // Set principal info
+    document.getElementById('principalInfo').innerHTML = `Editing mappings for <strong>${principalName}</strong> (${principalId})`;
+    
+    // Clear form
+    document.getElementById('gam_advertiser_id').value = '';
+    document.getElementById('gam_network_id').value = '';
+    document.getElementById('kevel_advertiser_id').value = '';
+    document.getElementById('triton_advertiser_id').value = '';
+    
+    // Populate current values
+    if (currentMappings) {
+        if (currentMappings.gam) {
+            document.getElementById('gam_advertiser_id').value = currentMappings.gam.advertiser_id || '';
+            document.getElementById('gam_network_id').value = currentMappings.gam.network_id || '';
+        }
+        if (currentMappings.kevel) {
+            document.getElementById('kevel_advertiser_id').value = currentMappings.kevel.advertiser_id || '';
+        }
+        if (currentMappings.triton) {
+            document.getElementById('triton_advertiser_id').value = currentMappings.triton.advertiser_id || '';
+        }
+    }
+    
+    // Show modal
+    document.getElementById('mappingModal').style.display = 'block';
+}
+
+function closeModal() {
+    document.getElementById('mappingModal').style.display = 'none';
+}
+
+// Close modal when clicking outside
+document.getElementById('mappingModal').addEventListener('click', function(e) {
+    if (e.target === this) {
+        closeModal();
+    }
+});
+
+// Ad Server Setup Functions
+function selectAdapter(adapter) {
+    // Hide all setup forms
+    document.querySelectorAll('.adapter-setup').forEach(el => el.style.display = 'none');
+    
+    // Show selected adapter setup
+    document.getElementById(adapter + 'Setup').style.display = 'block';
+    
+    // Highlight selected card
+    document.querySelectorAll('#adapterSetup .card').forEach(card => {
+        card.style.borderColor = '#ddd';
+    });
+    event.currentTarget.style.borderColor = '#3498db';
+}
+
+function cancelSetup() {
+    document.querySelectorAll('.adapter-setup').forEach(el => el.style.display = 'none');
+    document.querySelectorAll('#adapterSetup .card').forEach(card => {
+        card.style.borderColor = '#ddd';
+    });
+}
+
+function toggleAdapterSetup() {
+    const setupDiv = document.getElementById('adapterSetup');
+    if (setupDiv.style.display === 'none') {
+        setupDiv.style.display = 'block';
+    } else {
+        setupDiv.style.display = 'none';
+    }
+}
+</script>
 {% endblock %}

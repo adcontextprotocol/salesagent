@@ -1,0 +1,335 @@
+{% extends "base.html" %}
+
+{% block title %}Operations Dashboard - {{ tenant.name }}{% endblock %}
+
+{% block content %}
+<div class="container">
+    <h1>Operations Dashboard</h1>
+    <p style="color: #666;">Monitor all media buys, tasks, and system activity for {{ tenant.name }}</p>
+    
+    <!-- Summary Cards -->
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin-bottom: 2rem;">
+        <div class="card" style="text-align: center;">
+            <h3 style="margin: 0; color: #3498db;">{{ summary.active_buys }}</h3>
+            <p style="margin: 0.5rem 0 0 0; color: #666;">Active Media Buys</p>
+        </div>
+        <div class="card" style="text-align: center;">
+            <h3 style="margin: 0; color: #f39c12;">{{ summary.pending_tasks }}</h3>
+            <p style="margin: 0.5rem 0 0 0; color: #666;">Pending Tasks</p>
+        </div>
+        <div class="card" style="text-align: center;">
+            <h3 style="margin: 0; color: #27ae60;">{{ summary.completed_today }}</h3>
+            <p style="margin: 0.5rem 0 0 0; color: #666;">Completed Today</p>
+        </div>
+        <div class="card" style="text-align: center;">
+            <h3 style="margin: 0; color: #95a5a6;">${{ "{:,.0f}".format(summary.total_spend) }}</h3>
+            <p style="margin: 0.5rem 0 0 0; color: #666;">Total Active Spend</p>
+        </div>
+    </div>
+    
+    <!-- Tabs -->
+    <div class="tabs">
+        <div class="tab active" data-tab="media-buys">Media Buys</div>
+        <div class="tab" data-tab="tasks">Tasks</div>
+        <div class="tab" data-tab="audit-logs">Audit Logs</div>
+    </div>
+    
+    <!-- Media Buys Tab -->
+    <div id="media-buys" class="tab-content active">
+        <div class="card">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+                <h3 style="margin: 0;">Media Buys</h3>
+                <div>
+                    <label style="margin-right: 1rem;">
+                        Filter:
+                        <select id="media-buy-filter" onchange="filterMediaBuys()">
+                            <option value="all">All</option>
+                            <option value="active">Active</option>
+                            <option value="pending">Pending</option>
+                            <option value="completed">Completed</option>
+                            <option value="draft">Draft</option>
+                        </select>
+                    </label>
+                </div>
+            </div>
+            
+            {% if media_buys %}
+            <table>
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Order Name</th>
+                        <th>Advertiser</th>
+                        <th>Budget</th>
+                        <th>Start Date</th>
+                        <th>End Date</th>
+                        <th>Status</th>
+                        <th>Created</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for buy in media_buys %}
+                    <tr data-status="{{ buy.status }}">
+                        <td><code>{{ buy.media_buy_id }}</code></td>
+                        <td>{{ buy.order_name }}</td>
+                        <td>{{ buy.advertiser_name }}</td>
+                        <td>${{ "{:,.0f}".format(buy.budget) }}</td>
+                        <td>{{ buy.start_date }}</td>
+                        <td>{{ buy.end_date }}</td>
+                        <td>
+                            {% if buy.status == 'active' %}
+                            <span class="status status-active">Active</span>
+                            {% elif buy.status == 'pending' %}
+                            <span class="status status-pending">Pending</span>
+                            {% elif buy.status == 'completed' %}
+                            <span class="status status-completed">Completed</span>
+                            {% else %}
+                            <span class="status">{{ buy.status }}</span>
+                            {% endif %}
+                        </td>
+                        <td>{{ buy.created_at.strftime('%Y-%m-%d %H:%M') if buy.created_at else 'N/A' }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            {% else %}
+            <p style="text-align: center; color: #666; padding: 2rem;">No media buys found.</p>
+            {% endif %}
+        </div>
+    </div>
+    
+    <!-- Tasks Tab -->
+    <div id="tasks" class="tab-content">
+        <div class="card">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+                <h3 style="margin: 0;">Tasks</h3>
+                <div>
+                    <label style="margin-right: 1rem;">
+                        Filter:
+                        <select id="task-filter" onchange="filterTasks()">
+                            <option value="all">All</option>
+                            <option value="pending">Pending</option>
+                            <option value="completed">Completed</option>
+                            <option value="overdue">Overdue</option>
+                        </select>
+                    </label>
+                </div>
+            </div>
+            
+            {% if tasks %}
+            <table>
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Type</th>
+                        <th>Title</th>
+                        <th>Media Buy</th>
+                        <th>Status</th>
+                        <th>Due Date</th>
+                        <th>Assigned To</th>
+                        <th>Created</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for task in tasks %}
+                    <tr data-status="{{ task.status }}" data-overdue="{{ 'yes' if task.is_overdue else 'no' }}">
+                        <td><code>{{ task.task_id }}</code></td>
+                        <td>{{ task.task_type }}</td>
+                        <td>{{ task.title }}</td>
+                        <td>
+                            {% if task.media_buy_id %}
+                            <code>{{ task.media_buy_id }}</code>
+                            {% else %}
+                            -
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if task.status == 'completed' %}
+                            <span class="status status-completed">Completed</span>
+                            {% elif task.is_overdue %}
+                            <span class="status status-error">Overdue</span>
+                            {% else %}
+                            <span class="status status-pending">Pending</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if task.due_date %}
+                            {{ task.due_date.strftime('%Y-%m-%d %H:%M') }}
+                            {% else %}
+                            -
+                            {% endif %}
+                        </td>
+                        <td>{{ task.assigned_to or 'Unassigned' }}</td>
+                        <td>{{ task.created_at.strftime('%Y-%m-%d %H:%M') if task.created_at else 'N/A' }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            {% else %}
+            <p style="text-align: center; color: #666; padding: 2rem;">No tasks found.</p>
+            {% endif %}
+        </div>
+    </div>
+    
+    <!-- Audit Logs Tab -->
+    <div id="audit-logs" class="tab-content">
+        <div class="card">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+                <h3 style="margin: 0;">Audit Logs</h3>
+                <div>
+                    <label style="margin-right: 1rem;">
+                        Filter:
+                        <select id="log-filter" onchange="filterLogs()">
+                            <option value="all">All</option>
+                            <option value="success">Success</option>
+                            <option value="failed">Failed</option>
+                            <option value="security">Security Violations</option>
+                        </select>
+                    </label>
+                    <label>
+                        Limit:
+                        <select id="log-limit" onchange="filterLogs()">
+                            <option value="100">Last 100</option>
+                            <option value="500">Last 500</option>
+                            <option value="1000">Last 1000</option>
+                        </select>
+                    </label>
+                </div>
+            </div>
+            
+            {% if audit_logs %}
+            <table style="font-size: 0.9em;">
+                <thead>
+                    <tr>
+                        <th>Timestamp</th>
+                        <th>Operation</th>
+                        <th>Principal</th>
+                        <th>Success</th>
+                        <th>Details</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for log in audit_logs %}
+                    <tr data-success="{{ 'yes' if log.success else 'no' }}" data-security="{{ 'yes' if 'SECURITY_VIOLATION' in log.operation else 'no' }}">
+                        <td>{{ log.timestamp.strftime('%Y-%m-%d %H:%M:%S') if log.timestamp else 'N/A' }}</td>
+                        <td>
+                            {% if 'SECURITY_VIOLATION' in log.operation %}
+                            <span style="color: #e74c3c; font-weight: bold;">{{ log.operation }}</span>
+                            {% else %}
+                            {{ log.operation }}
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if log.principal_name %}
+                            {{ log.principal_name }}
+                            {% else %}
+                            {{ log.principal_id }}
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if log.success %}
+                            <span style="color: #27ae60;">✓</span>
+                            {% else %}
+                            <span style="color: #e74c3c;">✗</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if log.error_message %}
+                            <span style="color: #e74c3c;">{{ log.error_message }}</span>
+                            {% elif log.details %}
+                            <details>
+                                <summary>View Details</summary>
+                                <pre style="font-size: 0.8em; margin: 0.5rem 0;">{{ log.details }}</pre>
+                            </details>
+                            {% else %}
+                            -
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            {% else %}
+            <p style="text-align: center; color: #666; padding: 2rem;">No audit logs found.</p>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<style>
+.status-completed {
+    background: #d4edda;
+    color: #155724;
+}
+
+.status-pending {
+    background: #fff3cd;
+    color: #856404;
+}
+
+.status-error {
+    background: #f8d7da;
+    color: #721c24;
+}
+
+details summary {
+    cursor: pointer;
+    color: #3498db;
+}
+
+details summary:hover {
+    text-decoration: underline;
+}
+</style>
+
+<script>
+function filterMediaBuys() {
+    const filter = document.getElementById('media-buy-filter').value;
+    const rows = document.querySelectorAll('#media-buys tbody tr');
+    
+    rows.forEach(row => {
+        if (filter === 'all' || row.dataset.status === filter) {
+            row.style.display = '';
+        } else {
+            row.style.display = 'none';
+        }
+    });
+}
+
+function filterTasks() {
+    const filter = document.getElementById('task-filter').value;
+    const rows = document.querySelectorAll('#tasks tbody tr');
+    
+    rows.forEach(row => {
+        let show = false;
+        if (filter === 'all') {
+            show = true;
+        } else if (filter === 'overdue' && row.dataset.overdue === 'yes') {
+            show = true;
+        } else if (filter === row.dataset.status) {
+            show = true;
+        }
+        row.style.display = show ? '' : 'none';
+    });
+}
+
+function filterLogs() {
+    const filter = document.getElementById('log-filter').value;
+    const rows = document.querySelectorAll('#audit-logs tbody tr');
+    
+    rows.forEach(row => {
+        let show = false;
+        if (filter === 'all') {
+            show = true;
+        } else if (filter === 'success' && row.dataset.success === 'yes') {
+            show = true;
+        } else if (filter === 'failed' && row.dataset.success === 'no' && row.dataset.security !== 'yes') {
+            show = true;
+        } else if (filter === 'security' && row.dataset.security === 'yes') {
+            show = true;
+        }
+        row.style.display = show ? '' : 'none';
+    });
+}
+</script>
+{% endblock %}

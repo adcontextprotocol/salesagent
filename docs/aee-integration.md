@@ -2,7 +2,7 @@
 
 ## Overview
 
-The AdCP:Buy platform supports integration with Ad Effectiveness Engine (AEE) signals through managed-only targeting dimensions. This allows the orchestrator to leverage AEE insights for campaign optimization without exposing internal signals to external principals.
+The AdCP Sales Agent platform supports integration with Ad Effectiveness Engine (AEE) signals through managed-only targeting dimensions. This allows the orchestrator to leverage AEE insights for campaign optimization without exposing internal signals to external principals.
 
 ## Targeting Access Levels
 

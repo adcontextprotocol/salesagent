@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+
+{% block title %}Create Principal - AdCP Admin{% endblock %}
+
+{% block content %}
+<div class="card" style="max-width: 600px; margin: 0 auto;">
+    <h2>Create New Principal</h2>
+    
+    {% if error %}
+    <div class="alert alert-error">{{ error }}</div>
+    {% endif %}
+    
+    <form method="POST" style="margin-top: 2rem;">
+        <div class="form-group">
+            <label for="principal_id">Principal ID</label>
+            <input type="text" id="principal_id" name="principal_id" required 
+                   pattern="[a-zA-Z0-9_]+" 
+                   placeholder="e.g., nike_corp, advertiser_123"
+                   title="Only letters, numbers, and underscores allowed">
+            <small>This will be used as a unique identifier. Use lowercase with underscores.</small>
+        </div>
+        
+        <div class="form-group">
+            <label for="name">Display Name</label>
+            <input type="text" id="name" name="name" required 
+                   placeholder="e.g., Nike Corporation">
+            <small>The friendly name that will be shown in the UI.</small>
+        </div>
+        
+        <div style="background: #f8f9fa; padding: 1rem; border-radius: 8px; margin: 2rem 0;">
+            <h4 style="margin-top: 0;">What happens next?</h4>
+            <ol style="margin: 0.5rem 0; padding-left: 1.5rem;">
+                <li>A secure API token will be generated for this principal</li>
+                <li>You can configure platform mappings (e.g., GAM advertiser IDs)</li>
+                <li>The principal can use their token to access the MCP API</li>
+            </ol>
+        </div>
+        
+        <div style="display: flex; gap: 1rem;">
+            <button type="submit" class="btn">Create Principal</button>
+            <a href="/tenant/{{ tenant_id }}" class="btn btn-secondary">Cancel</a>
+        </div>
+    </form>
+</div>
+
+<style>
+input:invalid {
+    border-color: #dc3545;
+}
+</style>
+{% endblock %}

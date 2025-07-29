@@ -2,7 +2,7 @@
 
 ## Overview
 
-The AdCP:Buy server supports two database backends for flexibility in different deployment scenarios:
+The AdCP Sales Agent server supports two database backends for flexibility in different deployment scenarios:
 
 - **SQLite** (default) - Great for development and single-server deployments
 - **PostgreSQL** - Recommended for production multi-tenant deployments
@@ -67,7 +67,7 @@ For Docker deployments, mount a volume:
 version: '3'
 services:
   adcp:
-    image: adcp-buy-server
+    image: adcp-sales-agent
     volumes:
       - adcp-data:/root/.adcp
     environment:

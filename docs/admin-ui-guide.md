@@ -2,11 +2,34 @@
 
 ## Overview
 
-The AdCP:Buy Server includes a web-based admin interface for managing tenants, viewing configuration, and accessing API tokens.
+The AdCP Sales Agent includes a web-based admin interface for managing tenants, viewing configuration, and accessing API tokens. The admin UI supports two authentication methods:
+
+1. **Google OAuth (Recommended)**: Secure authentication with email-based authorization
+2. **Password-based (Legacy)**: Simple password authentication for development
 
 ## Access the Admin UI
 
-### With Docker Compose
+### Option 1: Google OAuth (Recommended)
+
+Uses Google Sign-In for secure, email-based authentication:
+
+```bash
+# Configure super admin access
+export SUPER_ADMIN_EMAILS="admin@example.com,cto@example.com"
+# OR use domain-based access
+export SUPER_ADMIN_DOMAINS="example.com"
+
+# Run the OAuth admin UI (port 8001)
+python admin_ui_oauth.py
+
+# Access at http://localhost:8001
+```
+
+See [Google OAuth Setup](google-oauth-setup.md) for detailed configuration.
+
+### Option 2: Password-based (Legacy)
+
+#### With Docker Compose
 
 When you start the services:
 
@@ -16,9 +39,9 @@ docker-compose up -d
 
 The admin UI is available at: **http://localhost:8081**
 
-Default login password: `admin`
+Default login: username `admin`, password `admin`
 
-### Running Standalone
+#### Running Standalone
 
 ```bash
 # Set password (optional)
@@ -29,6 +52,12 @@ python admin_ui.py
 
 # Access at http://localhost:8081
 ```
+
+### Multi-tenant Authentication
+
+Both authentication methods support multi-tenant access:
+- **Super Admins**: Can manage all tenants
+- **Tenant Admins**: Can only manage their own tenant
 
 ## Features
 
@@ -90,36 +119,87 @@ Click on "Default Publisher" to see:
 
 Go to the "API Tokens" tab and copy the admin token.
 
-### Step 4: Test API Access
+### Step 4: Test MCP Access
+
+Use the MCP command-line client to test access:
 
 ```bash
 # Use the admin token from the UI
 export ADMIN_TOKEN="your-admin-token-from-ui"
 
-# Test API
-curl -H "x-adcp-auth: $ADMIN_TOKEN" \
-     http://localhost:8080/principals/summary
+# Test with the MCP client
+python client_mcp.py --token "$ADMIN_TOKEN" --test
 ```
 
 ### Step 5: Create Media Buy
 
-Use one of the advertiser tokens:
+Use one of the advertiser tokens with the MCP client:
 
-```bash
+```python
+# Using Python MCP client
+from fastmcp.client import Client
+from fastmcp.client.transports import StreamableHttpTransport
+
 # Use Acme Corp token from UI
-export ACME_TOKEN="acme_corp_token"
+headers = {"x-adcp-auth": "acme_corp_token"}
+transport = StreamableHttpTransport(url="http://localhost:8080/mcp/", headers=headers)
+client = Client(transport=transport)
 
 # Create a media buy
-curl -X POST \
-  -H "x-adcp-auth: $ACME_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "product_ids": ["prod_1"],
-    "total_budget": 5000,
-    "flight_start_date": "2024-02-01",
-    "flight_end_date": "2024-02-28"
-  }' \
-  http://localhost:8080/tools/create_media_buy
+async with client:
+    result = await client.tools.create_media_buy(
+        product_ids=["prod_1"],
+        total_budget=5000.0,
+        flight_start_date="2025-02-01",
+        flight_end_date="2025-02-28"
+    )
+    print(f"Created media buy: {result.media_buy_id}")
+```
+
+Or create a simple test script:
+
+```bash
+# Save your token
+export ACME_TOKEN="acme_corp_token"  # Get this from the Admin UI
+
+# Create a test script
+cat > test_buy.py << EOF
+import asyncio
+from fastmcp.client import Client
+from fastmcp.client.transports import StreamableHttpTransport
+import os
+
+async def main():
+    token = os.environ.get('ACME_TOKEN', '')
+    headers = {"x-adcp-auth": token}
+    transport = StreamableHttpTransport(url="http://localhost:8080/mcp/", headers=headers)
+    client = Client(transport=transport)
+    
+    async with client:
+        # Create a media buy
+        result = await client.tools.create_media_buy(
+            product_ids=["prod_1"],
+            total_budget=5000.0,
+            flight_start_date="2025-02-01", 
+            flight_end_date="2025-02-28"
+        )
+        print(f"Created media buy: {result.media_buy_id}")
+
+asyncio.run(main())
+EOF
+
+# Run it
+python test_buy.py
+```
+
+You can also run the full simulation with your token:
+
+```bash
+# With custom token
+python simulation_full.py http://localhost:8080 --token "acme_corp_token" --principal "acme_corp"
+
+# Or use default demo tokens (purina_token)
+python simulation_full.py http://localhost:8080
 ```
 
 ## Creating Additional Tenants

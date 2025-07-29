@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Comprehensive end-to-end simulation of the AdCP:Buy lifecycle.
+Comprehensive end-to-end simulation of the AdCP Sales Agent lifecycle.
 Demonstrates the full workflow from planning through campaign completion.
 """
 
@@ -20,12 +20,12 @@ from schemas import *
 
 console = Console()
 
-# Principal tokens
-PURINA_TOKEN = "purina_secret_token_abc123"
-ACME_TOKEN = "acme_secret_token_xyz789"
+# Principal tokens - these match what's in database.py
+PURINA_TOKEN = "purina_token"
+ACME_TOKEN = "acme_corp_token"
 
 class FullLifecycleSimulation:
-    """Complete AdCP:Buy lifecycle simulation with time progression."""
+    """Complete AdCP Sales Agent lifecycle simulation with time progression."""
     
     def __init__(self, server_url: str, token: str, principal_id: str):
         headers = {"x-adcp-auth": token}
@@ -45,7 +45,7 @@ class FullLifecycleSimulation:
         
     async def run(self):
         """Run the complete simulation."""
-        console.print(Rule(f"[bold magenta]AdCP:Buy Full Lifecycle Simulation[/bold magenta]", style="magenta"))
+        console.print(Rule(f"[bold magenta]AdCP Sales Agent Full Lifecycle Simulation[/bold magenta]", style="magenta"))
         console.print(f"[cyan]Principal: {self.principal_id}[/cyan]")
         console.print(f"[cyan]Campaign Period: {self.flight_start} to {self.flight_end}[/cyan]\n")
         
@@ -607,15 +607,23 @@ class FullLifecycleSimulation:
 async def main():
     """Run the full lifecycle simulation."""
     import sys
+    import argparse
     
-    # Get server URL from command line or use default
-    server_url = sys.argv[1] if len(sys.argv) > 1 else "http://127.0.0.1:8000"
+    parser = argparse.ArgumentParser(description="Run AdCP Sales Agent full lifecycle simulation")
+    parser.add_argument("server_url", nargs="?", default="http://127.0.0.1:8000", 
+                       help="Server URL (default: http://127.0.0.1:8000)")
+    parser.add_argument("--token", default=PURINA_TOKEN,
+                       help=f"Authentication token (default: {PURINA_TOKEN})")
+    parser.add_argument("--principal", default="purina",
+                       help="Principal ID (default: purina)")
     
-    # Run simulation for Purina
+    args = parser.parse_args()
+    
+    # Run simulation
     sim = FullLifecycleSimulation(
-        server_url=server_url,
-        token=PURINA_TOKEN,
-        principal_id="purina"
+        server_url=args.server_url,
+        token=args.token,
+        principal_id=args.principal
     )
     
     await sim.run()

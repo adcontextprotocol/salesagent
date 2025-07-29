@@ -1,4 +1,4 @@
-# Creative Grouping Design for AdCP:Buy
+# Creative Grouping Design for AdCP Sales Agent
 
 ## Research Summary
 

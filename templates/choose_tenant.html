@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+
+{% block title %}Select Tenant - AdCP Admin{% endblock %}
+
+{% block content %}
+<div class="card" style="max-width: 600px; margin: 4rem auto;">
+    <h2>Select Tenant</h2>
+    
+    <p style="margin-bottom: 2rem;">
+        Your email address has access to multiple tenants. Please select which one you'd like to manage:
+    </p>
+    
+    <form method="POST" action="{{ url_for('select_tenant') }}">
+        <div style="margin-bottom: 2rem;">
+            {% for tenant_id, tenant_name in tenants %}
+            <label style="display: block; padding: 1rem; margin-bottom: 0.5rem; border: 1px solid #ddd; border-radius: 4px; cursor: pointer;">
+                <input type="radio" name="tenant_id" value="{{ tenant_id }}" required style="margin-right: 0.5rem;">
+                <strong>{{ tenant_name }}</strong> <span style="color: #666;">({{ tenant_id }})</span>
+            </label>
+            {% endfor %}
+        </div>
+        
+        <button type="submit" class="btn">Continue</button>
+        <a href="{{ url_for('logout') }}" class="btn btn-secondary" style="margin-left: 0.5rem;">Cancel</a>
+    </form>
+</div>
+
+<style>
+label:hover {
+    background: #f8f9fa;
+}
+</style>
+{% endblock %}

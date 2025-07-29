@@ -80,6 +80,22 @@
             </div>
         </div>
         
+        <h3 style="margin-top: 2rem;">Authorization</h3>
+        
+        <div class="form-group">
+            <label for="authorized_emails">Authorized Email Addresses</label>
+            <input type="text" id="authorized_emails" name="authorized_emails" 
+                   placeholder="admin@example.com, user@example.com">
+            <small style="color: #666;">Comma-separated list of email addresses that can access this tenant</small>
+        </div>
+        
+        <div class="form-group">
+            <label for="authorized_domains">Authorized Email Domains</label>
+            <input type="text" id="authorized_domains" name="authorized_domains" 
+                   placeholder="example.com, partner.com">
+            <small style="color: #666;">Comma-separated list of email domains (anyone @domain can access)</small>
+        </div>
+        
         <h3 style="margin-top: 2rem;">Features</h3>
         
         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">

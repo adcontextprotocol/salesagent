@@ -1,0 +1,48 @@
+{
+    "gemini_api_key": "YOUR_API_KEY_HERE",
+    "ad_server": {
+        "adapter": "triton_digital",
+        "base_url": "https://tap-api.tritondigital.com/v1",
+        "auth_token": "YOUR_TRITON_AUTH_TOKEN"
+    },
+    "creative_engine": {
+        "adapter": "mock_creative_engine",
+        "human_review_required": true
+    }
+}
+
+// Example for Kevel with UserDB and frequency capping:
+// {
+//     "ad_server": {
+//         "adapter": "kevel",
+//         "network_id": "YOUR_NETWORK_ID",
+//         "api_key": "YOUR_API_KEY",
+//         "userdb_enabled": true,
+//         "frequency_capping_enabled": true
+//     }
+// }
+
+// Example for Google Ad Manager:
+// {
+//     "ad_server": {
+//         "adapter": "google_ad_manager",
+//         "network_code": "YOUR_NETWORK_CODE",
+//         "service_account_key_file": "/path/to/key.json",
+//         "company_id": "YOUR_COMPANY_ID",
+//         "trafficker_id": "YOUR_TRAFFICKER_ID"
+//     }
+// }
+
+// Example with manual approval required:
+// {
+//     "ad_server": {
+//         "adapter": "google_ad_manager",
+//         "network_code": "YOUR_NETWORK_CODE",
+//         "service_account_key_file": "/path/to/key.json",
+//         "company_id": "YOUR_COMPANY_ID",
+//         "trafficker_id": "YOUR_TRAFFICKER_ID",
+//         "manual_approval_required": true,
+//         "manual_approval_operations": ["create_media_buy", "update_media_buy"]
+//     },
+//     "hitl_webhook_url": "https://your-webhook.com/tasks"
+// }

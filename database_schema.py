@@ -42,10 +42,86 @@ CREATE TABLE IF NOT EXISTS principals (
     FOREIGN KEY (tenant_id) REFERENCES tenants(tenant_id)
 );
 
+CREATE TABLE IF NOT EXISTS users (
+    user_id TEXT PRIMARY KEY,
+    tenant_id TEXT NOT NULL,
+    email TEXT UNIQUE NOT NULL,
+    name TEXT NOT NULL,
+    role TEXT NOT NULL CHECK (role IN ('admin', 'manager', 'viewer')),
+    google_id TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    last_login TIMESTAMP,
+    is_active BOOLEAN DEFAULT 1,
+    FOREIGN KEY (tenant_id) REFERENCES tenants(tenant_id)
+);
+
+CREATE TABLE IF NOT EXISTS media_buys (
+    media_buy_id TEXT PRIMARY KEY,
+    tenant_id TEXT NOT NULL,
+    principal_id TEXT NOT NULL,
+    order_name TEXT NOT NULL,
+    advertiser_name TEXT NOT NULL,
+    campaign_objective TEXT,
+    kpi_goal TEXT,
+    budget REAL,
+    start_date DATE NOT NULL,
+    end_date DATE NOT NULL,
+    status TEXT NOT NULL DEFAULT 'draft',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    approved_at TIMESTAMP,
+    approved_by TEXT,
+    raw_request TEXT NOT NULL,
+    FOREIGN KEY (tenant_id) REFERENCES tenants(tenant_id),
+    FOREIGN KEY (tenant_id, principal_id) REFERENCES principals(tenant_id, principal_id)
+);
+
+CREATE TABLE IF NOT EXISTS tasks (
+    task_id TEXT PRIMARY KEY,
+    tenant_id TEXT NOT NULL,
+    media_buy_id TEXT NOT NULL,
+    task_type TEXT NOT NULL,
+    title TEXT NOT NULL,
+    description TEXT,
+    status TEXT NOT NULL DEFAULT 'pending',
+    assigned_to TEXT,
+    due_date TIMESTAMP,
+    completed_at TIMESTAMP,
+    completed_by TEXT,
+    metadata TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (tenant_id) REFERENCES tenants(tenant_id),
+    FOREIGN KEY (media_buy_id) REFERENCES media_buys(media_buy_id)
+);
+
+CREATE TABLE IF NOT EXISTS audit_logs (
+    log_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    tenant_id TEXT NOT NULL,
+    timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    operation TEXT NOT NULL,
+    principal_name TEXT,
+    principal_id TEXT,
+    adapter_id TEXT,
+    success BOOLEAN NOT NULL,
+    error_message TEXT,
+    details TEXT,
+    FOREIGN KEY (tenant_id) REFERENCES tenants(tenant_id)
+);
+
 CREATE INDEX IF NOT EXISTS idx_subdomain ON tenants(subdomain);
 CREATE INDEX IF NOT EXISTS idx_products_tenant ON products(tenant_id);
 CREATE INDEX IF NOT EXISTS idx_principals_tenant ON principals(tenant_id);
 CREATE INDEX IF NOT EXISTS idx_principals_token ON principals(access_token);
+CREATE INDEX IF NOT EXISTS idx_users_tenant ON users(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
+CREATE INDEX IF NOT EXISTS idx_users_google_id ON users(google_id);
+CREATE INDEX IF NOT EXISTS idx_media_buys_tenant ON media_buys(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_media_buys_status ON media_buys(status);
+CREATE INDEX IF NOT EXISTS idx_tasks_tenant ON tasks(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_tasks_media_buy ON tasks(media_buy_id);
+CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status);
+CREATE INDEX IF NOT EXISTS idx_audit_logs_tenant ON audit_logs(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_audit_logs_timestamp ON audit_logs(timestamp);
 """
 
 SCHEMA_POSTGRESQL = """
@@ -89,10 +165,86 @@ CREATE TABLE IF NOT EXISTS principals (
     FOREIGN KEY (tenant_id) REFERENCES tenants(tenant_id) ON DELETE CASCADE
 );
 
+CREATE TABLE IF NOT EXISTS users (
+    user_id VARCHAR(50) PRIMARY KEY,
+    tenant_id VARCHAR(50) NOT NULL,
+    email VARCHAR(255) UNIQUE NOT NULL,
+    name VARCHAR(255) NOT NULL,
+    role VARCHAR(20) NOT NULL CHECK (role IN ('admin', 'manager', 'viewer')),
+    google_id VARCHAR(255),
+    created_at TIMESTAMP DEFAULT NOW(),
+    last_login TIMESTAMP,
+    is_active BOOLEAN DEFAULT TRUE,
+    FOREIGN KEY (tenant_id) REFERENCES tenants(tenant_id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS media_buys (
+    media_buy_id VARCHAR(100) PRIMARY KEY,
+    tenant_id VARCHAR(50) NOT NULL,
+    principal_id VARCHAR(100) NOT NULL,
+    order_name VARCHAR(255) NOT NULL,
+    advertiser_name VARCHAR(255) NOT NULL,
+    campaign_objective VARCHAR(100),
+    kpi_goal VARCHAR(255),
+    budget DECIMAL(15,2),
+    start_date DATE NOT NULL,
+    end_date DATE NOT NULL,
+    status VARCHAR(50) NOT NULL DEFAULT 'draft',
+    created_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP DEFAULT NOW(),
+    approved_at TIMESTAMP,
+    approved_by VARCHAR(255),
+    raw_request JSONB NOT NULL,
+    FOREIGN KEY (tenant_id) REFERENCES tenants(tenant_id) ON DELETE CASCADE,
+    FOREIGN KEY (tenant_id, principal_id) REFERENCES principals(tenant_id, principal_id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS tasks (
+    task_id VARCHAR(100) PRIMARY KEY,
+    tenant_id VARCHAR(50) NOT NULL,
+    media_buy_id VARCHAR(100) NOT NULL,
+    task_type VARCHAR(50) NOT NULL,
+    title VARCHAR(255) NOT NULL,
+    description TEXT,
+    status VARCHAR(50) NOT NULL DEFAULT 'pending',
+    assigned_to VARCHAR(255),
+    due_date TIMESTAMP,
+    completed_at TIMESTAMP,
+    completed_by VARCHAR(255),
+    metadata JSONB,
+    created_at TIMESTAMP DEFAULT NOW(),
+    FOREIGN KEY (tenant_id) REFERENCES tenants(tenant_id) ON DELETE CASCADE,
+    FOREIGN KEY (media_buy_id) REFERENCES media_buys(media_buy_id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS audit_logs (
+    log_id SERIAL PRIMARY KEY,
+    tenant_id VARCHAR(50) NOT NULL,
+    timestamp TIMESTAMP DEFAULT NOW(),
+    operation VARCHAR(100) NOT NULL,
+    principal_name VARCHAR(255),
+    principal_id VARCHAR(100),
+    adapter_id VARCHAR(50),
+    success BOOLEAN NOT NULL,
+    error_message TEXT,
+    details JSONB,
+    FOREIGN KEY (tenant_id) REFERENCES tenants(tenant_id) ON DELETE CASCADE
+);
+
 CREATE INDEX IF NOT EXISTS idx_subdomain ON tenants(subdomain);
 CREATE INDEX IF NOT EXISTS idx_products_tenant ON products(tenant_id);
 CREATE INDEX IF NOT EXISTS idx_principals_tenant ON principals(tenant_id);
 CREATE INDEX IF NOT EXISTS idx_principals_token ON principals(access_token);
+CREATE INDEX IF NOT EXISTS idx_users_tenant ON users(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
+CREATE INDEX IF NOT EXISTS idx_users_google_id ON users(google_id);
+CREATE INDEX IF NOT EXISTS idx_media_buys_tenant ON media_buys(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_media_buys_status ON media_buys(status);
+CREATE INDEX IF NOT EXISTS idx_tasks_tenant ON tasks(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_tasks_media_buy ON tasks(media_buy_id);
+CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status);
+CREATE INDEX IF NOT EXISTS idx_audit_logs_tenant ON audit_logs(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_audit_logs_timestamp ON audit_logs(timestamp);
 """
 
 def get_schema(db_type: str) -> str:

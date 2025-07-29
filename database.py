@@ -67,26 +67,15 @@ def init_db():
             json.dumps(default_config),
             datetime.now().isoformat(),
             datetime.now().isoformat(),
-            True if db_config['type'] == 'sqlite' else 1,  # Boolean handling
+            True,  # Boolean works for both SQLite and PostgreSQL
             "standard"
         ))
         
-        # Create default admin principal
-        conn.execute("""
-            INSERT INTO principals (
-                tenant_id, principal_id, name,
-                platform_mappings, access_token
-            ) VALUES (?, ?, ?, ?, ?)
-        """, (
-            "default",
-            "default_admin",
-            "Default Admin",
-            json.dumps({}),
-            admin_token  # Admin uses same token for admin operations
-        ))
+        # Don't create any principals by default - tenants should create them after setting up their ad server
         
-        # Create sample advertisers
-        principals_data = [
+        # Only create sample advertisers if this is a development environment
+        if os.environ.get('CREATE_SAMPLE_DATA', 'false').lower() == 'true':
+            principals_data = [
             {
                 "principal_id": "acme_corp",
                 "name": "Acme Corporation",
@@ -125,8 +114,8 @@ def init_db():
                 p["access_token"]
             ))
         
-        # Create sample products
-        products_data = [
+            # Create sample products
+            products_data = [
             {
                 "product_id": "prod_1",
                 "name": "Premium Display - News",
@@ -189,14 +178,16 @@ def init_db():
                 json.dumps(p["formats"]),
                 json.dumps(p["targeting_template"]),
                 p["delivery_type"],
-                p["is_fixed_price"] if db_config['type'] == 'sqlite' else int(p["is_fixed_price"]),
+                p["is_fixed_price"],  # Boolean works for both
                 p.get("cpm"),
                 json.dumps(p["price_guidance"]) if p.get("price_guidance") else None
             ))
         
-        print(f"""
+        # Update the print statement based on whether sample data was created
+        if os.environ.get('CREATE_SAMPLE_DATA', 'false').lower() == 'true':
+            print(f"""
 ╔══════════════════════════════════════════════════════════════════╗
-║                    🚀 ADCP:BUY SERVER INITIALIZED                ║
+║                 🚀 ADCP SALES AGENT INITIALIZED                  ║
 ╠══════════════════════════════════════════════════════════════════╣
 ║                                                                  ║
 ║  A default tenant has been created for quick start:              ║
@@ -218,7 +209,31 @@ def init_db():
 ║     http://[subdomain].localhost:8080                            ║
 ║                                                                  ║
 ╚══════════════════════════════════════════════════════════════════╝
-        """)
+            """)
+        else:
+            print(f"""
+╔══════════════════════════════════════════════════════════════════╗
+║                 🚀 ADCP SALES AGENT INITIALIZED                  ║
+╠══════════════════════════════════════════════════════════════════╣
+║                                                                  ║
+║  A default tenant has been created for quick start:              ║
+║                                                                  ║
+║  🏢 Tenant: Default Publisher                                    ║
+║  🌐 Admin UI: http://localhost:8001/tenant/default/login         ║
+║                                                                  ║
+║  🔑 Admin Token (for legacy API access):                         ║
+║     {admin_token}  ║
+║                                                                  ║
+║  ⚡ Next Steps:                                                  ║
+║     1. Log in to the Admin UI                                    ║
+║     2. Set up your ad server (Ad Server Setup tab)              ║
+║     3. Create principals for your advertisers                    ║
+║                                                                  ║
+║  💡 To create additional tenants:                                ║
+║     python setup_tenant.py "Publisher Name"                      ║
+║                                                                  ║
+╚══════════════════════════════════════════════════════════════════╝
+            """)
     else:
         print(f"Database ready ({tenant_count} tenant(s) configured)")
     

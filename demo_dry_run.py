@@ -70,7 +70,7 @@ print(f"\\nCreated: {{response.media_buy_id}}")
     console.print()
 
 if __name__ == "__main__":
-    console.print("[bold]AdCP:Buy Dry-Run Mode Demonstration[/bold]\n")
+    console.print("[bold]AdCP Sales Agent Dry-Run Mode Demonstration[/bold]\n")
     console.print("This demonstrates how each adapter logs the API calls it would make.\n")
     
     # Test Mock adapter
