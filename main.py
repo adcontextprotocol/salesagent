@@ -21,6 +21,7 @@ from config_loader import (
     get_tenant_config, current_tenant
 )
 from db_config import get_db_connection
+from slack_notifier import slack_notifier
 
 # --- Authentication ---
 
@@ -404,7 +405,25 @@ def submit_creatives(req: SubmitCreativesRequest, context: Context) -> SubmitCre
     
     # Process creatives through the creative engine
     statuses = creative_engine.process_creatives(req.creatives)
-    for status in statuses: creative_statuses[status.creative_id] = status
+    for status in statuses: 
+        creative_statuses[status.creative_id] = status
+        
+        # Send Slack notification for pending creatives
+        if status.status == "pending_review":
+            try:
+                principal_id = _get_principal_id_from_context(context)
+                principal = get_principal_object(principal_id)
+                creative = next((c for c in req.creatives if c.creative_id == status.creative_id), None)
+                
+                slack_notifier.notify_creative_pending(
+                    creative_id=status.creative_id,
+                    principal_name=principal.name if principal else principal_id,
+                    format_type=creative.format.format_id if creative else "unknown",
+                    media_buy_id=req.media_buy_id
+                )
+            except Exception as e:
+                console.print(f"[yellow]Failed to send Slack notification: {e}[/yellow]")
+    
     return SubmitCreativesResponse(statuses=statuses)
 
 @mcp.tool
@@ -1314,6 +1333,24 @@ def create_human_task(req: CreateHumanTaskRequest, context: Context) -> CreateHu
         except:
             pass  # Don't fail task creation if webhook fails
     
+    # Send Slack notification for new tasks
+    try:
+        slack_notifier.notify_new_task(
+            task_id=task_id,
+            task_type=req.task_type,
+            principal_name=principal_id,
+            media_buy_id=req.media_buy_id,
+            details={
+                "priority": req.priority,
+                "error": req.error_detail,
+                "operation": req.operation,
+                "adapter": req.adapter_name
+            },
+            tenant_name=tenant['name']
+        )
+    except Exception as e:
+        console.print(f"[yellow]Failed to send Slack notification: {e}[/yellow]")
+    
     return CreateHumanTaskResponse(
         task_id=task_id,
         status="pending",
@@ -1471,6 +1508,18 @@ def complete_task(req: CompleteTaskRequest, context: Context) -> Dict[str, str]:
             "resolved_by": req.resolved_by
         }
     )
+    
+    # Send Slack notification for task completion
+    try:
+        slack_notifier.notify_task_completed(
+            task_id=req.task_id,
+            task_type=task.task_type,
+            completed_by=req.resolved_by,
+            success=task.status == "completed",
+            error_message=req.resolution_detail if task.status == "failed" else None
+        )
+    except Exception as e:
+        console.print(f"[yellow]Failed to send Slack notification: {e}[/yellow]")
     
     # Handle specific task types
     if task.task_type == "creative_approval" and task.creative_id:

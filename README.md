@@ -11,6 +11,7 @@ This project is a Python-based reference implementation of the Advertising Conte
 - **Creative Management**: Auto-approval workflows, creative groups, and multi-format support
 - **Human-in-the-Loop**: Optional manual approval mode for sensitive operations
 - **Security & Compliance**: Comprehensive audit logging, principal-based authentication, and adapter security boundaries
+- **Slack Integration**: Real-time notifications for tasks, approvals, and system events
 - **AEE Integration**: Built-in support for Ad Effectiveness Engine signals via key-value targeting
 - **Admin UI**: Secure web-based interface with Google OAuth authentication for tenant management
 - **Operations Dashboard**: Real-time monitoring of media buys, tasks, and audit trails
