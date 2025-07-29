@@ -2003,62 +2003,167 @@ def check_aee_requirements(req: CheckAEERequirementsRequest, context: Context) -
 
 @mcp.tool
 def get_creative_macros(req: GetCreativeMacrosRequest, context: Context) -> GetCreativeMacrosResponse:
-    """Get available creative macros for AEE integration.
+    """Get available creative macros that publishers can provide via AEE.
     
-    Returns list of supported macros for dynamic creative optimization (DCO)
-    and measurement that can be filled by publishers using AEE signals.
+    Returns list of creative macro signals that publishers can include
+    as a third category of provided_signals in AEE responses.
     """
-    from creative_macros import CreativeMacroProcessor
+    from aee_signals import STANDARD_CREATIVE_MACROS
     
-    processor = CreativeMacroProcessor()
-    macros = processor.get_available_macros(req.category)
+    macros = []
+    for macro_name, definition in STANDARD_CREATIVE_MACROS.items():
+        if req.category and definition.category != req.category:
+            continue
+        macros.append({
+            "macro": macro_name,
+            "syntax": f"${{{macro_name}}}",
+            "name": definition.description,
+            "description": f"{definition.description} (example: {definition.example_value})",
+            "category": definition.category
+        })
     
     return GetCreativeMacrosResponse(
         macros=macros,
-        categories=["dco", "measurement", "privacy"]
+        categories=["dco", "measurement", "publisher"]
     )
 
 @mcp.tool
 def validate_creative_macros(req: ValidateCreativeMacrosRequest, context: Context) -> ValidateCreativeMacrosResponse:
     """Validate macros in creative content.
     
-    Checks that all macros are valid and returns required AEE fields.
+    Checks that macro placeholders in creative are valid standard macros
+    that can be provided by publishers via AEE creative_macros signals.
     """
-    from creative_macros import CreativeMacroProcessor
+    from aee_signals import STANDARD_CREATIVE_MACROS
+    import re
     
-    processor = CreativeMacroProcessor()
-    validation = processor.validate_creative_macros(req.creative_content)
+    # Extract macros from creative content
+    macro_pattern = re.compile(r'\$\{([a-zA-Z_]+)\}')
+    found_macros = list(set(macro_pattern.findall(req.creative_content)))
+    
+    # Check which are valid
+    unknown_macros = [m for m in found_macros if m not in STANDARD_CREATIVE_MACROS]
+    warnings = []
+    
+    if unknown_macros:
+        warnings.append(f"Unknown macros found: {', '.join(unknown_macros)}")
+    
+    # All found macros are what will be requested from AEE
+    required_from_aee = found_macros
     
     return ValidateCreativeMacrosResponse(
-        valid=validation["valid"],
-        macros_found=validation["macros_found"],
-        unknown_macros=validation["unknown_macros"],
-        required_aee_fields=validation["required_aee_fields"],
-        warnings=validation["warnings"]
+        valid=len(unknown_macros) == 0,
+        macros_found=found_macros,
+        unknown_macros=unknown_macros,
+        required_aee_fields=required_from_aee,  # These are the macro names needed from AEE
+        warnings=warnings
     )
 
 @mcp.tool
 def process_creative_macros(req: ProcessCreativeMacrosRequest, context: Context) -> ProcessCreativeMacrosResponse:
-    """Process creative content by replacing macros with AEE values.
+    """Test creative macro processing with sample AEE creative_macros signals.
     
-    This is typically called by publishers to fill in dynamic content.
-    Admin-only tool for testing macro processing.
+    Simulates how a publisher would process creative content using
+    creative macro values provided in AEE response.
+    Admin-only tool for testing.
     """
     # Check if this is an admin request
     if not req.principal_id.endswith("@admin"):
         raise ToolError("Only admin users can test macro processing")
     
-    from creative_macros import CreativeMacroProcessor
+    from aee_signals import process_creative_with_macros
+    import re
     
-    processor = CreativeMacroProcessor()
-    processed_content = processor.process_macros(
+    # The aee_context should contain creative_macros dict
+    creative_macros = req.aee_context.get("creative_macros", {})
+    
+    # Process the creative
+    processed_content = process_creative_with_macros(
         req.creative_content,
-        req.aee_context
+        creative_macros
     )
+    
+    # Find which macros were in the content
+    macro_pattern = re.compile(r'\$\{([a-zA-Z_]+)\}')
+    found_macros = list(set(macro_pattern.findall(req.creative_content)))
     
     return ProcessCreativeMacrosResponse(
         processed_content=processed_content,
-        macros_replaced=processor.extract_macros(req.creative_content)
+        macros_replaced=[m for m in found_macros if m in creative_macros]
+    )
+
+@mcp.tool
+def get_publisher_macro_capabilities(req: GetPublisherMacroCapabilitiesRequest, context: Context) -> GetPublisherMacroCapabilitiesResponse:
+    """Get which creative macros this publisher can provide via AEE.
+    
+    Publishers declare which standard creative macros they support
+    providing as part of AEE creative_macros signals.
+    """
+    # In a real implementation, this would be configured per publisher/tenant
+    # For now, return a sample set
+    tenant = get_current_tenant()
+    
+    # Get from tenant config or use defaults
+    supported_macros = tenant['config'].get('features', {}).get('supported_creative_macros', [
+        "user_segment",
+        "time_of_day", 
+        "content_context",
+        "impression_id",
+        "content_id",
+        "placement_id"
+    ])
+    
+    from aee_signals import STANDARD_CREATIVE_MACROS
+    
+    macro_details = {}
+    for macro_name in supported_macros:
+        if macro_name in STANDARD_CREATIVE_MACROS:
+            definition = STANDARD_CREATIVE_MACROS[macro_name]
+            macro_details[macro_name] = {
+                "description": definition.description,
+                "category": definition.category,
+                "example_value": definition.example_value,
+                "data_source": definition.data_source
+            }
+    
+    return GetPublisherMacroCapabilitiesResponse(
+        supported_macros=supported_macros,
+        macro_definitions=macro_details
+    )
+
+@mcp.tool  
+def validate_macro_requirements(req: ValidateMacroRequirementsRequest, context: Context) -> ValidateMacroRequirementsResponse:
+    """Check if publisher can fulfill creative macro requirements.
+    
+    Validates whether this publisher can provide the creative macros
+    requested/required by a media buy.
+    """
+    # Get publisher capabilities
+    capabilities_req = GetPublisherMacroCapabilitiesRequest()
+    capabilities = get_publisher_macro_capabilities(capabilities_req, context)
+    
+    # Check requirements
+    missing_required = []
+    if req.required_macros:
+        missing_required = [
+            m for m in req.required_macros 
+            if m not in capabilities.supported_macros
+        ]
+    
+    available_requested = []
+    if req.requested_macros:
+        available_requested = [
+            m for m in req.requested_macros
+            if m in capabilities.supported_macros
+        ]
+    
+    can_fulfill = len(missing_required) == 0
+    
+    return ValidateMacroRequirementsResponse(
+        can_fulfill=can_fulfill,
+        missing_required_macros=missing_required,
+        available_macros=available_requested,
+        all_supported_macros=capabilities.supported_macros
     )
 
 if __name__ == "__main__":

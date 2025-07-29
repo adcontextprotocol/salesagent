@@ -355,6 +355,9 @@ class CreateMediaBuyRequest(BaseModel):
     pacing: Literal["even", "asap", "daily_budget"] = "even"
     daily_budget: Optional[float] = None
     creatives: Optional[List[Creative]] = None
+    # AEE signal requirements
+    required_aee_signals: Optional[List[str]] = None  # Required targeting signals
+    creative_macros: Optional[Dict[str, List[str]]] = None  # {"requested": [...], "required": [...]}
 
 class CreateMediaBuyResponse(BaseModel):
     media_buy_id: str
@@ -685,3 +688,25 @@ class ProcessCreativeMacrosResponse(BaseModel):
     """Response with processed creative content."""
     processed_content: str
     macros_replaced: List[str]
+
+# Publisher macro capabilities
+class GetPublisherMacroCapabilitiesRequest(BaseModel):
+    """Request publisher's creative macro capabilities."""
+    pass  # No parameters needed
+
+class GetPublisherMacroCapabilitiesResponse(BaseModel):
+    """Publisher's supported creative macros."""
+    supported_macros: List[str]
+    macro_definitions: Dict[str, Dict[str, Any]]
+
+class ValidateMacroRequirementsRequest(BaseModel):
+    """Validate if publisher can fulfill macro requirements."""
+    requested_macros: Optional[List[str]] = None
+    required_macros: Optional[List[str]] = None
+
+class ValidateMacroRequirementsResponse(BaseModel):
+    """Result of macro requirement validation."""
+    can_fulfill: bool
+    missing_required_macros: List[str]
+    available_macros: List[str]
+    all_supported_macros: List[str]
