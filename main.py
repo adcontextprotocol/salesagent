@@ -432,17 +432,107 @@ def check_creative_status(req: CheckCreativeStatusRequest, context: Context) -> 
     return CheckCreativeStatusResponse(statuses=statuses)
 
 @mcp.tool
-def adapt_creative(req: AdaptCreativeRequest, context: Context) -> CreativeStatus:
-    _verify_principal(req.media_buy_id, context)
+def approve_adaptation(req: ApproveAdaptationRequest, context: Context) -> ApproveAdaptationResponse:
+    """Approve a suggested creative adaptation."""
+    principal_id = _get_principal_id_from_context(context)
     
-    # Initialize creative engine with tenant config
+    # Verify creative ownership
+    if req.creative_id not in creative_library:
+        return ApproveAdaptationResponse(
+            success=False,
+            message=f"Creative '{req.creative_id}' not found"
+        )
+    
+    creative = creative_library[req.creative_id]
+    if creative.principal_id != principal_id:
+        return ApproveAdaptationResponse(
+            success=False,
+            message=f"Principal does not own creative '{req.creative_id}'"
+        )
+    
+    # Check if the creative has this adaptation
+    if req.creative_id not in creative_statuses:
+        return ApproveAdaptationResponse(
+            success=False,
+            message=f"Creative '{req.creative_id}' has no status information"
+        )
+    
+    status = creative_statuses[req.creative_id]
+    adaptation = None
+    for adapt in status.suggested_adaptations:
+        if adapt.adaptation_id == req.adaptation_id:
+            adaptation = adapt
+            break
+    
+    if not adaptation:
+        return ApproveAdaptationResponse(
+            success=False,
+            message=f"Adaptation '{req.adaptation_id}' not found for creative '{req.creative_id}'"
+        )
+    
+    if not req.approve:
+        return ApproveAdaptationResponse(
+            success=True,
+            message=f"Adaptation '{req.adaptation_id}' rejected"
+        )
+    
+    # Create the adapted creative
+    new_creative_id = f"{req.creative_id}_{adaptation.format_id}_adapted"
+    new_name = adaptation.name
+    if req.modifications and 'name' in req.modifications:
+        new_name = req.modifications['name']
+    
+    new_creative = Creative(
+        creative_id=new_creative_id,
+        principal_id=principal_id,
+        group_id=creative.group_id,
+        format_id=adaptation.format_id,
+        content_uri=f"https://cdn.publisher.com/adapted/{new_creative_id}.mp4",  # Mock URL
+        name=new_name,
+        click_through_url=creative.click_through_url,
+        metadata={
+            'adapted_from': req.creative_id,
+            'adaptation_id': req.adaptation_id,
+            'changes': adaptation.changes_summary
+        },
+        created_at=datetime.now(),
+        updated_at=datetime.now()
+    )
+    
+    creative_library[new_creative_id] = new_creative
+    
+    # Auto-approve the adapted creative
+    new_status = CreativeStatus(
+        creative_id=new_creative_id,
+        status="approved",
+        detail="Adapted creative auto-approved",
+        suggested_adaptations=[]
+    )
+    creative_statuses[new_creative_id] = new_status
+    
+    # Log the adaptation
+    from audit_logger import get_audit_logger
     tenant = get_current_tenant()
-    creative_engine_config = tenant['config'].get('creative_engine', {})
-    creative_engine = MockCreativeEngine(creative_engine_config)
+    logger = get_audit_logger("AdCP", tenant['tenant_id'])
+    logger.log_operation(
+        operation="approve_adaptation",
+        principal_name=get_principal_object(principal_id).name,
+        principal_id=principal_id,
+        adapter_id="N/A",
+        success=True,
+        details={
+            "original_creative_id": req.creative_id,
+            "new_creative_id": new_creative_id,
+            "adaptation_id": req.adaptation_id
+        }
+    )
     
-    status = creative_engine.adapt_creative(req)
-    creative_statuses[req.new_creative_id] = status
-    return status
+    return ApproveAdaptationResponse(
+        success=True,
+        new_creative=new_creative,
+        status=new_status,
+        message=f"Adaptation approved and creative '{new_creative_id}' generated"
+    )
 
 @mcp.tool
 def legacy_update_media_buy(req: LegacyUpdateMediaBuyRequest, context: Context):

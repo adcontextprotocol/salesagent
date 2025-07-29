@@ -2,7 +2,7 @@ from typing import List, Dict, Any
 from datetime import datetime, timedelta
 
 from adapters.creative_engine import CreativeEngineAdapter
-from schemas import Creative, CreativeStatus, AdaptCreativeRequest
+from schemas import Creative, CreativeStatus, CreativeAdaptation
 
 class MockCreativeEngine(CreativeEngineAdapter):
     """A mock creative engine that simulates a simple approval and adaptation workflow."""
@@ -37,23 +37,52 @@ class MockCreativeEngine(CreativeEngineAdapter):
                 detail = f"Awaiting manual review - format '{creative.format_id}' requires human approval."
                 est_approval = datetime.now().astimezone() + timedelta(days=2)
             
+            # Generate adaptation suggestions for video formats
+            suggested_adaptations = []
+            if creative.format_id and 'video' in creative.format_id.lower():
+                # Suggest vertical version for horizontal videos
+                if '16x9' in creative.format_id or 'horizontal' in creative.format_id:
+                    suggested_adaptations.append(
+                        CreativeAdaptation(
+                            adaptation_id=f"adapt_{creative.creative_id}_vertical",
+                            format_id="video_vertical_9x16",
+                            name="Mobile Vertical Version",
+                            description="9:16 vertical version optimized for mobile feeds",
+                            changes_summary=[
+                                "Crop to 9:16 aspect ratio focusing on key visual elements",
+                                "Add captions for sound-off viewing (85% of mobile users)",
+                                "Optimize for 6-second hook to capture attention"
+                            ],
+                            rationale="Mobile inventory converts 35% better with vertical format and represents 60% of available impressions",
+                            estimated_performance_lift=35.0
+                        )
+                    )
+                # Suggest shorter version for long videos
+                if creative.metadata and creative.metadata.get('duration', 0) > 15:
+                    suggested_adaptations.append(
+                        CreativeAdaptation(
+                            adaptation_id=f"adapt_{creative.creative_id}_6s",
+                            format_id="video_6s_bumper",
+                            name="6-Second Bumper Version",
+                            description="Short-form version for bumper inventory",
+                            changes_summary=[
+                                "Cut to 6-second duration focusing on key message",
+                                "Add brand logo throughout",
+                                "Optimize for non-skippable format"
+                            ],
+                            rationale="6-second bumpers have 95% completion rate and lower CPM",
+                            estimated_performance_lift=25.0
+                        )
+                    )
+            
             processed.append(
                 CreativeStatus(
                     creative_id=creative.creative_id,
                     status=status,
                     detail=detail,
-                    estimated_approval_time=est_approval
+                    estimated_approval_time=est_approval,
+                    suggested_adaptations=suggested_adaptations
                 )
             )
         return processed
 
-    def adapt_creative(self, request: AdaptCreativeRequest) -> CreativeStatus:
-        """Simulates adapting a creative to a new format."""
-        # In a real system, this would involve complex logic, possibly another AI call.
-        # Here, we just approve it after a simulated delay.
-        return CreativeStatus(
-            creative_id=request.new_creative_id,
-            status="pending_review",
-            detail=f"Adaptation from {request.original_creative_id} to {request.target_format_id} is in progress.",
-            estimated_approval_time=datetime.now().astimezone() + timedelta(days=self.adaptation_time_days)
-        )

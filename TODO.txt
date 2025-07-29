@@ -51,4 +51,4 @@ We should also make it clear how a publisher can share which dimensions they sup
 
 
 Creative adaptation
-- Right now this is the buyer calling an "adapt creative" endpoint from the seller. I think actually it should be part of the add creative process where the publisher can respond with suggested changes or variants, and the buyer can approve them or not. So it is a step in the process not a separate tool.
+- [DONE] Right now this is the buyer calling an "adapt creative" endpoint from the seller. I think actually it should be part of the add creative process where the publisher can respond with suggested changes or variants, and the buyer can approve them or not. So it is a step in the process not a separate tool.

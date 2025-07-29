@@ -215,6 +215,7 @@ class CreativeStatus(BaseModel):
     status: Literal["pending_review", "approved", "rejected", "adaptation_required"]
     detail: str
     estimated_approval_time: Optional[datetime] = None
+    suggested_adaptations: List[CreativeAdaptation] = Field(default_factory=list)
 
 class CreativeAssignment(BaseModel):
     """Maps creatives to packages with distribution control."""
@@ -269,9 +270,21 @@ class CreateCreativeRequest(BaseModel):
     click_through_url: Optional[str] = None
     metadata: Optional[Dict[str, Any]] = {}
 
+class CreativeAdaptation(BaseModel):
+    """Suggested adaptation or variant of a creative."""
+    adaptation_id: str
+    format_id: str
+    name: str
+    description: str
+    preview_url: Optional[str] = None
+    changes_summary: List[str] = Field(default_factory=list)
+    rationale: Optional[str] = None
+    estimated_performance_lift: Optional[float] = None  # Percentage improvement expected
+
 class CreateCreativeResponse(BaseModel):
     creative: Creative
     status: CreativeStatus
+    suggested_adaptations: List[CreativeAdaptation] = Field(default_factory=list)
 
 class AssignCreativeRequest(BaseModel):
     """Assign a creative from the library to a package."""
