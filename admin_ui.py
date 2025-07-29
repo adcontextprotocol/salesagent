@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Admin UI with Google OAuth2 authentication."""
 
-from flask import Flask, render_template, request, jsonify, redirect, url_for, session, flash
+from flask import Flask, render_template, request, jsonify, redirect, url_for, session, flash, send_from_directory
 import secrets
 import json
 import os
@@ -10,6 +10,7 @@ from datetime import datetime
 from functools import wraps
 from authlib.integrations.flask_client import OAuth
 from db_config import get_db_connection
+from validation import FormValidator, validate_form_data, sanitize_form_data
 
 app = Flask(__name__)
 app.secret_key = os.environ.get('FLASK_SECRET_KEY', secrets.token_hex(32))
@@ -581,10 +582,19 @@ def update_tenant(tenant_id):
     if session.get('role') in ['admin', 'manager', 'tenant_admin'] and session.get('tenant_id') != tenant_id:
         return "Access denied. You can only update your own tenant.", 403
     
+    # Validate JSON configuration
+    config_json = request.form.get('config', '').strip()
+    
+    # Validate JSON
+    json_error = FormValidator.validate_json(config_json)
+    if json_error:
+        flash(f"Configuration error: {json_error}", 'error')
+        return redirect(url_for('tenant_detail', tenant_id=tenant_id))
+    
     conn = get_db_connection()
     
     try:
-        config = json.loads(request.form.get('config'))
+        config = json.loads(config_json)
         
         # Get current config to preserve certain settings
         cursor = conn.execute("SELECT config FROM tenants WHERE tenant_id = ?", (tenant_id,))
@@ -623,6 +633,27 @@ def update_slack(tenant_id):
         return "Access denied", 403
     
     try:
+        # Validate webhook URLs
+        form_data = {
+            'slack_webhook_url': request.form.get('slack_webhook_url', '').strip(),
+            'slack_audit_webhook_url': request.form.get('slack_audit_webhook_url', '').strip()
+        }
+        
+        # Sanitize form data
+        form_data = sanitize_form_data(form_data)
+        
+        # Validate
+        validators = {
+            'slack_webhook_url': [FormValidator.validate_webhook_url],
+            'slack_audit_webhook_url': [FormValidator.validate_webhook_url]
+        }
+        
+        errors = validate_form_data(form_data, validators)
+        if errors:
+            for field, error in errors.items():
+                flash(f"{field}: {error}", 'error')
+            return redirect(url_for('tenant_detail', tenant_id=tenant_id))
+        
         # Get current config
         conn = get_db_connection()
         cursor = conn.execute("SELECT config FROM tenants WHERE tenant_id = ?", (tenant_id,))
@@ -634,8 +665,8 @@ def update_slack(tenant_id):
         if 'features' not in config:
             config['features'] = {}
         
-        slack_webhook = request.form.get('slack_webhook_url', '').strip()
-        audit_webhook = request.form.get('slack_audit_webhook_url', '').strip()
+        slack_webhook = form_data['slack_webhook_url']
+        audit_webhook = form_data['slack_audit_webhook_url']
         
         if slack_webhook:
             config['features']['slack_webhook_url'] = slack_webhook
@@ -1247,16 +1278,35 @@ def create_principal(tenant_id):
         return "Access denied.", 403
     
     if request.method == 'POST':
+        # Validate form data
+        form_data = {
+            'principal_id': request.form.get('principal_id', '').strip(),
+            'name': request.form.get('name', '').strip()
+        }
+        
+        # Sanitize
+        form_data = sanitize_form_data(form_data)
+        
+        # Validate
+        validators = {
+            'principal_id': [FormValidator.validate_principal_id],
+            'name': [
+                lambda v: FormValidator.validate_required(v, "Principal name"),
+                lambda v: FormValidator.validate_length(v, min_length=3, max_length=100, field_name="Principal name")
+            ]
+        }
+        
+        errors = validate_form_data(form_data, validators)
+        if errors:
+            return render_template('create_principal.html', 
+                                 tenant_id=tenant_id,
+                                 errors=errors,
+                                 form_data=form_data)
+        
         conn = get_db_connection()
         try:
-            principal_id = request.form.get('principal_id')
-            name = request.form.get('name')
-            
-            # Validate principal_id format
-            if not principal_id or not principal_id.replace('_', '').isalnum():
-                return render_template('create_principal.html', 
-                                     tenant_id=tenant_id,
-                                     error="Principal ID must contain only letters, numbers, and underscores")
+            principal_id = form_data['principal_id']
+            name = form_data['name']
             
             # Generate a secure access token
             access_token = secrets.token_urlsafe(32)
@@ -1289,6 +1339,11 @@ def health():
         return jsonify({"status": "healthy"})
     except:
         return jsonify({"status": "unhealthy"}), 500
+
+@app.route('/static/<path:path>')
+def send_static(path):
+    """Serve static files."""
+    return send_from_directory('static', path)
 
 if __name__ == '__main__':
     # Create templates directory

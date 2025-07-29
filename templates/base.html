@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% block title %}AdCP Admin{% endblock %}</title>
+    <link rel="stylesheet" href="/static/validation.css">
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
         body { 
@@ -144,6 +145,18 @@
         </div>
     </div>
     <div class="container">
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                <div class="flash-messages">
+                    {% for category, message in messages %}
+                        <div class="alert alert-{{ category }}">
+                            {{ message }}
+                            <button onclick="this.parentElement.style.display='none'" style="float: right; background: none; border: none; font-size: 1.2em; cursor: pointer;">&times;</button>
+                        </div>
+                    {% endfor %}
+                </div>
+            {% endif %}
+        {% endwith %}
         {% block content %}{% endblock %}
     </div>
     <script>
@@ -165,5 +178,6 @@
             });
         });
     </script>
+    <script src="/static/validation.js"></script>
 </body>
 </html>

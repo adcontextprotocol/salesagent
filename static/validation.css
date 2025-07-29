@@ -1,0 +1,181 @@
+/* Form validation styles */
+
+/* Error state for input fields */
+input.error,
+textarea.error,
+select.error {
+    border-color: #e74c3c !important;
+    background-color: #fee;
+}
+
+input.error:focus,
+textarea.error:focus,
+select.error:focus {
+    outline-color: #e74c3c;
+    box-shadow: 0 0 0 2px rgba(231, 76, 60, 0.2);
+}
+
+/* Success state (optional) */
+input.success,
+textarea.success,
+select.success {
+    border-color: #27ae60 !important;
+}
+
+/* Error message styling */
+.field-error {
+    color: #c0392b;
+    font-size: 0.875em;
+    margin-top: 0.25rem;
+    display: block;
+    animation: slideIn 0.2s ease-out;
+}
+
+@keyframes slideIn {
+    from {
+        opacity: 0;
+        transform: translateY(-5px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* Form group with error */
+.form-group.has-error label {
+    color: #c0392b;
+}
+
+/* Loading state for forms */
+form.loading {
+    pointer-events: none;
+    opacity: 0.6;
+}
+
+form.loading::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 20px;
+    height: 20px;
+    margin: -10px 0 0 -10px;
+    border: 2px solid #3498db;
+    border-radius: 50%;
+    border-top-color: transparent;
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}
+
+/* Validation feedback icons */
+.validation-icon {
+    position: absolute;
+    right: 10px;
+    top: 50%;
+    transform: translateY(-50%);
+    font-size: 1.2em;
+}
+
+.validation-icon.error {
+    color: #e74c3c;
+}
+
+.validation-icon.success {
+    color: #27ae60;
+}
+
+/* Required field indicator */
+.form-group label.required::after {
+    content: ' *';
+    color: #e74c3c;
+}
+
+/* Help text */
+.help-text {
+    font-size: 0.875em;
+    color: #7f8c8d;
+    margin-top: 0.25rem;
+}
+
+/* Form submission feedback */
+.form-feedback {
+    padding: 1rem;
+    margin: 1rem 0;
+    border-radius: 4px;
+    animation: slideIn 0.3s ease-out;
+}
+
+.form-feedback.success {
+    background-color: #d4edda;
+    border: 1px solid #c3e6cb;
+    color: #155724;
+}
+
+.form-feedback.error {
+    background-color: #f8d7da;
+    border: 1px solid #f5c6cb;
+    color: #721c24;
+}
+
+.form-feedback.warning {
+    background-color: #fff3cd;
+    border: 1px solid #ffeaa7;
+    color: #856404;
+}
+
+/* Inline validation messages */
+.inline-validation {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-top: 0.25rem;
+}
+
+.inline-validation.checking {
+    color: #3498db;
+}
+
+.inline-validation.valid {
+    color: #27ae60;
+}
+
+.inline-validation.invalid {
+    color: #e74c3c;
+}
+
+/* Spinner for async validation */
+.validation-spinner {
+    display: inline-block;
+    width: 14px;
+    height: 14px;
+    border: 2px solid #3498db;
+    border-radius: 50%;
+    border-top-color: transparent;
+    animation: spin 0.8s linear infinite;
+}
+
+/* Disabled form styling */
+fieldset:disabled {
+    opacity: 0.6;
+    pointer-events: none;
+}
+
+/* Character counter */
+.char-counter {
+    font-size: 0.75em;
+    color: #7f8c8d;
+    text-align: right;
+    margin-top: 0.25rem;
+}
+
+.char-counter.warning {
+    color: #f39c12;
+}
+
+.char-counter.error {
+    color: #e74c3c;
+}

@@ -10,20 +10,30 @@
     <div class="alert alert-error">{{ error }}</div>
     {% endif %}
     
+    {% if errors %}
+        {% for field, error in errors.items() %}
+        <div class="alert alert-error">{{ field }}: {{ error }}</div>
+        {% endfor %}
+    {% endif %}
+    
     <form method="POST" style="margin-top: 2rem;">
         <div class="form-group">
             <label for="principal_id">Principal ID</label>
             <input type="text" id="principal_id" name="principal_id" required 
-                   pattern="[a-zA-Z0-9_]+" 
+                   pattern="[a-zA-Z0-9_-]+" 
                    placeholder="e.g., nike_corp, advertiser_123"
-                   title="Only letters, numbers, and underscores allowed">
+                   title="Only letters, numbers, underscores, and hyphens allowed"
+                   value="{{ form_data.principal_id if form_data else '' }}"
+                   class="{{ 'error' if errors and 'principal_id' in errors else '' }}">
             <small>This will be used as a unique identifier. Use lowercase with underscores.</small>
         </div>
         
         <div class="form-group">
             <label for="name">Display Name</label>
             <input type="text" id="name" name="name" required 
-                   placeholder="e.g., Nike Corporation">
+                   placeholder="e.g., Nike Corporation"
+                   value="{{ form_data.name if form_data else '' }}"
+                   class="{{ 'error' if errors and 'name' in errors else '' }}">
             <small>The friendly name that will be shown in the UI.</small>
         </div>
         
