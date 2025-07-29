@@ -46,3 +46,24 @@
 //     },
 //     "hitl_webhook_url": "https://your-webhook.com/tasks"
 // }
+
+// Example for Xandr/Microsoft Monetize:
+// {
+//     "ad_server": {
+//         "adapter": "xandr",
+//         "api_endpoint": "https://api.appnexus.com",
+//         "username": "YOUR_USERNAME",
+//         "password": "YOUR_PASSWORD",
+//         "member_id": "YOUR_MEMBER_ID"
+//     },
+//     "principals": {
+//         "example_brand": {
+//             "name": "Example Brand",
+//             "platform_mappings": {
+//                 "xandr": {
+//                     "advertiser_id": "12345"
+//                 }
+//             }
+//         }
+//     }
+// }

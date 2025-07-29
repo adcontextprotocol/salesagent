@@ -2001,6 +2001,66 @@ def check_aee_requirements(req: CheckAEERequirementsRequest, context: Context) -
         available_dimensions=available_keys
     )
 
+@mcp.tool
+def get_creative_macros(req: GetCreativeMacrosRequest, context: Context) -> GetCreativeMacrosResponse:
+    """Get available creative macros for AEE integration.
+    
+    Returns list of supported macros for dynamic creative optimization (DCO)
+    and measurement that can be filled by publishers using AEE signals.
+    """
+    from creative_macros import CreativeMacroProcessor
+    
+    processor = CreativeMacroProcessor()
+    macros = processor.get_available_macros(req.category)
+    
+    return GetCreativeMacrosResponse(
+        macros=macros,
+        categories=["dco", "measurement", "privacy"]
+    )
+
+@mcp.tool
+def validate_creative_macros(req: ValidateCreativeMacrosRequest, context: Context) -> ValidateCreativeMacrosResponse:
+    """Validate macros in creative content.
+    
+    Checks that all macros are valid and returns required AEE fields.
+    """
+    from creative_macros import CreativeMacroProcessor
+    
+    processor = CreativeMacroProcessor()
+    validation = processor.validate_creative_macros(req.creative_content)
+    
+    return ValidateCreativeMacrosResponse(
+        valid=validation["valid"],
+        macros_found=validation["macros_found"],
+        unknown_macros=validation["unknown_macros"],
+        required_aee_fields=validation["required_aee_fields"],
+        warnings=validation["warnings"]
+    )
+
+@mcp.tool
+def process_creative_macros(req: ProcessCreativeMacrosRequest, context: Context) -> ProcessCreativeMacrosResponse:
+    """Process creative content by replacing macros with AEE values.
+    
+    This is typically called by publishers to fill in dynamic content.
+    Admin-only tool for testing macro processing.
+    """
+    # Check if this is an admin request
+    if not req.principal_id.endswith("@admin"):
+        raise ToolError("Only admin users can test macro processing")
+    
+    from creative_macros import CreativeMacroProcessor
+    
+    processor = CreativeMacroProcessor()
+    processed_content = processor.process_macros(
+        req.creative_content,
+        req.aee_context
+    )
+    
+    return ProcessCreativeMacrosResponse(
+        processed_content=processed_content,
+        macros_replaced=processor.extract_macros(req.creative_content)
+    )
+
 if __name__ == "__main__":
     init_db()
     # Server is now run via run_server.py script

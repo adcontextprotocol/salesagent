@@ -209,6 +209,20 @@ class Creative(BaseModel):
     metadata: Optional[Dict[str, Any]] = {}  # Platform-specific metadata
     created_at: datetime
     updated_at: datetime
+    # Macro information
+    has_macros: Optional[bool] = False
+    macro_validation: Optional[Dict[str, Any]] = None  # Validation result from creative_macros
+
+class CreativeAdaptation(BaseModel):
+    """Suggested adaptation or variant of a creative."""
+    adaptation_id: str
+    format_id: str
+    name: str
+    description: str
+    preview_url: Optional[str] = None
+    changes_summary: List[str] = Field(default_factory=list)
+    rationale: Optional[str] = None
+    estimated_performance_lift: Optional[float] = None  # Percentage improvement expected
 
 class CreativeStatus(BaseModel):
     creative_id: str
@@ -269,17 +283,6 @@ class CreateCreativeRequest(BaseModel):
     name: str
     click_through_url: Optional[str] = None
     metadata: Optional[Dict[str, Any]] = {}
-
-class CreativeAdaptation(BaseModel):
-    """Suggested adaptation or variant of a creative."""
-    adaptation_id: str
-    format_id: str
-    name: str
-    description: str
-    preview_url: Optional[str] = None
-    changes_summary: List[str] = Field(default_factory=list)
-    rationale: Optional[str] = None
-    estimated_performance_lift: Optional[float] = None  # Percentage improvement expected
 
 class CreateCreativeResponse(BaseModel):
     creative: Creative
@@ -641,3 +644,44 @@ class CheckAEERequirementsResponse(BaseModel):
     supported: bool
     missing_dimensions: List[str]
     available_dimensions: List[str]
+
+# Creative Macros
+class GetCreativeMacrosRequest(BaseModel):
+    """Request to get available creative macros."""
+    category: Optional[str] = None  # Filter by category: dco, measurement, privacy
+
+class CreativeMacroInfo(BaseModel):
+    """Information about a creative macro."""
+    macro: str
+    syntax: str
+    name: str
+    description: str
+    category: str
+
+class GetCreativeMacrosResponse(BaseModel):
+    """Response with available creative macros."""
+    macros: List[CreativeMacroInfo]
+    categories: List[str]
+
+class ValidateCreativeMacrosRequest(BaseModel):
+    """Request to validate macros in creative content."""
+    creative_content: str
+
+class ValidateCreativeMacrosResponse(BaseModel):
+    """Response for macro validation."""
+    valid: bool
+    macros_found: List[str]
+    unknown_macros: List[str]
+    required_aee_fields: List[str]
+    warnings: List[str]
+
+class ProcessCreativeMacrosRequest(BaseModel):
+    """Request to process creative macros (admin only)."""
+    principal_id: str
+    creative_content: str
+    aee_context: Dict[str, Any]
+
+class ProcessCreativeMacrosResponse(BaseModel):
+    """Response with processed creative content."""
+    processed_content: str
+    macros_replaced: List[str]
