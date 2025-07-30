@@ -27,6 +27,7 @@ CREATE TABLE IF NOT EXISTS products (
     price_guidance TEXT,
     is_custom BOOLEAN DEFAULT 0,
     expires_at TIMESTAMP,
+    implementation_config TEXT,
     PRIMARY KEY (tenant_id, product_id),
     FOREIGN KEY (tenant_id) REFERENCES tenants(tenant_id)
 );
@@ -150,6 +151,7 @@ CREATE TABLE IF NOT EXISTS products (
     price_guidance JSONB,
     is_custom BOOLEAN DEFAULT FALSE,
     expires_at TIMESTAMP,
+    implementation_config JSONB,
     PRIMARY KEY (tenant_id, product_id),
     FOREIGN KEY (tenant_id) REFERENCES tenants(tenant_id) ON DELETE CASCADE
 );

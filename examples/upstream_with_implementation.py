@@ -200,9 +200,9 @@ async def get_products(
     Get products matching the brief, with implementation details.
     
     Uses principal_data to:
-    1. Check advertiser's ad server compatibility
+    1. Verify advertiser has account on our ad server
     2. Apply advertiser-specific pricing
-    3. Filter based on existing campaigns
+    3. Customize based on advertiser history/tier
     """
     print(f"\n📨 Enhanced Catalog Request:")
     print(f"   Brief: {brief}")
@@ -218,25 +218,14 @@ async def get_products(
     if any(word in brief_lower for word in ["sport", "game", "athletic"]):
         products.extend(PREMIUM_PRODUCTS)
     
-    # Filter based on principal's ad server if provided
+    # All our products work on Google Ad Manager (our ad server)
+    # Check if advertiser has a GAM account to work with us
     if principal_data and 'platform_mappings' in principal_data:
-        # Check which ad server the principal uses
-        ad_server = None
-        if 'gam_advertiser_id' in principal_data['platform_mappings']:
-            ad_server = 'google_ad_manager'
-        elif 'kevel_advertiser_id' in principal_data['platform_mappings']:
-            ad_server = 'kevel'
-        
-        # Filter products to match their ad server
-        if ad_server:
-            filtered = []
-            for product in products:
-                impl_config = product.get('implementation_config', {})
-                if impl_config.get('ad_server') == ad_server:
-                    # Customize implementation config for this advertiser
-                    impl_config['advertiser_id'] = principal_data['platform_mappings'].get(f'{ad_server}_advertiser_id')
-                    filtered.append(product)
-            products = filtered
+        if 'gam_advertiser_id' not in principal_data['platform_mappings']:
+            # Advertiser doesn't have a GAM account
+            print(f"   ⚠️  Note: Advertiser {principal_id} needs a GAM account")
+            # Could return limited products or require account setup
+            # For now, we'll still show products but flag this
     
     # Apply intelligent matching based on brief
     matched_products = []
@@ -313,7 +302,7 @@ async def validate_implementation(
 ) -> Dict[str, Any]:
     """
     Validate that a product can be implemented for a specific advertiser.
-    Checks ad server compatibility, account permissions, etc.
+    Checks if advertiser has account on our ad server.
     """
     # Find the product
     all_products = RUN_OF_SITE_PRODUCTS + PREMIUM_PRODUCTS
@@ -322,29 +311,21 @@ async def validate_implementation(
     if not product:
         return {"valid": False, "reason": "Product not found"}
     
-    impl_config = product.get('implementation_config', {})
-    required_ad_server = impl_config.get('ad_server')
-    
-    # Check if advertiser has the required ad server
+    # All our products use Google Ad Manager (our ad server)
     platform_mappings = principal_data.get('platform_mappings', {})
-    has_ad_server = False
     
-    if required_ad_server == 'google_ad_manager' and 'gam_advertiser_id' in platform_mappings:
-        has_ad_server = True
-    elif required_ad_server == 'kevel' and 'kevel_advertiser_id' in platform_mappings:
-        has_ad_server = True
-    
-    if not has_ad_server:
+    # Check if advertiser has a GAM account
+    if 'gam_advertiser_id' not in platform_mappings:
         return {
             "valid": False,
-            "reason": f"Product requires {required_ad_server} but advertiser doesn't have an account"
+            "reason": "Advertiser needs a Google Ad Manager account to buy from us"
         }
     
     return {
         "valid": True,
         "implementation_ready": True,
-        "ad_server": required_ad_server,
-        "advertiser_id": platform_mappings.get(f'{required_ad_server}_advertiser_id')
+        "ad_server": "google_ad_manager",
+        "advertiser_id": platform_mappings.get('gam_advertiser_id')
     }
 
 
