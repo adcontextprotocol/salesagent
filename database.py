@@ -98,21 +98,21 @@ def init_db():
                 },
                 "access_token": "purina_token"
             }
-        ]
-        
-        for p in principals_data:
-            conn.execute("""
-                INSERT INTO principals (
-                    tenant_id, principal_id, name,
-                    platform_mappings, access_token
-                ) VALUES (?, ?, ?, ?, ?)
-            """, (
-                "default",
-                p["principal_id"],
-                p["name"],
-                json.dumps(p["platform_mappings"]),
-                p["access_token"]
-            ))
+            ]
+            
+            for p in principals_data:
+                conn.execute("""
+                    INSERT INTO principals (
+                        tenant_id, principal_id, name,
+                        platform_mappings, access_token
+                    ) VALUES (?, ?, ?, ?, ?)
+                """, (
+                    "default",
+                    p["principal_id"],
+                    p["name"],
+                    json.dumps(p["platform_mappings"]),
+                    p["access_token"]
+                ))
         
             # Create sample products
             products_data = [
@@ -161,27 +161,27 @@ def init_db():
                 "cpm": 2.5,
                 "price_guidance": None
             }
-        ]
-        
-        for p in products_data:
-            conn.execute("""
-                INSERT INTO products (
-                    tenant_id, product_id, name, description,
-                    formats, targeting_template, delivery_type,
-                    is_fixed_price, cpm, price_guidance
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """, (
-                "default",
-                p["product_id"],
-                p["name"],
-                p["description"],
-                json.dumps(p["formats"]),
-                json.dumps(p["targeting_template"]),
-                p["delivery_type"],
-                p["is_fixed_price"],  # Boolean works for both
-                p.get("cpm"),
-                json.dumps(p["price_guidance"]) if p.get("price_guidance") else None
-            ))
+            ]
+            
+            for p in products_data:
+                conn.execute("""
+                    INSERT INTO products (
+                        tenant_id, product_id, name, description,
+                        formats, targeting_template, delivery_type,
+                        is_fixed_price, cpm, price_guidance
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, (
+                    "default",
+                    p["product_id"],
+                    p["name"],
+                    p["description"],
+                    json.dumps(p["formats"]),
+                    json.dumps(p["targeting_template"]),
+                    p["delivery_type"],
+                    p["is_fixed_price"],  # Boolean works for both
+                    p.get("cpm"),
+                    json.dumps(p["price_guidance"]) if p.get("price_guidance") else None
+                ))
         
         # Update the print statement based on whether sample data was created
         if os.environ.get('CREATE_SAMPLE_DATA', 'false').lower() == 'true':
