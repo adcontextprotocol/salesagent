@@ -110,7 +110,8 @@ class AIProductCatalog(ProductCatalogProvider):
             product_data = {column: row[column] for column in row.keys()}
             product_data.pop('tenant_id', None)
             product_data['formats'] = json.loads(product_data['formats'])
-            product_data['targeting_template'] = json.loads(product_data['targeting_template'])
+            # Remove targeting_template - it's internal and shouldn't be exposed
+            product_data.pop('targeting_template', None)
             if product_data.get('price_guidance'):
                 product_data['price_guidance'] = json.loads(product_data['price_guidance'])
             if product_data.get('implementation_config'):
@@ -128,7 +129,6 @@ class AIProductCatalog(ProductCatalogProvider):
                 'name': p.name,
                 'description': p.description,
                 'formats': [f.name for f in p.formats],
-                'targeting': p.targeting_template.model_dump(exclude_none=True),
                 'delivery_type': p.delivery_type,
                 'is_fixed_price': p.is_fixed_price,
                 'cpm': p.cpm,

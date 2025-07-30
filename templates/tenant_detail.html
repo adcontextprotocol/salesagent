@@ -543,7 +543,11 @@
 
 <div id="products" class="tab-content">
     <div class="card">
-        <h3>Products</h3>
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+            <h3 style="margin: 0;">Products</h3>
+            <a href="/tenant/{{ tenant.tenant_id }}/products" class="btn">Manage Products</a>
+        </div>
+        <p>Define the advertising products available for purchase through the Sales Agent.</p>
         {% if products %}
         <table>
             <thead>
@@ -555,7 +559,7 @@
                 </tr>
             </thead>
             <tbody>
-                {% for product in products %}
+                {% for product in products[:5] %}
                 <tr>
                     <td><code>{{ product.product_id }}</code></td>
                     <td>{{ product.name }}</td>
@@ -565,8 +569,13 @@
                 {% endfor %}
             </tbody>
         </table>
+        {% if products|length > 5 %}
+        <p style="text-align: center; margin-top: 1rem;">
+            <a href="/tenant/{{ tenant.tenant_id }}/products">View all {{ products|length }} products →</a>
+        </p>
+        {% endif %}
         {% else %}
-        <p>No products found.</p>
+        <p>No products found. <a href="/tenant/{{ tenant.tenant_id }}/products">Add your first product</a></p>
         {% endif %}
     </div>
 </div>

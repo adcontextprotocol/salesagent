@@ -14,6 +14,20 @@ CREATE TABLE IF NOT EXISTS tenants (
     billing_contact TEXT
 );
 
+CREATE TABLE IF NOT EXISTS creative_formats (
+    format_id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    type TEXT NOT NULL CHECK (type IN ('display', 'video', 'audio', 'native')),
+    description TEXT,
+    width INTEGER,
+    height INTEGER,
+    duration_seconds INTEGER,
+    max_file_size_kb INTEGER,
+    specs TEXT NOT NULL,
+    is_standard BOOLEAN DEFAULT 1,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
 CREATE TABLE IF NOT EXISTS products (
     tenant_id TEXT NOT NULL,
     product_id TEXT NOT NULL,
@@ -136,6 +150,20 @@ CREATE TABLE IF NOT EXISTS tenants (
     is_active BOOLEAN DEFAULT TRUE,
     billing_plan VARCHAR(50) DEFAULT 'standard',
     billing_contact VARCHAR(255)
+);
+
+CREATE TABLE IF NOT EXISTS creative_formats (
+    format_id VARCHAR(50) PRIMARY KEY,
+    name VARCHAR(255) NOT NULL,
+    type VARCHAR(20) NOT NULL CHECK (type IN ('display', 'video', 'audio', 'native')),
+    description TEXT,
+    width INTEGER,
+    height INTEGER,
+    duration_seconds INTEGER,
+    max_file_size_kb INTEGER,
+    specs JSONB NOT NULL,
+    is_standard BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMP DEFAULT NOW()
 );
 
 CREATE TABLE IF NOT EXISTS products (

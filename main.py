@@ -1846,9 +1846,12 @@ def get_product_catalog() -> List[Product]:
         # Remove tenant_id as it's not in the Product schema
         product_data.pop('tenant_id', None)
         product_data['formats'] = json.loads(product_data['formats'])
-        product_data['targeting_template'] = json.loads(product_data['targeting_template'])
+        # Remove targeting_template - it's internal and shouldn't be exposed
+        product_data.pop('targeting_template', None)
         if product_data.get('price_guidance'):
             product_data['price_guidance'] = json.loads(product_data['price_guidance'])
+        if product_data.get('implementation_config'):
+            product_data['implementation_config'] = json.loads(product_data['implementation_config'])
         loaded_products.append(Product(**product_data))
     
     return loaded_products

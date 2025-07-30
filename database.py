@@ -143,7 +143,11 @@ def init_db():
                 "implementation_config": {
                     "placement_ids": ["news_300x250_atf", "news_300x250_btf"],
                     "ad_unit_path": "/1234/news/display",
-                    "key_values": {"section": "news", "tier": "premium"}
+                    "key_values": {"section": "news", "tier": "premium"},
+                    "targeting": {
+                        "content_cat_any_of": ["news", "politics"],
+                        "geo_country_any_of": ["US"]
+                    }
                 }
             },
             {
@@ -168,7 +172,10 @@ def init_db():
                 "implementation_config": {
                     "placement_ids": ["ros_728x90_all"],
                     "ad_unit_path": "/1234/run_of_site/leaderboard",
-                    "key_values": {"tier": "standard"}
+                    "key_values": {"tier": "standard"},
+                    "targeting": {
+                        "geo_country_any_of": ["US", "CA"]
+                    }
                 }
             }
             ]

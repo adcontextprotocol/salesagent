@@ -1,0 +1,121 @@
+{% extends "base.html" %}
+
+{% block title %}Add Product - AdCP Admin{% endblock %}
+
+{% block content %}
+<div class="card">
+    <h2>Add New Product</h2>
+    
+    {% if error %}
+    <div class="alert alert-error">{{ error }}</div>
+    {% endif %}
+    
+    <form method="POST">
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+            <div class="form-group">
+                <label for="name">Product Name *</label>
+                <input type="text" id="name" name="name" required placeholder="e.g., Homepage Premium Display">
+            </div>
+            
+            <div class="form-group">
+                <label for="product_id">Product ID</label>
+                <input type="text" id="product_id" name="product_id" placeholder="Auto-generated from name">
+                <small style="color: #666;">Leave blank to auto-generate</small>
+            </div>
+        </div>
+        
+        <div class="form-group">
+            <label for="description">Description</label>
+            <textarea id="description" name="description" rows="3" placeholder="Describe this product offering"></textarea>
+        </div>
+        
+        <h3 style="margin-top: 2rem;">Creative Formats</h3>
+        
+        <div class="form-group">
+            <label>Select supported formats:</label>
+            <div style="margin-top: 1rem;">
+                {% set format_types = formats|groupby('type') %}
+                {% for type, type_formats in format_types %}
+                <h4 style="margin-top: 1rem; text-transform: capitalize;">{{ type }}</h4>
+                <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 0.5rem;">
+                    {% for format in type_formats %}
+                    <label style="display: flex; align-items: center; gap: 0.5rem;">
+                        <input type="checkbox" name="formats" value="{{ format.format_id }}">
+                        <div>
+                            <strong>{{ format.name }}</strong>
+                            {% if format.dimensions %}
+                            <span style="color: #666;">({{ format.dimensions }})</span>
+                            {% elif format.duration %}
+                            <span style="color: #666;">({{ format.duration }})</span>
+                            {% endif %}
+                            {% if format.description %}
+                            <br><small style="color: #666;">{{ format.description }}</small>
+                            {% endif %}
+                        </div>
+                    </label>
+                    {% endfor %}
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+        
+        <h3 style="margin-top: 2rem;">Pricing & Delivery</h3>
+        
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+            <div class="form-group">
+                <label for="delivery_type">Delivery Type</label>
+                <select id="delivery_type" name="delivery_type">
+                    <option value="guaranteed">Guaranteed</option>
+                    <option value="non_guaranteed">Non-guaranteed</option>
+                </select>
+            </div>
+            
+            <div class="form-group">
+                <label for="cpm">CPM (Cost per 1000 impressions) *</label>
+                <input type="number" id="cpm" name="cpm" value="5.00" step="0.01" required>
+            </div>
+        </div>
+        
+        <h3 style="margin-top: 2rem;">Implementation Configuration</h3>
+        
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+            <div class="form-group">
+                <label for="placement_type">Placement Type</label>
+                <select id="placement_type" name="placement_type" onchange="updatePlacementFields()">
+                    <option value="run_of_network">Run of Network</option>
+                    <option value="specific_page">Specific Page</option>
+                    <option value="section">Section</option>
+                    <option value="custom">Custom</option>
+                </select>
+            </div>
+            
+            <div class="form-group">
+                <label for="ad_unit_path">Ad Unit Path</label>
+                <input type="text" id="ad_unit_path" name="ad_unit_path" placeholder="/network/product_id">
+                <small style="color: #666;">Ad server path for this product</small>
+            </div>
+        </div>
+        
+        <div id="specific_page_fields" style="display: none;">
+            <div class="form-group">
+                <label for="page_url">Page URL</label>
+                <input type="text" id="page_url" name="page_url" placeholder="/">
+                <small style="color: #666;">URL pattern for specific page placement</small>
+            </div>
+        </div>
+        
+        <div style="margin-top: 2rem;">
+            <button type="submit" class="btn">Create Product</button>
+            <a href="{{ url_for('list_products', tenant_id=tenant_id) }}" class="btn btn-secondary">Cancel</a>
+        </div>
+    </form>
+</div>
+
+<script>
+function updatePlacementFields() {
+    const placementType = document.getElementById('placement_type').value;
+    document.getElementById('specific_page_fields').style.display = 
+        placementType === 'specific_page' ? 'block' : 'none';
+}
+</script>
+{% endblock %}

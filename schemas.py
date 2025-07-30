@@ -128,7 +128,6 @@ class Product(BaseModel):
     name: str
     description: str
     formats: List[Format]
-    targeting_template: Targeting
     delivery_type: Literal["guaranteed", "non_guaranteed"]
     is_fixed_price: bool
     cpm: Optional[float] = None

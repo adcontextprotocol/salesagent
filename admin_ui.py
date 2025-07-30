@@ -831,6 +831,107 @@ def create_tenant():
                 admin_token
             ))
             
+            # Create first principal (advertiser)
+            if request.form.get('principal_name'):
+                principal_id = request.form.get('principal_id') or request.form['principal_name'].lower().replace(' ', '_')
+                principal_token = secrets.token_urlsafe(32)
+                
+                # Build platform mappings based on adapter
+                platform_mappings = {}
+                if adapter == 'google_ad_manager' and request.form.get('gam_company_id'):
+                    platform_mappings['google_ad_manager'] = {
+                        'advertiser_id': request.form.get('gam_company_id')
+                    }
+                
+                conn.execute("""
+                    INSERT INTO principals (
+                        tenant_id, principal_id, name,
+                        platform_mappings, access_token
+                    ) VALUES (?, ?, ?, ?, ?)
+                """, (
+                    tenant_id,
+                    principal_id,
+                    request.form['principal_name'],
+                    json.dumps(platform_mappings),
+                    principal_token
+                ))
+            
+            # Create initial products
+            selected_products = request.form.getlist('initial_products')
+            product_definitions = {
+                'ron_display': {
+                    'product_id': 'prod_ron_display',
+                    'name': 'Run of Network - Standard Display',
+                    'description': 'Standard display ads across all site pages',
+                    'formats': ['display_300x250', 'display_728x90', 'display_320x50'],
+                    'cpm': 5.0,
+                    'implementation_config': {
+                        'placement_type': 'run_of_network',
+                        'ad_unit_path': '/network/ron',
+                        'sizes': [[300, 250], [728, 90], [320, 50]]
+                    }
+                },
+                'ron_video': {
+                    'product_id': 'prod_ron_video',
+                    'name': 'Run of Network - Standard Video',
+                    'description': 'In-stream video ads across video content',
+                    'formats': ['video_instream_15s', 'video_instream_30s'],
+                    'cpm': 15.0,
+                    'implementation_config': {
+                        'placement_type': 'video_instream',
+                        'ad_unit_path': '/network/video',
+                        'video_position': 'preroll'
+                    }
+                },
+                'homepage_display': {
+                    'product_id': 'prod_homepage_premium',
+                    'name': 'Homepage - Premium Display',
+                    'description': 'Premium display placements on homepage',
+                    'formats': ['display_970x250', 'display_300x600'],
+                    'cpm': 20.0,
+                    'implementation_config': {
+                        'placement_type': 'specific_page',
+                        'ad_unit_path': '/network/homepage',
+                        'page_url': '/',
+                        'sizes': [[970, 250], [300, 600]]
+                    }
+                },
+                'mobile_interstitial': {
+                    'product_id': 'prod_mobile_interstitial',
+                    'name': 'Mobile Interstitial',
+                    'description': 'Full-screen mobile interstitial ads',
+                    'formats': ['display_320x480'],
+                    'cpm': 10.0,
+                    'implementation_config': {
+                        'placement_type': 'mobile_interstitial',
+                        'ad_unit_path': '/network/mobile/interstitial',
+                        'frequency_cap': '1/hour'
+                    }
+                }
+            }
+            
+            for product_key in selected_products:
+                if product_key in product_definitions:
+                    prod = product_definitions[product_key]
+                    conn.execute("""
+                        INSERT INTO products (
+                            tenant_id, product_id, name, description,
+                            formats, targeting_template, delivery_type,
+                            is_fixed_price, cpm, implementation_config
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """, (
+                        tenant_id,
+                        prod['product_id'],
+                        prod['name'],
+                        prod['description'],
+                        json.dumps(prod['formats']),
+                        json.dumps({}),  # Empty targeting template
+                        'guaranteed',
+                        True,
+                        prod['cpm'],
+                        json.dumps(prod.get('implementation_config', {}))
+                    ))
+            
             conn.connection.commit()
             conn.close()
             
@@ -1344,6 +1445,149 @@ def health():
 def send_static(path):
     """Serve static files."""
     return send_from_directory('static', path)
+
+# Product Management Routes
+@app.route('/tenant/<tenant_id>/products')
+@require_auth()
+def list_products(tenant_id):
+    """List products for a tenant."""
+    # Check access
+    if session.get('role') != 'super_admin' and session.get('tenant_id') != tenant_id:
+        return "Access denied", 403
+    
+    conn = get_db_connection()
+    
+    # Get tenant
+    cursor = conn.execute("SELECT name FROM tenants WHERE tenant_id = ?", (tenant_id,))
+    tenant_name = cursor.fetchone()[0]
+    
+    # Get products
+    cursor = conn.execute("""
+        SELECT product_id, name, description, formats, delivery_type, 
+               is_fixed_price, cpm, price_guidance, is_custom, expires_at
+        FROM products
+        WHERE tenant_id = ?
+        ORDER BY product_id
+    """, (tenant_id,))
+    
+    products = []
+    for row in cursor.fetchall():
+        products.append({
+            'product_id': row[0],
+            'name': row[1],
+            'description': row[2],
+            'formats': json.loads(row[3]) if row[3] else [],
+            'delivery_type': row[4],
+            'is_fixed_price': row[5],
+            'cpm': row[6],
+            'price_guidance': json.loads(row[7]) if row[7] else None,
+            'is_custom': row[8],
+            'expires_at': row[9]
+        })
+    
+    conn.close()
+    return render_template('products.html', 
+                         tenant_id=tenant_id, 
+                         tenant_name=tenant_name,
+                         products=products)
+
+@app.route('/tenant/<tenant_id>/products/add', methods=['GET', 'POST'])
+@require_auth()
+def add_product(tenant_id):
+    """Add a new product."""
+    # Check access
+    if session.get('role') != 'super_admin' and session.get('tenant_id') != tenant_id:
+        return "Access denied", 403
+    
+    conn = get_db_connection()
+    
+    if request.method == 'POST':
+        try:
+            # Get form data
+            product_id = request.form.get('product_id') or request.form['name'].lower().replace(' ', '_')
+            formats = request.form.getlist('formats')
+            
+            # Build implementation config based on adapter
+            cursor = conn.execute("SELECT config FROM tenants WHERE tenant_id = ?", (tenant_id,))
+            tenant_config = json.loads(cursor.fetchone()[0])
+            
+            implementation_config = {
+                'placement_type': request.form.get('placement_type', 'run_of_network'),
+                'ad_unit_path': request.form.get('ad_unit_path', f'/network/{product_id}')
+            }
+            
+            # Add specific fields based on placement type
+            if request.form.get('placement_type') == 'specific_page':
+                implementation_config['page_url'] = request.form.get('page_url', '/')
+            
+            # Insert product
+            conn.execute("""
+                INSERT INTO products (
+                    tenant_id, product_id, name, description,
+                    formats, targeting_template, delivery_type,
+                    is_fixed_price, cpm, price_guidance, implementation_config
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                tenant_id,
+                product_id,
+                request.form['name'],
+                request.form.get('description', ''),
+                json.dumps(formats),
+                json.dumps({}),  # Empty targeting template
+                request.form.get('delivery_type', 'guaranteed'),
+                True,  # Always fixed price for now
+                float(request.form.get('cpm', 5.0)),
+                json.dumps(None),  # No price guidance for fixed price
+                json.dumps(implementation_config)
+            ))
+            
+            conn.connection.commit()
+            conn.close()
+            
+            return redirect(url_for('list_products', tenant_id=tenant_id))
+            
+        except Exception as e:
+            conn.close()
+            # Get available formats
+            formats = get_creative_formats()
+            return render_template('add_product.html', 
+                                 tenant_id=tenant_id,
+                                 error=str(e),
+                                 formats=formats)
+    
+    # GET request - show form
+    conn.close()
+    formats = get_creative_formats()
+    return render_template('add_product.html', 
+                         tenant_id=tenant_id,
+                         formats=formats)
+
+def get_creative_formats():
+    """Get all creative formats from the database."""
+    conn = get_db_connection()
+    cursor = conn.execute("""
+        SELECT format_id, name, type, description, width, height, duration_seconds
+        FROM creative_formats
+        WHERE is_standard = 1
+        ORDER BY type, name
+    """)
+    
+    formats = []
+    for row in cursor.fetchall():
+        format_info = {
+            'format_id': row[0],
+            'name': row[1],
+            'type': row[2],
+            'description': row[3]
+        }
+        if row[4] and row[5]:  # width and height for display
+            format_info['dimensions'] = f"{row[4]}x{row[5]}"
+        elif row[6]:  # duration for video
+            format_info['duration'] = f"{row[6]}s"
+        formats.append(format_info)
+    
+    conn.close()
+    return formats
 
 if __name__ == '__main__':
     # Create templates directory

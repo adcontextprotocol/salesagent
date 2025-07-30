@@ -248,7 +248,13 @@ async def get_products(
     
     # Sort by relevance and return top products
     matched_products.sort(key=lambda x: x[0], reverse=True)
-    final_products = [p[1] for p in matched_products[:5]]
+    final_products = []
+    
+    # Remove targeting_template from products before returning
+    for score, product in matched_products[:5]:
+        product_copy = product.copy()
+        product_copy.pop('targeting_template', None)
+        final_products.append(product_copy)
     
     print(f"   ✅ Returning {len(final_products)} products with implementation details")
     

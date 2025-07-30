@@ -1,0 +1,80 @@
+{% extends "base.html" %}
+
+{% block title %}Products - {{ tenant_name }} - AdCP Admin{% endblock %}
+
+{% block content %}
+<div class="card">
+    <div style="display: flex; justify-content: space-between; align-items: center;">
+        <h2>Products - {{ tenant_name }}</h2>
+        <a href="{{ url_for('add_product', tenant_id=tenant_id) }}" class="btn">Add Product</a>
+    </div>
+    
+    <table>
+        <thead>
+            <tr>
+                <th>Product ID</th>
+                <th>Name</th>
+                <th>Description</th>
+                <th>Formats</th>
+                <th>Type</th>
+                <th>CPM</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for product in products %}
+            <tr>
+                <td><code>{{ product.product_id }}</code></td>
+                <td>{{ product.name }}</td>
+                <td>{{ product.description or '-' }}</td>
+                <td>
+                    {% for format in product.formats %}
+                    <span class="badge">{{ format }}</span>
+                    {% endfor %}
+                </td>
+                <td>
+                    {% if product.is_fixed_price %}
+                    <span class="badge">Fixed</span>
+                    {% else %}
+                    <span class="badge badge-secondary">Auction</span>
+                    {% endif %}
+                    {{ product.delivery_type }}
+                </td>
+                <td>
+                    {% if product.is_fixed_price %}
+                    ${{ "%.2f"|format(product.cpm) }}
+                    {% else %}
+                    {{ product.price_guidance or '-' }}
+                    {% endif %}
+                </td>
+                <td>
+                    <button class="btn btn-secondary btn-sm" disabled>Edit</button>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    
+    {% if not products %}
+    <p style="text-align: center; padding: 2rem; color: #666;">
+        No products found. <a href="{{ url_for('add_product', tenant_id=tenant_id) }}">Add your first product</a>
+    </p>
+    {% endif %}
+</div>
+
+<style>
+.badge {
+    display: inline-block;
+    padding: 0.25rem 0.5rem;
+    font-size: 0.8rem;
+    background: #e3f2fd;
+    color: #1976d2;
+    border-radius: 4px;
+    margin-right: 0.25rem;
+}
+.badge-secondary {
+    background: #f5f5f5;
+    color: #666;
+}
+</style>
+{% endblock %}

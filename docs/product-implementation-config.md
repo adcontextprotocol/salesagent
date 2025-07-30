@@ -19,7 +19,6 @@ class Product(BaseModel):
     name: str
     description: str
     formats: List[Format]
-    targeting_template: Targeting
     delivery_type: Literal["guaranteed", "non_guaranteed"]
     is_fixed_price: bool
     cpm: Optional[float] = None
@@ -31,6 +30,25 @@ class Product(BaseModel):
         description="Ad server-specific configuration"
     )
 ```
+
+## Targeting in Implementation Config
+
+The product's built-in targeting constraints (like geography or content categories) should be stored within `implementation_config` rather than exposed to advertisers. This keeps internal targeting rules separate from what advertisers can overlay with their own targeting.
+
+```json
+{
+  "implementation_config": {
+    "ad_server": "google_ad_manager",
+    "placement_ids": ["123456789"],
+    "targeting": {
+      "content_cat_any_of": ["news", "politics"],
+      "geo_country_any_of": ["US"]
+    }
+  }
+}
+```
+
+These targeting constraints are applied by the ad server adapter when creating the campaign, ensuring the product's intended audience is maintained.
 
 ## Examples
 
@@ -54,6 +72,9 @@ class Product(BaseModel):
     },
     "custom_targeting": {
       "product": "ros_display"
+    },
+    "targeting": {
+      "geo_country_any_of": ["US", "CA"]
     }
   }
 }

@@ -19,9 +19,6 @@ The publisher (e.g., Yahoo using Google Ad Manager) defines products with implem
         "specs": {"width": 300, "height": 250}
     }],
     "cpm": 2.50,
-    "targeting_template": {
-        "geo_country_any_of": ["US", "CA"]
-    },
     "implementation_config": {
         # GAM-specific configuration
         "placement_ids": ["123456789", "123456790"],
@@ -31,6 +28,9 @@ The publisher (e.g., Yahoo using Google Ad Manager) defines products with implem
         "frequency_caps": {
             "impressions": 10,
             "time_unit": "day"
+        },
+        "targeting": {
+            "geo_country_any_of": ["US", "CA"]
         }
     }
 }
