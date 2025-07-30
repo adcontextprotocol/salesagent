@@ -22,6 +22,7 @@ from config_loader import (
 )
 from db_config import get_db_connection
 from slack_notifier import get_slack_notifier
+from product_catalog_providers.factory import get_product_catalog_provider
 
 # --- Authentication ---
 
@@ -265,9 +266,29 @@ def _verify_principal(media_buy_id: str, context: Context):
 # --- MCP Tools (Full Implementation) ---
 
 @mcp.tool
-def list_products(req: ListProductsRequest, context: Context) -> ListProductsResponse:
-    _get_principal_id_from_context(context) # Authenticate
-    return ListProductsResponse(products=get_product_catalog())
+async def list_products(req: ListProductsRequest, context: Context) -> ListProductsResponse:
+    principal_id = _get_principal_id_from_context(context) # Authenticate
+    
+    # Get tenant information
+    tenant = get_current_tenant()
+    if not tenant:
+        raise ToolError("No tenant context available")
+    
+    # Get the product catalog provider for this tenant
+    provider = await get_product_catalog_provider(
+        tenant['tenant_id'],
+        tenant['config']
+    )
+    
+    # Query products using the brief
+    products = await provider.get_products(
+        brief=req.brief,
+        tenant_id=tenant['tenant_id'],
+        principal_id=principal_id,
+        context=None  # Could add additional context here if needed
+    )
+    
+    return ListProductsResponse(products=products)
 
 @mcp.tool
 def create_media_buy(req: CreateMediaBuyRequest, context: Context) -> CreateMediaBuyResponse:
