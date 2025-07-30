@@ -212,12 +212,27 @@ class Creative(BaseModel):
     metadata: Optional[Dict[str, Any]] = {}  # Platform-specific metadata
     created_at: datetime
     updated_at: datetime
+    # Macro information
+    has_macros: Optional[bool] = False
+    macro_validation: Optional[Dict[str, Any]] = None  # Validation result from creative_macros
+
+class CreativeAdaptation(BaseModel):
+    """Suggested adaptation or variant of a creative."""
+    adaptation_id: str
+    format_id: str
+    name: str
+    description: str
+    preview_url: Optional[str] = None
+    changes_summary: List[str] = Field(default_factory=list)
+    rationale: Optional[str] = None
+    estimated_performance_lift: Optional[float] = None  # Percentage improvement expected
 
 class CreativeStatus(BaseModel):
     creative_id: str
     status: Literal["pending_review", "approved", "rejected", "adaptation_required"]
     detail: str
     estimated_approval_time: Optional[datetime] = None
+    suggested_adaptations: List[CreativeAdaptation] = Field(default_factory=list)
 
 class CreativeAssignment(BaseModel):
     """Maps creatives to packages with distribution control."""
@@ -275,6 +290,7 @@ class CreateCreativeRequest(BaseModel):
 class CreateCreativeResponse(BaseModel):
     creative: Creative
     status: CreativeStatus
+    suggested_adaptations: List[CreativeAdaptation] = Field(default_factory=list)
 
 class AssignCreativeRequest(BaseModel):
     """Assign a creative from the library to a package."""
@@ -342,6 +358,9 @@ class CreateMediaBuyRequest(BaseModel):
     pacing: Literal["even", "asap", "daily_budget"] = "even"
     daily_budget: Optional[float] = None
     creatives: Optional[List[Creative]] = None
+    # AEE signal requirements
+    required_aee_signals: Optional[List[str]] = None  # Required targeting signals
+    enable_creative_macro: Optional[bool] = False  # Enable AEE to provide creative_macro signal
 
 class CreateMediaBuyResponse(BaseModel):
     media_buy_id: str
@@ -595,3 +614,41 @@ class MarkTaskCompleteRequest(BaseModel):
     task_id: str
     override_verification: bool = False  # Force complete even if verification fails
     completed_by: str
+
+# Targeting capabilities
+class GetTargetingCapabilitiesRequest(BaseModel):
+    """Query targeting capabilities for channels."""
+    channels: Optional[List[str]] = None  # If None, return all channels
+    include_aee_dimensions: bool = True
+
+class TargetingDimensionInfo(BaseModel):
+    """Information about a single targeting dimension."""
+    key: str
+    display_name: str
+    description: str
+    data_type: str
+    required: bool = False
+    values: Optional[List[str]] = None
+
+class ChannelTargetingCapabilities(BaseModel):
+    """Targeting capabilities for a specific channel."""
+    channel: str
+    overlay_dimensions: List[TargetingDimensionInfo]
+    aee_dimensions: Optional[List[TargetingDimensionInfo]] = None
+
+class GetTargetingCapabilitiesResponse(BaseModel):
+    """Response with targeting capabilities."""
+    capabilities: List[ChannelTargetingCapabilities]
+
+class CheckAEERequirementsRequest(BaseModel):
+    """Check if required AEE dimensions are supported."""
+    channel: str
+    required_dimensions: List[str]
+
+class CheckAEERequirementsResponse(BaseModel):
+    """Response for AEE requirements check."""
+    supported: bool
+    missing_dimensions: List[str]
+    available_dimensions: List[str]
+
+# Creative macro is now a simple string passed via AEE provided_signals
