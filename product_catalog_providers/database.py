@@ -20,7 +20,8 @@ class DatabaseProductCatalog(ProductCatalogProvider):
         brief: str,
         tenant_id: str,
         principal_id: Optional[str] = None,
-        context: Optional[Dict[str, Any]] = None
+        context: Optional[Dict[str, Any]] = None,
+        principal_data: Optional[Dict[str, Any]] = None
     ) -> List[Product]:
         """
         Get all products for the tenant from the database.

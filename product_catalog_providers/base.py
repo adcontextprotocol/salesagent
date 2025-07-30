@@ -31,7 +31,8 @@ class ProductCatalogProvider(ABC):
         brief: str,
         tenant_id: str,
         principal_id: Optional[str] = None,
-        context: Optional[Dict[str, Any]] = None
+        context: Optional[Dict[str, Any]] = None,
+        principal_data: Optional[Dict[str, Any]] = None
     ) -> List[Product]:
         """
         Get products that match the given brief.
@@ -41,6 +42,7 @@ class ProductCatalogProvider(ABC):
             tenant_id: Current tenant ID
             principal_id: Optional principal/advertiser ID for personalization
             context: Optional additional context (targeting, budget hints, etc.)
+            principal_data: Optional full principal object with ad server mappings
             
         Returns:
             List of Product objects that match the brief

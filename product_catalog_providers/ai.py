@@ -46,7 +46,8 @@ class AIProductCatalog(ProductCatalogProvider):
         brief: str,
         tenant_id: str,
         principal_id: Optional[str] = None,
-        context: Optional[Dict[str, Any]] = None
+        context: Optional[Dict[str, Any]] = None,
+        principal_data: Optional[Dict[str, Any]] = None
     ) -> List[Product]:
         """
         Use AI to match products to the brief.

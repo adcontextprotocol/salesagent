@@ -18,6 +18,7 @@ class MCPProductCatalog(ProductCatalogProvider):
     Configuration:
         upstream_url: URL of the upstream MCP server
         upstream_token: Optional authentication token
+        upstream_auth_header: Optional auth header name (default: "Authorization")
         tool_name: Name of the tool to call (default: "get_products")
         timeout: Request timeout in seconds (default: 30)
     """
@@ -26,6 +27,7 @@ class MCPProductCatalog(ProductCatalogProvider):
         super().__init__(config)
         self.upstream_url = config.get('upstream_url', 'http://localhost:9000/mcp/')
         self.upstream_token = config.get('upstream_token')
+        self.upstream_auth_header = config.get('upstream_auth_header', 'Authorization')
         self.tool_name = config.get('tool_name', 'get_products')
         self.timeout = config.get('timeout', 30)
         self.client = None
@@ -34,7 +36,7 @@ class MCPProductCatalog(ProductCatalogProvider):
         """Initialize the MCP client connection."""
         headers = {}
         if self.upstream_token:
-            headers['Authorization'] = f'Bearer {self.upstream_token}'
+            headers[self.upstream_auth_header] = self.upstream_token
         
         transport = StreamableHttpTransport(
             url=self.upstream_url,
@@ -53,13 +55,17 @@ class MCPProductCatalog(ProductCatalogProvider):
         brief: str,
         tenant_id: str,
         principal_id: Optional[str] = None,
-        context: Optional[Dict[str, Any]] = None
+        context: Optional[Dict[str, Any]] = None,
+        principal_data: Optional[Dict[str, Any]] = None
     ) -> List[Product]:
         """
         Query upstream MCP server for products matching the brief.
         
         The upstream server should expose a tool that accepts:
         - brief: The advertising brief
+        - tenant_id: The tenant making the request
+        - principal_id: The advertiser ID
+        - principal_data: Full principal object including ad server mappings
         - context: Optional context information
         
         And returns a list of products in the expected format.
@@ -75,6 +81,9 @@ class MCPProductCatalog(ProductCatalogProvider):
         
         if principal_id:
             request_data['principal_id'] = principal_id
+        
+        if principal_data:
+            request_data['principal_data'] = principal_data
         
         if context:
             request_data['context'] = context

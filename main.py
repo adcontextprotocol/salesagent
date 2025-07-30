@@ -274,6 +274,10 @@ async def list_products(req: ListProductsRequest, context: Context) -> ListProdu
     if not tenant:
         raise ToolError("No tenant context available")
     
+    # Get the Principal object with ad server mappings
+    principal = get_principal_object(principal_id) if principal_id else None
+    principal_data = principal.model_dump() if principal else None
+    
     # Get the product catalog provider for this tenant
     provider = await get_product_catalog_provider(
         tenant['tenant_id'],
@@ -285,6 +289,7 @@ async def list_products(req: ListProductsRequest, context: Context) -> ListProdu
         brief=req.brief,
         tenant_id=tenant['tenant_id'],
         principal_id=principal_id,
+        principal_data=principal_data,
         context=None  # Could add additional context here if needed
     )
     
