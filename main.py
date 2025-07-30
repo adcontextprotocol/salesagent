@@ -457,9 +457,11 @@ def check_creative_status(req: CheckCreativeStatusRequest, context: Context) -> 
     statuses = [creative_statuses.get(cid) for cid in req.creative_ids if cid in creative_statuses]
     return CheckCreativeStatusResponse(statuses=statuses)
 
+"""
+TODO: Fix schema - ApproveAdaptationRequest not defined
 @mcp.tool
 def approve_adaptation(req: ApproveAdaptationRequest, context: Context) -> ApproveAdaptationResponse:
-    """Approve a suggested creative adaptation."""
+    # Approve a suggested creative adaptation.
     principal_id = _get_principal_id_from_context(context)
     
     # Verify creative ownership
@@ -559,6 +561,7 @@ def approve_adaptation(req: ApproveAdaptationRequest, context: Context) -> Appro
         status=new_status,
         message=f"Adaptation approved and creative '{new_creative_id}' generated"
     )
+"""
 
 @mcp.tool
 def legacy_update_media_buy(req: LegacyUpdateMediaBuyRequest, context: Context):

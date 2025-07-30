@@ -214,7 +214,7 @@ def populate_creative_formats():
                 fmt.get("duration_seconds"),
                 fmt.get("max_file_size_kb"),
                 specs_json,
-                1  # is_standard (SQLite uses 1 for True)
+                True  # is_standard
             )
         )
         print(f"Added format: {fmt['name']} ({fmt['format_id']})")
