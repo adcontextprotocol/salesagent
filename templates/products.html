@@ -48,7 +48,12 @@
                     {% endif %}
                 </td>
                 <td>
-                    <button class="btn btn-secondary btn-sm" disabled>Edit</button>
+                    <div style="display: flex; gap: 0.5rem;">
+                        <a href="{{ url_for('edit_product_basic', tenant_id=tenant_id, product_id=product.product_id) }}" class="btn btn-secondary btn-sm">Edit</a>
+                        {% if adapter_ui_endpoint %}
+                        <a href="{{ adapter_ui_endpoint }}/{{ tenant_id }}/{{ product.product_id }}" class="btn btn-sm">Configure</a>
+                        {% endif %}
+                    </div>
                 </td>
             </tr>
             {% endfor %}

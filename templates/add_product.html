@@ -36,24 +36,28 @@
             <div style="margin-top: 1rem;">
                 {% set format_types = formats|groupby('type') %}
                 {% for type, type_formats in format_types %}
-                <h4 style="margin-top: 1rem; text-transform: capitalize;">{{ type }}</h4>
-                <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 0.5rem;">
-                    {% for format in type_formats %}
-                    <label style="display: flex; align-items: center; gap: 0.5rem;">
-                        <input type="checkbox" name="formats" value="{{ format.format_id }}">
-                        <div>
-                            <strong>{{ format.name }}</strong>
-                            {% if format.dimensions %}
-                            <span style="color: #666;">({{ format.dimensions }})</span>
-                            {% elif format.duration %}
-                            <span style="color: #666;">({{ format.duration }})</span>
-                            {% endif %}
-                            {% if format.description %}
-                            <br><small style="color: #666;">{{ format.description }}</small>
-                            {% endif %}
+                <div style="margin-bottom: 2rem;">
+                    <h4 style="margin-bottom: 1rem; text-transform: capitalize; color: #2c3e50; border-bottom: 1px solid #ddd; padding-bottom: 0.5rem;">{{ type }}</h4>
+                    <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem;">
+                        {% for format in type_formats %}
+                        <div style="border: 1px solid #e0e0e0; border-radius: 4px; padding: 0.75rem; background: #f9f9f9;">
+                            <label style="display: flex; align-items: flex-start; gap: 0.5rem; cursor: pointer;">
+                                <input type="checkbox" name="formats" value="{{ format.format_id }}" style="margin-top: 0.2rem;">
+                                <div style="flex: 1;">
+                                    <div style="font-weight: 600; color: #333;">{{ format.name }}</div>
+                                    {% if format.dimensions %}
+                                    <div style="color: #666; font-size: 0.9rem;">{{ format.dimensions }}</div>
+                                    {% elif format.duration %}
+                                    <div style="color: #666; font-size: 0.9rem;">{{ format.duration }}</div>
+                                    {% endif %}
+                                    {% if format.description %}
+                                    <div style="color: #777; font-size: 0.85rem; margin-top: 0.25rem;">{{ format.description }}</div>
+                                    {% endif %}
+                                </div>
+                            </label>
                         </div>
-                    </label>
-                    {% endfor %}
+                        {% endfor %}
+                    </div>
                 </div>
                 {% endfor %}
             </div>
@@ -70,10 +74,50 @@
                 </select>
             </div>
             
-            <div class="form-group">
+            <div class="form-group" id="cpm-group">
                 <label for="cpm">CPM (Cost per 1000 impressions) *</label>
-                <input type="number" id="cpm" name="cpm" value="5.00" step="0.01" required>
+                <input type="number" id="cpm" name="cpm" value="5.00" step="0.01">
             </div>
+            
+            <div class="form-group" id="price-guidance-group" style="display: none;">
+                <label for="price_guidance_min">Price Guidance (CPM Range)</label>
+                <div style="display: flex; gap: 10px; align-items: center;">
+                    <input type="number" id="price_guidance_min" name="price_guidance_min" placeholder="Min" step="0.01" style="flex: 1;">
+                    <span>-</span>
+                    <input type="number" id="price_guidance_max" name="price_guidance_max" placeholder="Max" step="0.01" style="flex: 1;">
+                </div>
+                <small style="color: #666;">Suggested CPM range for non-guaranteed inventory</small>
+            </div>
+        </div>
+        
+        <h3 style="margin-top: 2rem;">Geographic Targeting</h3>
+        
+        <div class="form-group">
+            <label for="countries">Target Countries</label>
+            <select id="countries" name="countries" multiple style="height: 120px; width: 100%;">
+                <option value="ALL" selected>All Countries</option>
+                <option value="US">United States</option>
+                <option value="CA">Canada</option>
+                <option value="GB">United Kingdom</option>
+                <option value="AU">Australia</option>
+                <option value="DE">Germany</option>
+                <option value="FR">France</option>
+                <option value="IT">Italy</option>
+                <option value="ES">Spain</option>
+                <option value="NL">Netherlands</option>
+                <option value="SE">Sweden</option>
+                <option value="CH">Switzerland</option>
+                <option value="JP">Japan</option>
+                <option value="CN">China</option>
+                <option value="IN">India</option>
+                <option value="BR">Brazil</option>
+                <option value="MX">Mexico</option>
+                <option value="ZA">South Africa</option>
+                <option value="SG">Singapore</option>
+                <option value="HK">Hong Kong</option>
+                <option value="NZ">New Zealand</option>
+            </select>
+            <small style="color: #666;">Hold Ctrl/Cmd to select multiple countries. Different pricing may apply per country.</small>
         </div>
         
         <h3 style="margin-top: 2rem;">Implementation Configuration</h3>
@@ -117,5 +161,51 @@ function updatePlacementFields() {
     document.getElementById('specific_page_fields').style.display = 
         placementType === 'specific_page' ? 'block' : 'none';
 }
+
+function updatePricingFields() {
+    const deliveryType = document.getElementById('delivery_type').value;
+    const cpmGroup = document.getElementById('cpm-group');
+    const priceGuidanceGroup = document.getElementById('price-guidance-group');
+    const cpmInput = document.getElementById('cpm');
+    
+    if (deliveryType === 'guaranteed') {
+        cpmGroup.style.display = 'block';
+        priceGuidanceGroup.style.display = 'none';
+        cpmInput.required = true;
+    } else {
+        cpmGroup.style.display = 'none';
+        priceGuidanceGroup.style.display = 'block';
+        cpmInput.required = false;
+    }
+}
+
+// Initialize on page load
+document.addEventListener('DOMContentLoaded', function() {
+    updatePricingFields();
+    
+    // Add event listener to delivery type dropdown
+    document.getElementById('delivery_type').addEventListener('change', updatePricingFields);
+    
+    // Handle country selection
+    const countriesSelect = document.getElementById('countries');
+    countriesSelect.addEventListener('change', function() {
+        const selectedOptions = Array.from(this.selectedOptions).map(opt => opt.value);
+        
+        // If "ALL" is selected, deselect all others
+        if (selectedOptions.includes('ALL') && selectedOptions.length > 1) {
+            // Clear all selections and just select ALL
+            Array.from(this.options).forEach(opt => opt.selected = false);
+            this.options[0].selected = true; // Select "All Countries"
+        }
+        // If specific countries are selected, deselect ALL
+        else if (!selectedOptions.includes('ALL') && selectedOptions.length > 0) {
+            this.options[0].selected = false; // Deselect "All Countries"
+        }
+        // If nothing is selected, select ALL by default
+        else if (selectedOptions.length === 0) {
+            this.options[0].selected = true; // Select "All Countries"
+        }
+    });
+});
 </script>
 {% endblock %}

@@ -15,6 +15,9 @@ from validation import FormValidator, validate_form_data, sanitize_form_data
 app = Flask(__name__)
 app.secret_key = os.environ.get('FLASK_SECRET_KEY', secrets.token_hex(32))
 
+# Import schemas after Flask app is created
+from schemas import Principal
+
 # Configure for being mounted at different paths
 class ProxyFix:
     def __init__(self, app):
@@ -1292,6 +1295,64 @@ def update_principal_mappings(tenant_id, principal_id):
         conn.close()
         return f"Error: {e}", 400
 
+@app.route('/tenant/<tenant_id>/adapter/<adapter_name>/inventory_schema', methods=['GET'])
+@require_auth()
+def get_adapter_inventory_schema(tenant_id, adapter_name):
+    """Get the inventory configuration schema for a specific adapter."""
+    # Check access
+    if session.get('role') != 'super_admin' and session.get('tenant_id') != tenant_id:
+        return jsonify({"error": "Access denied"}), 403
+    
+    try:
+        # Get tenant config to instantiate adapter
+        conn = get_db_connection()
+        cursor = conn.execute("SELECT config FROM tenants WHERE tenant_id = ?", (tenant_id,))
+        row = cursor.fetchone()
+        if not row:
+            return jsonify({"error": "Tenant not found"}), 404
+        
+        config_data = row[0]
+        # PostgreSQL returns JSONB as dict, SQLite returns string
+        tenant_config = config_data if isinstance(config_data, dict) else json.loads(config_data)
+        adapter_config = tenant_config.get('adapters', {}).get(adapter_name, {})
+        
+        if not adapter_config.get('enabled'):
+            return jsonify({"error": f"Adapter {adapter_name} is not enabled"}), 400
+        
+        # Create a dummy principal for schema retrieval
+        dummy_principal = Principal(
+            tenant_id=tenant_id,
+            principal_id="schema_query",
+            name="Schema Query",
+            access_token="",
+            platform_mappings={}
+        )
+        
+        # Import the adapter dynamically
+        if adapter_name == 'google_ad_manager':
+            from adapters.google_ad_manager import GoogleAdManager
+            adapter = GoogleAdManager(adapter_config, dummy_principal, dry_run=True, tenant_id=tenant_id)
+        elif adapter_name == 'mock':
+            from adapters.mock_ad_server import MockAdServer
+            adapter = MockAdServer(adapter_config, dummy_principal, dry_run=True, tenant_id=tenant_id)
+        elif adapter_name == 'kevel':
+            from adapters.kevel import KevelAdapter
+            adapter = KevelAdapter(adapter_config, dummy_principal, dry_run=True, tenant_id=tenant_id)
+        elif adapter_name == 'triton':
+            from adapters.triton_digital import TritonDigitalAdapter
+            adapter = TritonDigitalAdapter(adapter_config, dummy_principal, dry_run=True, tenant_id=tenant_id)
+        else:
+            return jsonify({"error": f"Unknown adapter: {adapter_name}"}), 400
+        
+        # Get the inventory schema
+        schema = adapter.get_inventory_config_schema()
+        
+        conn.close()
+        return jsonify(schema)
+        
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
 @app.route('/tenant/<tenant_id>/setup_adapter', methods=['POST'])
 @require_auth()
 def setup_adapter(tenant_id):
@@ -1457,9 +1518,37 @@ def list_products(tenant_id):
     
     conn = get_db_connection()
     
-    # Get tenant
-    cursor = conn.execute("SELECT name FROM tenants WHERE tenant_id = ?", (tenant_id,))
-    tenant_name = cursor.fetchone()[0]
+    # Get tenant and config
+    cursor = conn.execute("SELECT name, config FROM tenants WHERE tenant_id = ?", (tenant_id,))
+    row = cursor.fetchone()
+    tenant_name = row[0]
+    config_data = row[1]
+    # PostgreSQL returns JSONB as dict, SQLite returns string
+    tenant_config = config_data if isinstance(config_data, dict) else json.loads(config_data)
+    
+    # Get active adapter and its UI endpoint
+    adapter_ui_endpoint = None
+    adapters = tenant_config.get('adapters', {})
+    for adapter_name, config in adapters.items():
+        if config.get('enabled'):
+            # Create dummy principal to get UI endpoint
+            dummy_principal = Principal(
+                tenant_id=tenant_id,
+                principal_id="ui_query",
+                name="UI Query",
+                access_token="",
+                platform_mappings={}
+            )
+            
+            try:
+                if adapter_name == 'google_ad_manager':
+                    from adapters.google_ad_manager import GoogleAdManager
+                    adapter = GoogleAdManager(config, dummy_principal, dry_run=True, tenant_id=tenant_id)
+                    adapter_ui_endpoint = adapter.get_config_ui_endpoint()
+                # Add other adapters as needed
+            except:
+                pass
+            break
     
     # Get products
     cursor = conn.execute("""
@@ -1489,7 +1578,78 @@ def list_products(tenant_id):
     return render_template('products.html', 
                          tenant_id=tenant_id, 
                          tenant_name=tenant_name,
-                         products=products)
+                         products=products,
+                         adapter_ui_endpoint=adapter_ui_endpoint)
+
+@app.route('/tenant/<tenant_id>/products/<product_id>/edit', methods=['GET', 'POST'])
+@require_auth()
+def edit_product_basic(tenant_id, product_id):
+    """Edit basic product details."""
+    # Check access
+    if session.get('role') != 'super_admin' and session.get('tenant_id') != tenant_id:
+        return "Access denied", 403
+    
+    conn = get_db_connection()
+    
+    if request.method == 'POST':
+        try:
+            # Update product basic details
+            conn.execute("""
+                UPDATE products 
+                SET name = ?, description = ?, delivery_type = ?, is_fixed_price = ?, cpm = ?, price_guidance = ?
+                WHERE tenant_id = ? AND product_id = ?
+            """, (
+                request.form['name'],
+                request.form.get('description', ''),
+                request.form.get('delivery_type', 'guaranteed'),
+                request.form.get('delivery_type') == 'guaranteed',
+                float(request.form.get('cpm', 0)) if request.form.get('delivery_type') == 'guaranteed' else None,
+                json.dumps({
+                    'min_cpm': float(request.form.get('price_guidance_min', 0)),
+                    'max_cpm': float(request.form.get('price_guidance_max', 0))
+                }) if request.form.get('delivery_type') != 'guaranteed' else None,
+                tenant_id,
+                product_id
+            ))
+            
+            conn.connection.commit()
+            conn.close()
+            
+            return redirect(url_for('list_products', tenant_id=tenant_id))
+            
+        except Exception as e:
+            conn.close()
+            return render_template('edit_product.html', 
+                                 tenant_id=tenant_id,
+                                 product=None,
+                                 error=str(e))
+    
+    # GET request - load product
+    cursor = conn.execute(
+        "SELECT * FROM products WHERE tenant_id = ? AND product_id = ?",
+        (tenant_id, product_id)
+    )
+    product_row = cursor.fetchone()
+    
+    if not product_row:
+        conn.close()
+        return "Product not found", 404
+    
+    product = {
+        'product_id': product_row['product_id'],
+        'name': product_row['name'],
+        'description': product_row['description'],
+        'formats': json.loads(product_row['formats'] or '[]'),
+        'delivery_type': product_row['delivery_type'],
+        'is_fixed_price': product_row['is_fixed_price'],
+        'cpm': product_row['cpm'],
+        'price_guidance': json.loads(product_row['price_guidance'] or '{}')
+    }
+    
+    conn.close()
+    return render_template('edit_product.html', 
+                         tenant_id=tenant_id,
+                         product=product)
 
 @app.route('/tenant/<tenant_id>/products/add', methods=['GET', 'POST'])
 @require_auth()
@@ -1509,16 +1669,45 @@ def add_product(tenant_id):
             
             # Build implementation config based on adapter
             cursor = conn.execute("SELECT config FROM tenants WHERE tenant_id = ?", (tenant_id,))
-            tenant_config = json.loads(cursor.fetchone()[0])
+            config_data = cursor.fetchone()[0]
+            # PostgreSQL returns JSONB as dict, SQLite returns string
+            tenant_config = config_data if isinstance(config_data, dict) else json.loads(config_data)
+            
+            # Get selected countries
+            countries = request.form.getlist('countries')
+            # If "ALL" is selected or no countries selected, set to None (all countries)
+            if 'ALL' in countries or not countries:
+                countries = None
             
             implementation_config = {
                 'placement_type': request.form.get('placement_type', 'run_of_network'),
-                'ad_unit_path': request.form.get('ad_unit_path', f'/network/{product_id}')
+                'ad_unit_path': request.form.get('ad_unit_path', f'/network/{product_id}'),
+                'countries': countries
             }
             
             # Add specific fields based on placement type
             if request.form.get('placement_type') == 'specific_page':
                 implementation_config['page_url'] = request.form.get('page_url', '/')
+            
+            # Determine pricing based on delivery type
+            delivery_type = request.form.get('delivery_type', 'guaranteed')
+            is_fixed_price = delivery_type == 'guaranteed'
+            
+            # Handle CPM and price guidance
+            cpm = None
+            price_guidance = None
+            
+            if is_fixed_price:
+                cpm = float(request.form.get('cpm', 5.0))
+            else:
+                # Non-guaranteed: use price guidance
+                min_cpm = request.form.get('price_guidance_min')
+                max_cpm = request.form.get('price_guidance_max')
+                if min_cpm and max_cpm:
+                    price_guidance = {
+                        'min_cpm': float(min_cpm),
+                        'max_cpm': float(max_cpm)
+                    }
             
             # Insert product
             conn.execute("""
@@ -1534,10 +1723,10 @@ def add_product(tenant_id):
                 request.form.get('description', ''),
                 json.dumps(formats),
                 json.dumps({}),  # Empty targeting template
-                request.form.get('delivery_type', 'guaranteed'),
-                True,  # Always fixed price for now
-                float(request.form.get('cpm', 5.0)),
-                json.dumps(None),  # No price guidance for fixed price
+                delivery_type,
+                is_fixed_price,
+                cpm,
+                json.dumps(price_guidance),
                 json.dumps(implementation_config)
             ))
             
@@ -1568,7 +1757,7 @@ def get_creative_formats():
     cursor = conn.execute("""
         SELECT format_id, name, type, description, width, height, duration_seconds
         FROM creative_formats
-        WHERE is_standard = 1
+        WHERE is_standard = true
         ORDER BY type, name
     """)
     
@@ -1589,9 +1778,70 @@ def get_creative_formats():
     conn.close()
     return formats
 
+# Function to register adapter routes
+def register_adapter_routes():
+    """Register UI routes from all available adapters."""
+    try:
+        print("Starting adapter route registration...")
+        # Get all enabled adapters across all tenants
+        conn = get_db_connection()
+        cursor = conn.execute("SELECT DISTINCT config FROM tenants")
+        
+        registered_adapters = set()
+        for row in cursor.fetchall():
+            print(f"Processing row: {type(row)}")
+            # Handle both tuple (PostgreSQL) and Row object (SQLite)
+            config_data = row[0] if isinstance(row, tuple) else row['config']
+            print(f"Config data type: {type(config_data)}")
+            # PostgreSQL returns JSONB as dict, SQLite returns string
+            tenant_config = config_data if isinstance(config_data, dict) else json.loads(config_data)
+            print(f"Tenant config type: {type(tenant_config)}")
+            adapters_config = tenant_config.get('adapters', {})
+            
+            for adapter_name, adapter_config in adapters_config.items():
+                if adapter_config.get('enabled') and adapter_name not in registered_adapters:
+                    # Create a dummy principal for route registration
+                    dummy_principal = Principal(
+                        tenant_id="system",
+                        principal_id="route_registration",
+                        name="Route Registration",
+                        access_token="",
+                        platform_mappings={}
+                    )
+                    
+                    # Import and register adapter routes
+                    try:
+                        if adapter_name == 'google_ad_manager':
+                            print(f"Registering routes for {adapter_name}")
+                            print(f"Adapter config: {adapter_config}")
+                            from adapters.google_ad_manager import GoogleAdManager
+                            adapter = GoogleAdManager(adapter_config, dummy_principal, dry_run=True, tenant_id="system")
+                            adapter.register_ui_routes(app)
+                            registered_adapters.add(adapter_name)
+                        elif adapter_name == 'kevel':
+                            from adapters.kevel import KevelAdapter
+                            adapter = KevelAdapter(adapter_config, dummy_principal, dry_run=True)
+                            if hasattr(adapter, 'register_ui_routes'):
+                                adapter.register_ui_routes(app)
+                                registered_adapters.add(adapter_name)
+                        # Add other adapters as they implement UI routes
+                    except Exception as e:
+                        print(f"Warning: Failed to register routes for {adapter_name}: {e}")
+        
+        conn.close()
+        print(f"Registered UI routes for adapters: {', '.join(registered_adapters)}")
+        
+    except Exception as e:
+        import traceback
+        print(f"Warning: Failed to register adapter routes: {e}")
+        traceback.print_exc()
+
 if __name__ == '__main__':
     # Create templates directory
     os.makedirs('templates', exist_ok=True)
+    
+    # Register adapter routes
+    register_adapter_routes()
     
     if not GOOGLE_CLIENT_ID or not GOOGLE_CLIENT_SECRET:
         print("ERROR: Google OAuth credentials not found!")

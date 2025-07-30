@@ -31,6 +31,8 @@ The server provides:
 - Implementations for GAM, Kevel, Triton, and Mock
 - Each adapter handles its own API call logging in dry-run mode
 - Principal object encapsulates identity and adapter mappings
+- Adapters can provide custom configuration UIs via Flask routes
+- Adapter-specific validation and field definitions
 
 ### 3. FastMCP Integration
 - Uses FastMCP for the server framework
@@ -66,7 +68,16 @@ The server provides:
 
 ## Recent Major Changes
 
-### Operations Dashboard & Database Persistence (Latest)
+### Adapter-Specific Configuration UI System (Latest)
+- Each adapter can now provide its own configuration UI
+- Adapters implement `get_config_ui_endpoint()`, `register_ui_routes()`, and `validate_product_config()`
+- Google Ad Manager example with comprehensive UI at `/adapters/gam/config/<tenant_id>/<product_id>`
+- Separation of basic product settings from adapter-specific configuration
+- Dynamic pricing UI: CPM for guaranteed, price guidance for non-guaranteed
+- Country multi-select with price implications
+- Adapter-specific fields: ad unit paths, creative sizes, frequency caps, dayparting, etc.
+
+### Operations Dashboard & Database Persistence
 - Added comprehensive operations dashboard in Admin UI
 - Moved all operational data to database (media_buys, tasks, audit_logs tables)
 - Migrated audit logging from file-based to database-backed with redundancy
