@@ -1,8 +1,8 @@
-"""Initial schema
+"""Initial schema with creative formats
 
-Revision ID: 23993cb3563f
+Revision ID: e2213dba0c9f
 Revises: 
-Create Date: 2025-07-31 13:34:05.109432
+Create Date: 2025-07-31 15:35:34.918903
 
 """
 from typing import Sequence, Union
@@ -12,7 +12,7 @@ import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision: str = '23993cb3563f'
+revision: str = 'e2213dba0c9f'
 down_revision: Union[str, Sequence[str], None] = None
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
@@ -56,6 +56,8 @@ def upgrade() -> None:
                existing_nullable=True)
     op.drop_constraint(None, 'audit_logs', type_='foreignkey')
     op.create_foreign_key(None, 'audit_logs', 'tenants', ['tenant_id'], ['tenant_id'], ondelete='CASCADE')
+    op.add_column('creative_formats', sa.Column('tenant_id', sa.String(length=50), nullable=True))
+    op.add_column('creative_formats', sa.Column('source_url', sa.Text(), nullable=True))
     op.alter_column('creative_formats', 'format_id',
                existing_type=sa.TEXT(),
                type_=sa.String(length=50),
@@ -72,11 +74,16 @@ def upgrade() -> None:
                existing_type=sa.TEXT(),
                type_=sa.JSON(),
                existing_nullable=False)
+    op.alter_column('creative_formats', 'is_standard',
+               existing_type=sa.BOOLEAN(),
+               server_default=None,
+               existing_nullable=True)
     op.alter_column('creative_formats', 'created_at',
                existing_type=sa.TIMESTAMP(),
                type_=sa.DateTime(),
                existing_nullable=True,
                existing_server_default=sa.text('(CURRENT_TIMESTAMP)'))
+    op.create_foreign_key(None, 'creative_formats', 'tenants', ['tenant_id'], ['tenant_id'], ondelete='CASCADE')
     op.alter_column('media_buys', 'media_buy_id',
                existing_type=sa.TEXT(),
                type_=sa.String(length=100),
@@ -111,9 +118,9 @@ def upgrade() -> None:
                existing_nullable=True)
     op.alter_column('media_buys', 'status',
                existing_type=sa.TEXT(),
+               server_default=None,
                type_=sa.String(length=50),
-               existing_nullable=False,
-               existing_server_default=sa.text("'draft'"))
+               existing_nullable=False)
     op.alter_column('media_buys', 'created_at',
                existing_type=sa.TIMESTAMP(),
                type_=sa.DateTime(),
@@ -138,8 +145,8 @@ def upgrade() -> None:
                existing_nullable=False)
     op.drop_constraint(None, 'media_buys', type_='foreignkey')
     op.drop_constraint(None, 'media_buys', type_='foreignkey')
-    op.create_foreign_key(None, 'media_buys', 'tenants', ['tenant_id'], ['tenant_id'], ondelete='CASCADE')
     op.create_foreign_key(None, 'media_buys', 'principals', ['tenant_id', 'principal_id'], ['tenant_id', 'principal_id'], ondelete='CASCADE')
+    op.create_foreign_key(None, 'media_buys', 'tenants', ['tenant_id'], ['tenant_id'], ondelete='CASCADE')
     op.alter_column('principals', 'tenant_id',
                existing_type=sa.TEXT(),
                type_=sa.String(length=50),
@@ -201,6 +208,10 @@ def upgrade() -> None:
                existing_type=sa.TEXT(),
                type_=sa.JSON(),
                existing_nullable=True)
+    op.alter_column('products', 'is_custom',
+               existing_type=sa.BOOLEAN(),
+               server_default=None,
+               existing_nullable=True)
     op.alter_column('products', 'expires_at',
                existing_type=sa.TIMESTAMP(),
                type_=sa.DateTime(),
@@ -229,9 +240,9 @@ def upgrade() -> None:
                existing_nullable=False)
     op.alter_column('tasks', 'status',
                existing_type=sa.TEXT(),
+               server_default=None,
                type_=sa.String(length=50),
-               existing_nullable=False,
-               existing_server_default=sa.text("'pending'"))
+               existing_nullable=False)
     op.alter_column('tasks', 'assigned_to',
                existing_type=sa.TEXT(),
                type_=sa.String(length=255),
@@ -279,17 +290,23 @@ def upgrade() -> None:
                existing_nullable=False)
     op.alter_column('tenants', 'created_at',
                existing_type=sa.TIMESTAMP(),
+               server_default=sa.text('(CURRENT_TIMESTAMP)'),
                type_=sa.DateTime(),
                existing_nullable=False)
     op.alter_column('tenants', 'updated_at',
                existing_type=sa.TIMESTAMP(),
+               server_default=sa.text('(CURRENT_TIMESTAMP)'),
                type_=sa.DateTime(),
                existing_nullable=False)
+    op.alter_column('tenants', 'is_active',
+               existing_type=sa.BOOLEAN(),
+               server_default=None,
+               existing_nullable=True)
     op.alter_column('tenants', 'billing_plan',
                existing_type=sa.TEXT(),
+               server_default=None,
                type_=sa.String(length=50),
-               existing_nullable=True,
-               existing_server_default=sa.text("'standard'"))
+               existing_nullable=True)
     op.alter_column('tenants', 'billing_contact',
                existing_type=sa.TEXT(),
                type_=sa.String(length=255),
@@ -327,6 +344,10 @@ def upgrade() -> None:
                existing_type=sa.TIMESTAMP(),
                type_=sa.DateTime(),
                existing_nullable=True)
+    op.alter_column('users', 'is_active',
+               existing_type=sa.BOOLEAN(),
+               server_default=None,
+               existing_nullable=True)
     op.drop_constraint(None, 'users', type_='foreignkey')
     op.create_foreign_key(None, 'users', 'tenants', ['tenant_id'], ['tenant_id'], ondelete='CASCADE')
     # ### end Alembic commands ###
@@ -337,6 +358,10 @@ def downgrade() -> None:
     # ### commands auto generated by Alembic - please adjust! ###
     op.drop_constraint(None, 'users', type_='foreignkey')
     op.create_foreign_key(None, 'users', 'tenants', ['tenant_id'], ['tenant_id'])
+    op.alter_column('users', 'is_active',
+               existing_type=sa.BOOLEAN(),
+               server_default=sa.text('1'),
+               existing_nullable=True)
     op.alter_column('users', 'last_login',
                existing_type=sa.DateTime(),
                type_=sa.TIMESTAMP(),
@@ -376,15 +401,21 @@ def downgrade() -> None:
                existing_nullable=True)
     op.alter_column('tenants', 'billing_plan',
                existing_type=sa.String(length=50),
+               server_default=sa.text("'standard'"),
                type_=sa.TEXT(),
-               existing_nullable=True,
-               existing_server_default=sa.text("'standard'"))
+               existing_nullable=True)
+    op.alter_column('tenants', 'is_active',
+               existing_type=sa.BOOLEAN(),
+               server_default=sa.text('1'),
+               existing_nullable=True)
     op.alter_column('tenants', 'updated_at',
                existing_type=sa.DateTime(),
+               server_default=None,
                type_=sa.TIMESTAMP(),
                existing_nullable=False)
     op.alter_column('tenants', 'created_at',
                existing_type=sa.DateTime(),
+               server_default=None,
                type_=sa.TIMESTAMP(),
                existing_nullable=False)
     op.alter_column('tenants', 'config',
@@ -434,9 +465,9 @@ def downgrade() -> None:
                existing_nullable=True)
     op.alter_column('tasks', 'status',
                existing_type=sa.String(length=50),
+               server_default=sa.text("'pending'"),
                type_=sa.TEXT(),
-               existing_nullable=False,
-               existing_server_default=sa.text("'pending'"))
+               existing_nullable=False)
     op.alter_column('tasks', 'title',
                existing_type=sa.String(length=255),
                type_=sa.TEXT(),
@@ -462,6 +493,10 @@ def downgrade() -> None:
     op.alter_column('products', 'expires_at',
                existing_type=sa.DateTime(),
                type_=sa.TIMESTAMP(),
+               existing_nullable=True)
+    op.alter_column('products', 'is_custom',
+               existing_type=sa.BOOLEAN(),
+               server_default=sa.text('0'),
                existing_nullable=True)
     op.alter_column('products', 'price_guidance',
                existing_type=sa.JSON(),
@@ -552,9 +587,9 @@ def downgrade() -> None:
                existing_server_default=sa.text('(CURRENT_TIMESTAMP)'))
     op.alter_column('media_buys', 'status',
                existing_type=sa.String(length=50),
+               server_default=sa.text("'draft'"),
                type_=sa.TEXT(),
-               existing_nullable=False,
-               existing_server_default=sa.text("'draft'"))
+               existing_nullable=False)
     op.alter_column('media_buys', 'budget',
                existing_type=sa.DECIMAL(precision=15, scale=2),
                type_=sa.REAL(),
@@ -587,11 +622,16 @@ def downgrade() -> None:
                existing_type=sa.String(length=100),
                type_=sa.TEXT(),
                nullable=True)
+    op.drop_constraint(None, 'creative_formats', type_='foreignkey')
     op.alter_column('creative_formats', 'created_at',
                existing_type=sa.DateTime(),
                type_=sa.TIMESTAMP(),
                existing_nullable=True,
                existing_server_default=sa.text('(CURRENT_TIMESTAMP)'))
+    op.alter_column('creative_formats', 'is_standard',
+               existing_type=sa.BOOLEAN(),
+               server_default=sa.text('1'),
+               existing_nullable=True)
     op.alter_column('creative_formats', 'specs',
                existing_type=sa.JSON(),
                type_=sa.TEXT(),
@@ -608,6 +648,8 @@ def downgrade() -> None:
                existing_type=sa.String(length=50),
                type_=sa.TEXT(),
                nullable=True)
+    op.drop_column('creative_formats', 'source_url')
+    op.drop_column('creative_formats', 'tenant_id')
     op.drop_constraint(None, 'audit_logs', type_='foreignkey')
     op.create_foreign_key(None, 'audit_logs', 'tenants', ['tenant_id'], ['tenant_id'])
     op.alter_column('audit_logs', 'details',

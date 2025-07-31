@@ -41,6 +41,7 @@ class CreativeFormat(Base):
     __tablename__ = 'creative_formats'
     
     format_id = Column(String(50), primary_key=True)
+    tenant_id = Column(String(50), ForeignKey('tenants.tenant_id', ondelete='CASCADE'), nullable=True)
     name = Column(String(255), nullable=False)
     type = Column(String(20), nullable=False)
     description = Column(Text)
@@ -50,7 +51,11 @@ class CreativeFormat(Base):
     max_file_size_kb = Column(Integer)
     specs = Column(JSON, nullable=False)  # JSONB in PostgreSQL
     is_standard = Column(Boolean, default=True)
+    source_url = Column(Text)
     created_at = Column(DateTime, server_default=func.now())
+    
+    # Relationships
+    tenant = relationship("Tenant", backref="creative_formats")
     
     __table_args__ = (
         CheckConstraint("type IN ('display', 'video', 'audio', 'native')"),
