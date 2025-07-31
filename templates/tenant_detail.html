@@ -108,6 +108,7 @@
     <div class="tab" data-tab="users">Users</div>
     <div class="tab" data-tab="principals">Principals</div>
     <div class="tab" data-tab="products">Products</div>
+    <div class="tab" data-tab="formats">Creative Formats</div>
     <div class="tab" data-tab="integrations">Integrations</div>
     <div class="tab" data-tab="tokens">API Tokens</div>
     <a href="/tenant/{{ tenant.tenant_id }}/operations" class="tab" style="text-decoration: none; color: inherit;">Operations →</a>
@@ -546,6 +547,16 @@
         <p>Define the advertising products available for purchase through the Sales Agent.</p>
         <div style="text-align: center; padding: 40px;">
             <a href="/tenant/{{ tenant.tenant_id }}/products" class="btn">Manage Products</a>
+        </div>
+    </div>
+</div>
+
+<div id="formats" class="tab-content">
+    <div class="card">
+        <h3>Creative Formats</h3>
+        <p>Manage standard and custom creative formats for your advertising products. Use AI to discover formats from URLs or create custom specifications.</p>
+        <div style="text-align: center; padding: 40px;">
+            <a href="/tenant/{{ tenant.tenant_id }}/creative-formats" class="btn">Manage Creative Formats</a>
         </div>
     </div>
 </div>

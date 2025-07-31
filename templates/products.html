@@ -8,7 +8,8 @@
         <h2>Products - {{ tenant_name }}</h2>
         <div style="display: flex; gap: 0.5rem;">
             <a href="{{ url_for('tenant_detail', tenant_id=tenant_id) }}" class="btn btn-secondary">← Back to Home</a>
-            <a href="{{ url_for('add_product', tenant_id=tenant_id) }}" class="btn">Add Product</a>
+            <a href="{{ url_for('add_product_ai_form', tenant_id=tenant_id) }}" class="btn btn-primary">Add with AI</a>
+            <a href="{{ url_for('add_product', tenant_id=tenant_id) }}" class="btn btn-secondary">Add Manually</a>
         </div>
     </div>
     
