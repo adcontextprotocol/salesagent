@@ -64,7 +64,7 @@ services:
       # Optional: Google OAuth credentials via environment
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
       GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
-      GOOGLE_OAUTH_CREDENTIALS_FILE: ${GOOGLE_OAUTH_CREDENTIALS_FILE:-/app/client_secret.json}
+      GOOGLE_OAUTH_CREDENTIALS_FILE: ${GOOGLE_OAUTH_CREDENTIALS_FILE:-}
     
     depends_on:
       postgres:
@@ -75,7 +75,7 @@ services:
     
     volumes:
       # Mount OAuth credentials file
-      - ./client_secret_1002878641006-1balq5ha6fq3fq58bsho78gst2da4e6u.apps.googleusercontent.com.json:/app/client_secret.json:ro
+      # - ./client_secret.json:/app/client_secret.json:ro
       - ./audit_logs:/app/audit_logs
 
 volumes:
