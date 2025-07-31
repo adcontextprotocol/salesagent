@@ -17,6 +17,7 @@ import google.generativeai as genai
 import os
 from urllib.parse import urlparse
 import re
+from pathlib import Path
 
 from db_config import get_db_connection
 
@@ -49,7 +50,8 @@ class AICreativeFormatService:
             raise ValueError("GEMINI_API_KEY environment variable is required")
         
         genai.configure(api_key=api_key)
-        self.model = genai.GenerativeModel('gemini-2.0-flash')
+        # Upgrade to Gemini 2.5 Flash for better performance
+        self.model = genai.GenerativeModel('gemini-2.5-flash')
         
         # Initialize foundational formats manager if available
         try:
@@ -58,6 +60,30 @@ class AICreativeFormatService:
         except ImportError:
             logger.info("Foundational formats not available")
             self.formats_manager = None
+        
+        # Load parsing examples for few-shot learning
+        self.parsing_examples = self._load_parsing_examples()
+    
+    def _load_parsing_examples(self) -> Dict[str, Any]:
+        """Load parsing examples from test directory for few-shot learning."""
+        examples = {}
+        examples_dir = Path(__file__).parent / "creative_format_parsing_examples"
+        
+        if examples_dir.exists():
+            for publisher_dir in examples_dir.iterdir():
+                if publisher_dir.is_dir() and not publisher_dir.name.startswith('.'):
+                    expected_dir = publisher_dir / "expected_output"
+                    if expected_dir.exists():
+                        for json_file in expected_dir.glob("*.json"):
+                            try:
+                                with open(json_file, 'r') as f:
+                                    data = json.load(f)
+                                    examples[f"{publisher_dir.name}_{json_file.stem}"] = data
+                            except Exception as e:
+                                logger.warning(f"Failed to load example {json_file}: {e}")
+        
+        logger.info(f"Loaded {len(examples)} parsing examples for few-shot learning")
+        return examples
         
     async def fetch_standard_formats(self) -> List[FormatSpecification]:
         """Fetch standard formats from adcontextprotocol.org."""
@@ -142,47 +168,149 @@ class AICreativeFormatService:
             )
         ]
     
+    def _extract_structured_data(self, html: str) -> Dict[str, Any]:
+        """Extract structured data from HTML for better parsing."""
+        soup = BeautifulSoup(html, 'html.parser')
+        
+        structured_data = {
+            'tables': [],
+            'lists': [],
+            'headings': [],
+            'spec_sections': []
+        }
+        
+        # Extract tables (often contain specifications)
+        for table in soup.find_all('table'):
+            table_data = []
+            for row in table.find_all('tr'):
+                cells = [cell.get_text(strip=True) for cell in row.find_all(['td', 'th'])]
+                if cells:
+                    table_data.append(cells)
+            if table_data:
+                structured_data['tables'].append(table_data)
+        
+        # Extract specification lists
+        for ul in soup.find_all('ul'):
+            text = ul.get_text().lower()
+            if any(keyword in text for keyword in ['dimension', 'size', 'format', 'spec', 'pixel', 'resolution']):
+                items = [li.get_text(strip=True) for li in ul.find_all('li')]
+                structured_data['lists'].append(items)
+        
+        # Extract headings with their content
+        for heading in soup.find_all(['h1', 'h2', 'h3', 'h4']):
+            heading_text = heading.get_text(strip=True)
+            if any(keyword in heading_text.lower() for keyword in 
+                   ['format', 'spec', 'dimension', 'requirement', 'size', 'video', 'image']):
+                # Get the next few siblings
+                content = []
+                sibling = heading.find_next_sibling()
+                count = 0
+                while sibling and count < 5 and sibling.name not in ['h1', 'h2', 'h3', 'h4']:
+                    content.append(sibling.get_text(strip=True))
+                    sibling = sibling.find_next_sibling()
+                    count += 1
+                
+                structured_data['headings'].append({
+                    'title': heading_text,
+                    'content': ' '.join(content)
+                })
+        
+        return structured_data
+    
+    def _prepare_examples_for_prompt(self) -> str:
+        """Prepare few-shot examples for the prompt."""
+        if not self.parsing_examples:
+            return ""
+        
+        examples_text = []
+        # Use up to 2 examples for few-shot learning
+        for key, data in list(self.parsing_examples.items())[:2]:
+            if 'formats' in data and data['formats']:
+                publisher = key.split('_')[0]
+                examples_text.append(f"\nExample from {publisher}:")
+                # Show first format as example
+                examples_text.append(json.dumps(data['formats'][0], indent=2))
+        
+        return '\n'.join(examples_text)
+    
+    def _get_publisher_hints(self, source_url: str) -> str:
+        """Get publisher-specific parsing hints based on URL."""
+        hints = []
+        url_lower = source_url.lower()
+        
+        if 'yahoo' in url_lower:
+            hints.append("- Yahoo uses 'E2E' (Edge-to-Edge) for immersive full-viewport formats")
+            hints.append("- Yahoo E2E Lighthouse formats extend foundation_immersive_canvas")
+            hints.append("- Look for mobile-specific dimensions like 720x1280 (9:16 ratio)")
+        elif 'nytimes' in url_lower or 'nyt' in url_lower:
+            hints.append("- NYTimes 'Slideshow' formats are carousels with multiple images")
+            hints.append("- NYTimes Slideshow Flex XL extends foundation_product_showcase_carousel")
+            hints.append("- Look for split-screen layouts and image counts (3-5)")
+        elif 'google' in url_lower:
+            hints.append("- Google formats often include AMP specifications")
+            hints.append("- Look for responsive design requirements")
+        
+        if hints:
+            return "Publisher-specific hints:\n" + '\n'.join(hints)
+        return ""
+    
     async def discover_formats_from_html(self, html: str, source_url: str = "") -> List[FormatSpecification]:
         """Discover creative format specifications from HTML content."""
         formats = []
         
         try:
-            # Extract relevant content from HTML to reduce prompt size
-            soup = BeautifulSoup(html, 'html.parser')
+            # Extract structured data for better parsing
+            structured_data = self._extract_structured_data(html)
             
-            # Remove script and style elements
-            for script in soup(["script", "style"]):
-                script.decompose()
+            # Build content for AI processing
+            content_parts = []
             
-            # Extract text content, focusing on relevant sections
-            relevant_text = ""
+            # Add tables (often contain specifications)
+            if structured_data['tables']:
+                content_parts.append("=== SPECIFICATION TABLES ===")
+                for i, table in enumerate(structured_data['tables'][:3]):  # Limit to first 3 tables
+                    content_parts.append(f"Table {i+1}:")
+                    for row in table[:10]:  # Limit rows
+                        content_parts.append(" | ".join(row))
             
-            # Look for sections that might contain format specifications
-            for tag in soup.find_all(['table', 'div', 'section'], limit=20):
-                text = tag.get_text()
-                # Only include content that seems relevant to ad formats
-                if any(keyword in text.lower() for keyword in 
-                       ['format', 'size', 'dimension', 'spec', 'ad', 'banner', 'video', 'creative', 'width', 'height']):
-                    relevant_text += text[:500] + "\n"
+            # Add relevant lists
+            if structured_data['lists']:
+                content_parts.append("\n=== SPECIFICATION LISTS ===")
+                for i, list_items in enumerate(structured_data['lists'][:3]):
+                    content_parts.append(f"List {i+1}:")
+                    for item in list_items[:5]:
+                        content_parts.append(f"- {item}")
             
-            # Fallback to first part of body text if no relevant sections found
-            if not relevant_text.strip():
-                body = soup.find('body')
-                if body:
-                    relevant_text = body.get_text()[:3000]
-                else:
-                    relevant_text = soup.get_text()[:3000]
+            # Add headings with content
+            if structured_data['headings']:
+                content_parts.append("\n=== RELEVANT SECTIONS ===")
+                for heading in structured_data['headings'][:5]:
+                    content_parts.append(f"{heading['title']}:")
+                    content_parts.append(heading['content'][:300])
             
-            # Limit to 3000 chars to avoid token limits
-            content_for_ai = relevant_text[:3000]
+            # Fallback: extract text if no structured data found
+            if not content_parts:
+                soup = BeautifulSoup(html, 'html.parser')
+                for script in soup(["script", "style"]):
+                    script.decompose()
+                
+                # Look for relevant sections
+                for tag in soup.find_all(['table', 'div', 'section'], limit=20):
+                    text = tag.get_text()
+                    if any(keyword in text.lower() for keyword in 
+                           ['format', 'size', 'dimension', 'spec', 'ad', 'banner', 'video', 'creative']):
+                        content_parts.append(text[:500])
+            
+            # Increase limit to 5000 chars for better context
+            content_for_ai = "\n".join(content_parts)[:5000]
                     
             # Use AI to extract format information
             foundational_info = ""
             if self.formats_manager:
                 foundational_info = """
             For each format, also determine if it extends one of these foundational formats:
-            - foundation_immersive_canvas: Premium responsive format for full viewport experiences
-            - foundation_product_showcase_carousel: Interactive display with 3-10 products/images
+            - foundation_immersive_canvas: Premium responsive format for full viewport experiences (edge-to-edge, immersive)
+            - foundation_product_showcase_carousel: Interactive display with 3-10 products/images (carousel, slideshow)
             - foundation_expandable_display: Banner with expandable canvas
             - foundation_scroll_triggered_experience: Mobile-first scroll reveal format
             - foundation_universal_video: Standard video specifications
@@ -190,19 +318,35 @@ class AICreativeFormatService:
             If the format extends a foundational format, include: "extends": "foundation_format_id"
             """
             
+            # Get few-shot examples
+            examples_text = self._prepare_examples_for_prompt()
+            
+            # Get publisher-specific hints
+            publisher_hints = self._get_publisher_hints(source_url)
+            
             prompt = f"""
-            Analyze this content from a creative specification page and extract all creative format specifications.
+            Analyze this structured content from a creative specification page and extract all creative format specifications.
+            
+            {publisher_hints}
+            
+            {examples_text}
+            
             Look for:
             - Ad format names and types (display, video, native, audio)
             - Dimensions (width x height) for display ads
             - Duration limits for video/audio
             - File size limits
             - Accepted file formats (jpg, png, gif, mp4, etc.)
+            - Mobile vs desktop specifications
+            - Interactive features (expandable, carousel, scroll-triggered)
             
             URL: {source_url}
-            Content:
+            
+            Structured Content:
             {content_for_ai}
+            
             {foundational_info}
+            
             Return a JSON array of format objects with these fields:
             - name: format name (required)
             - type: "display", "video", "audio", or "native" (required)
@@ -212,7 +356,13 @@ class AICreativeFormatService:
             - height: pixel height (for display formats)
             - duration_seconds: max duration in seconds (for video/audio)
             - max_file_size_kb: max file size in KB
-            - specs: object with additional specifications
+            - specs: object with additional specifications like file_types, features, requirements
+            
+            Important: 
+            - Extract ALL formats found on the page
+            - Include mobile-specific formats (9:16 ratio like 720x1280)
+            - Detect carousel/slideshow features and map to foundation_product_showcase_carousel
+            - Detect immersive/edge-to-edge formats and map to foundation_immersive_canvas
             
             Return ONLY valid JSON array, no explanation or markdown.
             """
