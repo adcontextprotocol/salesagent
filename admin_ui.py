@@ -2084,6 +2084,7 @@ def discover_formats_from_url(tenant_id):
                 "duration_seconds": fmt.duration_seconds,
                 "max_file_size_kb": fmt.max_file_size_kb,
                 "specs": fmt.specs or {},
+                "extends": fmt.extends,  # Include the extends field
                 "source_url": fmt.source_url
             })
         
@@ -2132,8 +2133,8 @@ def save_discovered_formats(tenant_id):
                 INSERT INTO creative_formats (
                     format_id, tenant_id, name, type, description,
                     width, height, duration_seconds, max_file_size_kb,
-                    specs, is_standard, source_url
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    specs, is_standard, source_url, extends
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
                 format_id,
                 tenant_id,  # Custom formats belong to the tenant
@@ -2146,7 +2147,8 @@ def save_discovered_formats(tenant_id):
                 format_data.get('max_file_size_kb'),
                 json.dumps(format_data.get('specs', {})),
                 False,  # Custom formats are not standard
-                format_data.get('source_url')
+                format_data.get('source_url'),
+                format_data.get('extends')  # Include the extends field
             ))
             saved_count += 1
         
