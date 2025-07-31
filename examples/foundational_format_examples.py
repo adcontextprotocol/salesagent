@@ -95,10 +95,10 @@ def create_yahoo_extensions(manager: FoundationalFormatsManager):
     
     print("\n=== Creating Yahoo Extensions ===")
     
-    # 1. Extend Scroll-Triggered Experience for E2E Lighthouse
+    # 1. Extend Immersive Canvas for E2E Lighthouse
     e2e_lighthouse = manager.create_extension(
         format_id="yahoo_e2e_lighthouse",
-        extends="foundation_scroll_triggered_experience",
+        extends="foundation_immersive_canvas",
         name="Yahoo E2E Lighthouse",
         modifications={
             "dimensions": {
