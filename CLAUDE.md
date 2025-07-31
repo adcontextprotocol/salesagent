@@ -68,7 +68,15 @@ The server provides:
 
 ## Recent Major Changes
 
-### Product Management & Adapter Configuration Improvements (Latest)
+### Database Migrations Support (Latest)
+- **Alembic Integration**: Added Alembic for database schema version control
+- **Automatic Migrations**: Migrations run automatically on server startup
+- **Multi-Database Support**: Works with both SQLite and PostgreSQL
+- **Migration Commands**: `python migrate.py` for running migrations
+- **Docker Integration**: `entrypoint.sh` runs migrations before starting server
+- **Documentation**: See `docs/database-migrations.md` for detailed guide
+
+### Product Management & Adapter Configuration Improvements
 - **Clean Separation of Concerns**: 
   - Basic product fields (name, pricing, countries) in main product form
   - Adapter-specific configuration moved to dedicated UIs
@@ -258,8 +266,11 @@ docker-compose up -d
 
 ### Running Standalone (Development Only)
 ```bash
-# Initialize database
-python database.py
+# Run database migrations
+python migrate.py
+
+# Initialize default data (if needed)
+python init_database.py
 
 # Start MCP server and Admin UI
 python run_server.py

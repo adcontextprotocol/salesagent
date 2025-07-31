@@ -64,7 +64,7 @@ class GoogleAdManager(AdServerAdapter):
             )
         except FileNotFoundError:
             print(f"Error: Service account key file not found at '{self.key_file}'.")
-            print("Please ensure the path in your config.json is correct.")
+            print("Please ensure the path in your tenant configuration is correct.")
             raise
         except Exception as e:
             print(f"Error initializing GAM client: {e}")

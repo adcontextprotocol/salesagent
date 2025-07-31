@@ -116,7 +116,7 @@ async def test_auto_approval(server_url: str):
         
         # Show configuration tip
         console.print("\n[yellow]Configuration Tip:[/yellow]")
-        console.print("To enable auto-approval for specific formats, update config.json:")
+        console.print("To enable auto-approval for specific formats, update tenant config in database:")
         console.print(json.dumps({
             "creative_engine": {
                 "adapter": "mock_creative_engine",
@@ -137,7 +137,7 @@ async def main():
     console.print("This test demonstrates format-based auto-approval.\n")
     
     # Show current configuration
-    console.print("[dim]Current config.json should include:[/dim]")
+    console.print("[dim]Current tenant config should include:[/dim]")
     console.print(json.dumps({
         "creative_engine": {
             "adapter": "mock_creative_engine",
