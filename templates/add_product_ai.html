@@ -33,20 +33,6 @@
                 <small style="color: #666;">Private notes to help AI understand technical requirements</small>
             </div>
             
-            <h3>Custom Creative Formats</h3>
-            
-            <div class="form-group">
-                <label for="creative_urls">Creative Format URLs</label>
-                <div id="creative-urls-container">
-                    <div class="url-input-group" style="display: flex; gap: 10px; margin-bottom: 10px;">
-                        <input type="url" name="creative_urls[]" placeholder="https://example.com/creative-specs" style="flex: 1;">
-                        <button type="button" class="btn btn-secondary" onclick="removeUrlField(this)">Remove</button>
-                    </div>
-                </div>
-                <button type="button" class="btn btn-secondary" onclick="addUrlField()">Add URL</button>
-                <small style="color: #666;">Add URLs to creative specification pages. AI will extract format requirements automatically.</small>
-            </div>
-            
             <div style="margin-top: 2rem;">
                 <button type="submit" class="btn btn-primary">Analyze with AI</button>
                 <a href="{{ url_for('list_products', tenant_id=tenant_id) }}" class="btn btn-secondary">Cancel</a>
@@ -146,21 +132,6 @@
 </style>
 
 <script>
-function addUrlField() {
-    const container = document.getElementById('creative-urls-container');
-    const newField = document.createElement('div');
-    newField.className = 'url-input-group';
-    newField.innerHTML = `
-        <input type="url" name="creative_urls[]" placeholder="https://example.com/creative-specs" style="flex: 1;">
-        <button type="button" class="btn btn-secondary" onclick="removeUrlField(this)">Remove</button>
-    `;
-    container.appendChild(newField);
-}
-
-function removeUrlField(button) {
-    button.parentElement.remove();
-}
-
 function resetToDescriptionForm() {
     document.getElementById('ai-form').style.display = 'block';
     document.getElementById('ai-results').style.display = 'none';
@@ -220,8 +191,7 @@ document.getElementById('product-description-form').addEventListener('submit', a
     const data = {
         name: formData.get('name'),
         external_description: formData.get('external_description'),
-        internal_details: formData.get('internal_details'),
-        creative_urls: formData.getAll('creative_urls[]').filter(url => url.trim() !== '')
+        internal_details: formData.get('internal_details')
     };
     
     try {

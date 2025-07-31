@@ -1822,8 +1822,7 @@ def analyze_product_ai(tenant_id):
             tenant_id=tenant_id,
             name=data['name'],
             external_description=data['external_description'],
-            internal_details=data.get('internal_details'),
-            creative_urls=data.get('creative_urls', [])
+            internal_details=data.get('internal_details')
         ))
         
         return jsonify({"success": True, "config": config})
@@ -1857,6 +1856,196 @@ def get_creative_formats():
     
     conn.close()
     return formats
+
+# Creative Format Management Routes
+@app.route('/tenant/<tenant_id>/creative-formats')
+@require_auth()
+def list_creative_formats(tenant_id):
+    """List creative formats (both standard and custom)."""
+    # Check access
+    if session.get('role') != 'super_admin' and session.get('tenant_id') != tenant_id:
+        return "Access denied", 403
+    
+    conn = get_db_connection()
+    
+    # Get tenant name
+    cursor = conn.execute("SELECT name FROM tenants WHERE tenant_id = ?", (tenant_id,))
+    tenant_row = cursor.fetchone()
+    if not tenant_row:
+        conn.close()
+        return "Tenant not found", 404
+    
+    tenant_name = tenant_row[0]
+    
+    # Get all formats (standard + custom for this tenant)
+    cursor = conn.execute("""
+        SELECT format_id, name, type, description, width, height, 
+               duration_seconds, is_standard, source_url, created_at
+        FROM creative_formats
+        WHERE tenant_id IS NULL OR tenant_id = ?
+        ORDER BY is_standard DESC, type, name
+    """, (tenant_id,))
+    
+    formats = []
+    for row in cursor.fetchall():
+        format_info = {
+            'format_id': row[0],
+            'name': row[1],
+            'type': row[2],
+            'description': row[3],
+            'is_standard': row[7],
+            'source_url': row[8],
+            'created_at': row[9]
+        }
+        
+        # Add dimensions or duration
+        if row[4] and row[5]:  # width and height
+            format_info['dimensions'] = f"{row[4]}x{row[5]}"
+        elif row[6]:  # duration
+            format_info['duration'] = f"{row[6]}s"
+            
+        formats.append(format_info)
+    
+    conn.close()
+    
+    return render_template('creative_formats.html',
+                         tenant_id=tenant_id,
+                         tenant_name=tenant_name,
+                         formats=formats)
+
+@app.route('/tenant/<tenant_id>/creative-formats/add/ai', methods=['GET'])
+@require_auth()
+def add_creative_format_ai(tenant_id):
+    """Show AI-assisted creative format discovery form."""
+    # Check access
+    if session.get('role') != 'super_admin' and session.get('tenant_id') != tenant_id:
+        return "Access denied", 403
+    
+    return render_template('add_creative_format_ai.html', tenant_id=tenant_id)
+
+@app.route('/tenant/<tenant_id>/creative-formats/analyze', methods=['POST'])
+@require_auth()
+def analyze_creative_format(tenant_id):
+    """Analyze creative format with AI."""
+    # Check access
+    if session.get('role') != 'super_admin' and session.get('tenant_id') != tenant_id:
+        return jsonify({"error": "Access denied"}), 403
+    
+    try:
+        import asyncio
+        from ai_creative_format_service import discover_creative_format
+        
+        data = request.get_json()
+        
+        # Run the async function
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        
+        format_data = loop.run_until_complete(discover_creative_format(
+            tenant_id=tenant_id,
+            name=data['name'],
+            description=data.get('description'),
+            url=data.get('url'),
+            type_hint=data.get('type_hint')
+        ))
+        
+        return jsonify({"success": True, "format": format_data})
+        
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/tenant/<tenant_id>/creative-formats/save', methods=['POST'])
+@require_auth()
+def save_creative_format(tenant_id):
+    """Save a creative format to the database."""
+    # Check access
+    if session.get('role') != 'super_admin' and session.get('tenant_id') != tenant_id:
+        return jsonify({"error": "Access denied"}), 403
+    
+    try:
+        data = request.get_json()
+        format_data = data['format']
+        
+        conn = get_db_connection()
+        
+        # Check if format ID already exists
+        cursor = conn.execute(
+            "SELECT format_id FROM creative_formats WHERE format_id = ?",
+            (format_data['format_id'],)
+        )
+        
+        if cursor.fetchone():
+            # Update existing
+            conn.execute("""
+                UPDATE creative_formats
+                SET name = ?, type = ?, description = ?, width = ?, height = ?,
+                    duration_seconds = ?, max_file_size_kb = ?, specs = ?,
+                    source_url = ?
+                WHERE format_id = ?
+            """, (
+                format_data['name'],
+                format_data['type'],
+                format_data['description'],
+                format_data.get('width'),
+                format_data.get('height'),
+                format_data.get('duration_seconds'),
+                format_data.get('max_file_size_kb'),
+                format_data.get('specs', '{}'),
+                format_data.get('source_url'),
+                format_data['format_id']
+            ))
+        else:
+            # Insert new
+            conn.execute("""
+                INSERT INTO creative_formats (
+                    format_id, tenant_id, name, type, description,
+                    width, height, duration_seconds, max_file_size_kb,
+                    specs, is_standard, source_url
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                format_data['format_id'],
+                format_data.get('tenant_id'),
+                format_data['name'],
+                format_data['type'],
+                format_data['description'],
+                format_data.get('width'),
+                format_data.get('height'),
+                format_data.get('duration_seconds'),
+                format_data.get('max_file_size_kb'),
+                format_data.get('specs', '{}'),
+                format_data.get('is_standard', False),
+                format_data.get('source_url')
+            ))
+        
+        conn.connection.commit()
+        conn.close()
+        
+        return jsonify({"success": True})
+        
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/tenant/<tenant_id>/creative-formats/sync-standard', methods=['POST'])
+@require_auth()
+def sync_standard_formats(tenant_id):
+    """Sync standard formats from adcontextprotocol.org."""
+    # Super admin only
+    if session.get('role') != 'super_admin':
+        return jsonify({"error": "Access denied"}), 403
+    
+    try:
+        import asyncio
+        from ai_creative_format_service import sync_standard_formats as sync_formats
+        
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        
+        count = loop.run_until_complete(sync_formats())
+        
+        return jsonify({"success": True, "count": count})
+        
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 # Function to register adapter routes
 def register_adapter_routes():

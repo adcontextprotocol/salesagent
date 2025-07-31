@@ -1,0 +1,242 @@
+{% extends "base.html" %}
+
+{% block title %}Creative Formats - {{ tenant_name }} - AdCP Admin{% endblock %}
+
+{% block content %}
+<div class="card">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+        <h2>Creative Formats - {{ tenant_name }}</h2>
+        <div style="display: flex; gap: 0.5rem;">
+            <a href="{{ url_for('tenant_detail', tenant_id=tenant_id) }}" class="btn btn-secondary">← Back to Home</a>
+            {% if session.role == 'super_admin' %}
+            <button onclick="syncStandardFormats()" class="btn btn-secondary">Sync Standard Formats</button>
+            {% endif %}
+            <a href="{{ url_for('add_creative_format_ai', tenant_id=tenant_id) }}" class="btn btn-primary">Add with AI</a>
+        </div>
+    </div>
+    
+    <div class="alert alert-info">
+        <strong>Creative Formats:</strong> Define the creative specifications that your products support. Standard formats are maintained by AdContext Protocol and custom formats are specific to your organization.
+    </div>
+    
+    <!-- Standard Formats Section -->
+    <h3 style="margin-top: 2rem;">Standard Formats</h3>
+    <p style="color: #666; margin-bottom: 1rem;">Industry-standard formats from AdContext Protocol</p>
+    
+    <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 1rem;">
+        {% for format in formats if format.is_standard %}
+        <div class="format-card">
+            <div class="format-header">
+                <span class="format-type format-type-{{ format.type }}">{{ format.type|upper }}</span>
+                {% if format.dimensions %}
+                <span class="format-dimensions">{{ format.dimensions }}</span>
+                {% elif format.duration %}
+                <span class="format-duration">{{ format.duration }}</span>
+                {% endif %}
+            </div>
+            <h4>{{ format.name }}</h4>
+            <p class="format-id">ID: {{ format.format_id }}</p>
+            {% if format.description %}
+            <p class="format-description">{{ format.description }}</p>
+            {% endif %}
+            {% if format.source_url %}
+            <div class="format-source">
+                <a href="{{ format.source_url }}" target="_blank" style="font-size: 0.85em; color: #666;">View source →</a>
+            </div>
+            {% endif %}
+        </div>
+        {% endfor %}
+    </div>
+    
+    <!-- Custom Formats Section -->
+    <h3 style="margin-top: 3rem;">Custom Formats</h3>
+    <p style="color: #666; margin-bottom: 1rem;">Organization-specific creative formats</p>
+    
+    {% set custom_formats = formats|selectattr('is_standard', 'equalto', false)|list %}
+    {% if custom_formats %}
+    <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 1rem;">
+        {% for format in custom_formats %}
+        <div class="format-card custom-format">
+            <div class="format-header">
+                <span class="format-type format-type-{{ format.type }}">{{ format.type|upper }}</span>
+                {% if format.dimensions %}
+                <span class="format-dimensions">{{ format.dimensions }}</span>
+                {% elif format.duration %}
+                <span class="format-duration">{{ format.duration }}</span>
+                {% endif %}
+            </div>
+            <h4>{{ format.name }}</h4>
+            <p class="format-id">ID: {{ format.format_id }}</p>
+            {% if format.description %}
+            <p class="format-description">{{ format.description }}</p>
+            {% endif %}
+            {% if format.source_url %}
+            <div class="format-source">
+                <a href="{{ format.source_url }}" target="_blank" style="font-size: 0.85em; color: #666;">View source →</a>
+            </div>
+            {% endif %}
+            <div class="format-actions">
+                <button onclick="editFormat('{{ format.format_id }}')" class="btn btn-small btn-secondary">Edit</button>
+                <button onclick="deleteFormat('{{ format.format_id }}')" class="btn btn-small btn-danger">Delete</button>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    {% else %}
+    <div style="text-align: center; padding: 2rem; background: #f9f9f9; border-radius: 4px;">
+        <p style="color: #666;">No custom formats defined yet.</p>
+        <a href="{{ url_for('add_creative_format_ai', tenant_id=tenant_id) }}" class="btn">Create Your First Custom Format</a>
+    </div>
+    {% endif %}
+</div>
+
+<style>
+.format-card {
+    background: white;
+    border: 1px solid #e0e0e0;
+    border-radius: 8px;
+    padding: 1.5rem;
+    transition: box-shadow 0.2s;
+}
+
+.format-card:hover {
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.custom-format {
+    border-color: #3498db;
+}
+
+.format-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 0.75rem;
+}
+
+.format-type {
+    display: inline-block;
+    padding: 0.25rem 0.75rem;
+    border-radius: 12px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: uppercase;
+}
+
+.format-type-display {
+    background: #e3f2fd;
+    color: #1976d2;
+}
+
+.format-type-video {
+    background: #f3e5f5;
+    color: #7b1fa2;
+}
+
+.format-type-audio {
+    background: #e8f5e9;
+    color: #388e3c;
+}
+
+.format-type-native {
+    background: #fff3e0;
+    color: #f57c00;
+}
+
+.format-dimensions,
+.format-duration {
+    font-size: 0.9rem;
+    color: #666;
+    font-weight: 500;
+}
+
+.format-card h4 {
+    margin: 0 0 0.5rem 0;
+    color: #2c3e50;
+}
+
+.format-id {
+    font-size: 0.85rem;
+    color: #666;
+    font-family: monospace;
+    margin: 0.25rem 0;
+}
+
+.format-description {
+    font-size: 0.9rem;
+    color: #555;
+    line-height: 1.4;
+    margin: 0.75rem 0;
+}
+
+.format-source {
+    margin-top: 0.75rem;
+    padding-top: 0.75rem;
+    border-top: 1px solid #eee;
+}
+
+.format-actions {
+    margin-top: 1rem;
+    padding-top: 1rem;
+    border-top: 1px solid #eee;
+    display: flex;
+    gap: 0.5rem;
+}
+
+.btn-small {
+    padding: 0.25rem 0.75rem;
+    font-size: 0.85rem;
+}
+
+.btn-danger {
+    background: #e74c3c;
+    color: white;
+}
+
+.btn-danger:hover {
+    background: #c0392b;
+}
+</style>
+
+<script>
+async function syncStandardFormats() {
+    if (!confirm('This will sync standard formats from adcontextprotocol.org. Continue?')) {
+        return;
+    }
+    
+    try {
+        const response = await fetch(`{{ url_for('sync_standard_formats', tenant_id=tenant_id) }}`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            }
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            alert(`Successfully synced ${result.count} standard formats.`);
+            location.reload();
+        } else {
+            alert('Error: ' + (result.error || 'Failed to sync formats'));
+        }
+    } catch (error) {
+        alert('Error: ' + error.message);
+    }
+}
+
+function editFormat(formatId) {
+    // TODO: Implement edit functionality
+    alert('Edit functionality coming soon for format: ' + formatId);
+}
+
+function deleteFormat(formatId) {
+    if (!confirm('Are you sure you want to delete this custom format?')) {
+        return;
+    }
+    
+    // TODO: Implement delete functionality
+    alert('Delete functionality coming soon for format: ' + formatId);
+}
+</script>
+{% endblock %}
