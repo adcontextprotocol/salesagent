@@ -42,6 +42,41 @@ uv run python migrate.py
 uv run python init_database.py
 ```
 
+### Environment Configuration
+
+Create a `.env` file in your project root with the following variables:
+
+```bash
+# API Keys (required)
+GEMINI_API_KEY=your-gemini-api-key-here
+
+# OAuth Configuration (choose one method)
+# Method 1: Environment variables (recommended)
+GOOGLE_CLIENT_ID=your-client-id.apps.googleusercontent.com
+GOOGLE_CLIENT_SECRET=your-client-secret
+
+# Method 2: File path (legacy - not recommended)
+# GOOGLE_OAUTH_CREDENTIALS_FILE=/path/to/client_secret.json
+
+# Admin Configuration
+SUPER_ADMIN_EMAILS=admin1@example.com,admin2@example.com
+SUPER_ADMIN_DOMAINS=example.com,company.com
+
+# Port Configuration (defaults shown)
+POSTGRES_PORT=5432
+ADCP_SALES_PORT=8080
+ADMIN_UI_PORT=8001
+
+# Database URL (for Docker deployments)
+DATABASE_URL=postgresql://adcp_user:secure_password_change_me@postgres:5432/adcp
+```
+
+**Important Notes:**
+- OAuth credentials should be set as environment variables, not mounted files
+- Each Conductor workspace automatically gets unique ports
+- Slack webhooks are configured per-tenant in the Admin UI
+- See `.env.example` for a complete template
+
 ### Database Configuration
 
 By default, the server uses SQLite with data stored in `~/.adcp/adcp.db` for persistence.
@@ -380,14 +415,19 @@ For detailed deployment instructions, see [FLY_DEPLOYMENT.md](FLY_DEPLOYMENT.md)
 Complete Docker Compose setup with PostgreSQL and Admin UI:
 
 ```bash
-# Quick start with Docker Compose
+# 1. Create .env file with required configuration (see Environment Configuration above)
+cp .env.example .env
+# Edit .env with your API keys and OAuth credentials
+
+# 2. Start services with Docker Compose
 docker-compose up -d
 
 # Services available at:
 # - MCP Server: http://localhost:8080/mcp/
 # - Admin UI: http://localhost:8001 (Google OAuth)
 # - PostgreSQL: localhost:5432
-# Note: Database migrations run automatically on startup
+
+# Note: Database migrations run automatically on startup via entrypoint.sh
 
 # View logs
 docker-compose logs -f

@@ -13,9 +13,9 @@ Run the setup script from within a Conductor workspace:
 The script automatically:
 - Detects the Conductor workspace using environment variables
 - Assigns unique ports based on the workspace name
-- Copies required files from the root workspace
-- Configures the `.env` file with appropriate settings
-- Updates `docker-compose.yml` defaults
+- Creates a `.env` file with environment-based configuration
+- Creates a `docker-compose.override.yml` for development hot-reloading
+- DOES NOT modify `docker-compose.yml` (uses environment variables instead)
 
 ## How It Works
 
@@ -37,6 +37,23 @@ ADCP_SALES_PORT=8104    # Base: 8080 + workspace number
 ADMIN_UI_PORT=8025      # Base: 8001 + workspace number
 ```
 
+## Environment Variables
+
+The setup script reads from your shell environment. Set these before running:
+
+```bash
+# Required
+export GEMINI_API_KEY="your-api-key"
+
+# OAuth (recommended method)
+export GOOGLE_CLIENT_ID="your-client-id.apps.googleusercontent.com"
+export GOOGLE_CLIENT_SECRET="your-client-secret"
+
+# Admin configuration
+export SUPER_ADMIN_EMAILS="admin@example.com"
+export SUPER_ADMIN_DOMAINS="example.com"
+```
+
 ## After Setup
 
 Start the services:
@@ -44,6 +61,11 @@ Start the services:
 docker-compose build
 docker-compose up -d
 ```
+
+**Note**: The `docker-compose.override.yml` enables development features:
+- Hot reloading for code changes
+- Volume mounts that preserve the container's `.venv`
+- Flask debug mode for the Admin UI
 
 ## Verification
 
@@ -76,8 +98,10 @@ If you encounter issues:
    lsof -i :PORT_NUMBER
    ```
 
-2. **Missing Files**: Ensure you have the required files in the root workspace:
-   - `.env` file with GEMINI_API_KEY
-   - OAuth credentials (`client_secret*.json`)
+2. **Missing Environment Variables**: Ensure you have set:
+   - `GEMINI_API_KEY` in your shell environment
+   - `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` (or a client_secret*.json file)
 
-3. **Database Issues**: The script includes checks for common database.py indentation problems and will warn if fixes are needed
+3. **Database Issues**: Database migrations run automatically via `entrypoint.sh`
+
+4. **Git Worktree Warning**: Conductor workspaces use git worktrees. Changes here affect the main repository when merged. DO NOT delete core files like Alembic migrations or entrypoint.sh
