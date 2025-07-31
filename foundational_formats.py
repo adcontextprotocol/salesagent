@@ -52,7 +52,30 @@ class ExtendedFormat:
             extended["specs"]["dimensions"] = self.modifications["dimensions"]
             
         if "additional_specs" in self.modifications:
-            extended["specs"].update(self.modifications["additional_specs"])
+            # Filter out incorrect field names for carousel formats
+            additional = self.modifications["additional_specs"].copy()
+            
+            # Map incorrect field names to correct ones
+            if self.extends == "foundation_product_showcase_carousel":
+                # Replace image_count with min/max_products
+                if "image_count" in additional:
+                    count_str = str(additional.pop("image_count"))
+                    if "-" in count_str:
+                        min_val, max_val = count_str.split("-")
+                        additional["min_products"] = int(min_val)
+                        additional["max_products"] = int(max_val)
+                    else:
+                        additional["max_products"] = int(count_str)
+                
+                # Replace carousel_images with min/max_products
+                if "carousel_images" in additional:
+                    count_str = str(additional.pop("carousel_images"))
+                    if "-" in count_str:
+                        min_val, max_val = count_str.split("-")
+                        additional["min_products"] = int(min_val)
+                        additional["max_products"] = int(max_val)
+            
+            extended["specs"].update(additional)
             
         if "restrictions" in self.modifications:
             # Remove or limit features
@@ -236,7 +259,13 @@ if __name__ == "__main__":
                 "mobile": {"width": 800, "height": 1400}
             },
             "additional_specs": {
-                "image_count": "3-5",
+                "min_products": 3,
+                "max_products": 5,
+                "product_image_size": {
+                    "desktop": {"width": 600, "height": 600},
+                    "tablet": {"width": 600, "height": 600},
+                    "mobile": {"width": 600, "height": 600}
+                },
                 "headlines_per_slide": True,
                 "character_limits": {
                     "headline": 100,
