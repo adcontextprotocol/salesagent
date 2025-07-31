@@ -1,22 +1,31 @@
 #!/bin/bash
 # setup_conductor_workspace.sh - Automated setup for Conductor workspaces
 
-# Check if workspace number is provided
-if [ -z "$1" ]; then
-    echo "Usage: $0 <workspace_number>"
-    echo "Example: $0 3"
+# Check if Conductor environment variables are set
+if [ -z "$CONDUCTOR_WORKSPACE_NAME" ]; then
+    echo "Error: This script should be run within a Conductor workspace"
+    echo "CONDUCTOR_WORKSPACE_NAME is not set"
     exit 1
 fi
 
-WORKSPACE_NUM=$1
-BASE_DIR="../.."
+echo "Setting up Conductor workspace: $CONDUCTOR_WORKSPACE_NAME"
+echo "Workspace path: $CONDUCTOR_WORKSPACE_PATH"
+echo "Root path: $CONDUCTOR_ROOT_PATH"
+
+# Derive a workspace number from the workspace name
+# This creates a hash of the workspace name and uses it to generate a consistent number
+WORKSPACE_HASH=$(echo -n "$CONDUCTOR_WORKSPACE_NAME" | cksum | cut -f1 -d' ')
+WORKSPACE_NUM=$((($WORKSPACE_HASH % 100) + 1))
+
+BASE_DIR="$CONDUCTOR_ROOT_PATH"
 
 # Calculate ports based on workspace number
 POSTGRES_PORT=$((5432 + $WORKSPACE_NUM))
 ADCP_PORT=$((8080 + $WORKSPACE_NUM))
 ADMIN_PORT=$((8001 + $WORKSPACE_NUM))
 
-echo "Setting up Conductor workspace $WORKSPACE_NUM with ports:"
+echo "Derived workspace number: $WORKSPACE_NUM (from name hash)"
+echo "Using ports:"
 echo "  PostgreSQL: $POSTGRES_PORT"
 echo "  MCP Server: $ADCP_PORT"
 echo "  Admin UI: $ADMIN_PORT"
@@ -56,7 +65,7 @@ fi
 
 # Update .env with unique ports
 echo "" >> .env
-echo "# Server Ports (unique for Conductor workspace $WORKSPACE_NUM)" >> .env
+echo "# Server Ports (unique for Conductor workspace: $CONDUCTOR_WORKSPACE_NAME)" >> .env
 echo "POSTGRES_PORT=$POSTGRES_PORT" >> .env
 echo "ADCP_SALES_PORT=$ADCP_PORT" >> .env
 echo "ADMIN_UI_PORT=$ADMIN_PORT" >> .env
