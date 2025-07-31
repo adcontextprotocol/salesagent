@@ -4,9 +4,12 @@
 
 {% block content %}
 <div class="card">
-    <div style="display: flex; justify-content: space-between; align-items: center;">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
         <h2>Products - {{ tenant_name }}</h2>
-        <a href="{{ url_for('add_product', tenant_id=tenant_id) }}" class="btn">Add Product</a>
+        <div style="display: flex; gap: 0.5rem;">
+            <a href="{{ url_for('tenant_detail', tenant_id=tenant_id) }}" class="btn btn-secondary">← Back to Home</a>
+            <a href="{{ url_for('add_product', tenant_id=tenant_id) }}" class="btn">Add Product</a>
+        </div>
     </div>
     
     <table>
@@ -16,6 +19,7 @@
                 <th>Name</th>
                 <th>Description</th>
                 <th>Formats</th>
+                <th>Countries</th>
                 <th>Type</th>
                 <th>CPM</th>
                 <th>Actions</th>
@@ -33,18 +37,33 @@
                     {% endfor %}
                 </td>
                 <td>
-                    {% if product.is_fixed_price %}
-                    <span class="badge">Fixed</span>
+                    {% if product.countries %}
+                        {% for country in product.countries[:3] %}
+                        <span class="badge">{{ country }}</span>
+                        {% endfor %}
+                        {% if product.countries|length > 3 %}
+                        <span class="badge badge-secondary">+{{ product.countries|length - 3 }}</span>
+                        {% endif %}
                     {% else %}
-                    <span class="badge badge-secondary">Auction</span>
+                        <span class="badge">All</span>
                     {% endif %}
-                    {{ product.delivery_type }}
+                </td>
+                <td>
+                    {% if product.is_fixed_price %}
+                    <span class="badge">Guaranteed</span>
+                    {% else %}
+                    <span class="badge badge-secondary">Non-guaranteed</span>
+                    {% endif %}
                 </td>
                 <td>
                     {% if product.is_fixed_price %}
                     ${{ "%.2f"|format(product.cpm) }}
                     {% else %}
-                    {{ product.price_guidance or '-' }}
+                        {% if product.price_guidance %}
+                        ${{ "%.2f"|format(product.price_guidance.min_cpm) }} - ${{ "%.2f"|format(product.price_guidance.max_cpm) }}
+                        {% else %}
+                        -
+                        {% endif %}
                     {% endif %}
                 </td>
                 <td>
