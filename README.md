@@ -16,6 +16,7 @@ This project is a Python-based reference implementation of the Advertising Conte
 - **Admin UI**: Secure web-based interface with Google OAuth authentication for tenant management
 - **Operations Dashboard**: Real-time monitoring of media buys, tasks, and audit trails
 - **Database Persistence**: All operations logged to database with full audit trail
+- **Database Migrations**: Automated schema management with Alembic for consistent updates
 - **Dry-Run Mode**: Preview exact API calls without executing them
 - **Production Ready**: PostgreSQL support, Docker deployment, and health monitoring
 
@@ -31,11 +32,14 @@ This project is a Python-based reference implementation of the Advertising Conte
 # Install uv if not already installed
 pip install uv
 
-# Install dependencies (with PostgreSQL support)
-uv sync --extra postgresql
+# Install dependencies
+uv sync
 
-# Initialize database
-uv run python database.py
+# Run database migrations (creates/updates schema)
+uv run python migrate.py
+
+# Initialize default data (optional)
+uv run python init_database.py
 ```
 
 ### Database Configuration
@@ -383,6 +387,7 @@ docker-compose up -d
 # - MCP Server: http://localhost:8080/mcp/
 # - Admin UI: http://localhost:8001 (Google OAuth)
 # - PostgreSQL: localhost:5432
+# Note: Database migrations run automatically on startup
 
 # View logs
 docker-compose logs -f
@@ -396,6 +401,7 @@ See [Docker Deployment Guide](docs/docker-deployment.md) for production configur
 ### Additional Guides
 
 - **[Database Configuration](docs/database-configuration.md)**: SQLite vs PostgreSQL setup
+- **[Database Migrations](docs/database-migrations.md)**: Schema version control with Alembic
 - **[Multi-Tenant Architecture](docs/multi-tenant-architecture.md)**: Hosting multiple publishers
 - **[Admin UI Guide](docs/admin-ui-guide.md)**: Managing tenants with Google OAuth
 - **[Google OAuth Setup](docs/google-oauth-setup.md)**: Configuring secure authentication
