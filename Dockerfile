@@ -58,5 +58,5 @@ EXPOSE 8080 8001
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
     CMD curl -f http://localhost:8080/health || exit 1
 
-# Run the MCP server by default (database will be initialized on first run)
-CMD ["python", "run_server.py"]
+# Run migrations and start the server
+CMD ["./entrypoint.sh"]
