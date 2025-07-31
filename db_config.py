@@ -107,6 +107,8 @@ class DatabaseConnection:
                 self.config['path'],
                 check_same_thread=self.config['check_same_thread']
             )
+            # Enable Row objects instead of tuples
+            self.connection.row_factory = sqlite3.Row
             # Enable foreign keys for SQLite
             self.connection.execute("PRAGMA foreign_keys = ON")
         

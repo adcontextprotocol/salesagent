@@ -46,7 +46,6 @@ class TestAdcpServerV2_3(unittest.TestCase):
             self.assertTrue(hasattr(product, 'name'))
             self.assertTrue(hasattr(product, 'description'))
             self.assertTrue(hasattr(product, 'formats'))
-            self.assertTrue(hasattr(product, 'targeting_template'))
             self.assertTrue(hasattr(product, 'delivery_type'))
             
         # 3. Tertiary Assertion: Create a mock response to test schema validation

@@ -15,6 +15,9 @@ from validation import FormValidator, validate_form_data, sanitize_form_data
 app = Flask(__name__)
 app.secret_key = os.environ.get('FLASK_SECRET_KEY', secrets.token_hex(32))
 
+# Import schemas after Flask app is created
+from schemas import Principal
+
 # Configure for being mounted at different paths
 class ProxyFix:
     def __init__(self, app):
@@ -564,11 +567,15 @@ def tenant_detail(tenant_id):
     if 'adapters' in config_for_editing:
         del config_for_editing['adapters']
     
+    # Get the current port from environment
+    admin_port = int(os.environ.get('ADMIN_UI_PORT', 8001))
+    
     return render_template('tenant_detail.html', 
                          tenant=tenant, 
                          principals=principals,
                          products=products,
-                         config_for_editing=config_for_editing)
+                         config_for_editing=config_for_editing,
+                         admin_port=admin_port)
 
 @app.route('/tenant/<tenant_id>/update', methods=['POST'])
 @require_auth()
@@ -830,6 +837,107 @@ def create_tenant():
                 json.dumps({}),
                 admin_token
             ))
+            
+            # Create first principal (advertiser)
+            if request.form.get('principal_name'):
+                principal_id = request.form.get('principal_id') or request.form['principal_name'].lower().replace(' ', '_')
+                principal_token = secrets.token_urlsafe(32)
+                
+                # Build platform mappings based on adapter
+                platform_mappings = {}
+                if adapter == 'google_ad_manager' and request.form.get('gam_company_id'):
+                    platform_mappings['google_ad_manager'] = {
+                        'advertiser_id': request.form.get('gam_company_id')
+                    }
+                
+                conn.execute("""
+                    INSERT INTO principals (
+                        tenant_id, principal_id, name,
+                        platform_mappings, access_token
+                    ) VALUES (?, ?, ?, ?, ?)
+                """, (
+                    tenant_id,
+                    principal_id,
+                    request.form['principal_name'],
+                    json.dumps(platform_mappings),
+                    principal_token
+                ))
+            
+            # Create initial products
+            selected_products = request.form.getlist('initial_products')
+            product_definitions = {
+                'ron_display': {
+                    'product_id': 'prod_ron_display',
+                    'name': 'Run of Network - Standard Display',
+                    'description': 'Standard display ads across all site pages',
+                    'formats': ['display_300x250', 'display_728x90', 'display_320x50'],
+                    'cpm': 5.0,
+                    'implementation_config': {
+                        'placement_type': 'run_of_network',
+                        'ad_unit_path': '/network/ron',
+                        'sizes': [[300, 250], [728, 90], [320, 50]]
+                    }
+                },
+                'ron_video': {
+                    'product_id': 'prod_ron_video',
+                    'name': 'Run of Network - Standard Video',
+                    'description': 'In-stream video ads across video content',
+                    'formats': ['video_instream_15s', 'video_instream_30s'],
+                    'cpm': 15.0,
+                    'implementation_config': {
+                        'placement_type': 'video_instream',
+                        'ad_unit_path': '/network/video',
+                        'video_position': 'preroll'
+                    }
+                },
+                'homepage_display': {
+                    'product_id': 'prod_homepage_premium',
+                    'name': 'Homepage - Premium Display',
+                    'description': 'Premium display placements on homepage',
+                    'formats': ['display_970x250', 'display_300x600'],
+                    'cpm': 20.0,
+                    'implementation_config': {
+                        'placement_type': 'specific_page',
+                        'ad_unit_path': '/network/homepage',
+                        'page_url': '/',
+                        'sizes': [[970, 250], [300, 600]]
+                    }
+                },
+                'mobile_interstitial': {
+                    'product_id': 'prod_mobile_interstitial',
+                    'name': 'Mobile Interstitial',
+                    'description': 'Full-screen mobile interstitial ads',
+                    'formats': ['display_320x480'],
+                    'cpm': 10.0,
+                    'implementation_config': {
+                        'placement_type': 'mobile_interstitial',
+                        'ad_unit_path': '/network/mobile/interstitial',
+                        'frequency_cap': '1/hour'
+                    }
+                }
+            }
+            
+            for product_key in selected_products:
+                if product_key in product_definitions:
+                    prod = product_definitions[product_key]
+                    conn.execute("""
+                        INSERT INTO products (
+                            tenant_id, product_id, name, description,
+                            formats, targeting_template, delivery_type,
+                            is_fixed_price, cpm, implementation_config
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """, (
+                        tenant_id,
+                        prod['product_id'],
+                        prod['name'],
+                        prod['description'],
+                        json.dumps(prod['formats']),
+                        json.dumps({}),  # Empty targeting template
+                        'guaranteed',
+                        True,
+                        prod['cpm'],
+                        json.dumps(prod.get('implementation_config', {}))
+                    ))
             
             conn.connection.commit()
             conn.close()
@@ -1191,6 +1299,64 @@ def update_principal_mappings(tenant_id, principal_id):
         conn.close()
         return f"Error: {e}", 400
 
+@app.route('/tenant/<tenant_id>/adapter/<adapter_name>/inventory_schema', methods=['GET'])
+@require_auth()
+def get_adapter_inventory_schema(tenant_id, adapter_name):
+    """Get the inventory configuration schema for a specific adapter."""
+    # Check access
+    if session.get('role') != 'super_admin' and session.get('tenant_id') != tenant_id:
+        return jsonify({"error": "Access denied"}), 403
+    
+    try:
+        # Get tenant config to instantiate adapter
+        conn = get_db_connection()
+        cursor = conn.execute("SELECT config FROM tenants WHERE tenant_id = ?", (tenant_id,))
+        row = cursor.fetchone()
+        if not row:
+            return jsonify({"error": "Tenant not found"}), 404
+        
+        config_data = row[0]
+        # PostgreSQL returns JSONB as dict, SQLite returns string
+        tenant_config = config_data if isinstance(config_data, dict) else json.loads(config_data)
+        adapter_config = tenant_config.get('adapters', {}).get(adapter_name, {})
+        
+        if not adapter_config.get('enabled'):
+            return jsonify({"error": f"Adapter {adapter_name} is not enabled"}), 400
+        
+        # Create a dummy principal for schema retrieval
+        dummy_principal = Principal(
+            tenant_id=tenant_id,
+            principal_id="schema_query",
+            name="Schema Query",
+            access_token="",
+            platform_mappings={}
+        )
+        
+        # Import the adapter dynamically
+        if adapter_name == 'google_ad_manager':
+            from adapters.google_ad_manager import GoogleAdManager
+            adapter = GoogleAdManager(adapter_config, dummy_principal, dry_run=True, tenant_id=tenant_id)
+        elif adapter_name == 'mock':
+            from adapters.mock_ad_server import MockAdServer
+            adapter = MockAdServer(adapter_config, dummy_principal, dry_run=True, tenant_id=tenant_id)
+        elif adapter_name == 'kevel':
+            from adapters.kevel import KevelAdapter
+            adapter = KevelAdapter(adapter_config, dummy_principal, dry_run=True, tenant_id=tenant_id)
+        elif adapter_name == 'triton':
+            from adapters.triton_digital import TritonDigitalAdapter
+            adapter = TritonDigitalAdapter(adapter_config, dummy_principal, dry_run=True, tenant_id=tenant_id)
+        else:
+            return jsonify({"error": f"Unknown adapter: {adapter_name}"}), 400
+        
+        # Get the inventory schema
+        schema = adapter.get_inventory_config_schema()
+        
+        conn.close()
+        return jsonify(schema)
+        
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
 @app.route('/tenant/<tenant_id>/setup_adapter', methods=['POST'])
 @require_auth()
 def setup_adapter(tenant_id):
@@ -1345,9 +1511,358 @@ def send_static(path):
     """Serve static files."""
     return send_from_directory('static', path)
 
+# Product Management Routes
+@app.route('/tenant/<tenant_id>/products')
+@require_auth()
+def list_products(tenant_id):
+    """List products for a tenant."""
+    # Check access
+    if session.get('role') != 'super_admin' and session.get('tenant_id') != tenant_id:
+        return "Access denied", 403
+    
+    conn = get_db_connection()
+    
+    # Get tenant and config
+    cursor = conn.execute("SELECT name, config FROM tenants WHERE tenant_id = ?", (tenant_id,))
+    row = cursor.fetchone()
+    tenant_name = row[0]
+    config_data = row[1]
+    # PostgreSQL returns JSONB as dict, SQLite returns string
+    tenant_config = config_data if isinstance(config_data, dict) else json.loads(config_data)
+    
+    # Get active adapter and its UI endpoint
+    adapter_ui_endpoint = None
+    adapters = tenant_config.get('adapters', {})
+    for adapter_name, config in adapters.items():
+        if config.get('enabled'):
+            # Create dummy principal to get UI endpoint
+            dummy_principal = Principal(
+                tenant_id=tenant_id,
+                principal_id="ui_query",
+                name="UI Query",
+                access_token="",
+                platform_mappings={}
+            )
+            
+            try:
+                if adapter_name == 'google_ad_manager':
+                    from adapters.google_ad_manager import GoogleAdManager
+                    adapter = GoogleAdManager(config, dummy_principal, dry_run=True, tenant_id=tenant_id)
+                    adapter_ui_endpoint = adapter.get_config_ui_endpoint()
+                elif adapter_name == 'mock':
+                    from adapters.mock_ad_server import MockAdServer
+                    adapter = MockAdServer(config, dummy_principal, dry_run=True, tenant_id=tenant_id)
+                    adapter_ui_endpoint = adapter.get_config_ui_endpoint()
+                # Add other adapters as needed
+            except:
+                pass
+            break
+    
+    # Get products
+    cursor = conn.execute("""
+        SELECT product_id, name, description, formats, delivery_type, 
+               is_fixed_price, cpm, price_guidance, is_custom, expires_at, countries
+        FROM products
+        WHERE tenant_id = ?
+        ORDER BY product_id
+    """, (tenant_id,))
+    
+    products = []
+    for row in cursor.fetchall():
+        # Handle PostgreSQL (returns objects) vs SQLite (returns JSON strings)
+        formats = row[3] if isinstance(row[3], list) else (json.loads(row[3]) if row[3] else [])
+        price_guidance = row[7] if isinstance(row[7], dict) else (json.loads(row[7]) if row[7] else None)
+        countries = row[10] if isinstance(row[10], list) else (json.loads(row[10]) if row[10] else None)
+        
+        products.append({
+            'product_id': row[0],
+            'name': row[1],
+            'description': row[2],
+            'formats': formats,
+            'delivery_type': row[4],
+            'is_fixed_price': row[5],
+            'cpm': row[6],
+            'price_guidance': price_guidance,
+            'is_custom': row[8],
+            'expires_at': row[9],
+            'countries': countries
+        })
+    
+    conn.close()
+    return render_template('products.html', 
+                         tenant_id=tenant_id, 
+                         tenant_name=tenant_name,
+                         products=products,
+                         adapter_ui_endpoint=adapter_ui_endpoint)
+
+@app.route('/tenant/<tenant_id>/products/<product_id>/edit', methods=['GET', 'POST'])
+@require_auth()
+def edit_product_basic(tenant_id, product_id):
+    """Edit basic product details."""
+    # Check access
+    if session.get('role') != 'super_admin' and session.get('tenant_id') != tenant_id:
+        return "Access denied", 403
+    
+    conn = get_db_connection()
+    
+    if request.method == 'POST':
+        try:
+            # Update product basic details
+            conn.execute("""
+                UPDATE products 
+                SET name = ?, description = ?, delivery_type = ?, is_fixed_price = ?, cpm = ?, price_guidance = ?
+                WHERE tenant_id = ? AND product_id = ?
+            """, (
+                request.form['name'],
+                request.form.get('description', ''),
+                request.form.get('delivery_type', 'guaranteed'),
+                request.form.get('delivery_type') == 'guaranteed',
+                float(request.form.get('cpm', 0)) if request.form.get('delivery_type') == 'guaranteed' else None,
+                json.dumps({
+                    'min_cpm': float(request.form.get('price_guidance_min', 0)),
+                    'max_cpm': float(request.form.get('price_guidance_max', 0))
+                }) if request.form.get('delivery_type') != 'guaranteed' else None,
+                tenant_id,
+                product_id
+            ))
+            
+            conn.connection.commit()
+            conn.close()
+            
+            return redirect(url_for('list_products', tenant_id=tenant_id))
+            
+        except Exception as e:
+            conn.close()
+            return render_template('edit_product.html', 
+                                 tenant_id=tenant_id,
+                                 product=None,
+                                 error=str(e))
+    
+    # GET request - load product
+    cursor = conn.execute(
+        """SELECT product_id, name, description, formats, delivery_type, 
+               is_fixed_price, cpm, price_guidance
+        FROM products 
+        WHERE tenant_id = ? AND product_id = ?""",
+        (tenant_id, product_id)
+    )
+    product_row = cursor.fetchone()
+    
+    if not product_row:
+        conn.close()
+        return "Product not found", 404
+    
+    # Handle PostgreSQL (returns objects) vs SQLite (returns JSON strings)
+    formats = product_row[3] if isinstance(product_row[3], list) else json.loads(product_row[3] or '[]')
+    price_guidance = product_row[7] if isinstance(product_row[7], dict) else json.loads(product_row[7] or '{}')
+    
+    product = {
+        'product_id': product_row[0],
+        'name': product_row[1],
+        'description': product_row[2],
+        'formats': formats,
+        'delivery_type': product_row[4],
+        'is_fixed_price': product_row[5],
+        'cpm': product_row[6],
+        'price_guidance': price_guidance
+    }
+    
+    conn.close()
+    return render_template('edit_product.html', 
+                         tenant_id=tenant_id,
+                         product=product)
+
+@app.route('/tenant/<tenant_id>/products/add', methods=['GET', 'POST'])
+@require_auth()
+def add_product(tenant_id):
+    """Add a new product."""
+    # Check access
+    if session.get('role') != 'super_admin' and session.get('tenant_id') != tenant_id:
+        return "Access denied", 403
+    
+    conn = get_db_connection()
+    
+    if request.method == 'POST':
+        try:
+            # Get form data
+            product_id = request.form.get('product_id') or request.form['name'].lower().replace(' ', '_')
+            formats = request.form.getlist('formats')
+            
+            # Build implementation config based on adapter
+            cursor = conn.execute("SELECT config FROM tenants WHERE tenant_id = ?", (tenant_id,))
+            config_data = cursor.fetchone()[0]
+            # PostgreSQL returns JSONB as dict, SQLite returns string
+            tenant_config = config_data if isinstance(config_data, dict) else json.loads(config_data)
+            
+            # Get selected countries
+            countries = request.form.getlist('countries')
+            # If "ALL" is selected or no countries selected, set to None (all countries)
+            if 'ALL' in countries or not countries:
+                countries = None
+            
+            # Implementation config now empty - adapter will populate
+            implementation_config = {}
+            
+            # Determine pricing based on delivery type
+            delivery_type = request.form.get('delivery_type', 'guaranteed')
+            is_fixed_price = delivery_type == 'guaranteed'
+            
+            # Handle CPM and price guidance
+            cpm = None
+            price_guidance = None
+            
+            if is_fixed_price:
+                cpm = float(request.form.get('cpm', 5.0))
+            else:
+                # Non-guaranteed: use price guidance
+                min_cpm = request.form.get('price_guidance_min')
+                max_cpm = request.form.get('price_guidance_max')
+                if min_cpm and max_cpm:
+                    price_guidance = {
+                        'min_cpm': float(min_cpm),
+                        'max_cpm': float(max_cpm)
+                    }
+            
+            # Insert product
+            conn.execute("""
+                INSERT INTO products (
+                    tenant_id, product_id, name, description,
+                    formats, targeting_template, delivery_type,
+                    is_fixed_price, cpm, price_guidance, countries, implementation_config
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                tenant_id,
+                product_id,
+                request.form['name'],
+                request.form.get('description', ''),
+                json.dumps(formats),
+                json.dumps({}),  # Empty targeting template
+                delivery_type,
+                is_fixed_price,
+                cpm,
+                json.dumps(price_guidance),
+                json.dumps(countries),
+                json.dumps(implementation_config)
+            ))
+            
+            conn.connection.commit()
+            conn.close()
+            
+            return redirect(url_for('list_products', tenant_id=tenant_id))
+            
+        except Exception as e:
+            conn.close()
+            # Get available formats
+            formats = get_creative_formats()
+            return render_template('add_product.html', 
+                                 tenant_id=tenant_id,
+                                 error=str(e),
+                                 formats=formats)
+    
+    # GET request - show form
+    conn.close()
+    formats = get_creative_formats()
+    return render_template('add_product.html', 
+                         tenant_id=tenant_id,
+                         formats=formats)
+
+def get_creative_formats():
+    """Get all creative formats from the database."""
+    conn = get_db_connection()
+    cursor = conn.execute("""
+        SELECT format_id, name, type, description, width, height, duration_seconds
+        FROM creative_formats
+        WHERE is_standard = true
+        ORDER BY type, name
+    """)
+    
+    formats = []
+    for row in cursor.fetchall():
+        format_info = {
+            'format_id': row[0],
+            'name': row[1],
+            'type': row[2],
+            'description': row[3]
+        }
+        if row[4] and row[5]:  # width and height for display
+            format_info['dimensions'] = f"{row[4]}x{row[5]}"
+        elif row[6]:  # duration for video
+            format_info['duration'] = f"{row[6]}s"
+        formats.append(format_info)
+    
+    conn.close()
+    return formats
+
+# Function to register adapter routes
+def register_adapter_routes():
+    """Register UI routes from all available adapters."""
+    try:
+        print("Starting adapter route registration...")
+        # Get all enabled adapters across all tenants
+        conn = get_db_connection()
+        cursor = conn.execute("SELECT DISTINCT config FROM tenants")
+        
+        registered_adapters = set()
+        for row in cursor.fetchall():
+            print(f"Processing row: {type(row)}")
+            # Handle both tuple (PostgreSQL) and Row object (SQLite)
+            config_data = row[0] if isinstance(row, tuple) else row['config']
+            print(f"Config data type: {type(config_data)}")
+            # PostgreSQL returns JSONB as dict, SQLite returns string
+            tenant_config = config_data if isinstance(config_data, dict) else json.loads(config_data)
+            print(f"Tenant config type: {type(tenant_config)}")
+            adapters_config = tenant_config.get('adapters', {})
+            
+            for adapter_name, adapter_config in adapters_config.items():
+                if adapter_config.get('enabled') and adapter_name not in registered_adapters:
+                    # Create a dummy principal for route registration
+                    dummy_principal = Principal(
+                        tenant_id="system",
+                        principal_id="route_registration",
+                        name="Route Registration",
+                        access_token="",
+                        platform_mappings={}
+                    )
+                    
+                    # Import and register adapter routes
+                    try:
+                        if adapter_name == 'google_ad_manager':
+                            print(f"Registering routes for {adapter_name}")
+                            print(f"Adapter config: {adapter_config}")
+                            from adapters.google_ad_manager import GoogleAdManager
+                            adapter = GoogleAdManager(adapter_config, dummy_principal, dry_run=True, tenant_id="system")
+                            adapter.register_ui_routes(app)
+                            registered_adapters.add(adapter_name)
+                        elif adapter_name == 'mock':
+                            print(f"Registering routes for {adapter_name}")
+                            from adapters.mock_ad_server import MockAdServer
+                            adapter = MockAdServer(adapter_config, dummy_principal, dry_run=True, tenant_id="system")
+                            adapter.register_ui_routes(app)
+                            registered_adapters.add(adapter_name)
+                        elif adapter_name == 'kevel':
+                            from adapters.kevel import KevelAdapter
+                            adapter = KevelAdapter(adapter_config, dummy_principal, dry_run=True)
+                            if hasattr(adapter, 'register_ui_routes'):
+                                adapter.register_ui_routes(app)
+                                registered_adapters.add(adapter_name)
+                        # Add other adapters as they implement UI routes
+                    except Exception as e:
+                        print(f"Warning: Failed to register routes for {adapter_name}: {e}")
+        
+        conn.close()
+        print(f"Registered UI routes for adapters: {', '.join(registered_adapters)}")
+        
+    except Exception as e:
+        import traceback
+        print(f"Warning: Failed to register adapter routes: {e}")
+        traceback.print_exc()
+
 if __name__ == '__main__':
     # Create templates directory
     os.makedirs('templates', exist_ok=True)
+    
+    # Register adapter routes
+    register_adapter_routes()
     
     if not GOOGLE_CLIENT_ID or not GOOGLE_CLIENT_SECRET:
         print("ERROR: Google OAuth credentials not found!")

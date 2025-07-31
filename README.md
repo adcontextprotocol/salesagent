@@ -109,7 +109,7 @@ python run_server.py
 ADCP_SALES_PORT=9000 python run_server.py
 
 # Access the Admin UI
-open http://localhost:8001  # OAuth-based secure login
+open http://localhost:8001  # OAuth-based secure login (default port, configurable via ADMIN_UI_PORT)
 
 # Test with MCP client
 python client_mcp.py --token "purina_token" --test

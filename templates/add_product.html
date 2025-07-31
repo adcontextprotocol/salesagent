@@ -1,0 +1,179 @@
+{% extends "base.html" %}
+
+{% block title %}Add Product - AdCP Admin{% endblock %}
+
+{% block content %}
+<div class="card">
+    <h2>Add New Product</h2>
+    
+    {% if error %}
+    <div class="alert alert-error">{{ error }}</div>
+    {% endif %}
+    
+    <form method="POST">
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+            <div class="form-group">
+                <label for="name">Product Name *</label>
+                <input type="text" id="name" name="name" required placeholder="e.g., Homepage Premium Display">
+            </div>
+            
+            <div class="form-group">
+                <label for="product_id">Product ID</label>
+                <input type="text" id="product_id" name="product_id" placeholder="Auto-generated from name">
+                <small style="color: #666;">Leave blank to auto-generate</small>
+            </div>
+        </div>
+        
+        <div class="form-group">
+            <label for="description">Description</label>
+            <textarea id="description" name="description" rows="3" placeholder="Describe this product offering"></textarea>
+        </div>
+        
+        <h3 style="margin-top: 2rem;">Creative Formats</h3>
+        
+        <div class="form-group">
+            <label>Select supported formats:</label>
+            <div style="margin-top: 1rem;">
+                {% set format_types = formats|groupby('type') %}
+                {% for type, type_formats in format_types %}
+                <div style="margin-bottom: 2rem;">
+                    <h4 style="margin-bottom: 1rem; text-transform: capitalize; color: #2c3e50; border-bottom: 1px solid #ddd; padding-bottom: 0.5rem;">{{ type }}</h4>
+                    <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem;">
+                        {% for format in type_formats %}
+                        <div style="border: 1px solid #e0e0e0; border-radius: 4px; padding: 0.75rem; background: #f9f9f9; min-height: 120px;">
+                            <label style="display: block; cursor: pointer;">
+                                <div style="display: flex; gap: 0.5rem;">
+                                    <input type="checkbox" name="formats" value="{{ format.format_id }}" style="margin-top: 0.2rem;">
+                                    <div style="flex: 1;">
+                                        <div style="font-weight: 600; color: #333;">{{ format.name }}</div>
+                                        {% if format.dimensions %}
+                                        <div style="color: #666; font-size: 0.9rem;">{{ format.dimensions }}</div>
+                                        {% elif format.duration %}
+                                        <div style="color: #666; font-size: 0.9rem;">{{ format.duration }}</div>
+                                        {% endif %}
+                                        {% if format.description %}
+                                        <div style="color: #777; font-size: 0.85rem; margin-top: 0.25rem; line-height: 1.3;">{{ format.description }}</div>
+                                        {% endif %}
+                                    </div>
+                                </div>
+                            </label>
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+        
+        <h3 style="margin-top: 2rem;">Pricing & Delivery</h3>
+        
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+            <div class="form-group">
+                <label for="delivery_type">Delivery Type</label>
+                <select id="delivery_type" name="delivery_type">
+                    <option value="guaranteed">Guaranteed</option>
+                    <option value="non_guaranteed">Non-guaranteed</option>
+                </select>
+            </div>
+            
+            <div class="form-group" id="cpm-group">
+                <label for="cpm">CPM (Cost per 1000 impressions) *</label>
+                <input type="number" id="cpm" name="cpm" value="5.00" step="0.01">
+            </div>
+            
+            <div class="form-group" id="price-guidance-group" style="display: none;">
+                <label for="price_guidance_min">Price Guidance (CPM Range)</label>
+                <div style="display: flex; gap: 10px; align-items: center;">
+                    <input type="number" id="price_guidance_min" name="price_guidance_min" placeholder="Min" step="0.01" style="flex: 1;">
+                    <span>-</span>
+                    <input type="number" id="price_guidance_max" name="price_guidance_max" placeholder="Max" step="0.01" style="flex: 1;">
+                </div>
+                <small style="color: #666;">Suggested CPM range for non-guaranteed inventory</small>
+            </div>
+        </div>
+        
+        <h3 style="margin-top: 2rem;">Geographic Targeting</h3>
+        
+        <div class="form-group">
+            <label for="countries">Target Countries</label>
+            <select id="countries" name="countries" multiple style="height: 120px; width: 100%;">
+                <option value="ALL" selected>All Countries</option>
+                <option value="US">United States</option>
+                <option value="CA">Canada</option>
+                <option value="GB">United Kingdom</option>
+                <option value="AU">Australia</option>
+                <option value="DE">Germany</option>
+                <option value="FR">France</option>
+                <option value="IT">Italy</option>
+                <option value="ES">Spain</option>
+                <option value="NL">Netherlands</option>
+                <option value="SE">Sweden</option>
+                <option value="CH">Switzerland</option>
+                <option value="JP">Japan</option>
+                <option value="CN">China</option>
+                <option value="IN">India</option>
+                <option value="BR">Brazil</option>
+                <option value="MX">Mexico</option>
+                <option value="ZA">South Africa</option>
+                <option value="SG">Singapore</option>
+                <option value="HK">Hong Kong</option>
+                <option value="NZ">New Zealand</option>
+            </select>
+            <small style="color: #666;">Hold Ctrl/Cmd to select multiple countries. Different pricing may apply per country.</small>
+        </div>
+        
+        <div style="margin-top: 2rem;">
+            <button type="submit" class="btn">Create Product</button>
+            <a href="{{ url_for('list_products', tenant_id=tenant_id) }}" class="btn btn-secondary">Cancel</a>
+        </div>
+    </form>
+</div>
+
+<script>
+function updatePricingFields() {
+    const deliveryType = document.getElementById('delivery_type').value;
+    const cpmGroup = document.getElementById('cpm-group');
+    const priceGuidanceGroup = document.getElementById('price-guidance-group');
+    const cpmInput = document.getElementById('cpm');
+    
+    if (deliveryType === 'guaranteed') {
+        cpmGroup.style.display = 'block';
+        priceGuidanceGroup.style.display = 'none';
+        cpmInput.required = true;
+    } else {
+        cpmGroup.style.display = 'none';
+        priceGuidanceGroup.style.display = 'block';
+        cpmInput.required = false;
+    }
+}
+
+// Initialize on page load
+document.addEventListener('DOMContentLoaded', function() {
+    updatePricingFields();
+    
+    // Add event listener to delivery type dropdown
+    document.getElementById('delivery_type').addEventListener('change', updatePricingFields);
+    
+    // Handle country selection
+    const countriesSelect = document.getElementById('countries');
+    countriesSelect.addEventListener('change', function() {
+        const selectedOptions = Array.from(this.selectedOptions).map(opt => opt.value);
+        
+        // If "ALL" is selected, deselect all others
+        if (selectedOptions.includes('ALL') && selectedOptions.length > 1) {
+            // Clear all selections and just select ALL
+            Array.from(this.options).forEach(opt => opt.selected = false);
+            this.options[0].selected = true; // Select "All Countries"
+        }
+        // If specific countries are selected, deselect ALL
+        else if (!selectedOptions.includes('ALL') && selectedOptions.length > 0) {
+            this.options[0].selected = false; // Deselect "All Countries"
+        }
+        // If nothing is selected, select ALL by default
+        else if (selectedOptions.length === 0) {
+            this.options[0].selected = true; // Select "All Countries"
+        }
+    });
+});
+</script>
+{% endblock %}

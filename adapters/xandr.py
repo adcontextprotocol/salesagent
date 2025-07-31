@@ -13,7 +13,7 @@ from decimal import Decimal
 
 from adapters.base import AdServerAdapter
 from schemas import (
-    Principal, Product, MediaBuyRequest, MediaBuy, CreativeAsset,
+    Principal, Product, CreateMediaBuyRequest, MediaBuy, CreativeAsset,
     MediaBuyDetails, MediaBuyStatus, DeliveryData, ReportingPeriod,
     MediaBuyDeliveryData, HourlyDelivery, CreativeDelivery,
     DeliveryMetrics, PacingAnalysis, PerformanceAlert,
@@ -234,7 +234,7 @@ class XandrAdapter(AdServerAdapter):
             logger.error(f"Error fetching Xandr products: {e}")
             return []
     
-    def create_media_buy(self, request: MediaBuyRequest) -> Tuple[MediaBuy, CreateMediaBuyResponse]:
+    def create_media_buy(self, request: CreateMediaBuyRequest) -> Tuple[MediaBuy, CreateMediaBuyResponse]:
         """Create insertion order and line items in Xandr."""
         if self._requires_manual_approval('create_media_buy'):
             task_id = self._create_human_task('create_media_buy', {
