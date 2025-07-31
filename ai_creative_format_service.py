@@ -133,15 +133,11 @@ class AICreativeFormatService:
             )
         ]
     
-    async def discover_format_from_url(self, url: str) -> List[FormatSpecification]:
-        """Discover creative format specifications from a URL."""
+    async def discover_formats_from_html(self, html: str, source_url: str = "") -> List[FormatSpecification]:
+        """Discover creative format specifications from HTML content."""
         formats = []
         
         try:
-            async with aiohttp.ClientSession() as session:
-                async with session.get(url) as response:
-                    html = await response.text()
-            
             # Extract relevant content from HTML to reduce prompt size
             soup = BeautifulSoup(html, 'html.parser')
             
@@ -181,7 +177,7 @@ class AICreativeFormatService:
             - File size limits
             - Accepted file formats (jpg, png, gif, mp4, etc.)
             
-            URL: {url}
+            URL: {source_url}
             Content:
             {content_for_ai}
             
@@ -203,13 +199,13 @@ class AICreativeFormatService:
                 
                 # Check if we got a valid response
                 if not response or not hasattr(response, 'text') or not response.text:
-                    logger.warning(f"Empty response from Gemini for URL {url}")
+                    logger.warning(f"Empty response from Gemini for HTML content")
                     raise ValueError("Empty response from AI model")
                 
                 response_text = response.text.strip()
                 
                 # Debug logging to see what AI returned
-                logger.info(f"AI response for URL {url}:")
+                logger.info(f"AI response for HTML content:")
                 logger.info(f"Raw response text: {response_text}")
                 
                 # Remove markdown code blocks if present
@@ -221,13 +217,13 @@ class AICreativeFormatService:
                 response_text = response_text.strip()
                 
                 if not response_text:
-                    logger.warning(f"Empty response text after cleaning for URL {url}")
+                    logger.warning(f"Empty response text after cleaning for HTML content")
                     raise ValueError("Empty response text after cleaning")
                 
                 formats_data = json.loads(response_text)
                 
                 if not isinstance(formats_data, list):
-                    logger.warning(f"Expected list but got {type(formats_data)} for URL {url}")
+                    logger.warning(f"Expected list but got {type(formats_data)} for HTML content")
                     raise ValueError("Response is not a list")
                 
                 for fmt in formats_data:
@@ -253,22 +249,36 @@ class AICreativeFormatService:
                         duration_seconds=fmt.get('duration_seconds'),
                         max_file_size_kb=fmt.get('max_file_size_kb'),
                         specs=fmt.get('specs', {}),
-                        source_url=url
+                        source_url=source_url
                     ))
                     
             except (json.JSONDecodeError, ValueError) as e:
-                logger.error(f"Failed to parse AI response for {url}: {e}")
+                logger.error(f"Failed to parse AI response for HTML content: {e}")
                 # Try to extract basic information manually
-                formats.extend(self._extract_formats_manually(html, url))
+                formats.extend(self._extract_formats_manually(html, source_url))
             except Exception as e:
-                logger.error(f"AI model error for {url}: {e}")
+                logger.error(f"AI model error for HTML content: {e}")
                 # Try to extract basic information manually
-                formats.extend(self._extract_formats_manually(html, url))
+                formats.extend(self._extract_formats_manually(html, source_url))
                 
         except Exception as e:
-            logger.error(f"Error discovering formats from {url}: {e}")
+            logger.error(f"Error discovering formats from HTML: {e}")
         
         return formats
+    
+    async def discover_format_from_url(self, url: str) -> List[FormatSpecification]:
+        """Discover creative format specifications from a URL."""
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.get(url) as response:
+                    html = await response.text()
+            
+            return await self.discover_formats_from_html(html, url)
+                
+        except Exception as e:
+            logger.error(f"Error fetching URL {url}: {e}")
+        
+        return []
     
     def _extract_formats_manually(self, html: str, url: str) -> List[FormatSpecification]:
         """Manually extract format information as fallback."""
