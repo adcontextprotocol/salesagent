@@ -356,7 +356,17 @@ class AICreativeFormatService:
             - height: pixel height (for display formats)
             - duration_seconds: max duration in seconds (for video/audio)
             - max_file_size_kb: max file size in KB
-            - specs: object with additional specifications like file_types, features, requirements
+            - specs: object with additional specifications
+            
+            CRITICAL for specs field when extending foundational formats:
+            - For carousel/slideshow formats extending foundation_product_showcase_carousel:
+              Use "min_products" and "max_products" (NOT "image_count" or "carousel_images")
+              Include "product_image_size" with desktop/tablet/mobile dimensions
+              Include "product_image_ratio" (e.g. "1:1", "9:16")
+            - For video formats extending foundation_universal_video:
+              Use "aspect_ratios" array (e.g. ["16:9", "9:16"])
+              Use standard video fields from the foundational format
+            - Do NOT invent new field names - use fields from foundational formats
             
             Important: 
             - Extract ALL formats found on the page

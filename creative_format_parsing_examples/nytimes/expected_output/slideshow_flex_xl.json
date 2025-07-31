@@ -12,8 +12,14 @@
       "file_types": ["jpg", "png"],
       "is_standard": false,
       "specs": {
-        "image_count": "3-5",
-        "image_dimensions": "600x600px",
+        "min_products": 3,
+        "max_products": 5,
+        "product_image_size": {
+          "desktop": {"width": 600, "height": 600},
+          "tablet": {"width": 600, "height": 600},
+          "mobile": {"width": 600, "height": 600}
+        },
+        "product_image_ratio": "1:1",
         "headlines": "Up to 5 (character limit: 100)",
         "descriptor_messages": "Up to 5 (character limit: 210)",
         "cta_message": "1 (character limit: 15)",
@@ -36,8 +42,14 @@
       "file_types": ["jpg", "png"],
       "is_standard": false,
       "specs": {
-        "image_count": "3-5",
-        "image_dimensions": "600x600px",
+        "min_products": 3,
+        "max_products": 5,
+        "product_image_size": {
+          "desktop": {"width": 600, "height": 600},
+          "tablet": {"width": 600, "height": 600},
+          "mobile": {"width": 600, "height": 600}
+        },
+        "product_image_ratio": "1:1",
         "headlines": "Up to 5 (character limit: 100)",
         "descriptor_messages": "Up to 5 (character limit: 210)",
         "cta_message": "1 (character limit: 15)",
@@ -60,8 +72,14 @@
       "file_types": ["jpg", "png"],
       "is_standard": false,
       "specs": {
-        "image_count": "3-5",
-        "image_dimensions": "600x600px",
+        "min_products": 3,
+        "max_products": 5,
+        "product_image_size": {
+          "desktop": {"width": 600, "height": 600},
+          "tablet": {"width": 600, "height": 600},
+          "mobile": {"width": 600, "height": 600}
+        },
+        "product_image_ratio": "1:1",
         "headlines": "Up to 5 (character limit: 100)",
         "descriptor_messages": "Up to 5 (character limit: 210)",
         "cta_message": "1 (character limit: 15)",
@@ -84,7 +102,8 @@
       "file_types": ["jpg", "png"],
       "is_standard": false,
       "specs": {
-        "image_count": "3-5",
+        "min_products": 3,
+        "max_products": 5,
         "retina_display": true,
         "safe_zone": "100px on all sides",
         "headlines": "Up to 5 (character limit: 100)",
