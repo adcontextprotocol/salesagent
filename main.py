@@ -14,7 +14,7 @@ from adapters.mock_ad_server import MockAdServer as MockAdServerAdapter
 from adapters.google_ad_manager import GoogleAdManager
 from adapters.kevel import Kevel
 from adapters.triton_digital import TritonDigital
-from database import init_db
+from init_database import init_db
 from schemas import *
 from config_loader import (
     load_config, get_current_tenant, set_current_tenant,
