@@ -26,9 +26,13 @@ CREATE TABLE IF NOT EXISTS creative_formats (
     max_file_size_kb INTEGER,
     specs TEXT NOT NULL,
     is_standard BOOLEAN DEFAULT 1,
+    is_foundational BOOLEAN DEFAULT 0,  -- True for base formats that can be extended
+    extends TEXT,  -- Reference to foundational format_id
+    modifications TEXT,  -- JSON with modifications to base format
     source_url TEXT,  -- URL where format was discovered
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (tenant_id) REFERENCES tenants(tenant_id) ON DELETE CASCADE
+    FOREIGN KEY (tenant_id) REFERENCES tenants(tenant_id) ON DELETE CASCADE,
+    FOREIGN KEY (extends) REFERENCES creative_formats(format_id) ON DELETE RESTRICT
 );
 
 CREATE TABLE IF NOT EXISTS products (
@@ -168,9 +172,14 @@ CREATE TABLE IF NOT EXISTS creative_formats (
     max_file_size_kb INTEGER,
     specs JSONB NOT NULL,
     is_standard BOOLEAN DEFAULT TRUE,
+    is_foundational BOOLEAN DEFAULT FALSE,  -- True for base formats that can be extended
+    extends VARCHAR(50),  -- Reference to foundational format_id
+    modifications JSONB,  -- JSON with modifications to base format
     source_url TEXT,  -- URL where format was discovered
     created_at TIMESTAMP DEFAULT NOW(),
-    FOREIGN KEY (tenant_id) REFERENCES tenants(tenant_id) ON DELETE CASCADE
+    updated_at TIMESTAMP DEFAULT NOW(),
+    FOREIGN KEY (tenant_id) REFERENCES tenants(tenant_id) ON DELETE CASCADE,
+    FOREIGN KEY (extends) REFERENCES creative_formats(format_id) ON DELETE RESTRICT
 );
 
 CREATE TABLE IF NOT EXISTS products (
