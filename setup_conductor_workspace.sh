@@ -33,34 +33,45 @@ echo "  Admin UI: $ADMIN_PORT"
 # Copy required files from root workspace
 echo "Copying files from root workspace..."
 
-# Copy .env file
-if [ -f "$BASE_DIR/.env" ]; then
-    cp "$BASE_DIR/.env" .
-    echo "✓ Copied .env file"
-    
-    # Check if config.json has a different Gemini API key
-    if [ -f "$BASE_DIR/config.json" ]; then
-        CONFIG_KEY=$(grep -o '"gemini_api_key"[[:space:]]*:[[:space:]]*"[^"]*"' "$BASE_DIR/config.json" | cut -d'"' -f4)
-        if [ -n "$CONFIG_KEY" ]; then
-            # Update .env with the key from config.json
-            sed -i.bak "s/^GEMINI_API_KEY=.*/GEMINI_API_KEY=$CONFIG_KEY/" .env
-            rm .env.bak
-            echo "✓ Updated GEMINI_API_KEY from config.json"
-        fi
-    fi
+# Create .env file from environment variables
+echo "Creating .env file from environment variables..."
+
+# Start with a fresh .env file
+cat > .env << EOF
+# Environment configuration for Conductor workspace: $CONDUCTOR_WORKSPACE_NAME
+# Generated on $(date)
+
+# API Keys (from environment)
+GEMINI_API_KEY=${GEMINI_API_KEY:-}
+
+# OAuth Configuration (from environment)
+GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID:-}
+GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET:-}
+SUPER_ADMIN_EMAILS=${SUPER_ADMIN_EMAILS:-}
+SUPER_ADMIN_DOMAINS=${SUPER_ADMIN_DOMAINS:-}
+EOF
+
+if [ -n "$GEMINI_API_KEY" ]; then
+    echo "✓ GEMINI_API_KEY configured from environment"
 else
-    echo "✗ Warning: No .env file found in root workspace"
+    echo "✗ Warning: GEMINI_API_KEY not found in environment"
 fi
 
-# Copy OAuth credentials
+# Copy OAuth credentials if they exist locally (not in git)
 oauth_files=$(ls $BASE_DIR/client_secret*.json 2>/dev/null)
 if [ -n "$oauth_files" ]; then
     for file in $oauth_files; do
         cp "$file" .
         echo "✓ Copied $(basename $file)"
+        # Also update docker-compose.override.yml to mount it
+        echo "✓ OAuth credentials file will be mounted in containers"
     done
 else
-    echo "✗ Warning: No OAuth credentials found in root workspace"
+    if [ -n "$GOOGLE_CLIENT_ID" ] && [ -n "$GOOGLE_CLIENT_SECRET" ]; then
+        echo "✓ OAuth configured via environment variables"
+    else
+        echo "ℹ️  No OAuth credentials found - Admin UI will run without Google OAuth"
+    fi
 fi
 
 # Update .env with unique ports
@@ -70,16 +81,51 @@ echo "POSTGRES_PORT=$POSTGRES_PORT" >> .env
 echo "ADCP_SALES_PORT=$ADCP_PORT" >> .env
 echo "ADMIN_UI_PORT=$ADMIN_PORT" >> .env
 echo "DATABASE_URL=postgresql://adcp_user:secure_password_change_me@localhost:$POSTGRES_PORT/adcp" >> .env
+echo "" >> .env
+echo "# OAuth Configuration (optional - admin UI will work without it)" >> .env
+echo "# GOOGLE_CLIENT_ID=your-client-id-here" >> .env
+echo "# GOOGLE_CLIENT_SECRET=your-client-secret-here" >> .env
+echo "# SUPER_ADMIN_EMAILS=admin@example.com" >> .env
 
 echo "✓ Updated .env with unique ports"
 
-# Update docker-compose.yml defaults
-echo "Updating docker-compose.yml defaults..."
-sed -i.bak "s/\${POSTGRES_PORT:-[0-9]*}/\${POSTGRES_PORT:-$POSTGRES_PORT}/g" docker-compose.yml
-sed -i.bak "s/\${ADCP_SALES_PORT:-[0-9]*}/\${ADCP_SALES_PORT:-$ADCP_PORT}/g" docker-compose.yml
-sed -i.bak "s/\${ADMIN_UI_PORT:-[0-9]*}/\${ADMIN_UI_PORT:-$ADMIN_PORT}/g" docker-compose.yml
-rm docker-compose.yml.bak
-echo "✓ Updated docker-compose.yml"
+# Note: docker-compose.yml is not modified - ports are configured via .env file
+echo "✓ Port configuration saved to .env file"
+
+# Create docker-compose.override.yml for development hot reloading
+cat > docker-compose.override.yml << 'EOF'
+# Docker Compose override for development with hot reloading
+# This file is automatically loaded by docker-compose and overrides settings in docker-compose.yml
+
+services:
+  adcp-server:
+    volumes:
+      # Mount source code for hot reloading, excluding .venv
+      - .:/app
+      - /app/.venv
+      - ./audit_logs:/app/audit_logs
+    environment:
+      # Enable development mode
+      PYTHONUNBUFFERED: 1
+      FLASK_ENV: development
+      WERKZEUG_RUN_MAIN: true
+    # PATH is already set in Dockerfile to include .venv/bin
+    command: ["python", "run_server.py"]
+
+  admin-ui:
+    volumes:
+      # Mount source code for hot reloading, excluding .venv
+      - .:/app
+      - /app/.venv
+      - ./audit_logs:/app/audit_logs
+    environment:
+      # Enable Flask development mode with auto-reload
+      FLASK_ENV: development
+      FLASK_DEBUG: 1
+      PYTHONUNBUFFERED: 1
+      WERKZEUG_RUN_MAIN: true
+EOF
+echo "✓ Created docker-compose.override.yml for development hot reloading"
 
 # Fix database.py indentation issues if they exist
 if grep -q "for p in principals_data:" database.py && ! grep -B1 "for p in principals_data:" database.py | grep -q "^    "; then

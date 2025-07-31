@@ -58,5 +58,5 @@ EXPOSE 8080 8001
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
     CMD curl -f http://localhost:8080/health || exit 1
 
-# Run migrations and start the server
-CMD ["./entrypoint.sh"]
+# Default command - can be overridden in docker-compose
+CMD ["python", "run_server.py"]
