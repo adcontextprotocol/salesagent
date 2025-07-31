@@ -1684,9 +1684,31 @@ def add_product(tenant_id):
     
     if request.method == 'POST':
         try:
-            # Get form data
-            product_id = request.form.get('product_id') or request.form['name'].lower().replace(' ', '_')
-            formats = request.form.getlist('formats')
+            # Check if this is from AI form
+            ai_config = request.form.get('ai_config')
+            if ai_config:
+                # Parse AI-generated configuration
+                config = json.loads(ai_config)
+                product_id = request.form.get('product_id') or config.get('product_id')
+                formats = config.get('formats', [])
+                delivery_type = config.get('delivery_type', 'guaranteed')
+                cpm = config.get('cpm')
+                price_guidance = config.get('price_guidance')
+                countries = config.get('countries')
+                targeting_template = config.get('targeting_template', {})
+                implementation_config = config.get('implementation_config', {})
+                
+                # Get name and description from form
+                name = request.form.get('name')
+                description = request.form.get('description')
+            else:
+                # Regular form submission
+                product_id = request.form.get('product_id') or request.form['name'].lower().replace(' ', '_')
+                formats = request.form.getlist('formats')
+                name = request.form.get('name')
+                description = request.form.get('description')
+                targeting_template = {}
+                implementation_config = {}
             
             # Build implementation config based on adapter
             cursor = conn.execute("SELECT config FROM tenants WHERE tenant_id = ?", (tenant_id,))
@@ -1694,34 +1716,36 @@ def add_product(tenant_id):
             # PostgreSQL returns JSONB as dict, SQLite returns string
             tenant_config = config_data if isinstance(config_data, dict) else json.loads(config_data)
             
-            # Get selected countries
-            countries = request.form.getlist('countries')
-            # If "ALL" is selected or no countries selected, set to None (all countries)
-            if 'ALL' in countries or not countries:
-                countries = None
-            
-            # Implementation config now empty - adapter will populate
-            implementation_config = {}
-            
-            # Determine pricing based on delivery type
-            delivery_type = request.form.get('delivery_type', 'guaranteed')
-            is_fixed_price = delivery_type == 'guaranteed'
-            
-            # Handle CPM and price guidance
-            cpm = None
-            price_guidance = None
-            
-            if is_fixed_price:
-                cpm = float(request.form.get('cpm', 5.0))
+            # Handle regular form submission fields if not from AI
+            if not ai_config:
+                # Get selected countries
+                countries = request.form.getlist('countries')
+                # If "ALL" is selected or no countries selected, set to None (all countries)
+                if 'ALL' in countries or not countries:
+                    countries = None
+                
+                # Determine pricing based on delivery type
+                delivery_type = request.form.get('delivery_type', 'guaranteed')
+                is_fixed_price = delivery_type == 'guaranteed'
+                
+                # Handle CPM and price guidance
+                cpm = None
+                price_guidance = None
+                
+                if is_fixed_price:
+                    cpm = float(request.form.get('cpm', 5.0))
+                else:
+                    # Non-guaranteed: use price guidance
+                    min_cpm = request.form.get('price_guidance_min')
+                    max_cpm = request.form.get('price_guidance_max')
+                    if min_cpm and max_cpm:
+                        price_guidance = {
+                            'min_cpm': float(min_cpm),
+                            'max_cpm': float(max_cpm)
+                        }
             else:
-                # Non-guaranteed: use price guidance
-                min_cpm = request.form.get('price_guidance_min')
-                max_cpm = request.form.get('price_guidance_max')
-                if min_cpm and max_cpm:
-                    price_guidance = {
-                        'min_cpm': float(min_cpm),
-                        'max_cpm': float(max_cpm)
-                    }
+                # AI config already has these values
+                is_fixed_price = delivery_type == 'guaranteed'
             
             # Insert product
             conn.execute("""
@@ -1733,10 +1757,10 @@ def add_product(tenant_id):
             """, (
                 tenant_id,
                 product_id,
-                request.form['name'],
-                request.form.get('description', ''),
+                name,
+                description,
                 json.dumps(formats),
-                json.dumps({}),  # Empty targeting template
+                json.dumps(targeting_template),
                 delivery_type,
                 is_fixed_price,
                 cpm,
@@ -1765,6 +1789,47 @@ def add_product(tenant_id):
     return render_template('add_product.html', 
                          tenant_id=tenant_id,
                          formats=formats)
+
+@app.route('/tenant/<tenant_id>/products/add/ai', methods=['GET'])
+@require_auth()
+def add_product_ai_form(tenant_id):
+    """Show AI-assisted product creation form."""
+    # Check access
+    if session.get('role') != 'super_admin' and session.get('tenant_id') != tenant_id:
+        return "Access denied", 403
+    
+    return render_template('add_product_ai.html', tenant_id=tenant_id)
+
+@app.route('/tenant/<tenant_id>/products/analyze_ai', methods=['POST'])
+@require_auth()
+def analyze_product_ai(tenant_id):
+    """Analyze product description with AI and return configuration."""
+    # Check access
+    if session.get('role') != 'super_admin' and session.get('tenant_id') != tenant_id:
+        return jsonify({"error": "Access denied"}), 403
+    
+    try:
+        import asyncio
+        from ai_product_service import analyze_product_description
+        
+        data = request.get_json()
+        
+        # Run the async function
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        
+        config = loop.run_until_complete(analyze_product_description(
+            tenant_id=tenant_id,
+            name=data['name'],
+            external_description=data['external_description'],
+            internal_details=data.get('internal_details'),
+            creative_urls=data.get('creative_urls', [])
+        ))
+        
+        return jsonify({"success": True, "config": config})
+        
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 def get_creative_formats():
     """Get all creative formats from the database."""

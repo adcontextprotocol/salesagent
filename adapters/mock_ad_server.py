@@ -337,3 +337,112 @@ class MockAdServer(AdServerAdapter):
             errors.append("Latency cannot be negative")
         
         return errors
+    
+    async def get_available_inventory(self) -> Dict[str, Any]:
+        """
+        Return mock inventory that simulates a typical publisher's ad server.
+        This helps demonstrate the AI configuration capabilities.
+        """
+        return {
+            "placements": [
+                {
+                    "id": "homepage_top", 
+                    "name": "Homepage Top Banner",
+                    "path": "/",
+                    "sizes": ["728x90", "970x250", "970x90"],
+                    "position": "above_fold",
+                    "typical_cpm": 15.0
+                },
+                {
+                    "id": "homepage_sidebar",
+                    "name": "Homepage Sidebar",
+                    "path": "/", 
+                    "sizes": ["300x250", "300x600"],
+                    "position": "right_rail",
+                    "typical_cpm": 8.0
+                },
+                {
+                    "id": "article_inline",
+                    "name": "Article Inline",
+                    "path": "/article/*",
+                    "sizes": ["300x250", "336x280", "728x90"],
+                    "position": "in_content",
+                    "typical_cpm": 5.0
+                },
+                {
+                    "id": "article_sidebar_sticky",
+                    "name": "Article Sidebar Sticky",
+                    "path": "/article/*",
+                    "sizes": ["300x250", "300x600"],
+                    "position": "sticky_rail",
+                    "typical_cpm": 10.0
+                },
+                {
+                    "id": "category_top",
+                    "name": "Category Page Banner",
+                    "path": "/category/*",
+                    "sizes": ["728x90", "970x90"],
+                    "position": "above_fold",
+                    "typical_cpm": 12.0
+                },
+                {
+                    "id": "mobile_interstitial",
+                    "name": "Mobile Interstitial",
+                    "path": "/*",
+                    "sizes": ["320x480", "300x250"],
+                    "position": "interstitial",
+                    "device": "mobile",
+                    "typical_cpm": 20.0
+                },
+                {
+                    "id": "video_preroll",
+                    "name": "Video Pre-roll",
+                    "path": "/video/*",
+                    "sizes": ["640x360", "640x480"],
+                    "position": "preroll",
+                    "format": "video",
+                    "typical_cpm": 25.0
+                }
+            ],
+            "ad_units": [
+                {"path": "/", "name": "Homepage", "placements": ["homepage_top", "homepage_sidebar"]},
+                {"path": "/article/*", "name": "Article Pages", "placements": ["article_inline", "article_sidebar_sticky"]},
+                {"path": "/category/*", "name": "Category Pages", "placements": ["category_top"]},
+                {"path": "/video/*", "name": "Video Pages", "placements": ["video_preroll"]},
+                {"path": "/sports", "name": "Sports Section", "placements": ["homepage_top", "article_inline"]},
+                {"path": "/business", "name": "Business Section", "placements": ["homepage_top", "article_inline"]},
+                {"path": "/technology", "name": "Tech Section", "placements": ["homepage_top", "article_inline", "article_sidebar_sticky"]}
+            ],
+            "targeting_options": {
+                "geo": {
+                    "countries": ["US", "CA", "GB", "AU", "DE", "FR", "IT", "ES", "NL", "SE", "JP", "BR", "MX"],
+                    "us_states": ["CA", "NY", "TX", "FL", "IL", "WA", "MA", "PA", "OH", "GA"],
+                    "us_dmas": ["New York", "Los Angeles", "Chicago", "Philadelphia", "Dallas-Ft. Worth", "San Francisco-Oakland-San Jose"]
+                },
+                "device": ["desktop", "mobile", "tablet"],
+                "os": ["windows", "macos", "ios", "android", "linux"],
+                "browser": ["chrome", "safari", "firefox", "edge", "samsung"],
+                "categories": {
+                    "iab": ["IAB1", "IAB2", "IAB3", "IAB4", "IAB5"],
+                    "custom": ["sports", "business", "technology", "entertainment", "lifestyle", "politics"]
+                },
+                "audience": {
+                    "demographics": ["18-24", "25-34", "35-44", "45-54", "55+"],
+                    "interests": ["sports_enthusiast", "tech_savvy", "luxury_shopper", "travel_lover", "fitness_focused"],
+                    "behavior": ["frequent_buyer", "early_adopter", "price_conscious"]
+                }
+            },
+            "creative_specs": [
+                {"type": "display", "sizes": ["300x250", "728x90", "970x250", "300x600", "320x50", "336x280", "970x90"]},
+                {"type": "video", "durations": [15, 30, 60], "sizes": ["640x360", "640x480", "1920x1080"]},
+                {"type": "native", "components": ["title", "description", "image", "cta_button"]},
+                {"type": "audio", "durations": [15, 30], "formats": ["mp3", "ogg"]}
+            ],
+            "properties": {
+                "monthly_impressions": 50000000,
+                "unique_visitors": 10000000,
+                "content_categories": ["news", "sports", "business", "technology", "entertainment"],
+                "viewability_average": 0.65,
+                "premium_inventory_percentage": 0.3
+            }
+        }
