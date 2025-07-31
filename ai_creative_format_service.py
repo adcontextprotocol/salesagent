@@ -141,23 +141,49 @@ class AICreativeFormatService:
             async with aiohttp.ClientSession() as session:
                 async with session.get(url) as response:
                     html = await response.text()
+            
+            # Extract relevant content from HTML to reduce prompt size
+            soup = BeautifulSoup(html, 'html.parser')
+            
+            # Remove script and style elements
+            for script in soup(["script", "style"]):
+                script.decompose()
+            
+            # Extract text content, focusing on relevant sections
+            relevant_text = ""
+            
+            # Look for sections that might contain format specifications
+            for tag in soup.find_all(['table', 'div', 'section'], limit=20):
+                text = tag.get_text()
+                # Only include content that seems relevant to ad formats
+                if any(keyword in text.lower() for keyword in 
+                       ['format', 'size', 'dimension', 'spec', 'ad', 'banner', 'video', 'creative', 'width', 'height']):
+                    relevant_text += text[:500] + "\n"
+            
+            # Fallback to first part of body text if no relevant sections found
+            if not relevant_text.strip():
+                body = soup.find('body')
+                if body:
+                    relevant_text = body.get_text()[:3000]
+                else:
+                    relevant_text = soup.get_text()[:3000]
+            
+            # Limit to 3000 chars to avoid token limits
+            content_for_ai = relevant_text[:3000]
                     
             # Use AI to extract format information
             prompt = f"""
-            Analyze this HTML content from a creative specification page and extract all creative format specifications.
+            Analyze this content from a creative specification page and extract all creative format specifications.
             Look for:
             - Ad format names and types (display, video, native, audio)
             - Dimensions (width x height) for display ads
             - Duration limits for video/audio
             - File size limits
             - Accepted file formats (jpg, png, gif, mp4, etc.)
-            - Animation requirements
-            - Technical specifications (frame rate, bitrate, etc.)
-            - Any special requirements or restrictions
             
             URL: {url}
-            HTML content (first 8000 chars):
-            {html[:8000]}
+            Content:
+            {content_for_ai}
             
             Return a JSON array of format objects with these fields:
             - name: format name (required)
@@ -167,22 +193,48 @@ class AICreativeFormatService:
             - height: pixel height (for display formats)
             - duration_seconds: max duration in seconds (for video/audio)
             - max_file_size_kb: max file size in KB
-            - specs: object with additional specifications like:
-              - file_types: array of accepted formats
-              - animation: animation requirements
-              - frame_rate: for video
-              - bitrate: for video/audio
-              - any other technical specs
+            - specs: object with additional specifications
             
             Return ONLY valid JSON array, no explanation or markdown.
             """
             
-            response = self.model.generate_content(prompt)
-            
             try:
-                formats_data = json.loads(response.text)
+                response = self.model.generate_content(prompt)
+                
+                # Check if we got a valid response
+                if not response or not hasattr(response, 'text') or not response.text:
+                    logger.warning(f"Empty response from Gemini for URL {url}")
+                    raise ValueError("Empty response from AI model")
+                
+                response_text = response.text.strip()
+                
+                # Debug logging to see what AI returned
+                logger.info(f"AI response for URL {url}:")
+                logger.info(f"Raw response text: {response_text}")
+                
+                # Remove markdown code blocks if present
+                if response_text.startswith('```json'):
+                    response_text = response_text.replace('```json', '').replace('```', '')
+                elif response_text.startswith('```'):
+                    response_text = response_text.replace('```', '')
+                
+                response_text = response_text.strip()
+                
+                if not response_text:
+                    logger.warning(f"Empty response text after cleaning for URL {url}")
+                    raise ValueError("Empty response text after cleaning")
+                
+                formats_data = json.loads(response_text)
+                
+                if not isinstance(formats_data, list):
+                    logger.warning(f"Expected list but got {type(formats_data)} for URL {url}")
+                    raise ValueError("Response is not a list")
                 
                 for fmt in formats_data:
+                    if not isinstance(fmt, dict) or not fmt.get('name') or not fmt.get('type'):
+                        logger.warning(f"Skipping invalid format entry: {fmt}")
+                        continue
+                        
                     # Generate format ID
                     if fmt.get('width') and fmt.get('height'):
                         format_id = f"{fmt['type']}_{fmt['width']}x{fmt['height']}"
@@ -204,8 +256,12 @@ class AICreativeFormatService:
                         source_url=url
                     ))
                     
-            except json.JSONDecodeError as e:
+            except (json.JSONDecodeError, ValueError) as e:
                 logger.error(f"Failed to parse AI response for {url}: {e}")
+                # Try to extract basic information manually
+                formats.extend(self._extract_formats_manually(html, url))
+            except Exception as e:
+                logger.error(f"AI model error for {url}: {e}")
                 # Try to extract basic information manually
                 formats.extend(self._extract_formats_manually(html, url))
                 
@@ -289,6 +345,11 @@ class AICreativeFormatService:
         
         try:
             response = self.model.generate_content(prompt)
+            
+            # Debug logging to see what AI returned
+            logger.info(f"AI response for standard formats HTML:")
+            logger.info(f"Raw response text: {response.text}")
+            
             formats_data = json.loads(response.text)
             
             for fmt in formats_data:
@@ -358,8 +419,31 @@ class AICreativeFormatService:
         
         response = self.model.generate_content(prompt)
         
+        # Check if we got a valid response
+        if not response or not hasattr(response, 'text') or not response.text:
+            logger.warning(f"Empty response from Gemini for format description '{name}'")
+            raise ValueError("Empty response from AI model")
+        
+        response_text = response.text.strip()
+        
+        # Debug logging to see what AI returned
+        logger.info(f"AI response for format description '{name}':")
+        logger.info(f"Raw response text: {response_text}")
+        
+        # Remove markdown code blocks if present
+        if response_text.startswith('```json'):
+            response_text = response_text.replace('```json', '').replace('```', '')
+        elif response_text.startswith('```'):
+            response_text = response_text.replace('```', '')
+        
+        response_text = response_text.strip()
+        
+        if not response_text:
+            logger.warning(f"Empty response text after cleaning for format description '{name}'")
+            raise ValueError("Empty response text after cleaning")
+        
         try:
-            data = json.loads(response.text)
+            data = json.loads(response_text)
             
             # Generate format ID
             if data.get('width') and data.get('height'):
