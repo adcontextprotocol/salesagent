@@ -29,6 +29,7 @@ class FormatSpecification:
     name: str
     type: str  # display, video, audio, native
     description: str
+    extends: Optional[str] = None  # Reference to foundational format
     width: Optional[int] = None
     height: Optional[int] = None
     duration_seconds: Optional[int] = None
@@ -49,6 +50,14 @@ class AICreativeFormatService:
         
         genai.configure(api_key=api_key)
         self.model = genai.GenerativeModel('gemini-2.0-flash')
+        
+        # Initialize foundational formats manager if available
+        try:
+            from foundational_formats import FoundationalFormatsManager
+            self.formats_manager = FoundationalFormatsManager()
+        except ImportError:
+            logger.info("Foundational formats not available")
+            self.formats_manager = None
         
     async def fetch_standard_formats(self) -> List[FormatSpecification]:
         """Fetch standard formats from adcontextprotocol.org."""
@@ -168,6 +177,19 @@ class AICreativeFormatService:
             content_for_ai = relevant_text[:3000]
                     
             # Use AI to extract format information
+            foundational_info = ""
+            if self.formats_manager:
+                foundational_info = """
+            For each format, also determine if it extends one of these foundational formats:
+            - foundation_immersive_canvas: Premium responsive format for full viewport experiences
+            - foundation_product_showcase_carousel: Interactive display with 3-10 products/images
+            - foundation_expandable_display: Banner with expandable canvas
+            - foundation_scroll_triggered_experience: Mobile-first scroll reveal format
+            - foundation_universal_video: Standard video specifications
+            
+            If the format extends a foundational format, include: "extends": "foundation_format_id"
+            """
+            
             prompt = f"""
             Analyze this content from a creative specification page and extract all creative format specifications.
             Look for:
@@ -180,11 +202,12 @@ class AICreativeFormatService:
             URL: {source_url}
             Content:
             {content_for_ai}
-            
+            {foundational_info}
             Return a JSON array of format objects with these fields:
             - name: format name (required)
             - type: "display", "video", "audio", or "native" (required)
             - description: brief description
+            - extends: foundational format ID if applicable (optional)
             - width: pixel width (for display formats)
             - height: pixel height (for display formats)
             - duration_seconds: max duration in seconds (for video/audio)
@@ -239,11 +262,31 @@ class AICreativeFormatService:
                     else:
                         format_id = f"{fmt['type']}_{fmt['name'].lower().replace(' ', '_')}"
                     
+                    # If no extends field from AI, try to suggest one
+                    extends = fmt.get('extends')
+                    if not extends and self.formats_manager:
+                        # Create specs dict for suggestion
+                        suggest_specs = {
+                            'type': fmt['type'],
+                            'name': fmt['name']
+                        }
+                        if 'carousel' in fmt['name'].lower() or 'slideshow' in fmt['name'].lower():
+                            suggest_specs['carousel'] = True
+                        if 'expandable' in fmt['name'].lower():
+                            suggest_specs['expandable'] = True
+                        if 'scroll' in fmt['name'].lower():
+                            suggest_specs['scroll'] = True
+                        if 'edge' in fmt['name'].lower() or 'immersive' in fmt['name'].lower():
+                            suggest_specs['responsive'] = True
+                            
+                        extends = self.formats_manager.suggest_base_format(suggest_specs)
+                    
                     formats.append(FormatSpecification(
                         format_id=format_id,
                         name=fmt['name'],
                         type=fmt['type'],
                         description=fmt.get('description', ''),
+                        extends=extends,
                         width=fmt.get('width'),
                         height=fmt.get('height'),
                         duration_seconds=fmt.get('duration_seconds'),
@@ -547,8 +590,8 @@ async def sync_standard_formats():
                     INSERT INTO creative_formats (
                         format_id, tenant_id, name, type, description,
                         width, height, duration_seconds, max_file_size_kb,
-                        specs, is_standard, source_url
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        specs, is_standard, extends, source_url
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """, (
                     fmt.format_id,
                     None,  # Standard formats have no tenant
@@ -561,6 +604,7 @@ async def sync_standard_formats():
                     fmt.max_file_size_kb,
                     json.dumps(fmt.specs or {}),
                     True,  # is_standard
+                    fmt.extends,
                     fmt.source_url
                 ))
                 
