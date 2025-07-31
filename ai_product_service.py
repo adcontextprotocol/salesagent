@@ -31,7 +31,6 @@ class ProductDescription:
     name: str
     external_description: str  # What buyers see
     internal_details: Optional[str] = None  # Publisher's implementation notes
-    creative_format_urls: Optional[List[str]] = None  # URLs to scrape for formats
     
 @dataclass
 class AdServerInventory:
@@ -65,21 +64,14 @@ class AIProductConfigurationService:
         # 1. Fetch ad server inventory
         inventory = await self._fetch_ad_server_inventory(tenant_id, adapter_type)
         
-        # 2. Discover creative formats if URLs provided
-        creative_formats = []
-        if description.creative_format_urls:
-            for url in description.creative_format_urls:
-                formats = await self._discover_creative_formats_from_url(url)
-                creative_formats.extend(formats)
+        # 2. Get existing formats from database (standard + custom for this tenant)
+        creative_formats = self._get_available_formats(tenant_id)
         
-        # 3. Get existing formats from database
-        db_formats = self._get_standard_formats()
-        
-        # 4. Use AI to generate configuration
+        # 3. Use AI to generate configuration
         config = await self._generate_product_configuration(
             description=description,
             inventory=inventory,
-            creative_formats=creative_formats + db_formats,
+            creative_formats=creative_formats,
             adapter_type=adapter_type
         )
         
@@ -158,77 +150,37 @@ class AIProductConfigurationService:
             properties=inventory_data.get("properties", {})
         )
     
-    async def _discover_creative_formats_from_url(self, url: str) -> List[Dict[str, Any]]:
-        """Scrape a URL to discover creative format specifications."""
-        formats = []
-        
-        try:
-            async with aiohttp.ClientSession() as session:
-                async with session.get(url) as response:
-                    html = await response.text()
-                    
-            # Parse HTML
-            soup = BeautifulSoup(html, 'html.parser')
-            
-            # Use AI to extract format information
-            prompt = f"""
-            Analyze this HTML content and extract creative format specifications.
-            Look for:
-            - Ad sizes (width x height)
-            - File size limits
-            - Animation requirements
-            - File formats accepted
-            - Any technical specifications
-            
-            HTML content (first 5000 chars):
-            {html[:5000]}
-            
-            Return a JSON array of format objects with these fields:
-            - name: format name
-            - type: display, video, audio, or native
-            - dimensions: size like "300x250" (if applicable)
-            - file_size_limit: in KB
-            - file_formats: array of accepted formats
-            - specifications: object with any other specs
-            
-            Return ONLY valid JSON, no explanation.
-            """
-            
-            response = self.model.generate_content(prompt)
-            formats_data = json.loads(response.text)
-            
-            # Convert to our format
-            for fmt in formats_data:
-                format_dict = {
-                    "format_id": f"custom_{fmt['name'].lower().replace(' ', '_')}",
-                    "name": fmt["name"],
-                    "type": fmt["type"],
-                    "dimensions": fmt.get("dimensions"),
-                    "description": f"Custom format from {urlparse(url).netloc}",
-                    "specifications": fmt.get("specifications", {})
-                }
-                formats.append(format_dict)
-                
-        except Exception as e:
-            logger.error(f"Error discovering formats from {url}: {e}")
-        
-        return formats
-    
-    def _get_standard_formats(self) -> List[Dict[str, Any]]:
-        """Get standard creative formats from database."""
+    def _get_available_formats(self, tenant_id: str) -> List[Dict[str, Any]]:
+        """Get all available creative formats (standard + custom for tenant)."""
         conn = get_db_connection()
-        cursor = conn.execute("SELECT * FROM creative_formats")
+        cursor = conn.execute("""
+            SELECT format_id, name, type, description, width, height, duration_seconds
+            FROM creative_formats
+            WHERE tenant_id IS NULL OR tenant_id = ?
+            ORDER BY is_standard DESC, type, name
+        """, (tenant_id,))
         
         formats = []
         for row in cursor:
-            formats.append({
-                "format_id": row["format_id"],
-                "name": row["name"],
-                "type": row["type"],
-                "dimensions": row.get("dimensions"),
-                "duration": row.get("duration"),
-                "description": row.get("description")
-            })
+            format_dict = {
+                "format_id": row[0],
+                "name": row[1],
+                "type": row[2],
+                "description": row[3]
+            }
+            
+            # Add dimensions for display formats
+            if row[4] and row[5]:
+                format_dict["dimensions"] = f"{row[4]}x{row[5]}"
+                format_dict["width"] = row[4]
+                format_dict["height"] = row[5]
+            
+            # Add duration for video/audio formats
+            if row[6]:
+                format_dict["duration"] = f"{row[6]}s"
+                format_dict["duration_seconds"] = row[6]
+                
+            formats.append(format_dict)
         
         conn.close()
         return formats
@@ -385,8 +337,7 @@ async def analyze_product_description(
     tenant_id: str,
     name: str,
     external_description: str,
-    internal_details: Optional[str] = None,
-    creative_urls: Optional[List[str]] = None
+    internal_details: Optional[str] = None
 ) -> Dict[str, Any]:
     """Analyze descriptions and return suggested configuration."""
     
@@ -395,7 +346,9 @@ async def analyze_product_description(
     # Get tenant's adapter type
     conn = get_db_connection()
     cursor = conn.execute("SELECT config FROM tenants WHERE tenant_id = ?", (tenant_id,))
-    tenant_config = json.loads(cursor.fetchone()[0])
+    tenant_config_row = cursor.fetchone()
+    # PostgreSQL returns JSONB as dict, SQLite returns string
+    tenant_config = tenant_config_row[0] if isinstance(tenant_config_row[0], dict) else json.loads(tenant_config_row[0])
     conn.close()
     
     # Find enabled adapter
@@ -411,8 +364,7 @@ async def analyze_product_description(
     description = ProductDescription(
         name=name,
         external_description=external_description,
-        internal_details=internal_details,
-        creative_format_urls=creative_urls
+        internal_details=internal_details
     )
     
     config = await service.create_product_from_description(

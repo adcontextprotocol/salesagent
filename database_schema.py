@@ -16,6 +16,7 @@ CREATE TABLE IF NOT EXISTS tenants (
 
 CREATE TABLE IF NOT EXISTS creative_formats (
     format_id TEXT PRIMARY KEY,
+    tenant_id TEXT,  -- NULL for standard formats, populated for custom formats
     name TEXT NOT NULL,
     type TEXT NOT NULL CHECK (type IN ('display', 'video', 'audio', 'native')),
     description TEXT,
@@ -25,7 +26,9 @@ CREATE TABLE IF NOT EXISTS creative_formats (
     max_file_size_kb INTEGER,
     specs TEXT NOT NULL,
     is_standard BOOLEAN DEFAULT 1,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    source_url TEXT,  -- URL where format was discovered
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (tenant_id) REFERENCES tenants(tenant_id) ON DELETE CASCADE
 );
 
 CREATE TABLE IF NOT EXISTS products (
@@ -155,6 +158,7 @@ CREATE TABLE IF NOT EXISTS tenants (
 
 CREATE TABLE IF NOT EXISTS creative_formats (
     format_id VARCHAR(50) PRIMARY KEY,
+    tenant_id VARCHAR(50),  -- NULL for standard formats, populated for custom formats
     name VARCHAR(255) NOT NULL,
     type VARCHAR(20) NOT NULL CHECK (type IN ('display', 'video', 'audio', 'native')),
     description TEXT,
@@ -164,7 +168,9 @@ CREATE TABLE IF NOT EXISTS creative_formats (
     max_file_size_kb INTEGER,
     specs JSONB NOT NULL,
     is_standard BOOLEAN DEFAULT TRUE,
-    created_at TIMESTAMP DEFAULT NOW()
+    source_url TEXT,  -- URL where format was discovered
+    created_at TIMESTAMP DEFAULT NOW(),
+    FOREIGN KEY (tenant_id) REFERENCES tenants(tenant_id) ON DELETE CASCADE
 );
 
 CREATE TABLE IF NOT EXISTS products (
