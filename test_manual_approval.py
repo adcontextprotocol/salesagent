@@ -36,7 +36,7 @@ async def test_manual_approval_create():
     console.print("\n[bold cyan]Testing Manual Approval for Create Media Buy[/bold cyan]")
     
     # First, ensure the adapter has manual approval enabled
-    # This would normally be in config.json
+    # This would normally be in tenant config in database
     console.print("[yellow]Note: Ensure your adapter config has manual_approval_required: true[/yellow]")
     
     # Try to create a media buy

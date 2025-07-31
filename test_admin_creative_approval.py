@@ -20,7 +20,7 @@ console = Console()
 
 # Test tokens
 PURINA_TOKEN = "purina_secret_token_abc123"
-ADMIN_TOKEN = "admin_secret_token_xyz789"  # Should match config.json
+ADMIN_TOKEN = "admin_secret_token_xyz789"  # Should match tenant config in database
 
 async def create_test_creatives(server_url: str):
     """Create some test creatives as Purina."""
@@ -217,8 +217,8 @@ async def main():
         traceback.print_exc()
 
 if __name__ == "__main__":
-    # First, update config.json to include admin token
-    console.print("[yellow]Note: Make sure to add admin token to config.json:[/yellow]")
+    # First, update tenant config in database to include admin token
+    console.print("[yellow]Note: Make sure to add admin token to tenant config in database:[/yellow]")
     console.print(json.dumps({
         "admin": {
             "token": ADMIN_TOKEN
