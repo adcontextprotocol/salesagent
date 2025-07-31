@@ -120,7 +120,7 @@
         
         <div style="margin-bottom: 2rem; padding: 1rem; background: #f0f8ff; border-radius: 4px;">
             <h4 style="margin-top: 0;">Tenant Login URL</h4>
-            <code style="font-size: 14px;">http://localhost:8001/tenant/{{ tenant.tenant_id }}/login</code>
+            <code style="font-size: 14px;">http://localhost:{{ admin_port }}/tenant/{{ tenant.tenant_id }}/login</code>
             <p style="margin: 0.5rem 0 0 0; color: #666; font-size: 13px;">
                 Share this URL with authorized users to access this tenant directly.
             </p>
@@ -542,48 +542,11 @@
 
 <div id="products" class="tab-content">
     <div class="card">
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
-            <h3 style="margin: 0;">Products</h3>
+        <h3>Products</h3>
+        <p>Define the advertising products available for purchase through the Sales Agent.</p>
+        <div style="text-align: center; padding: 40px;">
             <a href="/tenant/{{ tenant.tenant_id }}/products" class="btn">Manage Products</a>
         </div>
-        <p>Define the advertising products available for purchase through the Sales Agent.</p>
-        {% if products %}
-        <table>
-            <thead>
-                <tr>
-                    <th>ID</th>
-                    <th>Name</th>
-                    <th>Type</th>
-                    <th>CPM</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for product in products[:5] %}
-                <tr>
-                    <td><code>{{ product.product_id }}</code></td>
-                    <td>{{ product.name }}</td>
-                    <td>{{ product.delivery_type }}</td>
-                    <td>${{ product.cpm or 'Variable' }}</td>
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
-        {% if products|length > 5 %}
-        <p style="text-align: center; margin-top: 1rem;">
-            <a href="/tenant/{{ tenant.tenant_id }}/products">View all {{ products|length }} products →</a>
-        </p>
-        {% endif %}
-        {% else %}
-        <div style="text-align: center; padding: 40px; background: #f8f9fa; border-radius: 8px;">
-            <h4 style="margin-bottom: 20px;">No Products Yet</h4>
-            <p style="margin-bottom: 30px;">
-                Products define the advertising inventory available for purchase through the Sales Agent.
-            </p>
-            <a href="/tenant/{{ tenant.tenant_id }}/products" class="btn">
-                Manage Products
-            </a>
-        </div>
-        {% endif %}
     </div>
 </div>
 

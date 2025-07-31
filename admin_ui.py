@@ -567,11 +567,15 @@ def tenant_detail(tenant_id):
     if 'adapters' in config_for_editing:
         del config_for_editing['adapters']
     
+    # Get the current port from environment
+    admin_port = int(os.environ.get('ADMIN_UI_PORT', 8001))
+    
     return render_template('tenant_detail.html', 
                          tenant=tenant, 
                          principals=principals,
                          products=products,
-                         config_for_editing=config_for_editing)
+                         config_for_editing=config_for_editing,
+                         admin_port=admin_port)
 
 @app.route('/tenant/<tenant_id>/update', methods=['POST'])
 @require_auth()
@@ -1545,6 +1549,10 @@ def list_products(tenant_id):
                     from adapters.google_ad_manager import GoogleAdManager
                     adapter = GoogleAdManager(config, dummy_principal, dry_run=True, tenant_id=tenant_id)
                     adapter_ui_endpoint = adapter.get_config_ui_endpoint()
+                elif adapter_name == 'mock':
+                    from adapters.mock_ad_server import MockAdServer
+                    adapter = MockAdServer(config, dummy_principal, dry_run=True, tenant_id=tenant_id)
+                    adapter_ui_endpoint = adapter.get_config_ui_endpoint()
                 # Add other adapters as needed
             except:
                 pass
@@ -1553,7 +1561,7 @@ def list_products(tenant_id):
     # Get products
     cursor = conn.execute("""
         SELECT product_id, name, description, formats, delivery_type, 
-               is_fixed_price, cpm, price_guidance, is_custom, expires_at
+               is_fixed_price, cpm, price_guidance, is_custom, expires_at, countries
         FROM products
         WHERE tenant_id = ?
         ORDER BY product_id
@@ -1561,17 +1569,23 @@ def list_products(tenant_id):
     
     products = []
     for row in cursor.fetchall():
+        # Handle PostgreSQL (returns objects) vs SQLite (returns JSON strings)
+        formats = row[3] if isinstance(row[3], list) else (json.loads(row[3]) if row[3] else [])
+        price_guidance = row[7] if isinstance(row[7], dict) else (json.loads(row[7]) if row[7] else None)
+        countries = row[10] if isinstance(row[10], list) else (json.loads(row[10]) if row[10] else None)
+        
         products.append({
             'product_id': row[0],
             'name': row[1],
             'description': row[2],
-            'formats': json.loads(row[3]) if row[3] else [],
+            'formats': formats,
             'delivery_type': row[4],
             'is_fixed_price': row[5],
             'cpm': row[6],
-            'price_guidance': json.loads(row[7]) if row[7] else None,
+            'price_guidance': price_guidance,
             'is_custom': row[8],
-            'expires_at': row[9]
+            'expires_at': row[9],
+            'countries': countries
         })
     
     conn.close()
@@ -1626,7 +1640,10 @@ def edit_product_basic(tenant_id, product_id):
     
     # GET request - load product
     cursor = conn.execute(
-        "SELECT * FROM products WHERE tenant_id = ? AND product_id = ?",
+        """SELECT product_id, name, description, formats, delivery_type, 
+               is_fixed_price, cpm, price_guidance
+        FROM products 
+        WHERE tenant_id = ? AND product_id = ?""",
         (tenant_id, product_id)
     )
     product_row = cursor.fetchone()
@@ -1635,15 +1652,19 @@ def edit_product_basic(tenant_id, product_id):
         conn.close()
         return "Product not found", 404
     
+    # Handle PostgreSQL (returns objects) vs SQLite (returns JSON strings)
+    formats = product_row[3] if isinstance(product_row[3], list) else json.loads(product_row[3] or '[]')
+    price_guidance = product_row[7] if isinstance(product_row[7], dict) else json.loads(product_row[7] or '{}')
+    
     product = {
-        'product_id': product_row['product_id'],
-        'name': product_row['name'],
-        'description': product_row['description'],
-        'formats': json.loads(product_row['formats'] or '[]'),
-        'delivery_type': product_row['delivery_type'],
-        'is_fixed_price': product_row['is_fixed_price'],
-        'cpm': product_row['cpm'],
-        'price_guidance': json.loads(product_row['price_guidance'] or '{}')
+        'product_id': product_row[0],
+        'name': product_row[1],
+        'description': product_row[2],
+        'formats': formats,
+        'delivery_type': product_row[4],
+        'is_fixed_price': product_row[5],
+        'cpm': product_row[6],
+        'price_guidance': price_guidance
     }
     
     conn.close()
@@ -1679,15 +1700,8 @@ def add_product(tenant_id):
             if 'ALL' in countries or not countries:
                 countries = None
             
-            implementation_config = {
-                'placement_type': request.form.get('placement_type', 'run_of_network'),
-                'ad_unit_path': request.form.get('ad_unit_path', f'/network/{product_id}'),
-                'countries': countries
-            }
-            
-            # Add specific fields based on placement type
-            if request.form.get('placement_type') == 'specific_page':
-                implementation_config['page_url'] = request.form.get('page_url', '/')
+            # Implementation config now empty - adapter will populate
+            implementation_config = {}
             
             # Determine pricing based on delivery type
             delivery_type = request.form.get('delivery_type', 'guaranteed')
@@ -1714,8 +1728,8 @@ def add_product(tenant_id):
                 INSERT INTO products (
                     tenant_id, product_id, name, description,
                     formats, targeting_template, delivery_type,
-                    is_fixed_price, cpm, price_guidance, implementation_config
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    is_fixed_price, cpm, price_guidance, countries, implementation_config
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
                 tenant_id,
                 product_id,
@@ -1727,6 +1741,7 @@ def add_product(tenant_id):
                 is_fixed_price,
                 cpm,
                 json.dumps(price_guidance),
+                json.dumps(countries),
                 json.dumps(implementation_config)
             ))
             
@@ -1816,6 +1831,12 @@ def register_adapter_routes():
                             print(f"Adapter config: {adapter_config}")
                             from adapters.google_ad_manager import GoogleAdManager
                             adapter = GoogleAdManager(adapter_config, dummy_principal, dry_run=True, tenant_id="system")
+                            adapter.register_ui_routes(app)
+                            registered_adapters.add(adapter_name)
+                        elif adapter_name == 'mock':
+                            print(f"Registering routes for {adapter_name}")
+                            from adapters.mock_ad_server import MockAdServer
+                            adapter = MockAdServer(adapter_config, dummy_principal, dry_run=True, tenant_id="system")
                             adapter.register_ui_routes(app)
                             registered_adapters.add(adapter_name)
                         elif adapter_name == 'kevel':

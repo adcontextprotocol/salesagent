@@ -68,14 +68,34 @@ The server provides:
 
 ## Recent Major Changes
 
-### Adapter-Specific Configuration UI System (Latest)
-- Each adapter can now provide its own configuration UI
+### Product Management & Adapter Configuration Improvements (Latest)
+- **Clean Separation of Concerns**: 
+  - Basic product fields (name, pricing, countries) in main product form
+  - Adapter-specific configuration moved to dedicated UIs
+  - Countries field moved to products table (buyer-facing concern)
+  - `implementation_config` now exclusively for adapter technical settings
+- **Mock Adapter Configuration UI**:
+  - Traffic simulation controls (impressions, fill rate, CTR, viewability)
+  - Performance simulation (latency, error rates)
+  - Test scenarios (normal, high demand, degraded, outage)
+  - Debug settings for development
+- **UI/UX Improvements**:
+  - Fixed creative format cards display with proper CSS
+  - Removed duplicate product lists (simplified navigation)
+  - Price guidance shown as range for non-guaranteed products
+  - "Tenant" terminology removed from user-facing views
+  - Dynamic port configuration (no more hardcoded 8001)
+- **Database Schema Updates**:
+  - Added `countries` JSONB column to products table
+  - Added `implementation_config` JSONB column for adapter data
+  - Proper PostgreSQL JSONB handling vs SQLite JSON strings
+
+### Adapter-Specific Configuration UI System
+- Each adapter can provide its own configuration UI
 - Adapters implement `get_config_ui_endpoint()`, `register_ui_routes()`, and `validate_product_config()`
 - Google Ad Manager example with comprehensive UI at `/adapters/gam/config/<tenant_id>/<product_id>`
+- Mock adapter UI for testing parameters at `/adapters/mock/config/<tenant_id>/<product_id>`
 - Separation of basic product settings from adapter-specific configuration
-- Dynamic pricing UI: CPM for guaranteed, price guidance for non-guaranteed
-- Country multi-select with price implications
-- Adapter-specific fields: ad unit paths, creative sizes, frequency caps, dayparting, etc.
 
 ### Operations Dashboard & Database Persistence
 - Added comprehensive operations dashboard in Admin UI

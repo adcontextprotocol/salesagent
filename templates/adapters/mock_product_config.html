@@ -1,0 +1,154 @@
+{% extends "base.html" %}
+
+{% block title %}Mock Adapter Configuration - {{ product.name }}{% endblock %}
+
+{% block content %}
+<div class="card">
+    <h2>Mock Adapter Configuration</h2>
+    <p>Configure testing parameters for: <strong>{{ product.name }}</strong></p>
+    
+    {% if error %}
+    <div class="alert alert-error">{{ error }}</div>
+    {% endif %}
+    
+    {% if success %}
+    <div class="alert alert-success">Configuration saved successfully!</div>
+    {% endif %}
+    
+    <form method="POST" id="mockConfigForm">
+        <h3 style="margin-top: 2rem;">Traffic Simulation</h3>
+        
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+            <div class="form-group">
+                <label for="daily_impressions">Daily Impressions</label>
+                <input type="number" id="daily_impressions" name="daily_impressions" 
+                       value="{{ config.get('daily_impressions', 100000) }}" min="1000" step="1000">
+                <small style="color: #666;">Simulated daily impression volume</small>
+            </div>
+            
+            <div class="form-group">
+                <label for="fill_rate">Fill Rate (%)</label>
+                <input type="number" id="fill_rate" name="fill_rate" 
+                       value="{{ config.get('fill_rate', 85) }}" min="0" max="100" step="1">
+                <small style="color: #666;">Percentage of requests that will be filled</small>
+            </div>
+        </div>
+        
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+            <div class="form-group">
+                <label for="ctr">Click-Through Rate (%)</label>
+                <input type="number" id="ctr" name="ctr" 
+                       value="{{ config.get('ctr', 0.5) }}" min="0" max="10" step="0.1">
+                <small style="color: #666;">Simulated CTR for performance testing</small>
+            </div>
+            
+            <div class="form-group">
+                <label for="viewability_rate">Viewability Rate (%)</label>
+                <input type="number" id="viewability_rate" name="viewability_rate" 
+                       value="{{ config.get('viewability_rate', 70) }}" min="0" max="100" step="1">
+                <small style="color: #666;">Percentage of impressions marked as viewable</small>
+            </div>
+        </div>
+        
+        <h3 style="margin-top: 2rem;">Performance Simulation</h3>
+        
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+            <div class="form-group">
+                <label for="latency_ms">API Latency (ms)</label>
+                <input type="number" id="latency_ms" name="latency_ms" 
+                       value="{{ config.get('latency_ms', 50) }}" min="0" max="5000" step="10">
+                <small style="color: #666;">Simulated API response time</small>
+            </div>
+            
+            <div class="form-group">
+                <label for="error_rate">Error Rate (%)</label>
+                <input type="number" id="error_rate" name="error_rate" 
+                       value="{{ config.get('error_rate', 0.1) }}" min="0" max="50" step="0.1">
+                <small style="color: #666;">Percentage of requests that will fail</small>
+            </div>
+        </div>
+        
+        <h3 style="margin-top: 2rem;">Test Scenarios</h3>
+        
+        <div class="form-group">
+            <label for="test_mode">Test Mode</label>
+            <select id="test_mode" name="test_mode">
+                <option value="normal" {% if config.get('test_mode') == 'normal' %}selected{% endif %}>
+                    Normal Operation
+                </option>
+                <option value="high_demand" {% if config.get('test_mode') == 'high_demand' %}selected{% endif %}>
+                    High Demand (Low Fill)
+                </option>
+                <option value="degraded" {% if config.get('test_mode') == 'degraded' %}selected{% endif %}>
+                    Degraded Performance
+                </option>
+                <option value="outage" {% if config.get('test_mode') == 'outage' %}selected{% endif %}>
+                    Service Outage
+                </option>
+            </select>
+            <small style="color: #666;">Simulate different operational scenarios</small>
+        </div>
+        
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+            <div class="form-group">
+                <label for="price_variance">Price Variance (%)</label>
+                <input type="number" id="price_variance" name="price_variance" 
+                       value="{{ config.get('price_variance', 10) }}" min="0" max="50" step="1">
+                <small style="color: #666;">Random price variation for non-guaranteed inventory</small>
+            </div>
+            
+            <div class="form-group">
+                <label for="seasonal_factor">Seasonal Factor</label>
+                <input type="number" id="seasonal_factor" name="seasonal_factor" 
+                       value="{{ config.get('seasonal_factor', 1.0) }}" min="0.1" max="5.0" step="0.1">
+                <small style="color: #666;">Multiplier for seasonal demand simulation</small>
+            </div>
+        </div>
+        
+        <h3 style="margin-top: 2rem;">Debug Settings</h3>
+        
+        <div class="form-group">
+            <label>
+                <input type="checkbox" name="verbose_logging" 
+                       {% if config.get('verbose_logging') %}checked{% endif %}>
+                Enable Verbose Logging
+            </label>
+            <small style="color: #666; display: block; margin-left: 1.5rem;">
+                Log detailed mock adapter operations
+            </small>
+        </div>
+        
+        <div class="form-group">
+            <label>
+                <input type="checkbox" name="predictable_ids" 
+                       {% if config.get('predictable_ids') %}checked{% endif %}>
+                Use Predictable IDs
+            </label>
+            <small style="color: #666; display: block; margin-left: 1.5rem;">
+                Generate deterministic IDs for easier testing
+            </small>
+        </div>
+        
+        <div style="margin-top: 2rem;">
+            <button type="submit" class="btn">Save Configuration</button>
+            <a href="{{ url_for('list_products', tenant_id=tenant_id) }}" class="btn btn-secondary">Cancel</a>
+        </div>
+    </form>
+</div>
+
+<script>
+document.getElementById('test_mode').addEventListener('change', function() {
+    const mode = this.value;
+    // Auto-adjust settings based on test mode
+    if (mode === 'high_demand') {
+        document.getElementById('fill_rate').value = 30;
+        document.getElementById('error_rate').value = 0.5;
+    } else if (mode === 'degraded') {
+        document.getElementById('latency_ms').value = 500;
+        document.getElementById('error_rate').value = 5;
+    } else if (mode === 'outage') {
+        document.getElementById('error_rate').value = 100;
+    }
+});
+</script>
+{% endblock %}
