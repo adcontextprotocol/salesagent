@@ -39,6 +39,11 @@ app.wsgi_app = ProxyFix(app.wsgi_app)
 GOOGLE_CLIENT_ID = None
 GOOGLE_CLIENT_SECRET = None
 
+print(f"DEBUG: Environment variables at startup:")
+print(f"DEBUG: GOOGLE_CLIENT_ID={os.environ.get('GOOGLE_CLIENT_ID')}")
+print(f"DEBUG: GOOGLE_CLIENT_SECRET exists={bool(os.environ.get('GOOGLE_CLIENT_SECRET'))}")
+print(f"DEBUG: GOOGLE_OAUTH_CREDENTIALS_FILE={os.environ.get('GOOGLE_OAUTH_CREDENTIALS_FILE')}")
+
 # Load Google OAuth credentials
 # First check environment variable, then look for any client_secret*.json file
 oauth_creds_file = os.environ.get('GOOGLE_OAUTH_CREDENTIALS_FILE')
@@ -46,9 +51,11 @@ oauth_creds_file = os.environ.get('GOOGLE_OAUTH_CREDENTIALS_FILE')
 if not oauth_creds_file:
     # Look for any client_secret*.json file in the current directory
     import glob
-    creds_files = glob.glob('client_secret*.json')
+    creds_files = [f for f in glob.glob('client_secret*.json') if os.path.isfile(f)]
     if creds_files:
         oauth_creds_file = creds_files[0]
+        
+print(f"DEBUG: After file search, oauth_creds_file={repr(oauth_creds_file)}")
 
 if oauth_creds_file and os.path.exists(oauth_creds_file):
     with open(oauth_creds_file) as f:
@@ -59,6 +66,9 @@ else:
     # Try environment variables as fallback
     GOOGLE_CLIENT_ID = os.environ.get('GOOGLE_CLIENT_ID')
     GOOGLE_CLIENT_SECRET = os.environ.get('GOOGLE_CLIENT_SECRET')
+    print(f"DEBUG: oauth_creds_file={oauth_creds_file}")
+    print(f"DEBUG: GOOGLE_CLIENT_ID from env={GOOGLE_CLIENT_ID}")
+    print(f"DEBUG: GOOGLE_CLIENT_SECRET exists={bool(GOOGLE_CLIENT_SECRET)}")
 
 # Super admin configuration from environment or config
 SUPER_ADMIN_EMAILS = os.environ.get('SUPER_ADMIN_EMAILS', '').split(',') if os.environ.get('SUPER_ADMIN_EMAILS') else []
