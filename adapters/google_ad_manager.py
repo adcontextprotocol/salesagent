@@ -2,9 +2,10 @@ from datetime import datetime, timedelta
 import random
 import json
 import os
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Tuple
 from googleads import ad_manager
 import google.oauth2.service_account
+from flask import Flask, render_template, request, jsonify, redirect, url_for, flash
 
 from adapters.base import AdServerAdapter, CreativeEngineAdapter
 from schemas import (
@@ -14,6 +15,7 @@ from schemas import (
     PackageDelivery, Principal
 )
 from adapters.constants import UPDATE_ACTIONS, REQUIRED_UPDATE_ACTIONS
+from adapters.gam_implementation_config_schema import GAMImplementationConfig
 
 class GoogleAdManager(AdServerAdapter):
     """
@@ -289,6 +291,20 @@ class GoogleAdManager(AdServerAdapter):
 
     def create_media_buy(self, request: CreateMediaBuyRequest, packages: List[MediaPackage], start_time: datetime, end_time: datetime) -> CreateMediaBuyResponse:
         """Creates a new Order and associated LineItems in Google Ad Manager."""
+        # Get products to access implementation_config
+        from database import db_session
+        from models import Product
+        
+        # Create a map of package_id to product for easy lookup
+        products_map = {}
+        for package in packages:
+            product = db_session.query(Product).filter_by(
+                tenant_id=self.tenant_id,
+                product_id=package.package_id  # package_id is actually product_id
+            ).first()
+            if product:
+                products_map[package.package_id] = product
+        
         # Log operation
         self.audit_logger.log_operation(
             operation="create_media_buy",
@@ -317,9 +333,26 @@ class GoogleAdManager(AdServerAdapter):
         
         media_buy_id = f"gam_{int(datetime.now().timestamp())}"
         
+        # Get order name template from first product's config (they should all be the same)
+        order_name_template = "AdCP-{po_number}-{timestamp}"
+        applied_team_ids = []
+        if products_map:
+            first_product = next(iter(products_map.values()))
+            if first_product.implementation_config:
+                order_name_template = first_product.implementation_config.get('order_name_template', order_name_template)
+                applied_team_ids = first_product.implementation_config.get('applied_team_ids', [])
+        
+        # Format order name
+        order_name = order_name_template.format(
+            po_number=request.po_number or media_buy_id,
+            product_name=packages[0].name if packages else "Unknown",
+            timestamp=datetime.now().strftime("%Y%m%d_%H%M%S"),
+            principal_name=self.principal.name
+        )
+        
         # Create Order object
         order = {
-            'name': f'AdCP Order {request.po_number or media_buy_id}',
+            'name': order_name,
             'advertiserId': self.advertiser_id,
             'traffickerId': self.trafficker_id,
             'totalBudget': {
@@ -348,6 +381,10 @@ class GoogleAdManager(AdServerAdapter):
             }
         }
         
+        # Add team IDs if configured
+        if applied_team_ids:
+            order['appliedTeamIds'] = applied_team_ids
+        
         if self.dry_run:
             self.log(f"Would call: order_service.createOrders([{order['name']}])")
             self.log(f"  Advertiser ID: {self.advertiser_id}")
@@ -363,33 +400,134 @@ class GoogleAdManager(AdServerAdapter):
         
         # Create LineItems for each package
         for package in packages:
+            # Get product-specific configuration
+            product = products_map.get(package.package_id)
+            impl_config = product.implementation_config if product else {}
+            
+            # Build targeting - merge product targeting with request overlay
+            targeting = self._build_targeting(request.targeting_overlay)
+            
+            # Add ad unit/placement targeting from product config
+            if impl_config.get('targeted_ad_unit_ids'):
+                if 'inventoryTargeting' not in targeting:
+                    targeting['inventoryTargeting'] = {}
+                targeting['inventoryTargeting']['targetedAdUnits'] = [
+                    {'adUnitId': ad_unit_id, 'includeDescendants': impl_config.get('include_descendants', True)}
+                    for ad_unit_id in impl_config['targeted_ad_unit_ids']
+                ]
+            
+            if impl_config.get('targeted_placement_ids'):
+                if 'inventoryTargeting' not in targeting:
+                    targeting['inventoryTargeting'] = {}
+                targeting['inventoryTargeting']['targetedPlacements'] = [
+                    {'placementId': placement_id} for placement_id in impl_config['targeted_placement_ids']
+                ]
+            
+            # Add custom targeting from product config
+            if impl_config.get('custom_targeting_keys'):
+                if 'customTargeting' not in targeting:
+                    targeting['customTargeting'] = {}
+                targeting['customTargeting'].update(impl_config['custom_targeting_keys'])
+            
+            # Build creative placeholders from config
+            creative_placeholders = []
+            if impl_config.get('creative_placeholders'):
+                for placeholder in impl_config['creative_placeholders']:
+                    creative_placeholders.append({
+                        'size': {'width': placeholder['width'], 'height': placeholder['height']},
+                        'expectedCreativeCount': placeholder.get('expected_creative_count', 1),
+                        'creativeSizeType': 'NATIVE' if placeholder.get('is_native') else 'PIXEL'
+                    })
+            else:
+                # Default placeholder if none configured
+                creative_placeholders = [{
+                    'size': {'width': 300, 'height': 250},
+                    'expectedCreativeCount': 1,
+                    'creativeSizeType': 'PIXEL'
+                }]
+            
             line_item = {
                 'name': package.name,
                 'orderId': media_buy_id,
-                'targeting': self._build_targeting(request.targeting_overlay),
-                'creativePlaceholders': [{
-                    'size': {'width': 300, 'height': 250},  # Would get from format specs
-                    'expectedCreativeCount': 1
-                }],
-                'lineItemType': 'STANDARD',
-                'priority': 8,
-                'costType': 'CPM',
+                'targeting': targeting,
+                'creativePlaceholders': creative_placeholders,
+                'lineItemType': impl_config.get('line_item_type', 'STANDARD'),
+                'priority': impl_config.get('priority', 8),
+                'costType': impl_config.get('cost_type', 'CPM'),
                 'costPerUnit': {
                     'currencyCode': 'USD',
                     'microAmount': int(package.cpm * 1_000_000)
                 },
                 'primaryGoal': {
-                    'goalType': 'LIFETIME',
-                    'unitType': 'IMPRESSIONS',
+                    'goalType': impl_config.get('primary_goal_type', 'LIFETIME'),
+                    'unitType': impl_config.get('primary_goal_unit_type', 'IMPRESSIONS'),
                     'units': package.impressions
-                }
+                },
+                'creativeRotationType': impl_config.get('creative_rotation_type', 'EVEN'),
+                'deliveryRateType': impl_config.get('delivery_rate_type', 'EVENLY')
             }
+            
+            # Add frequency caps if configured
+            if impl_config.get('frequency_caps'):
+                frequency_caps = []
+                for cap in impl_config['frequency_caps']:
+                    frequency_caps.append({
+                        'maxImpressions': cap['max_impressions'],
+                        'numTimeUnits': cap['time_range'],
+                        'timeUnit': cap['time_unit']
+                    })
+                line_item['frequencyCaps'] = frequency_caps
+            
+            # Add competitive exclusion labels
+            if impl_config.get('competitive_exclusion_labels'):
+                line_item['effectiveAppliedLabels'] = [
+                    {'labelId': label} for label in impl_config['competitive_exclusion_labels']
+                ]
+            
+            # Add discount if configured
+            if impl_config.get('discount_type') and impl_config.get('discount_value'):
+                line_item['discount'] = impl_config['discount_value']
+                line_item['discountType'] = impl_config['discount_type']
+            
+            # Add video-specific settings
+            if impl_config.get('environment_type') == 'VIDEO_PLAYER':
+                line_item['environmentType'] = 'VIDEO_PLAYER'
+                if impl_config.get('companion_delivery_option'):
+                    line_item['companionDeliveryOption'] = impl_config['companion_delivery_option']
+                if impl_config.get('video_max_duration'):
+                    line_item['videoMaxDuration'] = impl_config['video_max_duration']
+                if impl_config.get('skip_offset'):
+                    line_item['videoSkippableAdType'] = 'ENABLED'
+                    line_item['videoSkipOffset'] = impl_config['skip_offset']
+            else:
+                line_item['environmentType'] = impl_config.get('environment_type', 'BROWSER')
+            
+            # Advanced settings
+            if impl_config.get('allow_overbook'):
+                line_item['allowOverbook'] = True
+            if impl_config.get('skip_inventory_check'):
+                line_item['skipInventoryCheck'] = True
+            if impl_config.get('disable_viewability_avg_revenue_optimization'):
+                line_item['disableViewabilityAvgRevenueOptimization'] = True
             
             if self.dry_run:
                 self.log(f"Would call: line_item_service.createLineItems(['{package.name}'])")
                 self.log(f"  Package: {package.name}")
+                self.log(f"  Line Item Type: {impl_config.get('line_item_type', 'STANDARD')}")
+                self.log(f"  Priority: {impl_config.get('priority', 8)}")
                 self.log(f"  CPM: ${package.cpm}")
                 self.log(f"  Impressions Goal: {package.impressions:,}")
+                self.log(f"  Creative Placeholders: {len(creative_placeholders)} sizes")
+                for cp in creative_placeholders[:3]:  # Show first 3
+                    self.log(f"    - {cp['size']['width']}x{cp['size']['height']} ({'Native' if cp.get('creativeSizeType') == 'NATIVE' else 'Display'})")
+                if len(creative_placeholders) > 3:
+                    self.log(f"    - ... and {len(creative_placeholders) - 3} more")
+                if impl_config.get('frequency_caps'):
+                    self.log(f"  Frequency Caps: {len(impl_config['frequency_caps'])} configured")
+                if impl_config.get('targeted_ad_unit_ids'):
+                    self.log(f"  Targeted Ad Units: {len(impl_config['targeted_ad_unit_ids'])} units")
+                if impl_config.get('environment_type') == 'VIDEO_PLAYER':
+                    self.log(f"  Video Settings: max duration {impl_config.get('video_max_duration', 'N/A')}ms, skip after {impl_config.get('skip_offset', 'N/A')}ms")
             else:
                 line_item_service = self.client.GetService('LineItemService')
                 created_line_items = line_item_service.createLineItems([line_item])
@@ -780,127 +918,163 @@ class GoogleAdManager(AdServerAdapter):
                 )
     
     def get_config_ui_endpoint(self) -> Optional[str]:
-        """Returns the GAM configuration UI endpoint."""
+        """Return the endpoint path for GAM-specific configuration UI."""
         return "/adapters/gam/config"
     
-    def register_ui_routes(self, app):
+    def register_ui_routes(self, app: Flask) -> None:
         """Register GAM-specific configuration UI routes."""
-        from flask import render_template, request, jsonify, session, redirect, url_for
-        import json
-        
-        adapter_instance = self  # Capture self for use in route functions
         
         @app.route('/adapters/gam/config/<tenant_id>/<product_id>', methods=['GET', 'POST'])
         def gam_product_config(tenant_id, product_id):
-            # Check authentication
-            if 'user' not in session:
-                return redirect(url_for('login'))
+            from database import db_session
+            from models import Product, Tenant
             
-            # Check access
-            if session.get('role') != 'super_admin' and session.get('tenant_id') != tenant_id:
-                return "Access denied", 403
+            # Get tenant and product
+            tenant = db_session.query(Tenant).filter_by(tenant_id=tenant_id).first()
+            if not tenant:
+                flash('Tenant not found', 'error')
+                return redirect(url_for('tenants'))
             
-            # Get product and current config
-            from admin_ui import get_db_connection
-            conn = get_db_connection()
+            product = db_session.query(Product).filter_by(
+                tenant_id=tenant_id,
+                product_id=product_id
+            ).first()
             
-            # Get product
-            cursor = conn.execute(
-                "SELECT * FROM products WHERE tenant_id = ? AND product_id = ?",
-                (tenant_id, product_id)
-            )
-            product = cursor.fetchone()
             if not product:
-                conn.close()
-                return "Product not found", 404
+                flash('Product not found', 'error')
+                return redirect(url_for('products', tenant_id=tenant_id))
             
-            # Convert to dict
-            config_data = product['implementation_config']
-            # PostgreSQL returns JSONB as dict, SQLite returns string
-            implementation_config = config_data if isinstance(config_data, dict) else json.loads(config_data or '{}')
-            
-            product_dict = {
-                'product_id': product['product_id'],
-                'name': product['name'],
-                'implementation_config': implementation_config
-            }
+            # Get network code from tenant config
+            network_code = tenant.config.get('adapters', {}).get('google_ad_manager', {}).get('network_code', 'XXXXX')
             
             if request.method == 'POST':
-                # Save configuration
-                config = {
-                    'ad_unit_path': request.form.get('ad_unit_path'),
-                    'ad_unit_name': request.form.get('ad_unit_name'),
-                    'placement_name': request.form.get('placement_name'),
-                    'sizes': request.form.getlist('sizes'),
-                    'frequency_caps': request.form.get('frequency_caps'),
-                    'dayparting': request.form.get('dayparting'),
-                    'key_values': request.form.get('key_values', ''),
-                    'enable_companion_ads': 'enable_companion_ads' in request.form,
-                    'allow_overbook': 'allow_overbook' in request.form,
-                    'enable_competitive_exclusion': 'enable_competitive_exclusion' in request.form,
-                    'labels': request.form.get('labels', '')
-                }
+                try:
+                    # Build config from form data
+                    config = {
+                        'order_name_template': request.form.get('order_name_template'),
+                        'applied_team_ids': [int(x.strip()) for x in request.form.get('applied_team_ids', '').split(',') if x.strip()],
+                        'line_item_type': request.form.get('line_item_type'),
+                        'priority': int(request.form.get('priority', 8)),
+                        'cost_type': request.form.get('cost_type'),
+                        'creative_rotation_type': request.form.get('creative_rotation_type'),
+                        'delivery_rate_type': request.form.get('delivery_rate_type'),
+                        'primary_goal_type': request.form.get('primary_goal_type'),
+                        'primary_goal_unit_type': request.form.get('primary_goal_unit_type'),
+                        'include_descendants': 'include_descendants' in request.form,
+                        'environment_type': request.form.get('environment_type'),
+                        'allow_overbook': 'allow_overbook' in request.form,
+                        'skip_inventory_check': 'skip_inventory_check' in request.form,
+                        'disable_viewability_avg_revenue_optimization': 'disable_viewability_avg_revenue_optimization' in request.form,
+                    }
+                    
+                    # Process creative placeholders
+                    widths = request.form.getlist('placeholder_width[]')
+                    heights = request.form.getlist('placeholder_height[]')
+                    counts = request.form.getlist('placeholder_count[]')
+                    is_natives = request.form.getlist('placeholder_is_native[]')
+                    
+                    creative_placeholders = []
+                    for i in range(len(widths)):
+                        if widths[i] and heights[i]:
+                            creative_placeholders.append({
+                                'width': int(widths[i]),
+                                'height': int(heights[i]),
+                                'expected_creative_count': int(counts[i]) if i < len(counts) else 1,
+                                'is_native': f'placeholder_is_native_{i}' in request.form
+                            })
+                    config['creative_placeholders'] = creative_placeholders
+                    
+                    # Process frequency caps
+                    cap_impressions = request.form.getlist('cap_max_impressions[]')
+                    cap_units = request.form.getlist('cap_time_unit[]')
+                    cap_ranges = request.form.getlist('cap_time_range[]')
+                    
+                    frequency_caps = []
+                    for i in range(len(cap_impressions)):
+                        if cap_impressions[i]:
+                            frequency_caps.append({
+                                'max_impressions': int(cap_impressions[i]),
+                                'time_unit': cap_units[i] if i < len(cap_units) else 'DAY',
+                                'time_range': int(cap_ranges[i]) if i < len(cap_ranges) else 1
+                            })
+                    config['frequency_caps'] = frequency_caps
+                    
+                    # Process targeting
+                    config['targeted_ad_unit_ids'] = [x.strip() for x in request.form.get('targeted_ad_unit_ids', '').split('\n') if x.strip()]
+                    config['targeted_placement_ids'] = [x.strip() for x in request.form.get('targeted_placement_ids', '').split('\n') if x.strip()]
+                    config['competitive_exclusion_labels'] = [x.strip() for x in request.form.get('competitive_exclusion_labels', '').split(',') if x.strip()]
+                    
+                    # Process discount
+                    if request.form.get('discount_type'):
+                        config['discount_type'] = request.form.get('discount_type')
+                        config['discount_value'] = float(request.form.get('discount_value', 0))
+                    
+                    # Process video settings
+                    if config['environment_type'] == 'VIDEO_PLAYER':
+                        if request.form.get('companion_delivery_option'):
+                            config['companion_delivery_option'] = request.form.get('companion_delivery_option')
+                        if request.form.get('video_max_duration'):
+                            config['video_max_duration'] = int(request.form.get('video_max_duration')) * 1000  # Convert to milliseconds
+                        if request.form.get('skip_offset'):
+                            config['skip_offset'] = int(request.form.get('skip_offset')) * 1000  # Convert to milliseconds
+                    
+                    # Process custom targeting
+                    custom_targeting = request.form.get('custom_targeting_keys', '{}')
+                    try:
+                        config['custom_targeting_keys'] = json.loads(custom_targeting) if custom_targeting else {}
+                    except json.JSONDecodeError:
+                        config['custom_targeting_keys'] = {}
+                    
+                    # Native style ID
+                    if request.form.get('native_style_id'):
+                        config['native_style_id'] = request.form.get('native_style_id')
+                    
+                    # Validate the configuration
+                    validation_result = self.validate_product_config(config)
+                    if validation_result[0]:
+                        # Save to database
+                        product.implementation_config = config
+                        db_session.commit()
+                        flash('GAM configuration saved successfully', 'success')
+                        return redirect(url_for('edit_product', tenant_id=tenant_id, product_id=product_id))
+                    else:
+                        flash(f'Validation error: {validation_result[1]}', 'error')
                 
-                # Validate
-                is_valid, error = adapter_instance.validate_product_config(config)
-                if not is_valid:
-                    return render_template(
-                        'adapters/gam_product_config.html',
-                        tenant_id=tenant_id,
-                        product=product_dict,
-                        config=config,
-                        network_code=adapter_instance.network_code,
-                        error=error
-                    )
-                
-                # Update product implementation_config
-                conn.execute(
-                    "UPDATE products SET implementation_config = ? WHERE tenant_id = ? AND product_id = ?",
-                    (json.dumps(config), tenant_id, product_id)
-                )
-                conn.connection.commit()
-                conn.close()
-                
-                return redirect(url_for('edit_product', tenant_id=tenant_id, product_id=product_id))
+                except Exception as e:
+                    flash(f'Error saving configuration: {str(e)}', 'error')
             
-            # GET request
-            config = product_dict['implementation_config']
-            conn.close()
+            # Load existing config or defaults
+            config = product.implementation_config or {}
             
-            return render_template(
-                'adapters/gam_product_config.html',
-                tenant_id=tenant_id,
-                product=product_dict,
-                config=config,
-                network_code=adapter_instance.network_code
-            )
-        
-        @app.route('/adapters/gam/validate', methods=['POST'])
-        def gam_validate_config():
-            """AJAX endpoint for config validation."""
-            config = request.json
-            is_valid, error = adapter_instance.validate_product_config(config)
-            return jsonify({'valid': is_valid, 'error': error})
+            return render_template('adapters/gam_product_config.html',
+                                 tenant_id=tenant_id,
+                                 product=product,
+                                 config=config,
+                                 network_code=network_code)
     
-    def validate_product_config(self, config: Dict[str, Any]) -> tuple[bool, Optional[str]]:
+    def validate_product_config(self, config: Dict[str, Any]) -> Tuple[bool, Optional[str]]:
         """Validate GAM-specific product configuration."""
-        # Check required fields
-        if not config.get('ad_unit_path'):
-            return False, "Ad unit path is required"
-        
-        # Validate ad unit path format
-        ad_unit_path = config['ad_unit_path']
-        if not ad_unit_path.startswith(f"/{self.network_code}/"):
-            return False, f"Ad unit path must start with /{self.network_code}/"
-        
-        # Check sizes
-        if not config.get('sizes'):
-            return False, "At least one ad size must be selected"
-        
-        # Validate sizes format
-        valid_sizes = ['300x250', '728x90', '320x50', '300x600', '970x250', '160x600', '320x480', '300x1050', '970x90']
-        for size in config['sizes']:
-            if size not in valid_sizes:
-                return False, f"Invalid size: {size}"
-        
-        return True, None
+        try:
+            # Use Pydantic model for validation
+            gam_config = GAMImplementationConfig(**config)
+            
+            # Additional custom validation
+            if not gam_config.creative_placeholders:
+                return False, "At least one creative placeholder is required"
+            
+            # Validate team IDs are positive integers
+            for team_id in gam_config.applied_team_ids:
+                if team_id <= 0:
+                    return False, f"Invalid team ID: {team_id}"
+            
+            # Validate frequency caps
+            for cap in gam_config.frequency_caps:
+                if cap.max_impressions <= 0:
+                    return False, "Frequency cap impressions must be positive"
+                if cap.time_range <= 0:
+                    return False, "Frequency cap time range must be positive"
+            
+            return True, None
+            
+        except Exception as e:
+            return False, str(e)
