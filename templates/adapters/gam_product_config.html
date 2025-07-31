@@ -8,105 +8,268 @@
     <h3>{{ product.name }}</h3>
     
     <form id="gam-config-form" method="POST">
-        <!-- Ad Unit Configuration -->
-        <h4 style="margin-top: 2rem; border-bottom: 1px solid #ddd; padding-bottom: 0.5rem;">Ad Unit Configuration</h4>
+        <!-- Order Settings -->
+        <h4 style="margin-top: 2rem; border-bottom: 1px solid #ddd; padding-bottom: 0.5rem;">Order Settings</h4>
         
         <div class="form-group">
-            <label for="ad_unit_path">Ad Unit Path *</label>
-            <input type="text" id="ad_unit_path" name="ad_unit_path" 
-                   value="{{ config.ad_unit_path or '' }}"
-                   placeholder="/{{ network_code }}/site/section/position" required>
-            <small style="color: #666;">Full path in GAM hierarchy (e.g., /12345/mainsite.com/news/top)</small>
+            <label for="order_name_template">Order Name Template *</label>
+            <input type="text" id="order_name_template" name="order_name_template" 
+                   value="{{ config.order_name_template or 'AdCP-{po_number}-{product_name}-{timestamp}' }}"
+                   placeholder="AdCP-{po_number}-{product_name}-{timestamp}" required>
+            <small style="color: #666;">Variables: {po_number}, {product_name}, {timestamp}, {principal_name}</small>
+        </div>
+        
+        <div class="form-group">
+            <label for="applied_team_ids">Team IDs (comma-separated)</label>
+            <input type="text" id="applied_team_ids" name="applied_team_ids" 
+                   value="{{ ','.join(config.applied_team_ids|map('string')) if config.applied_team_ids else '' }}"
+                   placeholder="12345, 67890">
+            <small style="color: #666;">GAM team IDs for access control</small>
+        </div>
+        
+        <!-- Line Item Settings -->
+        <h4 style="margin-top: 2rem; border-bottom: 1px solid #ddd; padding-bottom: 0.5rem;">Line Item Settings</h4>
+        
+        <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 1rem;">
+            <div class="form-group">
+                <label for="line_item_type">Line Item Type *</label>
+                <select id="line_item_type" name="line_item_type" required>
+                    <option value="STANDARD" {% if config.line_item_type == 'STANDARD' %}selected{% endif %}>Standard</option>
+                    <option value="SPONSORSHIP" {% if config.line_item_type == 'SPONSORSHIP' %}selected{% endif %}>Sponsorship</option>
+                    <option value="NETWORK" {% if config.line_item_type == 'NETWORK' %}selected{% endif %}>Network</option>
+                    <option value="HOUSE" {% if config.line_item_type == 'HOUSE' %}selected{% endif %}>House</option>
+                    <option value="PRICE_PRIORITY" {% if config.line_item_type == 'PRICE_PRIORITY' %}selected{% endif %}>Price Priority</option>
+                </select>
+            </div>
+            
+            <div class="form-group">
+                <label for="priority">Priority (1-16) *</label>
+                <input type="number" id="priority" name="priority" min="1" max="16"
+                       value="{{ config.priority or 8 }}" required>
+                <small style="color: #666;">Lower = higher priority</small>
+            </div>
+            
+            <div class="form-group">
+                <label for="cost_type">Cost Type *</label>
+                <select id="cost_type" name="cost_type" required>
+                    <option value="CPM" {% if config.cost_type == 'CPM' %}selected{% endif %}>CPM</option>
+                    <option value="CPC" {% if config.cost_type == 'CPC' %}selected{% endif %}>CPC</option>
+                    <option value="CPD" {% if config.cost_type == 'CPD' %}selected{% endif %}>CPD</option>
+                    <option value="CPA" {% if config.cost_type == 'CPA' %}selected{% endif %}>CPA</option>
+                </select>
+            </div>
+        </div>
+        
+        <!-- Delivery Settings -->
+        <h4 style="margin-top: 2rem; border-bottom: 1px solid #ddd; padding-bottom: 0.5rem;">Delivery Settings</h4>
+        
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+            <div class="form-group">
+                <label for="creative_rotation_type">Creative Rotation *</label>
+                <select id="creative_rotation_type" name="creative_rotation_type" required>
+                    <option value="EVEN" {% if config.creative_rotation_type == 'EVEN' %}selected{% endif %}>Even</option>
+                    <option value="OPTIMIZED" {% if config.creative_rotation_type == 'OPTIMIZED' %}selected{% endif %}>Optimized</option>
+                    <option value="MANUAL" {% if config.creative_rotation_type == 'MANUAL' %}selected{% endif %}>Manual</option>
+                    <option value="SEQUENTIAL" {% if config.creative_rotation_type == 'SEQUENTIAL' %}selected{% endif %}>Sequential</option>
+                </select>
+            </div>
+            
+            <div class="form-group">
+                <label for="delivery_rate_type">Delivery Pacing *</label>
+                <select id="delivery_rate_type" name="delivery_rate_type" required>
+                    <option value="EVENLY" {% if config.delivery_rate_type == 'EVENLY' %}selected{% endif %}>Evenly</option>
+                    <option value="FRONTLOADED" {% if config.delivery_rate_type == 'FRONTLOADED' %}selected{% endif %}>Frontloaded</option>
+                    <option value="AS_FAST_AS_POSSIBLE" {% if config.delivery_rate_type == 'AS_FAST_AS_POSSIBLE' %}selected{% endif %}>As Fast As Possible</option>
+                </select>
+            </div>
         </div>
         
         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
             <div class="form-group">
-                <label for="ad_unit_name">Ad Unit Name</label>
-                <input type="text" id="ad_unit_name" name="ad_unit_name" 
-                       value="{{ config.ad_unit_name or product.name }}"
-                       placeholder="Auto-generated from product name">
+                <label for="primary_goal_type">Primary Goal Type *</label>
+                <select id="primary_goal_type" name="primary_goal_type" required>
+                    <option value="LIFETIME" {% if config.primary_goal_type == 'LIFETIME' %}selected{% endif %}>Lifetime</option>
+                    <option value="DAILY" {% if config.primary_goal_type == 'DAILY' %}selected{% endif %}>Daily</option>
+                    <option value="NONE" {% if config.primary_goal_type == 'NONE' %}selected{% endif %}>None</option>
+                </select>
             </div>
             
             <div class="form-group">
-                <label for="placement_name">Placement Name</label>
-                <input type="text" id="placement_name" name="placement_name" 
-                       value="{{ config.placement_name or '' }}"
-                       placeholder="Optional placement name">
+                <label for="primary_goal_unit_type">Goal Unit Type *</label>
+                <select id="primary_goal_unit_type" name="primary_goal_unit_type" required>
+                    <option value="IMPRESSIONS" {% if config.primary_goal_unit_type == 'IMPRESSIONS' %}selected{% endif %}>Impressions</option>
+                    <option value="CLICKS" {% if config.primary_goal_unit_type == 'CLICKS' %}selected{% endif %}>Clicks</option>
+                    <option value="VIEWABLE_IMPRESSIONS" {% if config.primary_goal_unit_type == 'VIEWABLE_IMPRESSIONS' %}selected{% endif %}>Viewable Impressions</option>
+                </select>
             </div>
         </div>
         
-        <!-- Creative Sizes -->
-        <h4 style="margin-top: 2rem; border-bottom: 1px solid #ddd; padding-bottom: 0.5rem;">Creative Sizes</h4>
+        <!-- Ad Unit/Placement Targeting -->
+        <h4 style="margin-top: 2rem; border-bottom: 1px solid #ddd; padding-bottom: 0.5rem;">Ad Unit & Placement Targeting</h4>
         
         <div class="form-group">
-            <label>Select supported sizes:</label>
-            <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.5rem; margin-top: 0.5rem;">
-                {% set sizes = [
-                    ('300x250', 'Medium Rectangle'),
-                    ('728x90', 'Leaderboard'),
-                    ('320x50', 'Mobile Banner'),
-                    ('300x600', 'Half Page'),
-                    ('970x250', 'Billboard'),
-                    ('160x600', 'Wide Skyscraper'),
-                    ('320x480', 'Mobile Interstitial'),
-                    ('300x1050', 'Portrait'),
-                    ('970x90', 'Super Leaderboard')
-                ] %}
-                {% for size, label in sizes %}
-                <label style="display: flex; align-items: center; gap: 0.5rem;">
-                    <input type="checkbox" name="sizes" value="{{ size }}"
-                           {% if size in (config.sizes or []) %}checked{% endif %}>
-                    <span>{{ label }} ({{ size }})</span>
-                </label>
+            <label for="targeted_ad_unit_ids">Targeted Ad Unit IDs</label>
+            <textarea id="targeted_ad_unit_ids" name="targeted_ad_unit_ids" rows="3" 
+                      placeholder="One ad unit ID per line">{{ '\n'.join(config.targeted_ad_unit_ids) if config.targeted_ad_unit_ids else '' }}</textarea>
+            <small style="color: #666;">Specific GAM ad unit IDs to target (one per line)</small>
+        </div>
+        
+        <div class="form-group">
+            <label for="targeted_placement_ids">Targeted Placement IDs</label>
+            <textarea id="targeted_placement_ids" name="targeted_placement_ids" rows="2" 
+                      placeholder="One placement ID per line">{{ '\n'.join(config.targeted_placement_ids) if config.targeted_placement_ids else '' }}</textarea>
+            <small style="color: #666;">GAM placement IDs to target (one per line)</small>
+        </div>
+        
+        <div class="form-group">
+            <label>
+                <input type="checkbox" name="include_descendants" 
+                       {% if config.include_descendants != False %}checked{% endif %}>
+                Include child ad units in targeting
+            </label>
+        </div>
+        
+        <!-- Creative Placeholders -->
+        <h4 style="margin-top: 2rem; border-bottom: 1px solid #ddd; padding-bottom: 0.5rem;">Creative Placeholders</h4>
+        
+        <div id="creative-placeholders">
+            {% if config.creative_placeholders %}
+                {% for placeholder in config.creative_placeholders %}
+                <div class="creative-placeholder-item" style="background: #f5f5f5; padding: 1rem; margin-bottom: 1rem; border-radius: 4px;">
+                    <div style="display: grid; grid-template-columns: 1fr 1fr 1fr auto; gap: 1rem; align-items: end;">
+                        <div class="form-group" style="margin: 0;">
+                            <label>Width (px)</label>
+                            <input type="number" name="placeholder_width[]" value="{{ placeholder.width }}" required>
+                        </div>
+                        <div class="form-group" style="margin: 0;">
+                            <label>Height (px)</label>
+                            <input type="number" name="placeholder_height[]" value="{{ placeholder.height }}" required>
+                        </div>
+                        <div class="form-group" style="margin: 0;">
+                            <label>Expected Count</label>
+                            <input type="number" name="placeholder_count[]" value="{{ placeholder.expected_creative_count }}" min="1" required>
+                        </div>
+                        <button type="button" class="btn btn-secondary" onclick="removeCreativePlaceholder(this)">Remove</button>
+                    </div>
+                    <label style="margin-top: 0.5rem;">
+                        <input type="checkbox" name="placeholder_is_native[]" {% if placeholder.is_native %}checked{% endif %}>
+                        Native creative
+                    </label>
+                </div>
                 {% endfor %}
-            </div>
+            {% else %}
+                <!-- Default creative placeholders -->
+                <div class="creative-placeholder-item" style="background: #f5f5f5; padding: 1rem; margin-bottom: 1rem; border-radius: 4px;">
+                    <div style="display: grid; grid-template-columns: 1fr 1fr 1fr auto; gap: 1rem; align-items: end;">
+                        <div class="form-group" style="margin: 0;">
+                            <label>Width (px)</label>
+                            <input type="number" name="placeholder_width[]" value="300" required>
+                        </div>
+                        <div class="form-group" style="margin: 0;">
+                            <label>Height (px)</label>
+                            <input type="number" name="placeholder_height[]" value="250" required>
+                        </div>
+                        <div class="form-group" style="margin: 0;">
+                            <label>Expected Count</label>
+                            <input type="number" name="placeholder_count[]" value="1" min="1" required>
+                        </div>
+                        <button type="button" class="btn btn-secondary" onclick="removeCreativePlaceholder(this)">Remove</button>
+                    </div>
+                    <label style="margin-top: 0.5rem;">
+                        <input type="checkbox" name="placeholder_is_native[]">
+                        Native creative
+                    </label>
+                </div>
+            {% endif %}
         </div>
+        <button type="button" class="btn btn-secondary" onclick="addCreativePlaceholder()">Add Creative Size</button>
         
-        <!-- Targeting -->
-        <h4 style="margin-top: 2rem; border-bottom: 1px solid #ddd; padding-bottom: 0.5rem;">Targeting Options</h4>
+        <!-- Frequency Capping -->
+        <h4 style="margin-top: 2rem; border-bottom: 1px solid #ddd; padding-bottom: 0.5rem;">Frequency Capping</h4>
         
-        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
-            <div class="form-group">
-                <label for="frequency_caps">Frequency Caps</label>
-                <select id="frequency_caps" name="frequency_caps">
-                    <option value="none" {% if config.frequency_caps == 'none' %}selected{% endif %}>No frequency cap</option>
-                    <option value="1_per_day" {% if config.frequency_caps == '1_per_day' %}selected{% endif %}>1 per day</option>
-                    <option value="3_per_day" {% if config.frequency_caps == '3_per_day' %}selected{% endif %}>3 per day</option>
-                    <option value="1_per_week" {% if config.frequency_caps == '1_per_week' %}selected{% endif %}>1 per week</option>
-                    <option value="custom" {% if config.frequency_caps == 'custom' %}selected{% endif %}>Custom</option>
-                </select>
-            </div>
-            
-            <div class="form-group">
-                <label for="dayparting">Dayparting</label>
-                <select id="dayparting" name="dayparting">
-                    <option value="always" {% if config.dayparting == 'always' %}selected{% endif %}>Always on</option>
-                    <option value="business_hours" {% if config.dayparting == 'business_hours' %}selected{% endif %}>Business hours (9-5)</option>
-                    <option value="prime_time" {% if config.dayparting == 'prime_time' %}selected{% endif %}>Prime time (6-11pm)</option>
-                    <option value="custom" {% if config.dayparting == 'custom' %}selected{% endif %}>Custom schedule</option>
-                </select>
-            </div>
+        <div id="frequency-caps">
+            {% if config.frequency_caps %}
+                {% for cap in config.frequency_caps %}
+                <div class="frequency-cap-item" style="background: #f5f5f5; padding: 1rem; margin-bottom: 1rem; border-radius: 4px;">
+                    <div style="display: grid; grid-template-columns: 1fr 1fr 1fr auto; gap: 1rem; align-items: end;">
+                        <div class="form-group" style="margin: 0;">
+                            <label>Max Impressions</label>
+                            <input type="number" name="cap_max_impressions[]" value="{{ cap.max_impressions }}" min="1" required>
+                        </div>
+                        <div class="form-group" style="margin: 0;">
+                            <label>Time Unit</label>
+                            <select name="cap_time_unit[]" required>
+                                <option value="MINUTE" {% if cap.time_unit == 'MINUTE' %}selected{% endif %}>Minute</option>
+                                <option value="HOUR" {% if cap.time_unit == 'HOUR' %}selected{% endif %}>Hour</option>
+                                <option value="DAY" {% if cap.time_unit == 'DAY' %}selected{% endif %}>Day</option>
+                                <option value="WEEK" {% if cap.time_unit == 'WEEK' %}selected{% endif %}>Week</option>
+                                <option value="MONTH" {% if cap.time_unit == 'MONTH' %}selected{% endif %}>Month</option>
+                                <option value="LIFETIME" {% if cap.time_unit == 'LIFETIME' %}selected{% endif %}>Lifetime</option>
+                            </select>
+                        </div>
+                        <div class="form-group" style="margin: 0;">
+                            <label>Time Range</label>
+                            <input type="number" name="cap_time_range[]" value="{{ cap.time_range }}" min="1" required>
+                        </div>
+                        <button type="button" class="btn btn-secondary" onclick="removeFrequencyCap(this)">Remove</button>
+                    </div>
+                </div>
+                {% endfor %}
+            {% endif %}
         </div>
+        <button type="button" class="btn btn-secondary" onclick="addFrequencyCap()">Add Frequency Cap</button>
+        
+        <!-- Competition & Exclusions -->
+        <h4 style="margin-top: 2rem; border-bottom: 1px solid #ddd; padding-bottom: 0.5rem;">Competition & Exclusions</h4>
         
         <div class="form-group">
-            <label for="key_values">Custom Key-Value Targeting</label>
-            <textarea id="key_values" name="key_values" rows="3" 
-                      placeholder="category=sports&#10;premium=true&#10;audience=millennials">{{ config.key_values or '' }}</textarea>
-            <small style="color: #666;">One key=value pair per line</small>
+            <label for="competitive_exclusion_labels">Competitive Exclusion Labels</label>
+            <input type="text" id="competitive_exclusion_labels" name="competitive_exclusion_labels" 
+                   value="{{ ','.join(config.competitive_exclusion_labels) if config.competitive_exclusion_labels else '' }}"
+                   placeholder="automotive, finance, travel">
+            <small style="color: #666;">Comma-separated labels to prevent competitive ads</small>
+        </div>
+        
+        <!-- Custom Targeting -->
+        <h4 style="margin-top: 2rem; border-bottom: 1px solid #ddd; padding-bottom: 0.5rem;">Custom Targeting</h4>
+        
+        <div class="form-group">
+            <label for="custom_targeting_keys">Custom Key-Value Pairs</label>
+            <textarea id="custom_targeting_keys" name="custom_targeting_keys" rows="3" 
+                      placeholder='{"category": "sports", "premium": "true", "audience": "millennials"}'>{{ config.custom_targeting_keys|tojson(indent=2) if config.custom_targeting_keys else '' }}</textarea>
+            <small style="color: #666;">JSON format for custom targeting keys</small>
         </div>
         
         <!-- Advanced Settings -->
         <h4 style="margin-top: 2rem; border-bottom: 1px solid #ddd; padding-bottom: 0.5rem;">Advanced Settings</h4>
         
-        <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 1rem;">
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
             <div class="form-group">
-                <label>
-                    <input type="checkbox" name="enable_companion_ads" 
-                           {% if config.enable_companion_ads %}checked{% endif %}>
-                    Enable Companion Ads
-                </label>
+                <label for="environment_type">Environment Type</label>
+                <select id="environment_type" name="environment_type">
+                    <option value="BROWSER" {% if config.environment_type == 'BROWSER' %}selected{% endif %}>Browser</option>
+                    <option value="VIDEO_PLAYER" {% if config.environment_type == 'VIDEO_PLAYER' %}selected{% endif %}>Video Player</option>
+                </select>
             </div>
             
+            <div class="form-group">
+                <label for="discount_type">Discount Type</label>
+                <select id="discount_type" name="discount_type">
+                    <option value="" {% if not config.discount_type %}selected{% endif %}>No discount</option>
+                    <option value="PERCENTAGE" {% if config.discount_type == 'PERCENTAGE' %}selected{% endif %}>Percentage</option>
+                    <option value="ABSOLUTE_VALUE" {% if config.discount_type == 'ABSOLUTE_VALUE' %}selected{% endif %}>Absolute Value</option>
+                </select>
+            </div>
+        </div>
+        
+        <div class="form-group" id="discount_value_group" style="{% if not config.discount_type %}display: none;{% endif %}">
+            <label for="discount_value">Discount Value</label>
+            <input type="number" id="discount_value" name="discount_value" step="0.01"
+                   value="{{ config.discount_value or '' }}"
+                   placeholder="Enter percentage or absolute value">
+        </div>
+        
+        <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 1rem;">
             <div class="form-group">
                 <label>
                     <input type="checkbox" name="allow_overbook" 
@@ -117,18 +280,58 @@
             
             <div class="form-group">
                 <label>
-                    <input type="checkbox" name="enable_competitive_exclusion" 
-                           {% if config.enable_competitive_exclusion %}checked{% endif %}>
-                    Competitive Exclusion
+                    <input type="checkbox" name="skip_inventory_check" 
+                           {% if config.skip_inventory_check %}checked{% endif %}>
+                    Skip Inventory Check
+                </label>
+            </div>
+            
+            <div class="form-group">
+                <label>
+                    <input type="checkbox" name="disable_viewability_avg_revenue_optimization" 
+                           {% if config.disable_viewability_avg_revenue_optimization %}checked{% endif %}>
+                    Disable Viewability Optimization
                 </label>
             </div>
         </div>
         
+        <!-- Video-Specific Settings -->
+        <div id="video-settings" style="{% if config.environment_type != 'VIDEO_PLAYER' %}display: none;{% endif %}">
+            <h4 style="margin-top: 2rem; border-bottom: 1px solid #ddd; padding-bottom: 0.5rem;">Video Settings</h4>
+            
+            <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 1rem;">
+                <div class="form-group">
+                    <label for="companion_delivery_option">Companion Delivery</label>
+                    <select id="companion_delivery_option" name="companion_delivery_option">
+                        <option value="" {% if not config.companion_delivery_option %}selected{% endif %}>None</option>
+                        <option value="OPTIONAL" {% if config.companion_delivery_option == 'OPTIONAL' %}selected{% endif %}>Optional</option>
+                        <option value="AT_LEAST_ONE" {% if config.companion_delivery_option == 'AT_LEAST_ONE' %}selected{% endif %}>At Least One</option>
+                        <option value="ALL" {% if config.companion_delivery_option == 'ALL' %}selected{% endif %}>All</option>
+                    </select>
+                </div>
+                
+                <div class="form-group">
+                    <label for="video_max_duration">Max Duration (seconds)</label>
+                    <input type="number" id="video_max_duration" name="video_max_duration" 
+                           value="{{ (config.video_max_duration // 1000) if config.video_max_duration else '' }}"
+                           placeholder="30">
+                </div>
+                
+                <div class="form-group">
+                    <label for="skip_offset">Skip Offset (seconds)</label>
+                    <input type="number" id="skip_offset" name="skip_offset" 
+                           value="{{ (config.skip_offset // 1000) if config.skip_offset else '' }}"
+                           placeholder="5">
+                </div>
+            </div>
+        </div>
+        
+        <!-- Native Ad Settings -->
         <div class="form-group">
-            <label for="labels">GAM Labels (comma-separated)</label>
-            <input type="text" id="labels" name="labels" 
-                   value="{{ config.labels or '' }}"
-                   placeholder="premium, above-the-fold, video-enabled">
+            <label for="native_style_id">Native Style ID</label>
+            <input type="text" id="native_style_id" name="native_style_id" 
+                   value="{{ config.native_style_id or '' }}"
+                   placeholder="GAM native style ID (if applicable)">
         </div>
         
         <!-- Actions -->
@@ -143,30 +346,116 @@
 
 <script>
 function validateConfig() {
-    const adUnitPath = document.getElementById('ad_unit_path').value;
-    const sizes = document.querySelectorAll('input[name="sizes"]:checked');
-    
-    if (!adUnitPath.startsWith('/{{ network_code }}/')) {
-        alert('Ad unit path must start with /{{ network_code }}/');
+    // Validate creative placeholders
+    const placeholders = document.querySelectorAll('.creative-placeholder-item');
+    if (placeholders.length === 0) {
+        alert('Please add at least one creative placeholder');
         return false;
     }
     
-    if (sizes.length === 0) {
-        alert('Please select at least one creative size');
-        return false;
+    // Validate custom targeting JSON
+    const customTargeting = document.getElementById('custom_targeting_keys').value;
+    if (customTargeting) {
+        try {
+            JSON.parse(customTargeting);
+        } catch (e) {
+            alert('Invalid JSON in custom targeting keys');
+            return false;
+        }
     }
     
     alert('Configuration is valid!');
     return true;
 }
 
-// Auto-generate ad unit path based on selections
-document.getElementById('ad_unit_name').addEventListener('input', function() {
-    const adUnitPath = document.getElementById('ad_unit_path');
-    if (!adUnitPath.value || adUnitPath.value === adUnitPath.placeholder) {
-        // Auto-generate path
-        const name = this.value.toLowerCase().replace(/\s+/g, '_');
-        adUnitPath.value = `/{{ network_code }}/{{ product.product_id }}/${name}`;
+// Creative Placeholder Management
+function addCreativePlaceholder() {
+    const container = document.getElementById('creative-placeholders');
+    const newItem = document.createElement('div');
+    newItem.className = 'creative-placeholder-item';
+    newItem.style = 'background: #f5f5f5; padding: 1rem; margin-bottom: 1rem; border-radius: 4px;';
+    newItem.innerHTML = `
+        <div style="display: grid; grid-template-columns: 1fr 1fr 1fr auto; gap: 1rem; align-items: end;">
+            <div class="form-group" style="margin: 0;">
+                <label>Width (px)</label>
+                <input type="number" name="placeholder_width[]" value="300" required>
+            </div>
+            <div class="form-group" style="margin: 0;">
+                <label>Height (px)</label>
+                <input type="number" name="placeholder_height[]" value="250" required>
+            </div>
+            <div class="form-group" style="margin: 0;">
+                <label>Expected Count</label>
+                <input type="number" name="placeholder_count[]" value="1" min="1" required>
+            </div>
+            <button type="button" class="btn btn-secondary" onclick="removeCreativePlaceholder(this)">Remove</button>
+        </div>
+        <label style="margin-top: 0.5rem;">
+            <input type="checkbox" name="placeholder_is_native[]">
+            Native creative
+        </label>
+    `;
+    container.appendChild(newItem);
+}
+
+function removeCreativePlaceholder(button) {
+    button.closest('.creative-placeholder-item').remove();
+}
+
+// Frequency Cap Management
+function addFrequencyCap() {
+    const container = document.getElementById('frequency-caps');
+    const newItem = document.createElement('div');
+    newItem.className = 'frequency-cap-item';
+    newItem.style = 'background: #f5f5f5; padding: 1rem; margin-bottom: 1rem; border-radius: 4px;';
+    newItem.innerHTML = `
+        <div style="display: grid; grid-template-columns: 1fr 1fr 1fr auto; gap: 1rem; align-items: end;">
+            <div class="form-group" style="margin: 0;">
+                <label>Max Impressions</label>
+                <input type="number" name="cap_max_impressions[]" value="3" min="1" required>
+            </div>
+            <div class="form-group" style="margin: 0;">
+                <label>Time Unit</label>
+                <select name="cap_time_unit[]" required>
+                    <option value="MINUTE">Minute</option>
+                    <option value="HOUR">Hour</option>
+                    <option value="DAY" selected>Day</option>
+                    <option value="WEEK">Week</option>
+                    <option value="MONTH">Month</option>
+                    <option value="LIFETIME">Lifetime</option>
+                </select>
+            </div>
+            <div class="form-group" style="margin: 0;">
+                <label>Time Range</label>
+                <input type="number" name="cap_time_range[]" value="1" min="1" required>
+            </div>
+            <button type="button" class="btn btn-secondary" onclick="removeFrequencyCap(this)">Remove</button>
+        </div>
+    `;
+    container.appendChild(newItem);
+}
+
+function removeFrequencyCap(button) {
+    button.closest('.frequency-cap-item').remove();
+}
+
+// Show/hide video settings based on environment type
+document.getElementById('environment_type').addEventListener('change', function() {
+    const videoSettings = document.getElementById('video-settings');
+    if (this.value === 'VIDEO_PLAYER') {
+        videoSettings.style.display = 'block';
+    } else {
+        videoSettings.style.display = 'none';
+    }
+});
+
+// Show/hide discount value based on discount type
+document.getElementById('discount_type').addEventListener('change', function() {
+    const discountValueGroup = document.getElementById('discount_value_group');
+    if (this.value) {
+        discountValueGroup.style.display = 'block';
+    } else {
+        discountValueGroup.style.display = 'none';
     }
 });
 </script>
