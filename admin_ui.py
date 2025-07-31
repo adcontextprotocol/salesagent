@@ -2047,6 +2047,117 @@ def sync_standard_formats(tenant_id):
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+@app.route('/tenant/<tenant_id>/creative-formats/discover', methods=['POST'])
+@require_auth()
+def discover_formats_from_url(tenant_id):
+    """Discover multiple creative formats from a URL."""
+    # Check access
+    if session.get('role') != 'super_admin' and session.get('tenant_id') != tenant_id:
+        return jsonify({"error": "Access denied"}), 403
+    
+    try:
+        data = request.get_json()
+        url = data.get('url')
+        
+        if not url:
+            return jsonify({"error": "URL is required"}), 400
+        
+        import asyncio
+        from ai_creative_format_service import AICreativeFormatService
+        
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        
+        service = AICreativeFormatService()
+        formats = loop.run_until_complete(service.discover_format_from_url(url))
+        
+        # Convert FormatSpecification objects to dicts for JSON response
+        format_data = []
+        for fmt in formats:
+            format_data.append({
+                "format_id": fmt.format_id,
+                "name": fmt.name,
+                "type": fmt.type,
+                "description": fmt.description,
+                "width": fmt.width,
+                "height": fmt.height,
+                "duration_seconds": fmt.duration_seconds,
+                "max_file_size_kb": fmt.max_file_size_kb,
+                "specs": fmt.specs or {},
+                "source_url": fmt.source_url
+            })
+        
+        return jsonify({"success": True, "formats": format_data})
+        
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/tenant/<tenant_id>/creative-formats/save-multiple', methods=['POST'])
+@require_auth()
+def save_discovered_formats(tenant_id):
+    """Save multiple discovered creative formats to the database."""
+    # Check access
+    if session.get('role') != 'super_admin' and session.get('tenant_id') != tenant_id:
+        return jsonify({"error": "Access denied"}), 403
+    
+    try:
+        data = request.get_json()
+        formats = data.get('formats', [])
+        
+        if not formats:
+            return jsonify({"error": "No formats provided"}), 400
+        
+        conn = get_db_connection()
+        saved_count = 0
+        
+        for format_data in formats:
+            # Generate a unique format_id if needed
+            base_format_id = format_data.get('format_id', f"{format_data['type']}_{format_data['name'].lower().replace(' ', '_')}")
+            format_id = base_format_id
+            counter = 1
+            
+            # Ensure format_id is unique
+            while True:
+                cursor = conn.execute(
+                    "SELECT format_id FROM creative_formats WHERE format_id = ?",
+                    (format_id,)
+                )
+                if not cursor.fetchone():
+                    break
+                format_id = f"{base_format_id}_{counter}"
+                counter += 1
+            
+            # Insert new format
+            conn.execute("""
+                INSERT INTO creative_formats (
+                    format_id, tenant_id, name, type, description,
+                    width, height, duration_seconds, max_file_size_kb,
+                    specs, is_standard, source_url
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                format_id,
+                tenant_id,  # Custom formats belong to the tenant
+                format_data['name'],
+                format_data['type'],
+                format_data.get('description', ''),
+                format_data.get('width'),
+                format_data.get('height'),
+                format_data.get('duration_seconds'),
+                format_data.get('max_file_size_kb'),
+                json.dumps(format_data.get('specs', {})),
+                False,  # Custom formats are not standard
+                format_data.get('source_url')
+            ))
+            saved_count += 1
+        
+        conn.connection.commit()
+        conn.close()
+        
+        return jsonify({"success": True, "saved_count": saved_count})
+        
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
 # Function to register adapter routes
 def register_adapter_routes():
     """Register UI routes from all available adapters."""

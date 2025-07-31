@@ -11,7 +11,8 @@
             {% if session.role == 'super_admin' %}
             <button onclick="syncStandardFormats()" class="btn btn-secondary">Sync Standard Formats</button>
             {% endif %}
-            <a href="{{ url_for('add_creative_format_ai', tenant_id=tenant_id) }}" class="btn btn-primary">Add with AI</a>
+            <button onclick="showDiscoverFromUrlModal()" class="btn btn-primary">Discover from URL</button>
+            <a href="{{ url_for('add_creative_format_ai', tenant_id=tenant_id) }}" class="btn btn-secondary">Add with AI</a>
         </div>
     </div>
     
@@ -88,6 +89,38 @@
         <a href="{{ url_for('add_creative_format_ai', tenant_id=tenant_id) }}" class="btn">Create Your First Custom Format</a>
     </div>
     {% endif %}
+</div>
+
+<!-- Discover from URL Modal -->
+<div id="discoverModal" class="modal" style="display: none;">
+    <div class="modal-content">
+        <span class="close" onclick="hideDiscoverFromUrlModal()">&times;</span>
+        <h3>Discover Creative Formats from URL</h3>
+        <p>Enter a URL to discover multiple creative format specifications:</p>
+        
+        <form id="discoverForm">
+            <div class="form-group">
+                <label for="discover_url">Specification URL:</label>
+                <input type="url" id="discover_url" name="url" placeholder="https://example.com/ad-specs" required style="width: 100%;">
+                <small style="color: #666;">Examples: Yahoo Ad Specs, Google Ad Manager formats, etc.</small>
+            </div>
+            
+            <div class="form-actions">
+                <button type="button" onclick="hideDiscoverFromUrlModal()" class="btn btn-secondary">Cancel</button>
+                <button type="submit" class="btn btn-primary" id="discoverBtn">Discover Formats</button>
+            </div>
+        </form>
+        
+        <div id="discoveryResults" style="display: none; margin-top: 2rem;">
+            <h4>Discovered Formats:</h4>
+            <p>Select the formats you want to add:</p>
+            <div id="formatsList"></div>
+            <div class="form-actions">
+                <button onclick="saveSelectedFormats()" class="btn btn-primary" id="saveBtn">Save Selected Formats</button>
+                <button onclick="hideDiscoverFromUrlModal()" class="btn btn-secondary">Cancel</button>
+            </div>
+        </div>
+    </div>
 </div>
 
 <style>
@@ -196,6 +229,88 @@
 .btn-danger:hover {
     background: #c0392b;
 }
+
+/* Modal styles */
+.modal {
+    position: fixed;
+    z-index: 1000;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.5);
+}
+
+.modal-content {
+    background-color: white;
+    margin: 5% auto;
+    padding: 2rem;
+    border-radius: 8px;
+    width: 90%;
+    max-width: 800px;
+    max-height: 80vh;
+    overflow-y: auto;
+}
+
+.close {
+    color: #aaa;
+    float: right;
+    font-size: 28px;
+    font-weight: bold;
+    cursor: pointer;
+    line-height: 1;
+}
+
+.close:hover {
+    color: black;
+}
+
+.discovered-format {
+    border: 1px solid #e0e0e0;
+    border-radius: 8px;
+    padding: 1rem;
+    margin: 0.75rem 0;
+    background: #f9f9f9;
+}
+
+.discovered-format.selected {
+    border-color: #3498db;
+    background: #f0f8ff;
+}
+
+.discovered-format label {
+    display: flex;
+    align-items: flex-start;
+    cursor: pointer;
+    gap: 0.75rem;
+}
+
+.discovered-format input[type="checkbox"] {
+    margin-top: 0.25rem;
+}
+
+.format-details {
+    flex: 1;
+}
+
+.format-details h5 {
+    margin: 0 0 0.5rem 0;
+    color: #2c3e50;
+}
+
+.format-meta {
+    display: flex;
+    gap: 1rem;
+    margin: 0.5rem 0;
+    font-size: 0.9rem;
+    color: #666;
+}
+
+.format-specs {
+    margin-top: 0.5rem;
+    font-size: 0.85rem;
+    color: #555;
+}
 </style>
 
 <script>
@@ -237,6 +352,156 @@ function deleteFormat(formatId) {
     
     // TODO: Implement delete functionality
     alert('Delete functionality coming soon for format: ' + formatId);
+}
+
+// Discover from URL functionality
+function showDiscoverFromUrlModal() {
+    document.getElementById('discoverModal').style.display = 'block';
+    document.getElementById('discoveryResults').style.display = 'none';
+    document.getElementById('discover_url').value = '';
+}
+
+function hideDiscoverFromUrlModal() {
+    document.getElementById('discoverModal').style.display = 'none';
+}
+
+// Close modal when clicking outside
+window.onclick = function(event) {
+    const modal = document.getElementById('discoverModal');
+    if (event.target === modal) {
+        hideDiscoverFromUrlModal();
+    }
+}
+
+// Handle discover form submission
+document.addEventListener('DOMContentLoaded', function() {
+    document.getElementById('discoverForm').addEventListener('submit', async function(e) {
+        e.preventDefault();
+        
+        const url = document.getElementById('discover_url').value;
+        const discoverBtn = document.getElementById('discoverBtn');
+        const originalText = discoverBtn.textContent;
+        
+        // Show loading state
+        discoverBtn.textContent = 'Discovering...';
+        discoverBtn.disabled = true;
+        
+        try {
+            const response = await fetch('/tenant/{{ tenant_id }}/creative-formats/discover', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ url: url })
+            });
+            
+            const result = await response.json();
+            
+            if (result.success) {
+                displayDiscoveredFormats(result.formats);
+            } else {
+                alert('Error: ' + (result.error || 'Failed to discover formats'));
+            }
+        } catch (error) {
+            alert('Error: ' + error.message);
+        } finally {
+            discoverBtn.textContent = originalText;
+            discoverBtn.disabled = false;
+        }
+    });
+});
+
+function displayDiscoveredFormats(formats) {
+    const formatsList = document.getElementById('formatsList');
+    const resultsDiv = document.getElementById('discoveryResults');
+    
+    if (formats.length === 0) {
+        formatsList.innerHTML = '<p style="color: #666;">No formats found at this URL.</p>';
+    } else {
+        let html = '';
+        formats.forEach((format, index) => {
+            const dimensions = format.width && format.height ? `${format.width}x${format.height}` : '';
+            const duration = format.duration_seconds ? `${format.duration_seconds}s` : '';
+            const fileSize = format.max_file_size_kb ? `${format.max_file_size_kb}KB max` : '';
+            
+            html += `
+                <div class="discovered-format">
+                    <label>
+                        <input type="checkbox" value="${index}" onchange="toggleFormatSelection(this)">
+                        <div class="format-details">
+                            <h5>${format.name}</h5>
+                            <p>${format.description || 'No description available'}</p>
+                            <div class="format-meta">
+                                <span class="format-type format-type-${format.type}">${format.type.toUpperCase()}</span>
+                                ${dimensions ? `<span>${dimensions}</span>` : ''}
+                                ${duration ? `<span>${duration}</span>` : ''}
+                                ${fileSize ? `<span>${fileSize}</span>` : ''}
+                            </div>
+                            ${format.specs && Object.keys(format.specs).length > 0 ? `
+                                <div class="format-specs">
+                                    <strong>Specs:</strong> ${JSON.stringify(format.specs)}
+                                </div>
+                            ` : ''}
+                        </div>
+                    </label>
+                </div>
+            `;
+        });
+        formatsList.innerHTML = html;
+    }
+    
+    // Store formats for later use
+    window.discoveredFormats = formats;
+    resultsDiv.style.display = 'block';
+}
+
+function toggleFormatSelection(checkbox) {
+    const formatDiv = checkbox.closest('.discovered-format');
+    if (checkbox.checked) {
+        formatDiv.classList.add('selected');
+    } else {
+        formatDiv.classList.remove('selected');
+    }
+}
+
+async function saveSelectedFormats() {
+    const checkboxes = document.querySelectorAll('#formatsList input[type="checkbox"]:checked');
+    const selectedFormats = Array.from(checkboxes).map(cb => window.discoveredFormats[parseInt(cb.value)]);
+    
+    if (selectedFormats.length === 0) {
+        alert('Please select at least one format to save.');
+        return;
+    }
+    
+    const saveBtn = document.getElementById('saveBtn');
+    const originalText = saveBtn.textContent;
+    saveBtn.textContent = 'Saving...';
+    saveBtn.disabled = true;
+    
+    try {
+        const response = await fetch('/tenant/{{ tenant_id }}/creative-formats/save-multiple', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ formats: selectedFormats })
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            alert(`Successfully saved ${selectedFormats.length} format(s).`);
+            hideDiscoverFromUrlModal();
+            location.reload();
+        } else {
+            alert('Error: ' + (result.error || 'Failed to save formats'));
+        }
+    } catch (error) {
+        alert('Error: ' + error.message);
+    } finally {
+        saveBtn.textContent = originalText;
+        saveBtn.disabled = false;
+    }
 }
 </script>
 {% endblock %}
