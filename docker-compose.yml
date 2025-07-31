@@ -8,7 +8,7 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
     ports:
-      - "${POSTGRES_PORT:-5433}:5432"
+      - "${POSTGRES_PORT:-5435}:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U adcp_user -d adcp"]
       interval: 10s
@@ -40,7 +40,7 @@ services:
         condition: service_healthy
     
     ports:
-      - "${ADCP_SALES_PORT:-8081}:8080"
+      - "${ADCP_SALES_PORT:-8083}:8080"
     
     volumes:
       # Optional: Mount audit logs
@@ -54,8 +54,10 @@ services:
     command: python admin_ui.py
     environment:
       DATABASE_URL: postgresql://adcp_user:secure_password_change_me@postgres:5432/adcp?sslmode=disable
-      ADMIN_UI_PORT: ${ADMIN_UI_PORT:-8002}
+      ADMIN_UI_PORT: ${ADMIN_UI_PORT:-8004}
       FLASK_ENV: production
+      # Gemini API key (required for AI features)
+      GEMINI_API_KEY: ${GEMINI_API_KEY}
       # Super admin authorization (set these via .env file)
       SUPER_ADMIN_EMAILS: ${SUPER_ADMIN_EMAILS}
       SUPER_ADMIN_DOMAINS: ${SUPER_ADMIN_DOMAINS}
@@ -69,7 +71,7 @@ services:
         condition: service_healthy
     
     ports:
-      - "${ADMIN_UI_PORT:-8002}:${ADMIN_UI_PORT:-8002}"
+      - "${ADMIN_UI_PORT:-8004}:${ADMIN_UI_PORT:-8004}"
     
     volumes:
       # Mount OAuth credentials file
