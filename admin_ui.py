@@ -1684,9 +1684,31 @@ def add_product(tenant_id):
     
     if request.method == 'POST':
         try:
-            # Get form data
-            product_id = request.form.get('product_id') or request.form['name'].lower().replace(' ', '_')
-            formats = request.form.getlist('formats')
+            # Check if this is from AI form
+            ai_config = request.form.get('ai_config')
+            if ai_config:
+                # Parse AI-generated configuration
+                config = json.loads(ai_config)
+                product_id = request.form.get('product_id') or config.get('product_id')
+                formats = config.get('formats', [])
+                delivery_type = config.get('delivery_type', 'guaranteed')
+                cpm = config.get('cpm')
+                price_guidance = config.get('price_guidance')
+                countries = config.get('countries')
+                targeting_template = config.get('targeting_template', {})
+                implementation_config = config.get('implementation_config', {})
+                
+                # Get name and description from form
+                name = request.form.get('name')
+                description = request.form.get('description')
+            else:
+                # Regular form submission
+                product_id = request.form.get('product_id') or request.form['name'].lower().replace(' ', '_')
+                formats = request.form.getlist('formats')
+                name = request.form.get('name')
+                description = request.form.get('description')
+                targeting_template = {}
+                implementation_config = {}
             
             # Build implementation config based on adapter
             cursor = conn.execute("SELECT config FROM tenants WHERE tenant_id = ?", (tenant_id,))
@@ -1694,34 +1716,36 @@ def add_product(tenant_id):
             # PostgreSQL returns JSONB as dict, SQLite returns string
             tenant_config = config_data if isinstance(config_data, dict) else json.loads(config_data)
             
-            # Get selected countries
-            countries = request.form.getlist('countries')
-            # If "ALL" is selected or no countries selected, set to None (all countries)
-            if 'ALL' in countries or not countries:
-                countries = None
-            
-            # Implementation config now empty - adapter will populate
-            implementation_config = {}
-            
-            # Determine pricing based on delivery type
-            delivery_type = request.form.get('delivery_type', 'guaranteed')
-            is_fixed_price = delivery_type == 'guaranteed'
-            
-            # Handle CPM and price guidance
-            cpm = None
-            price_guidance = None
-            
-            if is_fixed_price:
-                cpm = float(request.form.get('cpm', 5.0))
+            # Handle regular form submission fields if not from AI
+            if not ai_config:
+                # Get selected countries
+                countries = request.form.getlist('countries')
+                # If "ALL" is selected or no countries selected, set to None (all countries)
+                if 'ALL' in countries or not countries:
+                    countries = None
+                
+                # Determine pricing based on delivery type
+                delivery_type = request.form.get('delivery_type', 'guaranteed')
+                is_fixed_price = delivery_type == 'guaranteed'
+                
+                # Handle CPM and price guidance
+                cpm = None
+                price_guidance = None
+                
+                if is_fixed_price:
+                    cpm = float(request.form.get('cpm', 5.0))
+                else:
+                    # Non-guaranteed: use price guidance
+                    min_cpm = request.form.get('price_guidance_min')
+                    max_cpm = request.form.get('price_guidance_max')
+                    if min_cpm and max_cpm:
+                        price_guidance = {
+                            'min_cpm': float(min_cpm),
+                            'max_cpm': float(max_cpm)
+                        }
             else:
-                # Non-guaranteed: use price guidance
-                min_cpm = request.form.get('price_guidance_min')
-                max_cpm = request.form.get('price_guidance_max')
-                if min_cpm and max_cpm:
-                    price_guidance = {
-                        'min_cpm': float(min_cpm),
-                        'max_cpm': float(max_cpm)
-                    }
+                # AI config already has these values
+                is_fixed_price = delivery_type == 'guaranteed'
             
             # Insert product
             conn.execute("""
@@ -1733,10 +1757,10 @@ def add_product(tenant_id):
             """, (
                 tenant_id,
                 product_id,
-                request.form['name'],
-                request.form.get('description', ''),
+                name,
+                description,
                 json.dumps(formats),
-                json.dumps({}),  # Empty targeting template
+                json.dumps(targeting_template),
                 delivery_type,
                 is_fixed_price,
                 cpm,
@@ -1766,6 +1790,46 @@ def add_product(tenant_id):
                          tenant_id=tenant_id,
                          formats=formats)
 
+@app.route('/tenant/<tenant_id>/products/add/ai', methods=['GET'])
+@require_auth()
+def add_product_ai_form(tenant_id):
+    """Show AI-assisted product creation form."""
+    # Check access
+    if session.get('role') != 'super_admin' and session.get('tenant_id') != tenant_id:
+        return "Access denied", 403
+    
+    return render_template('add_product_ai.html', tenant_id=tenant_id)
+
+@app.route('/tenant/<tenant_id>/products/analyze_ai', methods=['POST'])
+@require_auth()
+def analyze_product_ai(tenant_id):
+    """Analyze product description with AI and return configuration."""
+    # Check access
+    if session.get('role') != 'super_admin' and session.get('tenant_id') != tenant_id:
+        return jsonify({"error": "Access denied"}), 403
+    
+    try:
+        import asyncio
+        from ai_product_service import analyze_product_description
+        
+        data = request.get_json()
+        
+        # Run the async function
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        
+        config = loop.run_until_complete(analyze_product_description(
+            tenant_id=tenant_id,
+            name=data['name'],
+            external_description=data['external_description'],
+            internal_details=data.get('internal_details')
+        ))
+        
+        return jsonify({"success": True, "config": config})
+        
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
 def get_creative_formats():
     """Get all creative formats from the database."""
     conn = get_db_connection()
@@ -1792,6 +1856,307 @@ def get_creative_formats():
     
     conn.close()
     return formats
+
+# Creative Format Management Routes
+@app.route('/tenant/<tenant_id>/creative-formats')
+@require_auth()
+def list_creative_formats(tenant_id):
+    """List creative formats (both standard and custom)."""
+    # Check access
+    if session.get('role') != 'super_admin' and session.get('tenant_id') != tenant_id:
+        return "Access denied", 403
+    
+    conn = get_db_connection()
+    
+    # Get tenant name
+    cursor = conn.execute("SELECT name FROM tenants WHERE tenant_id = ?", (tenant_id,))
+    tenant_row = cursor.fetchone()
+    if not tenant_row:
+        conn.close()
+        return "Tenant not found", 404
+    
+    tenant_name = tenant_row[0]
+    
+    # Get all formats (standard + custom for this tenant)
+    cursor = conn.execute("""
+        SELECT format_id, name, type, description, width, height, 
+               duration_seconds, is_standard, source_url, created_at
+        FROM creative_formats
+        WHERE tenant_id IS NULL OR tenant_id = ?
+        ORDER BY is_standard DESC, type, name
+    """, (tenant_id,))
+    
+    formats = []
+    for row in cursor.fetchall():
+        format_info = {
+            'format_id': row[0],
+            'name': row[1],
+            'type': row[2],
+            'description': row[3],
+            'is_standard': row[7],
+            'source_url': row[8],
+            'created_at': row[9]
+        }
+        
+        # Add dimensions or duration
+        if row[4] and row[5]:  # width and height
+            format_info['dimensions'] = f"{row[4]}x{row[5]}"
+        elif row[6]:  # duration
+            format_info['duration'] = f"{row[6]}s"
+            
+        formats.append(format_info)
+    
+    conn.close()
+    
+    return render_template('creative_formats.html',
+                         tenant_id=tenant_id,
+                         tenant_name=tenant_name,
+                         formats=formats)
+
+@app.route('/tenant/<tenant_id>/creative-formats/add/ai', methods=['GET'])
+@require_auth()
+def add_creative_format_ai(tenant_id):
+    """Show AI-assisted creative format discovery form."""
+    # Check access
+    if session.get('role') != 'super_admin' and session.get('tenant_id') != tenant_id:
+        return "Access denied", 403
+    
+    return render_template('add_creative_format_ai.html', tenant_id=tenant_id)
+
+@app.route('/tenant/<tenant_id>/creative-formats/analyze', methods=['POST'])
+@require_auth()
+def analyze_creative_format(tenant_id):
+    """Analyze creative format with AI."""
+    # Check access
+    if session.get('role') != 'super_admin' and session.get('tenant_id') != tenant_id:
+        return jsonify({"error": "Access denied"}), 403
+    
+    try:
+        import asyncio
+        from ai_creative_format_service import discover_creative_format
+        
+        data = request.get_json()
+        
+        # Run the async function
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        
+        format_data = loop.run_until_complete(discover_creative_format(
+            tenant_id=tenant_id,
+            name=data['name'],
+            description=data.get('description'),
+            url=data.get('url'),
+            type_hint=data.get('type_hint')
+        ))
+        
+        return jsonify({"success": True, "format": format_data})
+        
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/tenant/<tenant_id>/creative-formats/save', methods=['POST'])
+@require_auth()
+def save_creative_format(tenant_id):
+    """Save a creative format to the database."""
+    # Check access
+    if session.get('role') != 'super_admin' and session.get('tenant_id') != tenant_id:
+        return jsonify({"error": "Access denied"}), 403
+    
+    try:
+        data = request.get_json()
+        format_data = data['format']
+        
+        conn = get_db_connection()
+        
+        # Check if format ID already exists
+        cursor = conn.execute(
+            "SELECT format_id FROM creative_formats WHERE format_id = ?",
+            (format_data['format_id'],)
+        )
+        
+        if cursor.fetchone():
+            # Update existing
+            conn.execute("""
+                UPDATE creative_formats
+                SET name = ?, type = ?, description = ?, width = ?, height = ?,
+                    duration_seconds = ?, max_file_size_kb = ?, specs = ?,
+                    source_url = ?
+                WHERE format_id = ?
+            """, (
+                format_data['name'],
+                format_data['type'],
+                format_data['description'],
+                format_data.get('width'),
+                format_data.get('height'),
+                format_data.get('duration_seconds'),
+                format_data.get('max_file_size_kb'),
+                format_data.get('specs', '{}'),
+                format_data.get('source_url'),
+                format_data['format_id']
+            ))
+        else:
+            # Insert new
+            conn.execute("""
+                INSERT INTO creative_formats (
+                    format_id, tenant_id, name, type, description,
+                    width, height, duration_seconds, max_file_size_kb,
+                    specs, is_standard, source_url
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                format_data['format_id'],
+                format_data.get('tenant_id'),
+                format_data['name'],
+                format_data['type'],
+                format_data['description'],
+                format_data.get('width'),
+                format_data.get('height'),
+                format_data.get('duration_seconds'),
+                format_data.get('max_file_size_kb'),
+                format_data.get('specs', '{}'),
+                format_data.get('is_standard', False),
+                format_data.get('source_url')
+            ))
+        
+        conn.connection.commit()
+        conn.close()
+        
+        return jsonify({"success": True})
+        
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/tenant/<tenant_id>/creative-formats/sync-standard', methods=['POST'])
+@require_auth()
+def sync_standard_formats(tenant_id):
+    """Sync standard formats from adcontextprotocol.org."""
+    # Super admin only
+    if session.get('role') != 'super_admin':
+        return jsonify({"error": "Access denied"}), 403
+    
+    try:
+        import asyncio
+        from ai_creative_format_service import sync_standard_formats as sync_formats
+        
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        
+        count = loop.run_until_complete(sync_formats())
+        
+        return jsonify({"success": True, "count": count})
+        
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/tenant/<tenant_id>/creative-formats/discover', methods=['POST'])
+@require_auth()
+def discover_formats_from_url(tenant_id):
+    """Discover multiple creative formats from a URL."""
+    # Check access
+    if session.get('role') != 'super_admin' and session.get('tenant_id') != tenant_id:
+        return jsonify({"error": "Access denied"}), 403
+    
+    try:
+        data = request.get_json()
+        url = data.get('url')
+        
+        if not url:
+            return jsonify({"error": "URL is required"}), 400
+        
+        import asyncio
+        from ai_creative_format_service import AICreativeFormatService
+        
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        
+        service = AICreativeFormatService()
+        formats = loop.run_until_complete(service.discover_format_from_url(url))
+        
+        # Convert FormatSpecification objects to dicts for JSON response
+        format_data = []
+        for fmt in formats:
+            format_data.append({
+                "format_id": fmt.format_id,
+                "name": fmt.name,
+                "type": fmt.type,
+                "description": fmt.description,
+                "width": fmt.width,
+                "height": fmt.height,
+                "duration_seconds": fmt.duration_seconds,
+                "max_file_size_kb": fmt.max_file_size_kb,
+                "specs": fmt.specs or {},
+                "source_url": fmt.source_url
+            })
+        
+        return jsonify({"success": True, "formats": format_data})
+        
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/tenant/<tenant_id>/creative-formats/save-multiple', methods=['POST'])
+@require_auth()
+def save_discovered_formats(tenant_id):
+    """Save multiple discovered creative formats to the database."""
+    # Check access
+    if session.get('role') != 'super_admin' and session.get('tenant_id') != tenant_id:
+        return jsonify({"error": "Access denied"}), 403
+    
+    try:
+        data = request.get_json()
+        formats = data.get('formats', [])
+        
+        if not formats:
+            return jsonify({"error": "No formats provided"}), 400
+        
+        conn = get_db_connection()
+        saved_count = 0
+        
+        for format_data in formats:
+            # Generate a unique format_id if needed
+            base_format_id = format_data.get('format_id', f"{format_data['type']}_{format_data['name'].lower().replace(' ', '_')}")
+            format_id = base_format_id
+            counter = 1
+            
+            # Ensure format_id is unique
+            while True:
+                cursor = conn.execute(
+                    "SELECT format_id FROM creative_formats WHERE format_id = ?",
+                    (format_id,)
+                )
+                if not cursor.fetchone():
+                    break
+                format_id = f"{base_format_id}_{counter}"
+                counter += 1
+            
+            # Insert new format
+            conn.execute("""
+                INSERT INTO creative_formats (
+                    format_id, tenant_id, name, type, description,
+                    width, height, duration_seconds, max_file_size_kb,
+                    specs, is_standard, source_url
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                format_id,
+                tenant_id,  # Custom formats belong to the tenant
+                format_data['name'],
+                format_data['type'],
+                format_data.get('description', ''),
+                format_data.get('width'),
+                format_data.get('height'),
+                format_data.get('duration_seconds'),
+                format_data.get('max_file_size_kb'),
+                json.dumps(format_data.get('specs', {})),
+                False,  # Custom formats are not standard
+                format_data.get('source_url')
+            ))
+            saved_count += 1
+        
+        conn.connection.commit()
+        conn.close()
+        
+        return jsonify({"success": True, "saved_count": saved_count})
+        
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 # Function to register adapter routes
 def register_adapter_routes():

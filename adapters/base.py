@@ -141,3 +141,25 @@ class AdServerAdapter(ABC):
         Returns (is_valid, error_message)
         """
         return True, None
+    
+    async def get_available_inventory(self) -> Dict[str, Any]:
+        """
+        Fetch available inventory from the ad server for AI-driven configuration.
+        Returns a dictionary with:
+        - placements: List of available ad placements with their capabilities
+        - ad_units: List of ad units/pages where ads can be shown
+        - targeting_options: Available targeting dimensions and values
+        - creative_specs: Supported creative formats and specifications
+        - properties: Any additional properties specific to the ad server
+        
+        This is used by the AI product configuration service to understand
+        what's available when auto-configuring products.
+        """
+        # Default implementation returns empty inventory
+        return {
+            "placements": [],
+            "ad_units": [],
+            "targeting_options": {},
+            "creative_specs": [],
+            "properties": {}
+        }
