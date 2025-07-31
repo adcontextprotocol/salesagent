@@ -113,3 +113,31 @@ class AdServerAdapter(ABC):
     ) -> UpdateMediaBuyResponse:
         """Updates a media buy with a specific action."""
         pass
+    
+    def get_config_ui_endpoint(self) -> Optional[str]:
+        """
+        Returns the endpoint path for this adapter's configuration UI.
+        If None, the adapter doesn't provide a custom UI.
+        
+        Example: "/adapters/gam/config" 
+        """
+        return None
+    
+    def register_ui_routes(self, app):
+        """
+        Register Flask routes for this adapter's configuration UI.
+        Called during app initialization if the adapter provides UI.
+        
+        Example:
+        @app.route('/adapters/gam/config/<tenant_id>/<product_id>')
+        def gam_product_config(tenant_id, product_id):
+            return render_template('gam_config.html', ...)
+        """
+        pass
+    
+    def validate_product_config(self, config: Dict[str, Any]) -> tuple[bool, Optional[str]]:
+        """
+        Validate product-specific configuration for this adapter.
+        Returns (is_valid, error_message)
+        """
+        return True, None

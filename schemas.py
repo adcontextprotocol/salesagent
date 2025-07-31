@@ -128,13 +128,16 @@ class Product(BaseModel):
     name: str
     description: str
     formats: List[Format]
-    targeting_template: Targeting
     delivery_type: Literal["guaranteed", "non_guaranteed"]
     is_fixed_price: bool
     cpm: Optional[float] = None
     price_guidance: Optional[PriceGuidance] = None
     is_custom: bool = Field(default=False)
     expires_at: Optional[datetime] = None
+    implementation_config: Optional[Dict[str, Any]] = Field(
+        default=None,
+        description="Ad server-specific configuration for implementing this product (placements, line item settings, etc.)"
+    )
 
 # --- Admin Tool Schemas ---
 class PrincipalSummary(BaseModel):

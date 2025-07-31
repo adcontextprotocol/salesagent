@@ -139,6 +139,15 @@ def init_db():
                     "floor": 5.0,
                     "p50": 8.0,
                     "p75": 10.0
+                },
+                "implementation_config": {
+                    "placement_ids": ["news_300x250_atf", "news_300x250_btf"],
+                    "ad_unit_path": "/1234/news/display",
+                    "key_values": {"section": "news", "tier": "premium"},
+                    "targeting": {
+                        "content_cat_any_of": ["news", "politics"],
+                        "geo_country_any_of": ["US"]
+                    }
                 }
             },
             {
@@ -159,7 +168,15 @@ def init_db():
                 "delivery_type": "non_guaranteed",
                 "is_fixed_price": True,
                 "cpm": 2.5,
-                "price_guidance": None
+                "price_guidance": None,
+                "implementation_config": {
+                    "placement_ids": ["ros_728x90_all"],
+                    "ad_unit_path": "/1234/run_of_site/leaderboard",
+                    "key_values": {"tier": "standard"},
+                    "targeting": {
+                        "geo_country_any_of": ["US", "CA"]
+                    }
+                }
             }
             ]
             
@@ -168,8 +185,8 @@ def init_db():
                     INSERT INTO products (
                         tenant_id, product_id, name, description,
                         formats, targeting_template, delivery_type,
-                        is_fixed_price, cpm, price_guidance
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        is_fixed_price, cpm, price_guidance, implementation_config
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """, (
                     "default",
                     p["product_id"],
@@ -180,7 +197,8 @@ def init_db():
                     p["delivery_type"],
                     p["is_fixed_price"],  # Boolean works for both
                     p.get("cpm"),
-                    json.dumps(p["price_guidance"]) if p.get("price_guidance") else None
+                    json.dumps(p["price_guidance"]) if p.get("price_guidance") else None,
+                    json.dumps(p.get("implementation_config")) if p.get("implementation_config") else None
                 ))
         
         # Update the print statement based on whether sample data was created

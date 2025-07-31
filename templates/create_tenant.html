@@ -96,6 +96,52 @@
             <small style="color: #666;">Comma-separated list of email domains (anyone @domain can access)</small>
         </div>
         
+        <h3 style="margin-top: 2rem;">First Principal (Advertiser)</h3>
+        
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+            <div class="form-group">
+                <label for="principal_name">Principal Name *</label>
+                <input type="text" id="principal_name" name="principal_name" required placeholder="e.g., Acme Corp">
+            </div>
+            
+            <div class="form-group">
+                <label for="principal_id">Principal ID</label>
+                <input type="text" id="principal_id" name="principal_id" placeholder="Auto-generated from name">
+                <small style="color: #666;">Leave blank to auto-generate</small>
+            </div>
+        </div>
+        
+        <h3 style="margin-top: 2rem;">Initial Products</h3>
+        
+        <div class="form-group">
+            <label>Select products to add:</label>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-top: 1rem;">
+                <div>
+                    <input type="checkbox" id="product_ron_display" name="initial_products" value="ron_display" checked>
+                    <label for="product_ron_display">Run of Network - Standard Display</label>
+                    <small style="display: block; margin-left: 1.5rem; color: #666;">300x250, 728x90, 320x50</small>
+                </div>
+                
+                <div>
+                    <input type="checkbox" id="product_ron_video" name="initial_products" value="ron_video" checked>
+                    <label for="product_ron_video">Run of Network - Standard Video</label>
+                    <small style="display: block; margin-left: 1.5rem; color: #666;">In-stream 15s/30s</small>
+                </div>
+                
+                <div>
+                    <input type="checkbox" id="product_homepage_display" name="initial_products" value="homepage_display">
+                    <label for="product_homepage_display">Homepage - Premium Display</label>
+                    <small style="display: block; margin-left: 1.5rem; color: #666;">970x250, 300x600</small>
+                </div>
+                
+                <div>
+                    <input type="checkbox" id="product_mobile_interstitial" name="initial_products" value="mobile_interstitial">
+                    <label for="product_mobile_interstitial">Mobile Interstitial</label>
+                    <small style="display: block; margin-left: 1.5rem; color: #666;">Full-screen mobile ads</small>
+                </div>
+            </div>
+        </div>
+        
         <h3 style="margin-top: 2rem;">Features</h3>
         
         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">

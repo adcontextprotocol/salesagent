@@ -1,0 +1,173 @@
+{% extends "base.html" %}
+
+{% block title %}Configure Google Ad Manager Settings - {{ product.name }}{% endblock %}
+
+{% block content %}
+<div class="card">
+    <h2>Google Ad Manager Configuration</h2>
+    <h3>{{ product.name }}</h3>
+    
+    <form id="gam-config-form" method="POST">
+        <!-- Ad Unit Configuration -->
+        <h4 style="margin-top: 2rem; border-bottom: 1px solid #ddd; padding-bottom: 0.5rem;">Ad Unit Configuration</h4>
+        
+        <div class="form-group">
+            <label for="ad_unit_path">Ad Unit Path *</label>
+            <input type="text" id="ad_unit_path" name="ad_unit_path" 
+                   value="{{ config.ad_unit_path or '' }}"
+                   placeholder="/{{ network_code }}/site/section/position" required>
+            <small style="color: #666;">Full path in GAM hierarchy (e.g., /12345/mainsite.com/news/top)</small>
+        </div>
+        
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+            <div class="form-group">
+                <label for="ad_unit_name">Ad Unit Name</label>
+                <input type="text" id="ad_unit_name" name="ad_unit_name" 
+                       value="{{ config.ad_unit_name or product.name }}"
+                       placeholder="Auto-generated from product name">
+            </div>
+            
+            <div class="form-group">
+                <label for="placement_name">Placement Name</label>
+                <input type="text" id="placement_name" name="placement_name" 
+                       value="{{ config.placement_name or '' }}"
+                       placeholder="Optional placement name">
+            </div>
+        </div>
+        
+        <!-- Creative Sizes -->
+        <h4 style="margin-top: 2rem; border-bottom: 1px solid #ddd; padding-bottom: 0.5rem;">Creative Sizes</h4>
+        
+        <div class="form-group">
+            <label>Select supported sizes:</label>
+            <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.5rem; margin-top: 0.5rem;">
+                {% set sizes = [
+                    ('300x250', 'Medium Rectangle'),
+                    ('728x90', 'Leaderboard'),
+                    ('320x50', 'Mobile Banner'),
+                    ('300x600', 'Half Page'),
+                    ('970x250', 'Billboard'),
+                    ('160x600', 'Wide Skyscraper'),
+                    ('320x480', 'Mobile Interstitial'),
+                    ('300x1050', 'Portrait'),
+                    ('970x90', 'Super Leaderboard')
+                ] %}
+                {% for size, label in sizes %}
+                <label style="display: flex; align-items: center; gap: 0.5rem;">
+                    <input type="checkbox" name="sizes" value="{{ size }}"
+                           {% if size in (config.sizes or []) %}checked{% endif %}>
+                    <span>{{ label }} ({{ size }})</span>
+                </label>
+                {% endfor %}
+            </div>
+        </div>
+        
+        <!-- Targeting -->
+        <h4 style="margin-top: 2rem; border-bottom: 1px solid #ddd; padding-bottom: 0.5rem;">Targeting Options</h4>
+        
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+            <div class="form-group">
+                <label for="frequency_caps">Frequency Caps</label>
+                <select id="frequency_caps" name="frequency_caps">
+                    <option value="none" {% if config.frequency_caps == 'none' %}selected{% endif %}>No frequency cap</option>
+                    <option value="1_per_day" {% if config.frequency_caps == '1_per_day' %}selected{% endif %}>1 per day</option>
+                    <option value="3_per_day" {% if config.frequency_caps == '3_per_day' %}selected{% endif %}>3 per day</option>
+                    <option value="1_per_week" {% if config.frequency_caps == '1_per_week' %}selected{% endif %}>1 per week</option>
+                    <option value="custom" {% if config.frequency_caps == 'custom' %}selected{% endif %}>Custom</option>
+                </select>
+            </div>
+            
+            <div class="form-group">
+                <label for="dayparting">Dayparting</label>
+                <select id="dayparting" name="dayparting">
+                    <option value="always" {% if config.dayparting == 'always' %}selected{% endif %}>Always on</option>
+                    <option value="business_hours" {% if config.dayparting == 'business_hours' %}selected{% endif %}>Business hours (9-5)</option>
+                    <option value="prime_time" {% if config.dayparting == 'prime_time' %}selected{% endif %}>Prime time (6-11pm)</option>
+                    <option value="custom" {% if config.dayparting == 'custom' %}selected{% endif %}>Custom schedule</option>
+                </select>
+            </div>
+        </div>
+        
+        <div class="form-group">
+            <label for="key_values">Custom Key-Value Targeting</label>
+            <textarea id="key_values" name="key_values" rows="3" 
+                      placeholder="category=sports&#10;premium=true&#10;audience=millennials">{{ config.key_values or '' }}</textarea>
+            <small style="color: #666;">One key=value pair per line</small>
+        </div>
+        
+        <!-- Advanced Settings -->
+        <h4 style="margin-top: 2rem; border-bottom: 1px solid #ddd; padding-bottom: 0.5rem;">Advanced Settings</h4>
+        
+        <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 1rem;">
+            <div class="form-group">
+                <label>
+                    <input type="checkbox" name="enable_companion_ads" 
+                           {% if config.enable_companion_ads %}checked{% endif %}>
+                    Enable Companion Ads
+                </label>
+            </div>
+            
+            <div class="form-group">
+                <label>
+                    <input type="checkbox" name="allow_overbook" 
+                           {% if config.allow_overbook %}checked{% endif %}>
+                    Allow Overbooking
+                </label>
+            </div>
+            
+            <div class="form-group">
+                <label>
+                    <input type="checkbox" name="enable_competitive_exclusion" 
+                           {% if config.enable_competitive_exclusion %}checked{% endif %}>
+                    Competitive Exclusion
+                </label>
+            </div>
+        </div>
+        
+        <div class="form-group">
+            <label for="labels">GAM Labels (comma-separated)</label>
+            <input type="text" id="labels" name="labels" 
+                   value="{{ config.labels or '' }}"
+                   placeholder="premium, above-the-fold, video-enabled">
+        </div>
+        
+        <!-- Actions -->
+        <div style="margin-top: 2rem; display: flex; gap: 1rem;">
+            <button type="submit" class="btn">Save Configuration</button>
+            <button type="button" class="btn btn-secondary" onclick="validateConfig()">Validate</button>
+            <a href="{{ url_for('edit_product', tenant_id=tenant_id, product_id=product.product_id) }}" 
+               class="btn btn-secondary">Cancel</a>
+        </div>
+    </form>
+</div>
+
+<script>
+function validateConfig() {
+    const adUnitPath = document.getElementById('ad_unit_path').value;
+    const sizes = document.querySelectorAll('input[name="sizes"]:checked');
+    
+    if (!adUnitPath.startsWith('/{{ network_code }}/')) {
+        alert('Ad unit path must start with /{{ network_code }}/');
+        return false;
+    }
+    
+    if (sizes.length === 0) {
+        alert('Please select at least one creative size');
+        return false;
+    }
+    
+    alert('Configuration is valid!');
+    return true;
+}
+
+// Auto-generate ad unit path based on selections
+document.getElementById('ad_unit_name').addEventListener('input', function() {
+    const adUnitPath = document.getElementById('ad_unit_path');
+    if (!adUnitPath.value || adUnitPath.value === adUnitPath.placeholder) {
+        // Auto-generate path
+        const name = this.value.toLowerCase().replace(/\s+/g, '_');
+        adUnitPath.value = `/{{ network_code }}/{{ product.product_id }}/${name}`;
+    }
+});
+</script>
+{% endblock %}

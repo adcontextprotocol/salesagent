@@ -22,6 +22,7 @@ from config_loader import (
 )
 from db_config import get_db_connection
 from slack_notifier import get_slack_notifier
+from product_catalog_providers.factory import get_product_catalog_provider
 
 # --- Authentication ---
 
@@ -265,9 +266,34 @@ def _verify_principal(media_buy_id: str, context: Context):
 # --- MCP Tools (Full Implementation) ---
 
 @mcp.tool
-def list_products(req: ListProductsRequest, context: Context) -> ListProductsResponse:
-    _get_principal_id_from_context(context) # Authenticate
-    return ListProductsResponse(products=get_product_catalog())
+async def list_products(req: ListProductsRequest, context: Context) -> ListProductsResponse:
+    principal_id = _get_principal_id_from_context(context) # Authenticate
+    
+    # Get tenant information
+    tenant = get_current_tenant()
+    if not tenant:
+        raise ToolError("No tenant context available")
+    
+    # Get the Principal object with ad server mappings
+    principal = get_principal_object(principal_id) if principal_id else None
+    principal_data = principal.model_dump() if principal else None
+    
+    # Get the product catalog provider for this tenant
+    provider = await get_product_catalog_provider(
+        tenant['tenant_id'],
+        tenant['config']
+    )
+    
+    # Query products using the brief
+    products = await provider.get_products(
+        brief=req.brief,
+        tenant_id=tenant['tenant_id'],
+        principal_id=principal_id,
+        principal_data=principal_data,
+        context=None  # Could add additional context here if needed
+    )
+    
+    return ListProductsResponse(products=products)
 
 @mcp.tool
 def create_media_buy(req: CreateMediaBuyRequest, context: Context) -> CreateMediaBuyResponse:
@@ -431,9 +457,11 @@ def check_creative_status(req: CheckCreativeStatusRequest, context: Context) -> 
     statuses = [creative_statuses.get(cid) for cid in req.creative_ids if cid in creative_statuses]
     return CheckCreativeStatusResponse(statuses=statuses)
 
+"""
+TODO: Fix schema - ApproveAdaptationRequest not defined
 @mcp.tool
 def approve_adaptation(req: ApproveAdaptationRequest, context: Context) -> ApproveAdaptationResponse:
-    """Approve a suggested creative adaptation."""
+    # Approve a suggested creative adaptation.
     principal_id = _get_principal_id_from_context(context)
     
     # Verify creative ownership
@@ -533,6 +561,7 @@ def approve_adaptation(req: ApproveAdaptationRequest, context: Context) -> Appro
         status=new_status,
         message=f"Adaptation approved and creative '{new_creative_id}' generated"
     )
+"""
 
 @mcp.tool
 def legacy_update_media_buy(req: LegacyUpdateMediaBuyRequest, context: Context):
@@ -1910,9 +1939,12 @@ def get_product_catalog() -> List[Product]:
         # Remove tenant_id as it's not in the Product schema
         product_data.pop('tenant_id', None)
         product_data['formats'] = json.loads(product_data['formats'])
-        product_data['targeting_template'] = json.loads(product_data['targeting_template'])
+        # Remove targeting_template - it's internal and shouldn't be exposed
+        product_data.pop('targeting_template', None)
         if product_data.get('price_guidance'):
             product_data['price_guidance'] = json.loads(product_data['price_guidance'])
+        if product_data.get('implementation_config'):
+            product_data['implementation_config'] = json.loads(product_data['implementation_config'])
         loaded_products.append(Product(**product_data))
     
     return loaded_products

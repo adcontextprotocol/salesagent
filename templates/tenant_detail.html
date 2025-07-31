@@ -120,7 +120,7 @@
         
         <div style="margin-bottom: 2rem; padding: 1rem; background: #f0f8ff; border-radius: 4px;">
             <h4 style="margin-top: 0;">Tenant Login URL</h4>
-            <code style="font-size: 14px;">http://localhost:8001/tenant/{{ tenant.tenant_id }}/login</code>
+            <code style="font-size: 14px;">http://localhost:{{ admin_port }}/tenant/{{ tenant.tenant_id }}/login</code>
             <p style="margin: 0.5rem 0 0 0; color: #666; font-size: 13px;">
                 Share this URL with authorized users to access this tenant directly.
             </p>
@@ -170,24 +170,23 @@
         <h3>Ad Server Setup</h3>
         
         {% set adapters = tenant.config.get('adapters', {}) %}
-        {% set active_adapter = None %}
-        {% set adapter_config = None %}
+        {% set ns = namespace(current_adapter=None, adapter_config=None) %}
         
         {% for adapter_name, config in adapters.items() %}
             {% if config.get('enabled', False) %}
-                {% set active_adapter = adapter_name %}
-                {% set adapter_config = config %}
+                {% set ns.current_adapter = adapter_name %}
+                {% set ns.adapter_config = config %}
             {% endif %}
         {% endfor %}
         
-        {% if active_adapter %}
+        {% if tenant.active_adapter %}
             <!-- Show current adapter configuration -->
             <div style="background: #e8f5e9; padding: 1rem; border-radius: 8px; margin-bottom: 2rem;">
                 <h4 style="margin: 0 0 0.5rem 0; color: #2e7d32;">
-                    ✅ Active Ad Server: {{ active_adapter.upper() }}
+                    ✅ Active Ad Server: {{ ns.current_adapter.upper() if ns.current_adapter else 'Unknown' }}
                 </h4>
                 
-                {% if active_adapter == 'mock' %}
+                {% if ns.current_adapter == 'mock' %}
                 <p style="margin: 0.5rem 0;">
                     You're using the Mock adapter for testing. This doesn't connect to a real ad server.
                 </p>
@@ -197,41 +196,41 @@
                     <li>Simulates real ad server responses</li>
                 </ul>
                 
-                {% elif active_adapter == 'gam' %}
+                {% elif ns.current_adapter == 'gam' %}
                 <p style="margin: 0.5rem 0;">
                     Connected to Google Ad Manager
                 </p>
                 <div style="margin-top: 1rem;">
                     <strong>Configuration Status:</strong>
                     <ul style="margin: 0.5rem 0; padding-left: 1.5rem;">
-                        {% if adapter_config.get('network_id') %}
-                        <li>✅ Network ID: {{ adapter_config.get('network_id') }}</li>
+                        {% if ns.adapter_config.get('network_id') %}
+                        <li>✅ Network ID: {{ ns.adapter_config.get('network_id') }}</li>
                         {% else %}
                         <li>❌ Network ID: Not configured</li>
                         {% endif %}
                         
-                        {% if adapter_config.get('api_version') %}
-                        <li>✅ API Version: {{ adapter_config.get('api_version') }}</li>
+                        {% if ns.adapter_config.get('api_version') %}
+                        <li>✅ API Version: {{ ns.adapter_config.get('api_version') }}</li>
                         {% else %}
                         <li>✅ API Version: Using default</li>
                         {% endif %}
                     </ul>
                 </div>
                 
-                {% elif active_adapter == 'kevel' %}
+                {% elif ns.current_adapter == 'kevel' %}
                 <p style="margin: 0.5rem 0;">
                     Connected to Kevel (formerly Adzerk)
                 </p>
                 <div style="margin-top: 1rem;">
                     <strong>Configuration Status:</strong>
                     <ul style="margin: 0.5rem 0; padding-left: 1.5rem;">
-                        {% if adapter_config.get('network_id') %}
-                        <li>✅ Network ID: {{ adapter_config.get('network_id') }}</li>
+                        {% if ns.adapter_config.get('network_id') %}
+                        <li>✅ Network ID: {{ ns.adapter_config.get('network_id') }}</li>
                         {% else %}
                         <li>❌ Network ID: Not configured</li>
                         {% endif %}
                         
-                        {% if adapter_config.get('api_key') %}
+                        {% if ns.adapter_config.get('api_key') %}
                         <li>✅ API Key: Configured</li>
                         {% else %}
                         <li>❌ API Key: Not configured</li>
@@ -239,20 +238,20 @@
                     </ul>
                 </div>
                 
-                {% elif active_adapter == 'triton' %}
+                {% elif ns.current_adapter == 'triton' %}
                 <p style="margin: 0.5rem 0;">
                     Connected to Triton Digital
                 </p>
                 <div style="margin-top: 1rem;">
                     <strong>Configuration Status:</strong>
                     <ul style="margin: 0.5rem 0; padding-left: 1.5rem;">
-                        {% if adapter_config.get('station_id') %}
-                        <li>✅ Station ID: {{ adapter_config.get('station_id') }}</li>
+                        {% if ns.adapter_config.get('station_id') %}
+                        <li>✅ Station ID: {{ ns.adapter_config.get('station_id') }}</li>
                         {% else %}
                         <li>❌ Station ID: Not configured</li>
                         {% endif %}
                         
-                        {% if adapter_config.get('api_key') %}
+                        {% if ns.adapter_config.get('api_key') %}
                         <li>✅ API Key: Configured</li>
                         {% else %}
                         <li>❌ API Key: Not configured</li>
@@ -261,7 +260,7 @@
                 </div>
                 {% endif %}
                 
-                {% if active_adapter != 'mock' %}
+                {% if ns.current_adapter != 'mock' %}
                 <div style="margin-top: 1rem;">
                     <button onclick="toggleAdapterSetup()" class="btn btn-secondary">Reconfigure</button>
                 </div>
@@ -279,7 +278,7 @@
             </div>
         {% endif %}
         
-        <div id="adapterSetup" style="{% if active_adapter %}display: none;{% endif %}">
+        <div id="adapterSetup" style="{% if tenant.active_adapter %}display: none;{% endif %}">
             <h4>Choose Your Ad Server</h4>
             
             <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 1rem; margin-bottom: 2rem;">
@@ -442,7 +441,7 @@
     <div class="card">
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
             <h3 style="margin: 0;">Principals (Advertisers)</h3>
-            {% if active_adapter and session.role != 'viewer' %}
+            {% if ns.current_adapter and session.role != 'viewer' %}
             <a href="/tenant/{{ tenant.tenant_id }}/principals/create" class="btn">Create Principal</a>
             {% endif %}
         </div>
@@ -515,7 +514,7 @@
         <div style="text-align: center; padding: 40px; background: #f8f9fa; border-radius: 8px;">
             <h4 style="margin-bottom: 20px;">No Principals Yet</h4>
             
-            {% if active_adapter %}
+            {% if tenant.active_adapter %}
             <p style="margin-bottom: 20px;">
                 Principals represent your advertisers or API clients who will create campaigns through the Sales Agent.
             </p>
@@ -544,30 +543,10 @@
 <div id="products" class="tab-content">
     <div class="card">
         <h3>Products</h3>
-        {% if products %}
-        <table>
-            <thead>
-                <tr>
-                    <th>ID</th>
-                    <th>Name</th>
-                    <th>Type</th>
-                    <th>CPM</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for product in products %}
-                <tr>
-                    <td><code>{{ product.product_id }}</code></td>
-                    <td>{{ product.name }}</td>
-                    <td>{{ product.delivery_type }}</td>
-                    <td>${{ product.cpm or 'Variable' }}</td>
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
-        {% else %}
-        <p>No products found.</p>
-        {% endif %}
+        <p>Define the advertising products available for purchase through the Sales Agent.</p>
+        <div style="text-align: center; padding: 40px;">
+            <a href="/tenant/{{ tenant.tenant_id }}/products" class="btn">Manage Products</a>
+        </div>
     </div>
 </div>
 

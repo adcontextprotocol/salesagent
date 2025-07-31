@@ -778,3 +778,129 @@ class GoogleAdManager(AdServerAdapter):
                     status="failed",
                     reason=str(e)
                 )
+    
+    def get_config_ui_endpoint(self) -> Optional[str]:
+        """Returns the GAM configuration UI endpoint."""
+        return "/adapters/gam/config"
+    
+    def register_ui_routes(self, app):
+        """Register GAM-specific configuration UI routes."""
+        from flask import render_template, request, jsonify, session, redirect, url_for
+        import json
+        
+        adapter_instance = self  # Capture self for use in route functions
+        
+        @app.route('/adapters/gam/config/<tenant_id>/<product_id>', methods=['GET', 'POST'])
+        def gam_product_config(tenant_id, product_id):
+            # Check authentication
+            if 'user' not in session:
+                return redirect(url_for('login'))
+            
+            # Check access
+            if session.get('role') != 'super_admin' and session.get('tenant_id') != tenant_id:
+                return "Access denied", 403
+            
+            # Get product and current config
+            from admin_ui import get_db_connection
+            conn = get_db_connection()
+            
+            # Get product
+            cursor = conn.execute(
+                "SELECT * FROM products WHERE tenant_id = ? AND product_id = ?",
+                (tenant_id, product_id)
+            )
+            product = cursor.fetchone()
+            if not product:
+                conn.close()
+                return "Product not found", 404
+            
+            # Convert to dict
+            config_data = product['implementation_config']
+            # PostgreSQL returns JSONB as dict, SQLite returns string
+            implementation_config = config_data if isinstance(config_data, dict) else json.loads(config_data or '{}')
+            
+            product_dict = {
+                'product_id': product['product_id'],
+                'name': product['name'],
+                'implementation_config': implementation_config
+            }
+            
+            if request.method == 'POST':
+                # Save configuration
+                config = {
+                    'ad_unit_path': request.form.get('ad_unit_path'),
+                    'ad_unit_name': request.form.get('ad_unit_name'),
+                    'placement_name': request.form.get('placement_name'),
+                    'sizes': request.form.getlist('sizes'),
+                    'frequency_caps': request.form.get('frequency_caps'),
+                    'dayparting': request.form.get('dayparting'),
+                    'key_values': request.form.get('key_values', ''),
+                    'enable_companion_ads': 'enable_companion_ads' in request.form,
+                    'allow_overbook': 'allow_overbook' in request.form,
+                    'enable_competitive_exclusion': 'enable_competitive_exclusion' in request.form,
+                    'labels': request.form.get('labels', '')
+                }
+                
+                # Validate
+                is_valid, error = adapter_instance.validate_product_config(config)
+                if not is_valid:
+                    return render_template(
+                        'adapters/gam_product_config.html',
+                        tenant_id=tenant_id,
+                        product=product_dict,
+                        config=config,
+                        network_code=adapter_instance.network_code,
+                        error=error
+                    )
+                
+                # Update product implementation_config
+                conn.execute(
+                    "UPDATE products SET implementation_config = ? WHERE tenant_id = ? AND product_id = ?",
+                    (json.dumps(config), tenant_id, product_id)
+                )
+                conn.connection.commit()
+                conn.close()
+                
+                return redirect(url_for('edit_product', tenant_id=tenant_id, product_id=product_id))
+            
+            # GET request
+            config = product_dict['implementation_config']
+            conn.close()
+            
+            return render_template(
+                'adapters/gam_product_config.html',
+                tenant_id=tenant_id,
+                product=product_dict,
+                config=config,
+                network_code=adapter_instance.network_code
+            )
+        
+        @app.route('/adapters/gam/validate', methods=['POST'])
+        def gam_validate_config():
+            """AJAX endpoint for config validation."""
+            config = request.json
+            is_valid, error = adapter_instance.validate_product_config(config)
+            return jsonify({'valid': is_valid, 'error': error})
+    
+    def validate_product_config(self, config: Dict[str, Any]) -> tuple[bool, Optional[str]]:
+        """Validate GAM-specific product configuration."""
+        # Check required fields
+        if not config.get('ad_unit_path'):
+            return False, "Ad unit path is required"
+        
+        # Validate ad unit path format
+        ad_unit_path = config['ad_unit_path']
+        if not ad_unit_path.startswith(f"/{self.network_code}/"):
+            return False, f"Ad unit path must start with /{self.network_code}/"
+        
+        # Check sizes
+        if not config.get('sizes'):
+            return False, "At least one ad size must be selected"
+        
+        # Validate sizes format
+        valid_sizes = ['300x250', '728x90', '320x50', '300x600', '970x250', '160x600', '320x480', '300x1050', '970x90']
+        for size in config['sizes']:
+            if size not in valid_sizes:
+                return False, f"Invalid size: {size}"
+        
+        return True, None
