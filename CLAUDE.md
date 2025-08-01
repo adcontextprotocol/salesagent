@@ -102,11 +102,19 @@ When working in a Conductor workspace (e.g., `.conductor/quito/`):
 
 ## Recent Major Changes
 
-### Database Migrations Support (Latest)
+### AI-Powered Product Management (Latest)
+- **Default Products**: 6 standard products automatically created for new tenants
+- **Industry Templates**: Specialized products for news, sports, entertainment, ecommerce
+- **AI Configuration**: Uses Gemini 2.5 Flash to analyze descriptions and suggest configs
+- **Bulk Operations**: CSV/JSON upload, template browser, quick-create API
+- **Product Suggestions API**: REST endpoints for programmatic product discovery
+- **Smart Matching**: AI analyzes ad server inventory to recommend optimal placements
+
+### Database Migrations Support 
 - **Alembic Integration**: Added Alembic for database schema version control
 - **Automatic Migrations**: Migrations run automatically on server startup
 - **Multi-Database Support**: Works with both SQLite and PostgreSQL
-- **Migration Commands**: `python migrate.py` for running migrations
+- **Migration Commands**: `uv run python migrate.py` for running migrations
 - **Docker Integration**: `entrypoint.sh` runs migrations before starting server
 - **Documentation**: See `docs/database-migrations.md` for detailed guide
 
@@ -190,22 +198,84 @@ When working in a Conductor workspace (e.g., `.conductor/quito/`):
 - Graceful shutdown handling
 - Prometheus metrics preparation
 
+## Dependency Management
+
+This project uses **`uv`** for Python dependency management. `uv` is a fast Python package installer and resolver written in Rust.
+
+### Installing Dependencies
+```bash
+# Install all dependencies (creates .venv automatically)
+uv sync
+
+# Add a new dependency
+uv add package-name
+
+# Add a development dependency
+uv add --dev pytest-asyncio
+
+# Run commands in the virtual environment
+uv run python script.py
+uv run pytest
+```
+
+### Key Dependencies
+- **pyproject.toml**: Contains all project dependencies
+- **uv.lock**: Lock file ensuring reproducible builds
+- Python 3.12+ is required
+
 ## Testing Strategy
 
-### 1. Unit Tests (`test_adapters.py`)
-- Test adapter interfaces and base functionality
-- Verify Principal object behavior
-- Schema validation tests
+### 1. Unit Tests
+- **`test_ai_product_basic.py`**: Tests default products, industry templates
+- **`test_adapters.py`**: Adapter interfaces and base functionality
+- **`test_adapter_targeting.py`**: Targeting system validation
+- **`test_creative_format_parsing.py`**: Creative format parsing logic
 
-### 2. Integration Tests (`simulation_full.py`)
-- Full end-to-end campaign lifecycle
-- Tests all API operations in sequence
-- Verifies state management and data flow
+### 2. Integration Tests
+- **`test_ai_product_features.py`**: Full AI product feature tests (requires mocking)
+- **`test_main.py`**: Core MCP server functionality
+- **`test_admin_creative_approval.py`**: Creative approval workflows
+- **`test_human_task_queue.py`**: Human-in-the-loop task management
+- **`simulation_full.py`**: Full end-to-end campaign lifecycle
 
-### 3. Dry-Run Testing (`demo_dry_run.py`)
-- Demonstrates adapter-specific API logging
-- Shows exact calls that would be made in production
-- Useful for debugging integrations
+### 3. API Tests
+- **`test_auth.py`**: Authentication and authorization
+- **`tests/unit/test_admin_ui_oauth.py`**: OAuth integration
+
+### Running Tests
+
+#### With uv (Recommended)
+```bash
+# Run all tests
+uv run pytest
+
+# Run specific test file
+uv run pytest test_ai_product_basic.py -v
+
+# Run with coverage
+uv run pytest --cov=. --cov-report=html
+
+# Run tests by category
+uv run python run_tests.py unit       # Unit tests only
+uv run python run_tests.py integration # Integration tests
+uv run python run_tests.py --list     # List all categories
+```
+
+#### In Docker Container
+```bash
+# Run tests inside the container
+docker exec -it adcp-buy-server-adcp-server-1 pytest test_ai_product_basic.py
+
+# Run integration test script
+docker exec -it adcp-buy-server-adcp-server-1 ./test_ai_integration.sh
+```
+
+#### CI/CD Pipeline
+Tests run automatically on push/PR via GitHub Actions:
+- Unit tests with mocked dependencies
+- Integration tests with PostgreSQL
+- AI tests with mocked Gemini API
+- See `.github/workflows/test.yml` for details
 
 ## Configuration
 
@@ -325,22 +395,31 @@ docker-compose up -d
 
 ### Running Standalone (Development Only)
 ```bash
+# Install dependencies with uv
+uv sync
+
 # Run database migrations
-python migrate.py
+uv run python migrate.py
 
 # Initialize default data (if needed)
-python init_database.py
+uv run python init_database.py
 
 # Start MCP server and Admin UI
-python run_server.py
+uv run python run_server.py
 ```
 
 ### Managing Tenants
 ```bash
-# Create new tenant (inside Docker container)
+# Create new tenant with default products (inside Docker container)
 docker exec -it adcp-buy-server-adcp-server-1 python setup_tenant.py "Publisher Name" \
   --adapter google_ad_manager \
-  --gam-network-code 123456
+  --gam-network-code 123456 \
+  --industry news  # Optional: adds industry-specific products
+
+# Create tenant without default products
+docker exec -it adcp-buy-server-adcp-server-1 python setup_tenant.py "Publisher Name" \
+  --adapter mock \
+  --skip-default-products
 
 # Access Admin UI
 open http://localhost:8001
@@ -349,18 +428,21 @@ open http://localhost:8001
 ### Running Simulations
 ```bash
 # Full lifecycle with temporary test database
-python run_simulation.py
+uv run python run_simulation.py
 
 # Dry-run with GAM adapter
-python run_simulation.py --dry-run --adapter gam
+uv run python run_simulation.py --dry-run --adapter gam
 
 # Use production database (careful!)
-python run_simulation.py --use-prod-db
+uv run python run_simulation.py --use-prod-db
 
 # Run with custom token
-python simulation_full.py http://localhost:8080 \
+uv run python simulation_full.py http://localhost:8080 \
   --token "your_token" \
   --principal "your_principal"
+
+# Demo AI product features
+uv run python demo_ai_products.py
 ```
 
 ### Using MCP Client
@@ -383,6 +465,23 @@ async with client:
         flight_start_date="2025-02-01",
         flight_end_date="2025-02-28"
     )
+```
+
+### Product Management APIs
+```bash
+# Get product suggestions
+curl -H "Cookie: session=YOUR_SESSION" \
+  "http://localhost:8001/api/tenant/TENANT_ID/products/suggestions?industry=news&max_cpm=20"
+
+# Quick create products from templates
+curl -X POST -H "Content-Type: application/json" -H "Cookie: session=YOUR_SESSION" \
+  -d '{"product_ids": ["run_of_site_display", "homepage_takeover"]}' \
+  "http://localhost:8001/api/tenant/TENANT_ID/products/quick-create"
+
+# Bulk upload products (CSV)
+curl -X POST -H "Cookie: session=YOUR_SESSION" \
+  -F "file=@products.csv" \
+  "http://localhost:8001/api/tenant/TENANT_ID/products/bulk/upload"
 ```
 
 ## Debugging Tips
@@ -422,6 +521,9 @@ async with client:
 - **`database_schema.py`**: Multi-database schema support
 - **`admin_ui.py`**: Flask-based admin interface with operations dashboard
 - **`templates/operations.html`**: Operations dashboard UI implementation
+- **`ai_product_service.py`**: AI-driven product configuration (uses Gemini 2.5 Flash)
+- **`default_products.py`**: Default product templates for new tenants
+- **`test_ai_product_basic.py`**: Core AI product feature tests
 
 ## Testing Checklist
 
@@ -437,6 +539,8 @@ When making changes, test:
 9. ✅ Docker deployment
 10. ✅ Media buy persistence to database
 11. ✅ Task persistence and status updates
+12. ✅ AI product features (templates, bulk upload, suggestions API)
+13. ✅ Default product creation for new tenants
 
 ## Recent Improvements Summary
 
