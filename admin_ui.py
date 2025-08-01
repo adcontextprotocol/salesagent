@@ -440,7 +440,7 @@ def index():
     tenants = []
     for row in cursor.fetchall():
         # Convert datetime if it's a string
-        created_at = row[5]
+        created_at = row[4]
         if isinstance(created_at, str):
             try:
                 created_at = datetime.fromisoformat(created_at.replace('T', ' '))
@@ -804,119 +804,6 @@ def test_slack(tenant_id):
     except Exception as e:
         return jsonify({"success": False, "error": str(e)})
 
-@app.route('/tenant/<tenant_id>/setup', methods=['GET', 'POST'])
-@require_auth()
-def tenant_setup_wizard(tenant_id):
-    """Initial setup wizard for publishers to configure their tenant."""
-    # Check tenant access
-    if session.get('role') != 'super_admin' and session.get('tenant_id') != tenant_id:
-        return "Access denied", 403
-    if request.method == 'POST':
-        try:
-            conn = get_db_connection()
-            
-            # Get existing tenant config
-            cursor = conn.execute("SELECT config FROM tenants WHERE tenant_id = ?", (tenant_id,))
-            row = cursor.fetchone()
-            if not row:
-                conn.close()
-                return "Tenant not found", 404
-                
-            config = row[0]
-            if isinstance(config, str):
-                config = json.loads(config)
-            
-            # Update platform settings
-            config["features"] = {
-                "max_daily_budget": int(request.form.get('max_daily_budget', 10000)),
-                "enable_aee_signals": request.form.get('enable_aee') == 'on'
-            }
-            
-            # Update creative review setting
-            if "creative_engine" not in config:
-                config["creative_engine"] = {}
-            config["creative_engine"]["human_review_required"] = request.form.get('human_review') == 'on'
-            
-            # Configure selected adapter
-            adapter = request.form.get('adapter')
-            # First disable all adapters
-            for adapter_name in config.get('adapters', {}):
-                config['adapters'][adapter_name]['enabled'] = False
-                
-            if adapter == 'mock':
-                if 'adapters' not in config:
-                    config['adapters'] = {}
-                config['adapters']['mock'] = {'enabled': True}
-            elif adapter == 'google_ad_manager':
-                if 'adapters' not in config:
-                    config['adapters'] = {}
-                config['adapters']['google_ad_manager'] = {
-                    'enabled': True,
-                    'network_code': request.form.get('gam_network_code')
-                }
-            elif adapter == 'kevel':
-                if 'adapters' not in config:
-                    config['adapters'] = {}
-                config['adapters']['kevel'] = {
-                    'enabled': True,
-                    'network_id': request.form.get('kevel_network_id'),
-                    'api_key': request.form.get('kevel_api_key')
-                }
-            elif adapter == 'triton':
-                if 'adapters' not in config:
-                    config['adapters'] = {}
-                config['adapters']['triton'] = {
-                    'enabled': True,
-                    'station_id': request.form.get('triton_station_id')
-                }
-            
-            # Mark initial setup as started (not complete until all tabs are configured)
-            config["initial_setup_done"] = True
-            
-            # Update tenant configuration
-            conn.execute("""
-                UPDATE tenants 
-                SET config = ?, updated_at = ?
-                WHERE tenant_id = ?
-            """, (json.dumps(config), datetime.now().isoformat(), tenant_id))
-            
-            conn.commit()
-            conn.close()
-            
-            # Redirect to tenant detail page where they'll see tabs with completion indicators
-            flash('Initial setup complete! Please complete the remaining configuration steps.', 'info')
-            return redirect(url_for('tenant_detail', tenant_id=tenant_id))
-            
-        except Exception as e:
-            if 'conn' in locals():
-                conn.close()
-            return render_template('tenant_initial_setup.html', 
-                                 tenant_id=tenant_id,
-                                 tenant_name=request.args.get('tenant_name', tenant_id),
-                                 error=str(e))
-    
-    # GET request - check if initial setup is needed
-    conn = get_db_connection()
-    cursor = conn.execute("SELECT name, config FROM tenants WHERE tenant_id = ?", (tenant_id,))
-    row = cursor.fetchone()
-    if not row:
-        conn.close()
-        return "Tenant not found", 404
-    
-    tenant_name = row[0]
-    config = row[1]
-    if isinstance(config, str):
-        config = json.loads(config)
-    
-    conn.close()
-    
-    # If initial setup is already done, redirect to tenant detail
-    if config.get('initial_setup_done'):
-        return redirect(url_for('tenant_detail', tenant_id=tenant_id))
-    
-    return render_template('tenant_initial_setup.html',
-                         tenant_name=tenant_name,
-                         tenant_id=tenant_id)
 
 @app.route('/create_tenant', methods=['GET', 'POST'])
 @require_auth(admin_only=True)
@@ -984,7 +871,7 @@ def create_tenant():
             conn.commit()
             conn.close()
             
-            flash(f'Tenant "{tenant_name}" created successfully! They can now log in to complete setup.', 'success')
+            flash(f'Tenant "{tenant_name}" created successfully! The publisher should log in and start with the Ad Server Setup tab to complete configuration.', 'success')
             return redirect(url_for('tenant_detail', tenant_id=tenant_id))
             
         except Exception as e:
