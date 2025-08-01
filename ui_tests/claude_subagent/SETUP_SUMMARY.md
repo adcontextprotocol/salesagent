@@ -39,10 +39,10 @@ A FastMCP server that provides Claude with tools to:
     "ui-test-assistant": {
       "command": "uv",
       "args": ["run", "python", "ui_test_server.py"],
-      "cwd": "/Users/brianokelley/Developer/salesagent/.conductor/phuket/ui_tests/claude_subagent",
+      "cwd": "ui_tests/claude_subagent",
       "env": {
-        "PYTHONPATH": "/Users/brianokelley/Developer/salesagent/.conductor/phuket",
-        "BASE_URL": "http://localhost:8001",
+        "PYTHONPATH": ".",
+        "BASE_URL": "${BASE_URL:-http://localhost:8001}",
         "HEADLESS": "true"
       }
     }
@@ -61,7 +61,7 @@ A FastMCP server that provides Claude with tools to:
 
 1. **Start the Server**:
 ```bash
-cd /Users/brianokelley/Developer/salesagent/.conductor/phuket/ui_tests/claude_subagent
+cd ui_tests/claude_subagent
 ./run_subagent.sh
 ```
 

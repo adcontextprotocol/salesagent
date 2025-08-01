@@ -7,7 +7,7 @@ This subagent provides Claude with tools to write, run, and analyze UI tests for
 ### 1. Install Dependencies
 
 ```bash
-cd /Users/brianokelley/Developer/salesagent/.conductor/phuket
+# From the project root
 uv sync --extra ui-tests
 ```
 
@@ -25,10 +25,10 @@ Add to your Claude Desktop configuration (`~/Library/Application Support/Claude/
         "python",
         "ui_test_server.py"
       ],
-      "cwd": "/Users/brianokelley/Developer/salesagent/.conductor/phuket/ui_tests/claude_subagent",
+      "cwd": "ui_tests/claude_subagent",
       "env": {
-        "PYTHONPATH": "/Users/brianokelley/Developer/salesagent/.conductor/phuket",
-        "BASE_URL": "http://localhost:8001",
+        "PYTHONPATH": ".",
+        "BASE_URL": "${BASE_URL:-http://localhost:8001}",
         "HEADLESS": "true"
       }
     }
