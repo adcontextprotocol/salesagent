@@ -52,16 +52,17 @@ jobs:
         pip install beautifulsoup4 aiohttp alembic watchdog
         pip install fastapi uvicorn requests-oauthlib
     
-    # Skip migrations for now due to import issues
-    # - name: Run migrations
-    #   env:
-    #     DATABASE_URL: postgresql://adcp_user:test_password@localhost:5432/adcp_test
-    #   run: |
-    #     python migrate.py
+    - name: Initialize test database
+      env:
+        DATABASE_URL: postgresql://adcp_user:test_password@localhost:5432/adcp_test
+        DB_TYPE: postgresql
+      run: |
+        python init_database_ci.py
     
     - name: Run tests
       env:
         DATABASE_URL: postgresql://adcp_user:test_password@localhost:5432/adcp_test
+        DB_TYPE: postgresql
         CI: true
         GEMINI_API_KEY: test_key_for_mocking  # Tests use mocks, not real API
         GOOGLE_CLIENT_ID: test_client_id
