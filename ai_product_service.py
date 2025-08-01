@@ -20,7 +20,7 @@ import os
 from urllib.parse import urlparse
 
 from db_config import get_db_connection
-from schemas import CreativeFormat
+from schemas import Format
 from targeting_capabilities import TargetingCapabilities
 
 logger = logging.getLogger(__name__)
