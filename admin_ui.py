@@ -578,12 +578,45 @@ def tenant_detail(tenant_id):
     # Get the current port from environment
     admin_port = int(os.environ.get('ADMIN_UI_PORT', 8001))
     
+    # Calculate tab completion status
+    tab_status = {
+        'adserver': bool(active_adapter),
+        'principals': len(principals) > 0,
+        'products': len(products) > 0,
+        'formats': False,  # Will check below
+        'integrations': True,  # Integrations are optional
+        'users': active_users > 0,
+        'authorization': True,  # Authorization tab is always complete (set during creation)
+        'config': True,  # Config tab is always available
+        'tokens': True  # API tokens tab shows principals which we already track
+    }
+    
+    # Check if any creative formats exist
+    conn = get_db_connection()
+    cursor = conn.execute("""
+        SELECT COUNT(*) FROM creative_formats 
+        WHERE tenant_id = ?
+    """, (tenant_id,))
+    format_count = cursor.fetchone()[0]
+    tab_status['formats'] = format_count > 0
+    conn.close()
+    
+    # Check overall setup completion
+    setup_complete = (
+        tab_status['adserver'] and 
+        tab_status['principals'] and 
+        tab_status['products'] and 
+        tab_status['formats']
+    )
+    
     return render_template('tenant_detail.html', 
                          tenant=tenant, 
                          principals=principals,
                          products=products,
                          config_for_editing=config_for_editing,
-                         admin_port=admin_port)
+                         admin_port=admin_port,
+                         tab_status=tab_status,
+                         setup_complete=setup_complete)
 
 @app.route('/tenant/<tenant_id>/update', methods=['POST'])
 @require_auth()
@@ -774,7 +807,7 @@ def test_slack(tenant_id):
 @app.route('/tenant/<tenant_id>/setup', methods=['GET', 'POST'])
 @require_auth()
 def tenant_setup_wizard(tenant_id):
-    """Tenant setup wizard for publishers to configure their tenant."""
+    """Initial setup wizard for publishers to configure their tenant."""
     # Check tenant access
     if session.get('role') != 'super_admin' and session.get('tenant_id') != tenant_id:
         return "Access denied", 403
@@ -793,38 +826,52 @@ def tenant_setup_wizard(tenant_id):
             if isinstance(config, str):
                 config = json.loads(config)
             
-            # Update config based on wizard selections
-            config["creative_engine"] = {
-                "auto_approve_formats": request.form.getlist('standard_formats'),
-                "human_review_required": request.form.get('human_review') == 'on'
-            }
+            # Update platform settings
             config["features"] = {
                 "max_daily_budget": int(request.form.get('max_daily_budget', 10000)),
                 "enable_aee_signals": request.form.get('enable_aee') == 'on'
             }
-            config["setup_complete"] = True  # Mark setup as complete
+            
+            # Update creative review setting
+            if "creative_engine" not in config:
+                config["creative_engine"] = {}
+            config["creative_engine"]["human_review_required"] = request.form.get('human_review') == 'on'
             
             # Configure selected adapter
             adapter = request.form.get('adapter')
+            # First disable all adapters
+            for adapter_name in config.get('adapters', {}):
+                config['adapters'][adapter_name]['enabled'] = False
+                
             if adapter == 'mock':
+                if 'adapters' not in config:
+                    config['adapters'] = {}
                 config['adapters']['mock'] = {'enabled': True}
             elif adapter == 'google_ad_manager':
+                if 'adapters' not in config:
+                    config['adapters'] = {}
                 config['adapters']['google_ad_manager'] = {
                     'enabled': True,
-                    'network_code': request.form.get('gam_network_code'),
-                    'company_id': request.form.get('gam_company_id')
+                    'network_code': request.form.get('gam_network_code')
                 }
             elif adapter == 'kevel':
+                if 'adapters' not in config:
+                    config['adapters'] = {}
                 config['adapters']['kevel'] = {
                     'enabled': True,
                     'network_id': request.form.get('kevel_network_id'),
                     'api_key': request.form.get('kevel_api_key')
                 }
             elif adapter == 'triton':
+                if 'adapters' not in config:
+                    config['adapters'] = {}
                 config['adapters']['triton'] = {
                     'enabled': True,
                     'station_id': request.form.get('triton_station_id')
                 }
+            
+            # Mark initial setup as started (not complete until all tabs are configured)
+            config["initial_setup_done"] = True
             
             # Update tenant configuration
             conn.execute("""
@@ -833,168 +880,29 @@ def tenant_setup_wizard(tenant_id):
                 WHERE tenant_id = ?
             """, (json.dumps(config), datetime.now().isoformat(), tenant_id))
             
-            # Create custom formats if provided
-            custom_format_names = request.form.getlist('custom_format_name[]')
-            custom_format_ids = request.form.getlist('custom_format_id[]')
-            custom_format_descriptions = request.form.getlist('custom_format_description[]')
-            custom_format_specs = request.form.getlist('custom_format_specs[]')
-            
-            for i in range(len(custom_format_names)):
-                if custom_format_names[i] and custom_format_ids[i]:
-                    conn.execute("""
-                        INSERT INTO creative_formats (
-                            tenant_id, format_id, format_name, format_type,
-                            width, height, mime_types, max_size_kb,
-                            description, is_standard
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    """, (
-                        tenant_id,
-                        custom_format_ids[i],
-                        custom_format_names[i],
-                        'display',  # Default to display, can be enhanced later
-                        None,  # Custom formats may not have standard dimensions
-                        None,
-                        json.dumps(['image/jpeg', 'image/png', 'image/gif']),
-                        1024,  # Default 1MB
-                        custom_format_descriptions[i] if i < len(custom_format_descriptions) else '',
-                        False
-                    ))
-            
-            # Create standard products if selected
-            if request.form.get('product_ron_display'):
-                conn.execute("""
-                    INSERT INTO products (
-                        tenant_id, product_id, name, description,
-                        product_type, targeting_available, creative_formats,
-                        pricing_model, base_price, min_spend, currency,
-                        countries, is_active
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """, (
-                    tenant_id,
-                    'ron_display',
-                    'Run of Network - Display',
-                    'Standard display advertising across entire network',
-                    'guaranteed',
-                    json.dumps(['geographic', 'device', 'daypart']),
-                    json.dumps(['display_300x250', 'display_728x90', 'display_320x50']),
-                    'cpm',
-                    float(request.form.get('ron_display_cpm', 5.0)),
-                    float(request.form.get('ron_display_min_budget', 1000)),
-                    'USD',
-                    json.dumps(['US']),
-                    True
-                ))
-            
-            if request.form.get('product_ron_video'):
-                conn.execute("""
-                    INSERT INTO products (
-                        tenant_id, product_id, name, description,
-                        product_type, targeting_available, creative_formats,
-                        pricing_model, base_price, min_spend, currency,
-                        countries, is_active
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """, (
-                    tenant_id,
-                    'ron_video',
-                    'Run of Network - Video',
-                    'Video advertising across video content',
-                    'guaranteed',
-                    json.dumps(['geographic', 'device', 'daypart']),
-                    json.dumps(['video_instream']),
-                    'cpm',
-                    float(request.form.get('ron_video_cpm', 15.0)),
-                    float(request.form.get('ron_video_min_budget', 2500)),
-                    'USD',
-                    json.dumps(['US']),
-                    True
-                ))
-            
-            if request.form.get('product_homepage'):
-                conn.execute("""
-                    INSERT INTO products (
-                        tenant_id, product_id, name, description,
-                        product_type, targeting_available, creative_formats,
-                        pricing_model, base_price, min_spend, currency,
-                        countries, is_active
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """, (
-                    tenant_id,
-                    'homepage_premium',
-                    'Homepage Premium',
-                    'Premium placement on homepage',
-                    'guaranteed',
-                    json.dumps(['geographic', 'device', 'daypart']),
-                    json.dumps(['display_970x250', 'display_300x600']),
-                    'cpm',
-                    float(request.form.get('homepage_cpm', 25.0)),
-                    float(request.form.get('homepage_min_budget', 5000)),
-                    'USD',
-                    json.dumps(['US']),
-                    True
-                ))
-            
-            # Create principals
-            principal_names = request.form.getlist('principal_name[]')
-            principal_emails = request.form.getlist('principal_email[]')
-            principal_adapter_ids = request.form.getlist('principal_adapter_id[]')
-            
-            for i in range(len(principal_names)):
-                if principal_names[i]:
-                    principal_id = principal_names[i].lower().replace(' ', '_')
-                    principal_token = secrets.token_urlsafe(32)
-                    
-                    platform_mappings = {}
-                    if adapter and principal_adapter_ids[i]:
-                        platform_mappings[adapter] = {
-                            'advertiser_id': principal_adapter_ids[i]
-                        }
-                    
-                    conn.execute("""
-                        INSERT INTO principals (
-                            tenant_id, principal_id, name,
-                            platform_mappings, access_token
-                        ) VALUES (?, ?, ?, ?, ?)
-                    """, (
-                        tenant_id,
-                        principal_id,
-                        principal_names[i],
-                        json.dumps(platform_mappings),
-                        principal_token
-                    ))
-            
-            # Create admin principal
-            admin_token = secrets.token_urlsafe(32)
-            conn.execute("""
-                INSERT INTO principals (
-                    tenant_id, principal_id, name,
-                    platform_mappings, access_token
-                ) VALUES (?, ?, ?, ?, ?)
-            """, (
-                tenant_id,
-                f"{tenant_id}_admin",
-                f"{tenant_name} Admin",
-                json.dumps({}),
-                admin_token
-            ))
-            
             conn.commit()
             conn.close()
             
-            flash(f'Setup completed successfully!', 'success')
+            # Redirect to tenant detail page where they'll see tabs with completion indicators
+            flash('Initial setup complete! Please complete the remaining configuration steps.', 'info')
             return redirect(url_for('tenant_detail', tenant_id=tenant_id))
             
         except Exception as e:
-            flash(f'Error completing setup: {str(e)}', 'error')
-            return redirect(url_for('tenant_detail', tenant_id=tenant_id))
+            if 'conn' in locals():
+                conn.close()
+            return render_template('tenant_initial_setup.html', 
+                                 tenant_id=tenant_id,
+                                 tenant_name=request.args.get('tenant_name', tenant_id),
+                                 error=str(e))
     
-    # GET request - show setup wizard
+    # GET request - check if initial setup is needed
     conn = get_db_connection()
     cursor = conn.execute("SELECT name, config FROM tenants WHERE tenant_id = ?", (tenant_id,))
     row = cursor.fetchone()
     if not row:
         conn.close()
         return "Tenant not found", 404
-        
+    
     tenant_name = row[0]
     config = row[1]
     if isinstance(config, str):
@@ -1002,12 +910,11 @@ def tenant_setup_wizard(tenant_id):
     
     conn.close()
     
-    # Check if setup is already complete
-    if config.get('setup_complete', False):
-        flash('Setup has already been completed. You can modify settings in the tenant management page.', 'info')
+    # If initial setup is already done, redirect to tenant detail
+    if config.get('initial_setup_done'):
         return redirect(url_for('tenant_detail', tenant_id=tenant_id))
     
-    return render_template('tenant_setup_wizard.html',
+    return render_template('tenant_initial_setup.html',
                          tenant_name=tenant_name,
                          tenant_id=tenant_id)
 
