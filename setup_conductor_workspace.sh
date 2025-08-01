@@ -229,6 +229,24 @@ else
     echo "  To install hooks later, run: ./setup_hooks.sh"
 fi
 
+# Install UI test dependencies if pyproject.toml has ui-tests extra
+if grep -q "ui-tests" pyproject.toml 2>/dev/null; then
+    echo ""
+    echo "Installing UI test dependencies..."
+    if command -v uv &> /dev/null; then
+        uv sync --extra ui-tests
+        echo "✓ UI test dependencies installed"
+        
+        # Configure UI test environment
+        if [ -d "ui_tests" ]; then
+            echo "export ADMIN_UI_PORT=$ADMIN_PORT" >> .env
+            echo "✓ UI tests configured for Admin UI port $ADMIN_PORT"
+        fi
+    else
+        echo "✗ Warning: uv not found, skipping UI test setup"
+    fi
+fi
+
 echo ""
 echo "Setup complete! Next steps:"
 echo "1. Review .env file and ensure GEMINI_API_KEY is set"
@@ -240,3 +258,9 @@ echo "Services will be available at:"
 echo "  MCP Server: http://localhost:$ADCP_PORT/mcp/"
 echo "  Admin UI: http://localhost:$ADMIN_PORT/"
 echo "  PostgreSQL: localhost:$POSTGRES_PORT"
+if [ -d "ui_tests" ]; then
+    echo ""
+    echo "UI Testing:"
+    echo "  Run tests: cd ui_tests && uv run python -m pytest"
+    echo "  Claude subagent: cd ui_tests/claude_subagent && ./run_subagent.sh"
+fi
