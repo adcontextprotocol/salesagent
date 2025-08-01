@@ -31,11 +31,7 @@ class FormatSpecification:
     type: str  # display, video, audio, native
     description: str
     extends: Optional[str] = None  # Reference to foundational format
-    width: Optional[int] = None
-    height: Optional[int] = None
-    duration_seconds: Optional[int] = None
-    max_file_size_kb: Optional[int] = None
-    specs: Dict[str, Any] = None
+    assets: List[Dict[str, Any]] = None  # List of required assets
     source_url: Optional[str] = None
 
 class AICreativeFormatService:
@@ -162,9 +158,21 @@ class AICreativeFormatService:
                 name="In-Stream Video",
                 type="video",
                 description="Standard in-stream video ad",
-                duration_seconds=30,
-                max_file_size_kb=10240,
-                specs={"codecs": ["h264", "vp9"], "bitrate": "max 2500kbps", "formats": ["mp4", "webm"]}
+                assets=[
+                    {
+                        "asset_id": "video_file",
+                        "asset_type": "video",
+                        "required": True,
+                        "name": "Video File",
+                        "acceptable_formats": ["mp4", "webm"],
+                        "duration_seconds": 30,
+                        "max_file_size_mb": 10,
+                        "additional_specs": {
+                            "codecs": ["h264", "vp9"],
+                            "max_bitrate_kbps": 2500
+                        }
+                    }
+                ]
             )
         ]
     
@@ -352,21 +360,25 @@ class AICreativeFormatService:
             - type: "display", "video", "audio", or "native" (required)
             - description: brief description
             - extends: foundational format ID if applicable (optional)
-            - width: pixel width (for display formats)
-            - height: pixel height (for display formats)
-            - duration_seconds: max duration in seconds (for video/audio)
-            - max_file_size_kb: max file size in KB
-            - specs: object with additional specifications
+            - assets: array of asset objects with fields:
+              - asset_id: unique identifier for the asset (e.g., "main_video", "product_images")
+              - asset_type: "video", "image", "text", "url", "audio", or "html"
+              - required: boolean indicating if required
+              - name: human-readable name
+              - description: what the asset is for
+              - acceptable_formats: array of file extensions (e.g., ["mp4", "webm"])
+              - max_file_size_mb: maximum file size in megabytes
+              - width/height: for images/video (optional)
+              - duration_seconds: for video/audio (optional)
+              - max_length: for text assets (optional)
+              - additional_specs: object with any other requirements
             
-            CRITICAL for specs field when extending foundational formats:
-            - For carousel/slideshow formats extending foundation_product_showcase_carousel:
-              Use "min_products" and "max_products" (NOT "image_count" or "carousel_images")
-              Include "product_image_size" with desktop/tablet/mobile dimensions
-              Include "product_image_ratio" (e.g. "1:1", "9:16")
-            - For video formats extending foundation_universal_video:
-              Use "aspect_ratios" array (e.g. ["16:9", "9:16"])
-              Use standard video fields from the foundational format
-            - Do NOT invent new field names - use fields from foundational formats
+            CRITICAL when creating assets for foundational formats:
+            - Assets should be self-contained with all requirements
+            - For carousel formats: create separate assets for images, titles, descriptions, and URLs
+            - For video formats: include video file, captions, and optional companion banner assets
+            - For expandable formats: create separate assets for collapsed and expanded states
+            - Use descriptive asset_id values like "main_video", "product_images", "collapsed_creative"
             
             Important: 
             - Extract ALL formats found on the page
@@ -447,11 +459,7 @@ class AICreativeFormatService:
                         type=fmt['type'],
                         description=fmt.get('description', ''),
                         extends=extends,
-                        width=fmt.get('width'),
-                        height=fmt.get('height'),
-                        duration_seconds=fmt.get('duration_seconds'),
-                        max_file_size_kb=fmt.get('max_file_size_kb'),
-                        specs=fmt.get('specs', {}),
+                        assets=fmt.get('assets', []),
                         source_url=source_url
                     ))
                     
@@ -510,9 +518,15 @@ class AICreativeFormatService:
                                 name=name,
                                 type="display",
                                 description=f"Display ad {width}x{height}",
-                                width=width,
-                                height=height,
-                                specs={},
+                                assets=[
+                                    {
+                                        "asset_id": "main_image",
+                                        "asset_type": "image",
+                                        "required": True,
+                                        "width": width,
+                                        "height": height
+                                    }
+                                ],
                                 source_url=url
                             ))
         
@@ -531,9 +545,15 @@ class AICreativeFormatService:
                         name=name,
                         type="display",
                         description=text[:200],
-                        width=width,
-                        height=height,
-                        specs={},
+                        assets=[
+                            {
+                                "asset_id": "main_image",
+                                "asset_type": "image",
+                                "required": True,
+                                "width": width,
+                                "height": height
+                            }
+                        ],
                         source_url=url
                     ))
         
@@ -578,11 +598,7 @@ class AICreativeFormatService:
                     name=fmt['name'],
                     type=fmt['type'],
                     description=fmt.get('description', ''),
-                    width=fmt.get('width'),
-                    height=fmt.get('height'),
-                    duration_seconds=fmt.get('duration_seconds'),
-                    max_file_size_kb=fmt.get('max_file_size_kb'),
-                    specs=fmt.get('specs', {}),
+                    assets=fmt.get('assets', self._create_assets_from_analysis(fmt)),
                     source_url=f"{base_url}/creative-formats"
                 ))
                 
@@ -671,11 +687,7 @@ class AICreativeFormatService:
                 name=name,
                 type=data['type'],
                 description=data.get('description', description),
-                width=data.get('width'),
-                height=data.get('height'),
-                duration_seconds=data.get('duration_seconds'),
-                max_file_size_kb=data.get('max_file_size_kb'),
-                specs=data.get('specs', {})
+                assets=self._create_assets_from_analysis(data)
             )
             
         except Exception as e:
@@ -686,8 +698,47 @@ class AICreativeFormatService:
                 name=name,
                 type=type_hint or "display",
                 description=description,
-                specs={}
+                assets=[]
             )
+    
+    def _create_assets_from_analysis(self, data: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """Create assets array from AI analysis data."""
+        assets = []
+        format_type = data.get('type', 'display')
+        
+        if format_type == 'video':
+            assets.append({
+                "asset_id": "video_file",
+                "asset_type": "video",
+                "required": True,
+                "name": "Video File",
+                "acceptable_formats": data.get('specs', {}).get('file_types', ["mp4", "webm"]),
+                "duration_seconds": data.get('duration_seconds'),
+                "max_file_size_mb": data.get('max_file_size_kb', 10240) / 1024 if data.get('max_file_size_kb') else None
+            })
+        elif format_type == 'display':
+            assets.append({
+                "asset_id": "main_image",
+                "asset_type": "image",
+                "required": True,
+                "name": "Display Image",
+                "acceptable_formats": data.get('specs', {}).get('file_types', ["jpg", "png", "gif"]),
+                "width": data.get('width'),
+                "height": data.get('height'),
+                "max_file_size_mb": data.get('max_file_size_kb', 200) / 1024 if data.get('max_file_size_kb') else None
+            })
+        elif format_type == 'audio':
+            assets.append({
+                "asset_id": "audio_file",
+                "asset_type": "audio",
+                "required": True,
+                "name": "Audio File",
+                "acceptable_formats": ["mp3", "aac"],
+                "duration_seconds": data.get('duration_seconds'),
+                "max_file_size_mb": data.get('max_file_size_kb', 5120) / 1024 if data.get('max_file_size_kb') else None
+            })
+        
+        return assets
 
 async def discover_creative_format(
     tenant_id: Optional[str],

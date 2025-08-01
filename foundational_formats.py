@@ -23,7 +23,7 @@ class FoundationalFormat:
     description: str
     is_standard: bool = True
     is_foundational: bool = True
-    specs: Dict[str, Any] = field(default_factory=dict)
+    assets: List[Dict[str, Any]] = field(default_factory=list)
 
 @dataclass
 class ExtendedFormat:
@@ -44,49 +44,34 @@ class ExtendedFormat:
             "extends": self.extends,
             "is_standard": False,
             "is_foundational": False,
-            "specs": base_format.specs.copy()
+            "assets": base_format.assets.copy() if base_format.assets else []
         }
         
-        # Apply modifications
-        if "dimensions" in self.modifications:
-            extended["specs"]["dimensions"] = self.modifications["dimensions"]
-            
-        if "additional_specs" in self.modifications:
-            # Filter out incorrect field names for carousel formats
-            additional = self.modifications["additional_specs"].copy()
-            
-            # Map incorrect field names to correct ones
-            if self.extends == "foundation_product_showcase_carousel":
-                # Replace image_count with min/max_products
-                if "image_count" in additional:
-                    count_str = str(additional.pop("image_count"))
-                    if "-" in count_str:
-                        min_val, max_val = count_str.split("-")
-                        additional["min_products"] = int(min_val)
-                        additional["max_products"] = int(max_val)
-                    else:
-                        additional["max_products"] = int(count_str)
-                
-                # Replace carousel_images with min/max_products
-                if "carousel_images" in additional:
-                    count_str = str(additional.pop("carousel_images"))
-                    if "-" in count_str:
-                        min_val, max_val = count_str.split("-")
-                        additional["min_products"] = int(min_val)
-                        additional["max_products"] = int(max_val)
-            
-            extended["specs"].update(additional)
-            
-        if "restrictions" in self.modifications:
-            # Remove or limit features
-            for key, value in self.modifications["restrictions"].items():
-                if value is None and key in extended["specs"]:
-                    del extended["specs"][key]
+        # Apply modifications to assets
+        if "asset_modifications" in self.modifications:
+            # Modify existing assets or add new ones
+            asset_mods = self.modifications["asset_modifications"]
+            for asset_id, changes in asset_mods.items():
+                # Find the asset to modify
+                for asset in extended["assets"]:
+                    if asset.get("asset_id") == asset_id:
+                        asset.update(changes)
+                        break
                 else:
-                    extended["specs"][key] = value
-                    
-        if "enhancements" in self.modifications:
-            extended["specs"].update(self.modifications["enhancements"])
+                    # Asset not found, add as new if it has required fields
+                    if "asset_type" in changes:
+                        changes["asset_id"] = asset_id
+                        extended["assets"].append(changes)
+        
+        if "additional_assets" in self.modifications:
+            # Add new assets
+            extended["assets"].extend(self.modifications["additional_assets"])
+            
+        if "remove_assets" in self.modifications:
+            # Remove specific assets
+            remove_ids = set(self.modifications["remove_assets"])
+            extended["assets"] = [a for a in extended["assets"] 
+                                if a.get("asset_id") not in remove_ids]
             
         return extended
 
@@ -119,7 +104,7 @@ class FoundationalFormatsManager:
                     description=fmt["description"],
                     is_standard=fmt.get("is_standard", True),
                     is_foundational=fmt.get("is_foundational", True),
-                    specs=fmt.get("specs", {})
+                    assets=fmt.get("assets", [])
                 )
                 self.foundational_formats[format_obj.format_id] = format_obj
                 
@@ -216,7 +201,7 @@ class FoundationalFormatsManager:
                     "description": fmt.description,
                     "is_standard": fmt.is_standard,
                     "is_foundational": fmt.is_foundational,
-                    "specs": fmt.specs
+                    "assets": fmt.assets
                 }
                 for fmt in self.foundational_formats.values()
             ],
