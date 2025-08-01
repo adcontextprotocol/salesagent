@@ -1,0 +1,33 @@
+{
+  "name": "adcp-sales-agent",
+  "description": "AdCP Sales Agent MCP tools and services",
+  "mcpServers": {
+    "ui-test-assistant": {
+      "name": "UI Test Assistant",
+      "description": "UI testing tools for AdCP Admin interface",
+      "command": "uv",
+      "args": [
+        "run",
+        "python",
+        "ui_test_server.py"
+      ],
+      "cwd": "ui_tests/claude_subagent",
+      "env": {
+        "PYTHONPATH": ".",
+        "BASE_URL": "${BASE_URL:-http://localhost:8001}",
+        "ADMIN_UI_PORT": "${ADMIN_UI_PORT:-8001}",
+        "HEADLESS": "${HEADLESS:-true}"
+      },
+      "tools": [
+        "list_ui_tests",
+        "run_ui_test",
+        "generate_ui_test",
+        "check_auth_status",
+        "save_auth_state",
+        "analyze_screenshot",
+        "create_page_object",
+        "get_test_report"
+      ]
+    }
+  }
+}
