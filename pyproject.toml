@@ -34,7 +34,7 @@ dev = [
 ui-tests = [
     "playwright==1.48.0",
     "pytest-playwright==0.6.1",
-    "pytest-asyncio==0.24.0",
+    "pytest-asyncio>=1.1.0",
     "allure-pytest==2.13.5",
 ]
 
@@ -42,5 +42,7 @@ ui-tests = [
 dev = [
     "mocker>=1.1.1",
     "pytest>=8.4.1",
+    "pytest-asyncio>=1.1.0",
+    "pytest-cov>=6.2.1",
     "pytest-mock>=3.14.1",
 ]

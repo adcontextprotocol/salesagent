@@ -1760,6 +1760,289 @@ def analyze_product_ai(tenant_id):
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+@app.route('/tenant/<tenant_id>/products/bulk', methods=['GET'])
+@require_auth()
+def bulk_product_upload_form(tenant_id):
+    """Show bulk product upload form."""
+    # Check access
+    if session.get('role') == 'viewer':
+        return "Access denied", 403
+    
+    if session.get('role') == 'tenant_admin' and session.get('tenant_id') != tenant_id:
+        return "Access denied", 403
+    
+    # Get available templates
+    from default_products import get_default_products
+    templates = get_default_products()
+    
+    return render_template('bulk_product_upload.html', 
+                         tenant_id=tenant_id,
+                         templates=templates)
+
+@app.route('/tenant/<tenant_id>/products/bulk/upload', methods=['POST'])
+@require_auth()
+def bulk_product_upload(tenant_id):
+    """Process bulk product upload."""
+    # Check access
+    if session.get('role') == 'viewer':
+        return jsonify({"error": "Access denied"}), 403
+    
+    if session.get('role') == 'tenant_admin' and session.get('tenant_id') != tenant_id:
+        return jsonify({"error": "Access denied"}), 403
+    
+    try:
+        import csv
+        import io
+        
+        # Check if it's a file upload or JSON data
+        if 'file' in request.files:
+            file = request.files['file']
+            if file.filename.endswith('.csv'):
+                # Process CSV
+                stream = io.StringIO(file.stream.read().decode("UTF8"), newline=None)
+                csv_input = csv.DictReader(stream)
+                products = list(csv_input)
+            else:
+                # Assume JSON
+                products = json.loads(file.stream.read().decode("UTF8"))
+        else:
+            # Direct JSON submission
+            products = request.get_json().get('products', [])
+        
+        conn = get_db_connection()
+        created_count = 0
+        errors = []
+        
+        for idx, product_data in enumerate(products):
+            try:
+                # Validate required fields
+                if not product_data.get('name'):
+                    errors.append(f"Row {idx+1}: Missing product name")
+                    continue
+                
+                # Generate product ID if not provided
+                product_id = product_data.get('product_id', product_data['name'].lower().replace(' ', '_'))
+                
+                # Parse formats (handle comma-separated string or list)
+                formats = product_data.get('formats', [])
+                if isinstance(formats, str):
+                    formats = [f.strip() for f in formats.split(',')]
+                
+                # Parse countries
+                countries = product_data.get('countries')
+                if isinstance(countries, str) and countries:
+                    countries = [c.strip() for c in countries.split(',')]
+                elif not countries:
+                    countries = None
+                
+                # Determine delivery type and pricing
+                delivery_type = product_data.get('delivery_type', 'guaranteed')
+                cpm = float(product_data.get('cpm', 0)) if product_data.get('cpm') else None
+                
+                price_guidance_min = None
+                price_guidance_max = None
+                if delivery_type == 'non_guaranteed' and not cpm:
+                    price_guidance_min = float(product_data.get('price_guidance_min', 2.0))
+                    price_guidance_max = float(product_data.get('price_guidance_max', 10.0))
+                
+                # Build targeting template
+                targeting_template = {}
+                if product_data.get('device_types'):
+                    device_types = product_data['device_types']
+                    if isinstance(device_types, str):
+                        device_types = [d.strip() for d in device_types.split(',')]
+                    targeting_template['device_targets'] = {'device_types': device_types}
+                
+                if countries:
+                    targeting_template['geo_targets'] = {'countries': countries}
+                
+                # Insert product
+                conn.execute("""
+                    INSERT INTO products (
+                        product_id, tenant_id, name, description,
+                        creative_formats, delivery_type, cpm,
+                        price_guidance_min, price_guidance_max,
+                        countries, targeting_template, implementation_config,
+                        created_at, updated_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, (
+                    product_id,
+                    tenant_id,
+                    product_data['name'],
+                    product_data.get('description', ''),
+                    json.dumps(formats),
+                    delivery_type,
+                    cpm,
+                    price_guidance_min,
+                    price_guidance_max,
+                    json.dumps(countries) if countries else None,
+                    json.dumps(targeting_template),
+                    json.dumps(product_data.get('implementation_config', {})),
+                    datetime.now().isoformat(),
+                    datetime.now().isoformat()
+                ))
+                
+                created_count += 1
+                
+            except Exception as e:
+                errors.append(f"Row {idx+1}: {str(e)}")
+        
+        conn.connection.commit()
+        conn.close()
+        
+        return jsonify({
+            "success": True,
+            "created": created_count,
+            "errors": errors
+        })
+        
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/tenant/<tenant_id>/products/templates', methods=['GET'])
+@require_auth()
+def get_product_templates(tenant_id):
+    """Get product templates for the tenant's industry."""
+    try:
+        from default_products import get_industry_specific_products
+        
+        # Get tenant's industry from config
+        conn = get_db_connection()
+        cursor = conn.execute("SELECT config FROM tenants WHERE tenant_id = ?", (tenant_id,))
+        config_row = cursor.fetchone()
+        conn.close()
+        
+        if not config_row:
+            return jsonify({"error": "Tenant not found"}), 404
+        
+        config = config_row[0] if isinstance(config_row[0], dict) else json.loads(config_row[0])
+        industry = config.get('industry', 'general')
+        
+        templates = get_industry_specific_products(industry)
+        
+        return jsonify({"templates": templates})
+        
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/tenant/<tenant_id>/products/templates/browse', methods=['GET'])
+@require_auth()
+def browse_product_templates(tenant_id):
+    """Browse and use product templates."""
+    # Check access
+    if session.get('role') == 'viewer':
+        return "Access denied", 403
+    
+    if session.get('role') == 'tenant_admin' and session.get('tenant_id') != tenant_id:
+        return "Access denied", 403
+    
+    from default_products import get_default_products, get_industry_specific_products
+    
+    # Get all available templates
+    standard_templates = get_default_products()
+    
+    # Get industry templates for different industries
+    industry_templates = {
+        'news': get_industry_specific_products('news'),
+        'sports': get_industry_specific_products('sports'),
+        'entertainment': get_industry_specific_products('entertainment'),
+        'ecommerce': get_industry_specific_products('ecommerce')
+    }
+    
+    # Filter out standard templates from industry lists
+    standard_ids = {t['product_id'] for t in standard_templates}
+    for industry in industry_templates:
+        industry_templates[industry] = [
+            t for t in industry_templates[industry] 
+            if t['product_id'] not in standard_ids
+        ]
+    
+    # Get creative formats for display
+    formats = get_creative_formats()
+    
+    return render_template('product_templates.html',
+                         tenant_id=tenant_id,
+                         standard_templates=standard_templates,
+                         industry_templates=industry_templates,
+                         formats=formats)
+
+@app.route('/tenant/<tenant_id>/products/templates/create', methods=['POST'])
+@require_auth()
+def create_from_template(tenant_id):
+    """Create a product from a template."""
+    # Check access
+    if session.get('role') == 'viewer':
+        return jsonify({"error": "Access denied"}), 403
+    
+    if session.get('role') == 'tenant_admin' and session.get('tenant_id') != tenant_id:
+        return jsonify({"error": "Access denied"}), 403
+    
+    try:
+        data = request.get_json()
+        template = data.get('template')
+        customizations = data.get('customizations', {})
+        
+        # Apply customizations to template
+        product = template.copy()
+        product.update(customizations)
+        
+        # Ensure unique product ID
+        if 'product_id' in customizations:
+            product['product_id'] = customizations['product_id']
+        else:
+            # Generate unique ID
+            product['product_id'] = f"{template['product_id']}_{uuid.uuid4().hex[:6]}"
+        
+        # Insert product
+        conn = get_db_connection()
+        
+        # Check if product ID already exists
+        cursor = conn.execute(
+            "SELECT product_id FROM products WHERE tenant_id = ? AND product_id = ?",
+            (tenant_id, product['product_id'])
+        )
+        if cursor.fetchone():
+            conn.close()
+            return jsonify({"error": "Product ID already exists"}), 400
+        
+        # Insert the product
+        conn.execute("""
+            INSERT INTO products (
+                product_id, tenant_id, name, description,
+                creative_formats, delivery_type, cpm,
+                price_guidance_min, price_guidance_max,
+                countries, targeting_template, implementation_config,
+                created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (
+            product['product_id'],
+            tenant_id,
+            product['name'],
+            product.get('description', ''),
+            json.dumps(product.get('formats', [])),
+            product.get('delivery_type', 'guaranteed'),
+            product.get('cpm'),
+            product.get('price_guidance', {}).get('min') if not product.get('cpm') else None,
+            product.get('price_guidance', {}).get('max') if not product.get('cpm') else None,
+            json.dumps(product.get('countries')) if product.get('countries') else None,
+            json.dumps(product.get('targeting_template', {})),
+            json.dumps(product.get('implementation_config', {})),
+            datetime.now().isoformat(),
+            datetime.now().isoformat()
+        ))
+        
+        conn.connection.commit()
+        conn.close()
+        
+        return jsonify({
+            "success": True,
+            "product_id": product['product_id'],
+            "redirect_url": url_for('list_products', tenant_id=tenant_id)
+        })
+        
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
 def get_creative_formats():
     """Get all creative formats from the database."""
     conn = get_db_connection()
@@ -2268,6 +2551,394 @@ def delete_creative_format(tenant_id, format_id):
         conn.close()
         
         return jsonify({"success": True})
+        
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/tenant/<tenant_id>/products/suggestions', methods=['GET'])
+@require_auth()
+def get_product_suggestions(tenant_id):
+    """API endpoint to get product suggestions based on industry and criteria."""
+    try:
+        from default_products import get_industry_specific_products, get_default_products
+        
+        # Get query parameters
+        industry = request.args.get('industry')
+        include_standard = request.args.get('include_standard', 'true').lower() == 'true'
+        delivery_type = request.args.get('delivery_type')  # 'guaranteed', 'non_guaranteed', or None for all
+        max_cpm = request.args.get('max_cpm', type=float)
+        formats = request.args.getlist('formats')  # Can specify multiple format IDs
+        
+        # Get suggestions
+        suggestions = []
+        
+        # Get industry-specific products if industry specified
+        if industry:
+            industry_products = get_industry_specific_products(industry)
+            suggestions.extend(industry_products)
+        elif include_standard:
+            # If no industry specified but standard requested, get default products
+            suggestions.extend(get_default_products())
+        
+        # Filter suggestions based on criteria
+        filtered_suggestions = []
+        for product in suggestions:
+            # Filter by delivery type
+            if delivery_type and product.get('delivery_type') != delivery_type:
+                continue
+            
+            # Filter by max CPM
+            if max_cpm:
+                if product.get('cpm') and product['cpm'] > max_cpm:
+                    continue
+                elif product.get('price_guidance'):
+                    if product['price_guidance']['min'] > max_cpm:
+                        continue
+            
+            # Filter by formats
+            if formats:
+                product_formats = set(product.get('formats', []))
+                requested_formats = set(formats)
+                if not product_formats.intersection(requested_formats):
+                    continue
+            
+            filtered_suggestions.append(product)
+        
+        # Sort suggestions by relevance
+        # Prioritize: 1) Industry-specific, 2) Lower CPM, 3) More formats
+        def sort_key(product):
+            is_industry_specific = product['product_id'] not in [p['product_id'] for p in get_default_products()]
+            avg_cpm = product.get('cpm', 0) or (product.get('price_guidance', {}).get('min', 0) + product.get('price_guidance', {}).get('max', 0)) / 2
+            format_count = len(product.get('formats', []))
+            return (-int(is_industry_specific), avg_cpm, -format_count)
+        
+        filtered_suggestions.sort(key=sort_key)
+        
+        # Check existing products to mark which are already created
+        conn = get_db_connection()
+        cursor = conn.execute(
+            "SELECT product_id FROM products WHERE tenant_id = ?",
+            (tenant_id,)
+        )
+        existing_ids = {row[0] for row in cursor.fetchall()}
+        conn.close()
+        
+        # Add metadata to suggestions
+        for suggestion in filtered_suggestions:
+            suggestion['already_exists'] = suggestion['product_id'] in existing_ids
+            suggestion['is_industry_specific'] = suggestion['product_id'] not in [p['product_id'] for p in get_default_products()]
+            
+            # Calculate match score (0-100)
+            score = 100
+            if delivery_type and suggestion.get('delivery_type') == delivery_type:
+                score += 20
+            if formats:
+                matching_formats = len(set(suggestion.get('formats', [])).intersection(set(formats)))
+                score += matching_formats * 10
+            if industry and suggestion['is_industry_specific']:
+                score += 30
+            
+            suggestion['match_score'] = min(score, 100)
+        
+        return jsonify({
+            "suggestions": filtered_suggestions,
+            "total_count": len(filtered_suggestions),
+            "criteria": {
+                "industry": industry,
+                "delivery_type": delivery_type,
+                "max_cpm": max_cpm,
+                "formats": formats
+            }
+        })
+        
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/tenant/<tenant_id>/products/quick-create', methods=['POST'])
+@require_auth()
+def quick_create_products(tenant_id):
+    """Quick create multiple products from suggestions."""
+    # Check access
+    if session.get('role') == 'viewer':
+        return jsonify({"error": "Access denied"}), 403
+    
+    if session.get('role') == 'tenant_admin' and session.get('tenant_id') != tenant_id:
+        return jsonify({"error": "Access denied"}), 403
+    
+    try:
+        data = request.get_json()
+        product_ids = data.get('product_ids', [])
+        
+        if not product_ids:
+            return jsonify({"error": "No product IDs provided"}), 400
+        
+        from default_products import get_industry_specific_products, get_default_products
+        
+        # Get all available templates
+        all_templates = get_default_products()
+        # Add industry templates
+        for industry in ['news', 'sports', 'entertainment', 'ecommerce']:
+            all_templates.extend(get_industry_specific_products(industry))
+        
+        # Create a map for quick lookup
+        template_map = {t['product_id']: t for t in all_templates}
+        
+        conn = get_db_connection()
+        created = []
+        errors = []
+        
+        for product_id in product_ids:
+            if product_id not in template_map:
+                errors.append(f"Template not found: {product_id}")
+                continue
+            
+            template = template_map[product_id]
+            
+            try:
+                # Check if already exists
+                cursor = conn.execute(
+                    "SELECT product_id FROM products WHERE tenant_id = ? AND product_id = ?",
+                    (tenant_id, product_id)
+                )
+                if cursor.fetchone():
+                    errors.append(f"Product already exists: {product_id}")
+                    continue
+                
+                # Insert product
+                conn.execute("""
+                    INSERT INTO products (
+                        product_id, tenant_id, name, description,
+                        creative_formats, delivery_type, cpm,
+                        price_guidance_min, price_guidance_max,
+                        countries, targeting_template, implementation_config,
+                        created_at, updated_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, (
+                    template['product_id'],
+                    tenant_id,
+                    template['name'],
+                    template.get('description', ''),
+                    json.dumps(template.get('formats', [])),
+                    template.get('delivery_type', 'guaranteed'),
+                    template.get('cpm'),
+                    template.get('price_guidance', {}).get('min') if not template.get('cpm') else None,
+                    template.get('price_guidance', {}).get('max') if not template.get('cpm') else None,
+                    json.dumps(template.get('countries')) if template.get('countries') else None,
+                    json.dumps(template.get('targeting_template', {})),
+                    json.dumps(template.get('implementation_config', {})),
+                    datetime.now().isoformat(),
+                    datetime.now().isoformat()
+                ))
+                
+                created.append(product_id)
+                
+            except Exception as e:
+                errors.append(f"Failed to create {product_id}: {str(e)}")
+        
+        conn.connection.commit()
+        conn.close()
+        
+        return jsonify({
+            "success": True,
+            "created": created,
+            "errors": errors,
+            "created_count": len(created)
+        })
+        
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/tenant/<tenant_id>/products/setup-wizard')
+@require_auth()
+def product_setup_wizard(tenant_id):
+    """Show product setup wizard for new tenants."""
+    # Check access
+    if session.get('role') == 'viewer':
+        return "Access denied", 403
+    
+    if session.get('role') == 'tenant_admin' and session.get('tenant_id') != tenant_id:
+        return "Access denied", 403
+    
+    return render_template('product_setup_wizard.html', tenant_id=tenant_id)
+
+@app.route('/tenant/<tenant_id>/analyze-ad-server')
+@require_auth()
+def analyze_ad_server_inventory(tenant_id):
+    """Analyze ad server to discover audiences, formats, and placements."""
+    # Check access
+    if session.get('role') == 'viewer':
+        return jsonify({"error": "Access denied"}), 403
+    
+    if session.get('role') == 'tenant_admin' and session.get('tenant_id') != tenant_id:
+        return jsonify({"error": "Access denied"}), 403
+    
+    try:
+        conn = get_db_connection()
+        
+        # Get tenant config to determine adapter
+        cursor = conn.execute("SELECT config FROM tenants WHERE tenant_id = ?", (tenant_id,))
+        config_row = cursor.fetchone()
+        if not config_row:
+            return jsonify({"error": "Tenant not found"}), 404
+        
+        config = config_row[0] if isinstance(config_row[0], dict) else json.loads(config_row[0])
+        
+        # Find enabled adapter
+        adapter_type = None
+        adapter_config = None
+        for adapter, cfg in config.get('adapters', {}).items():
+            if cfg.get('enabled'):
+                adapter_type = adapter
+                adapter_config = cfg
+                break
+        
+        if not adapter_type:
+            # Return mock data if no adapter configured
+            return jsonify({
+                "audiences": [
+                    {"id": "tech_enthusiasts", "name": "Tech Enthusiasts", "size": 1200000},
+                    {"id": "sports_fans", "name": "Sports Fans", "size": 800000}
+                ],
+                "formats": [],
+                "placements": [
+                    {"id": "homepage_hero", "name": "Homepage Hero", "sizes": ["970x250", "728x90"]}
+                ]
+            })
+        
+        # Get a principal for API calls
+        cursor = conn.execute(
+            "SELECT principal_id, name, access_token, platform_mappings FROM principals WHERE tenant_id = ? LIMIT 1",
+            (tenant_id,)
+        )
+        principal_row = cursor.fetchone()
+        conn.close()
+        
+        if not principal_row:
+            return jsonify({"error": "No principal found for tenant"}), 404
+        
+        # Create principal object
+        from schemas import Principal
+        mappings = principal_row[3] if isinstance(principal_row[3], dict) else json.loads(principal_row[3])
+        principal = Principal(
+            tenant_id=tenant_id,
+            principal_id=principal_row[0],
+            name=principal_row[1],
+            access_token=principal_row[2],
+            platform_mappings=mappings
+        )
+        
+        # Get adapter instance
+        from adapters import get_adapter_class
+        adapter_class = get_adapter_class(adapter_type)
+        adapter = adapter_class(
+            config=adapter_config,
+            principal=principal,
+            dry_run=True,
+            tenant_id=tenant_id
+        )
+        
+        # Query ad server inventory
+        import asyncio
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        
+        inventory = loop.run_until_complete(adapter.get_available_inventory())
+        
+        # Process and return relevant data
+        return jsonify({
+            "audiences": inventory.get("audiences", []),
+            "formats": inventory.get("creative_specs", []),
+            "placements": inventory.get("placements", [])
+        })
+        
+    except Exception as e:
+        logger.error(f"Error analyzing ad server: {e}")
+        # Return mock data on error
+        return jsonify({
+            "audiences": [
+                {"id": "general", "name": "General Audience", "size": 5000000}
+            ],
+            "formats": [],
+            "placements": []
+        })
+
+@app.route('/tenant/<tenant_id>/products/create-bulk', methods=['POST'])
+@require_auth()
+def create_products_bulk(tenant_id):
+    """Create multiple products from wizard suggestions."""
+    # Check access
+    if session.get('role') == 'viewer':
+        return jsonify({"error": "Access denied"}), 403
+    
+    if session.get('role') == 'tenant_admin' and session.get('tenant_id') != tenant_id:
+        return jsonify({"error": "Access denied"}), 403
+    
+    try:
+        data = request.get_json()
+        products = data.get('products', [])
+        
+        print(f"Received request to create {len(products)} products")
+        print(f"Products data: {json.dumps(products, indent=2)}")
+        
+        if not products:
+            return jsonify({"error": "No products provided"}), 400
+        
+        conn = get_db_connection()
+        created_count = 0
+        errors = []
+        
+        for product in products:
+            try:
+                # Generate unique product ID if needed
+                product_id = product.get('product_id')
+                if not product_id:
+                    product_id = product['name'].lower().replace(' ', '_').replace('-', '_')
+                    product_id = f"{product_id}_{uuid.uuid4().hex[:6]}"
+                
+                print(f"Creating product: {product_id} - {product.get('name')}")
+                
+                # Build price guidance
+                price_guidance = None
+                if product.get('price_guidance'):
+                    price_guidance = json.dumps(product['price_guidance'])
+                
+                # Insert product
+                conn.execute("""
+                    INSERT INTO products (
+                        product_id, tenant_id, name, description,
+                        formats, delivery_type, cpm,
+                        price_guidance,
+                        countries, targeting_template, implementation_config
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, (
+                    product_id,
+                    tenant_id,
+                    product['name'],
+                    product.get('description', ''),
+                    json.dumps(product.get('formats', [])),
+                    product.get('delivery_type', 'non_guaranteed'),
+                    product.get('cpm'),
+                    price_guidance,
+                    json.dumps(product.get('countries')) if product.get('countries') else None,
+                    json.dumps(product.get('targeting_template', {})),
+                    json.dumps(product.get('implementation_config', {}))
+                ))
+                
+                created_count += 1
+                print(f"Successfully created product {product_id}, total count: {created_count}")
+                
+            except Exception as e:
+                print(f"Error creating product: {e}")
+                errors.append(f"Failed to create {product.get('name', 'product')}: {str(e)}")
+        
+        conn.connection.commit()
+        conn.close()
+        
+        return jsonify({
+            "success": True,
+            "created_count": created_count,
+            "errors": errors
+        })
         
     except Exception as e:
         return jsonify({"error": str(e)}), 500

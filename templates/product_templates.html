@@ -1,0 +1,470 @@
+{% extends "base.html" %}
+
+{% block title %}Product Templates - AdCP Admin{% endblock %}
+
+{% block content %}
+<div class="card">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+        <h2>Product Templates</h2>
+        <a href="{{ url_for('list_products', tenant_id=tenant_id) }}" class="btn btn-secondary">← Back to Products</a>
+    </div>
+    
+    <div class="alert alert-info">
+        <strong>Quick Start:</strong> Choose from pre-configured product templates to quickly set up common advertising products. You can customize any template before creating the product.
+    </div>
+    
+    <!-- Standard Templates -->
+    <div class="template-section">
+        <h3>Standard Templates</h3>
+        <p class="section-description">Essential advertising products that work for most publishers</p>
+        
+        <div class="template-grid">
+            {% for template in standard_templates %}
+            <div class="template-card">
+                <div class="template-header">
+                    <h4>{{ template.name }}</h4>
+                    <span class="delivery-type {{ 'guaranteed' if template.delivery_type == 'guaranteed' else 'non-guaranteed' }}">
+                        {{ template.delivery_type.replace('_', ' ').title() }}
+                    </span>
+                </div>
+                
+                <p class="template-description">{{ template.description }}</p>
+                
+                <div class="template-details">
+                    <div class="detail-row">
+                        <strong>Pricing:</strong>
+                        {% if template.cpm %}
+                            <span class="price">${{ template.cpm }} CPM</span>
+                        {% else %}
+                            <span class="price">${{ template.price_guidance.min }} - ${{ template.price_guidance.max }} CPM</span>
+                        {% endif %}
+                    </div>
+                    
+                    <div class="detail-row">
+                        <strong>Formats:</strong>
+                        <div class="format-tags">
+                            {% for format_id in template.formats[:3] %}
+                                <span class="format-tag">{{ format_id }}</span>
+                            {% endfor %}
+                            {% if template.formats|length > 3 %}
+                                <span class="format-tag">+{{ template.formats|length - 3 }} more</span>
+                            {% endif %}
+                        </div>
+                    </div>
+                    
+                    <div class="detail-row">
+                        <strong>Targeting:</strong>
+                        <span class="targeting-info">
+                            {% if template.countries %}
+                                {{ template.countries|join(', ') }}
+                            {% else %}
+                                Global
+                            {% endif %}
+                            • 
+                            {% if template.targeting_template.device_targets %}
+                                {{ template.targeting_template.device_targets.device_types|join(', ') }}
+                            {% else %}
+                                All devices
+                            {% endif %}
+                        </span>
+                    </div>
+                </div>
+                
+                <div class="template-actions">
+                    <button class="btn btn-primary btn-small" onclick="useTemplate('{{ template.product_id }}', {{ template | tojson }})">
+                        Use Template
+                    </button>
+                    <button class="btn btn-secondary btn-small" onclick="previewTemplate({{ template | tojson }})">
+                        Preview
+                    </button>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+    
+    <!-- Industry-Specific Templates -->
+    {% for industry, templates in industry_templates.items() %}
+    {% if templates %}
+    <div class="template-section">
+        <h3>{{ industry.title() }} Industry Templates</h3>
+        <p class="section-description">Specialized products for {{ industry }} publishers</p>
+        
+        <div class="template-grid">
+            {% for template in templates %}
+            <div class="template-card industry-specific">
+                <div class="template-header">
+                    <h4>{{ template.name }}</h4>
+                    <span class="industry-badge">{{ industry }}</span>
+                </div>
+                
+                <p class="template-description">{{ template.description }}</p>
+                
+                <div class="template-details">
+                    <div class="detail-row">
+                        <strong>Pricing:</strong>
+                        {% if template.cpm %}
+                            <span class="price">${{ template.cpm }} CPM</span>
+                        {% else %}
+                            <span class="price">${{ template.price_guidance.min }} - ${{ template.price_guidance.max }} CPM</span>
+                        {% endif %}
+                    </div>
+                    
+                    <div class="detail-row">
+                        <strong>Formats:</strong>
+                        <div class="format-tags">
+                            {% for format_id in template.formats %}
+                                <span class="format-tag">{{ format_id }}</span>
+                            {% endfor %}
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="template-actions">
+                    <button class="btn btn-primary btn-small" onclick="useTemplate('{{ template.product_id }}', {{ template | tojson }})">
+                        Use Template
+                    </button>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+    {% endif %}
+    {% endfor %}
+</div>
+
+<!-- Customization Modal -->
+<div id="customization-modal" class="modal" style="display: none;">
+    <div class="modal-content">
+        <h3>Customize Product</h3>
+        
+        <form id="customization-form">
+            <div class="form-group">
+                <label for="custom-name">Product Name</label>
+                <input type="text" id="custom-name" name="name" required>
+            </div>
+            
+            <div class="form-group">
+                <label for="custom-product-id">Product ID</label>
+                <input type="text" id="custom-product-id" name="product_id" 
+                       pattern="[a-z0-9_]+" title="Lowercase letters, numbers, and underscores only">
+                <small>Leave blank to auto-generate</small>
+            </div>
+            
+            <div class="form-group">
+                <label for="custom-description">Description</label>
+                <textarea id="custom-description" name="description" rows="3"></textarea>
+            </div>
+            
+            <div class="form-group" id="cpm-group">
+                <label for="custom-cpm">CPM Price</label>
+                <input type="number" id="custom-cpm" name="cpm" step="0.01" min="0">
+            </div>
+            
+            <div class="form-group" id="price-guidance-group" style="display: none;">
+                <label>Price Guidance Range</label>
+                <div style="display: flex; gap: 10px;">
+                    <input type="number" id="custom-price-min" placeholder="Min" step="0.01" min="0">
+                    <input type="number" id="custom-price-max" placeholder="Max" step="0.01" min="0">
+                </div>
+            </div>
+            
+            <div class="modal-actions">
+                <button type="submit" class="btn btn-primary">Create Product</button>
+                <button type="button" class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Preview Modal -->
+<div id="preview-modal" class="modal" style="display: none;">
+    <div class="modal-content">
+        <h3>Template Preview</h3>
+        <div id="preview-content"></div>
+        <div class="modal-actions">
+            <button type="button" class="btn btn-secondary" onclick="closePreviewModal()">Close</button>
+        </div>
+    </div>
+</div>
+
+<style>
+.template-section {
+    margin-bottom: 3rem;
+}
+
+.section-description {
+    color: #666;
+    margin-bottom: 1rem;
+}
+
+.template-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+    gap: 1.5rem;
+}
+
+.template-card {
+    background: white;
+    border: 1px solid #e0e0e0;
+    border-radius: 8px;
+    padding: 1.5rem;
+    transition: all 0.3s;
+}
+
+.template-card:hover {
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+    transform: translateY(-2px);
+}
+
+.template-card.industry-specific {
+    border-left: 4px solid #007bff;
+}
+
+.template-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: start;
+    margin-bottom: 1rem;
+}
+
+.template-header h4 {
+    margin: 0;
+    color: #2c3e50;
+}
+
+.delivery-type {
+    padding: 0.25rem 0.75rem;
+    border-radius: 20px;
+    font-size: 0.85rem;
+    font-weight: 500;
+}
+
+.delivery-type.guaranteed {
+    background: #d4edda;
+    color: #155724;
+}
+
+.delivery-type.non-guaranteed {
+    background: #e2e3e5;
+    color: #383d41;
+}
+
+.industry-badge {
+    background: #007bff;
+    color: white;
+    padding: 0.25rem 0.75rem;
+    border-radius: 20px;
+    font-size: 0.85rem;
+    font-weight: 500;
+}
+
+.template-description {
+    color: #555;
+    margin-bottom: 1rem;
+}
+
+.template-details {
+    margin-bottom: 1rem;
+}
+
+.detail-row {
+    margin-bottom: 0.75rem;
+    font-size: 0.9rem;
+}
+
+.detail-row strong {
+    display: inline-block;
+    width: 80px;
+    color: #666;
+}
+
+.price {
+    color: #28a745;
+    font-weight: 600;
+}
+
+.format-tags {
+    display: inline-flex;
+    flex-wrap: wrap;
+    gap: 0.25rem;
+}
+
+.format-tag {
+    background: #f0f0f0;
+    padding: 0.15rem 0.5rem;
+    border-radius: 3px;
+    font-size: 0.8rem;
+}
+
+.targeting-info {
+    color: #666;
+    font-size: 0.9rem;
+}
+
+.template-actions {
+    display: flex;
+    gap: 0.5rem;
+    margin-top: 1rem;
+}
+
+.btn-small {
+    padding: 0.4rem 1rem;
+    font-size: 0.9rem;
+}
+
+/* Modal Styles */
+.modal {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.5);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+}
+
+.modal-content {
+    background: white;
+    padding: 2rem;
+    border-radius: 8px;
+    max-width: 500px;
+    width: 90%;
+    max-height: 80vh;
+    overflow-y: auto;
+}
+
+.modal-actions {
+    display: flex;
+    gap: 1rem;
+    justify-content: flex-end;
+    margin-top: 1.5rem;
+}
+
+#preview-content {
+    font-family: monospace;
+    font-size: 14px;
+    background: #f5f5f5;
+    padding: 1rem;
+    border-radius: 4px;
+    white-space: pre-wrap;
+    max-height: 400px;
+    overflow-y: auto;
+}
+</style>
+
+<script>
+let currentTemplate = null;
+
+function useTemplate(templateId, template) {
+    currentTemplate = template;
+    
+    // Pre-fill the customization form
+    document.getElementById('custom-name').value = template.name;
+    document.getElementById('custom-description').value = template.description || '';
+    
+    // Handle pricing fields
+    if (template.delivery_type === 'guaranteed') {
+        document.getElementById('cpm-group').style.display = 'block';
+        document.getElementById('price-guidance-group').style.display = 'none';
+        document.getElementById('custom-cpm').value = template.cpm || '';
+    } else {
+        document.getElementById('cpm-group').style.display = 'none';
+        document.getElementById('price-guidance-group').style.display = 'block';
+        document.getElementById('custom-price-min').value = template.price_guidance?.min || '';
+        document.getElementById('custom-price-max').value = template.price_guidance?.max || '';
+    }
+    
+    // Show modal
+    document.getElementById('customization-modal').style.display = 'flex';
+}
+
+function previewTemplate(template) {
+    const content = JSON.stringify(template, null, 2);
+    document.getElementById('preview-content').textContent = content;
+    document.getElementById('preview-modal').style.display = 'flex';
+}
+
+function closeModal() {
+    document.getElementById('customization-modal').style.display = 'none';
+    currentTemplate = null;
+}
+
+function closePreviewModal() {
+    document.getElementById('preview-modal').style.display = 'none';
+}
+
+// Close modal when clicking outside
+window.onclick = function(event) {
+    const modal = document.getElementById('customization-modal');
+    const previewModal = document.getElementById('preview-modal');
+    if (event.target === modal) {
+        closeModal();
+    } else if (event.target === previewModal) {
+        closePreviewModal();
+    }
+}
+
+// Handle form submission
+document.getElementById('customization-form').addEventListener('submit', async function(e) {
+    e.preventDefault();
+    
+    if (!currentTemplate) return;
+    
+    const formData = new FormData(e.target);
+    const customizations = {};
+    
+    // Get customizations
+    const name = formData.get('name');
+    if (name) customizations.name = name;
+    
+    const productId = formData.get('product_id');
+    if (productId) customizations.product_id = productId;
+    
+    const description = formData.get('description');
+    if (description) customizations.description = description;
+    
+    // Handle pricing based on delivery type
+    if (currentTemplate.delivery_type === 'guaranteed') {
+        const cpm = formData.get('cpm');
+        if (cpm) customizations.cpm = parseFloat(cpm);
+    } else {
+        const priceMin = document.getElementById('custom-price-min').value;
+        const priceMax = document.getElementById('custom-price-max').value;
+        if (priceMin && priceMax) {
+            customizations.price_guidance = {
+                min: parseFloat(priceMin),
+                max: parseFloat(priceMax)
+            };
+        }
+    }
+    
+    try {
+        const response = await fetch(`{{ url_for('create_from_template', tenant_id=tenant_id) }}`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                template: currentTemplate,
+                customizations: customizations
+            })
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            window.location.href = result.redirect_url;
+        } else {
+            alert('Error: ' + (result.error || 'Failed to create product'));
+        }
+        
+    } catch (error) {
+        alert('Error: ' + error.message);
+    }
+});
+</script>
+{% endblock %}
