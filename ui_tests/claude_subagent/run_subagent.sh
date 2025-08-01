@@ -17,8 +17,8 @@ if [ ! -f "ui_test_server.py" ]; then
 fi
 
 # Set environment variables
-export PYTHONPATH="/Users/brianokelley/Developer/salesagent/.conductor/phuket"
-export BASE_URL="${BASE_URL:-http://localhost:8001}"
+export PYTHONPATH="../.."
+export BASE_URL="${BASE_URL:-http://localhost:${ADMIN_UI_PORT:-8001}}"
 export HEADLESS="${HEADLESS:-true}"
 
 echo -e "${GREEN}✓ Environment configured${NC}"

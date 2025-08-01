@@ -45,7 +45,7 @@ ui_tests/
 
 1. Install Python dependencies:
 ```bash
-cd /Users/brianokelley/Developer/salesagent/.conductor/phuket
+# From the project root
 uv sync --extra ui-tests
 ```
 
