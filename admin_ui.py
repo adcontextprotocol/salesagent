@@ -433,14 +433,14 @@ def index():
     # Super admins see all tenants
     conn = get_db_connection()
     cursor = conn.execute("""
-        SELECT tenant_id, name, subdomain, is_active, billing_plan, created_at
+        SELECT tenant_id, name, subdomain, is_active, created_at
         FROM tenants
         ORDER BY created_at DESC
     """)
     tenants = []
     for row in cursor.fetchall():
         # Convert datetime if it's a string
-        created_at = row[5]
+        created_at = row[4]
         if isinstance(created_at, str):
             try:
                 created_at = datetime.fromisoformat(created_at.replace('T', ' '))
@@ -452,7 +452,6 @@ def index():
             'name': row[1],
             'subdomain': row[2],
             'is_active': row[3],
-            'billing_plan': row[4],
             'created_at': created_at
         })
     conn.close()
@@ -470,7 +469,7 @@ def tenant_detail(tenant_id):
     
     # Get tenant
     cursor = conn.execute("""
-        SELECT tenant_id, name, subdomain, config, is_active, billing_plan, created_at
+        SELECT tenant_id, name, subdomain, config, is_active, created_at
         FROM tenants WHERE tenant_id = ?
     """, (tenant_id,))
     row = cursor.fetchone()
@@ -489,8 +488,7 @@ def tenant_detail(tenant_id):
         'subdomain': row[2],
         'config': config,
         'is_active': row[4],
-        'billing_plan': row[5],
-        'created_at': row[6]
+        'created_at': row[5]
     }
     
     # Get principals with platform mappings
@@ -580,12 +578,45 @@ def tenant_detail(tenant_id):
     # Get the current port from environment
     admin_port = int(os.environ.get('ADMIN_UI_PORT', 8001))
     
+    # Calculate tab completion status
+    tab_status = {
+        'adserver': bool(active_adapter),
+        'principals': len(principals) > 0,
+        'products': len(products) > 0,
+        'formats': False,  # Will check below
+        'integrations': True,  # Integrations are optional
+        'users': active_users > 0,
+        'authorization': True,  # Authorization tab is always complete (set during creation)
+        'config': True,  # Config tab is always available
+        'tokens': True  # API tokens tab shows principals which we already track
+    }
+    
+    # Check if any creative formats exist
+    conn = get_db_connection()
+    cursor = conn.execute("""
+        SELECT COUNT(*) FROM creative_formats 
+        WHERE tenant_id = ?
+    """, (tenant_id,))
+    format_count = cursor.fetchone()[0]
+    tab_status['formats'] = format_count > 0
+    conn.close()
+    
+    # Check overall setup completion
+    setup_complete = (
+        tab_status['adserver'] and 
+        tab_status['principals'] and 
+        tab_status['products'] and 
+        tab_status['formats']
+    )
+    
     return render_template('tenant_detail.html', 
                          tenant=tenant, 
                          principals=principals,
                          products=products,
                          config_for_editing=config_for_editing,
-                         admin_port=admin_port)
+                         admin_port=admin_port,
+                         tab_status=tab_status,
+                         setup_complete=setup_complete)
 
 @app.route('/tenant/<tenant_id>/update', methods=['POST'])
 @require_auth()
@@ -773,46 +804,36 @@ def test_slack(tenant_id):
     except Exception as e:
         return jsonify({"success": False, "error": str(e)})
 
+
 @app.route('/create_tenant', methods=['GET', 'POST'])
 @require_auth(admin_only=True)
 def create_tenant():
-    """Create a new tenant (super admin only)."""
+    """Create a new tenant (super admin only) - basic setup only."""
     if request.method == 'POST':
         try:
-            tenant_id = request.form['tenant_id'] or request.form['name'].lower().replace(' ', '_')
-            subdomain = request.form['subdomain'] or tenant_id
+            tenant_name = request.form.get('name')
+            tenant_id = request.form.get('tenant_id') or tenant_name.lower().replace(' ', '_')
+            subdomain = request.form.get('subdomain') or tenant_id
             
-            # Build config
+            # Parse authorization lists
+            authorized_emails = [email.strip() for email in request.form.get('authorized_emails', '').split(',') if email.strip()]
+            authorized_domains = [domain.strip() for domain in request.form.get('authorized_domains', '').split(',') if domain.strip()]
+            
+            # Build minimal config - tenant will complete setup later
             config = {
                 "adapters": {},
                 "creative_engine": {
-                    "auto_approve_formats": ["display_300x250", "display_728x90"],
-                    "human_review_required": request.form.get('human_review') == 'on'
+                    "auto_approve_formats": [],
+                    "human_review_required": True
                 },
                 "features": {
-                    "max_daily_budget": int(request.form.get('max_daily_budget', 10000)),
-                    "enable_aee_signals": request.form.get('enable_aee') == 'on'
+                    "max_daily_budget": 10000,
+                    "enable_aee_signals": True
                 },
-                "authorized_emails": [email.strip() for email in request.form.get('authorized_emails', '').split(',') if email.strip()],
-                "authorized_domains": [domain.strip() for domain in request.form.get('authorized_domains', '').split(',') if domain.strip()]
+                "authorized_emails": authorized_emails,
+                "authorized_domains": authorized_domains,
+                "setup_complete": False  # Flag to track if tenant has completed setup
             }
-            
-            # Add adapter config
-            adapter = request.form.get('adapter')
-            if adapter == 'mock':
-                config['adapters']['mock'] = {'enabled': True}
-            elif adapter == 'google_ad_manager':
-                config['adapters']['google_ad_manager'] = {
-                    'enabled': True,
-                    'network_code': request.form.get('gam_network_code'),
-                    'company_id': request.form.get('gam_company_id')
-                }
-            elif adapter == 'kevel':
-                config['adapters']['kevel'] = {
-                    'enabled': True,
-                    'network_id': request.form.get('kevel_network_id'),
-                    'api_key': request.form.get('kevel_api_key')
-                }
             
             conn = get_db_connection()
             
@@ -820,20 +841,19 @@ def create_tenant():
             conn.execute("""
                 INSERT INTO tenants (
                     tenant_id, name, subdomain, config,
-                    created_at, updated_at, is_active, billing_plan
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    created_at, updated_at, is_active
+                ) VALUES (?, ?, ?, ?, ?, ?, ?)
             """, (
                 tenant_id,
-                request.form['name'],
+                tenant_name,
                 subdomain,
                 json.dumps(config),
                 datetime.now().isoformat(),
                 datetime.now().isoformat(),
-                True,
-                request.form.get('billing_plan', 'standard')
+                True
             ))
             
-            # Create admin principal
+            # Create admin principal with access token
             admin_token = secrets.token_urlsafe(32)
             conn.execute("""
                 INSERT INTO principals (
@@ -843,115 +863,15 @@ def create_tenant():
             """, (
                 tenant_id,
                 f"{tenant_id}_admin",
-                f"{request.form['name']} Admin",
+                f"{tenant_name} Admin",
                 json.dumps({}),
                 admin_token
             ))
             
-            # Create first principal (advertiser)
-            if request.form.get('principal_name'):
-                principal_id = request.form.get('principal_id') or request.form['principal_name'].lower().replace(' ', '_')
-                principal_token = secrets.token_urlsafe(32)
-                
-                # Build platform mappings based on adapter
-                platform_mappings = {}
-                if adapter == 'google_ad_manager' and request.form.get('gam_company_id'):
-                    platform_mappings['google_ad_manager'] = {
-                        'advertiser_id': request.form.get('gam_company_id')
-                    }
-                
-                conn.execute("""
-                    INSERT INTO principals (
-                        tenant_id, principal_id, name,
-                        platform_mappings, access_token
-                    ) VALUES (?, ?, ?, ?, ?)
-                """, (
-                    tenant_id,
-                    principal_id,
-                    request.form['principal_name'],
-                    json.dumps(platform_mappings),
-                    principal_token
-                ))
-            
-            # Create initial products
-            selected_products = request.form.getlist('initial_products')
-            product_definitions = {
-                'ron_display': {
-                    'product_id': 'prod_ron_display',
-                    'name': 'Run of Network - Standard Display',
-                    'description': 'Standard display ads across all site pages',
-                    'formats': ['display_300x250', 'display_728x90', 'display_320x50'],
-                    'cpm': 5.0,
-                    'implementation_config': {
-                        'placement_type': 'run_of_network',
-                        'ad_unit_path': '/network/ron',
-                        'sizes': [[300, 250], [728, 90], [320, 50]]
-                    }
-                },
-                'ron_video': {
-                    'product_id': 'prod_ron_video',
-                    'name': 'Run of Network - Standard Video',
-                    'description': 'In-stream video ads across video content',
-                    'formats': ['video_instream_15s', 'video_instream_30s'],
-                    'cpm': 15.0,
-                    'implementation_config': {
-                        'placement_type': 'video_instream',
-                        'ad_unit_path': '/network/video',
-                        'video_position': 'preroll'
-                    }
-                },
-                'homepage_display': {
-                    'product_id': 'prod_homepage_premium',
-                    'name': 'Homepage - Premium Display',
-                    'description': 'Premium display placements on homepage',
-                    'formats': ['display_970x250', 'display_300x600'],
-                    'cpm': 20.0,
-                    'implementation_config': {
-                        'placement_type': 'specific_page',
-                        'ad_unit_path': '/network/homepage',
-                        'page_url': '/',
-                        'sizes': [[970, 250], [300, 600]]
-                    }
-                },
-                'mobile_interstitial': {
-                    'product_id': 'prod_mobile_interstitial',
-                    'name': 'Mobile Interstitial',
-                    'description': 'Full-screen mobile interstitial ads',
-                    'formats': ['display_320x480'],
-                    'cpm': 10.0,
-                    'implementation_config': {
-                        'placement_type': 'mobile_interstitial',
-                        'ad_unit_path': '/network/mobile/interstitial',
-                        'frequency_cap': '1/hour'
-                    }
-                }
-            }
-            
-            for product_key in selected_products:
-                if product_key in product_definitions:
-                    prod = product_definitions[product_key]
-                    conn.execute("""
-                        INSERT INTO products (
-                            tenant_id, product_id, name, description,
-                            formats, targeting_template, delivery_type,
-                            is_fixed_price, cpm, implementation_config
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    """, (
-                        tenant_id,
-                        prod['product_id'],
-                        prod['name'],
-                        prod['description'],
-                        json.dumps(prod['formats']),
-                        json.dumps({}),  # Empty targeting template
-                        'guaranteed',
-                        True,
-                        prod['cpm'],
-                        json.dumps(prod.get('implementation_config', {}))
-                    ))
-            
-            conn.connection.commit()
+            conn.commit()
             conn.close()
             
+            flash(f'Tenant "{tenant_name}" created successfully! The publisher should log in and start with the Ad Server Setup tab to complete configuration.', 'success')
             return redirect(url_for('tenant_detail', tenant_id=tenant_id))
             
         except Exception as e:
@@ -3030,7 +2950,7 @@ def register_adapter_routes():
         print("Starting adapter route registration...")
         # Get all enabled adapters across all tenants
         conn = get_db_connection()
-        cursor = conn.execute("SELECT DISTINCT config FROM tenants")
+        cursor = conn.execute("SELECT config FROM tenants")
         
         registered_adapters = set()
         for row in cursor.fetchall():
@@ -3110,8 +3030,9 @@ if __name__ == '__main__':
     # Run server
     port = int(os.environ.get('ADMIN_UI_PORT', 8001))  # Match OAuth redirect URI
     # Debug mode off for production
-    debug = os.environ.get('FLASK_ENV') == 'development'
+    debug = os.environ.get('FLASK_DEBUG', '0') == '1'
     
+    print(f"DEBUG: FLASK_DEBUG={os.environ.get('FLASK_DEBUG')}, debug={debug}")
     print(f"Starting Admin UI with Google OAuth on port {port}")
     print(f"Redirect URI should be: http://localhost:{port}/auth/google/callback")
     

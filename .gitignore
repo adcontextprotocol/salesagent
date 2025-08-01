@@ -63,3 +63,5 @@ docker-compose.override.yml
 *.backup
 temp/
 tmp/
+test_auth_state.json
+screenshots/
