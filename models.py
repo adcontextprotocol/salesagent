@@ -51,11 +51,16 @@ class CreativeFormat(Base):
     max_file_size_kb = Column(Integer)
     specs = Column(JSON, nullable=False)  # JSONB in PostgreSQL
     is_standard = Column(Boolean, default=True)
+    is_foundational = Column(Boolean, default=False)
+    extends = Column(String(50), ForeignKey('creative_formats.format_id', ondelete='RESTRICT'), nullable=True)
+    modifications = Column(JSON, nullable=True)  # JSONB in PostgreSQL
     source_url = Column(Text)
     created_at = Column(DateTime, server_default=func.now())
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
     
     # Relationships
     tenant = relationship("Tenant", backref="creative_formats")
+    base_format = relationship("CreativeFormat", remote_side=[format_id], backref="extensions")
     
     __table_args__ = (
         CheckConstraint("type IN ('display', 'video', 'audio', 'native')"),

@@ -341,17 +341,33 @@ async function syncStandardFormats() {
 }
 
 function editFormat(formatId) {
-    // TODO: Implement edit functionality
-    alert('Edit functionality coming soon for format: ' + formatId);
+    window.location.href = `/tenant/{{ tenant_id }}/creative-formats/${formatId}/edit`;
 }
 
-function deleteFormat(formatId) {
-    if (!confirm('Are you sure you want to delete this custom format?')) {
+async function deleteFormat(formatId) {
+    if (!confirm('Are you sure you want to delete this custom format? This cannot be undone.')) {
         return;
     }
     
-    // TODO: Implement delete functionality
-    alert('Delete functionality coming soon for format: ' + formatId);
+    try {
+        const response = await fetch(`/tenant/{{ tenant_id }}/creative-formats/${formatId}/delete`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            }
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            alert('Format deleted successfully');
+            location.reload();
+        } else {
+            alert('Error: ' + (result.error || 'Failed to delete format'));
+        }
+    } catch (error) {
+        alert('Error: ' + error.message);
+    }
 }
 
 // Discover from URL functionality

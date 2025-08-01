@@ -2094,6 +2094,7 @@ def discover_formats_from_url(tenant_id):
                 "duration_seconds": fmt.duration_seconds,
                 "max_file_size_kb": fmt.max_file_size_kb,
                 "specs": fmt.specs or {},
+                "extends": fmt.extends,  # Include the extends field
                 "source_url": fmt.source_url
             })
         
@@ -2142,8 +2143,8 @@ def save_discovered_formats(tenant_id):
                 INSERT INTO creative_formats (
                     format_id, tenant_id, name, type, description,
                     width, height, duration_seconds, max_file_size_kb,
-                    specs, is_standard, source_url
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    specs, is_standard, source_url, extends
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
                 format_id,
                 tenant_id,  # Custom formats belong to the tenant
@@ -2156,7 +2157,8 @@ def save_discovered_formats(tenant_id):
                 format_data.get('max_file_size_kb'),
                 json.dumps(format_data.get('specs', {})),
                 False,  # Custom formats are not standard
-                format_data.get('source_url')
+                format_data.get('source_url'),
+                format_data.get('extends')  # Include the extends field
             ))
             saved_count += 1
         
@@ -2164,6 +2166,188 @@ def save_discovered_formats(tenant_id):
         conn.close()
         
         return jsonify({"success": True, "saved_count": saved_count})
+        
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/tenant/<tenant_id>/creative-formats/<format_id>')
+@require_auth()
+def get_creative_format(tenant_id, format_id):
+    """Get a specific creative format for editing."""
+    # Check access
+    if session.get('role') != 'super_admin' and session.get('tenant_id') != tenant_id:
+        abort(403)
+    
+    conn = get_db_connection()
+    cursor = conn.execute("""
+        SELECT format_id, name, type, description, width, height,
+               duration_seconds, max_file_size_kb, specs, is_standard, source_url
+        FROM creative_formats
+        WHERE format_id = ? AND (tenant_id = ? OR is_standard = TRUE)
+    """, (format_id, tenant_id))
+    
+    format_data = cursor.fetchone()
+    conn.close()
+    
+    if not format_data:
+        abort(404)
+    
+    # Convert to dict
+    format_dict = dict(format_data)
+    if format_dict['specs']:
+        format_dict['specs'] = json.loads(format_dict['specs']) if isinstance(format_dict['specs'], str) else format_dict['specs']
+    
+    return jsonify(format_dict)
+
+@app.route('/tenant/<tenant_id>/creative-formats/<format_id>/edit', methods=['GET'])
+@require_auth()
+def edit_creative_format_page(tenant_id, format_id):
+    """Display the edit creative format page."""
+    # Check access
+    if session.get('role') != 'super_admin' and session.get('tenant_id') != tenant_id:
+        abort(403)
+    
+    # Get tenant info
+    conn = get_db_connection()
+    cursor = conn.execute("SELECT name FROM tenants WHERE tenant_id = ?", (tenant_id,))
+    tenant = cursor.fetchone()
+    
+    if not tenant:
+        abort(404)
+    
+    # Get creative format
+    cursor = conn.execute("""
+        SELECT format_id, name, type, description, width, height,
+               duration_seconds, max_file_size_kb, specs, is_standard, source_url
+        FROM creative_formats
+        WHERE format_id = ? AND (tenant_id = ? OR is_standard = TRUE)
+    """, (format_id, tenant_id))
+    
+    format_data = cursor.fetchone()
+    conn.close()
+    
+    if not format_data:
+        abort(404)
+    
+    # Don't allow editing standard formats
+    if format_data['is_standard']:
+        flash('Standard formats cannot be edited', 'error')
+        return redirect(url_for('creative_formats', tenant_id=tenant_id))
+    
+    # Convert to dict and parse specs
+    format_dict = dict(format_data)
+    if format_dict['specs']:
+        format_dict['specs'] = json.loads(format_dict['specs']) if isinstance(format_dict['specs'], str) else format_dict['specs']
+    
+    return render_template('edit_creative_format.html',
+                         tenant_id=tenant_id,
+                         tenant_name=tenant['name'],
+                         format=format_dict)
+
+@app.route('/tenant/<tenant_id>/creative-formats/<format_id>/update', methods=['POST'])
+@require_auth()
+def update_creative_format(tenant_id, format_id):
+    """Update a creative format."""
+    # Check access
+    if session.get('role') != 'super_admin' and session.get('tenant_id') != tenant_id:
+        return jsonify({"error": "Access denied"}), 403
+    
+    try:
+        data = request.get_json()
+        
+        # Validate required fields
+        if not data.get('name'):
+            return jsonify({"error": "Name is required"}), 400
+        
+        conn = get_db_connection()
+        
+        # Check if format exists and is editable
+        cursor = conn.execute("""
+            SELECT is_standard FROM creative_formats
+            WHERE format_id = ? AND tenant_id = ?
+        """, (format_id, tenant_id))
+        
+        format_info = cursor.fetchone()
+        if not format_info:
+            return jsonify({"error": "Format not found"}), 404
+        
+        if format_info['is_standard']:
+            return jsonify({"error": "Cannot edit standard formats"}), 400
+        
+        # Update the format
+        specs = json.dumps(data.get('specs', {})) if data.get('specs') else None
+        
+        conn.execute("""
+            UPDATE creative_formats
+            SET name = ?, description = ?, width = ?, height = ?,
+                duration_seconds = ?, max_file_size_kb = ?, specs = ?,
+                source_url = ?, updated_at = CURRENT_TIMESTAMP
+            WHERE format_id = ? AND tenant_id = ?
+        """, (
+            data['name'],
+            data.get('description'),
+            data.get('width'),
+            data.get('height'),
+            data.get('duration_seconds'),
+            data.get('max_file_size_kb'),
+            specs,
+            data.get('source_url'),
+            format_id,
+            tenant_id
+        ))
+        
+        conn.connection.commit()
+        conn.close()
+        
+        return jsonify({"success": True})
+        
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/tenant/<tenant_id>/creative-formats/<format_id>/delete', methods=['POST'])
+@require_auth()
+def delete_creative_format(tenant_id, format_id):
+    """Delete a creative format."""
+    # Check access
+    if session.get('role') != 'super_admin' and session.get('tenant_id') != tenant_id:
+        return jsonify({"error": "Access denied"}), 403
+    
+    try:
+        conn = get_db_connection()
+        
+        # Check if format exists and is editable
+        cursor = conn.execute("""
+            SELECT is_standard FROM creative_formats
+            WHERE format_id = ? AND tenant_id = ?
+        """, (format_id, tenant_id))
+        
+        format_info = cursor.fetchone()
+        if not format_info:
+            return jsonify({"error": "Format not found"}), 404
+        
+        if format_info['is_standard']:
+            return jsonify({"error": "Cannot delete standard formats"}), 400
+        
+        # Check if format is used in any products
+        cursor = conn.execute("""
+            SELECT COUNT(*) as count FROM products
+            WHERE tenant_id = ? AND formats LIKE ?
+        """, (tenant_id, f'%{format_id}%'))
+        
+        result = cursor.fetchone()
+        if result['count'] > 0:
+            return jsonify({"error": f"Cannot delete format - it is used by {result['count']} product(s)"}), 400
+        
+        # Delete the format
+        conn.execute("""
+            DELETE FROM creative_formats
+            WHERE format_id = ? AND tenant_id = ?
+        """, (format_id, tenant_id))
+        
+        conn.connection.commit()
+        conn.close()
+        
+        return jsonify({"success": True})
         
     except Exception as e:
         return jsonify({"error": str(e)}), 500
