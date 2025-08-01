@@ -96,19 +96,43 @@
     </div>
 </div>
 
+{% if not setup_complete %}
+<div class="card" style="background: #fff3cd; border: 1px solid #ffeaa7; margin-top: 1rem;">
+    <div style="display: flex; align-items: center; gap: 1rem;">
+        <div style="font-size: 2em;">⚠️</div>
+        <div style="flex: 1;">
+            <h3 style="margin: 0; color: #856404;">Setup Incomplete</h3>
+            <p style="margin: 0.5rem 0; color: #856404;">
+                Please complete the configuration for all required tabs below. Start with the Ad Server Setup tab to connect your ad server.
+            </p>
+        </div>
+    </div>
+</div>
+{% endif %}
+
 <div class="tabs">
     {% if session.role == 'super_admin' %}
     <div class="tab active" data-tab="authorization">Authorization</div>
-    <div class="tab" data-tab="adserver">Ad Server Setup</div>
+    <div class="tab" data-tab="adserver">
+        Ad Server Setup {% if not tab_status.adserver %}⚠️{% endif %}
+    </div>
     <div class="tab" data-tab="config">Configuration</div>
     {% else %}
-    <div class="tab active" data-tab="adserver">Ad Server Setup</div>
+    <div class="tab active" data-tab="adserver">
+        Ad Server Setup {% if not tab_status.adserver %}⚠️{% endif %}
+    </div>
     <div class="tab" data-tab="config">Configuration</div>
     {% endif %}
     <div class="tab" data-tab="users">Users</div>
-    <div class="tab" data-tab="principals">Principals</div>
-    <div class="tab" data-tab="products">Products</div>
-    <div class="tab" data-tab="formats">Creative Formats</div>
+    <div class="tab" data-tab="principals">
+        Principals {% if not tab_status.principals %}⚠️{% endif %}
+    </div>
+    <div class="tab" data-tab="products">
+        Products {% if not tab_status.products %}⚠️{% endif %}
+    </div>
+    <div class="tab" data-tab="formats">
+        Creative Formats {% if not tab_status.formats %}⚠️{% endif %}
+    </div>
     <div class="tab" data-tab="integrations">Integrations</div>
     <div class="tab" data-tab="tokens">API Tokens</div>
     <a href="/tenant/{{ tenant.tenant_id }}/operations" class="tab" style="text-decoration: none; color: inherit;">Operations →</a>
