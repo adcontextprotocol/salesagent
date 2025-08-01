@@ -1,0 +1,950 @@
+{% extends "base.html" %}
+
+{% block title %}Product Setup Wizard - AdCP Admin{% endblock %}
+
+{% block content %}
+<div class="wizard-container">
+    <h2>Product Setup Wizard</h2>
+    
+    <div class="wizard-progress">
+        <div class="step active" data-step="1">
+            <span class="step-number">1</span>
+            <span class="step-title">Markets</span>
+        </div>
+        <div class="step" data-step="2">
+            <span class="step-number">2</span>
+            <span class="step-title">Analyze</span>
+        </div>
+        <div class="step" data-step="3">
+            <span class="step-number">3</span>
+            <span class="step-title">Suggestions</span>
+        </div>
+        <div class="step" data-step="4">
+            <span class="step-number">4</span>
+            <span class="step-title">Create</span>
+        </div>
+    </div>
+    
+    <!-- Step 1: Market Selection -->
+    <div class="wizard-step" id="step-1">
+        <h3>Select Your Primary Markets</h3>
+        <p>Choose the markets that are most important for your advertisers. We'll create run-of-site products for each market.</p>
+        
+        <div class="market-grid">
+            <h4>Top Markets</h4>
+            <div class="market-options">
+                <label class="market-option">
+                    <input type="checkbox" name="markets" value="US" checked>
+                    <span class="market-name">🇺🇸 United States</span>
+                </label>
+                <label class="market-option">
+                    <input type="checkbox" name="markets" value="CA">
+                    <span class="market-name">🇨🇦 Canada</span>
+                </label>
+                <label class="market-option">
+                    <input type="checkbox" name="markets" value="GB">
+                    <span class="market-name">🇬🇧 United Kingdom</span>
+                </label>
+                <label class="market-option">
+                    <input type="checkbox" name="markets" value="AU">
+                    <span class="market-name">🇦🇺 Australia</span>
+                </label>
+                <label class="market-option">
+                    <input type="checkbox" name="markets" value="DE">
+                    <span class="market-name">🇩🇪 Germany</span>
+                </label>
+                <label class="market-option">
+                    <input type="checkbox" name="markets" value="FR">
+                    <span class="market-name">🇫🇷 France</span>
+                </label>
+                <label class="market-option">
+                    <input type="checkbox" name="markets" value="JP">
+                    <span class="market-name">🇯🇵 Japan</span>
+                </label>
+                <label class="market-option">
+                    <input type="checkbox" name="markets" value="BR">
+                    <span class="market-name">🇧🇷 Brazil</span>
+                </label>
+            </div>
+            
+            <h4>Add another market</h4>
+            <div class="custom-market">
+                <select id="country-select" class="form-control">
+                    <option value="">Select a country...</option>
+                </select>
+                <button class="btn btn-secondary" onclick="addSelectedCountry()">Add Market</button>
+            </div>
+        </div>
+        
+        <div class="wizard-actions">
+            <button class="btn btn-primary" onclick="nextStep()">Next: Analyze Ad Server</button>
+        </div>
+    </div>
+    
+    <!-- Step 2: Ad Server Analysis -->
+    <div class="wizard-step" id="step-2" style="display: none;">
+        <h3>Analyzing Your Ad Server Configuration</h3>
+        <p>We're querying your ad server to discover audiences, formats, and placements...</p>
+        
+        <div class="analysis-progress">
+            <div class="analysis-item" id="analyze-audiences">
+                <span class="spinner"></span>
+                <span class="analysis-text">Discovering audience segments...</span>
+            </div>
+            <div class="analysis-item" id="analyze-formats">
+                <span class="spinner"></span>
+                <span class="analysis-text">Finding custom creative formats...</span>
+            </div>
+            <div class="analysis-item" id="analyze-placements">
+                <span class="spinner"></span>
+                <span class="analysis-text">Mapping ad placements...</span>
+            </div>
+        </div>
+        
+        <div id="analysis-results" style="display: none;">
+            <h4>What We Found</h4>
+            <div class="results-grid">
+                <div class="result-section">
+                    <h5>Audience Segments</h5>
+                    <div id="audience-list"></div>
+                </div>
+                <div class="result-section">
+                    <h5>Custom Formats</h5>
+                    <div id="format-list"></div>
+                </div>
+                <div class="result-section">
+                    <h5>Key Placements</h5>
+                    <div id="placement-list"></div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="wizard-actions" style="display: none;">
+            <button class="btn btn-secondary" onclick="previousStep()">Back</button>
+            <button class="btn btn-primary" onclick="nextStep()">Next: Review Suggestions</button>
+        </div>
+    </div>
+    
+    <!-- Step 3: Product Suggestions -->
+    <div class="wizard-step" id="step-3" style="display: none;">
+        <h3>Suggested Products</h3>
+        <p>Based on your markets and ad server configuration, we recommend creating these products:</p>
+        
+        <div style="margin: 1rem 0;">
+            <p class="text-muted">You can configure pricing for each product below.</p>
+        </div>
+        
+        <div id="product-suggestions">
+            <!-- Suggestions will be populated here -->
+        </div>
+        
+        <div class="suggestion-actions">
+            <button class="btn btn-secondary" onclick="selectAll()">Select All</button>
+            <button class="btn btn-secondary" onclick="deselectAll()">Deselect All</button>
+        </div>
+        
+        <div class="wizard-actions">
+            <button class="btn btn-secondary" onclick="previousStep()">Back</button>
+            <button class="btn btn-primary" onclick="createSelectedProducts()">Create Selected Products</button>
+        </div>
+    </div>
+    
+    <!-- Step 4: Creation Results -->
+    <div class="wizard-step" id="step-4" style="display: none;">
+        <h3>Creating Products...</h3>
+        
+        <div id="creation-progress">
+            <!-- Progress will be shown here -->
+        </div>
+        
+        <div id="creation-results" style="display: none;">
+            <div class="alert alert-success">
+                <h4>Success!</h4>
+                <p>Created <span id="created-count">0</span> products successfully.</p>
+            </div>
+            
+            <div class="wizard-actions">
+                <a href="{{ url_for('list_products', tenant_id=tenant_id) }}" class="btn btn-primary">View Products</a>
+                <button class="btn btn-secondary" onclick="startOver()">Create More Products</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+.wizard-container {
+    max-width: 900px;
+    margin: 0 auto;
+}
+
+.wizard-progress {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 3rem;
+    position: relative;
+}
+
+.wizard-progress::before {
+    content: '';
+    position: absolute;
+    top: 20px;
+    left: 10%;
+    right: 10%;
+    height: 2px;
+    background: #e0e0e0;
+    z-index: -1;
+}
+
+.step {
+    text-align: center;
+    position: relative;
+}
+
+.step-number {
+    display: inline-block;
+    width: 40px;
+    height: 40px;
+    line-height: 40px;
+    background: #e0e0e0;
+    color: #666;
+    border-radius: 50%;
+    font-weight: 600;
+    margin-bottom: 0.5rem;
+}
+
+.step.active .step-number {
+    background: #007bff;
+    color: white;
+}
+
+.step.completed .step-number {
+    background: #28a745;
+    color: white;
+}
+
+.step-title {
+    display: block;
+    font-size: 0.9rem;
+    color: #666;
+}
+
+.market-grid {
+    margin: 2rem 0;
+}
+
+.market-options {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 1rem;
+    margin: 1rem 0 2rem;
+}
+
+.market-option {
+    display: flex;
+    align-items: center;
+    padding: 1rem;
+    border: 2px solid #e0e0e0;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.market-option:hover {
+    border-color: #007bff;
+    background: #f8f9fa;
+}
+
+.market-option input[type="checkbox"] {
+    margin-right: 0.5rem;
+}
+
+.custom-market {
+    display: flex;
+    gap: 1rem;
+    max-width: 400px;
+}
+
+.custom-market select {
+    flex: 1;
+}
+
+.analysis-item {
+    display: flex;
+    align-items: center;
+    padding: 1rem;
+    margin: 0.5rem 0;
+    background: #f8f9fa;
+    border-radius: 4px;
+}
+
+.spinner {
+    display: inline-block;
+    width: 20px;
+    height: 20px;
+    border: 3px solid #f3f3f3;
+    border-top: 3px solid #007bff;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+    margin-right: 1rem;
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+.analysis-item.complete .spinner {
+    display: none;
+}
+
+.analysis-item.complete::before {
+    content: '✓';
+    color: #28a745;
+    font-size: 1.5rem;
+    margin-right: 1rem;
+}
+
+.results-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: 2rem;
+    margin: 2rem 0;
+}
+
+.result-section {
+    background: #f8f9fa;
+    padding: 1.5rem;
+    border-radius: 8px;
+}
+
+.result-section h5 {
+    margin-top: 0;
+    color: #333;
+}
+
+.product-suggestion {
+    border: 1px solid #e0e0e0;
+    border-radius: 8px;
+    padding: 1.5rem;
+    margin: 1rem 0;
+    background: white;
+}
+
+.product-suggestion.selected {
+    border-color: #007bff;
+    background: #f0f8ff;
+}
+
+.suggestion-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: start;
+    margin-bottom: 1rem;
+}
+
+.pricing-controls {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+}
+
+.pricing-type-toggle {
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+}
+
+.pricing-type-toggle label {
+    margin: 0;
+    cursor: pointer;
+}
+
+.pricing-inputs {
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+}
+
+.pricing-inputs input[type="number"] {
+    width: 80px;
+    padding: 0.25rem 0.5rem;
+    border: 1px solid #ced4da;
+    border-radius: 4px;
+}
+
+.suggestion-details {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 1rem;
+    margin-top: 1rem;
+}
+
+.wizard-actions {
+    display: flex;
+    justify-content: space-between;
+    margin-top: 3rem;
+    padding-top: 2rem;
+    border-top: 1px solid #e0e0e0;
+}
+
+.wizard-actions button:only-child {
+    margin-left: auto;
+}
+</style>
+
+<script>
+// Comprehensive list of countries with ISO codes
+const countries = [
+    {code: 'AF', name: 'Afghanistan', flag: '🇦🇫'},
+    {code: 'AL', name: 'Albania', flag: '🇦🇱'},
+    {code: 'DZ', name: 'Algeria', flag: '🇩🇿'},
+    {code: 'AD', name: 'Andorra', flag: '🇦🇩'},
+    {code: 'AO', name: 'Angola', flag: '🇦🇴'},
+    {code: 'AG', name: 'Antigua and Barbuda', flag: '🇦🇬'},
+    {code: 'AR', name: 'Argentina', flag: '🇦🇷'},
+    {code: 'AM', name: 'Armenia', flag: '🇦🇲'},
+    {code: 'AT', name: 'Austria', flag: '🇦🇹'},
+    {code: 'AZ', name: 'Azerbaijan', flag: '🇦🇿'},
+    {code: 'BS', name: 'Bahamas', flag: '🇧🇸'},
+    {code: 'BH', name: 'Bahrain', flag: '🇧🇭'},
+    {code: 'BD', name: 'Bangladesh', flag: '🇧🇩'},
+    {code: 'BB', name: 'Barbados', flag: '🇧🇧'},
+    {code: 'BY', name: 'Belarus', flag: '🇧🇾'},
+    {code: 'BE', name: 'Belgium', flag: '🇧🇪'},
+    {code: 'BZ', name: 'Belize', flag: '🇧🇿'},
+    {code: 'BJ', name: 'Benin', flag: '🇧🇯'},
+    {code: 'BT', name: 'Bhutan', flag: '🇧🇹'},
+    {code: 'BO', name: 'Bolivia', flag: '🇧🇴'},
+    {code: 'BA', name: 'Bosnia and Herzegovina', flag: '🇧🇦'},
+    {code: 'BW', name: 'Botswana', flag: '🇧🇼'},
+    {code: 'BN', name: 'Brunei', flag: '🇧🇳'},
+    {code: 'BG', name: 'Bulgaria', flag: '🇧🇬'},
+    {code: 'BF', name: 'Burkina Faso', flag: '🇧🇫'},
+    {code: 'BI', name: 'Burundi', flag: '🇧🇮'},
+    {code: 'KH', name: 'Cambodia', flag: '🇰🇭'},
+    {code: 'CM', name: 'Cameroon', flag: '🇨🇲'},
+    {code: 'CV', name: 'Cape Verde', flag: '🇨🇻'},
+    {code: 'CF', name: 'Central African Republic', flag: '🇨🇫'},
+    {code: 'TD', name: 'Chad', flag: '🇹🇩'},
+    {code: 'CL', name: 'Chile', flag: '🇨🇱'},
+    {code: 'CN', name: 'China', flag: '🇨🇳'},
+    {code: 'CO', name: 'Colombia', flag: '🇨🇴'},
+    {code: 'KM', name: 'Comoros', flag: '🇰🇲'},
+    {code: 'CG', name: 'Congo', flag: '🇨🇬'},
+    {code: 'CD', name: 'Congo (DRC)', flag: '🇨🇩'},
+    {code: 'CR', name: 'Costa Rica', flag: '🇨🇷'},
+    {code: 'CI', name: 'Côte d\'Ivoire', flag: '🇨🇮'},
+    {code: 'HR', name: 'Croatia', flag: '🇭🇷'},
+    {code: 'CU', name: 'Cuba', flag: '🇨🇺'},
+    {code: 'CY', name: 'Cyprus', flag: '🇨🇾'},
+    {code: 'CZ', name: 'Czech Republic', flag: '🇨🇿'},
+    {code: 'DK', name: 'Denmark', flag: '🇩🇰'},
+    {code: 'DJ', name: 'Djibouti', flag: '🇩🇯'},
+    {code: 'DM', name: 'Dominica', flag: '🇩🇲'},
+    {code: 'DO', name: 'Dominican Republic', flag: '🇩🇴'},
+    {code: 'EC', name: 'Ecuador', flag: '🇪🇨'},
+    {code: 'EG', name: 'Egypt', flag: '🇪🇬'},
+    {code: 'SV', name: 'El Salvador', flag: '🇸🇻'},
+    {code: 'GQ', name: 'Equatorial Guinea', flag: '🇬🇶'},
+    {code: 'ER', name: 'Eritrea', flag: '🇪🇷'},
+    {code: 'EE', name: 'Estonia', flag: '🇪🇪'},
+    {code: 'SZ', name: 'Eswatini', flag: '🇸🇿'},
+    {code: 'ET', name: 'Ethiopia', flag: '🇪🇹'},
+    {code: 'FJ', name: 'Fiji', flag: '🇫🇯'},
+    {code: 'FI', name: 'Finland', flag: '🇫🇮'},
+    {code: 'GA', name: 'Gabon', flag: '🇬🇦'},
+    {code: 'GM', name: 'Gambia', flag: '🇬🇲'},
+    {code: 'GE', name: 'Georgia', flag: '🇬🇪'},
+    {code: 'GH', name: 'Ghana', flag: '🇬🇭'},
+    {code: 'GR', name: 'Greece', flag: '🇬🇷'},
+    {code: 'GD', name: 'Grenada', flag: '🇬🇩'},
+    {code: 'GT', name: 'Guatemala', flag: '🇬🇹'},
+    {code: 'GN', name: 'Guinea', flag: '🇬🇳'},
+    {code: 'GW', name: 'Guinea-Bissau', flag: '🇬🇼'},
+    {code: 'GY', name: 'Guyana', flag: '🇬🇾'},
+    {code: 'HT', name: 'Haiti', flag: '🇭🇹'},
+    {code: 'HN', name: 'Honduras', flag: '🇭🇳'},
+    {code: 'HU', name: 'Hungary', flag: '🇭🇺'},
+    {code: 'IS', name: 'Iceland', flag: '🇮🇸'},
+    {code: 'IN', name: 'India', flag: '🇮🇳'},
+    {code: 'ID', name: 'Indonesia', flag: '🇮🇩'},
+    {code: 'IR', name: 'Iran', flag: '🇮🇷'},
+    {code: 'IQ', name: 'Iraq', flag: '🇮🇶'},
+    {code: 'IE', name: 'Ireland', flag: '🇮🇪'},
+    {code: 'IL', name: 'Israel', flag: '🇮🇱'},
+    {code: 'IT', name: 'Italy', flag: '🇮🇹'},
+    {code: 'JM', name: 'Jamaica', flag: '🇯🇲'},
+    {code: 'JO', name: 'Jordan', flag: '🇯🇴'},
+    {code: 'KZ', name: 'Kazakhstan', flag: '🇰🇿'},
+    {code: 'KE', name: 'Kenya', flag: '🇰🇪'},
+    {code: 'KI', name: 'Kiribati', flag: '🇰🇮'},
+    {code: 'KP', name: 'North Korea', flag: '🇰🇵'},
+    {code: 'KR', name: 'South Korea', flag: '🇰🇷'},
+    {code: 'KW', name: 'Kuwait', flag: '🇰🇼'},
+    {code: 'KG', name: 'Kyrgyzstan', flag: '🇰🇬'},
+    {code: 'LA', name: 'Laos', flag: '🇱🇦'},
+    {code: 'LV', name: 'Latvia', flag: '🇱🇻'},
+    {code: 'LB', name: 'Lebanon', flag: '🇱🇧'},
+    {code: 'LS', name: 'Lesotho', flag: '🇱🇸'},
+    {code: 'LR', name: 'Liberia', flag: '🇱🇷'},
+    {code: 'LY', name: 'Libya', flag: '🇱🇾'},
+    {code: 'LI', name: 'Liechtenstein', flag: '🇱🇮'},
+    {code: 'LT', name: 'Lithuania', flag: '🇱🇹'},
+    {code: 'LU', name: 'Luxembourg', flag: '🇱🇺'},
+    {code: 'MG', name: 'Madagascar', flag: '🇲🇬'},
+    {code: 'MW', name: 'Malawi', flag: '🇲🇼'},
+    {code: 'MY', name: 'Malaysia', flag: '🇲🇾'},
+    {code: 'MV', name: 'Maldives', flag: '🇲🇻'},
+    {code: 'ML', name: 'Mali', flag: '🇲🇱'},
+    {code: 'MT', name: 'Malta', flag: '🇲🇹'},
+    {code: 'MH', name: 'Marshall Islands', flag: '🇲🇭'},
+    {code: 'MR', name: 'Mauritania', flag: '🇲🇷'},
+    {code: 'MU', name: 'Mauritius', flag: '🇲🇺'},
+    {code: 'MX', name: 'Mexico', flag: '🇲🇽'},
+    {code: 'FM', name: 'Micronesia', flag: '🇫🇲'},
+    {code: 'MD', name: 'Moldova', flag: '🇲🇩'},
+    {code: 'MC', name: 'Monaco', flag: '🇲🇨'},
+    {code: 'MN', name: 'Mongolia', flag: '🇲🇳'},
+    {code: 'ME', name: 'Montenegro', flag: '🇲🇪'},
+    {code: 'MA', name: 'Morocco', flag: '🇲🇦'},
+    {code: 'MZ', name: 'Mozambique', flag: '🇲🇿'},
+    {code: 'MM', name: 'Myanmar', flag: '🇲🇲'},
+    {code: 'NA', name: 'Namibia', flag: '🇳🇦'},
+    {code: 'NR', name: 'Nauru', flag: '🇳🇷'},
+    {code: 'NP', name: 'Nepal', flag: '🇳🇵'},
+    {code: 'NL', name: 'Netherlands', flag: '🇳🇱'},
+    {code: 'NZ', name: 'New Zealand', flag: '🇳🇿'},
+    {code: 'NI', name: 'Nicaragua', flag: '🇳🇮'},
+    {code: 'NE', name: 'Niger', flag: '🇳🇪'},
+    {code: 'NG', name: 'Nigeria', flag: '🇳🇬'},
+    {code: 'MK', name: 'North Macedonia', flag: '🇲🇰'},
+    {code: 'NO', name: 'Norway', flag: '🇳🇴'},
+    {code: 'OM', name: 'Oman', flag: '🇴🇲'},
+    {code: 'PK', name: 'Pakistan', flag: '🇵🇰'},
+    {code: 'PW', name: 'Palau', flag: '🇵🇼'},
+    {code: 'PS', name: 'Palestine', flag: '🇵🇸'},
+    {code: 'PA', name: 'Panama', flag: '🇵🇦'},
+    {code: 'PG', name: 'Papua New Guinea', flag: '🇵🇬'},
+    {code: 'PY', name: 'Paraguay', flag: '🇵🇾'},
+    {code: 'PE', name: 'Peru', flag: '🇵🇪'},
+    {code: 'PH', name: 'Philippines', flag: '🇵🇭'},
+    {code: 'PL', name: 'Poland', flag: '🇵🇱'},
+    {code: 'PT', name: 'Portugal', flag: '🇵🇹'},
+    {code: 'QA', name: 'Qatar', flag: '🇶🇦'},
+    {code: 'RO', name: 'Romania', flag: '🇷🇴'},
+    {code: 'RU', name: 'Russia', flag: '🇷🇺'},
+    {code: 'RW', name: 'Rwanda', flag: '🇷🇼'},
+    {code: 'KN', name: 'Saint Kitts and Nevis', flag: '🇰🇳'},
+    {code: 'LC', name: 'Saint Lucia', flag: '🇱🇨'},
+    {code: 'VC', name: 'Saint Vincent and the Grenadines', flag: '🇻🇨'},
+    {code: 'WS', name: 'Samoa', flag: '🇼🇸'},
+    {code: 'SM', name: 'San Marino', flag: '🇸🇲'},
+    {code: 'ST', name: 'São Tomé and Príncipe', flag: '🇸🇹'},
+    {code: 'SA', name: 'Saudi Arabia', flag: '🇸🇦'},
+    {code: 'SN', name: 'Senegal', flag: '🇸🇳'},
+    {code: 'RS', name: 'Serbia', flag: '🇷🇸'},
+    {code: 'SC', name: 'Seychelles', flag: '🇸🇨'},
+    {code: 'SL', name: 'Sierra Leone', flag: '🇸🇱'},
+    {code: 'SG', name: 'Singapore', flag: '🇸🇬'},
+    {code: 'SK', name: 'Slovakia', flag: '🇸🇰'},
+    {code: 'SI', name: 'Slovenia', flag: '🇸🇮'},
+    {code: 'SB', name: 'Solomon Islands', flag: '🇸🇧'},
+    {code: 'SO', name: 'Somalia', flag: '🇸🇴'},
+    {code: 'ZA', name: 'South Africa', flag: '🇿🇦'},
+    {code: 'SS', name: 'South Sudan', flag: '🇸🇸'},
+    {code: 'ES', name: 'Spain', flag: '🇪🇸'},
+    {code: 'LK', name: 'Sri Lanka', flag: '🇱🇰'},
+    {code: 'SD', name: 'Sudan', flag: '🇸🇩'},
+    {code: 'SR', name: 'Suriname', flag: '🇸🇷'},
+    {code: 'SE', name: 'Sweden', flag: '🇸🇪'},
+    {code: 'CH', name: 'Switzerland', flag: '🇨🇭'},
+    {code: 'SY', name: 'Syria', flag: '🇸🇾'},
+    {code: 'TW', name: 'Taiwan', flag: '🇹🇼'},
+    {code: 'TJ', name: 'Tajikistan', flag: '🇹🇯'},
+    {code: 'TZ', name: 'Tanzania', flag: '🇹🇿'},
+    {code: 'TH', name: 'Thailand', flag: '🇹🇭'},
+    {code: 'TL', name: 'Timor-Leste', flag: '🇹🇱'},
+    {code: 'TG', name: 'Togo', flag: '🇹🇬'},
+    {code: 'TO', name: 'Tonga', flag: '🇹🇴'},
+    {code: 'TT', name: 'Trinidad and Tobago', flag: '🇹🇹'},
+    {code: 'TN', name: 'Tunisia', flag: '🇹🇳'},
+    {code: 'TR', name: 'Turkey', flag: '🇹🇷'},
+    {code: 'TM', name: 'Turkmenistan', flag: '🇹🇲'},
+    {code: 'TV', name: 'Tuvalu', flag: '🇹🇻'},
+    {code: 'UG', name: 'Uganda', flag: '🇺🇬'},
+    {code: 'UA', name: 'Ukraine', flag: '🇺🇦'},
+    {code: 'AE', name: 'United Arab Emirates', flag: '🇦🇪'},
+    {code: 'UY', name: 'Uruguay', flag: '🇺🇾'},
+    {code: 'UZ', name: 'Uzbekistan', flag: '🇺🇿'},
+    {code: 'VU', name: 'Vanuatu', flag: '🇻🇺'},
+    {code: 'VA', name: 'Vatican City', flag: '🇻🇦'},
+    {code: 'VE', name: 'Venezuela', flag: '🇻🇪'},
+    {code: 'VN', name: 'Vietnam', flag: '🇻🇳'},
+    {code: 'YE', name: 'Yemen', flag: '🇾🇪'},
+    {code: 'ZM', name: 'Zambia', flag: '🇿🇲'},
+    {code: 'ZW', name: 'Zimbabwe', flag: '🇿🇼'}
+];
+
+let currentStep = 1;
+let selectedMarkets = [];
+let adServerData = {};
+let suggestedProducts = [];
+
+function nextStep() {
+    if (currentStep === 1) {
+        // Collect selected markets
+        selectedMarkets = Array.from(document.querySelectorAll('input[name="markets"]:checked'))
+            .map(cb => cb.value);
+        
+        if (selectedMarkets.length === 0) {
+            alert('Please select at least one market');
+            return;
+        }
+    }
+    
+    document.getElementById(`step-${currentStep}`).style.display = 'none';
+    currentStep++;
+    document.getElementById(`step-${currentStep}`).style.display = 'block';
+    
+    // Update progress
+    document.querySelectorAll('.step').forEach((step, index) => {
+        if (index < currentStep - 1) {
+            step.classList.add('completed');
+            step.classList.remove('active');
+        } else if (index === currentStep - 1) {
+            step.classList.add('active');
+        }
+    });
+    
+    // Trigger ad server analysis on step 2
+    if (currentStep === 2) {
+        analyzeAdServer();
+    }
+}
+
+function previousStep() {
+    document.getElementById(`step-${currentStep}`).style.display = 'none';
+    currentStep--;
+    document.getElementById(`step-${currentStep}`).style.display = 'block';
+}
+
+async function analyzeAdServer() {
+    // Simulate querying ad server
+    const steps = ['audiences', 'formats', 'placements'];
+    
+    for (const step of steps) {
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        document.getElementById(`analyze-${step}`).classList.add('complete');
+    }
+    
+    // Fetch actual data from ad server
+    try {
+        const response = await fetch(`{{ url_for('analyze_ad_server_inventory', tenant_id=tenant_id) }}`);
+        adServerData = await response.json();
+        
+        displayAnalysisResults();
+        generateProductSuggestions();
+        
+    } catch (error) {
+        console.error('Error analyzing ad server:', error);
+        // Use mock data for demo
+        adServerData = {
+            audiences: [
+                {id: 'tech_enthusiasts', name: 'Tech Enthusiasts', size: 1200000},
+                {id: 'sports_fans', name: 'Sports Fans', size: 800000},
+                {id: 'luxury_shoppers', name: 'Luxury Shoppers', size: 500000}
+            ],
+            formats: [
+                {id: 'custom_video_300x250', name: 'Custom Video Banner', type: 'video'},
+                {id: 'interactive_cube', name: 'Interactive Cube Ad', type: 'rich_media'}
+            ],
+            placements: [
+                {id: 'homepage_hero', name: 'Homepage Hero', sizes: ['970x250', '728x90']},
+                {id: 'article_sidebar', name: 'Article Sidebar', sizes: ['300x250', '300x600']}
+            ]
+        };
+        displayAnalysisResults();
+        generateProductSuggestions();
+    }
+    
+    document.getElementById('analysis-results').style.display = 'block';
+    document.querySelector('#step-2 .wizard-actions').style.display = 'flex';
+}
+
+function displayAnalysisResults() {
+    // Display audiences
+    const audienceHtml = adServerData.audiences.map(aud => 
+        `<div class="result-item">
+            <strong>${aud.name}</strong>
+            <span class="badge">${(aud.size / 1000000).toFixed(1)}M users</span>
+        </div>`
+    ).join('');
+    document.getElementById('audience-list').innerHTML = audienceHtml || '<p>No custom audiences found</p>';
+    
+    // Display formats
+    const formatHtml = adServerData.formats.map(fmt => 
+        `<div class="result-item">
+            <strong>${fmt.name}</strong>
+            <span class="badge">${fmt.type}</span>
+        </div>`
+    ).join('');
+    document.getElementById('format-list').innerHTML = formatHtml || '<p>No custom formats found</p>';
+    
+    // Display placements
+    const placementHtml = adServerData.placements.map(plc => 
+        `<div class="result-item">
+            <strong>${plc.name}</strong>
+            <span class="badge">${plc.sizes.join(', ')}</span>
+        </div>`
+    ).join('');
+    document.getElementById('placement-list').innerHTML = placementHtml || '<p>Standard placements only</p>';
+}
+
+function generateProductSuggestions() {
+    suggestedProducts = [];
+    
+    // 1. Run-of-site products for each market
+    selectedMarkets.forEach(market => {
+        const country = countries.find(c => c.code === market) || {name: market};
+        suggestedProducts.push({
+            type: 'run_of_site',
+            name: `Run of Site - ${country.name}`,
+            product_id: `ros_display_${market.toLowerCase()}`,
+            description: `Non-guaranteed display advertising across all inventory in ${country.name}`,
+            formats: ['display_300x250', 'display_728x90', 'display_320x50'],
+            countries: [market],
+            delivery_type: 'non_guaranteed',
+            price_guidance: {min: 2.0, max: 10.0}
+        });
+    });
+    
+    // 2. Audience-based products
+    adServerData.audiences.forEach(audience => {
+        if (audience.size > 100000) { // Only for significant audiences
+            suggestedProducts.push({
+                type: 'audience',
+                name: `${audience.name} Targeting`,
+                product_id: `audience_${audience.id}`,
+                description: `Target ${audience.name} audience segment (${(audience.size / 1000000).toFixed(1)}M users)`,
+                formats: ['display_300x250', 'display_728x90', 'native_infeed'],
+                countries: selectedMarkets,
+                delivery_type: 'non_guaranteed',
+                price_guidance: {min: 5.0, max: 20.0},
+                targeting_template: {
+                    audience_targets: {segments: [audience.id]}
+                }
+            });
+        }
+    });
+    
+    // 3. Custom format products for each market
+    adServerData.formats.forEach(format => {
+        selectedMarkets.forEach(market => {
+            const country = countries.find(c => c.code === market) || {name: market};
+            suggestedProducts.push({
+                type: 'custom_format',
+                name: `${format.name} - ${country.name}`,
+                product_id: `${format.id}_${market.toLowerCase()}`,
+                description: `${format.name} format specifically for ${country.name} market`,
+                formats: [format.id],
+                countries: [market],
+                delivery_type: 'guaranteed',
+                cpm: format.type === 'video' ? 25.0 : 15.0
+            });
+        });
+    });
+    
+    displayProductSuggestions();
+}
+
+function displayProductSuggestions() {
+    const suggestionsHtml = suggestedProducts.map((product, index) => `
+        <div class="product-suggestion" data-index="${index}">
+            <div class="suggestion-header">
+                <div>
+                    <input type="checkbox" id="product-${index}" checked>
+                    <label for="product-${index}">
+                        <strong>${product.name}</strong>
+                        <span class="badge">${product.type.replace('_', ' ')}</span>
+                    </label>
+                    <p>${product.description}</p>
+                </div>
+                <div class="pricing-controls">
+                    <div class="pricing-type-toggle">
+                        <label>
+                            <input type="radio" name="pricing-type-${index}" value="fixed" ${product.cpm ? 'checked' : ''} onchange="togglePricingInputs(${index})">
+                            Fixed
+                        </label>
+                        <label>
+                            <input type="radio" name="pricing-type-${index}" value="auction" ${!product.cpm ? 'checked' : ''} onchange="togglePricingInputs(${index})">
+                            Auction
+                        </label>
+                    </div>
+                    <div class="pricing-inputs" id="pricing-inputs-${index}">
+                        ${product.cpm ? 
+                            `<input type="number" id="cpm-${index}" placeholder="CPM" value="${product.cpm}" step="0.01" min="0">
+                             <span>CPM</span>` : 
+                            `<input type="number" id="min-cpm-${index}" placeholder="Min" value="${product.price_guidance?.min || ''}" step="0.01" min="0">
+                             <span>-</span>
+                             <input type="number" id="max-cpm-${index}" placeholder="Max" value="${product.price_guidance?.max || ''}" step="0.01" min="0">
+                             <span>CPM</span>`
+                        }
+                    </div>
+                </div>
+            </div>
+            <div class="suggestion-details">
+                <div>
+                    <strong>Formats:</strong> ${product.formats.join(', ')}
+                </div>
+                <div>
+                    <strong>Markets:</strong> ${product.countries.join(', ')}
+                </div>
+            </div>
+        </div>
+    `).join('');
+    
+    document.getElementById('product-suggestions').innerHTML = suggestionsHtml;
+}
+
+function selectAll() {
+    document.querySelectorAll('.product-suggestion input[type="checkbox"]').forEach(cb => cb.checked = true);
+}
+
+function deselectAll() {
+    document.querySelectorAll('.product-suggestion input[type="checkbox"]').forEach(cb => cb.checked = false);
+}
+
+async function createSelectedProducts() {
+    const selectedIndices = Array.from(document.querySelectorAll('.product-suggestion input[type="checkbox"]:checked'))
+        .map(cb => parseInt(cb.id.replace('product-', '')));
+    
+    const productsToCreate = selectedIndices.map(i => {
+        const product = {...suggestedProducts[i]};
+        const pricingType = document.querySelector(`input[name="pricing-type-${i}"]:checked`).value;
+        
+        if (pricingType === 'fixed') {
+            const cpm = document.getElementById(`cpm-${i}`).value;
+            if (cpm) {
+                product.cpm = parseFloat(cpm);
+                delete product.price_guidance;
+            }
+        } else {
+            const minCpm = document.getElementById(`min-cpm-${i}`).value;
+            const maxCpm = document.getElementById(`max-cpm-${i}`).value;
+            if (minCpm && maxCpm) {
+                product.price_guidance = {
+                    min: parseFloat(minCpm),
+                    max: parseFloat(maxCpm)
+                };
+                delete product.cpm;
+            }
+        }
+        return product;
+    });
+    
+    if (productsToCreate.length === 0) {
+        alert('Please select at least one product to create');
+        return;
+    }
+    
+    nextStep(); // Move to creation step
+    
+    document.getElementById('creation-progress').innerHTML = 
+        `<p>Creating ${productsToCreate.length} products...</p><div class="spinner"></div>`;
+    
+    try {
+        const response = await fetch(`{{ url_for('create_products_bulk', tenant_id=tenant_id) }}`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({products: productsToCreate})
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            document.getElementById('created-count').textContent = result.created_count;
+            document.getElementById('creation-progress').style.display = 'none';
+            document.getElementById('creation-results').style.display = 'block';
+        } else {
+            alert('Error creating products: ' + result.error);
+        }
+        
+    } catch (error) {
+        alert('Error creating products: ' + error.message);
+    }
+}
+
+function addSelectedCountry() {
+    const select = document.getElementById('country-select');
+    const selectedCode = select.value;
+    
+    if (!selectedCode) {
+        alert('Please select a country');
+        return;
+    }
+    
+    // Check if already added
+    const existingCheckbox = document.querySelector(`input[name="markets"][value="${selectedCode}"]`);
+    if (existingCheckbox) {
+        alert('This country has already been added');
+        return;
+    }
+    
+    const country = countries.find(c => c.code === selectedCode);
+    const container = document.querySelector('.market-options');
+    const newOption = document.createElement('label');
+    newOption.className = 'market-option';
+    newOption.innerHTML = `
+        <input type="checkbox" name="markets" value="${country.code}" checked>
+        <span class="market-name">${country.flag} ${country.name}</span>
+    `;
+    container.appendChild(newOption);
+    
+    // Reset select
+    select.value = '';
+}
+
+function startOver() {
+    window.location.reload();
+}
+
+function togglePricingInputs(index) {
+    const pricingType = document.querySelector(`input[name="pricing-type-${index}"]:checked`).value;
+    const pricingInputsDiv = document.getElementById(`pricing-inputs-${index}`);
+    
+    if (pricingType === 'fixed') {
+        pricingInputsDiv.innerHTML = `
+            <input type="number" id="cpm-${index}" placeholder="CPM" step="0.01" min="0">
+            <span>CPM</span>
+        `;
+    } else {
+        pricingInputsDiv.innerHTML = `
+            <input type="number" id="min-cpm-${index}" placeholder="Min" step="0.01" min="0">
+            <span>-</span>
+            <input type="number" id="max-cpm-${index}" placeholder="Max" step="0.01" min="0">
+            <span>CPM</span>
+        `;
+    }
+}
+
+// Initialize country dropdown on page load
+document.addEventListener('DOMContentLoaded', function() {
+    const select = document.getElementById('country-select');
+    const alreadyShownCodes = ['US', 'CA', 'GB', 'AU', 'DE', 'FR', 'JP', 'BR'];
+    
+    // Filter out countries that are already shown as top markets
+    const availableCountries = countries.filter(c => !alreadyShownCodes.includes(c.code));
+    
+    // Sort countries by name
+    availableCountries.sort((a, b) => a.name.localeCompare(b.name));
+    
+    // Populate dropdown
+    availableCountries.forEach(country => {
+        const option = document.createElement('option');
+        option.value = country.code;
+        option.textContent = `${country.flag} ${country.name}`;
+        select.appendChild(option);
+    });
+});
+</script>
+{% endblock %}
