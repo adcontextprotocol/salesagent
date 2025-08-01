@@ -4,11 +4,35 @@
 
 {% block content %}
 <div class="card">
+    {% if products|length == 0 %}
+    <!-- No products - show welcome message and wizard -->
+    <div class="empty-state">
+        <h2>Welcome to AdCP Product Management</h2>
+        <div class="empty-state-icon">📦</div>
+        <p class="empty-state-message">
+            You haven't created any products yet. Let's set up your first products based on your ad server configuration and target markets.
+        </p>
+        <div class="empty-state-actions">
+            <a href="{{ url_for('product_setup_wizard', tenant_id=tenant_id) }}" class="btn btn-primary btn-large">
+                Start Product Setup Wizard
+            </a>
+            <p class="alternative-options">
+                Or you can:
+                <a href="{{ url_for('browse_product_templates', tenant_id=tenant_id) }}">browse templates</a> |
+                <a href="{{ url_for('bulk_product_upload_form', tenant_id=tenant_id) }}">bulk upload</a> |
+                <a href="{{ url_for('add_product', tenant_id=tenant_id) }}">create manually</a>
+            </p>
+        </div>
+    </div>
+    {% else %}
+    <!-- Has products - show normal list -->
     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
         <h2>Products - {{ tenant_name }}</h2>
         <div style="display: flex; gap: 0.5rem;">
             <a href="{{ url_for('tenant_detail', tenant_id=tenant_id) }}" class="btn btn-secondary">← Back to Home</a>
-            <a href="{{ url_for('add_product_ai_form', tenant_id=tenant_id) }}" class="btn btn-primary">Add with AI</a>
+            <a href="{{ url_for('browse_product_templates', tenant_id=tenant_id) }}" class="btn btn-primary">Browse Templates</a>
+            <a href="{{ url_for('bulk_product_upload_form', tenant_id=tenant_id) }}" class="btn btn-secondary">Bulk Upload</a>
+            <a href="{{ url_for('add_product_ai_form', tenant_id=tenant_id) }}" class="btn btn-secondary">Add with AI</a>
             <a href="{{ url_for('add_product', tenant_id=tenant_id) }}" class="btn btn-secondary">Add Manually</a>
         </div>
     </div>
@@ -80,14 +104,50 @@
         </tbody>
     </table>
     
-    {% if not products %}
-    <p style="text-align: center; padding: 2rem; color: #666;">
-        No products found. <a href="{{ url_for('add_product', tenant_id=tenant_id) }}">Add your first product</a>
-    </p>
-    {% endif %}
+    {% endif %} <!-- end else (has products) -->
 </div>
 
 <style>
+.empty-state {
+    text-align: center;
+    padding: 4rem 2rem;
+}
+
+.empty-state-icon {
+    font-size: 4rem;
+    margin: 2rem 0;
+}
+
+.empty-state-message {
+    font-size: 1.2rem;
+    color: #666;
+    max-width: 600px;
+    margin: 0 auto 2rem;
+}
+
+.empty-state-actions {
+    margin-top: 2rem;
+}
+
+.btn-large {
+    padding: 1rem 2rem;
+    font-size: 1.1rem;
+}
+
+.alternative-options {
+    margin-top: 1.5rem;
+    color: #666;
+}
+
+.alternative-options a {
+    color: #007bff;
+    text-decoration: none;
+}
+
+.alternative-options a:hover {
+    text-decoration: underline;
+}
+
 .badge {
     display: inline-block;
     padding: 0.25rem 0.5rem;
