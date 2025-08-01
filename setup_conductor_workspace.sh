@@ -134,6 +134,15 @@ if grep -q "for p in principals_data:" database.py && ! grep -B1 "for p in princ
     echo "✗ Warning: database.py may have indentation issues that need manual fixing"
 fi
 
+# Set up Git hooks for this workspace
+echo "Setting up Git hooks..."
+if [ -f setup_hooks.sh ]; then
+    ./setup_hooks.sh
+else
+    echo "✗ Warning: setup_hooks.sh not found. Git hooks not installed."
+    echo "  To install hooks later, run: ./setup_hooks.sh"
+fi
+
 echo ""
 echo "Setup complete! Next steps:"
 echo "1. Review .env file and ensure GEMINI_API_KEY is set"
