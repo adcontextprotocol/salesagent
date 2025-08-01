@@ -773,6 +773,235 @@ def test_slack(tenant_id):
     except Exception as e:
         return jsonify({"success": False, "error": str(e)})
 
+@app.route('/tenant/wizard', methods=['GET', 'POST'])
+@require_auth(admin_only=True)
+def tenant_wizard():
+    """Tenant setup wizard (super admin only)."""
+    if request.method == 'POST':
+        try:
+            # Extract basic tenant info
+            tenant_name = request.form.get('tenant_name')
+            tenant_id = request.form.get('tenant_id') or tenant_name.lower().replace(' ', '_')
+            
+            # Build config based on wizard selections
+            config = {
+                "adapters": {},
+                "creative_engine": {
+                    "auto_approve_formats": request.form.getlist('standard_formats'),
+                    "human_review_required": True
+                },
+                "features": {
+                    "max_daily_budget": 10000,
+                    "enable_aee_signals": True
+                },
+                "authorized_emails": [],
+                "authorized_domains": []
+            }
+            
+            # Configure selected adapter
+            adapter = request.form.get('adapter')
+            if adapter == 'mock':
+                config['adapters']['mock'] = {'enabled': True}
+            elif adapter == 'google_ad_manager':
+                config['adapters']['google_ad_manager'] = {
+                    'enabled': True,
+                    'network_code': request.form.get('gam_network_code')
+                }
+            elif adapter == 'kevel':
+                config['adapters']['kevel'] = {
+                    'enabled': True,
+                    'network_id': request.form.get('kevel_network_id'),
+                    'api_key': request.form.get('kevel_api_key')
+                }
+            elif adapter == 'triton':
+                config['adapters']['triton'] = {
+                    'enabled': True,
+                    'station_id': request.form.get('triton_station_id')
+                }
+            
+            conn = get_db_connection()
+            
+            # Create tenant
+            conn.execute("""
+                INSERT INTO tenants (
+                    tenant_id, name, subdomain, config,
+                    created_at, updated_at, is_active, billing_plan
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                tenant_id,
+                tenant_name,
+                tenant_id,
+                json.dumps(config),
+                datetime.now().isoformat(),
+                datetime.now().isoformat(),
+                True,
+                'standard'
+            ))
+            
+            # Create custom formats if provided
+            custom_format_names = request.form.getlist('custom_format_name[]')
+            custom_format_ids = request.form.getlist('custom_format_id[]')
+            custom_format_descriptions = request.form.getlist('custom_format_description[]')
+            custom_format_specs = request.form.getlist('custom_format_specs[]')
+            
+            for i in range(len(custom_format_names)):
+                if custom_format_names[i] and custom_format_ids[i]:
+                    conn.execute("""
+                        INSERT INTO creative_formats (
+                            tenant_id, format_id, format_name, format_type,
+                            width, height, mime_types, max_size_kb,
+                            description, is_standard
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """, (
+                        tenant_id,
+                        custom_format_ids[i],
+                        custom_format_names[i],
+                        'display',  # Default to display, can be enhanced later
+                        None,  # Custom formats may not have standard dimensions
+                        None,
+                        json.dumps(['image/jpeg', 'image/png', 'image/gif']),
+                        1024,  # Default 1MB
+                        custom_format_descriptions[i] if i < len(custom_format_descriptions) else '',
+                        False
+                    ))
+            
+            # Create standard products if selected
+            if request.form.get('product_ron_display'):
+                conn.execute("""
+                    INSERT INTO products (
+                        tenant_id, product_id, name, description,
+                        product_type, targeting_available, creative_formats,
+                        pricing_model, base_price, min_spend, currency,
+                        countries, is_active
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, (
+                    tenant_id,
+                    'ron_display',
+                    'Run of Network - Display',
+                    'Standard display advertising across entire network',
+                    'guaranteed',
+                    json.dumps(['geographic', 'device', 'daypart']),
+                    json.dumps(['display_300x250', 'display_728x90', 'display_320x50']),
+                    'cpm',
+                    float(request.form.get('ron_display_cpm', 5.0)),
+                    float(request.form.get('ron_display_min_budget', 1000)),
+                    'USD',
+                    json.dumps(['US']),
+                    True
+                ))
+            
+            if request.form.get('product_ron_video'):
+                conn.execute("""
+                    INSERT INTO products (
+                        tenant_id, product_id, name, description,
+                        product_type, targeting_available, creative_formats,
+                        pricing_model, base_price, min_spend, currency,
+                        countries, is_active
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, (
+                    tenant_id,
+                    'ron_video',
+                    'Run of Network - Video',
+                    'Video advertising across video content',
+                    'guaranteed',
+                    json.dumps(['geographic', 'device', 'daypart']),
+                    json.dumps(['video_instream']),
+                    'cpm',
+                    float(request.form.get('ron_video_cpm', 15.0)),
+                    float(request.form.get('ron_video_min_budget', 2500)),
+                    'USD',
+                    json.dumps(['US']),
+                    True
+                ))
+            
+            if request.form.get('product_homepage'):
+                conn.execute("""
+                    INSERT INTO products (
+                        tenant_id, product_id, name, description,
+                        product_type, targeting_available, creative_formats,
+                        pricing_model, base_price, min_spend, currency,
+                        countries, is_active
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, (
+                    tenant_id,
+                    'homepage_premium',
+                    'Homepage Premium',
+                    'Premium placement on homepage',
+                    'guaranteed',
+                    json.dumps(['geographic', 'device', 'daypart']),
+                    json.dumps(['display_970x250', 'display_300x600']),
+                    'cpm',
+                    float(request.form.get('homepage_cpm', 25.0)),
+                    float(request.form.get('homepage_min_budget', 5000)),
+                    'USD',
+                    json.dumps(['US']),
+                    True
+                ))
+            
+            # Create principals
+            principal_names = request.form.getlist('principal_name[]')
+            principal_emails = request.form.getlist('principal_email[]')
+            principal_adapter_ids = request.form.getlist('principal_adapter_id[]')
+            
+            for i in range(len(principal_names)):
+                if principal_names[i]:
+                    principal_id = principal_names[i].lower().replace(' ', '_')
+                    principal_token = secrets.token_urlsafe(32)
+                    
+                    platform_mappings = {}
+                    if adapter and principal_adapter_ids[i]:
+                        platform_mappings[adapter] = {
+                            'advertiser_id': principal_adapter_ids[i]
+                        }
+                    
+                    conn.execute("""
+                        INSERT INTO principals (
+                            tenant_id, principal_id, name,
+                            platform_mappings, access_token
+                        ) VALUES (?, ?, ?, ?, ?)
+                    """, (
+                        tenant_id,
+                        principal_id,
+                        principal_names[i],
+                        json.dumps(platform_mappings),
+                        principal_token
+                    ))
+            
+            # Create admin principal
+            admin_token = secrets.token_urlsafe(32)
+            conn.execute("""
+                INSERT INTO principals (
+                    tenant_id, principal_id, name,
+                    platform_mappings, access_token
+                ) VALUES (?, ?, ?, ?, ?)
+            """, (
+                tenant_id,
+                f"{tenant_id}_admin",
+                f"{tenant_name} Admin",
+                json.dumps({}),
+                admin_token
+            ))
+            
+            conn.commit()
+            conn.close()
+            
+            flash(f'Tenant "{tenant_name}" created successfully!', 'success')
+            return redirect(url_for('tenant_detail', tenant_id=tenant_id))
+            
+        except Exception as e:
+            flash(f'Error creating tenant: {str(e)}', 'error')
+            return redirect(url_for('tenant_wizard'))
+    
+    # GET request - show initial form to capture tenant name
+    if request.args.get('tenant_name'):
+        # Wizard mode
+        return render_template('tenant_wizard.html',
+                             tenant_name=request.args.get('tenant_name'),
+                             tenant_id=request.args.get('tenant_id', ''))
+    else:
+        # Show initial form to capture tenant name
+        return render_template('tenant_wizard_start.html')
+
 @app.route('/create_tenant', methods=['GET', 'POST'])
 @require_auth(admin_only=True)
 def create_tenant():
@@ -2359,7 +2588,7 @@ def register_adapter_routes():
         print("Starting adapter route registration...")
         # Get all enabled adapters across all tenants
         conn = get_db_connection()
-        cursor = conn.execute("SELECT DISTINCT config FROM tenants")
+        cursor = conn.execute("SELECT config FROM tenants")
         
         registered_adapters = set()
         for row in cursor.fetchall():
@@ -2439,8 +2668,9 @@ if __name__ == '__main__':
     # Run server
     port = int(os.environ.get('ADMIN_UI_PORT', 8001))  # Match OAuth redirect URI
     # Debug mode off for production
-    debug = os.environ.get('FLASK_ENV') == 'development'
+    debug = os.environ.get('FLASK_DEBUG', '0') == '1'
     
+    print(f"DEBUG: FLASK_DEBUG={os.environ.get('FLASK_DEBUG')}, debug={debug}")
     print(f"Starting Admin UI with Google OAuth on port {port}")
     print(f"Redirect URI should be: http://localhost:{port}/auth/google/callback")
     
