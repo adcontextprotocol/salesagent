@@ -1,0 +1,191 @@
+{% extends "base.html" %}
+
+{% block title %}Initial Setup - {{ tenant_name }} - AdCP Admin{% endblock %}
+
+{% block content %}
+<style>
+.setup-container {
+    max-width: 700px;
+    margin: 0 auto;
+}
+
+.setup-card {
+    background: white;
+    padding: 2rem;
+    border-radius: 8px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    margin-bottom: 1.5rem;
+}
+
+.alert-info {
+    background: #e3f2fd;
+    color: #1976d2;
+    padding: 1rem;
+    border-radius: 4px;
+    margin-bottom: 1rem;
+}
+
+.radio-card {
+    display: block;
+    border: 2px solid #e0e0e0;
+    border-radius: 8px;
+    padding: 1rem;
+    margin-bottom: 0.5rem;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.radio-card:hover {
+    border-color: #3498db;
+}
+
+.radio-card input[type="radio"] {
+    display: none;
+}
+
+.radio-card input[type="radio"]:checked + .radio-card-content {
+    border-color: #3498db;
+}
+
+.radio-card-content h4 {
+    margin: 0 0 0.5rem 0;
+}
+
+.radio-card-content p {
+    margin: 0;
+    color: #666;
+    font-size: 0.9rem;
+}
+</style>
+
+<div class="setup-container">
+    <h1>Welcome to AdCP!</h1>
+    <p style="font-size: 1.1rem; color: #666; margin-bottom: 2rem;">
+        Let's get your advertising platform connected. This should only take a minute.
+    </p>
+    
+    <form method="POST">
+        <div class="setup-card">
+            <h2>1. Connect Your Ad Server</h2>
+            <p>Select the ad server you use to manage your advertising inventory.</p>
+            
+            <div style="margin-top: 1.5rem;">
+                <label class="radio-card">
+                    <input type="radio" name="adapter" value="google_ad_manager" onchange="showAdapterConfig('google_ad_manager')">
+                    <div class="radio-card-content">
+                        <h4>Google Ad Manager</h4>
+                        <p>Enterprise ad serving platform by Google</p>
+                    </div>
+                </label>
+                
+                <label class="radio-card">
+                    <input type="radio" name="adapter" value="kevel" onchange="showAdapterConfig('kevel')">
+                    <div class="radio-card-content">
+                        <h4>Kevel</h4>
+                        <p>API-first ad serving platform</p>
+                    </div>
+                </label>
+                
+                <label class="radio-card">
+                    <input type="radio" name="adapter" value="triton" onchange="showAdapterConfig('triton')">
+                    <div class="radio-card-content">
+                        <h4>Triton Digital</h4>
+                        <p>Audio and podcast advertising platform</p>
+                    </div>
+                </label>
+                
+                <label class="radio-card">
+                    <input type="radio" name="adapter" value="mock" onchange="showAdapterConfig('mock')">
+                    <div class="radio-card-content">
+                        <h4>Mock (Development)</h4>
+                        <p>For testing and development purposes</p>
+                    </div>
+                </label>
+            </div>
+            
+            <!-- Adapter-specific configuration -->
+            <div id="adapter-config" style="margin-top: 2rem;">
+                <div id="config-google_ad_manager" class="adapter-config" style="display: none;">
+                    <h4>Google Ad Manager Configuration</h4>
+                    <div class="form-group">
+                        <label for="gam_network_code">Network Code *</label>
+                        <input type="text" id="gam_network_code" name="gam_network_code" placeholder="e.g., 123456789">
+                        <small>Found in GAM under Admin → Global Settings</small>
+                    </div>
+                </div>
+                
+                <div id="config-kevel" class="adapter-config" style="display: none;">
+                    <h4>Kevel Configuration</h4>
+                    <div class="form-group">
+                        <label for="kevel_network_id">Network ID *</label>
+                        <input type="text" id="kevel_network_id" name="kevel_network_id">
+                    </div>
+                    <div class="form-group">
+                        <label for="kevel_api_key">API Key *</label>
+                        <input type="password" id="kevel_api_key" name="kevel_api_key">
+                    </div>
+                </div>
+                
+                <div id="config-triton" class="adapter-config" style="display: none;">
+                    <h4>Triton Digital Configuration</h4>
+                    <div class="form-group">
+                        <label for="triton_station_id">Station ID *</label>
+                        <input type="text" id="triton_station_id" name="triton_station_id">
+                    </div>
+                </div>
+                
+                <div id="config-mock" class="adapter-config" style="display: none;">
+                    <div class="alert-info">
+                        <strong>Mock Adapter Selected</strong><br>
+                        No configuration required. This adapter simulates ad server behavior for testing.
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="setup-card">
+            <h2>2. Platform Settings</h2>
+            
+            <div class="form-group">
+                <label for="max_daily_budget">Max Daily Budget per Media Buy ($)</label>
+                <input type="number" id="max_daily_budget" name="max_daily_budget" value="10000" min="0">
+                <small>Safety limit to prevent accidental overspending on any single media buy</small>
+            </div>
+            
+            <div class="form-group" style="margin-top: 1.5rem;">
+                <label style="display: flex; align-items: center; gap: 0.5rem;">
+                    <input type="checkbox" id="human_review" name="human_review" checked>
+                    <span>Require human review for creatives</span>
+                </label>
+                <small style="margin-left: 1.5rem; color: #666;">Creatives must be approved before going live</small>
+            </div>
+            
+            <div class="form-group" style="margin-top: 1rem;">
+                <label style="display: flex; align-items: center; gap: 0.5rem;">
+                    <input type="checkbox" id="enable_aee" name="enable_aee">
+                    <span>AEE integration is complete</span>
+                </label>
+                <small style="margin-left: 1.5rem; color: #666;">Check this when your AEE (Advanced Audience Extension) integration is ready</small>
+            </div>
+        </div>
+        
+        <div style="text-align: center; margin-top: 2rem;">
+            <button type="submit" class="btn" style="font-size: 1.1rem; padding: 0.75rem 2rem;">
+                Continue to Complete Setup →
+            </button>
+        </div>
+    </form>
+</div>
+
+<script>
+function showAdapterConfig(adapter) {
+    document.querySelectorAll('.adapter-config').forEach(el => {
+        el.style.display = 'none';
+    });
+    const configEl = document.getElementById('config-' + adapter);
+    if (configEl) {
+        configEl.style.display = 'block';
+    }
+}
+</script>
+{% endblock %}
