@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+
+{% block title %}Create Tenant - AdCP Admin{% endblock %}
+
+{% block content %}
+<div class="card" style="max-width: 600px; margin: 0 auto;">
+    <h2>Create New Tenant</h2>
+    <p style="color: #666; margin-bottom: 2rem;">
+        Create a new publisher account. The publisher will complete their setup after logging in.
+    </p>
+    
+    {% if error %}
+    <div class="alert alert-error">{{ error }}</div>
+    {% endif %}
+    
+    <form method="POST">
+        <h3>Basic Information</h3>
+        
+        <div class="form-group">
+            <label for="name">Publisher Name *</label>
+            <input type="text" id="name" name="name" required placeholder="e.g., New York Times">
+        </div>
+        
+        <div class="form-group">
+            <label for="tenant_id">Tenant ID</label>
+            <input type="text" id="tenant_id" name="tenant_id" 
+                   placeholder="Auto-generated from name" pattern="[a-z0-9_-]+">
+            <small>Leave blank to auto-generate. Lowercase letters, numbers, hyphens, or underscores only.</small>
+        </div>
+        
+        <div class="form-group">
+            <label for="subdomain">Subdomain</label>
+            <input type="text" id="subdomain" name="subdomain" 
+                   placeholder="e.g., nytimes" pattern="[a-z0-9-]+">
+            <small>Access at subdomain.localhost:8080. Leave blank to use tenant ID.</small>
+        </div>
+        
+        <div class="form-group">
+            <label for="billing_plan">Billing Plan</label>
+            <select id="billing_plan" name="billing_plan">
+                <option value="standard">Standard</option>
+                <option value="premium">Premium</option>
+                <option value="enterprise">Enterprise</option>
+            </select>
+        </div>
+        
+        <h3 style="margin-top: 2rem;">Access Control</h3>
+        
+        <div class="form-group">
+            <label for="authorized_emails">Authorized Email Addresses</label>
+            <input type="text" id="authorized_emails" name="authorized_emails" 
+                   placeholder="admin@publisher.com, editor@publisher.com">
+            <small>Comma-separated list of email addresses that can access this tenant</small>
+        </div>
+        
+        <div class="form-group">
+            <label for="authorized_domains">Authorized Email Domains</label>
+            <input type="text" id="authorized_domains" name="authorized_domains" 
+                   placeholder="publisher.com, agency.com">
+            <small>Comma-separated list of email domains (anyone @domain can access)</small>
+        </div>
+        
+        <div style="margin-top: 2rem; display: flex; gap: 1rem;">
+            <button type="submit" class="btn">Create Tenant</button>
+            <a href="/" class="btn btn-secondary">Cancel</a>
+        </div>
+    </form>
+</div>
+{% endblock %}

@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% block title %}Tenant Setup Wizard - AdCP Admin{% endblock %}
+{% block title %}Setup {{ tenant_name }} - AdCP Admin{% endblock %}
 
 {% block content %}
 <style>
@@ -164,39 +164,42 @@
 </style>
 
 <div class="wizard-container">
-    <h1>Tenant Setup Wizard</h1>
+    <h1>Setup {{ tenant_name }}</h1>
+    <p style="text-align: center; color: #666; margin-bottom: 2rem;">
+        Complete the setup to start using the AdCP platform.
+    </p>
     
     <div class="wizard-steps">
         <div class="wizard-step active" data-step="1">
             <div class="step-circle">1</div>
-            <div class="step-label">Choose Ad Server</div>
+            <div class="step-label">Connect Ad Server</div>
         </div>
         <div class="wizard-step" data-step="2">
             <div class="step-circle">2</div>
-            <div class="step-label">Select Standard Formats</div>
+            <div class="step-label">Select Ad Formats</div>
         </div>
         <div class="wizard-step" data-step="3">
             <div class="step-circle">3</div>
-            <div class="step-label">Add Custom Formats</div>
+            <div class="step-label">Custom Formats</div>
         </div>
         <div class="wizard-step" data-step="4">
             <div class="step-circle">4</div>
-            <div class="step-label">Setup Products</div>
+            <div class="step-label">Configure Products</div>
         </div>
         <div class="wizard-step" data-step="5">
             <div class="step-circle">5</div>
-            <div class="step-label">Add Principals</div>
+            <div class="step-label">Add Advertisers</div>
         </div>
     </div>
     
     <form id="wizardForm" method="POST">
-        <!-- Step 1: Choose Ad Server -->
+        <!-- Step 1: Connect Ad Server -->
         <div id="step1" class="wizard-content">
-            <h2>Choose Your Ad Server</h2>
-            <p>Select the ad server you use to manage your advertising inventory.</p>
+            <h2>Connect Your Ad Server</h2>
+            <p>Select and configure the ad server you use to manage your advertising inventory.</p>
             
             <div class="form-group">
-                <label>Select Ad Server Platform:</label>
+                <label>Select Your Ad Server Platform:</label>
                 <div style="display: grid; gap: 1rem; margin-top: 1rem;">
                     <label class="radio-card">
                         <input type="radio" name="adapter" value="google_ad_manager" onchange="showAdapterConfig('google_ad_manager')">
@@ -278,7 +281,7 @@
                 </div>
             </div>
             
-            <h3 style="margin-top: 2rem;">Platform Features</h3>
+            <h3 style="margin-top: 2rem;">Platform Settings</h3>
             <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
                 <div class="form-group">
                     <label for="max_daily_budget">Max Daily Budget ($)</label>
@@ -307,7 +310,7 @@
         <!-- Step 2: Select Standard Formats -->
         <div id="step2" class="wizard-content" style="display: none;">
             <h2>Select Standard Ad Formats</h2>
-            <p>Choose which IAB standard ad formats your site supports. These are the most common formats that advertisers expect.</p>
+            <p>Choose which IAB standard ad formats your site supports.</p>
             
             <h3>Display Formats</h3>
             <div class="format-grid">
@@ -408,8 +411,8 @@
         
         <!-- Step 4: Setup Products -->
         <div id="step4" class="wizard-content" style="display: none;">
-            <h2>Setup Standard Products</h2>
-            <p>Create your initial advertising products. You can always add more products later.</p>
+            <h2>Configure Your Products</h2>
+            <p>Set up your initial advertising products. You can add more products later.</p>
             
             <div class="product-list">
                 <div class="product-item">
@@ -420,11 +423,11 @@
                     </div>
                     <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
                         <div class="form-group">
-                            <label>CPM Rate</label>
+                            <label>CPM Rate ($)</label>
                             <input type="number" name="ron_display_cpm" value="5.00" step="0.01">
                         </div>
                         <div class="form-group">
-                            <label>Minimum Budget</label>
+                            <label>Minimum Budget ($)</label>
                             <input type="number" name="ron_display_min_budget" value="1000" step="100">
                         </div>
                     </div>
@@ -438,11 +441,11 @@
                     </div>
                     <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
                         <div class="form-group">
-                            <label>CPM Rate</label>
+                            <label>CPM Rate ($)</label>
                             <input type="number" name="ron_video_cpm" value="15.00" step="0.01">
                         </div>
                         <div class="form-group">
-                            <label>Minimum Budget</label>
+                            <label>Minimum Budget ($)</label>
                             <input type="number" name="ron_video_min_budget" value="2500" step="100">
                         </div>
                     </div>
@@ -456,11 +459,11 @@
                     </div>
                     <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
                         <div class="form-group">
-                            <label>CPM Rate</label>
+                            <label>CPM Rate ($)</label>
                             <input type="number" name="homepage_cpm" value="25.00" step="0.01">
                         </div>
                         <div class="form-group">
-                            <label>Minimum Budget</label>
+                            <label>Minimum Budget ($)</label>
                             <input type="number" name="homepage_min_budget" value="5000" step="100">
                         </div>
                     </div>
@@ -470,12 +473,12 @@
         
         <!-- Step 5: Add Principals -->
         <div id="step5" class="wizard-content" style="display: none;">
-            <h2>Add Initial Principals</h2>
-            <p>Add one or more advertisers (principals) who will be using your platform.</p>
+            <h2>Add Your Advertisers</h2>
+            <p>Add one or more advertisers who will be using your platform.</p>
             
             <div id="principalsList">
                 <div class="principal-card">
-                    <h4>Principal 1</h4>
+                    <h4>Advertiser 1</h4>
                     <div class="form-group">
                         <label>Company Name *</label>
                         <input type="text" name="principal_name[]" placeholder="e.g., Acme Corporation" required>
@@ -487,21 +490,13 @@
                     <div class="form-group">
                         <label>Ad Server ID (optional)</label>
                         <input type="text" name="principal_adapter_id[]" placeholder="ID in your ad server">
-                        <small>If you already have this advertiser in your ad server</small>
+                        <small>If this advertiser already exists in your ad server</small>
                     </div>
                 </div>
             </div>
             
-            <button type="button" class="btn btn-secondary" onclick="addPrincipal()">+ Add Another Principal</button>
+            <button type="button" class="btn btn-secondary" onclick="addPrincipal()">+ Add Another Advertiser</button>
         </div>
-        
-        <!-- Hidden fields for basic tenant info -->
-        <input type="hidden" name="tenant_name" value="{{ tenant_name }}">
-        <input type="hidden" name="tenant_id" value="{{ tenant_id }}">
-        <input type="hidden" name="subdomain" value="{{ subdomain }}">
-        <input type="hidden" name="billing_plan" value="{{ billing_plan }}">
-        <input type="hidden" name="authorized_emails" value="{{ authorized_emails }}">
-        <input type="hidden" name="authorized_domains" value="{{ authorized_domains }}">
         
         <div class="wizard-footer">
             <button type="button" class="btn btn-secondary" onclick="previousStep()" id="prevBtn" style="display: none;">Previous</button>
@@ -591,7 +586,7 @@ function addPrincipal() {
     const principalCard = document.createElement('div');
     principalCard.className = 'principal-card';
     principalCard.innerHTML = `
-        <h4>Principal ${count}</h4>
+        <h4>Advertiser ${count}</h4>
         <div class="form-group">
             <label>Company Name *</label>
             <input type="text" name="principal_name[]" placeholder="e.g., Acme Corporation" required>
@@ -603,7 +598,7 @@ function addPrincipal() {
         <div class="form-group">
             <label>Ad Server ID (optional)</label>
             <input type="text" name="principal_adapter_id[]" placeholder="ID in your ad server">
-            <small>If you already have this advertiser in your ad server</small>
+            <small>If this advertiser already exists in your ad server</small>
         </div>
         <button type="button" class="btn btn-secondary" onclick="this.closest('.principal-card').remove()">Remove</button>
     `;
@@ -685,7 +680,7 @@ function validateStep(step) {
                 }
             });
             if (!hasValidPrincipal) {
-                alert('Please add at least one principal with a company name');
+                alert('Please add at least one advertiser with a company name');
                 return false;
             }
             break;

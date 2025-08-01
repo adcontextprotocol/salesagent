@@ -96,6 +96,24 @@
     </div>
 </div>
 
+{% if not tenant.config.setup_complete %}
+<div class="card" style="background: #fff3cd; border: 1px solid #ffeaa7; margin-top: 1rem;">
+    <div style="display: flex; align-items: center; gap: 1rem;">
+        <div style="font-size: 2em;">⚠️</div>
+        <div style="flex: 1;">
+            <h3 style="margin: 0; color: #856404;">Setup Required</h3>
+            <p style="margin: 0.5rem 0; color: #856404;">
+                This tenant has not completed initial setup. Please complete the setup wizard to configure your ad server, 
+                ad formats, products, and advertisers.
+            </p>
+        </div>
+        <a href="{{ url_for('tenant_setup_wizard', tenant_id=tenant.tenant_id) }}" class="btn">
+            Complete Setup →
+        </a>
+    </div>
+</div>
+{% endif %}
+
 <div class="tabs">
     {% if session.role == 'super_admin' %}
     <div class="tab active" data-tab="authorization">Authorization</div>
