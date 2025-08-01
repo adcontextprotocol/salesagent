@@ -12,23 +12,120 @@ echo "Setting up Conductor workspace: $CONDUCTOR_WORKSPACE_NAME"
 echo "Workspace path: $CONDUCTOR_WORKSPACE_PATH"
 echo "Root path: $CONDUCTOR_ROOT_PATH"
 
-# Derive a workspace number from the workspace name
-# This creates a hash of the workspace name and uses it to generate a consistent number
-WORKSPACE_HASH=$(echo -n "$CONDUCTOR_WORKSPACE_NAME" | cksum | cut -f1 -d' ')
-WORKSPACE_NUM=$((($WORKSPACE_HASH % 100) + 1))
-
 BASE_DIR="$CONDUCTOR_ROOT_PATH"
 
-# Calculate ports based on workspace number
-POSTGRES_PORT=$((5432 + $WORKSPACE_NUM))
-ADCP_PORT=$((8080 + $WORKSPACE_NUM))
-ADMIN_PORT=$((8001 + $WORKSPACE_NUM))
+# Check environment variables
+echo ""
+echo "Checking environment variables..."
+MISSING_VARS=0
 
-echo "Derived workspace number: $WORKSPACE_NUM (from name hash)"
-echo "Using ports:"
-echo "  PostgreSQL: $POSTGRES_PORT"
-echo "  MCP Server: $ADCP_PORT"
-echo "  Admin UI: $ADMIN_PORT"
+# Check SUPER_ADMIN_EMAILS (required)
+if [ -n "$SUPER_ADMIN_EMAILS" ]; then
+    echo "✓ SUPER_ADMIN_EMAILS configured: $SUPER_ADMIN_EMAILS"
+else
+    echo "✗ SUPER_ADMIN_EMAILS is NOT set (REQUIRED for Admin UI access)"
+    MISSING_VARS=$((MISSING_VARS + 1))
+fi
+
+# Check GEMINI_API_KEY (required)
+if [ -n "$GEMINI_API_KEY" ]; then
+    echo "✓ GEMINI_API_KEY configured"
+else
+    echo "✗ GEMINI_API_KEY is NOT set (REQUIRED for creative generation)"
+    MISSING_VARS=$((MISSING_VARS + 1))
+fi
+
+# Check Google OAuth (required)
+if [ -n "$GOOGLE_CLIENT_ID" ] && [ -n "$GOOGLE_CLIENT_SECRET" ]; then
+    echo "✓ Google OAuth configured via environment variables"
+elif [ -f "$BASE_DIR/client_secret"*.json ]; then
+    echo "✓ Google OAuth configured via client_secret.json file"
+else
+    echo "✗ Google OAuth is NOT configured (REQUIRED for Admin UI login)"
+    echo "  Set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET environment variables"
+    MISSING_VARS=$((MISSING_VARS + 1))
+fi
+
+# Check SUPER_ADMIN_DOMAINS (optional)
+if [ -n "$SUPER_ADMIN_DOMAINS" ]; then
+    echo "✓ SUPER_ADMIN_DOMAINS configured: $SUPER_ADMIN_DOMAINS"
+fi
+
+if [ $MISSING_VARS -gt 0 ]; then
+    echo ""
+    echo "⚠️  Warning: $MISSING_VARS required environment variable(s) missing!"
+    echo ""
+    echo "To fix this, add the following to your ~/.bashrc or ~/.zshrc:"
+    echo ""
+    echo "# AdCP Conductor Configuration"
+    [ -z "$SUPER_ADMIN_EMAILS" ] && echo "export SUPER_ADMIN_EMAILS='your-email@example.com'"
+    [ -z "$GEMINI_API_KEY" ] && echo "export GEMINI_API_KEY='your-gemini-api-key'"
+    [ -z "$GOOGLE_CLIENT_ID" ] && [ ! -f "$BASE_DIR/client_secret"*.json ] && echo "export GOOGLE_CLIENT_ID='your-client-id.apps.googleusercontent.com'"
+    [ -z "$GOOGLE_CLIENT_SECRET" ] && [ ! -f "$BASE_DIR/client_secret"*.json ] && echo "export GOOGLE_CLIENT_SECRET='your-client-secret'"
+    echo ""
+    echo "The workspace will be created but may not function properly."
+    read -p "Continue anyway? (y/N) " -n 1 -r
+    echo
+    if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+        exit 1
+    fi
+fi
+echo ""
+
+# Check if port management script exists
+PORT_MANAGER="$BASE_DIR/manage_conductor_ports.py"
+PORT_CONFIG="$BASE_DIR/conductor_ports.json"
+
+if [ -f "$PORT_MANAGER" ] && [ -f "$PORT_CONFIG" ]; then
+    echo "Using Conductor port reservation system..."
+    
+    # Reserve ports for this workspace
+    PORT_RESULT=$(python3 "$PORT_MANAGER" reserve "$CONDUCTOR_WORKSPACE_NAME" 2>&1)
+    
+    if [ $? -eq 0 ]; then
+        # Extract ports from the output
+        POSTGRES_PORT=$(echo "$PORT_RESULT" | grep "PostgreSQL:" | awk '{print $2}')
+        ADCP_PORT=$(echo "$PORT_RESULT" | grep "MCP Server:" | awk '{print $3}')
+        ADMIN_PORT=$(echo "$PORT_RESULT" | grep "Admin UI:" | awk '{print $3}')
+        
+        echo "$PORT_RESULT"
+    else
+        echo "Failed to reserve ports: $PORT_RESULT"
+        echo "Falling back to hash-based port assignment..."
+        
+        # Fallback: Derive a workspace number from the workspace name
+        WORKSPACE_HASH=$(echo -n "$CONDUCTOR_WORKSPACE_NAME" | cksum | cut -f1 -d' ')
+        WORKSPACE_NUM=$((($WORKSPACE_HASH % 100) + 1))
+        
+        # Calculate ports based on workspace number
+        POSTGRES_PORT=$((5432 + $WORKSPACE_NUM))
+        ADCP_PORT=$((8080 + $WORKSPACE_NUM))
+        ADMIN_PORT=$((8001 + $WORKSPACE_NUM))
+        
+        echo "Derived workspace number: $WORKSPACE_NUM (from name hash)"
+        echo "Using ports:"
+        echo "  PostgreSQL: $POSTGRES_PORT"
+        echo "  MCP Server: $ADCP_PORT"
+        echo "  Admin UI: $ADMIN_PORT"
+    fi
+else
+    echo "Port reservation system not found, using hash-based assignment..."
+    
+    # Fallback: Derive a workspace number from the workspace name
+    WORKSPACE_HASH=$(echo -n "$CONDUCTOR_WORKSPACE_NAME" | cksum | cut -f1 -d' ')
+    WORKSPACE_NUM=$((($WORKSPACE_HASH % 100) + 1))
+    
+    # Calculate ports based on workspace number
+    POSTGRES_PORT=$((5432 + $WORKSPACE_NUM))
+    ADCP_PORT=$((8080 + $WORKSPACE_NUM))
+    ADMIN_PORT=$((8001 + $WORKSPACE_NUM))
+    
+    echo "Derived workspace number: $WORKSPACE_NUM (from name hash)"
+    echo "Using ports:"
+    echo "  PostgreSQL: $POSTGRES_PORT"
+    echo "  MCP Server: $ADCP_PORT"
+    echo "  Admin UI: $ADMIN_PORT"
+fi
 
 # Copy required files from root workspace
 echo "Copying files from root workspace..."
@@ -51,27 +148,16 @@ SUPER_ADMIN_EMAILS=${SUPER_ADMIN_EMAILS:-}
 SUPER_ADMIN_DOMAINS=${SUPER_ADMIN_DOMAINS:-}
 EOF
 
-if [ -n "$GEMINI_API_KEY" ]; then
-    echo "✓ GEMINI_API_KEY configured from environment"
-else
-    echo "✗ Warning: GEMINI_API_KEY not found in environment"
-fi
+echo "✓ Created .env file with environment variables"
 
-# Copy OAuth credentials if they exist locally (not in git)
+# Copy OAuth credentials file if it exists (legacy method)
 oauth_files=$(ls $BASE_DIR/client_secret*.json 2>/dev/null)
 if [ -n "$oauth_files" ]; then
+    echo "ℹ️  Found OAuth credentials file (legacy method)"
     for file in $oauth_files; do
         cp "$file" .
-        echo "✓ Copied $(basename $file)"
-        # Also update docker-compose.override.yml to mount it
-        echo "✓ OAuth credentials file will be mounted in containers"
+        echo "   Copied $(basename $file)"
     done
-else
-    if [ -n "$GOOGLE_CLIENT_ID" ] && [ -n "$GOOGLE_CLIENT_SECRET" ]; then
-        echo "✓ OAuth configured via environment variables"
-    else
-        echo "ℹ️  No OAuth credentials found - Admin UI will run without Google OAuth"
-    fi
 fi
 
 # Update .env with unique ports
