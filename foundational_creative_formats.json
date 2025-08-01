@@ -8,27 +8,76 @@
       "description": "Premium responsive format that adapts across publisher platforms",
       "is_standard": true,
       "is_foundational": true,
-      "specs": {
-        "responsive": true,
-        "platforms": ["desktop", "tablet", "mobile"],
-        "minimum_viewport": {
-          "desktop": {"width": 970, "height": 250},
-          "tablet": {"width": 728, "height": 90},
-          "mobile": {"width": 320, "height": 50}
+      "assets": [
+        {
+          "asset_id": "main_creative",
+          "asset_type": "html",
+          "required": true,
+          "name": "Main Creative HTML",
+          "description": "Responsive HTML5 creative that adapts to different viewports",
+          "acceptable_formats": [
+            "html",
+            "html5"
+          ],
+          "max_file_size_mb": 5,
+          "additional_specs": {
+            "responsive": true,
+            "platforms": [
+              "desktop",
+              "tablet",
+              "mobile"
+            ],
+            "minimum_viewport": {
+              "desktop": {
+                "width": 970,
+                "height": 250
+              },
+              "tablet": {
+                "width": 728,
+                "height": 90
+              },
+              "mobile": {
+                "width": 320,
+                "height": 50
+              }
+            },
+            "maximum_viewport": {
+              "desktop": {
+                "width": 1920,
+                "height": 1080
+              },
+              "tablet": {
+                "width": 1024,
+                "height": 768
+              },
+              "mobile": {
+                "width": 414,
+                "height": 896
+              }
+            },
+            "animation": {
+              "allowed": true,
+              "max_duration_seconds": 30,
+              "user_initiated_expansion": true
+            }
+          }
         },
-        "maximum_viewport": {
-          "desktop": {"width": 1920, "height": 1080},
-          "tablet": {"width": 1024, "height": 768},
-          "mobile": {"width": 414, "height": 896}
-        },
-        "file_types": ["html5", "jpg", "png", "gif"],
-        "max_file_size_kb": 5120,
-        "animation": {
-          "allowed": true,
-          "max_duration_seconds": 30,
-          "user_initiated_expansion": true
+        {
+          "asset_id": "backup_image",
+          "asset_type": "image",
+          "required": false,
+          "name": "Backup Image",
+          "description": "Static backup image for environments that don't support HTML5",
+          "acceptable_formats": [
+            "jpg",
+            "png",
+            "gif"
+          ],
+          "max_file_size_mb": 0.2,
+          "width": 970,
+          "height": 250
         }
-      }
+      ]
     },
     {
       "format_id": "foundation_product_showcase_carousel",
@@ -37,29 +86,71 @@
       "description": "Interactive display featuring 3-10 products",
       "is_standard": true,
       "is_foundational": true,
-      "specs": {
-        "min_products": 3,
-        "max_products": 10,
-        "product_image_ratio": "1:1",
-        "platforms": ["desktop", "tablet", "mobile"],
-        "base_dimensions": {
-          "desktop": {"width": 970, "height": 250},
-          "tablet": {"width": 728, "height": 90},
-          "mobile": {"width": 320, "height": 100}
+      "assets": [
+        {
+          "asset_id": "product_images",
+          "asset_type": "image",
+          "required": true,
+          "name": "Product Images",
+          "description": "Collection of product images for the carousel (3-10 images)",
+          "acceptable_formats": [
+            "jpg",
+            "png"
+          ],
+          "max_file_size_mb": 0.2,
+          "additional_specs": {
+            "min_count": 3,
+            "max_count": 10,
+            "aspect_ratio": "1:1",
+            "dimensions": {
+              "desktop": {
+                "width": 200,
+                "height": 200
+              },
+              "tablet": {
+                "width": 150,
+                "height": 150
+              },
+              "mobile": {
+                "width": 100,
+                "height": 100
+              }
+            }
+          }
         },
-        "product_image_size": {
-          "desktop": {"width": 200, "height": 200},
-          "tablet": {"width": 150, "height": 150},
-          "mobile": {"width": 100, "height": 100}
+        {
+          "asset_id": "product_titles",
+          "asset_type": "text",
+          "required": true,
+          "name": "Product Titles",
+          "description": "Title text for each product in the carousel",
+          "max_length": 50,
+          "additional_specs": {
+            "count": "matches product_images count"
+          }
         },
-        "file_types": ["jpg", "png"],
-        "max_file_size_per_image_kb": 200,
-        "features": {
-          "swipeable": true,
-          "auto_rotate": true,
-          "click_through_per_product": true
+        {
+          "asset_id": "product_descriptions",
+          "asset_type": "text",
+          "required": false,
+          "name": "Product Descriptions",
+          "description": "Description text for each product",
+          "max_length": 100,
+          "additional_specs": {
+            "count": "matches product_images count"
+          }
+        },
+        {
+          "asset_id": "click_urls",
+          "asset_type": "url",
+          "required": true,
+          "name": "Product Click-Through URLs",
+          "description": "Landing page URL for each product",
+          "additional_specs": {
+            "count": "matches product_images count"
+          }
         }
-      }
+      ]
     },
     {
       "format_id": "foundation_expandable_display",
@@ -68,27 +159,71 @@
       "description": "Banner with expandable canvas on user interaction",
       "is_standard": true,
       "is_foundational": true,
-      "specs": {
-        "collapsed_state": {
-          "desktop": {"width": 970, "height": 90},
-          "tablet": {"width": 728, "height": 90},
-          "mobile": {"width": 320, "height": 50}
+      "assets": [
+        {
+          "asset_id": "collapsed_creative",
+          "asset_type": "html",
+          "required": true,
+          "name": "Collapsed State Creative",
+          "description": "Creative shown in collapsed state",
+          "acceptable_formats": [
+            "html",
+            "html5",
+            "jpg",
+            "png"
+          ],
+          "max_file_size_mb": 1,
+          "additional_specs": {
+            "dimensions": {
+              "desktop": {
+                "width": 970,
+                "height": 90
+              },
+              "tablet": {
+                "width": 728,
+                "height": 90
+              },
+              "mobile": {
+                "width": 320,
+                "height": 50
+              }
+            }
+          }
         },
-        "expanded_state": {
-          "desktop": {"width": 970, "height": 500},
-          "tablet": {"width": 728, "height": 500},
-          "mobile": {"width": 320, "height": 480}
-        },
-        "expansion_direction": ["down", "up", "left", "right"],
-        "expansion_trigger": ["click", "hover", "auto"],
-        "file_types": ["html5", "jpg", "png"],
-        "max_file_size_kb": 2048,
-        "animation": {
-          "allowed": true,
-          "polite_load": true,
-          "close_button_required": true
+        {
+          "asset_id": "expanded_creative",
+          "asset_type": "html",
+          "required": true,
+          "name": "Expanded State Creative",
+          "description": "Creative shown when expanded",
+          "acceptable_formats": [
+            "html",
+            "html5"
+          ],
+          "max_file_size_mb": 2,
+          "additional_specs": {
+            "dimensions": {
+              "desktop": {
+                "width": 970,
+                "height": 500
+              },
+              "tablet": {
+                "width": 728,
+                "height": 500
+              },
+              "mobile": {
+                "width": 320,
+                "height": 480
+              }
+            },
+            "animation": {
+              "allowed": true,
+              "polite_load": true,
+              "close_button_required": true
+            }
+          }
         }
-      }
+      ]
     },
     {
       "format_id": "foundation_scroll_triggered_experience",
@@ -97,25 +232,71 @@
       "description": "Mobile-first format that reveals content on scroll",
       "is_standard": true,
       "is_foundational": true,
-      "specs": {
-        "trigger_type": "scroll",
-        "trigger_threshold": "25%",
-        "platforms": ["mobile", "tablet"],
-        "dimensions": {
-          "mobile": {"width": "100vw", "height": "100vh"},
-          "tablet": {"width": "100vw", "height": "50vh"}
+      "assets": [
+        {
+          "asset_id": "main_content",
+          "asset_type": "html",
+          "required": true,
+          "name": "Main Content",
+          "description": "Primary creative content triggered on scroll",
+          "acceptable_formats": [
+            "html",
+            "html5"
+          ],
+          "max_file_size_mb": 3,
+          "additional_specs": {
+            "trigger_type": "scroll",
+            "trigger_threshold": "25%",
+            "platforms": [
+              "mobile",
+              "tablet"
+            ],
+            "dimensions": {
+              "mobile": {
+                "width": "100vw",
+                "height": "100vh"
+              },
+              "tablet": {
+                "width": "100vw",
+                "height": "50vh"
+              }
+            },
+            "parallax_enabled": true,
+            "sticky_duration_seconds": 5
+          }
         },
-        "parallax_enabled": true,
-        "sticky_duration_seconds": 5,
-        "file_types": ["html5", "jpg", "png", "mp4"],
-        "max_file_size_kb": 3072,
-        "video_specs": {
-          "max_duration_seconds": 15,
-          "autoplay": true,
-          "muted": true,
-          "controls": false
+        {
+          "asset_id": "background_video",
+          "asset_type": "video",
+          "required": false,
+          "name": "Background Video",
+          "description": "Optional background video for enhanced experience",
+          "acceptable_formats": [
+            "mp4",
+            "webm"
+          ],
+          "max_file_size_mb": 5,
+          "duration_seconds": 15,
+          "additional_specs": {
+            "autoplay": true,
+            "muted": true,
+            "controls": false,
+            "loop": true
+          }
+        },
+        {
+          "asset_id": "background_image",
+          "asset_type": "image",
+          "required": false,
+          "name": "Background Image",
+          "description": "Fallback image when video is not supported",
+          "acceptable_formats": [
+            "jpg",
+            "png"
+          ],
+          "max_file_size_mb": 1
         }
-      }
+      ]
     },
     {
       "format_id": "foundation_universal_video",
@@ -124,46 +305,118 @@
       "description": "Standard video specifications across platforms",
       "is_standard": true,
       "is_foundational": true,
-      "specs": {
-        "aspect_ratios": ["16:9", "9:16", "1:1", "4:5"],
-        "resolutions": {
-          "16:9": [
-            {"width": 1920, "height": 1080},
-            {"width": 1280, "height": 720},
-            {"width": 854, "height": 480}
-          ],
-          "9:16": [
-            {"width": 1080, "height": 1920},
-            {"width": 720, "height": 1280}
-          ],
-          "1:1": [
-            {"width": 1080, "height": 1080},
-            {"width": 720, "height": 720}
-          ],
-          "4:5": [
-            {"width": 1080, "height": 1350},
-            {"width": 720, "height": 900}
-          ]
-        },
-        "codecs": ["h264", "vp9"],
-        "file_types": ["mp4", "webm"],
-        "max_file_size_mb": 50,
-        "max_bitrate_mbps": 10,
-        "duration_seconds": {
-          "min": 6,
-          "max": 30,
-          "extended_max": 180
-        },
-        "audio": {
-          "codec": "aac",
-          "bitrate_kbps": 128,
-          "muted_by_default": true
-        },
-        "captions": {
+      "assets": [
+        {
+          "asset_id": "video_file",
+          "asset_type": "video",
           "required": true,
-          "formats": ["srt", "vtt", "burned_in"]
+          "name": "Video File",
+          "description": "Main video creative file",
+          "acceptable_formats": [
+            "mp4",
+            "webm"
+          ],
+          "max_file_size_mb": 50,
+          "duration_seconds": 30,
+          "max_bitrate_mbps": 10,
+          "additional_specs": {
+            "aspect_ratios": [
+              "16:9",
+              "9:16",
+              "1:1",
+              "4:5"
+            ],
+            "resolutions": {
+              "16:9": [
+                {
+                  "width": 1920,
+                  "height": 1080
+                },
+                {
+                  "width": 1280,
+                  "height": 720
+                },
+                {
+                  "width": 854,
+                  "height": 480
+                }
+              ],
+              "9:16": [
+                {
+                  "width": 1080,
+                  "height": 1920
+                },
+                {
+                  "width": 720,
+                  "height": 1280
+                }
+              ],
+              "1:1": [
+                {
+                  "width": 1080,
+                  "height": 1080
+                },
+                {
+                  "width": 720,
+                  "height": 720
+                }
+              ],
+              "4:5": [
+                {
+                  "width": 1080,
+                  "height": 1350
+                },
+                {
+                  "width": 720,
+                  "height": 900
+                }
+              ]
+            },
+            "codecs": [
+              "h264",
+              "vp9"
+            ],
+            "duration_range": {
+              "min": 6,
+              "max": 30,
+              "extended_max": 180
+            },
+            "audio": {
+              "codec": "aac",
+              "bitrate_kbps": 128,
+              "muted_by_default": true
+            }
+          }
+        },
+        {
+          "asset_id": "captions",
+          "asset_type": "text",
+          "required": true,
+          "name": "Captions",
+          "description": "Caption file for accessibility",
+          "acceptable_formats": [
+            "srt",
+            "vtt"
+          ],
+          "additional_specs": {
+            "burned_in_alternative": "Captions can be burned into the video file"
+          }
+        },
+        {
+          "asset_id": "companion_banner",
+          "asset_type": "image",
+          "required": false,
+          "name": "Companion Banner",
+          "description": "Static companion banner for video ads",
+          "acceptable_formats": [
+            "jpg",
+            "png"
+          ],
+          "max_file_size_mb": 0.2,
+          "width": 300,
+          "height": 250
         }
-      }
+      ]
     }
   ],
   "extension_schema": {
@@ -184,11 +437,23 @@
     "modifications": {
       "dimensions": {
         "desktop": [
-          {"width": 1125, "height": 600},
-          {"width": 970, "height": 600}
+          {
+            "width": 1125,
+            "height": 600
+          },
+          {
+            "width": 970,
+            "height": 600
+          }
         ],
-        "tablet": {"width": 728, "height": 600},
-        "mobile": {"width": 800, "height": 1400}
+        "tablet": {
+          "width": 728,
+          "height": 600
+        },
+        "mobile": {
+          "width": 800,
+          "height": 1400
+        }
       },
       "additional_specs": {
         "image_count": "3-5",
