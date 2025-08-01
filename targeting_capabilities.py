@@ -5,7 +5,7 @@ Defines which targeting dimensions are available for overlay vs managed-only acc
 This is critical for AEE (Ad Effectiveness Engine) integration.
 """
 
-from typing import Dict, List
+from typing import Dict, List, Any
 from schemas import TargetingCapability
 
 # Define targeting capabilities for the platform
