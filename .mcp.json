@@ -10,8 +10,8 @@
       "cwd": "ui_tests/claude_subagent",
       "env": {
         "PYTHONPATH": ".",
-        "BASE_URL": "${BASE_URL:-http://localhost:8001}",
-        "ADMIN_UI_PORT": "${ADMIN_UI_PORT:-8001}",
+        "BASE_URL": "${BASE_URL:-http://localhost:8002}",
+        "ADMIN_UI_PORT": "${ADMIN_UI_PORT:-8002}",
         "HEADLESS": "${HEADLESS:-true}"
       }
     }
