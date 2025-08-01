@@ -21,7 +21,7 @@ async def test_subagent():
     # Test 1: List tests
     print("1. Listing available tests...")
     try:
-        tests = await list_ui_tests()
+        tests = await ui_test_server.list_ui_tests()
         print(f"✅ Found {len(tests)} test files")
         for test_file, functions in list(tests.items())[:3]:
             print(f"   - {test_file}: {len(functions)} tests")
@@ -33,7 +33,7 @@ async def test_subagent():
     # Test 2: Check auth status
     print("2. Checking authentication status...")
     try:
-        auth = await check_auth_status()
+        auth = await ui_test_server.check_auth_status()
         print(f"✅ Auth check complete:")
         print(f"   - Logged in: {auth['logged_in']}")
         print(f"   - Email: {auth.get('email', 'N/A')}")
@@ -46,7 +46,7 @@ async def test_subagent():
     # Test 3: Generate test code
     print("3. Generating sample test code...")
     try:
-        code = await generate_ui_test(
+        code = await ui_test_server.generate_ui_test(
             feature_description="verify admin can view all tenants",
             test_type="smoke",
             page_objects=["TenantPage"]
@@ -61,7 +61,7 @@ async def test_subagent():
     # Test 4: Run a simple test
     print("4. Running a basic test...")
     try:
-        result = await run_ui_test(
+        result = await ui_test_server.run_ui_test(
             "tests/test_basic_setup.py::TestBasicSetup::test_browser_launches",
             headed=False,
             timeout=30
