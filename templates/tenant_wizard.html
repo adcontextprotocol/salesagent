@@ -236,10 +236,17 @@
             <div id="adapter-config" style="margin-top: 2rem;">
                 <div id="config-google_ad_manager" class="adapter-config" style="display: none;">
                     <h3>Google Ad Manager Configuration</h3>
-                    <div class="form-group">
-                        <label for="gam_network_code">Network Code *</label>
-                        <input type="text" id="gam_network_code" name="gam_network_code" placeholder="e.g., 123456789">
-                        <small>Found in GAM under Admin → Global Settings</small>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+                        <div class="form-group">
+                            <label for="gam_network_code">Network Code *</label>
+                            <input type="text" id="gam_network_code" name="gam_network_code" placeholder="e.g., 123456789">
+                            <small>Found in GAM under Admin → Global Settings</small>
+                        </div>
+                        <div class="form-group">
+                            <label for="gam_company_id">Company ID (optional)</label>
+                            <input type="text" id="gam_company_id" name="gam_company_id" placeholder="e.g., 12345">
+                            <small>Your advertiser company ID in GAM</small>
+                        </div>
                     </div>
                 </div>
                 
@@ -267,6 +274,31 @@
                     <div class="alert-info">
                         <strong>Mock Adapter Selected</strong><br>
                         No configuration required. This adapter simulates ad server behavior for testing.
+                    </div>
+                </div>
+            </div>
+            
+            <h3 style="margin-top: 2rem;">Platform Features</h3>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+                <div class="form-group">
+                    <label for="max_daily_budget">Max Daily Budget ($)</label>
+                    <input type="number" id="max_daily_budget" name="max_daily_budget" value="10000" min="0">
+                    <small>Maximum daily spend limit for campaigns</small>
+                </div>
+                
+                <div class="form-group" style="display: flex; align-items: center; gap: 1rem;">
+                    <input type="checkbox" id="human_review" name="human_review" checked>
+                    <div>
+                        <label for="human_review" style="margin: 0;">Require human review for creatives</label>
+                        <small style="display: block; color: #666;">Creatives must be approved before going live</small>
+                    </div>
+                </div>
+                
+                <div class="form-group" style="display: flex; align-items: center; gap: 1rem;">
+                    <input type="checkbox" id="enable_aee" name="enable_aee" checked>
+                    <div>
+                        <label for="enable_aee" style="margin: 0;">Enable AEE signals</label>
+                        <small style="display: block; color: #666;">Advanced audience extension capabilities</small>
                     </div>
                 </div>
             </div>
@@ -466,6 +498,10 @@
         <!-- Hidden fields for basic tenant info -->
         <input type="hidden" name="tenant_name" value="{{ tenant_name }}">
         <input type="hidden" name="tenant_id" value="{{ tenant_id }}">
+        <input type="hidden" name="subdomain" value="{{ subdomain }}">
+        <input type="hidden" name="billing_plan" value="{{ billing_plan }}">
+        <input type="hidden" name="authorized_emails" value="{{ authorized_emails }}">
+        <input type="hidden" name="authorized_domains" value="{{ authorized_domains }}">
         
         <div class="wizard-footer">
             <button type="button" class="btn btn-secondary" onclick="previousStep()" id="prevBtn" style="display: none;">Previous</button>
