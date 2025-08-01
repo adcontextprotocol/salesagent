@@ -1,0 +1,55 @@
+{
+  "available_port_sets": [
+    {
+      "postgres": 5433,
+      "mcp": 8081,
+      "admin": 8002
+    },
+    {
+      "postgres": 5434,
+      "mcp": 8082,
+      "admin": 8003
+    },
+    {
+      "postgres": 5435,
+      "mcp": 8083,
+      "admin": 8004
+    },
+    {
+      "postgres": 5436,
+      "mcp": 8084,
+      "admin": 8005
+    },
+    {
+      "postgres": 5437,
+      "mcp": 8085,
+      "admin": 8006
+    },
+    {
+      "postgres": 5438,
+      "mcp": 8086,
+      "admin": 8007
+    },
+    {
+      "postgres": 5439,
+      "mcp": 8087,
+      "admin": 8008
+    },
+    {
+      "postgres": 5440,
+      "mcp": 8088,
+      "admin": 8009
+    },
+    {
+      "postgres": 5441,
+      "mcp": 8089,
+      "admin": 8010
+    },
+    {
+      "postgres": 5442,
+      "mcp": 8090,
+      "admin": 8011
+    }
+  ],
+  "reserved_ports": {}
+}

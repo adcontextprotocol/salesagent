@@ -9,12 +9,42 @@ class DeliveryOptions(BaseModel):
     hosted: Optional[Dict[str, Any]] = None
     vast: Optional[Dict[str, Any]] = None
 
+class Asset(BaseModel):
+    """Individual asset within a creative format."""
+    asset_id: str = Field(..., description="Unique identifier for this asset within the format")
+    asset_type: Literal["video", "image", "text", "url", "audio", "html"] = Field(..., description="Type of asset")
+    required: bool = Field(True, description="Whether this asset is required")
+    
+    # Common properties
+    name: Optional[str] = Field(None, description="Human-readable name for the asset")
+    description: Optional[str] = Field(None, description="Description of the asset's purpose")
+    
+    # Type-specific properties (flattened structure)
+    # Video properties
+    duration_seconds: Optional[int] = Field(None, description="Video duration in seconds")
+    min_bitrate_mbps: Optional[float] = Field(None, description="Minimum bitrate in Mbps")
+    max_bitrate_mbps: Optional[float] = Field(None, description="Maximum bitrate in Mbps")
+    
+    # Image/Display properties
+    width: Optional[int] = Field(None, description="Width in pixels")
+    height: Optional[int] = Field(None, description="Height in pixels")
+    
+    # File properties
+    acceptable_formats: Optional[List[str]] = Field(None, description="Acceptable file formats (e.g., ['mp4', 'webm'])")
+    max_file_size_mb: Optional[float] = Field(None, description="Maximum file size in MB")
+    
+    # Text properties
+    max_length: Optional[int] = Field(None, description="Maximum character length for text")
+    
+    # Additional specifications
+    additional_specs: Optional[Dict[str, Any]] = Field(None, description="Any additional asset-specific requirements")
+
 class Format(BaseModel):
     format_id: str
     name: str
     type: Literal["video", "audio", "display", "native", "dooh"]
     description: str
-    specs: Dict[str, Any]
+    assets: List[Asset] = Field(default_factory=list, description="List of assets required for this format")
     delivery_options: DeliveryOptions
 
 class DaypartSchedule(BaseModel):
@@ -215,6 +245,11 @@ class Creative(BaseModel):
     # Macro information
     has_macros: Optional[bool] = False
     macro_validation: Optional[Dict[str, Any]] = None  # Validation result from creative_macros
+    # Asset mapping - maps asset_id to uploaded content
+    asset_mapping: Optional[Dict[str, str]] = Field(
+        default_factory=dict,
+        description="Maps asset_id from format definition to actual uploaded content URIs"
+    )
 
 class CreativeAdaptation(BaseModel):
     """Suggested adaptation or variant of a creative."""
