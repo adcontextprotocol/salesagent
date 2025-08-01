@@ -773,36 +773,38 @@ def test_slack(tenant_id):
     except Exception as e:
         return jsonify({"success": False, "error": str(e)})
 
-@app.route('/tenant/wizard', methods=['GET', 'POST'])
-@require_auth(admin_only=True)
-def tenant_wizard():
-    """Tenant setup wizard (super admin only)."""
+@app.route('/tenant/<tenant_id>/setup', methods=['GET', 'POST'])
+@require_auth()
+def tenant_setup_wizard(tenant_id):
+    """Tenant setup wizard for publishers to configure their tenant."""
+    # Check tenant access
+    if session.get('role') != 'super_admin' and session.get('tenant_id') != tenant_id:
+        return "Access denied", 403
     if request.method == 'POST':
         try:
-            # Extract basic tenant info
-            tenant_name = request.form.get('tenant_name')
-            tenant_id = request.form.get('tenant_id') or tenant_name.lower().replace(' ', '_')
-            subdomain = request.form.get('subdomain') or tenant_id
-            billing_plan = request.form.get('billing_plan', 'standard')
+            conn = get_db_connection()
             
-            # Parse authorization lists
-            authorized_emails = [email.strip() for email in request.form.get('authorized_emails', '').split(',') if email.strip()]
-            authorized_domains = [domain.strip() for domain in request.form.get('authorized_domains', '').split(',') if domain.strip()]
+            # Get existing tenant config
+            cursor = conn.execute("SELECT config FROM tenants WHERE tenant_id = ?", (tenant_id,))
+            row = cursor.fetchone()
+            if not row:
+                conn.close()
+                return "Tenant not found", 404
+                
+            config = row[0]
+            if isinstance(config, str):
+                config = json.loads(config)
             
-            # Build config based on wizard selections
-            config = {
-                "adapters": {},
-                "creative_engine": {
-                    "auto_approve_formats": request.form.getlist('standard_formats'),
-                    "human_review_required": request.form.get('human_review') == 'on'
-                },
-                "features": {
-                    "max_daily_budget": int(request.form.get('max_daily_budget', 10000)),
-                    "enable_aee_signals": request.form.get('enable_aee') == 'on'
-                },
-                "authorized_emails": authorized_emails,
-                "authorized_domains": authorized_domains
+            # Update config based on wizard selections
+            config["creative_engine"] = {
+                "auto_approve_formats": request.form.getlist('standard_formats'),
+                "human_review_required": request.form.get('human_review') == 'on'
             }
+            config["features"] = {
+                "max_daily_budget": int(request.form.get('max_daily_budget', 10000)),
+                "enable_aee_signals": request.form.get('enable_aee') == 'on'
+            }
+            config["setup_complete"] = True  # Mark setup as complete
             
             # Configure selected adapter
             adapter = request.form.get('adapter')
@@ -826,24 +828,12 @@ def tenant_wizard():
                     'station_id': request.form.get('triton_station_id')
                 }
             
-            conn = get_db_connection()
-            
-            # Create tenant
+            # Update tenant configuration
             conn.execute("""
-                INSERT INTO tenants (
-                    tenant_id, name, subdomain, config,
-                    created_at, updated_at, is_active, billing_plan
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-            """, (
-                tenant_id,
-                tenant_name,
-                subdomain,
-                json.dumps(config),
-                datetime.now().isoformat(),
-                datetime.now().isoformat(),
-                True,
-                billing_plan
-            ))
+                UPDATE tenants 
+                SET config = ?, updated_at = ?
+                WHERE tenant_id = ?
+            """, (json.dumps(config), datetime.now().isoformat(), tenant_id))
             
             # Create custom formats if provided
             custom_format_names = request.form.getlist('custom_format_name[]')
@@ -992,32 +982,112 @@ def tenant_wizard():
             conn.commit()
             conn.close()
             
-            flash(f'Tenant "{tenant_name}" created successfully!', 'success')
+            flash(f'Setup completed successfully!', 'success')
             return redirect(url_for('tenant_detail', tenant_id=tenant_id))
             
         except Exception as e:
-            flash(f'Error creating tenant: {str(e)}', 'error')
-            return redirect(url_for('tenant_wizard'))
+            flash(f'Error completing setup: {str(e)}', 'error')
+            return redirect(url_for('tenant_detail', tenant_id=tenant_id))
     
-    # GET request - show initial form to capture tenant name
-    if request.args.get('tenant_name'):
-        # Wizard mode
-        return render_template('tenant_wizard.html',
-                             tenant_name=request.args.get('tenant_name'),
-                             tenant_id=request.args.get('tenant_id', ''),
-                             subdomain=request.args.get('subdomain', ''),
-                             billing_plan=request.args.get('billing_plan', 'standard'),
-                             authorized_emails=request.args.get('authorized_emails', ''),
-                             authorized_domains=request.args.get('authorized_domains', ''))
-    else:
-        # Show initial form to capture tenant name
-        return render_template('tenant_wizard_start.html')
+    # GET request - show setup wizard
+    conn = get_db_connection()
+    cursor = conn.execute("SELECT name, config FROM tenants WHERE tenant_id = ?", (tenant_id,))
+    row = cursor.fetchone()
+    if not row:
+        conn.close()
+        return "Tenant not found", 404
+        
+    tenant_name = row[0]
+    config = row[1]
+    if isinstance(config, str):
+        config = json.loads(config)
+    
+    conn.close()
+    
+    # Check if setup is already complete
+    if config.get('setup_complete', False):
+        flash('Setup has already been completed. You can modify settings in the tenant management page.', 'info')
+        return redirect(url_for('tenant_detail', tenant_id=tenant_id))
+    
+    return render_template('tenant_setup_wizard.html',
+                         tenant_name=tenant_name,
+                         tenant_id=tenant_id)
 
 @app.route('/create_tenant', methods=['GET', 'POST'])
 @require_auth(admin_only=True)
 def create_tenant():
-    """Redirect to the new tenant wizard."""
-    return redirect(url_for('tenant_wizard'))
+    """Create a new tenant (super admin only) - basic setup only."""
+    if request.method == 'POST':
+        try:
+            tenant_name = request.form.get('name')
+            tenant_id = request.form.get('tenant_id') or tenant_name.lower().replace(' ', '_')
+            subdomain = request.form.get('subdomain') or tenant_id
+            billing_plan = request.form.get('billing_plan', 'standard')
+            
+            # Parse authorization lists
+            authorized_emails = [email.strip() for email in request.form.get('authorized_emails', '').split(',') if email.strip()]
+            authorized_domains = [domain.strip() for domain in request.form.get('authorized_domains', '').split(',') if domain.strip()]
+            
+            # Build minimal config - tenant will complete setup later
+            config = {
+                "adapters": {},
+                "creative_engine": {
+                    "auto_approve_formats": [],
+                    "human_review_required": True
+                },
+                "features": {
+                    "max_daily_budget": 10000,
+                    "enable_aee_signals": True
+                },
+                "authorized_emails": authorized_emails,
+                "authorized_domains": authorized_domains,
+                "setup_complete": False  # Flag to track if tenant has completed setup
+            }
+            
+            conn = get_db_connection()
+            
+            # Create tenant
+            conn.execute("""
+                INSERT INTO tenants (
+                    tenant_id, name, subdomain, config,
+                    created_at, updated_at, is_active, billing_plan
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                tenant_id,
+                tenant_name,
+                subdomain,
+                json.dumps(config),
+                datetime.now().isoformat(),
+                datetime.now().isoformat(),
+                True,
+                billing_plan
+            ))
+            
+            # Create admin principal with access token
+            admin_token = secrets.token_urlsafe(32)
+            conn.execute("""
+                INSERT INTO principals (
+                    tenant_id, principal_id, name,
+                    platform_mappings, access_token
+                ) VALUES (?, ?, ?, ?, ?)
+            """, (
+                tenant_id,
+                f"{tenant_id}_admin",
+                f"{tenant_name} Admin",
+                json.dumps({}),
+                admin_token
+            ))
+            
+            conn.commit()
+            conn.close()
+            
+            flash(f'Tenant "{tenant_name}" created successfully! They can now log in to complete setup.', 'success')
+            return redirect(url_for('tenant_detail', tenant_id=tenant_id))
+            
+        except Exception as e:
+            return render_template('create_tenant.html', error=str(e))
+    
+    return render_template('create_tenant.html')
 
 # Operations Dashboard Route
 @app.route('/tenant/<tenant_id>/operations')
