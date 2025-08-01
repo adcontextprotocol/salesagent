@@ -103,17 +103,9 @@
         <div style="flex: 1;">
             <h3 style="margin: 0; color: #856404;">Setup Incomplete</h3>
             <p style="margin: 0.5rem 0; color: #856404;">
-                Please complete the configuration for all required tabs marked with an asterisk (*) below.
-                {% if not tenant.config.initial_setup_done %}
-                You can start with the initial setup wizard.
-                {% endif %}
+                Please complete the configuration for all required tabs below. Start with the Ad Server Setup tab to connect your ad server.
             </p>
         </div>
-        {% if not tenant.config.initial_setup_done %}
-        <a href="{{ url_for('tenant_setup_wizard', tenant_id=tenant.tenant_id) }}" class="btn">
-            Initial Setup →
-        </a>
-        {% endif %}
     </div>
 </div>
 {% endif %}
@@ -122,24 +114,24 @@
     {% if session.role == 'super_admin' %}
     <div class="tab active" data-tab="authorization">Authorization</div>
     <div class="tab" data-tab="adserver">
-        Ad Server Setup {% if not tab_status.adserver %}<span style="color: #e74c3c;">*</span>{% endif %}
+        Ad Server Setup {% if not tab_status.adserver %}⚠️{% endif %}
     </div>
     <div class="tab" data-tab="config">Configuration</div>
     {% else %}
     <div class="tab active" data-tab="adserver">
-        Ad Server Setup {% if not tab_status.adserver %}<span style="color: #e74c3c;">*</span>{% endif %}
+        Ad Server Setup {% if not tab_status.adserver %}⚠️{% endif %}
     </div>
     <div class="tab" data-tab="config">Configuration</div>
     {% endif %}
     <div class="tab" data-tab="users">Users</div>
     <div class="tab" data-tab="principals">
-        Principals {% if not tab_status.principals %}<span style="color: #e74c3c;">*</span>{% endif %}
+        Principals {% if not tab_status.principals %}⚠️{% endif %}
     </div>
     <div class="tab" data-tab="products">
-        Products {% if not tab_status.products %}<span style="color: #e74c3c;">*</span>{% endif %}
+        Products {% if not tab_status.products %}⚠️{% endif %}
     </div>
     <div class="tab" data-tab="formats">
-        Creative Formats {% if not tab_status.formats %}<span style="color: #e74c3c;">*</span>{% endif %}
+        Creative Formats {% if not tab_status.formats %}⚠️{% endif %}
     </div>
     <div class="tab" data-tab="integrations">Integrations</div>
     <div class="tab" data-tab="tokens">API Tokens</div>
