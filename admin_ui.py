@@ -433,7 +433,7 @@ def index():
     # Super admins see all tenants
     conn = get_db_connection()
     cursor = conn.execute("""
-        SELECT tenant_id, name, subdomain, is_active, billing_plan, created_at
+        SELECT tenant_id, name, subdomain, is_active, created_at
         FROM tenants
         ORDER BY created_at DESC
     """)
@@ -452,7 +452,6 @@ def index():
             'name': row[1],
             'subdomain': row[2],
             'is_active': row[3],
-            'billing_plan': row[4],
             'created_at': created_at
         })
     conn.close()
@@ -470,7 +469,7 @@ def tenant_detail(tenant_id):
     
     # Get tenant
     cursor = conn.execute("""
-        SELECT tenant_id, name, subdomain, config, is_active, billing_plan, created_at
+        SELECT tenant_id, name, subdomain, config, is_active, created_at
         FROM tenants WHERE tenant_id = ?
     """, (tenant_id,))
     row = cursor.fetchone()
@@ -489,8 +488,7 @@ def tenant_detail(tenant_id):
         'subdomain': row[2],
         'config': config,
         'is_active': row[4],
-        'billing_plan': row[5],
-        'created_at': row[6]
+        'created_at': row[5]
     }
     
     # Get principals with platform mappings
@@ -1022,7 +1020,6 @@ def create_tenant():
             tenant_name = request.form.get('name')
             tenant_id = request.form.get('tenant_id') or tenant_name.lower().replace(' ', '_')
             subdomain = request.form.get('subdomain') or tenant_id
-            billing_plan = request.form.get('billing_plan', 'standard')
             
             # Parse authorization lists
             authorized_emails = [email.strip() for email in request.form.get('authorized_emails', '').split(',') if email.strip()]
@@ -1050,8 +1047,8 @@ def create_tenant():
             conn.execute("""
                 INSERT INTO tenants (
                     tenant_id, name, subdomain, config,
-                    created_at, updated_at, is_active, billing_plan
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    created_at, updated_at, is_active
+                ) VALUES (?, ?, ?, ?, ?, ?, ?)
             """, (
                 tenant_id,
                 tenant_name,
@@ -1059,8 +1056,7 @@ def create_tenant():
                 json.dumps(config),
                 datetime.now().isoformat(),
                 datetime.now().isoformat(),
-                True,
-                billing_plan
+                True
             ))
             
             # Create admin principal with access token

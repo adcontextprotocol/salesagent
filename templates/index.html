@@ -14,8 +14,7 @@
         <thead>
             <tr>
                 <th>Name</th>
-                <th>Subdomain</th>
-                <th>Billing Plan</th>
+                <th>Subdomain / Path</th>
                 <th>Status</th>
                 <th>Created</th>
                 <th>Actions</th>
@@ -33,7 +32,6 @@
                     <br><small style="color: #666;">http://{{ tenant.subdomain }}.localhost:8080</small>
                     {% endif %}
                 </td>
-                <td>{{ tenant.billing_plan }}</td>
                 <td>
                     {% if tenant.is_active %}
                     <span class="status status-active">Active</span>
