@@ -15,12 +15,14 @@ We have a comprehensive testing infrastructure that includes:
 ### 1. Initial Setup
 
 ```bash
-# Install Git hooks (one-time setup)
+# Install Git hooks (required for each workspace/worktree)
 ./setup_hooks.sh
 
 # Run all tests
 ./run_all_tests.sh
 ```
+
+**Note for Conductor users**: Git hooks are per-worktree, so you need to run `setup_hooks.sh` in each workspace. The `setup_conductor_workspace.sh` script now does this automatically.
 
 ### 2. Running Tests
 
@@ -45,21 +47,31 @@ The unified test runner (`run_all_tests.sh`) supports multiple modes:
 
 ## Test Suite Components
 
-### Current Test Files
+### Test Organization
 
-1. **test_admin_ui_oauth.py** - OAuth authentication flows (33 tests) ✅
-2. **test_auth.py** - MCP authentication
-3. **test_adapter_targeting.py** - Ad server adapter targeting
-4. **test_creative_auto_approval.py** - Creative approval workflows
-5. **test_admin_creative_approval.py** - Admin creative management
-6. **test_human_task_queue.py** - Human-in-the-loop tasks
-7. **test_manual_approval.py** - Manual approval processes
-8. **test_task_verification.py** - Task verification
-9. **test_product_catalog_providers.py** - Product catalog
-10. **test_main.py** - Core MCP server functionality
-11. **tests/test_adapters.py** - Ad server adapters
+Tests are organized in the `tests/` directory:
+- `tests/unit/` - Unit tests for individual components
+- `tests/integration/` - Integration tests (future)
 
-**Note**: Currently, some tests have import issues due to database initialization on module import. The OAuth tests are fully functional and serve as the model for future test improvements.
+### Current Working Tests
+
+1. **tests/unit/test_admin_ui_oauth.py** - OAuth authentication flows (33 tests) ✅
+
+### Legacy Test Files (to be migrated)
+
+These tests currently exist in the root directory and need migration:
+- **test_auth.py** - MCP authentication
+- **test_adapter_targeting.py** - Ad server adapter targeting
+- **test_creative_auto_approval.py** - Creative approval workflows
+- **test_admin_creative_approval.py** - Admin creative management
+- **test_human_task_queue.py** - Human-in-the-loop tasks
+- **test_manual_approval.py** - Manual approval processes
+- **test_task_verification.py** - Task verification
+- **test_product_catalog_providers.py** - Product catalog
+- **test_main.py** - Core MCP server functionality
+- **tests/test_adapters.py** - Ad server adapters
+
+**Note**: The legacy tests have import issues due to database initialization on module import. These need refactoring to properly isolate test environments.
 
 ### Test Dependencies
 
@@ -73,7 +85,7 @@ The project uses GitHub Actions for automated testing on every push and PR.
 
 ### Workflow Features
 
-- **Multi-version testing**: Python 3.10, 3.11, and 3.12
+- **Python 3.12**: Tests run on Python 3.12 as required by the project
 - **PostgreSQL service**: Real database for integration tests
 - **Coverage reporting**: Automatic upload to Codecov
 - **Artifact storage**: Test results and coverage reports

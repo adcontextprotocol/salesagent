@@ -24,7 +24,7 @@ pip install -q pydantic sqlalchemy psycopg2-binary flask authlib requests fastmc
 
 # Run OAuth tests
 echo "Running OAuth tests..."
-pytest test_admin_ui_oauth.py -v
+pytest tests/unit/test_admin_ui_oauth.py -v
 
 echo ""
 echo "========================================="
