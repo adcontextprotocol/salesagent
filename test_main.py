@@ -96,6 +96,8 @@ class TestAdcpServerV2_3(unittest.TestCase):
             (tenant['tenant_id'],)
         )
         rows = cursor.fetchall()
+        # Get column names before closing
+        column_names = [desc[0] for desc in cursor.description]
         conn.close()
         
         # 1. Primary Assertion: The catalog must not be empty
@@ -107,7 +109,6 @@ class TestAdcpServerV2_3(unittest.TestCase):
             if hasattr(row, 'keys'):
                 product_data = dict(row)
             else:
-                column_names = [desc[0] for desc in cursor.description]
                 product_data = dict(zip(column_names, row))
             
             # Verify required fields exist
@@ -118,7 +119,16 @@ class TestAdcpServerV2_3(unittest.TestCase):
             self.assertIn('delivery_type', product_data)
             
         # 3. Test that we have the expected test products
-        product_ids = [row['product_id'] if hasattr(row, '__getitem__') else row[1] for row in rows]
+        product_ids = []
+        for row in rows:
+            if hasattr(row, 'keys'):
+                # SQLite Row object
+                product_ids.append(row['product_id'])
+            else:
+                # PostgreSQL tuple
+                idx = column_names.index('product_id')
+                product_ids.append(row[idx])
+        
         self.assertIn('prod_1', product_ids)
         self.assertIn('prod_2', product_ids)
         self.assertIn('prod_3', product_ids)
