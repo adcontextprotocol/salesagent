@@ -1931,20 +1931,37 @@ def get_product_catalog() -> List[Product]:
         (tenant['tenant_id'],)
     )
     rows = cursor.fetchall()
+    
+    # Get column names for PostgreSQL compatibility
+    column_names = [desc[0] for desc in cursor.description]
     conn.close()
     
     loaded_products = []
     for row in rows:
-        product_data = dict(row)
+        # Handle both SQLite Row objects and PostgreSQL tuples
+        if hasattr(row, 'keys'):
+            # SQLite Row object
+            product_data = dict(row)
+        else:
+            # PostgreSQL tuple - create dict from column names
+            product_data = dict(zip(column_names, row))
         # Remove tenant_id as it's not in the Product schema
         product_data.pop('tenant_id', None)
-        product_data['formats'] = json.loads(product_data['formats'])
+        
+        # Handle JSONB fields - PostgreSQL returns them as Python objects, SQLite as strings
+        if isinstance(product_data['formats'], str):
+            product_data['formats'] = json.loads(product_data['formats'])
+            
         # Remove targeting_template - it's internal and shouldn't be exposed
         product_data.pop('targeting_template', None)
+        
         if product_data.get('price_guidance'):
-            product_data['price_guidance'] = json.loads(product_data['price_guidance'])
+            if isinstance(product_data['price_guidance'], str):
+                product_data['price_guidance'] = json.loads(product_data['price_guidance'])
+                
         if product_data.get('implementation_config'):
-            product_data['implementation_config'] = json.loads(product_data['implementation_config'])
+            if isinstance(product_data['implementation_config'], str):
+                product_data['implementation_config'] = json.loads(product_data['implementation_config'])
         loaded_products.append(Product(**product_data))
     
     return loaded_products

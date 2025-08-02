@@ -73,7 +73,7 @@ class Kevel(AdServerAdapter):
                     unsupported.append(f"Media type '{media}' not supported (Kevel supports: {', '.join(self.SUPPORTED_MEDIA_TYPES)})")
         
         # Audience targeting requires UserDB
-        if targeting_overlay.audience_segment_any_of and not self.userdb_enabled:
+        if targeting_overlay.audiences_any_of and not self.userdb_enabled:
             unsupported.append("Audience targeting requires UserDB to be enabled (set userdb_enabled=true in config)")
         
         # Frequency capping validation
@@ -147,10 +147,10 @@ class Kevel(AdServerAdapter):
                 kevel_targeting['dayparting'] = dayparting
         
         # Audience/Interest targeting via UserDB
-        if targeting_overlay.audience_segment_any_of and self.userdb_enabled:
+        if targeting_overlay.audiences_any_of and self.userdb_enabled:
             # Build custom targeting expressions for interests
             custom_targeting = []
-            for segment in targeting_overlay.audience_segment_any_of:
+            for segment in targeting_overlay.audiences_any_of:
                 # Convert segment IDs to Kevel interest targeting format
                 # Example: "3p:sports_fans" becomes "$user.interests CONTAINS \"Sports Fans\""
                 if ":" in segment:
