@@ -11,9 +11,44 @@ def init_db_ci():
     try:
         # Import here to ensure path is set up first
         from migrate import run_migrations
+        from database_schema import get_db_connection
+        import uuid
         
         print("Applying database migrations for CI...")
         run_migrations()
+        print("Database migrations applied successfully")
+        
+        # Create a default tenant for CI tests
+        print("Creating default tenant for CI...")
+        with get_db_connection() as conn:
+            tenant_id = str(uuid.uuid4())
+            conn.execute("""
+                INSERT INTO tenants (tenant_id, name, subdomain, config, billing_plan, created_at)
+                VALUES (?, ?, ?, ?, ?, datetime('now'))
+            """, (
+                tenant_id,
+                "CI Test Tenant",
+                "ci-test",
+                '{"adapters": {"mock": {"enabled": true}}, "features": {"max_daily_budget": 10000}, "creative_engine": {"auto_approve_formats": ["display_300x250", "display_728x90"]}}',
+                "test"
+            ))
+            
+            # Create a default principal for the tenant
+            principal_id = str(uuid.uuid4())
+            conn.execute("""
+                INSERT INTO principals (principal_id, tenant_id, name, access_token, platform_mappings, created_at)
+                VALUES (?, ?, ?, ?, ?, datetime('now'))
+            """, (
+                principal_id,
+                tenant_id,
+                "CI Test Principal",
+                "ci-test-token",
+                '{"mock": {"advertiser_id": "test-advertiser"}}'
+            ))
+            
+            conn.commit()
+            print(f"Created default tenant (ID: {tenant_id}) and principal (ID: {principal_id})")
+        
         print("Database initialized successfully")
     except ImportError as e:
         print(f"Import error: {e}")
@@ -22,6 +57,8 @@ def init_db_ci():
         sys.exit(1)
     except Exception as e:
         print(f"Error during initialization: {e}")
+        import traceback
+        traceback.print_exc()
         sys.exit(1)
 
 if __name__ == "__main__":
