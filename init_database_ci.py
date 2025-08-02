@@ -20,7 +20,8 @@ def init_db_ci():
         
         # Create a default tenant for CI tests
         print("Creating default tenant for CI...")
-        with get_db_connection() as conn:
+        conn = get_db_connection()
+        try:
             tenant_id = str(uuid.uuid4())
             conn.execute("""
                 INSERT INTO tenants (tenant_id, name, subdomain, config, billing_plan, created_at)
@@ -46,8 +47,10 @@ def init_db_ci():
                 '{"mock": {"advertiser_id": "test-advertiser"}}'
             ))
             
-            conn.commit()
+            conn.connection.commit()
             print(f"Created default tenant (ID: {tenant_id}) and principal (ID: {principal_id})")
+        finally:
+            conn.close()
         
         print("Database initialized successfully")
     except ImportError as e:
