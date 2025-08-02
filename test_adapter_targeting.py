@@ -57,9 +57,8 @@ full_targeting = Targeting(
     
     # Frequency capping
     frequency_cap=FrequencyCap(
-        impressions=5,
-        period="day",
-        per="household"  # This will fail on Kevel
+        suppress_minutes=1440,  # 24 hours
+        scope="media_buy"
     )
 )
 

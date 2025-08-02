@@ -85,7 +85,7 @@
                     ${{ "%.2f"|format(product.cpm) }}
                     {% else %}
                         {% if product.price_guidance %}
-                        ${{ "%.2f"|format(product.price_guidance.min_cpm) }} - ${{ "%.2f"|format(product.price_guidance.max_cpm) }}
+                        ${{ "%.2f"|format(product.price_guidance.min) }} - ${{ "%.2f"|format(product.price_guidance.max) }}
                         {% else %}
                         -
                         {% endif %}

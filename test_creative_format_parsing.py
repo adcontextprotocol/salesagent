@@ -59,8 +59,8 @@ def compare_format(actual: Dict[str, Any], expected: Dict[str, Any]) -> List[str
     return differences
 
 
-async def test_parsing_example(example_dir: Path) -> Dict[str, Any]:
-    """Test parsing for a single example directory."""
+async def parse_example_directory(example_dir: Path) -> Dict[str, Any]:
+    """Parse formats for a single example directory."""
     results = {
         'success': True,
         'formats_tested': 0,

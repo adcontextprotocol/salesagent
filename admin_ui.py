@@ -2902,14 +2902,17 @@ def create_products_bulk(tenant_id):
                 if product.get('price_guidance'):
                     price_guidance = json.dumps(product['price_guidance'])
                 
+                # Determine if fixed price based on whether CPM is provided
+                is_fixed_price = product.get('cpm') is not None
+                
                 # Insert product
                 conn.execute("""
                     INSERT INTO products (
                         product_id, tenant_id, name, description,
-                        formats, delivery_type, cpm,
+                        formats, delivery_type, is_fixed_price, cpm,
                         price_guidance,
                         countries, targeting_template, implementation_config
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """, (
                     product_id,
                     tenant_id,
@@ -2917,6 +2920,7 @@ def create_products_bulk(tenant_id):
                     product.get('description', ''),
                     json.dumps(product.get('formats', [])),
                     product.get('delivery_type', 'non_guaranteed'),
+                    is_fixed_price,
                     product.get('cpm'),
                     price_guidance,
                     json.dumps(product.get('countries')) if product.get('countries') else None,
