@@ -11,14 +11,10 @@ def sample_packages():
         MediaPackage(
             package_id="pkg_1",
             name="Guaranteed Banner",
-            description="A guaranteed banner package",
-            type="catalog",
             delivery_type="guaranteed",
-            creative_compatibility={},
             cpm=15.0,
-            budget=5000,
-            start_time=datetime.now(),
-            end_time=datetime.now() + timedelta(days=30)
+            impressions=333333,  # 5000 budget / 15 CPM * 1000
+            format_ids=["display_300x250", "display_728x90"]
         )
     ]
 

@@ -28,9 +28,15 @@ class TestAdcpServerV2_3(unittest.TestCase):
         conn = get_db_connection()
         try:
             tenant_id = str(uuid.uuid4())
-            conn.execute("""
+            # Use database-appropriate timestamp function
+            if conn.config['type'] == 'sqlite':
+                timestamp_func = "datetime('now')"
+            else:  # PostgreSQL
+                timestamp_func = "CURRENT_TIMESTAMP"
+            
+            conn.execute(f"""
                 INSERT INTO tenants (tenant_id, name, subdomain, config, billing_plan, created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?, datetime('now'), datetime('now'))
+                VALUES (?, ?, ?, ?, ?, {timestamp_func}, {timestamp_func})
             """, (
                 tenant_id,
                 "Test Tenant",
@@ -51,10 +57,10 @@ class TestAdcpServerV2_3(unittest.TestCase):
             ]
             
             for prod_data in products_data:
-                conn.execute("""
+                conn.execute(f"""
                     INSERT INTO products (product_id, tenant_id, name, description, formats, delivery_type, 
-                                       is_fixed_price, cpm, price_guidance, countries, targeting_template)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                                       is_fixed_price, cpm, price_guidance, countries, targeting_template, created_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, {timestamp_func})
                 """, (prod_data[0], tenant_id, prod_data[1], prod_data[2], prod_data[3], prod_data[4], 
                       prod_data[5], prod_data[6], prod_data[7], json.dumps({"countries": ["US", "CA"]}), json.dumps({})))
             
