@@ -22,6 +22,14 @@ def init_db_ci():
         print("Creating default tenant for CI...")
         conn = get_db_connection()
         try:
+            # First, check if CI test tenant already exists
+            cursor = conn.execute("SELECT tenant_id FROM tenants WHERE subdomain = ?", ('ci-test',))
+            existing = cursor.fetchone()
+            
+            if existing:
+                print(f"CI test tenant already exists (ID: {existing[0]}), skipping creation")
+                return
+            
             tenant_id = str(uuid.uuid4())
             
             # Use database-appropriate timestamp function
