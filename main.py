@@ -1,5 +1,6 @@
 import json
 import os
+import sys
 import uuid
 from datetime import date, datetime, timedelta
 from typing import Dict, List, Optional, Tuple
@@ -187,14 +188,24 @@ def get_adapter(principal: Principal, dry_run: bool = False):
         return MockAdServerAdapter(adapter_config, principal, dry_run, tenant_id=tenant_id)
 
 # --- Initialization ---
-init_db()
-config = load_config()
-mcp = FastMCP(name="AdCPSalesAgent")
-console = Console()
-
-# Initialize creative engine with config
-creative_engine_config = config.get('creative_engine', {})
-creative_engine = MockCreativeEngine(creative_engine_config)
+# Check if we're in test collection phase
+if 'pytest' in sys.modules and os.environ.get('PYTEST_CURRENT_TEST') is None:
+    # During test collection, use minimal initialization
+    init_db()
+    config = {'creative_engine': {}, 'dry_run': False}
+    mcp = FastMCP(name="AdCPSalesAgent")
+    console = Console()
+    creative_engine = MockCreativeEngine({})
+else:
+    # Normal initialization
+    init_db()
+    config = load_config()
+    mcp = FastMCP(name="AdCPSalesAgent")
+    console = Console()
+    
+    # Initialize creative engine with config
+    creative_engine_config = config.get('creative_engine', {})
+    creative_engine = MockCreativeEngine(creative_engine_config)
 
 def load_media_buys_from_db():
     """Load existing media buys from database into memory on startup."""
