@@ -2,7 +2,7 @@ import pytest
 from datetime import datetime, timedelta
 
 from adapters.mock_ad_server import MockAdServer
-from schemas import *
+from schemas import MediaPackage, CreateMediaBuyRequest, SelectedPackage, Principal
 
 @pytest.fixture
 def sample_packages():
