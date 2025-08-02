@@ -23,10 +23,19 @@ def init_db_ci():
         conn = get_db_connection()
         try:
             tenant_id = str(uuid.uuid4())
-            conn.execute("""
+            
+            # Use database-appropriate timestamp function
+            if conn.config['type'] == 'sqlite':
+                timestamp_func = "datetime('now')"
+            else:  # PostgreSQL
+                timestamp_func = "CURRENT_TIMESTAMP"
+            
+            # Build query with proper timestamp function
+            tenant_query = f"""
                 INSERT INTO tenants (tenant_id, name, subdomain, config, billing_plan, created_at)
-                VALUES (?, ?, ?, ?, ?, datetime('now'))
-            """, (
+                VALUES (?, ?, ?, ?, ?, {timestamp_func})
+            """
+            conn.execute(tenant_query, (
                 tenant_id,
                 "CI Test Tenant",
                 "ci-test",
@@ -36,10 +45,11 @@ def init_db_ci():
             
             # Create a default principal for the tenant
             principal_id = str(uuid.uuid4())
-            conn.execute("""
+            principal_query = f"""
                 INSERT INTO principals (principal_id, tenant_id, name, access_token, platform_mappings, created_at)
-                VALUES (?, ?, ?, ?, ?, datetime('now'))
-            """, (
+                VALUES (?, ?, ?, ?, ?, {timestamp_func})
+            """
+            conn.execute(principal_query, (
                 principal_id,
                 tenant_id,
                 "CI Test Principal",
