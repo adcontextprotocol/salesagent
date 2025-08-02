@@ -24,7 +24,12 @@ def test_mock_ad_server_create_media_buy(sample_packages):
     when a create_media_buy request is received.
     """
     # Arrange
-    adapter = MockAdServer({})
+    principal = Principal(
+        principal_id="test_principal",
+        name="Test Principal",
+        platform_mappings={"mock": {"advertiser_id": "test_advertiser"}}
+    )
+    adapter = MockAdServer({}, principal)
     start_time = datetime.now()
     end_time = start_time + timedelta(days=30)
     
