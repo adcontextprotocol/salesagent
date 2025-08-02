@@ -3,7 +3,7 @@ import os
 import json
 
 # Ensure the main module can be imported
-from schemas import ListProductsRequest, ListProductsResponse, Product
+from schemas import GetProductsRequest, GetProductsResponse, Product
 from database import init_db
 from config_loader import set_current_tenant, get_default_tenant, get_current_tenant
 from db_config import get_db_connection
@@ -83,7 +83,7 @@ class TestAdcpServerV2_3(unittest.TestCase):
     def test_product_catalog_schema_conformance(self):
         """
         Tests that the product catalog data exists and has expected fields.
-        Since list_products now requires authentication context, we test
+        Since get_products now requires authentication context, we test
         the underlying catalog functionality instead.
         """
         # Test that we can query products from the database

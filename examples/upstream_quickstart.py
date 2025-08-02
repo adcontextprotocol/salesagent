@@ -197,7 +197,7 @@ async def test_product_listing():
             print(f"📝 Brief: {brief}")
             
             try:
-                result = await client.tools.list_products(brief=brief)
+                result = await client.tools.get_products(brief=brief)
                 products = result.get('products', [])
                 
                 print(f"📦 Got {len(products)} products:")
