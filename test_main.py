@@ -57,10 +57,10 @@ class TestAdcpServerV2_3(unittest.TestCase):
             ]
             
             for prod_data in products_data:
-                conn.execute(f"""
+                conn.execute("""
                     INSERT INTO products (product_id, tenant_id, name, description, formats, delivery_type, 
-                                       is_fixed_price, cpm, price_guidance, countries, targeting_template, created_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, {timestamp_func})
+                                       is_fixed_price, cpm, price_guidance, countries, targeting_template)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """, (prod_data[0], tenant_id, prod_data[1], prod_data[2], prod_data[3], prod_data[4], 
                       prod_data[5], prod_data[6], prod_data[7], json.dumps({"countries": ["US", "CA"]}), json.dumps({})))
             
