@@ -11,7 +11,7 @@ def init_db_ci():
     try:
         # Import here to ensure path is set up first
         from migrate import run_migrations
-        from database_schema import get_db_connection
+        from db_config import get_db_connection
         import uuid
         
         print("Applying database migrations for CI...")
