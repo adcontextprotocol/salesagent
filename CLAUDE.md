@@ -102,7 +102,14 @@ When working in a Conductor workspace (e.g., `.conductor/quito/`):
 
 ## Recent Major Changes
 
-### AI-Powered Product Management (Latest)
+### AdCP v2.4 Protocol Updates (Latest)
+- **Renamed Endpoints**: `list_products` renamed to `get_products` to align with signals agent spec
+- **Signal Discovery**: Added optional `get_signals` endpoint for discovering available signals (audiences, contextual, geographic, etc.)
+- **Enhanced Targeting**: Added `signals` field to targeting overlay for direct signal activation
+- **Terminology Updates**: Renamed `provided_signals` to `aee_signals` for improved clarity
+- **Unified Signal Interface**: Signals can now include audiences, contextual data, and geographic information
+
+### AI-Powered Product Management
 - **Default Products**: 6 standard products automatically created for new tenants
 - **Industry Templates**: Specialized products for news, sports, entertainment, ecommerce
 - **AI Configuration**: Uses Gemini 2.5 Flash to analyze descriptions and suggest configs
@@ -455,15 +462,25 @@ transport = StreamableHttpTransport(url="http://localhost:8080/mcp/", headers=he
 client = Client(transport=transport)
 
 async with client:
-    # List products
-    products = await client.tools.list_products()
+    # Get products
+    products = await client.tools.get_products(brief="video ads for sports content")
     
-    # Create media buy
+    # Discover available signals (optional)
+    signals = await client.tools.get_signals(
+        query="sports",
+        type="contextual"
+    )
+    
+    # Create media buy with signals
     result = await client.tools.create_media_buy(
         product_ids=["prod_1"],
         total_budget=5000.0,
         flight_start_date="2025-02-01",
-        flight_end_date="2025-02-28"
+        flight_end_date="2025-02-28",
+        targeting_overlay={
+            "geo_country_any_of": ["US"],
+            "signals": ["sports_content", "auto_intenders_q1_2025"]
+        }
     )
 ```
 

@@ -89,8 +89,8 @@ class FullLifecycleSimulation:
         brief = "Looking for video and audio inventory to reach pet owners during prime time and drive time"
         console.print(f"[yellow]Campaign Brief:[/yellow] {brief}")
         
-        console.print("\n[yellow]Calling list_products...[/yellow]")
-        products_response = await self._call_tool("list_products", {
+        console.print("\n[yellow]Calling get_products...[/yellow]")
+        products_response = await self._call_tool("get_products", {
             "req": {"brief": brief}
         })
         self.products = products_response.get("products", [])
