@@ -188,24 +188,29 @@ def get_adapter(principal: Principal, dry_run: bool = False):
         return MockAdServerAdapter(adapter_config, principal, dry_run, tenant_id=tenant_id)
 
 # --- Initialization ---
-# Check if we're in test collection phase
-if 'pytest' in sys.modules and os.environ.get('PYTEST_CURRENT_TEST') is None:
-    # During test collection, use minimal initialization
-    init_db()
-    config = {'creative_engine': {}, 'dry_run': False}
-    mcp = FastMCP(name="AdCPSalesAgent")
-    console = Console()
-    creative_engine = MockCreativeEngine({})
-else:
-    # Normal initialization
-    init_db()
+init_db()
+
+# Try to load config, but use defaults if no tenant context available
+try:
     config = load_config()
-    mcp = FastMCP(name="AdCPSalesAgent")
-    console = Console()
-    
-    # Initialize creative engine with config
-    creative_engine_config = config.get('creative_engine', {})
-    creative_engine = MockCreativeEngine(creative_engine_config)
+except RuntimeError as e:
+    if "No tenant in context" in str(e):
+        # Use minimal config for test environments
+        config = {
+            'creative_engine': {},
+            'dry_run': False,
+            'adapters': {'mock': {'enabled': True}},
+            'ad_server': {'adapter': 'mock', 'enabled': True}
+        }
+    else:
+        raise
+
+mcp = FastMCP(name="AdCPSalesAgent")
+console = Console()
+
+# Initialize creative engine with config
+creative_engine_config = config.get('creative_engine', {})
+creative_engine = MockCreativeEngine(creative_engine_config)
 
 def load_media_buys_from_db():
     """Load existing media buys from database into memory on startup."""
