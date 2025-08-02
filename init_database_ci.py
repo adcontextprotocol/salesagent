@@ -32,8 +32,8 @@ def init_db_ci():
             
             # Build query with proper timestamp function
             tenant_query = f"""
-                INSERT INTO tenants (tenant_id, name, subdomain, config, billing_plan, created_at)
-                VALUES (?, ?, ?, ?, ?, {timestamp_func})
+                INSERT INTO tenants (tenant_id, name, subdomain, config, billing_plan, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, {timestamp_func}, {timestamp_func})
             """
             conn.execute(tenant_query, (
                 tenant_id,
