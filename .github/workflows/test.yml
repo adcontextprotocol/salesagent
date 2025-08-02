@@ -74,7 +74,7 @@ jobs:
         pytest tests/unit/test_admin_ui_oauth.py tests/test_adapters.py test_adapter_targeting.py test_creative_format_parsing.py -v --tb=short --junitxml=test-results-unit.xml || true
         
         # Integration tests (require database)
-        pytest test_main.py test_admin_creative_approval.py test_creative_auto_approval.py test_human_task_queue.py -v --tb=short --junitxml=test-results-integration.xml || true
+        pytest test_main.py -v --tb=short --junitxml=test-results-integration.xml || true
         
         # AI tests (mocked, no real API calls)
         # Note: test_ai_product_features.py has some tests that need refactoring
