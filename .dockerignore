@@ -19,6 +19,8 @@ wheels/
 *.egg-info/
 .installed.cfg
 *.egg
+pip-log.txt
+pip-delete-this-directory.txt
 
 # Virtual environments
 venv/
@@ -32,6 +34,8 @@ env/
 *.swp
 *.swo
 *~
+.project
+.pydevproject
 
 # Testing
 .pytest_cache/
@@ -39,23 +43,63 @@ env/
 htmlcov/
 .tox/
 .hypothesis/
+coverage.xml
+*.cover
+.nox/
+test-results/
 
 # Local files
 *.log
 *.db
+*.sqlite
+*.sqlite3
 .DS_Store
+Thumbs.db
+ehthumbs.db
+Desktop.ini
 
-# Config (use sample instead)
+# Config
 config.json
 client_secret*.json
+.env
+.env.*
+conductor_ports.json
 
 # Git
 .git/
 .gitignore
+.gitattributes
 
 # Documentation
 *.md
 docs/
+README.md
+
+# Docker
+docker-compose.override.yml
+docker-compose.*.yml
+Dockerfile.*
+.dockerignore
+
+# Conductor workspaces
+.conductor/
+
+# CI/CD
+.github/
+.gitlab-ci.yml
+.travis.yml
+
+# Project specific
+audit_logs/
+ui_tests/
+playwright-report/
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+*.bak
+*.orig
 
 # Fly.io
 fly.toml
