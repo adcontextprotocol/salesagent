@@ -69,22 +69,22 @@ jobs:
         GOOGLE_CLIENT_SECRET: test_client_secret
         SUPER_ADMIN_EMAILS: test@example.com
       run: |
-        # Run comprehensive test suite
+        # Run comprehensive test suite with coverage
         # Unit tests first (no database required)
-        pytest tests/unit/test_admin_ui_oauth.py tests/test_adapters.py test_adapter_targeting.py test_creative_format_parsing.py -v --tb=short --junitxml=test-results-unit.xml || true
+        pytest tests/unit/test_admin_ui_oauth.py tests/test_adapters.py test_adapter_targeting.py test_creative_format_parsing.py -v --tb=short --cov=. --cov-append --junitxml=test-results-unit.xml || true
         
         # Integration tests (require database)
-        pytest test_main.py -v --tb=short --junitxml=test-results-integration.xml || true
+        pytest test_main.py -v --tb=short --cov=. --cov-append --junitxml=test-results-integration.xml || true
         
         # AI tests (mocked, no real API calls)
         # Note: test_ai_product_features.py has some tests that need refactoring
-        pytest test_ai_product_basic.py -v --tb=short --junitxml=test-results-ai-basic.xml || true
-        pytest test_ai_product_features.py -v --tb=short --junitxml=test-results-ai-features.xml -k "not test_create_product_from_description and not test_product_suggestions_api and not test_quick_create_products_api and not test_ai_integration and not test_bulk_product_upload_csv" || true
+        pytest test_ai_product_basic.py -v --tb=short --cov=. --cov-append --junitxml=test-results-ai-basic.xml || true
+        pytest test_ai_product_features.py -v --tb=short --cov=. --cov-append --junitxml=test-results-ai-features.xml -k "not test_create_product_from_description and not test_product_suggestions_api and not test_quick_create_products_api and not test_ai_integration and not test_bulk_product_upload_csv" || true
         
-        # Combine coverage reports
-        coverage combine
-        coverage xml
-        coverage report
+        # Generate coverage reports
+        # No need to combine when using --cov-append
+        coverage xml || echo "No coverage.xml generated"
+        coverage report || echo "No coverage report generated"
     
     - name: Upload coverage to Codecov
       if: always()
