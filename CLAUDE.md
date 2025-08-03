@@ -297,6 +297,8 @@ adcp-server   # MCP server on port 8080
 admin-ui      # Admin interface on port 8001
 ```
 
+**Docker Caching**: The system automatically uses Docker BuildKit caching to speed up builds. Shared volumes (`adcp_global_pip_cache` and `adcp_global_uv_cache`) cache dependencies across all Conductor workspaces, reducing build times from ~2-3 minutes to ~30 seconds.
+
 ### Required Configuration (.env file)
 
 ```bash
