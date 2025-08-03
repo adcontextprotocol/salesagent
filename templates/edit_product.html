@@ -48,11 +48,11 @@
                 <label for="price_guidance_min">Price Guidance (CPM Range)</label>
                 <div style="display: flex; gap: 10px; align-items: center;">
                     <input type="number" id="price_guidance_min" name="price_guidance_min" 
-                           value="{{ product.price_guidance.min_cpm if product.price_guidance else '' }}"
+                           value="{{ product.price_guidance.min if product.price_guidance else '' }}"
                            placeholder="Min" step="0.01" style="flex: 1;">
                     <span>-</span>
                     <input type="number" id="price_guidance_max" name="price_guidance_max" 
-                           value="{{ product.price_guidance.max_cpm if product.price_guidance else '' }}"
+                           value="{{ product.price_guidance.max if product.price_guidance else '' }}"
                            placeholder="Max" step="0.01" style="flex: 1;">
                 </div>
                 <small style="color: #666;">Suggested CPM range for non-guaranteed inventory</small>

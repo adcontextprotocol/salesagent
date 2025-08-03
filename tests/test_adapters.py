@@ -2,7 +2,7 @@ import pytest
 from datetime import datetime, timedelta
 
 from adapters.mock_ad_server import MockAdServer
-from schemas import *
+from schemas import MediaPackage, CreateMediaBuyRequest, Principal
 
 @pytest.fixture
 def sample_packages():
@@ -11,14 +11,10 @@ def sample_packages():
         MediaPackage(
             package_id="pkg_1",
             name="Guaranteed Banner",
-            description="A guaranteed banner package",
-            type="catalog",
             delivery_type="guaranteed",
-            creative_compatibility={},
             cpm=15.0,
-            budget=5000,
-            start_time=datetime.now(),
-            end_time=datetime.now() + timedelta(days=30)
+            impressions=333333,  # 5000 budget / 15 CPM * 1000
+            format_ids=["display_300x250", "display_728x90"]
         )
     ]
 
@@ -28,13 +24,22 @@ def test_mock_ad_server_create_media_buy(sample_packages):
     when a create_media_buy request is received.
     """
     # Arrange
-    adapter = MockAdServer({})
+    principal = Principal(
+        principal_id="test_principal",
+        name="Test Principal",
+        platform_mappings={"mock": {"advertiser_id": "test_advertiser"}}
+    )
+    adapter = MockAdServer({}, principal)
     start_time = datetime.now()
     end_time = start_time + timedelta(days=30)
     
+    # CreateMediaBuyRequest now uses product_ids, not selected_packages
     request = CreateMediaBuyRequest(
-        selected_packages=[SelectedPackage(package_id="pkg_1")],
-        billing_entity="Test Buyer Inc.",
+        product_ids=["pkg_1"],
+        flight_start_date=start_time.date(),
+        flight_end_date=end_time.date(),
+        total_budget=5000.0,
+        targeting_overlay={},  # Empty targeting
         po_number="PO-12345"
     )
     
