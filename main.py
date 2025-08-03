@@ -282,7 +282,7 @@ def _verify_principal(media_buy_id: str, context: Context):
 # --- MCP Tools (Full Implementation) ---
 
 @mcp.tool
-async def list_products(req: ListProductsRequest, context: Context) -> ListProductsResponse:
+async def get_products(req: GetProductsRequest, context: Context) -> GetProductsResponse:
     principal_id = _get_principal_id_from_context(context) # Authenticate
     
     # Get tenant information
@@ -309,7 +309,105 @@ async def list_products(req: ListProductsRequest, context: Context) -> ListProdu
         context=None  # Could add additional context here if needed
     )
     
-    return ListProductsResponse(products=products)
+    return GetProductsResponse(products=products)
+
+@mcp.tool
+async def get_signals(req: GetSignalsRequest, context: Context) -> GetSignalsResponse:
+    """Optional endpoint for discovering available signals (audiences, contextual, etc.)"""
+    principal_id = _get_principal_id_from_context(context)
+    
+    # Get tenant information
+    tenant = get_current_tenant()
+    if not tenant:
+        raise ToolError("No tenant context available")
+    
+    # Mock implementation - in production, this would query from a signal provider
+    # or the ad server's available audience segments
+    signals = []
+    
+    # Sample signals for demonstration
+    sample_signals = [
+        Signal(
+            signal_id="auto_intenders_q1_2025",
+            name="Auto Intenders Q1 2025",
+            description="Users actively researching new vehicles in Q1 2025",
+            type="audience",
+            category="automotive",
+            reach=2.5,
+            cpm_uplift=3.0
+        ),
+        Signal(
+            signal_id="luxury_travel_enthusiasts",
+            name="Luxury Travel Enthusiasts",
+            description="High-income individuals interested in premium travel experiences",
+            type="audience",
+            category="travel",
+            reach=1.2,
+            cpm_uplift=5.0
+        ),
+        Signal(
+            signal_id="sports_content",
+            name="Sports Content Pages",
+            description="Target ads on sports-related content",
+            type="contextual",
+            category="sports",
+            reach=15.0,
+            cpm_uplift=1.5
+        ),
+        Signal(
+            signal_id="finance_content",
+            name="Finance & Business Content",
+            description="Target ads on finance and business content",
+            type="contextual",
+            category="finance",
+            reach=8.0,
+            cpm_uplift=2.0
+        ),
+        Signal(
+            signal_id="urban_millennials",
+            name="Urban Millennials",
+            description="Millennials living in major metropolitan areas",
+            type="audience",
+            category="demographic",
+            reach=5.0,
+            cpm_uplift=1.8
+        ),
+        Signal(
+            signal_id="pet_owners",
+            name="Pet Owners",
+            description="Households with dogs or cats",
+            type="audience",
+            category="lifestyle",
+            reach=35.0,
+            cpm_uplift=1.2
+        )
+    ]
+    
+    # Filter based on request parameters
+    for signal in sample_signals:
+        # Apply query filter
+        if req.query:
+            query_lower = req.query.lower()
+            if (query_lower not in signal.name.lower() and 
+                query_lower not in signal.description.lower() and
+                query_lower not in signal.category.lower()):
+                continue
+        
+        # Apply type filter
+        if req.type and signal.type != req.type:
+            continue
+            
+        # Apply category filter
+        if req.category and signal.category != req.category:
+            continue
+            
+        signals.append(signal)
+    
+    # Apply limit
+    if req.limit:
+        signals = signals[:req.limit]
+    
+    return GetSignalsResponse(signals=signals)
 
 @mcp.tool
 def create_media_buy(req: CreateMediaBuyRequest, context: Context) -> CreateMediaBuyResponse:

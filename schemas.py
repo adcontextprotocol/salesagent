@@ -125,6 +125,9 @@ class Targeting(BaseModel):
     audiences_any_of: Optional[List[str]] = None  # Audience segments
     audiences_none_of: Optional[List[str]] = None
     
+    # Signal targeting - can use signal IDs from get_signals endpoint
+    signals: Optional[List[str]] = None  # Signal IDs like ["auto_intenders_q1_2025", "sports_content"]
+    
     # Media type targeting
     media_type_any_of: Optional[List[str]] = None  # ["video", "audio", "display", "native"]
     media_type_none_of: Optional[List[str]] = None
@@ -214,10 +217,10 @@ class UpdatePerformanceIndexResponse(BaseModel):
     detail: str
 
 # --- Discovery ---
-class ListProductsRequest(BaseModel):
+class GetProductsRequest(BaseModel):
     brief: str
 
-class ListProductsResponse(BaseModel):
+class GetProductsResponse(BaseModel):
     products: List[Product]
 
 # --- Creative Lifecycle ---
@@ -686,4 +689,27 @@ class CheckAEERequirementsResponse(BaseModel):
     missing_dimensions: List[str]
     available_dimensions: List[str]
 
-# Creative macro is now a simple string passed via AEE provided_signals
+# Creative macro is now a simple string passed via AEE aee_signals
+
+# --- Signal Discovery ---
+class Signal(BaseModel):
+    """Represents an available signal (audience, contextual, geographic, etc.)"""
+    signal_id: str
+    name: str
+    description: str
+    type: Literal["audience", "contextual", "geographic", "behavioral", "custom"]
+    category: Optional[str] = None  # e.g., "automotive", "finance", "sports"
+    reach: Optional[float] = None  # Estimated reach percentage
+    cpm_uplift: Optional[float] = None  # Expected CPM increase when using this signal
+    metadata: Optional[Dict[str, Any]] = {}
+
+class GetSignalsRequest(BaseModel):
+    """Request to discover available signals."""
+    query: Optional[str] = None  # Natural language search query
+    type: Optional[str] = None  # Filter by signal type
+    category: Optional[str] = None  # Filter by category
+    limit: Optional[int] = 100
+
+class GetSignalsResponse(BaseModel):
+    """Response containing available signals."""
+    signals: List[Signal]
