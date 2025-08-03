@@ -14,7 +14,8 @@ RUN pip install uv
 WORKDIR /app
 COPY pyproject.toml uv.lock ./
 
-# Install dependencies
+# Install dependencies with increased timeout
+ENV UV_HTTP_TIMEOUT=300
 RUN uv sync --frozen
 
 # Runtime stage

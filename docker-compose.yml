@@ -51,11 +51,13 @@ services:
 
   admin-ui:
     build: .
-    command: python admin_ui.py
+    command: ./start_admin_ui.sh
     environment:
       DATABASE_URL: postgresql://adcp_user:secure_password_change_me@postgres:5432/adcp?sslmode=disable
-      ADMIN_UI_PORT: ${ADMIN_UI_PORT:-8004}
+      ADMIN_UI_PORT: ${ADMIN_UI_PORT:-8039}
+      FLASK_APP: admin_ui.py
       FLASK_ENV: production
+      FLASK_DEBUG: ""
       # Gemini API key (required for AI features)
       GEMINI_API_KEY: ${GEMINI_API_KEY}
       # Super admin authorization (set these via .env file)
@@ -71,7 +73,7 @@ services:
         condition: service_healthy
     
     ports:
-      - "${ADMIN_UI_PORT:-8004}:${ADMIN_UI_PORT:-8004}"
+      - "${ADMIN_UI_PORT:-8039}:${ADMIN_UI_PORT:-8039}"
     
     volumes:
       # Mount OAuth credentials file
