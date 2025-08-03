@@ -60,7 +60,7 @@ async def run_test_flow(client: FastMCPClient):
     try:
         # 1. List products
         console.print("\n[bold]1. Listing available products:[/bold]")
-        result = await client.call_tool("list_products", {})
+        result = await client.call_tool("get_products", {})
         
         if result and hasattr(result, 'products'):
             table = Table(title="Available Products")
@@ -106,7 +106,7 @@ async def run_test_flow(client: FastMCPClient):
 async def interactive_mode(client: FastMCPClient):
     """Interactive mode for testing tools."""
     console.print("\n[bold cyan]Interactive Mode[/bold cyan]")
-    console.print("Commands: list_products, create_buy, submit_creative, status, quit")
+    console.print("Commands: get_products, create_buy, submit_creative, status, quit")
     
     while True:
         try:
@@ -114,8 +114,8 @@ async def interactive_mode(client: FastMCPClient):
             
             if command == "quit":
                 break
-            elif command == "list_products":
-                result = await client.call_tool("list_products", {})
+            elif command == "get_products":
+                result = await client.call_tool("get_products", {})
                 if result and hasattr(result, 'products'):
                     for product in result.products[:5]:
                         console.print(f"  • {product.product_id}: {product.name}")

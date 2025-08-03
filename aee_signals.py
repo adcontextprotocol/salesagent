@@ -1,7 +1,7 @@
 """
 AEE (Ad Execution Engine) signal definitions.
 
-Defines the three types of provided signals from AEE:
+Defines the three types of AEE signals:
 1. May Include - Signals to include for targeting
 2. Must Exclude - Signals that must be excluded  
 3. Creative Macro - Arbitrary string to inject into creative
@@ -11,7 +11,7 @@ from typing import Dict, List, Any, Optional
 from pydantic import BaseModel, Field
 from datetime import datetime
 
-class AEEProvidedSignals(BaseModel):
+class AEESignals(BaseModel):
     """Signals provided by AEE for ad decisioning and customization."""
     
     # Existing signal types
@@ -38,8 +38,8 @@ class AEEResponse(BaseModel):
     should_bid: bool
     bid_price: Optional[float] = None
     
-    # Provided signals (all three types)
-    provided_signals: AEEProvidedSignals
+    # AEE signals (all three types)
+    aee_signals: AEESignals
     
     # Metadata
     decision_id: str
@@ -60,7 +60,7 @@ Example AEE Response:
 {
     "should_bid": true,
     "bid_price": 5.50,
-    "provided_signals": {
+    "aee_signals": {
         "may_include": ["sports", "premium_user"],
         "must_exclude": ["competitor_xyz"],
         "creative_macro": "city:San Francisco|weather:sunny|segment:tech_professional"
