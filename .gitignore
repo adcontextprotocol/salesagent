@@ -65,3 +65,7 @@ temp/
 tmp/
 test_auth_state.json
 screenshots/
+
+# Conductor workspace files
+conductor_ports.json
+conductor_ports.lock
