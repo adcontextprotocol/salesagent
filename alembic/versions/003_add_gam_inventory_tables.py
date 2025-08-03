@@ -26,7 +26,7 @@ def upgrade():
         sa.Column('name', sa.String(length=255), nullable=False),
         sa.Column('path', sa.JSON(), nullable=True),
         sa.Column('status', sa.String(length=20), nullable=False),
-        sa.Column('metadata', sa.JSON(), nullable=True),
+        sa.Column('inventory_metadata', sa.JSON(), nullable=True),
         sa.Column('last_synced', sa.DateTime(), nullable=False, server_default=sa.func.now()),
         sa.Column('created_at', sa.DateTime(), nullable=False, server_default=sa.func.now()),
         sa.Column('updated_at', sa.DateTime(), nullable=False, server_default=sa.func.now()),

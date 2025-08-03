@@ -3174,12 +3174,12 @@ def register_adapter_routes():
         print(f"Warning: Failed to register adapter routes: {e}")
         traceback.print_exc()
 
+# Register adapter routes at module level (needed for import)
+register_adapter_routes()
+
 if __name__ == '__main__':
     # Create templates directory
     os.makedirs('templates', exist_ok=True)
-    
-    # Register adapter routes
-    register_adapter_routes()
     
     if not GOOGLE_CLIENT_ID or not GOOGLE_CLIENT_SECRET:
         print("ERROR: Google OAuth credentials not found!")
@@ -3197,7 +3197,7 @@ if __name__ == '__main__':
     # Run server
     port = int(os.environ.get('ADMIN_UI_PORT', 8001))  # Match OAuth redirect URI
     # Debug mode off for production
-    debug = os.environ.get('FLASK_DEBUG', '0') == '1'
+    debug = False  # Force debug off in Docker
     
     print(f"DEBUG: FLASK_DEBUG={os.environ.get('FLASK_DEBUG')}, debug={debug}")
     print(f"Starting Admin UI with Google OAuth on port {port}")

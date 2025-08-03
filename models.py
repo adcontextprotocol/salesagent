@@ -225,7 +225,7 @@ class GAMInventory(Base):
     name = Column(String(255), nullable=False)
     path = Column(JSON)  # Array of path components for ad units
     status = Column(String(20), nullable=False)
-    metadata = Column(JSON)  # Full inventory details
+    inventory_metadata = Column(JSON)  # Full inventory details
     last_synced = Column(DateTime, nullable=False, default=func.now())
     created_at = Column(DateTime, nullable=False, default=func.now())
     updated_at = Column(DateTime, nullable=False, default=func.now(), onupdate=func.now())

@@ -75,7 +75,7 @@ class GAMInventoryService:
                 name=ad_unit.name,
                 path=ad_unit.path,
                 status=ad_unit.status.value,
-                metadata={
+                inventory_metadata={
                     'ad_unit_code': ad_unit.ad_unit_code,
                     'parent_id': ad_unit.parent_id,
                     'description': ad_unit.description,
@@ -97,7 +97,7 @@ class GAMInventoryService:
                 name=placement.name,
                 path=[placement.name],  # Placements don't have hierarchy
                 status=placement.status,
-                metadata={
+                inventory_metadata={
                     'placement_code': placement.placement_code,
                     'description': placement.description,
                     'is_ad_sense_targeting_enabled': placement.is_ad_sense_targeting_enabled,
@@ -116,7 +116,7 @@ class GAMInventoryService:
                 name=label.name,
                 path=[label.name],
                 status='ACTIVE' if label.is_active else 'INACTIVE',
-                metadata={
+                inventory_metadata={
                     'description': label.description,
                     'ad_category': label.ad_category,
                     'label_type': label.label_type
@@ -133,7 +133,7 @@ class GAMInventoryService:
                 name=key.name,
                 path=[key.display_name],
                 status=key.status,
-                metadata={
+                inventory_metadata={
                     'display_name': key.display_name,
                     'type': key.type,  # PREDEFINED or FREEFORM
                     'reportable_type': key.reportable_type
@@ -151,7 +151,7 @@ class GAMInventoryService:
                     name=value.name,
                     path=[key.display_name, value.display_name],
                     status=value.status,
-                    metadata={
+                    inventory_metadata={
                         'custom_targeting_key_id': value.custom_targeting_key_id,
                         'display_name': value.display_name,
                         'match_type': value.match_type,
@@ -170,7 +170,7 @@ class GAMInventoryService:
                 name=segment.name,
                 path=[segment.type, segment.name],  # e.g. ["FIRST_PARTY", "Sports Enthusiasts"]
                 status=segment.status,
-                metadata={
+                inventory_metadata={
                     'description': segment.description,
                     'category_ids': segment.category_ids,
                     'type': segment.type,  # FIRST_PARTY or THIRD_PARTY
@@ -240,19 +240,19 @@ class GAMInventoryService:
                 'name': unit.name,
                 'path': unit.path,
                 'status': unit.status,
-                'metadata': unit.metadata,
+                'metadata': unit.inventory_metadata,
                 'children': []
             }
             unit_map[unit.inventory_id] = unit_data
             
             # Check if root (no parent or parent not in path)
-            parent_id = unit.metadata.get('parent_id')
+            parent_id = unit.inventory_metadata.get('parent_id')
             if not parent_id:
                 root_units.append(unit_data)
         
         # Build hierarchy
         for unit in ad_units:
-            parent_id = unit.metadata.get('parent_id')
+            parent_id = unit.inventory_metadata.get('parent_id')
             if parent_id and parent_id in unit_map:
                 unit_map[parent_id]['children'].append(unit_map[unit.inventory_id])
         
@@ -331,7 +331,7 @@ class GAMInventoryService:
                     filtered_results.append(result)
                     continue
                 
-                unit_sizes = result.metadata.get('sizes', [])
+                unit_sizes = result.inventory_metadata.get('sizes', [])
                 has_matching_size = False
                 
                 for required_size in sizes:
@@ -356,7 +356,7 @@ class GAMInventoryService:
                 'name': item.name,
                 'path': item.path,
                 'status': item.status,
-                'metadata': item.metadata,
+                'metadata': item.inventory_metadata,
                 'last_synced': item.last_synced.isoformat()
             }
             for item in results
@@ -411,7 +411,7 @@ class GAMInventoryService:
                     'name': inventory.name,
                     'path': inventory.path,
                     'is_primary': mapping.is_primary,
-                    'metadata': inventory.metadata
+                    'metadata': inventory.inventory_metadata
                 }
                 
                 if mapping.inventory_type == 'ad_unit':
@@ -570,7 +570,7 @@ class GAMInventoryService:
             reasons = []
             
             # Check size match
-            unit_sizes = unit.metadata.get('sizes', [])
+            unit_sizes = unit.inventory_metadata.get('sizes', [])
             for creative_size in creative_sizes:
                 for unit_size in unit_sizes:
                     if (unit_size['width'] == creative_size['width'] and 
@@ -586,7 +586,7 @@ class GAMInventoryService:
                     reasons.append(f"Keyword match: {keyword}")
             
             # Prefer explicitly targeted units
-            if unit.metadata.get('explicitly_targeted'):
+            if unit.inventory_metadata.get('explicitly_targeted'):
                 score += 3
                 reasons.append("Explicitly targeted")
             
@@ -641,15 +641,15 @@ class GAMInventoryService:
         ).all()
         
         for value in all_values:
-            key_id = value.metadata.get('custom_targeting_key_id')
+            key_id = value.inventory_metadata.get('custom_targeting_key_id')
             if key_id:
                 if key_id not in custom_values:
                     custom_values[key_id] = []
                 custom_values[key_id].append({
                     'id': value.inventory_id,
                     'name': value.name,
-                    'display_name': value.metadata.get('display_name', value.name),
-                    'match_type': value.metadata.get('match_type', 'EXACT'),
+                    'display_name': value.inventory_metadata.get('display_name', value.name),
+                    'match_type': value.inventory_metadata.get('match_type', 'EXACT'),
                     'status': value.status
                 })
         
@@ -683,11 +683,11 @@ class GAMInventoryService:
                 {
                     'id': key.inventory_id,
                     'name': key.name,
-                    'display_name': key.metadata.get('display_name', key.name),
-                    'type': key.metadata.get('type', 'UNKNOWN'),
+                    'display_name': key.inventory_metadata.get('display_name', key.name),
+                    'type': key.inventory_metadata.get('type', 'UNKNOWN'),
                     'status': key.status,
                     'metadata': {
-                        'reportable_type': key.metadata.get('reportable_type'),
+                        'reportable_type': key.inventory_metadata.get('reportable_type'),
                         'values_count': len(custom_values.get(key.inventory_id, []))
                     }
                 }
@@ -698,13 +698,13 @@ class GAMInventoryService:
                 {
                     'id': seg.inventory_id,
                     'name': seg.name,
-                    'description': seg.metadata.get('description'),
-                    'type': seg.metadata.get('type', 'UNKNOWN'),
-                    'size': seg.metadata.get('size'),
-                    'data_provider_name': seg.metadata.get('data_provider_name'),
-                    'segment_type': seg.metadata.get('segment_type', 'UNKNOWN'),
+                    'description': seg.inventory_metadata.get('description'),
+                    'type': seg.inventory_metadata.get('type', 'UNKNOWN'),
+                    'size': seg.inventory_metadata.get('size'),
+                    'data_provider_name': seg.inventory_metadata.get('data_provider_name'),
+                    'segment_type': seg.inventory_metadata.get('segment_type', 'UNKNOWN'),
                     'status': seg.status,
-                    'category_ids': seg.metadata.get('category_ids', [])
+                    'category_ids': seg.inventory_metadata.get('category_ids', [])
                 }
                 for seg in audiences
             ],
@@ -712,10 +712,10 @@ class GAMInventoryService:
                 {
                     'id': label.inventory_id,
                     'name': label.name,
-                    'description': label.metadata.get('description'),
+                    'description': label.inventory_metadata.get('description'),
                     'is_active': label.status == 'ACTIVE',
-                    'ad_category': label.metadata.get('ad_category'),
-                    'label_type': label.metadata.get('label_type', 'UNKNOWN')
+                    'ad_category': label.inventory_metadata.get('ad_category'),
+                    'label_type': label.inventory_metadata.get('label_type', 'UNKNOWN')
                 }
                 for label in labels
             ],
