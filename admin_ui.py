@@ -2043,6 +2043,301 @@ def create_from_template(tenant_id):
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+# Policy Management Routes
+@app.route('/tenant/<tenant_id>/policy')
+@require_auth()
+def policy_settings(tenant_id):
+    """View and manage policy settings for the tenant."""
+    # Check access
+    if session.get('role') == 'viewer':
+        return "Access denied", 403
+    
+    if session.get('role') == 'tenant_admin' and session.get('tenant_id') != tenant_id:
+        return "Access denied", 403
+    
+    conn = get_db_connection()
+    
+    # Get tenant info and config
+    cursor = conn.execute("SELECT name, config FROM tenants WHERE tenant_id = ?", (tenant_id,))
+    tenant = cursor.fetchone()
+    if not tenant:
+        conn.close()
+        return "Tenant not found", 404
+    
+    tenant_name, config_str = tenant
+    config = json.loads(config_str) if config_str else {}
+    policy_settings = config.get('policy_settings', {
+        'enabled': True,
+        'custom_rules': {
+            'prohibited_advertisers': [],
+            'prohibited_categories': [],
+            'prohibited_tactics': []
+        },
+        'require_manual_review': False
+    })
+    
+    # Get recent policy checks from audit log
+    cursor = conn.execute("""
+        SELECT timestamp, principal_id, success, details
+        FROM audit_logs 
+        WHERE tenant_id = ? AND operation = 'policy_check'
+        ORDER BY timestamp DESC
+        LIMIT 20
+    """, (tenant_id,))
+    
+    recent_checks = []
+    for row in cursor.fetchall():
+        details = json.loads(row[3]) if row[3] else {}
+        recent_checks.append({
+            'timestamp': row[0],
+            'principal_id': row[1],
+            'success': row[2],
+            'status': details.get('policy_status', 'unknown'),
+            'brief': details.get('brief', ''),
+            'reason': details.get('reason', '')
+        })
+    
+    # Get pending policy review tasks
+    cursor = conn.execute("""
+        SELECT task_id, created_at, details
+        FROM tasks
+        WHERE tenant_id = ? AND task_type = 'policy_review' AND status = 'pending'
+        ORDER BY created_at DESC
+    """, (tenant_id,))
+    
+    pending_reviews = []
+    for row in cursor.fetchall():
+        details = json.loads(row[2]) if row[2] else {}
+        pending_reviews.append({
+            'task_id': row[0],
+            'created_at': row[1],
+            'brief': details.get('brief', ''),
+            'advertiser': details.get('promoted_offering', '')
+        })
+    
+    conn.close()
+    
+    return render_template('policy_settings.html',
+                         tenant_id=tenant_id,
+                         tenant_name=tenant_name,
+                         policy_settings=policy_settings,
+                         recent_checks=recent_checks,
+                         pending_reviews=pending_reviews)
+
+@app.route('/tenant/<tenant_id>/policy/update', methods=['POST'])
+@require_auth()
+def update_policy_settings(tenant_id):
+    """Update policy settings for the tenant."""
+    # Check access - only admins can update policy
+    if session.get('role') not in ['super_admin', 'tenant_admin']:
+        return "Access denied", 403
+    
+    if session.get('role') == 'tenant_admin' and session.get('tenant_id') != tenant_id:
+        return "Access denied", 403
+    
+    try:
+        conn = get_db_connection()
+        
+        # Get current config
+        cursor = conn.execute("SELECT config FROM tenants WHERE tenant_id = ?", (tenant_id,))
+        config_str = cursor.fetchone()[0]
+        config = json.loads(config_str) if config_str else {}
+        
+        # Update policy settings
+        policy_settings = {
+            'enabled': request.form.get('enabled') == 'on',
+            'require_manual_review': request.form.get('require_manual_review') == 'on',
+            'custom_rules': config.get('policy_settings', {}).get('custom_rules', {
+                'prohibited_advertisers': [],
+                'prohibited_categories': [],
+                'prohibited_tactics': []
+            })
+        }
+        
+        config['policy_settings'] = policy_settings
+        
+        # Update database
+        conn.execute("""
+            UPDATE tenants 
+            SET config = ?
+            WHERE tenant_id = ?
+        """, (json.dumps(config), tenant_id))
+        
+        conn.connection.commit()
+        conn.close()
+        
+        return redirect(url_for('policy_settings', tenant_id=tenant_id))
+        
+    except Exception as e:
+        return f"Error: {e}", 400
+
+@app.route('/tenant/<tenant_id>/policy/rules', methods=['GET', 'POST'])
+@require_auth()
+def manage_policy_rules(tenant_id):
+    """Manage custom policy rules (blocked keywords, advertisers, etc.)."""
+    # Check access
+    if session.get('role') not in ['super_admin', 'tenant_admin']:
+        return "Access denied", 403
+    
+    if session.get('role') == 'tenant_admin' and session.get('tenant_id') != tenant_id:
+        return "Access denied", 403
+    
+    conn = get_db_connection()
+    
+    if request.method == 'POST':
+        try:
+            # Get current config
+            cursor = conn.execute("SELECT config FROM tenants WHERE tenant_id = ?", (tenant_id,))
+            config_str = cursor.fetchone()[0]
+            config = json.loads(config_str) if config_str else {}
+            
+            # Parse the form data
+            prohibited_advertisers = [a.strip() for a in request.form.get('prohibited_advertisers', '').split('\n') if a.strip()]
+            prohibited_categories = [c.strip() for c in request.form.get('prohibited_categories', '').split('\n') if c.strip()]
+            prohibited_tactics = [t.strip() for t in request.form.get('prohibited_tactics', '').split('\n') if t.strip()]
+            
+            # Update custom rules
+            if 'policy_settings' not in config:
+                config['policy_settings'] = {}
+            
+            config['policy_settings']['custom_rules'] = {
+                'prohibited_advertisers': prohibited_advertisers,
+                'prohibited_categories': prohibited_categories,
+                'prohibited_tactics': prohibited_tactics
+            }
+            
+            # Update database
+            conn.execute("""
+                UPDATE tenants 
+                SET config = ?
+                WHERE tenant_id = ?
+            """, (json.dumps(config), tenant_id))
+            
+            conn.connection.commit()
+            conn.close()
+            
+            return redirect(url_for('policy_settings', tenant_id=tenant_id))
+            
+        except Exception as e:
+            conn.close()
+            return f"Error: {e}", 400
+    
+    # GET: Show form
+    cursor = conn.execute("SELECT name, config FROM tenants WHERE tenant_id = ?", (tenant_id,))
+    tenant = cursor.fetchone()
+    if not tenant:
+        conn.close()
+        return "Tenant not found", 404
+    
+    tenant_name, config_str = tenant
+    config = json.loads(config_str) if config_str else {}
+    custom_rules = config.get('policy_settings', {}).get('custom_rules', {
+        'prohibited_advertisers': [],
+        'prohibited_categories': [],
+        'prohibited_tactics': []
+    })
+    
+    conn.close()
+    
+    return render_template('policy_rules.html',
+                         tenant_id=tenant_id,
+                         tenant_name=tenant_name,
+                         custom_rules=custom_rules)
+
+@app.route('/tenant/<tenant_id>/policy/review/<task_id>', methods=['GET', 'POST'])
+@require_auth()
+def review_policy_task(tenant_id, task_id):
+    """Review and approve/reject a policy review task."""
+    # Check access
+    if session.get('role') == 'viewer':
+        return "Access denied", 403
+    
+    if session.get('role') == 'tenant_admin' and session.get('tenant_id') != tenant_id:
+        return "Access denied", 403
+    
+    conn = get_db_connection()
+    
+    if request.method == 'POST':
+        try:
+            action = request.form.get('action')
+            review_notes = request.form.get('review_notes', '')
+            
+            if action not in ['approve', 'reject']:
+                return "Invalid action", 400
+            
+            # Update task status
+            new_status = 'approved' if action == 'approve' else 'rejected'
+            
+            # Get task details
+            cursor = conn.execute("""
+                SELECT details FROM tasks
+                WHERE tenant_id = ? AND task_id = ?
+            """, (tenant_id, task_id))
+            
+            row = cursor.fetchone()
+            if not row:
+                conn.close()
+                return "Task not found", 404
+            
+            details = json.loads(row[0]) if row[0] else {}
+            details['review_notes'] = review_notes
+            details['reviewed_by'] = session.get('email', 'unknown')
+            details['reviewed_at'] = datetime.utcnow().isoformat()
+            
+            conn.execute("""
+                UPDATE tasks
+                SET status = ?, details = ?, completed_at = CURRENT_TIMESTAMP
+                WHERE tenant_id = ? AND task_id = ?
+            """, (new_status, json.dumps(details), tenant_id, task_id))
+            
+            # Log the review
+            audit_logger = AuditLogger(conn)
+            audit_logger.log(
+                operation='policy_review',
+                tenant_id=tenant_id,
+                principal_id=details.get('principal_id'),
+                success=True,
+                details={
+                    'task_id': task_id,
+                    'action': action,
+                    'reviewer': session.get('email', 'unknown')
+                }
+            )
+            
+            conn.connection.commit()
+            conn.close()
+            
+            return redirect(url_for('policy_settings', tenant_id=tenant_id))
+            
+        except Exception as e:
+            conn.close()
+            return f"Error: {e}", 400
+    
+    # GET: Show review form
+    cursor = conn.execute("""
+        SELECT t.created_at, t.details, tn.name
+        FROM tasks t
+        JOIN tenants tn ON t.tenant_id = tn.tenant_id
+        WHERE t.tenant_id = ? AND t.task_id = ? AND t.task_type = 'policy_review'
+    """, (tenant_id, task_id))
+    
+    row = cursor.fetchone()
+    if not row:
+        conn.close()
+        return "Task not found", 404
+    
+    created_at, details_str, tenant_name = row
+    details = json.loads(details_str) if details_str else {}
+    
+    conn.close()
+    
+    return render_template('policy_review.html',
+                         tenant_id=tenant_id,
+                         tenant_name=tenant_name,
+                         task_id=task_id,
+                         created_at=created_at,
+                         details=details)
+
 def get_creative_formats():
     """Get all creative formats from the database."""
     conn = get_db_connection()
