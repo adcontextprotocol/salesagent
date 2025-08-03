@@ -10,12 +10,20 @@ RUN apt-get update && apt-get install -y \
 # Install uv
 RUN pip install uv
 
+# Set up caching for uv
+ENV UV_CACHE_DIR=/cache/uv
+ENV UV_TOOL_DIR=/cache/uv-tools
+ENV UV_PYTHON_PREFERENCE=only-system
+
 # Copy project files
 WORKDIR /app
 COPY pyproject.toml uv.lock ./
 
-# Install dependencies
-RUN uv sync --frozen
+# Install dependencies with caching
+# This layer will be cached as long as pyproject.toml and uv.lock don't change
+RUN --mount=type=cache,target=/cache/uv \
+    --mount=type=cache,target=/root/.cache/pip \
+    uv sync --frozen
 
 # Runtime stage
 FROM python:3.12-slim
