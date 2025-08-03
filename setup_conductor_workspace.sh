@@ -127,7 +127,27 @@ else
     echo "  Admin UI: $ADMIN_PORT"
 fi
 
+# Set up Docker caching infrastructure
+echo ""
+echo "Setting up Docker caching..."
+
+# Create shared cache volumes if they don't exist
+if docker volume inspect adcp_global_pip_cache >/dev/null 2>&1; then
+    echo "✓ Docker pip cache volume already exists"
+else
+    docker volume create adcp_global_pip_cache >/dev/null
+    echo "✓ Created shared pip cache volume"
+fi
+
+if docker volume inspect adcp_global_uv_cache >/dev/null 2>&1; then
+    echo "✓ Docker uv cache volume already exists"
+else
+    docker volume create adcp_global_uv_cache >/dev/null
+    echo "✓ Created shared uv cache volume"
+fi
+
 # Copy required files from root workspace
+echo ""
 echo "Copying files from root workspace..."
 
 # Create .env file from environment variables
@@ -137,6 +157,10 @@ echo "Creating .env file from environment variables..."
 cat > .env << EOF
 # Environment configuration for Conductor workspace: $CONDUCTOR_WORKSPACE_NAME
 # Generated on $(date)
+
+# Docker BuildKit Caching (enabled by default)
+DOCKER_BUILDKIT=1
+COMPOSE_DOCKER_CLI_BUILD=1
 
 # API Keys (from environment)
 GEMINI_API_KEY=${GEMINI_API_KEY:-}
@@ -178,23 +202,19 @@ echo "✓ Updated .env with unique ports"
 # Note: docker-compose.yml is not modified - ports are configured via .env file
 echo "✓ Port configuration saved to .env file"
 
-# Create docker-compose.override.yml for development hot reloading with caching
+# Create docker-compose.override.yml for development hot reloading
 cat > docker-compose.override.yml << 'EOF'
-# Docker Compose override for development with hot reloading and caching
-# This file is automatically loaded by docker-compose and overrides settings in docker-compose.yml
+# Docker Compose override for development with hot reloading
+# This file is automatically loaded by docker-compose
 
 services:
   adcp-server:
-    build:
-      args:
-        DOCKER_BUILDKIT: 1
-        BUILDKIT_INLINE_CACHE: 1
     volumes:
       # Mount source code for hot reloading, excluding .venv
       - .:/app
       - /app/.venv
       - ./audit_logs:/app/audit_logs
-      # Mount shared cache volumes
+      # Mount shared cache volumes for faster builds
       - adcp_global_pip_cache:/root/.cache/pip
       - adcp_global_uv_cache:/cache/uv
     environment:
@@ -202,21 +222,15 @@ services:
       PYTHONUNBUFFERED: 1
       FLASK_ENV: development
       WERKZEUG_RUN_MAIN: true
-      DOCKER_BUILDKIT: 1
-    # PATH is already set in Dockerfile to include .venv/bin
     command: ["python", "run_server.py"]
 
   admin-ui:
-    build:
-      args:
-        DOCKER_BUILDKIT: 1
-        BUILDKIT_INLINE_CACHE: 1
     volumes:
       # Mount source code for hot reloading, excluding .venv
       - .:/app
       - /app/.venv
       - ./audit_logs:/app/audit_logs
-      # Mount shared cache volumes
+      # Mount shared cache volumes for faster builds
       - adcp_global_pip_cache:/root/.cache/pip
       - adcp_global_uv_cache:/cache/uv
     environment:
@@ -225,29 +239,15 @@ services:
       FLASK_DEBUG: 1
       PYTHONUNBUFFERED: 1
       WERKZEUG_RUN_MAIN: true
-      DOCKER_BUILDKIT: 1
 
-# Reference external cache volumes
+# Reference external cache volumes (shared across all workspaces)
 volumes:
   adcp_global_pip_cache:
     external: true
   adcp_global_uv_cache:
     external: true
 EOF
-echo "✓ Created docker-compose.override.yml for development hot reloading with caching"
-
-# Run Docker cache setup if not already done
-if ! docker volume inspect adcp_global_pip_cache >/dev/null 2>&1; then
-    echo "Setting up Docker caching infrastructure..."
-    if [ -f ./setup_docker_cache.sh ]; then
-        ./setup_docker_cache.sh
-    else
-        echo "⚠️  Warning: setup_docker_cache.sh not found. Creating cache volumes manually..."
-        docker volume create adcp_global_pip_cache
-        docker volume create adcp_global_uv_cache
-        echo "✓ Created cache volumes"
-    fi
-fi
+echo "✓ Created docker-compose.override.yml for development"
 
 # Fix database.py indentation issues if they exist
 if grep -q "for p in principals_data:" database.py && ! grep -B1 "for p in principals_data:" database.py | grep -q "^    "; then
@@ -286,22 +286,16 @@ fi
 echo ""
 echo "Setup complete! Next steps:"
 echo "1. Review .env file and ensure GEMINI_API_KEY is set"
-echo "2. Build and start services with caching:"
-echo "   export DOCKER_BUILDKIT=1"
-echo "   docker-compose build"
-echo "   docker-compose up -d"
-echo ""
-echo "For faster builds across workspaces:"
-echo "   ./build_with_cache.sh  # Uses shared cache"
+echo "2. Build and start services:"
+echo "   docker compose build"
+echo "   docker compose up -d"
 echo ""
 echo "Services will be available at:"
 echo "  MCP Server: http://localhost:$ADCP_PORT/mcp/"
 echo "  Admin UI: http://localhost:$ADMIN_PORT/"
 echo "  PostgreSQL: localhost:$POSTGRES_PORT"
 echo ""
-echo "🚀 Docker caching enabled! Dependencies are cached in:"
-echo "  - adcp_global_pip_cache (pip packages)"
-echo "  - adcp_global_uv_cache (uv packages)"
+echo "✓ Docker caching is enabled automatically for faster builds!"
 if [ -d "ui_tests" ]; then
     echo ""
     echo "UI Testing:"
