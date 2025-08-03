@@ -7,7 +7,7 @@ import json
 import logging
 import os
 from typing import Optional, Dict, Any, List
-from datetime import datetime
+from datetime import datetime, timezone
 import requests
 from urllib.parse import urlparse
 
@@ -187,7 +187,7 @@ class SlackNotifier:
             "elements": [
                 {
                     "type": "mrkdwn",
-                    "text": f"Created at {datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S UTC')}"
+                    "text": f"Created at {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}"
                 }
             ]
         })
@@ -268,7 +268,7 @@ class SlackNotifier:
             "elements": [
                 {
                     "type": "mrkdwn",
-                    "text": f"Completed at {datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S UTC')}"
+                    "text": f"Completed at {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}"
                 }
             ]
         })
@@ -349,7 +349,7 @@ class SlackNotifier:
                 "elements": [
                     {
                         "type": "mrkdwn",
-                        "text": f"Submitted at {datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S UTC')}"
+                        "text": f"Submitted at {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}"
                     }
                 ]
             }
@@ -476,7 +476,7 @@ class SlackNotifier:
             "elements": [
                 {
                     "type": "mrkdwn",
-                    "text": f"Logged at {datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S UTC')} | Adapter: {adapter_id}"
+                    "text": f"Logged at {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')} | Adapter: {adapter_id}"
                 }
             ]
         })

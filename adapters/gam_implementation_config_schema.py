@@ -6,7 +6,7 @@ Based on analysis of Prebid Line Item Manager patterns.
 """
 
 from typing import Optional, List, Dict, Any
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, Field, field_validator
 
 
 class CreativePlaceholder(BaseModel):
@@ -163,20 +163,20 @@ class GAMImplementationConfig(BaseModel):
         description="GAM native style ID if using native ads"
     )
     
-    @validator('line_item_type')
+    @field_validator('line_item_type')
     def validate_line_item_type(cls, v):
         valid_types = {"STANDARD", "SPONSORSHIP", "NETWORK", "HOUSE", "PRICE_PRIORITY"}
         if v not in valid_types:
             raise ValueError(f"Invalid line_item_type. Must be one of: {valid_types}")
         return v
     
-    @validator('priority')
+    @field_validator('priority')
     def validate_priority(cls, v):
         if not 1 <= v <= 16:
             raise ValueError("Priority must be between 1 and 16")
         return v
     
-    @validator('cost_type')
+    @field_validator('cost_type')
     def validate_cost_type(cls, v):
         valid_types = {"CPM", "CPC", "CPD", "CPA"}
         if v not in valid_types:
