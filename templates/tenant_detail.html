@@ -135,6 +135,10 @@
     </div>
     <div class="tab" data-tab="integrations">Integrations</div>
     <div class="tab" data-tab="tokens">API Tokens</div>
+    {% if tenant.active_adapter == 'gam' %}
+    <a href="/tenant/{{ tenant.tenant_id }}/inventory" class="tab" style="text-decoration: none; color: inherit;">Inventory →</a>
+    <a href="/tenant/{{ tenant.tenant_id }}/targeting" class="tab" style="text-decoration: none; color: inherit;">Targeting →</a>
+    {% endif %}
     <a href="/tenant/{{ tenant.tenant_id }}/operations" class="tab" style="text-decoration: none; color: inherit;">Operations →</a>
 </div>
 

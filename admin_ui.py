@@ -879,6 +879,156 @@ def create_tenant():
     
     return render_template('create_tenant.html')
 
+# Inventory Management Routes
+@app.route('/tenant/<tenant_id>/inventory')
+@require_auth()
+def inventory_browser(tenant_id):
+    """Display inventory browser for GAM ad units, placements, etc."""
+    # Check access
+    if session.get('role') != 'super_admin' and session.get('tenant_id') != tenant_id:
+        abort(403)
+    
+    # Get tenant info
+    conn = get_db_connection()
+    cursor = conn.execute("SELECT * FROM tenants WHERE tenant_id = ?", (tenant_id,))
+    tenant_row = cursor.fetchone()
+    conn.close()
+    
+    if not tenant_row:
+        abort(404)
+    
+    # Convert row to dict
+    tenant = dict(tenant_row)
+    if tenant['config']:
+        tenant['config'] = json.loads(tenant['config'])
+    
+    # Check if GAM is enabled
+    gam_enabled = tenant['config'].get('adapters', {}).get('google_ad_manager', {}).get('enabled', False)
+    
+    if not gam_enabled:
+        flash('Google Ad Manager is not enabled for this tenant', 'warning')
+        return redirect(url_for('tenant_detail', tenant_id=tenant_id))
+    
+    return render_template('inventory_browser.html', tenant=tenant)
+
+@app.route('/tenant/<tenant_id>/targeting')
+@require_auth()
+def targeting_browser(tenant_id):
+    """Browse all targeting criteria (custom targeting, audiences, labels)."""
+    # Check access
+    if session.get('role') != 'super_admin' and session.get('tenant_id') != tenant_id:
+        abort(403)
+    
+    # Get tenant info
+    conn = get_db_connection()
+    cursor = conn.execute("""
+        SELECT tenant_id, name, config
+        FROM tenants
+        WHERE tenant_id = ?
+    """, (tenant_id,))
+    
+    tenant_row = cursor.fetchone()
+    conn.close()
+    
+    if not tenant_row:
+        abort(404)
+    
+    tenant = {
+        'tenant_id': tenant_row[0],
+        'name': tenant_row[1],
+        'config': json.loads(tenant_row[2]) if tenant_row[2] else {}
+    }
+    
+    # Check if GAM is enabled
+    gam_config = tenant['config'].get('adapters', {}).get('google_ad_manager', {})
+    if not gam_config.get('enabled'):
+        flash('Google Ad Manager is not enabled for this tenant')
+        return redirect(url_for('tenant_detail', tenant_id=tenant_id))
+    
+    return render_template('targeting_browser.html', tenant=tenant)
+
+@app.route('/tenant/<tenant_id>/product/<product_id>/inventory')
+@require_auth()
+def product_inventory_config(tenant_id, product_id):
+    """Configure inventory targeting for a product."""
+    # Check access
+    if session.get('role') == 'viewer':
+        abort(403)
+    
+    if session.get('role') != 'super_admin' and session.get('tenant_id') != tenant_id:
+        abort(403)
+    
+    # Get tenant and product info
+    conn = get_db_connection()
+    
+    # Get tenant
+    cursor = conn.execute("SELECT name FROM tenants WHERE tenant_id = ?", (tenant_id,))
+    tenant = cursor.fetchone()
+    
+    if not tenant:
+        conn.close()
+        abort(404)
+    
+    # Get product
+    cursor = conn.execute("""
+        SELECT product_id, name, formats, countries, implementation_config
+        FROM products
+        WHERE tenant_id = ? AND product_id = ?
+    """, (tenant_id, product_id))
+    
+    product_row = cursor.fetchone()
+    conn.close()
+    
+    if not product_row:
+        abort(404)
+    
+    # Convert to dict and parse JSON fields
+    product = dict(product_row)
+    if product['formats']:
+        product['formats'] = json.loads(product['formats'])
+    if product['implementation_config']:
+        product['implementation_config'] = json.loads(product['implementation_config'])
+    
+    return render_template('product_inventory_config.html',
+                         tenant_id=tenant_id,
+                         tenant_name=tenant['name'],
+                         product=product)
+
+# API endpoints for inventory management (used by JS)
+@app.route('/api/tenant/<tenant_id>/products')
+@require_auth()
+def api_get_products(tenant_id):
+    """API endpoint to get products for tenant."""
+    # Check access
+    if session.get('role') != 'super_admin' and session.get('tenant_id') != tenant_id:
+        return jsonify({'error': 'Access denied'}), 403
+    
+    conn = get_db_connection()
+    cursor = conn.execute("""
+        SELECT product_id, name, description, formats, delivery_type
+        FROM products
+        WHERE tenant_id = ?
+        ORDER BY name
+    """, (tenant_id,))
+    
+    products = []
+    for row in cursor.fetchall():
+        product = dict(row)
+        if product['formats']:
+            product['formats'] = json.loads(product['formats'])
+        products.append(product)
+    
+    conn.close()
+    
+    return jsonify({'products': products})
+
+# Import inventory service endpoints
+try:
+    from gam_inventory_service import create_inventory_endpoints
+    create_inventory_endpoints(app)
+except ImportError:
+    print("Warning: GAM inventory service not available")
+
 # Operations Dashboard Route
 @app.route('/tenant/<tenant_id>/operations')
 @require_auth()
@@ -1597,10 +1747,23 @@ def edit_product_basic(tenant_id, product_id):
         'price_guidance': price_guidance
     }
     
+    # Get tenant adapter
+    tenant_cursor = conn.execute("SELECT config FROM tenants WHERE tenant_id = ?", (tenant_id,))
+    tenant_row = tenant_cursor.fetchone()
+    tenant_adapter = None
+    if tenant_row and tenant_row['config']:
+        config = json.loads(tenant_row['config'])
+        # Find active adapter
+        for adapter_name in ['google_ad_manager', 'kevel', 'triton', 'mock']:
+            if config.get('adapters', {}).get(adapter_name, {}).get('enabled'):
+                tenant_adapter = 'gam' if adapter_name == 'google_ad_manager' else adapter_name
+                break
+    
     conn.close()
     return render_template('edit_product.html', 
                          tenant_id=tenant_id,
-                         product=product)
+                         product=product,
+                         tenant_adapter=tenant_adapter)
 
 @app.route('/tenant/<tenant_id>/products/add', methods=['GET', 'POST'])
 @require_auth()

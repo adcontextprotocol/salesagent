@@ -214,3 +214,54 @@ class AuditLog(Base):
         Index('idx_audit_logs_timestamp', 'timestamp'),
     )
 
+
+class GAMInventory(Base):
+    __tablename__ = 'gam_inventory'
+    
+    id = Column(Integer, primary_key=True)
+    tenant_id = Column(String(50), ForeignKey('tenants.tenant_id', ondelete='CASCADE'), nullable=False)
+    inventory_type = Column(String(20), nullable=False)  # 'ad_unit', 'placement', 'label'
+    inventory_id = Column(String(50), nullable=False)  # GAM ID
+    name = Column(String(255), nullable=False)
+    path = Column(JSON)  # Array of path components for ad units
+    status = Column(String(20), nullable=False)
+    metadata = Column(JSON)  # Full inventory details
+    last_synced = Column(DateTime, nullable=False, default=func.now())
+    created_at = Column(DateTime, nullable=False, default=func.now())
+    updated_at = Column(DateTime, nullable=False, default=func.now(), onupdate=func.now())
+    
+    # Relationships
+    tenant = relationship("Tenant")
+    
+    __table_args__ = (
+        UniqueConstraint('tenant_id', 'inventory_type', 'inventory_id', name='uq_gam_inventory'),
+        Index('idx_gam_inventory_tenant', 'tenant_id'),
+        Index('idx_gam_inventory_type', 'inventory_type'),
+        Index('idx_gam_inventory_status', 'status'),
+    )
+
+
+class ProductInventoryMapping(Base):
+    __tablename__ = 'product_inventory_mappings'
+    
+    id = Column(Integer, primary_key=True)
+    tenant_id = Column(String(50), ForeignKey('tenants.tenant_id', ondelete='CASCADE'), nullable=False)
+    product_id = Column(String(50), nullable=False)
+    inventory_type = Column(String(20), nullable=False)  # 'ad_unit' or 'placement'
+    inventory_id = Column(String(50), nullable=False)  # GAM inventory ID
+    is_primary = Column(Boolean, default=False)  # Primary targeting for the product
+    created_at = Column(DateTime, nullable=False, default=func.now())
+    
+    # Add foreign key constraint for product
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ['tenant_id', 'product_id'],
+            ['products.tenant_id', 'products.product_id'],
+            ondelete='CASCADE'
+        ),
+        Index('idx_product_inventory_mapping', 'tenant_id', 'product_id'),
+        UniqueConstraint('tenant_id', 'product_id', 'inventory_type', 'inventory_id', 
+                        name='uq_product_inventory'),
+    )
+
+
