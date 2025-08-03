@@ -1,0 +1,434 @@
+{% extends "base.html" %}
+
+{% block title %}Configure Inventory - {{ product.name }}{% endblock %}
+
+{% block content %}
+<div class="container-fluid mt-4">
+    <div class="row">
+        <div class="col-12">
+            <nav aria-label="breadcrumb">
+                <ol class="breadcrumb">
+                    <li class="breadcrumb-item"><a href="/tenant/{{ tenant_id }}">{{ tenant_name }}</a></li>
+                    <li class="breadcrumb-item"><a href="/tenant/{{ tenant_id }}/products">Products</a></li>
+                    <li class="breadcrumb-item"><a href="/tenant/{{ tenant_id }}/products/{{ product.product_id }}/edit">{{ product.name }}</a></li>
+                    <li class="breadcrumb-item active">Configure Inventory</li>
+                </ol>
+            </nav>
+        </div>
+    </div>
+
+    <div class="row">
+        <div class="col-12">
+            <h2>Configure Inventory Targeting</h2>
+            <p class="text-muted">Select the ad units and placements where {{ product.name }} will be available.</p>
+        </div>
+    </div>
+
+    <div class="row mt-3">
+        <div class="col-md-8">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0">Current Configuration</h5>
+                </div>
+                <div class="card-body">
+                    <div id="currentConfig">
+                        <p class="text-muted">Loading current configuration...</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card">
+                <div class="card-body">
+                    <h5 class="card-title">Product Details</h5>
+                    <p><strong>Formats:</strong></p>
+                    <ul class="list-unstyled">
+                        {% for format in product.formats %}
+                        <li>• {{ format }}</li>
+                        {% endfor %}
+                    </ul>
+                    
+                    {% if product.implementation_config %}
+                        {% if product.implementation_config.creative_placeholders %}
+                        <p><strong>Required Sizes:</strong></p>
+                        <ul class="list-unstyled">
+                            {% for placeholder in product.implementation_config.creative_placeholders %}
+                            <li>• {{ placeholder.width }}x{{ placeholder.height }}</li>
+                            {% endfor %}
+                        </ul>
+                        {% endif %}
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row mt-4">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0">Select Ad Units</h5>
+                </div>
+                <div class="card-body">
+                    <div class="mb-3">
+                        <button class="btn btn-sm btn-secondary" onclick="refreshInventory()">
+                            <i class="bi bi-arrow-clockwise"></i> Refresh from GAM
+                        </button>
+                        <button class="btn btn-sm btn-primary" onclick="getSuggestions()">
+                            <i class="bi bi-lightbulb"></i> Get Suggestions
+                        </button>
+                    </div>
+                    
+                    <div id="inventoryTree" style="max-height: 400px; overflow-y: auto;">
+                        <p class="text-muted">Loading inventory...</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row mt-4">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0">Selected Inventory</h5>
+                </div>
+                <div class="card-body">
+                    <div id="selectedInventory">
+                        <p class="text-muted">No inventory selected</p>
+                    </div>
+                    
+                    <div class="mt-3">
+                        <button class="btn btn-primary" onclick="saveConfiguration()">
+                            Save Configuration
+                        </button>
+                        <a href="/tenant/{{ tenant_id }}/products/{{ product.product_id }}/edit" 
+                           class="btn btn-secondary">Cancel</a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+.inventory-item {
+    padding: 8px;
+    margin: 2px 0;
+    border-radius: 4px;
+    cursor: pointer;
+    user-select: none;
+}
+
+.inventory-item:hover {
+    background-color: #f0f0f0;
+}
+
+.inventory-item.selected {
+    background-color: #e3f2fd;
+    border: 1px solid #2196f3;
+}
+
+.inventory-checkbox {
+    margin-right: 8px;
+}
+
+.inventory-path {
+    font-size: 0.9em;
+    color: #666;
+}
+
+.inventory-size {
+    display: inline-block;
+    padding: 2px 6px;
+    margin: 0 2px;
+    background-color: #f8f9fa;
+    border: 1px solid #dee2e6;
+    border-radius: 3px;
+    font-size: 0.8em;
+}
+
+.suggestion-item {
+    padding: 10px;
+    margin-bottom: 10px;
+    border: 1px solid #dee2e6;
+    border-radius: 4px;
+}
+
+.suggestion-score {
+    float: right;
+    font-weight: bold;
+    color: #28a745;
+}
+</style>
+
+<script>
+const tenantId = '{{ tenant_id }}';
+const productId = '{{ product.product_id }}';
+let selectedAdUnits = new Set();
+let inventoryData = null;
+
+// Load current configuration on page load
+document.addEventListener('DOMContentLoaded', function() {
+    loadCurrentConfig();
+    loadInventoryTree();
+});
+
+function loadCurrentConfig() {
+    fetch(`/api/tenant/${tenantId}/product/${productId}/inventory`)
+        .then(response => response.json())
+        .then(data => {
+            const configDiv = document.getElementById('currentConfig');
+            
+            if (!data || data.error) {
+                configDiv.innerHTML = '<p class="text-muted">No inventory configured yet</p>';
+                return;
+            }
+            
+            let html = '';
+            
+            if (data.ad_units && data.ad_units.length > 0) {
+                html += '<h6>Ad Units (' + data.ad_units.length + ')</h6>';
+                html += '<ul class="list-unstyled">';
+                data.ad_units.forEach(unit => {
+                    selectedAdUnits.add(unit.id);
+                    html += `<li>• ${unit.path.join(' > ')}`;
+                    if (unit.is_primary) html += ' <span class="badge bg-primary">Primary</span>';
+                    html += '</li>';
+                });
+                html += '</ul>';
+            }
+            
+            if (data.placements && data.placements.length > 0) {
+                html += '<h6>Placements (' + data.placements.length + ')</h6>';
+                html += '<ul class="list-unstyled">';
+                data.placements.forEach(placement => {
+                    html += `<li>• ${placement.name}</li>`;
+                });
+                html += '</ul>';
+            }
+            
+            if (!html) {
+                html = '<p class="text-muted">No inventory configured yet</p>';
+            }
+            
+            configDiv.innerHTML = html;
+        })
+        .catch(error => {
+            console.error('Error loading config:', error);
+        });
+}
+
+function loadInventoryTree() {
+    fetch(`/api/tenant/${tenantId}/inventory/tree`)
+        .then(response => response.json())
+        .then(data => {
+            inventoryData = data;
+            renderInventoryTree(data.root_units || []);
+            updateSelectedDisplay();
+        })
+        .catch(error => {
+            console.error('Error loading inventory:', error);
+            document.getElementById('inventoryTree').innerHTML = 
+                '<p class="text-danger">Error loading inventory</p>';
+        });
+}
+
+function renderInventoryTree(units, container = null, level = 0) {
+    if (!container) {
+        container = document.getElementById('inventoryTree');
+        container.innerHTML = '';
+    }
+    
+    units.forEach(unit => {
+        if (unit.status !== 'ACTIVE') return; // Only show active units
+        
+        const div = document.createElement('div');
+        div.className = 'inventory-item';
+        div.style.marginLeft = (level * 20) + 'px';
+        if (selectedAdUnits.has(unit.id)) {
+            div.classList.add('selected');
+        }
+        
+        let html = `
+            <input type="checkbox" class="inventory-checkbox" 
+                   value="${unit.id}" 
+                   ${selectedAdUnits.has(unit.id) ? 'checked' : ''}
+                   onchange="toggleSelection('${unit.id}')">
+            <span>${unit.name}</span>
+        `;
+        
+        if (unit.metadata && unit.metadata.sizes && unit.metadata.sizes.length > 0) {
+            unit.metadata.sizes.forEach(size => {
+                html += ` <span class="inventory-size">${size.width}x${size.height}</span>`;
+            });
+        }
+        
+        div.innerHTML = html;
+        div.onclick = function(e) {
+            if (e.target.type !== 'checkbox') {
+                const checkbox = div.querySelector('input[type="checkbox"]');
+                checkbox.checked = !checkbox.checked;
+                toggleSelection(unit.id);
+            }
+        };
+        
+        container.appendChild(div);
+        
+        // Render children
+        if (unit.children && unit.children.length > 0) {
+            renderInventoryTree(unit.children, container, level + 1);
+        }
+    });
+}
+
+function toggleSelection(unitId) {
+    if (selectedAdUnits.has(unitId)) {
+        selectedAdUnits.delete(unitId);
+    } else {
+        selectedAdUnits.add(unitId);
+    }
+    updateSelectedDisplay();
+}
+
+function updateSelectedDisplay() {
+    const display = document.getElementById('selectedInventory');
+    
+    if (selectedAdUnits.size === 0) {
+        display.innerHTML = '<p class="text-muted">No inventory selected</p>';
+        return;
+    }
+    
+    let html = `<p><strong>${selectedAdUnits.size} ad units selected</strong></p>`;
+    html += '<ul class="list-unstyled">';
+    
+    selectedAdUnits.forEach(unitId => {
+        const unit = findUnitById(inventoryData.root_units, unitId);
+        if (unit) {
+            html += `<li>• ${unit.path.join(' > ')}</li>`;
+        }
+    });
+    
+    html += '</ul>';
+    display.innerHTML = html;
+}
+
+function findUnitById(units, unitId) {
+    for (const unit of units) {
+        if (unit.id === unitId) return unit;
+        if (unit.children) {
+            const found = findUnitById(unit.children, unitId);
+            if (found) return found;
+        }
+    }
+    return null;
+}
+
+function refreshInventory() {
+    if (!confirm('This will sync the latest inventory from GAM. Continue?')) return;
+    
+    fetch(`/api/tenant/${tenantId}/inventory/sync`, { method: 'POST' })
+        .then(response => response.json())
+        .then(data => {
+            if (data.error) {
+                alert('Sync failed: ' + data.error);
+            } else {
+                alert('Inventory synced successfully!');
+                loadInventoryTree();
+            }
+        })
+        .catch(error => {
+            alert('Error syncing inventory: ' + error.message);
+        });
+}
+
+function getSuggestions() {
+    // Get product sizes from creative placeholders
+    const sizes = [];
+    {% if product.implementation_config and product.implementation_config.creative_placeholders %}
+        {% for placeholder in product.implementation_config.creative_placeholders %}
+        sizes.push('{{ placeholder.width }}x{{ placeholder.height }}');
+        {% endfor %}
+    {% endif %}
+    
+    const params = new URLSearchParams();
+    sizes.forEach(size => params.append('sizes', size));
+    
+    fetch(`/api/tenant/${tenantId}/inventory/suggest?${params}`)
+        .then(response => response.json())
+        .then(data => {
+            showSuggestions(data.suggestions || []);
+        })
+        .catch(error => {
+            alert('Error getting suggestions: ' + error.message);
+        });
+}
+
+function showSuggestions(suggestions) {
+    if (suggestions.length === 0) {
+        alert('No suggestions found for this product configuration');
+        return;
+    }
+    
+    let html = '<h5>Suggested Ad Units</h5>';
+    html += '<div style="max-height: 300px; overflow-y: auto;">';
+    
+    suggestions.forEach(suggestion => {
+        const unit = suggestion.inventory;
+        html += `
+            <div class="suggestion-item">
+                <span class="suggestion-score">Score: ${suggestion.score}</span>
+                <strong>${unit.path}</strong><br>
+                <small class="text-muted">${suggestion.reasons.join(', ')}</small><br>
+                <button class="btn btn-sm btn-primary mt-2" 
+                        onclick="addSuggestion('${unit.id}')">
+                    Add to Selection
+                </button>
+            </div>
+        `;
+    });
+    
+    html += '</div>';
+    
+    // Show in a modal or replace current tree temporarily
+    document.getElementById('inventoryTree').innerHTML = html;
+}
+
+function addSuggestion(unitId) {
+    selectedAdUnits.add(unitId);
+    loadInventoryTree(); // Reload the tree view
+}
+
+function saveConfiguration() {
+    if (selectedAdUnits.size === 0) {
+        alert('Please select at least one ad unit');
+        return;
+    }
+    
+    const data = {
+        ad_unit_ids: Array.from(selectedAdUnits),
+        placement_ids: [] // Not implemented in this basic version
+    };
+    
+    fetch(`/api/tenant/${tenantId}/product/${productId}/inventory`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(data)
+    })
+    .then(response => response.json())
+    .then(result => {
+        if (result.status === 'success') {
+            alert('Configuration saved successfully!');
+            window.location.href = `/tenant/${tenantId}/products/${productId}/edit`;
+        } else {
+            alert('Error saving configuration: ' + (result.error || 'Unknown error'));
+        }
+    })
+    .catch(error => {
+        alert('Error saving configuration: ' + error.message);
+    });
+}
+</script>
+{% endblock %}

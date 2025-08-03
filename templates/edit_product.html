@@ -63,6 +63,14 @@
             <strong>Note:</strong> Creative formats and advanced configuration can be managed through the adapter-specific configuration interface.
         </div>
         
+        {% if tenant_adapter == 'gam' %}
+        <div class="alert" style="background: #f3e5f5; border-color: #ce93d8; color: #6a1b9a; margin-top: 1rem;">
+            <strong>Inventory Targeting:</strong> Configure which ad units this product targets.
+            <a href="/tenant/{{ tenant_id }}/product/{{ product.product_id }}/inventory" class="btn btn-sm" 
+               style="background: #6a1b9a; color: white; margin-left: 1rem;">Configure Inventory →</a>
+        </div>
+        {% endif %}
+        
         <div style="margin-top: 2rem;">
             <button type="submit" class="btn">Save Changes</button>
             <a href="{{ url_for('list_products', tenant_id=tenant_id) }}" class="btn btn-secondary">Cancel</a>

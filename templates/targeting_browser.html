@@ -1,0 +1,426 @@
+{% extends "base.html" %}
+
+{% block title %}Targeting Criteria Browser - {{ tenant.name }}{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h1>Targeting Criteria Browser</h1>
+        <div>
+            <button class="btn btn-primary" id="sync-targeting">
+                <i class="fas fa-sync"></i> Sync All Targeting
+            </button>
+            <a href="{{ url_for('tenant_detail', tenant_id=tenant.tenant_id) }}" class="btn btn-secondary">
+                Back to Tenant
+            </a>
+        </div>
+    </div>
+
+    <!-- Last Sync Info -->
+    <div class="alert alert-info" id="sync-info">
+        <i class="fas fa-info-circle"></i> 
+        <span id="sync-message">Loading targeting data...</span>
+    </div>
+
+    <!-- Tabs for different targeting types -->
+    <ul class="nav nav-tabs mb-4" role="tablist">
+        <li class="nav-item">
+            <a class="nav-link active" data-bs-toggle="tab" href="#custom-targeting" role="tab">
+                Custom Targeting
+            </a>
+        </li>
+        <li class="nav-item">
+            <a class="nav-link" data-bs-toggle="tab" href="#audience-segments" role="tab">
+                Audience Segments
+            </a>
+        </li>
+        <li class="nav-item">
+            <a class="nav-link" data-bs-toggle="tab" href="#labels" role="tab">
+                Labels
+            </a>
+        </li>
+    </ul>
+
+    <!-- Tab Content -->
+    <div class="tab-content">
+        <!-- Custom Targeting Tab -->
+        <div class="tab-pane fade show active" id="custom-targeting" role="tabpanel">
+            <div class="row">
+                <div class="col-md-4">
+                    <h3>Custom Targeting Keys</h3>
+                    <div class="input-group mb-3">
+                        <input type="text" class="form-control" id="search-keys" placeholder="Search keys...">
+                        <button class="btn btn-outline-secondary" type="button">
+                            <i class="fas fa-search"></i>
+                        </button>
+                    </div>
+                    <div class="list-group" id="keys-list" style="max-height: 600px; overflow-y: auto;">
+                        <!-- Keys will be loaded here -->
+                    </div>
+                </div>
+                <div class="col-md-8">
+                    <h3>Values for Selected Key</h3>
+                    <div id="selected-key-info" class="mb-3">
+                        <p class="text-muted">Select a key to view its values</p>
+                    </div>
+                    <div class="input-group mb-3">
+                        <input type="text" class="form-control" id="search-values" placeholder="Search values..." disabled>
+                        <button class="btn btn-outline-secondary" type="button" disabled>
+                            <i class="fas fa-search"></i>
+                        </button>
+                    </div>
+                    <div id="values-list" style="max-height: 600px; overflow-y: auto;">
+                        <!-- Values will be loaded here -->
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Audience Segments Tab -->
+        <div class="tab-pane fade" id="audience-segments" role="tabpanel">
+            <div class="row mb-3">
+                <div class="col-md-6">
+                    <div class="input-group">
+                        <input type="text" class="form-control" id="search-audiences" placeholder="Search audiences...">
+                        <button class="btn btn-outline-secondary" type="button">
+                            <i class="fas fa-search"></i>
+                        </button>
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <select class="form-select" id="audience-type-filter">
+                        <option value="">All Types</option>
+                        <option value="FIRST_PARTY">First-Party Data</option>
+                        <option value="THIRD_PARTY">Third-Party Data</option>
+                    </select>
+                </div>
+            </div>
+            
+            <div class="row" id="audience-cards">
+                <!-- Audience cards will be loaded here -->
+            </div>
+        </div>
+
+        <!-- Labels Tab -->
+        <div class="tab-pane fade" id="labels" role="tabpanel">
+            <div class="input-group mb-3">
+                <input type="text" class="form-control" id="search-labels" placeholder="Search labels...">
+                <button class="btn btn-outline-secondary" type="button">
+                    <i class="fas fa-search"></i>
+                </button>
+            </div>
+            
+            <div class="table-responsive">
+                <table class="table table-hover">
+                    <thead>
+                        <tr>
+                            <th>Label Name</th>
+                            <th>Type</th>
+                            <th>Category</th>
+                            <th>Status</th>
+                            <th>Description</th>
+                        </tr>
+                    </thead>
+                    <tbody id="labels-tbody">
+                        <!-- Labels will be loaded here -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Sync Progress Modal -->
+<div class="modal fade" id="syncModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Syncing Targeting Data</h5>
+            </div>
+            <div class="modal-body">
+                <div class="text-center">
+                    <div class="spinner-border" role="status">
+                        <span class="visually-hidden">Loading...</span>
+                    </div>
+                    <p class="mt-3">Discovering targeting criteria from Google Ad Manager...</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+const tenantId = '{{ tenant.tenant_id }}';
+let currentKeyId = null;
+let targetingData = {
+    customKeys: [],
+    customValues: {},
+    audiences: [],
+    labels: []
+};
+
+// Load all targeting data
+async function loadTargetingData() {
+    try {
+        const response = await fetch(`/api/tenant/${tenantId}/targeting/all`);
+        if (!response.ok) throw new Error('Failed to load targeting data');
+        
+        const data = await response.json();
+        targetingData = data;
+        
+        // Update UI
+        updateSyncInfo(data.last_sync);
+        renderCustomKeys();
+        renderAudiences();
+        renderLabels();
+        
+    } catch (error) {
+        console.error('Error loading targeting data:', error);
+        document.getElementById('sync-message').textContent = 'Failed to load targeting data';
+    }
+}
+
+// Update sync info
+function updateSyncInfo(lastSync) {
+    const syncMessage = document.getElementById('sync-message');
+    if (lastSync) {
+        const date = new Date(lastSync);
+        const age = Math.floor((Date.now() - date) / (1000 * 60 * 60)); // hours
+        syncMessage.innerHTML = `Last synced: ${date.toLocaleString()} (${age} hours ago)`;
+        
+        if (age > 24) {
+            syncMessage.innerHTML += ' <span class="text-warning">- Consider refreshing</span>';
+        }
+    } else {
+        syncMessage.textContent = 'No sync data available - click Sync to discover targeting';
+    }
+}
+
+// Render custom targeting keys
+function renderCustomKeys() {
+    const keysList = document.getElementById('keys-list');
+    keysList.innerHTML = '';
+    
+    const searchTerm = document.getElementById('search-keys').value.toLowerCase();
+    const filteredKeys = targetingData.customKeys.filter(key => 
+        key.name.toLowerCase().includes(searchTerm) ||
+        key.display_name.toLowerCase().includes(searchTerm)
+    );
+    
+    filteredKeys.forEach(key => {
+        const item = document.createElement('a');
+        item.href = '#';
+        item.className = 'list-group-item list-group-item-action';
+        item.innerHTML = `
+            <div class="d-flex justify-content-between align-items-start">
+                <div>
+                    <h6 class="mb-1">${key.display_name}</h6>
+                    <small class="text-muted">Key: ${key.name}</small>
+                </div>
+                <div>
+                    <span class="badge bg-${key.type === 'PREDEFINED' ? 'primary' : 'secondary'}">
+                        ${key.type}
+                    </span>
+                    ${key.metadata.values_count ? `<br><small>${key.metadata.values_count} values</small>` : ''}
+                </div>
+            </div>
+        `;
+        
+        item.addEventListener('click', (e) => {
+            e.preventDefault();
+            selectKey(key);
+        });
+        
+        keysList.appendChild(item);
+    });
+}
+
+// Select a custom targeting key
+function selectKey(key) {
+    currentKeyId = key.id;
+    
+    // Update UI
+    document.querySelectorAll('#keys-list .list-group-item').forEach(item => {
+        item.classList.remove('active');
+    });
+    event.target.closest('.list-group-item').classList.add('active');
+    
+    // Update selected key info
+    document.getElementById('selected-key-info').innerHTML = `
+        <h5>${key.display_name}</h5>
+        <p class="mb-2">
+            <span class="text-muted">Type:</span> ${key.type}
+            ${key.metadata.reportable_type ? `| <span class="text-muted">Reportable:</span> ${key.metadata.reportable_type}` : ''}
+        </p>
+    `;
+    
+    // Enable value search
+    document.getElementById('search-values').disabled = false;
+    document.querySelector('#search-values + button').disabled = false;
+    
+    // Load values for this key
+    renderCustomValues(key.id);
+}
+
+// Render custom targeting values
+function renderCustomValues(keyId) {
+    const valuesList = document.getElementById('values-list');
+    const values = targetingData.customValues[keyId] || [];
+    
+    const searchTerm = document.getElementById('search-values').value.toLowerCase();
+    const filteredValues = values.filter(value => 
+        value.name.toLowerCase().includes(searchTerm) ||
+        value.display_name.toLowerCase().includes(searchTerm)
+    );
+    
+    if (filteredValues.length === 0) {
+        valuesList.innerHTML = '<p class="text-muted text-center">No values found</p>';
+        return;
+    }
+    
+    valuesList.innerHTML = `
+        <div class="row row-cols-1 row-cols-md-2 g-3">
+            ${filteredValues.map(value => `
+                <div class="col">
+                    <div class="card h-100">
+                        <div class="card-body">
+                            <h6 class="card-title">${value.display_name}</h6>
+                            <p class="card-text small text-muted mb-1">Value: ${value.name}</p>
+                            <p class="card-text small mb-0">
+                                <span class="badge bg-info">${value.match_type}</span>
+                                ${value.status !== 'ACTIVE' ? `<span class="badge bg-warning">${value.status}</span>` : ''}
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            `).join('')}
+        </div>
+    `;
+}
+
+// Render audience segments
+function renderAudiences() {
+    const audienceCards = document.getElementById('audience-cards');
+    const searchTerm = document.getElementById('search-audiences').value.toLowerCase();
+    const typeFilter = document.getElementById('audience-type-filter').value;
+    
+    let filteredAudiences = targetingData.audiences.filter(audience => 
+        audience.name.toLowerCase().includes(searchTerm) ||
+        (audience.description && audience.description.toLowerCase().includes(searchTerm))
+    );
+    
+    if (typeFilter) {
+        filteredAudiences = filteredAudiences.filter(audience => audience.type === typeFilter);
+    }
+    
+    if (filteredAudiences.length === 0) {
+        audienceCards.innerHTML = '<div class="col-12"><p class="text-muted text-center">No audiences found</p></div>';
+        return;
+    }
+    
+    audienceCards.innerHTML = filteredAudiences.map(audience => `
+        <div class="col-md-6 col-lg-4">
+            <div class="card h-100">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-start mb-2">
+                        <h5 class="card-title">${audience.name}</h5>
+                        <span class="badge bg-${audience.type === 'FIRST_PARTY' ? 'success' : 'info'}">
+                            ${audience.type.replace('_', ' ')}
+                        </span>
+                    </div>
+                    ${audience.description ? `<p class="card-text small">${audience.description}</p>` : ''}
+                    <div class="mt-auto">
+                        ${audience.size ? `<p class="mb-1"><small>Size: ${audience.size.toLocaleString()}</small></p>` : ''}
+                        ${audience.data_provider_name ? `<p class="mb-1"><small>Provider: ${audience.data_provider_name}</small></p>` : ''}
+                        <p class="mb-0">
+                            <span class="badge bg-secondary">${audience.segment_type}</span>
+                            ${audience.status !== 'ACTIVE' ? `<span class="badge bg-warning">${audience.status}</span>` : ''}
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `).join('');
+}
+
+// Render labels
+function renderLabels() {
+    const labelsTbody = document.getElementById('labels-tbody');
+    const searchTerm = document.getElementById('search-labels').value.toLowerCase();
+    
+    const filteredLabels = targetingData.labels.filter(label => 
+        label.name.toLowerCase().includes(searchTerm) ||
+        (label.description && label.description.toLowerCase().includes(searchTerm))
+    );
+    
+    if (filteredLabels.length === 0) {
+        labelsTbody.innerHTML = '<tr><td colspan="5" class="text-center text-muted">No labels found</td></tr>';
+        return;
+    }
+    
+    labelsTbody.innerHTML = filteredLabels.map(label => `
+        <tr>
+            <td><strong>${label.name}</strong></td>
+            <td>${label.label_type || 'N/A'}</td>
+            <td>${label.ad_category || 'N/A'}</td>
+            <td>
+                <span class="badge bg-${label.is_active ? 'success' : 'secondary'}">
+                    ${label.is_active ? 'Active' : 'Inactive'}
+                </span>
+            </td>
+            <td>${label.description || ''}</td>
+        </tr>
+    `).join('');
+}
+
+// Sync targeting data
+document.getElementById('sync-targeting').addEventListener('click', async () => {
+    const modal = new bootstrap.Modal(document.getElementById('syncModal'));
+    modal.show();
+    
+    try {
+        const response = await fetch(`/api/tenant/${tenantId}/inventory/sync`, {
+            method: 'POST'
+        });
+        
+        if (!response.ok) throw new Error('Sync failed');
+        
+        const result = await response.json();
+        console.log('Sync result:', result);
+        
+        // Reload data
+        await loadTargetingData();
+        
+        modal.hide();
+        
+        // Show success message
+        const alert = document.createElement('div');
+        alert.className = 'alert alert-success alert-dismissible fade show';
+        alert.innerHTML = `
+            <strong>Sync Complete!</strong> 
+            Discovered ${result.custom_targeting.total_keys} custom targeting keys,
+            ${result.audience_segments.total} audience segments, and
+            ${result.labels.total} labels.
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        `;
+        document.querySelector('.container-fluid').insertBefore(alert, document.querySelector('h1').nextSibling);
+        
+    } catch (error) {
+        modal.hide();
+        alert('Sync failed: ' + error.message);
+    }
+});
+
+// Search handlers
+document.getElementById('search-keys').addEventListener('input', renderCustomKeys);
+document.getElementById('search-values').addEventListener('input', () => {
+    if (currentKeyId) renderCustomValues(currentKeyId);
+});
+document.getElementById('search-audiences').addEventListener('input', renderAudiences);
+document.getElementById('audience-type-filter').addEventListener('change', renderAudiences);
+document.getElementById('search-labels').addEventListener('input', renderLabels);
+
+// Load data on page load
+loadTargetingData();
+</script>
+{% endblock %}
