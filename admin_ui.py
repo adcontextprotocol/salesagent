@@ -6,7 +6,7 @@ import secrets
 import json
 import os
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from functools import wraps
 from authlib.integrations.flask_client import OAuth
 from db_config import get_db_connection
@@ -783,7 +783,7 @@ def test_slack(tenant_id):
                     "elements": [
                         {
                             "type": "mrkdwn",
-                            "text": f"Sent at {datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S UTC')}"
+                            "text": f"Sent at {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}"
                         }
                     ]
                 }
