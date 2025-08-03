@@ -127,7 +127,27 @@ else
     echo "  Admin UI: $ADMIN_PORT"
 fi
 
+# Set up Docker caching infrastructure
+echo ""
+echo "Setting up Docker caching..."
+
+# Create shared cache volumes if they don't exist
+if docker volume inspect adcp_global_pip_cache >/dev/null 2>&1; then
+    echo "✓ Docker pip cache volume already exists"
+else
+    docker volume create adcp_global_pip_cache >/dev/null
+    echo "✓ Created shared pip cache volume"
+fi
+
+if docker volume inspect adcp_global_uv_cache >/dev/null 2>&1; then
+    echo "✓ Docker uv cache volume already exists"
+else
+    docker volume create adcp_global_uv_cache >/dev/null
+    echo "✓ Created shared uv cache volume"
+fi
+
 # Copy required files from root workspace
+echo ""
 echo "Copying files from root workspace..."
 
 # Create .env file from environment variables
@@ -137,6 +157,10 @@ echo "Creating .env file from environment variables..."
 cat > .env << EOF
 # Environment configuration for Conductor workspace: $CONDUCTOR_WORKSPACE_NAME
 # Generated on $(date)
+
+# Docker BuildKit Caching (enabled by default)
+DOCKER_BUILDKIT=1
+COMPOSE_DOCKER_CLI_BUILD=1
 
 # API Keys (from environment)
 GEMINI_API_KEY=${GEMINI_API_KEY:-}
@@ -181,7 +205,7 @@ echo "✓ Port configuration saved to .env file"
 # Create docker-compose.override.yml for development hot reloading
 cat > docker-compose.override.yml << 'EOF'
 # Docker Compose override for development with hot reloading
-# This file is automatically loaded by docker-compose and overrides settings in docker-compose.yml
+# This file is automatically loaded by docker-compose
 
 services:
   adcp-server:
@@ -190,12 +214,14 @@ services:
       - .:/app
       - /app/.venv
       - ./audit_logs:/app/audit_logs
+      # Mount shared cache volumes for faster builds
+      - adcp_global_pip_cache:/root/.cache/pip
+      - adcp_global_uv_cache:/cache/uv
     environment:
       # Enable development mode
       PYTHONUNBUFFERED: 1
       FLASK_ENV: development
       WERKZEUG_RUN_MAIN: true
-    # PATH is already set in Dockerfile to include .venv/bin
     command: ["python", "run_server.py"]
 
   admin-ui:
@@ -204,14 +230,24 @@ services:
       - .:/app
       - /app/.venv
       - ./audit_logs:/app/audit_logs
+      # Mount shared cache volumes for faster builds
+      - adcp_global_pip_cache:/root/.cache/pip
+      - adcp_global_uv_cache:/cache/uv
     environment:
       # Enable Flask development mode with auto-reload
       FLASK_ENV: development
       FLASK_DEBUG: 1
       PYTHONUNBUFFERED: 1
       WERKZEUG_RUN_MAIN: true
+
+# Reference external cache volumes (shared across all workspaces)
+volumes:
+  adcp_global_pip_cache:
+    external: true
+  adcp_global_uv_cache:
+    external: true
 EOF
-echo "✓ Created docker-compose.override.yml for development hot reloading"
+echo "✓ Created docker-compose.override.yml for development"
 
 # Fix database.py indentation issues if they exist
 if grep -q "for p in principals_data:" database.py && ! grep -B1 "for p in principals_data:" database.py | grep -q "^    "; then
@@ -251,13 +287,15 @@ echo ""
 echo "Setup complete! Next steps:"
 echo "1. Review .env file and ensure GEMINI_API_KEY is set"
 echo "2. Build and start services:"
-echo "   docker-compose build"
-echo "   docker-compose up -d"
+echo "   docker compose build"
+echo "   docker compose up -d"
 echo ""
 echo "Services will be available at:"
 echo "  MCP Server: http://localhost:$ADCP_PORT/mcp/"
 echo "  Admin UI: http://localhost:$ADMIN_PORT/"
 echo "  PostgreSQL: localhost:$POSTGRES_PORT"
+echo ""
+echo "✓ Docker caching is enabled automatically for faster builds!"
 if [ -d "ui_tests" ]; then
     echo ""
     echo "UI Testing:"
