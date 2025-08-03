@@ -11,7 +11,7 @@ Implements security-compliant logging with:
 
 import logging
 import os
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional, Dict, Any
 from pathlib import Path
 import json
@@ -102,7 +102,7 @@ class AuditLogger:
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
                 tenant_id,
-                datetime.utcnow().isoformat(),
+                datetime.now(timezone.utc).isoformat(),
                 f"{self.adapter_name}.{operation}",
                 principal_name,
                 principal_id,
@@ -219,7 +219,7 @@ class AuditLogger:
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
                 tenant_id,
-                datetime.utcnow().isoformat(),
+                datetime.now(timezone.utc).isoformat(),
                 f"SECURITY_VIOLATION:{self.adapter_name}.{operation}",
                 None,  # principal_name not available
                 principal_id,
@@ -289,7 +289,7 @@ class AuditLogger:
     def _write_structured_log(self, **kwargs):
         """Write structured JSON log for machine processing (backup)."""
         log_entry = {
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "adapter": self.adapter_name,
             **kwargs
         }
@@ -303,7 +303,7 @@ class AuditLogger:
     def _write_security_log(self, **kwargs):
         """Write security-specific log entry (backup)."""
         log_entry = {
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "adapter": self.adapter_name,
             "type": "security_violation",
             **kwargs
