@@ -21,35 +21,41 @@ def get_current_tenant() -> Dict[str, Any]:
 
 def get_default_tenant() -> Optional[Dict[str, Any]]:
     """Get the default tenant for CLI/testing."""
-    conn = get_db_connection()
-    
-    # Get first active tenant or specific default
-    cursor = conn.execute("""
-        SELECT tenant_id, name, subdomain, config 
-        FROM tenants 
-        WHERE is_active = ? 
-        ORDER BY 
-            CASE WHEN tenant_id = 'default' THEN 0 ELSE 1 END,
-            created_at 
-        LIMIT 1
-    """, (True,))
-    
-    row = cursor.fetchone()
-    conn.close()
-    
-    if row:
-        # PostgreSQL returns JSONB as dict, SQLite as string
-        config = row[3]
-        if isinstance(config, str):
-            config = json.loads(config)
+    try:
+        conn = get_db_connection()
         
-        return {
-            'tenant_id': row[0],
-            'name': row[1],
-            'subdomain': row[2],
-            'config': config
-        }
-    return None
+        # Get first active tenant or specific default
+        cursor = conn.execute("""
+            SELECT tenant_id, name, subdomain, config 
+            FROM tenants 
+            WHERE is_active = ? 
+            ORDER BY 
+                CASE WHEN tenant_id = 'default' THEN 0 ELSE 1 END,
+                created_at 
+            LIMIT 1
+        """, (True,))
+        
+        row = cursor.fetchone()
+        conn.close()
+        
+        if row:
+            # PostgreSQL returns JSONB as dict, SQLite as string
+            config = row[3]
+            if isinstance(config, str):
+                config = json.loads(config)
+            
+            return {
+                'tenant_id': row[0],
+                'name': row[1],
+                'subdomain': row[2],
+                'config': config
+            }
+        return None
+    except Exception as e:
+        # If table doesn't exist or other DB errors, return None
+        if "no such table" in str(e) or "does not exist" in str(e):
+            return None
+        raise
 
 def load_config() -> Dict[str, Any]:
     """
