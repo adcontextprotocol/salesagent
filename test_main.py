@@ -4,7 +4,6 @@ import json
 
 # Ensure the main module can be imported
 from schemas import GetProductsRequest, GetProductsResponse, Product
-from database import init_db
 from config_loader import set_current_tenant, get_default_tenant, get_current_tenant
 from db_config import get_db_connection
 import uuid
@@ -21,7 +20,96 @@ class TestAdcpServerV2_3(unittest.TestCase):
         db_file = "adcp.db"
         if os.path.exists(db_file):
             os.remove(db_file)
-        init_db()
+        
+        # Set environment variable to use test database
+        os.environ['DATABASE_URL'] = f'sqlite:///{db_file}'
+        
+        # Create the minimal schema needed for the test
+        conn = get_db_connection()
+        # Create tenants table with new schema
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS tenants (
+                tenant_id VARCHAR(50) PRIMARY KEY,
+                name VARCHAR(255) NOT NULL,
+                subdomain VARCHAR(100) UNIQUE NOT NULL,
+                created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                is_active BOOLEAN DEFAULT 1,
+                billing_plan VARCHAR(50) DEFAULT 'standard',
+                billing_contact TEXT,
+                ad_server VARCHAR(50) NOT NULL,
+                max_daily_budget REAL DEFAULT 10000,
+                enable_aee_signals BOOLEAN DEFAULT 1,
+                auto_approve_formats TEXT DEFAULT '[]',
+                human_review_required BOOLEAN DEFAULT 0,
+                manual_approval_required BOOLEAN DEFAULT 0,
+                admin_token VARCHAR(100),
+                policy_settings TEXT DEFAULT '{}',
+                slack_audit_webhook_url TEXT,
+                hitl_webhook_url TEXT
+            )
+        """)
+        
+        # Create adapter_config table
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS adapter_config (
+                tenant_id VARCHAR(50) PRIMARY KEY REFERENCES tenants(tenant_id) ON DELETE CASCADE,
+                adapter_type VARCHAR(50) NOT NULL,
+                gam_network_code VARCHAR(50),
+                gam_refresh_token TEXT,
+                gam_application_name VARCHAR(100),
+                mock_dry_run BOOLEAN DEFAULT 0,
+                kevel_network_id TEXT,
+                kevel_api_key TEXT,
+                triton_endpoint TEXT,
+                triton_api_key TEXT
+            )
+        """)
+        
+        # Create products table
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS products (
+                product_id VARCHAR(100) NOT NULL,
+                tenant_id VARCHAR(50) NOT NULL REFERENCES tenants(tenant_id) ON DELETE CASCADE,
+                name VARCHAR(255) NOT NULL,
+                description TEXT,
+                formats TEXT NOT NULL DEFAULT '[]',
+                creative_formats TEXT,
+                delivery_type VARCHAR(50) NOT NULL,
+                is_fixed_price BOOLEAN DEFAULT 0,
+                cpm REAL,
+                price_guidance TEXT,
+                price_guidance_min REAL,
+                price_guidance_max REAL,
+                countries TEXT DEFAULT '{"countries": []}',
+                targeting_template TEXT DEFAULT '{}',
+                implementation_config TEXT DEFAULT '{}',
+                adapter_product_id VARCHAR(100),
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (product_id, tenant_id)
+            )
+        """)
+        
+        # Create principals table
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS principals (
+                principal_id VARCHAR(50) NOT NULL,
+                tenant_id VARCHAR(50) NOT NULL REFERENCES tenants(tenant_id) ON DELETE CASCADE,
+                name VARCHAR(255) NOT NULL,
+                access_token VARCHAR(255) NOT NULL,
+                platform_mappings TEXT DEFAULT '{}',
+                config TEXT DEFAULT '{}',
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                is_active BOOLEAN DEFAULT 1,
+                metadata TEXT DEFAULT '{}',
+                PRIMARY KEY (principal_id, tenant_id)
+            )
+        """)
+        
+        conn.connection.commit()
+        conn.close()
         
         # Create a test tenant and set it as current
         conn = get_db_connection()
