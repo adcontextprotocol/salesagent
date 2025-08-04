@@ -1,7 +1,7 @@
 """Move config JSON to proper database columns
 
-Revision ID: 005
-Revises: 004
+Revision ID: 005_move_config_to_columns
+Revises: 004_add_superadmin_config
 Create Date: 2025-02-04
 
 """
@@ -11,8 +11,8 @@ import json
 
 
 # revision identifiers, used by Alembic.
-revision = '005'
-down_revision = '004'
+revision = '005_move_config_to_columns'
+down_revision = '004_add_superadmin_config'
 branch_labels = None
 depends_on = None
 
@@ -20,22 +20,38 @@ depends_on = None
 def upgrade():
     """Move config fields to proper database columns."""
     
-    # Add new columns to tenants table
-    op.add_column('tenants', sa.Column('ad_server', sa.String(50), nullable=True))
-    op.add_column('tenants', sa.Column('max_daily_budget', sa.Integer(), nullable=False, server_default='10000'))
-    op.add_column('tenants', sa.Column('enable_aee_signals', sa.Boolean(), nullable=False, server_default='1'))
-    op.add_column('tenants', sa.Column('authorized_emails', sa.Text(), nullable=True))  # JSON array
-    op.add_column('tenants', sa.Column('authorized_domains', sa.Text(), nullable=True))  # JSON array
-    op.add_column('tenants', sa.Column('slack_webhook_url', sa.String(500), nullable=True))
-    op.add_column('tenants', sa.Column('admin_token', sa.String(100), nullable=True))
+    # Get the current connection to check column existence
+    connection = op.get_bind()
+    inspector = sa.inspect(connection)
+    existing_columns = [col['name'] for col in inspector.get_columns('tenants')]
+    
+    # Add new columns to tenants table only if they don't exist
+    if 'ad_server' not in existing_columns:
+        op.add_column('tenants', sa.Column('ad_server', sa.String(50), nullable=True))
+    if 'max_daily_budget' not in existing_columns:
+        op.add_column('tenants', sa.Column('max_daily_budget', sa.Integer(), nullable=False, server_default='10000'))
+    if 'enable_aee_signals' not in existing_columns:
+        op.add_column('tenants', sa.Column('enable_aee_signals', sa.Boolean(), nullable=False, server_default='1'))
+    if 'authorized_emails' not in existing_columns:
+        op.add_column('tenants', sa.Column('authorized_emails', sa.Text(), nullable=True))  # JSON array
+    if 'authorized_domains' not in existing_columns:
+        op.add_column('tenants', sa.Column('authorized_domains', sa.Text(), nullable=True))  # JSON array
+    if 'slack_webhook_url' not in existing_columns:
+        op.add_column('tenants', sa.Column('slack_webhook_url', sa.String(500), nullable=True))
+    if 'admin_token' not in existing_columns:
+        op.add_column('tenants', sa.Column('admin_token', sa.String(100), nullable=True))
     
     # Creative engine settings
-    op.add_column('tenants', sa.Column('auto_approve_formats', sa.Text(), nullable=True))  # JSON array
-    op.add_column('tenants', sa.Column('human_review_required', sa.Boolean(), nullable=False, server_default='1'))
+    if 'auto_approve_formats' not in existing_columns:
+        op.add_column('tenants', sa.Column('auto_approve_formats', sa.Text(), nullable=True))  # JSON array
+    if 'human_review_required' not in existing_columns:
+        op.add_column('tenants', sa.Column('human_review_required', sa.Boolean(), nullable=False, server_default='1'))
     
     # Create adapter_config table for adapter-specific settings
-    op.create_table(
-        'adapter_config',
+    existing_tables = inspector.get_table_names()
+    if 'adapter_config' not in existing_tables:
+        op.create_table(
+            'adapter_config',
         sa.Column('tenant_id', sa.String(50), sa.ForeignKey('tenants.tenant_id', ondelete='CASCADE'), primary_key=True),
         sa.Column('adapter_type', sa.String(50), nullable=False),
         
@@ -60,10 +76,10 @@ def upgrade():
         
         sa.Column('created_at', sa.DateTime(), nullable=False, server_default=sa.func.now()),
         sa.Column('updated_at', sa.DateTime(), nullable=False, server_default=sa.func.now())
-    )
-    
-    # Create index on adapter_type
-    op.create_index('idx_adapter_config_type', 'adapter_config', ['adapter_type'])
+        )
+        
+        # Create index on adapter_type
+        op.create_index('idx_adapter_config_type', 'adapter_config', ['adapter_type'])
     
     # Migrate existing data
     connection = op.get_bind()
@@ -145,12 +161,19 @@ def upgrade():
                 insert_data['triton_station_id'] = adapter_config.get('station_id')
                 insert_data['triton_api_key'] = adapter_config.get('api_key')
             
-            # Build INSERT statement
-            columns = list(insert_data.keys())
-            values = [f":{k}" for k in columns]
-            insert_stmt = sa.text(f"INSERT INTO adapter_config ({', '.join(columns)}) VALUES ({', '.join(values)})")
+            # Check if adapter config already exists for this tenant
+            existing = connection.execute(
+                sa.text("SELECT COUNT(*) FROM adapter_config WHERE tenant_id = :tenant_id"),
+                {'tenant_id': tenant_id}
+            ).scalar()
             
-            connection.execute(insert_stmt, insert_data)
+            if existing == 0:
+                # Build INSERT statement
+                columns = list(insert_data.keys())
+                values = [f":{k}" for k in columns]
+                insert_stmt = sa.text(f"INSERT INTO adapter_config ({', '.join(columns)}) VALUES ({', '.join(values)})")
+                
+                connection.execute(insert_stmt, insert_data)
 
 
 def downgrade():
