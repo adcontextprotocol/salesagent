@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Admin UI with Google OAuth2 authentication."""
 
-from flask import Flask, render_template, request, jsonify, redirect, url_for, session, flash, send_from_directory
+from flask import Flask, render_template, request, jsonify, redirect, url_for, session, flash, send_from_directory, g
 import secrets
 import json
 import os
@@ -70,6 +70,12 @@ else:
     print(f"DEBUG: GOOGLE_CLIENT_ID from env={GOOGLE_CLIENT_ID}")
     print(f"DEBUG: GOOGLE_CLIENT_SECRET exists={bool(GOOGLE_CLIENT_SECRET)}")
 
+# Test mode configuration - ONLY FOR AUTOMATED TESTING
+TEST_MODE_ENABLED = os.environ.get('ADCP_AUTH_TEST_MODE', '').lower() == 'true'
+if TEST_MODE_ENABLED:
+    print("⚠️  WARNING: Test authentication mode is ENABLED. This should NEVER be used in production!")
+    print("⚠️  OAuth authentication is BYPASSED. Disable by removing ADCP_AUTH_TEST_MODE environment variable.")
+
 # Super admin configuration from environment or config
 SUPER_ADMIN_EMAILS = os.environ.get('SUPER_ADMIN_EMAILS', '').split(',') if os.environ.get('SUPER_ADMIN_EMAILS') else []
 SUPER_ADMIN_DOMAINS = os.environ.get('SUPER_ADMIN_DOMAINS', '').split(',') if os.environ.get('SUPER_ADMIN_DOMAINS') else []
@@ -79,6 +85,25 @@ if not SUPER_ADMIN_EMAILS and not SUPER_ADMIN_DOMAINS:
     # You should set these via environment variables in production
     SUPER_ADMIN_EMAILS = []  # e.g., ['admin@example.com']
     SUPER_ADMIN_DOMAINS = []  # e.g., ['example.com']
+
+# Test mode users - predefined for automated testing
+TEST_USERS = {
+    'test_super_admin@example.com': {
+        'name': 'Test Super Admin',
+        'role': 'super_admin',
+        'password': 'test123'  # Simple password for testing only
+    },
+    'test_tenant_admin@example.com': {
+        'name': 'Test Tenant Admin', 
+        'role': 'tenant_admin',
+        'password': 'test123'
+    },
+    'test_tenant_user@example.com': {
+        'name': 'Test Tenant User',
+        'role': 'tenant_user', 
+        'password': 'test123'
+    }
+}
 
 # Initialize OAuth
 oauth = OAuth(app)
@@ -91,6 +116,11 @@ google = oauth.register(
         'scope': 'openid email profile'
     }
 )
+
+@app.before_request
+def before_request():
+    """Set global variables for templates."""
+    g.test_mode = TEST_MODE_ENABLED
 
 def is_super_admin(email):
     """Check if email is authorized as super admin."""
@@ -192,7 +222,7 @@ def require_auth(admin_only=False):
 @app.route('/login')
 def login():
     """Show login page for super admin."""
-    return render_template('login.html', tenant_id=None)
+    return render_template('login.html', tenant_id=None, test_mode=TEST_MODE_ENABLED)
 
 @app.route('/tenant/<tenant_id>/login')
 def tenant_login(tenant_id):
@@ -206,7 +236,7 @@ def tenant_login(tenant_id):
     if not tenant:
         return "Tenant not found", 404
         
-    return render_template('login.html', tenant_id=tenant_id, tenant_name=tenant[0])
+    return render_template('login.html', tenant_id=tenant_id, tenant_name=tenant[0], test_mode=TEST_MODE_ENABLED)
 
 @app.route('/auth/google')
 def google_auth():
@@ -414,6 +444,122 @@ def logout():
         return redirect(url_for('login'))
     else:
         return redirect(url_for('tenant_login', tenant_id=tenant_id))
+
+# Test mode authentication routes - ONLY FOR AUTOMATED TESTING
+@app.route('/test/auth', methods=['POST'])
+def test_auth():
+    """Test authentication endpoint - bypasses OAuth for automated testing."""
+    if not TEST_MODE_ENABLED:
+        return "Test mode is not enabled", 404
+    
+    email = request.form.get('email')
+    password = request.form.get('password')
+    tenant_id = request.form.get('tenant_id')  # Optional for tenant-specific login
+    
+    # Check test user credentials
+    if email not in TEST_USERS or TEST_USERS[email]['password'] != password:
+        if tenant_id:
+            return redirect(url_for('tenant_login', tenant_id=tenant_id) + '?error=Invalid+test+credentials')
+        return redirect(url_for('login') + '?error=Invalid+test+credentials')
+    
+    test_user = TEST_USERS[email]
+    
+    # For super admin test user
+    if test_user['role'] == 'super_admin':
+        session['authenticated'] = True
+        session['role'] = 'super_admin'
+        session['email'] = email
+        session['username'] = test_user['name']
+        return redirect(url_for('index'))
+    
+    # For tenant users, we need a tenant_id
+    if not tenant_id:
+        return redirect(url_for('login') + '?error=Tenant+ID+required+for+non-super-admin+test+users')
+    
+    # Verify tenant exists
+    conn = get_db_connection()
+    cursor = conn.execute("SELECT name FROM tenants WHERE tenant_id = ? AND is_active = ?", (tenant_id, True))
+    tenant = cursor.fetchone()
+    
+    if not tenant:
+        conn.close()
+        return redirect(url_for('login') + '?error=Invalid+tenant+ID')
+    
+    # Set up session for tenant user
+    session['authenticated'] = True
+    session['role'] = test_user['role']
+    session['user_id'] = f"test_{email}"  # Fake user ID for testing
+    session['tenant_id'] = tenant_id
+    session['tenant_name'] = tenant[0]
+    session['email'] = email
+    session['username'] = test_user['name']
+    
+    conn.close()
+    return redirect(url_for('tenant_detail', tenant_id=tenant_id))
+
+@app.route('/test/login')
+def test_login_form():
+    """Show test login form for automated testing."""
+    if not TEST_MODE_ENABLED:
+        return "Test mode is not enabled", 404
+    
+    return '''
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>Test Login - AdCP Admin</title>
+        <style>
+            body { font-family: Arial, sans-serif; background: #f5f5f5; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
+            .container { background: white; padding: 2rem; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); width: 400px; }
+            .warning { background: #ff9800; color: white; padding: 1rem; margin: -2rem -2rem 2rem -2rem; border-radius: 8px 8px 0 0; text-align: center; }
+            h1 { color: #333; margin: 0 0 1.5rem 0; }
+            .form-group { margin-bottom: 1rem; }
+            label { display: block; margin-bottom: 0.5rem; color: #555; }
+            input, select { width: 100%; padding: 0.5rem; border: 1px solid #ddd; border-radius: 4px; }
+            button { background: #4285f4; color: white; border: none; padding: 0.75rem 1.5rem; border-radius: 4px; cursor: pointer; width: 100%; }
+            button:hover { background: #357ae8; }
+            .test-users { margin-top: 2rem; padding: 1rem; background: #f9f9f9; border-radius: 4px; }
+            .test-users h3 { margin-top: 0; }
+            .test-users code { background: #eee; padding: 0.2rem 0.4rem; border-radius: 3px; }
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <div class="warning">⚠️ TEST MODE - NOT FOR PRODUCTION USE</div>
+            <h1>Test Login</h1>
+            <form method="POST" action="/test/auth">
+                <div class="form-group">
+                    <label>Email:</label>
+                    <select name="email" required>
+                        <option value="">Select a test user...</option>
+                        <option value="test_super_admin@example.com">Test Super Admin</option>
+                        <option value="test_tenant_admin@example.com">Test Tenant Admin</option>
+                        <option value="test_tenant_user@example.com">Test Tenant User</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Password:</label>
+                    <input type="password" name="password" value="test123" required>
+                </div>
+                <div class="form-group">
+                    <label>Tenant ID (optional, required for tenant users):</label>
+                    <input type="text" name="tenant_id" placeholder="e.g., tenant_abc123">
+                </div>
+                <button type="submit">Test Login</button>
+            </form>
+            <div class="test-users">
+                <h3>Available Test Users:</h3>
+                <ul>
+                    <li><code>test_super_admin@example.com</code> - Full admin access</li>
+                    <li><code>test_tenant_admin@example.com</code> - Tenant admin (requires tenant_id)</li>
+                    <li><code>test_tenant_user@example.com</code> - Tenant user (requires tenant_id)</li>
+                </ul>
+                <p>All test users use password: <code>test123</code></p>
+            </div>
+        </div>
+    </body>
+    </html>
+    '''
 
 @app.route('/tenant/<tenant_id>')
 def tenant_root(tenant_id):

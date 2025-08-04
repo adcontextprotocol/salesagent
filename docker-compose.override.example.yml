@@ -1,0 +1,44 @@
+# Example docker-compose.override.yml for development with test mode
+# Copy this to docker-compose.override.yml and uncomment sections as needed
+
+version: '3.8'
+
+services:
+  admin-ui:
+    environment:
+      # Enable test authentication mode for automated testing
+      # ⚠️ NEVER use this in production!
+      # - ADCP_AUTH_TEST_MODE=true
+      
+      # Enable Flask debug mode for development
+      # - FLASK_DEBUG=1
+      
+      # Skip OAuth setup if you don't have credentials yet
+      # Test mode will still work without OAuth credentials
+      # - GOOGLE_CLIENT_ID=test
+      # - GOOGLE_CLIENT_SECRET=test
+    
+    # Enable hot reload for development
+    # volumes:
+    #   - ./templates:/app/templates
+    #   - ./static:/app/static
+    #   - ./admin_ui.py:/app/admin_ui.py
+    
+    # Expose Flask debugger port
+    # ports:
+    #   - "5678:5678"  # Python debugger port
+
+  adcp-server:
+    environment:
+      # Development settings
+      # - PYTHONUNBUFFERED=1
+      # - LOG_LEVEL=DEBUG
+    
+    # Enable hot reload for development
+    # volumes:
+    #   - ./main.py:/app/main.py
+    #   - ./schemas.py:/app/schemas.py
+    #   - ./adapters:/app/adapters
+
+# Example: Running tests with test mode enabled
+# docker-compose run --rm -e ADCP_AUTH_TEST_MODE=true admin-ui pytest tests/
