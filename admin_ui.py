@@ -92,6 +92,15 @@ google = oauth.register(
     }
 )
 
+def parse_json_config(config_str):
+    """Parse JSON config from database, handling both string and dict types."""
+    if isinstance(config_str, dict):
+        return config_str
+    elif config_str:
+        return json.loads(config_str)
+    else:
+        return {}
+
 def is_super_admin(email):
     """Check if email is authorized as super admin."""
     # Check explicit email list
@@ -175,6 +184,8 @@ def require_auth(admin_only=False):
         @wraps(f)
         def decorated_function(*args, **kwargs):
             if not session.get('authenticated'):
+                # Store the URL the user was trying to access
+                session['next_url'] = request.url
                 # Check if we're in a tenant-specific route
                 tenant_id = kwargs.get('tenant_id') or session.get('tenant_id')
                 if tenant_id and not admin_only:
@@ -242,6 +253,10 @@ def google_callback():
             session['role'] = 'super_admin'
             session['email'] = email
             session['username'] = user_info.get('name', email)
+            # Redirect to originally requested URL if stored
+            next_url = session.pop('next_url', None)
+            if next_url:
+                return redirect(next_url)
             return redirect(url_for('index'))
         
         # Check if tenant admin
@@ -256,6 +271,10 @@ def google_callback():
                 session['tenant_name'] = tenant_name
                 session['email'] = email
                 session['username'] = user_info.get('name', email)
+                # Redirect to originally requested URL if stored
+                next_url = session.pop('next_url', None)
+                if next_url:
+                    return redirect(next_url)
                 return redirect(url_for('tenant_detail', tenant_id=tenant_id))
             elif isinstance(tenant_access, list) and len(tenant_access) > 1:
                 # Multiple tenant access - let them choose
@@ -327,6 +346,10 @@ def tenant_google_callback(tenant_id):
             session['username'] = user_name or user_info.get('name', email)
             session.pop('oauth_tenant_id', None)  # Clean up
             
+            # Redirect to originally requested URL if stored
+            next_url = session.pop('next_url', None)
+            if next_url:
+                return redirect(next_url)
             return redirect(url_for('tenant_detail', tenant_id=tenant_id))
         
         # If not in users table, check legacy tenant admin config
@@ -344,6 +367,10 @@ def tenant_google_callback(tenant_id):
             session['username'] = user_info.get('name', email)
             session.pop('oauth_tenant_id', None)  # Clean up
             
+            # Redirect to originally requested URL if stored
+            next_url = session.pop('next_url', None)
+            if next_url:
+                return redirect(next_url)
             return redirect(url_for('tenant_detail', tenant_id=tenant_id))
         
         conn.close()
@@ -357,6 +384,10 @@ def tenant_google_callback(tenant_id):
             session.pop('oauth_tenant_id', None)  # Clean up
             
             # Super admin can access any tenant
+            # Redirect to originally requested URL if stored
+            next_url = session.pop('next_url', None)
+            if next_url:
+                return redirect(next_url)
             return redirect(url_for('tenant_detail', tenant_id=tenant_id))
         
         # Not authorized for this tenant
@@ -2065,16 +2096,36 @@ def policy_settings(tenant_id):
         return "Tenant not found", 404
     
     tenant_name, config_str = tenant
-    config = json.loads(config_str) if config_str else {}
-    policy_settings = config.get('policy_settings', {
+    config = parse_json_config(config_str)
+    
+    # Define default policies that all publishers start with
+    default_policies = {
         'enabled': True,
-        'custom_rules': {
-            'prohibited_advertisers': [],
-            'prohibited_categories': [],
-            'prohibited_tactics': []
-        },
-        'require_manual_review': False
-    })
+        'require_manual_review': False,
+        'default_prohibited_categories': [
+            'illegal_content',
+            'hate_speech', 
+            'violence',
+            'adult_content',
+            'misleading_health_claims',
+            'financial_scams'
+        ],
+        'default_prohibited_tactics': [
+            'targeting_children_under_13',
+            'discriminatory_targeting',
+            'deceptive_claims',
+            'impersonation',
+            'privacy_violations'
+        ],
+        'prohibited_advertisers': [],
+        'prohibited_categories': [],
+        'prohibited_tactics': []
+    }
+    
+    # Get tenant policy settings, using defaults where not specified
+    tenant_policies = config.get('policy_settings', {})
+    policy_settings = default_policies.copy()
+    policy_settings.update(tenant_policies)
     
     # Get recent policy checks from audit log
     cursor = conn.execute("""
@@ -2117,7 +2168,7 @@ def policy_settings(tenant_id):
     
     conn.close()
     
-    return render_template('policy_settings.html',
+    return render_template('policy_settings_comprehensive.html',
                          tenant_id=tenant_id,
                          tenant_name=tenant_name,
                          policy_settings=policy_settings,
@@ -2141,17 +2192,37 @@ def update_policy_settings(tenant_id):
         # Get current config
         cursor = conn.execute("SELECT config FROM tenants WHERE tenant_id = ?", (tenant_id,))
         config_str = cursor.fetchone()[0]
-        config = json.loads(config_str) if config_str else {}
+        config = parse_json_config(config_str)
+        
+        # Parse the form data for lists
+        def parse_textarea_lines(field_name):
+            """Parse textarea input into list of non-empty lines."""
+            text = request.form.get(field_name, '')
+            return [line.strip() for line in text.strip().split('\n') if line.strip()]
         
         # Update policy settings
         policy_settings = {
             'enabled': request.form.get('enabled') == 'on',
             'require_manual_review': request.form.get('require_manual_review') == 'on',
-            'custom_rules': config.get('policy_settings', {}).get('custom_rules', {
-                'prohibited_advertisers': [],
-                'prohibited_categories': [],
-                'prohibited_tactics': []
-            })
+            'prohibited_advertisers': parse_textarea_lines('prohibited_advertisers'),
+            'prohibited_categories': parse_textarea_lines('prohibited_categories'),
+            'prohibited_tactics': parse_textarea_lines('prohibited_tactics'),
+            # Keep default policies (they don't change from form)
+            'default_prohibited_categories': config.get('policy_settings', {}).get('default_prohibited_categories', [
+                'illegal_content',
+                'hate_speech', 
+                'violence',
+                'adult_content',
+                'misleading_health_claims',
+                'financial_scams'
+            ]),
+            'default_prohibited_tactics': config.get('policy_settings', {}).get('default_prohibited_tactics', [
+                'targeting_children_under_13',
+                'discriminatory_targeting',
+                'deceptive_claims',
+                'impersonation',
+                'privacy_violations'
+            ])
         }
         
         config['policy_settings'] = policy_settings
@@ -2174,75 +2245,8 @@ def update_policy_settings(tenant_id):
 @app.route('/tenant/<tenant_id>/policy/rules', methods=['GET', 'POST'])
 @require_auth()
 def manage_policy_rules(tenant_id):
-    """Manage custom policy rules (blocked keywords, advertisers, etc.)."""
-    # Check access
-    if session.get('role') not in ['super_admin', 'tenant_admin']:
-        return "Access denied", 403
-    
-    if session.get('role') == 'tenant_admin' and session.get('tenant_id') != tenant_id:
-        return "Access denied", 403
-    
-    conn = get_db_connection()
-    
-    if request.method == 'POST':
-        try:
-            # Get current config
-            cursor = conn.execute("SELECT config FROM tenants WHERE tenant_id = ?", (tenant_id,))
-            config_str = cursor.fetchone()[0]
-            config = json.loads(config_str) if config_str else {}
-            
-            # Parse the form data
-            prohibited_advertisers = [a.strip() for a in request.form.get('prohibited_advertisers', '').split('\n') if a.strip()]
-            prohibited_categories = [c.strip() for c in request.form.get('prohibited_categories', '').split('\n') if c.strip()]
-            prohibited_tactics = [t.strip() for t in request.form.get('prohibited_tactics', '').split('\n') if t.strip()]
-            
-            # Update custom rules
-            if 'policy_settings' not in config:
-                config['policy_settings'] = {}
-            
-            config['policy_settings']['custom_rules'] = {
-                'prohibited_advertisers': prohibited_advertisers,
-                'prohibited_categories': prohibited_categories,
-                'prohibited_tactics': prohibited_tactics
-            }
-            
-            # Update database
-            conn.execute("""
-                UPDATE tenants 
-                SET config = ?
-                WHERE tenant_id = ?
-            """, (json.dumps(config), tenant_id))
-            
-            conn.connection.commit()
-            conn.close()
-            
-            return redirect(url_for('policy_settings', tenant_id=tenant_id))
-            
-        except Exception as e:
-            conn.close()
-            return f"Error: {e}", 400
-    
-    # GET: Show form
-    cursor = conn.execute("SELECT name, config FROM tenants WHERE tenant_id = ?", (tenant_id,))
-    tenant = cursor.fetchone()
-    if not tenant:
-        conn.close()
-        return "Tenant not found", 404
-    
-    tenant_name, config_str = tenant
-    config = json.loads(config_str) if config_str else {}
-    custom_rules = config.get('policy_settings', {}).get('custom_rules', {
-        'prohibited_advertisers': [],
-        'prohibited_categories': [],
-        'prohibited_tactics': []
-    })
-    
-    conn.close()
-    
-    return render_template('policy_rules.html',
-                         tenant_id=tenant_id,
-                         tenant_name=tenant_name,
-                         custom_rules=custom_rules)
+    """Redirect old policy rules URL to new comprehensive policy settings page."""
+    return redirect(url_for('policy_settings', tenant_id=tenant_id))
 
 @app.route('/tenant/<tenant_id>/policy/review/<task_id>', methods=['GET', 'POST'])
 @require_auth()
