@@ -24,9 +24,13 @@ def get_default_tenant() -> Optional[Dict[str, Any]]:
     try:
         conn = get_db_connection()
         
-        # Get first active tenant or specific default
+        # Get first active tenant or specific default with all fields
         cursor = conn.execute("""
-            SELECT tenant_id, name, subdomain, config 
+            SELECT tenant_id, name, subdomain, ad_server, max_daily_budget,
+                   enable_aee_signals, authorized_emails, authorized_domains,
+                   slack_webhook_url, admin_token, auto_approve_formats,
+                   human_review_required, slack_audit_webhook_url, hitl_webhook_url,
+                   policy_settings
             FROM tenants 
             WHERE is_active = ? 
             ORDER BY 
@@ -39,16 +43,22 @@ def get_default_tenant() -> Optional[Dict[str, Any]]:
         conn.close()
         
         if row:
-            # PostgreSQL returns JSONB as dict, SQLite as string
-            config = row[3]
-            if isinstance(config, str):
-                config = json.loads(config)
-            
             return {
                 'tenant_id': row[0],
                 'name': row[1],
                 'subdomain': row[2],
-                'config': config
+                'ad_server': row[3],
+                'max_daily_budget': row[4],
+                'enable_aee_signals': row[5],
+                'authorized_emails': json.loads(row[6]) if row[6] else [],
+                'authorized_domains': json.loads(row[7]) if row[7] else [],
+                'slack_webhook_url': row[8],
+                'admin_token': row[9],
+                'auto_approve_formats': json.loads(row[10]) if row[10] else [],
+                'human_review_required': row[11],
+                'slack_audit_webhook_url': row[12],
+                'hitl_webhook_url': row[13],
+                'policy_settings': json.loads(row[14]) if row[14] else None
             }
         return None
     except Exception as e:
@@ -65,18 +75,28 @@ def load_config() -> Dict[str, Any]:
     In multi-tenant mode, config comes from database.
     """
     tenant = get_current_tenant()
-    config = tenant['config'].copy()
     
-    # Map tenant config to old format for compatibility
-    if 'adapters' in config:
-        # Extract primary adapter
-        for adapter_name, adapter_config in config['adapters'].items():
-            if adapter_config.get('enabled'):
-                config['ad_server'] = {
-                    'adapter': adapter_name,
-                    **adapter_config
-                }
-                break
+    # Build config from tenant fields
+    config = {
+        'ad_server': {'adapter': tenant.get('ad_server', 'mock'), 'enabled': True},
+        'creative_engine': {
+            'auto_approve_formats': tenant.get('auto_approve_formats', []),
+            'human_review_required': tenant.get('human_review_required', True)
+        },
+        'features': {
+            'max_daily_budget': tenant.get('max_daily_budget', 10000),
+            'enable_aee_signals': tenant.get('enable_aee_signals', True),
+            'slack_webhook_url': tenant.get('slack_webhook_url'),
+            'slack_audit_webhook_url': tenant.get('slack_audit_webhook_url'),
+            'hitl_webhook_url': tenant.get('hitl_webhook_url')
+        },
+        'admin_token': tenant.get('admin_token'),
+        'dry_run': False
+    }
+    
+    # Add policy settings if present
+    if tenant.get('policy_settings'):
+        config['policy_settings'] = tenant['policy_settings']
     
     # Apply environment variable overrides (for development/testing)
     if gemini_key := os.environ.get('GEMINI_API_KEY'):
@@ -92,17 +112,12 @@ def get_tenant_config(key: str, default=None):
     """Get config value for current tenant."""
     tenant = get_current_tenant()
     
-    # Navigate nested config
-    keys = key.split('.')
-    value = tenant['config']
+    # Check if it's a top-level tenant field
+    if key in tenant:
+        return tenant[key]
     
-    for k in keys:
-        if isinstance(value, dict) and k in value:
-            value = value[k]
-        else:
-            return default
-    
-    return value
+    # Otherwise return default
+    return default
 
 def set_current_tenant(tenant_dict: Dict[str, Any]):
     """Set the current tenant context."""
