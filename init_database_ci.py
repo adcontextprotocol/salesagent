@@ -42,8 +42,8 @@ def init_db_ci():
             tenant_query = f"""
                 INSERT INTO tenants (tenant_id, name, subdomain, billing_plan, created_at, updated_at,
                                    ad_server, max_daily_budget, enable_aee_signals, 
-                                   auto_approve_formats, human_review_required, manual_approval_required)
-                VALUES (?, ?, ?, ?, {timestamp_func}, {timestamp_func}, ?, ?, ?, ?, ?, ?)
+                                   auto_approve_formats, human_review_required)
+                VALUES (?, ?, ?, ?, {timestamp_func}, {timestamp_func}, ?, ?, ?, ?, ?)
             """
             conn.execute(tenant_query, (
                 tenant_id,
@@ -54,8 +54,7 @@ def init_db_ci():
                 10000,   # max_daily_budget
                 True,    # enable_aee_signals
                 '["display_300x250", "display_728x90"]',  # auto_approve_formats
-                False,   # human_review_required
-                False    # manual_approval_required
+                False    # human_review_required
             ))
             
             # Create a default principal for the tenant
