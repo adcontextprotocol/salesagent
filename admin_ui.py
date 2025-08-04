@@ -131,6 +131,15 @@ def before_request():
     """Set global variables for templates."""
     g.test_mode = TEST_MODE_ENABLED
 
+def parse_json_config(config_str):
+    """Parse JSON config from database, handling both string and dict types."""
+    if isinstance(config_str, dict):
+        return config_str
+    elif config_str:
+        return json.loads(config_str)
+    else:
+        return {}
+
 def is_super_admin(email):
     """Check if email is authorized as super admin."""
     # Check explicit email list
@@ -214,6 +223,8 @@ def require_auth(admin_only=False):
         @wraps(f)
         def decorated_function(*args, **kwargs):
             if not session.get('authenticated'):
+                # Store the URL the user was trying to access
+                session['next_url'] = request.url
                 # Check if we're in a tenant-specific route
                 tenant_id = kwargs.get('tenant_id') or session.get('tenant_id')
                 if tenant_id and not admin_only:
@@ -281,6 +292,10 @@ def google_callback():
             session['role'] = 'super_admin'
             session['email'] = email
             session['username'] = user_info.get('name', email)
+            # Redirect to originally requested URL if stored
+            next_url = session.pop('next_url', None)
+            if next_url:
+                return redirect(next_url)
             return redirect(url_for('index'))
         
         # Check if tenant admin
@@ -295,6 +310,10 @@ def google_callback():
                 session['tenant_name'] = tenant_name
                 session['email'] = email
                 session['username'] = user_info.get('name', email)
+                # Redirect to originally requested URL if stored
+                next_url = session.pop('next_url', None)
+                if next_url:
+                    return redirect(next_url)
                 return redirect(url_for('tenant_detail', tenant_id=tenant_id))
             elif isinstance(tenant_access, list) and len(tenant_access) > 1:
                 # Multiple tenant access - let them choose
@@ -366,6 +385,10 @@ def tenant_google_callback(tenant_id):
             session['username'] = user_name or user_info.get('name', email)
             session.pop('oauth_tenant_id', None)  # Clean up
             
+            # Redirect to originally requested URL if stored
+            next_url = session.pop('next_url', None)
+            if next_url:
+                return redirect(next_url)
             return redirect(url_for('tenant_detail', tenant_id=tenant_id))
         
         # If not in users table, check legacy tenant admin config
@@ -383,6 +406,10 @@ def tenant_google_callback(tenant_id):
             session['username'] = user_info.get('name', email)
             session.pop('oauth_tenant_id', None)  # Clean up
             
+            # Redirect to originally requested URL if stored
+            next_url = session.pop('next_url', None)
+            if next_url:
+                return redirect(next_url)
             return redirect(url_for('tenant_detail', tenant_id=tenant_id))
         
         conn.close()
@@ -396,6 +423,10 @@ def tenant_google_callback(tenant_id):
             session.pop('oauth_tenant_id', None)  # Clean up
             
             # Super admin can access any tenant
+            # Redirect to originally requested URL if stored
+            next_url = session.pop('next_url', None)
+            if next_url:
+                return redirect(next_url)
             return redirect(url_for('tenant_detail', tenant_id=tenant_id))
         
         # Not authorized for this tenant
@@ -2197,6 +2228,274 @@ def create_from_template(tenant_id):
         
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+# Policy Management Routes
+@app.route('/tenant/<tenant_id>/policy')
+@require_auth()
+def policy_settings(tenant_id):
+    """View and manage policy settings for the tenant."""
+    # Check access
+    if session.get('role') == 'viewer':
+        return "Access denied", 403
+    
+    if session.get('role') == 'tenant_admin' and session.get('tenant_id') != tenant_id:
+        return "Access denied", 403
+    
+    conn = get_db_connection()
+    
+    # Get tenant info and config
+    cursor = conn.execute("SELECT name, config FROM tenants WHERE tenant_id = ?", (tenant_id,))
+    tenant = cursor.fetchone()
+    if not tenant:
+        conn.close()
+        return "Tenant not found", 404
+    
+    tenant_name, config_str = tenant
+    config = parse_json_config(config_str)
+    
+    # Define default policies that all publishers start with
+    default_policies = {
+        'enabled': True,
+        'require_manual_review': False,
+        'default_prohibited_categories': [
+            'illegal_content',
+            'hate_speech', 
+            'violence',
+            'adult_content',
+            'misleading_health_claims',
+            'financial_scams'
+        ],
+        'default_prohibited_tactics': [
+            'targeting_children_under_13',
+            'discriminatory_targeting',
+            'deceptive_claims',
+            'impersonation',
+            'privacy_violations'
+        ],
+        'prohibited_advertisers': [],
+        'prohibited_categories': [],
+        'prohibited_tactics': []
+    }
+    
+    # Get tenant policy settings, using defaults where not specified
+    tenant_policies = config.get('policy_settings', {})
+    policy_settings = default_policies.copy()
+    policy_settings.update(tenant_policies)
+    
+    # Get recent policy checks from audit log
+    cursor = conn.execute("""
+        SELECT timestamp, principal_id, success, details
+        FROM audit_logs 
+        WHERE tenant_id = ? AND operation = 'policy_check'
+        ORDER BY timestamp DESC
+        LIMIT 20
+    """, (tenant_id,))
+    
+    recent_checks = []
+    for row in cursor.fetchall():
+        details = json.loads(row[3]) if row[3] else {}
+        recent_checks.append({
+            'timestamp': row[0],
+            'principal_id': row[1],
+            'success': row[2],
+            'status': details.get('policy_status', 'unknown'),
+            'brief': details.get('brief', ''),
+            'reason': details.get('reason', '')
+        })
+    
+    # Get pending policy review tasks
+    cursor = conn.execute("""
+        SELECT task_id, created_at, details
+        FROM tasks
+        WHERE tenant_id = ? AND task_type = 'policy_review' AND status = 'pending'
+        ORDER BY created_at DESC
+    """, (tenant_id,))
+    
+    pending_reviews = []
+    for row in cursor.fetchall():
+        details = json.loads(row[2]) if row[2] else {}
+        pending_reviews.append({
+            'task_id': row[0],
+            'created_at': row[1],
+            'brief': details.get('brief', ''),
+            'advertiser': details.get('promoted_offering', '')
+        })
+    
+    conn.close()
+    
+    return render_template('policy_settings_comprehensive.html',
+                         tenant_id=tenant_id,
+                         tenant_name=tenant_name,
+                         policy_settings=policy_settings,
+                         recent_checks=recent_checks,
+                         pending_reviews=pending_reviews)
+
+@app.route('/tenant/<tenant_id>/policy/update', methods=['POST'])
+@require_auth()
+def update_policy_settings(tenant_id):
+    """Update policy settings for the tenant."""
+    # Check access - only admins can update policy
+    if session.get('role') not in ['super_admin', 'tenant_admin']:
+        return "Access denied", 403
+    
+    if session.get('role') == 'tenant_admin' and session.get('tenant_id') != tenant_id:
+        return "Access denied", 403
+    
+    try:
+        conn = get_db_connection()
+        
+        # Get current config
+        cursor = conn.execute("SELECT config FROM tenants WHERE tenant_id = ?", (tenant_id,))
+        config_str = cursor.fetchone()[0]
+        config = parse_json_config(config_str)
+        
+        # Parse the form data for lists
+        def parse_textarea_lines(field_name):
+            """Parse textarea input into list of non-empty lines."""
+            text = request.form.get(field_name, '')
+            return [line.strip() for line in text.strip().split('\n') if line.strip()]
+        
+        # Update policy settings
+        policy_settings = {
+            'enabled': request.form.get('enabled') == 'on',
+            'require_manual_review': request.form.get('require_manual_review') == 'on',
+            'prohibited_advertisers': parse_textarea_lines('prohibited_advertisers'),
+            'prohibited_categories': parse_textarea_lines('prohibited_categories'),
+            'prohibited_tactics': parse_textarea_lines('prohibited_tactics'),
+            # Keep default policies (they don't change from form)
+            'default_prohibited_categories': config.get('policy_settings', {}).get('default_prohibited_categories', [
+                'illegal_content',
+                'hate_speech', 
+                'violence',
+                'adult_content',
+                'misleading_health_claims',
+                'financial_scams'
+            ]),
+            'default_prohibited_tactics': config.get('policy_settings', {}).get('default_prohibited_tactics', [
+                'targeting_children_under_13',
+                'discriminatory_targeting',
+                'deceptive_claims',
+                'impersonation',
+                'privacy_violations'
+            ])
+        }
+        
+        config['policy_settings'] = policy_settings
+        
+        # Update database
+        conn.execute("""
+            UPDATE tenants 
+            SET config = ?
+            WHERE tenant_id = ?
+        """, (json.dumps(config), tenant_id))
+        
+        conn.connection.commit()
+        conn.close()
+        
+        return redirect(url_for('policy_settings', tenant_id=tenant_id))
+        
+    except Exception as e:
+        return f"Error: {e}", 400
+
+@app.route('/tenant/<tenant_id>/policy/rules', methods=['GET', 'POST'])
+@require_auth()
+def manage_policy_rules(tenant_id):
+    """Redirect old policy rules URL to new comprehensive policy settings page."""
+    return redirect(url_for('policy_settings', tenant_id=tenant_id))
+
+@app.route('/tenant/<tenant_id>/policy/review/<task_id>', methods=['GET', 'POST'])
+@require_auth()
+def review_policy_task(tenant_id, task_id):
+    """Review and approve/reject a policy review task."""
+    # Check access
+    if session.get('role') == 'viewer':
+        return "Access denied", 403
+    
+    if session.get('role') == 'tenant_admin' and session.get('tenant_id') != tenant_id:
+        return "Access denied", 403
+    
+    conn = get_db_connection()
+    
+    if request.method == 'POST':
+        try:
+            action = request.form.get('action')
+            review_notes = request.form.get('review_notes', '')
+            
+            if action not in ['approve', 'reject']:
+                return "Invalid action", 400
+            
+            # Update task status
+            new_status = 'approved' if action == 'approve' else 'rejected'
+            
+            # Get task details
+            cursor = conn.execute("""
+                SELECT details FROM tasks
+                WHERE tenant_id = ? AND task_id = ?
+            """, (tenant_id, task_id))
+            
+            row = cursor.fetchone()
+            if not row:
+                conn.close()
+                return "Task not found", 404
+            
+            details = json.loads(row[0]) if row[0] else {}
+            details['review_notes'] = review_notes
+            details['reviewed_by'] = session.get('email', 'unknown')
+            details['reviewed_at'] = datetime.utcnow().isoformat()
+            
+            conn.execute("""
+                UPDATE tasks
+                SET status = ?, details = ?, completed_at = CURRENT_TIMESTAMP
+                WHERE tenant_id = ? AND task_id = ?
+            """, (new_status, json.dumps(details), tenant_id, task_id))
+            
+            # Log the review
+            audit_logger = AuditLogger(conn)
+            audit_logger.log(
+                operation='policy_review',
+                tenant_id=tenant_id,
+                principal_id=details.get('principal_id'),
+                success=True,
+                details={
+                    'task_id': task_id,
+                    'action': action,
+                    'reviewer': session.get('email', 'unknown')
+                }
+            )
+            
+            conn.connection.commit()
+            conn.close()
+            
+            return redirect(url_for('policy_settings', tenant_id=tenant_id))
+            
+        except Exception as e:
+            conn.close()
+            return f"Error: {e}", 400
+    
+    # GET: Show review form
+    cursor = conn.execute("""
+        SELECT t.created_at, t.details, tn.name
+        FROM tasks t
+        JOIN tenants tn ON t.tenant_id = tn.tenant_id
+        WHERE t.tenant_id = ? AND t.task_id = ? AND t.task_type = 'policy_review'
+    """, (tenant_id, task_id))
+    
+    row = cursor.fetchone()
+    if not row:
+        conn.close()
+        return "Task not found", 404
+    
+    created_at, details_str, tenant_name = row
+    details = json.loads(details_str) if details_str else {}
+    
+    conn.close()
+    
+    return render_template('policy_review.html',
+                         tenant_id=tenant_id,
+                         tenant_name=tenant_name,
+                         task_id=task_id,
+                         created_at=created_at,
+                         details=details)
 
 def get_creative_formats():
     """Get all creative formats from the database."""
