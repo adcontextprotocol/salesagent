@@ -457,6 +457,64 @@ def index():
     conn.close()
     return render_template('index.html', tenants=tenants)
 
+@app.route('/settings')
+@require_auth(admin_only=True)
+def settings():
+    """Superadmin settings page."""
+    conn = get_db_connection()
+    
+    # Get all superadmin config values
+    cursor = conn.execute("""
+        SELECT config_key, config_value, description
+        FROM superadmin_config
+        ORDER BY config_key
+    """)
+    
+    config_items = {}
+    for row in cursor.fetchall():
+        config_items[row[0]] = {
+            'value': row[1],
+            'description': row[2]
+        }
+    
+    conn.close()
+    return render_template('settings.html', config_items=config_items)
+
+@app.route('/settings/update', methods=['POST'])
+@require_auth(admin_only=True)
+def update_settings():
+    """Update superadmin settings."""
+    conn = get_db_connection()
+    
+    try:
+        # Update GAM OAuth settings
+        gam_client_id = request.form.get('gam_oauth_client_id', '').strip()
+        gam_client_secret = request.form.get('gam_oauth_client_secret', '').strip()
+        
+        # Update in database
+        conn.execute("""
+            UPDATE superadmin_config 
+            SET config_value = ?, updated_at = CURRENT_TIMESTAMP, updated_by = ?
+            WHERE config_key = ?
+        """, (gam_client_id, session.get('email'), 'gam_oauth_client_id'))
+        
+        conn.execute("""
+            UPDATE superadmin_config 
+            SET config_value = ?, updated_at = CURRENT_TIMESTAMP, updated_by = ?
+            WHERE config_key = ?
+        """, (gam_client_secret, session.get('email'), 'gam_oauth_client_secret'))
+        
+        conn.commit()
+        flash('Settings updated successfully', 'success')
+        
+    except Exception as e:
+        conn.rollback()
+        flash(f'Error updating settings: {str(e)}', 'error')
+    finally:
+        conn.close()
+    
+    return redirect(url_for('settings'))
+
 @app.route('/tenant/<tenant_id>/manage')
 @require_auth()
 def tenant_detail(tenant_id):
@@ -1326,11 +1384,12 @@ def setup_adapter(tenant_id):
             }
         
         elif adapter_type == 'gam':
-            config['adapters']['gam'] = {
+            config['adapters']['google_ad_manager'] = {
                 'enabled': True,
-                'network_id': request.form.get('network_id'),
-                'credentials': json.loads(request.form.get('credentials', '{}')),
-                'api_version': 'v202411'
+                'network_code': request.form.get('network_code'),
+                'refresh_token': request.form.get('refresh_token'),
+                'company_id': request.form.get('company_id'),
+                'trafficker_id': request.form.get('trafficker_id')
             }
         
         elif adapter_type == 'kevel':

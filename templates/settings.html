@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+
+{% block title %}Settings - AdCP Admin{% endblock %}
+
+{% block content %}
+<div class="card">
+    <h2>Superadmin Settings</h2>
+    
+    {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+            {% for category, message in messages %}
+                <div class="alert alert-{{ category }}">{{ message }}</div>
+            {% endfor %}
+        {% endif %}
+    {% endwith %}
+    
+    <form method="POST" action="{{ url_for('update_settings') }}">
+        <h3>Google Ad Manager OAuth Configuration</h3>
+        <p style="margin-bottom: 1rem; color: #666;">
+            These OAuth credentials are used to authenticate with Google Ad Manager on behalf of tenants.
+            You'll need to create an OAuth 2.0 client in the Google Cloud Console.
+        </p>
+        
+        <div class="form-group">
+            <label for="gam_oauth_client_id">OAuth Client ID</label>
+            <input type="text" 
+                   id="gam_oauth_client_id" 
+                   name="gam_oauth_client_id" 
+                   value="{{ config_items.get('gam_oauth_client_id', {}).get('value', '') }}"
+                   placeholder="e.g., 123456789-abcdef.apps.googleusercontent.com">
+            <small style="color: #666;">{{ config_items.get('gam_oauth_client_id', {}).get('description', '') }}</small>
+        </div>
+        
+        <div class="form-group">
+            <label for="gam_oauth_client_secret">OAuth Client Secret</label>
+            <input type="password" 
+                   id="gam_oauth_client_secret" 
+                   name="gam_oauth_client_secret" 
+                   value="{{ config_items.get('gam_oauth_client_secret', {}).get('value', '') }}"
+                   placeholder="Enter client secret">
+            <small style="color: #666;">{{ config_items.get('gam_oauth_client_secret', {}).get('description', '') }}</small>
+        </div>
+        
+        <div style="background: #f0f8ff; padding: 1rem; border-radius: 4px; margin: 1rem 0;">
+            <h4 style="margin-top: 0;">Setup Instructions:</h4>
+            <ol style="margin-left: 1.5rem;">
+                <li>Go to <a href="https://console.cloud.google.com/" target="_blank">Google Cloud Console</a></li>
+                <li>Create or select a project</li>
+                <li>Enable the Google Ad Manager API</li>
+                <li>Create OAuth 2.0 credentials (Web application type)</li>
+                <li>Add authorized redirect URIs for your OAuth flow</li>
+                <li>Copy the Client ID and Client Secret here</li>
+            </ol>
+        </div>
+        
+        <button type="submit" class="btn">Save Settings</button>
+        <a href="/" class="btn btn-secondary">Cancel</a>
+    </form>
+</div>
+{% endblock %}
