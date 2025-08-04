@@ -177,8 +177,35 @@ stage('UI Tests') {
 - Use the exact email addresses provided
 - Password is always `test123`
 
+## Docker Compose Configuration
+
+### Using Docker Compose Override Files
+
+**IMPORTANT**: Never modify the main `docker-compose.yml` file for testing. Instead, use Docker Compose's override mechanism:
+
+1. Copy the example override file:
+   ```bash
+   cp docker-compose.override.example.yml docker-compose.override.yml
+   ```
+
+2. Uncomment the test mode section in your `docker-compose.override.yml`:
+   ```yaml
+   services:
+     admin-ui:
+       environment:
+         - ADCP_AUTH_TEST_MODE=true
+   ```
+
+3. Docker Compose automatically loads `docker-compose.override.yml` when you run:
+   ```bash
+   docker-compose up
+   ```
+
+This approach keeps your main configuration clean and makes it easy to toggle test mode without affecting the core setup.
+
 ## Example Test Scripts
 
 See the following example scripts in the repository:
 - `test_auth_mode_example.py` - Basic usage demonstration
 - `test_selenium_example.py` - Selenium browser automation example
+- `docker-compose.override.example.yml` - Example override configuration
