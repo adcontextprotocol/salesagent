@@ -1,0 +1,115 @@
+{% extends "base.html" %}
+
+{% block title %}Policy Rules - {{ tenant_name }}{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-md-12">
+            <h1>Custom Policy Rules - {{ tenant_name }}</h1>
+            <nav aria-label="breadcrumb">
+                <ol class="breadcrumb">
+                    <li class="breadcrumb-item"><a href="/tenant/{{ tenant_id }}">Dashboard</a></li>
+                    <li class="breadcrumb-item"><a href="/tenant/{{ tenant_id }}/policy">Policy Settings</a></li>
+                    <li class="breadcrumb-item active">Custom Rules</li>
+                </ol>
+            </nav>
+        </div>
+    </div>
+
+    <div class="row mt-4">
+        <div class="col-md-12">
+            <form action="/tenant/{{ tenant_id }}/policy/rules" method="POST">
+                <div class="row">
+                    <!-- Prohibited Advertisers -->
+                    <div class="col-md-4">
+                        <div class="card">
+                            <div class="card-header">
+                                <h5 class="mb-0">Prohibited Advertisers</h5>
+                            </div>
+                            <div class="card-body">
+                                <div class="form-group">
+                                    <label for="prohibited_advertisers">Enter one advertiser/domain per line</label>
+                                    <textarea class="form-control" id="prohibited_advertisers" name="prohibited_advertisers" 
+                                              rows="15" placeholder="Example:
+badcompany.com
+spammer.net
+competitor.com">{{ '\n'.join(custom_rules.prohibited_advertisers) }}</textarea>
+                                    <small class="form-text text-muted">
+                                        These advertisers or domains will be blocked from advertising
+                                    </small>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Prohibited Categories -->
+                    <div class="col-md-4">
+                        <div class="card">
+                            <div class="card-header">
+                                <h5 class="mb-0">Prohibited Categories</h5>
+                            </div>
+                            <div class="card-body">
+                                <div class="form-group">
+                                    <label for="prohibited_categories">Enter one category per line</label>
+                                    <textarea class="form-control" id="prohibited_categories" name="prohibited_categories" 
+                                              rows="15" placeholder="Example:
+adult content
+cryptocurrency
+political campaigns">{{ '\n'.join(custom_rules.prohibited_categories) }}</textarea>
+                                    <small class="form-text text-muted">
+                                        These categories of content will be blocked
+                                    </small>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Prohibited Tactics -->
+                    <div class="col-md-4">
+                        <div class="card">
+                            <div class="card-header">
+                                <h5 class="mb-0">Prohibited Tactics</h5>
+                            </div>
+                            <div class="card-body">
+                                <div class="form-group">
+                                    <label for="prohibited_tactics">Enter one tactic per line</label>
+                                    <textarea class="form-control" id="prohibited_tactics" name="prohibited_tactics" 
+                                              rows="15" placeholder="Example:
+targeting vulnerable populations
+discriminatory targeting
+deceptive advertising">{{ '\n'.join(custom_rules.prohibited_tactics) }}</textarea>
+                                    <small class="form-text text-muted">
+                                        These advertising tactics will be blocked
+                                    </small>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="row mt-3">
+                    <div class="col-md-12">
+                        <button type="submit" class="btn btn-primary">Save Rules</button>
+                        <a href="/tenant/{{ tenant_id }}/policy" class="btn btn-secondary">Back to Policy Settings</a>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div class="row mt-4">
+        <div class="col-md-12">
+            <div class="alert alert-info">
+                <h5>Tips for Custom Rules</h5>
+                <ul class="mb-0">
+                    <li><strong>Advertisers:</strong> You can block specific domains or company names.</li>
+                    <li><strong>Categories:</strong> These work with AI analysis to identify content themes.</li>
+                    <li><strong>Tactics:</strong> Block specific advertising approaches that violate your policies.</li>
+                    <li><strong>Case Sensitivity:</strong> All matches are case-insensitive.</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

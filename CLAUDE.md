@@ -569,3 +569,55 @@ When making changes, test:
 4. **Test Database**: Simulations use isolated test DB by default
 5. **Token Alignment**: Fixed simulation tokens to match database
 6. **Documentation**: Comprehensive guides for all features
+
+## Database Migration Best Practices
+
+Based on common issues encountered, follow these guidelines when working with database migrations:
+
+### 1. **Migration File Naming**
+- Use consistent revision IDs: `001_description`, `002_description`, etc.
+- The revision ID in the filename MUST match the `revision` variable inside the file
+- Example: `003_add_policy_compliance_fields.py` should have `revision = '003_add_policy_compliance_fields'`
+
+### 2. **Check Existing Schema First**
+- Always check `database_schema.py` to see what columns already exist
+- The tenant config is stored in a single `config` JSONB/TEXT column - don't add separate columns for config items
+- Use `grep -r "column_name" .` to check if a column already exists before adding it
+
+### 3. **Multi-Database Compatibility**
+- Use SQLAlchemy's `sa.table()` and `sa.column()` for data operations in migrations
+- Avoid raw SQL strings - they may not work across SQLite and PostgreSQL
+- Example of correct approach:
+  ```python
+  tenants_table = sa.table('tenants',
+      sa.column('tenant_id', sa.String),
+      sa.column('config', sa.Text)
+  )
+  connection.execute(tenants_table.update().where(...).values(...))
+  ```
+
+### 4. **Testing Migrations**
+- Always test with a fresh database: `rm adcp_local.db && uv run python init_database.py`
+- Check migration status: `sqlite3 adcp_local.db "SELECT * FROM alembic_version;"`
+- If migrations fail, check the error carefully - it often indicates duplicate columns
+
+### 5. **Tenant Configuration Pattern**
+- Store feature flags and settings in the tenant's `config` JSON field
+- Access via: `tenant.get('config', {}).get('policy_settings')`
+- Update `setup_tenant.py` to include new config keys for new tenants
+- Example structure:
+  ```json
+  {
+    "adapters": {...},
+    "features": {...},
+    "policy_settings": {
+      "enabled": true,
+      "custom_rules": {...}
+    }
+  }
+  ```
+
+### 6. **Boolean Fields in SQLite**
+- SQLite doesn't have native boolean type - use `server_default='0'` for False
+- PostgreSQL handles booleans properly, but keep SQLite compatibility in mind
+- Always test with both databases if making schema changes
