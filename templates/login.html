@@ -4,6 +4,12 @@
 
 {% block content %}
 <div class="card" style="max-width: 400px; margin: 4rem auto; text-align: center;">
+    {% if test_mode %}
+    <div style="background: #ff9800; color: white; padding: 1rem; margin: -2rem -2rem 1rem -2rem; border-radius: 4px 4px 0 0;">
+        ⚠️ TEST MODE ENABLED - NOT FOR PRODUCTION
+    </div>
+    {% endif %}
+    
     {% if tenant_id %}
         <h2>{{ tenant_name or tenant_id }}</h2>
         <p style="color: #666; margin-bottom: 2rem;">Sign in to access your account</p>
@@ -15,6 +21,14 @@
     {% if error %}
     <div class="alert alert-error">{{ error }}</div>
     {% endif %}
+    
+    {% with messages = get_flashed_messages() %}
+        {% if messages %}
+            {% for message in messages %}
+                <div class="alert alert-error">{{ message }}</div>
+            {% endfor %}
+        {% endif %}
+    {% endwith %}
     
     <div style="margin: 2rem 0;">
         {% if tenant_id %}
@@ -32,6 +46,45 @@
             Sign in with Google
         </a>
     </div>
+    
+    {% if test_mode %}
+    <div style="margin: 2rem 0; padding: 2rem 0; border-top: 1px solid #ddd;">
+        <h3 style="margin-bottom: 1rem;">Test Mode Login</h3>
+        <form method="POST" action="{{ url_for('test_auth') }}" style="text-align: left;">
+            {% if tenant_id %}
+            <input type="hidden" name="tenant_id" value="{{ tenant_id }}">
+            {% endif %}
+            
+            <div style="margin-bottom: 1rem;">
+                <label style="display: block; margin-bottom: 0.5rem;">Test User:</label>
+                <select name="email" required style="width: 100%; padding: 0.5rem; border: 1px solid #ddd; border-radius: 4px;">
+                    <option value="">Select a test user...</option>
+                    <option value="test_super_admin@example.com">Test Super Admin</option>
+                    <option value="test_tenant_admin@example.com">Test Tenant Admin</option>
+                    <option value="test_tenant_user@example.com">Test Tenant User</option>
+                </select>
+            </div>
+            
+            <div style="margin-bottom: 1rem;">
+                <label style="display: block; margin-bottom: 0.5rem;">Password:</label>
+                <input type="password" name="password" value="test123" required style="width: 100%; padding: 0.5rem; border: 1px solid #ddd; border-radius: 4px;">
+            </div>
+            
+            {% if not tenant_id %}
+            <div style="margin-bottom: 1rem;">
+                <label style="display: block; margin-bottom: 0.5rem;">Tenant ID (for tenant users):</label>
+                <input type="text" name="tenant_id" placeholder="e.g., tenant_abc123" style="width: 100%; padding: 0.5rem; border: 1px solid #ddd; border-radius: 4px;">
+            </div>
+            {% endif %}
+            
+            <button type="submit" class="btn" style="width: 100%; background: #ff9800;">Test Login</button>
+        </form>
+        
+        <p style="font-size: 12px; color: #666; margin-top: 1rem;">
+            <strong>Note:</strong> All test users use password: <code>test123</code>
+        </p>
+    </div>
+    {% endif %}
     
     <p style="color: #666; font-size: 14px; margin-top: 2rem;">
         {% if tenant_id %}

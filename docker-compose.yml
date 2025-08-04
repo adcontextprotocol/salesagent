@@ -65,6 +65,9 @@ services:
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
       GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
       GOOGLE_OAUTH_CREDENTIALS_FILE: ${GOOGLE_OAUTH_CREDENTIALS_FILE:-}
+      # Test mode
+      ADCP_AUTH_TEST_MODE: ${ADCP_AUTH_TEST_MODE:-false}
+      FLASK_DEBUG: ${FLASK_DEBUG:-0}
     
     depends_on:
       postgres:
