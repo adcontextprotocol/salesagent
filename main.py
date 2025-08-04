@@ -24,6 +24,7 @@ from config_loader import (
 from db_config import get_db_connection
 from slack_notifier import get_slack_notifier
 from product_catalog_providers.factory import get_product_catalog_provider
+from policy_check_service import PolicyCheckService, PolicyStatus
 
 # --- Authentication ---
 
@@ -294,6 +295,77 @@ async def get_products(req: GetProductsRequest, context: Context) -> GetProducts
     principal = get_principal_object(principal_id) if principal_id else None
     principal_data = principal.model_dump() if principal else None
     
+    # Check policy compliance first
+    policy_service = PolicyCheckService()
+    policy_result = await policy_service.check_brief_compliance(
+        brief=req.brief,
+        promoted_offering=req.promoted_offering,
+        tenant_policies=tenant.get('config', {}).get('policy_settings')
+    )
+    
+    # Log the policy check
+    audit_logger.log(
+        operation="policy_check",
+        tenant_id=tenant['tenant_id'],
+        principal_id=principal_id,
+        success=policy_result.status != PolicyStatus.BLOCKED,
+        details={
+            "brief": req.brief[:100] + "..." if len(req.brief) > 100 else req.brief,
+            "promoted_offering": req.promoted_offering[:100] + "..." if req.promoted_offering and len(req.promoted_offering) > 100 else req.promoted_offering,
+            "policy_status": policy_result.status,
+            "reason": policy_result.reason,
+            "restrictions": policy_result.restrictions
+        }
+    )
+    
+    # Handle policy result based on settings
+    policy_settings = tenant.get('config', {}).get('policy_settings', {})
+    
+    if policy_result.status == PolicyStatus.BLOCKED:
+        # Always block if policy says blocked
+        logger.warning(f"Brief blocked by policy: {policy_result.reason}")
+        return GetProductsResponse(products=[])
+    
+    # If restricted and manual review is required, create a task
+    if (policy_result.status == PolicyStatus.RESTRICTED and 
+        policy_settings.get('require_manual_review', False)):
+        
+        # Create a manual review task
+        conn = get_db_connection()
+        task_id = f"policy_review_{tenant['tenant_id']}_{int(datetime.utcnow().timestamp())}"
+        
+        task_details = {
+            "brief": req.brief,
+            "promoted_offering": req.promoted_offering,
+            "principal_id": principal_id,
+            "policy_status": policy_result.status,
+            "restrictions": policy_result.restrictions,
+            "reason": policy_result.reason
+        }
+        
+        conn.execute("""
+            INSERT INTO tasks (
+                tenant_id, task_id, media_buy_id, task_type, 
+                status, details, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?)
+        """, (
+            tenant['tenant_id'],
+            task_id,
+            None,  # No media buy associated
+            'policy_review',
+            'pending',
+            json.dumps(task_details),
+            datetime.utcnow()
+        ))
+        
+        conn.connection.commit()
+        conn.close()
+        
+        logger.info(f"Created policy review task {task_id} for restricted brief")
+        
+        # Return empty list with message about pending review
+        return GetProductsResponse(products=[])
+    
     # Get the product catalog provider for this tenant
     provider = await get_product_catalog_provider(
         tenant['tenant_id'],
@@ -309,7 +381,25 @@ async def get_products(req: GetProductsRequest, context: Context) -> GetProducts
         context=None  # Could add additional context here if needed
     )
     
-    return GetProductsResponse(products=products)
+    # Filter products based on policy compliance
+    eligible_products = []
+    for product in products:
+        is_eligible, reason = policy_service.check_product_eligibility(
+            policy_result,
+            product.model_dump()
+        )
+        
+        if is_eligible:
+            # Add policy compliance information to product
+            if policy_result.status == PolicyStatus.RESTRICTED:
+                product.policy_compliance = f"Restricted: {', '.join(policy_result.restrictions)}"
+            else:
+                product.policy_compliance = "Compliant"
+            eligible_products.append(product)
+        else:
+            logger.info(f"Product {product.product_id} excluded: {reason}")
+    
+    return GetProductsResponse(products=eligible_products)
 
 @mcp.tool
 async def get_signals(req: GetSignalsRequest, context: Context) -> GetSignalsResponse:
