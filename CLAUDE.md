@@ -117,6 +117,18 @@ When working in a Conductor workspace (e.g., `.conductor/quito/`):
 - **Product Suggestions API**: REST endpoints for programmatic product discovery
 - **Smart Matching**: AI analyzes ad server inventory to recommend optimal placements
 
+### Test Authentication Mode (UI Testing)
+- **Purpose**: Bypass OAuth for automated UI testing in CI/CD pipelines
+- **Activation**: Set `ADCP_AUTH_TEST_MODE=true` environment variable
+- **Test Users**: Pre-configured users for super admin, tenant admin, and tenant user roles
+- **Security**: Disabled by default, returns 404 when not enabled, visual warnings throughout UI
+- **Customizable Credentials**: Test user emails and passwords configurable via environment variables (TEST_*_EMAIL, TEST_*_PASSWORD)
+- **Login Methods**: Test form on login pages, dedicated `/test/login` page, POST to `/test/auth`
+- **Docker Setup**: Use `docker-compose.override.yml` (never modify main docker-compose.yml)
+- **Documentation**: See `docs/test-authentication-mode.md` for complete guide
+- **Test Suite**: `tests/ui/test_auth_mode.py` - Complete pytest suite for UI testing
+- **IMPORTANT**: Never enable in production! Clear warning banners shown when active
+
 ### Database Migrations Support 
 - **Alembic Integration**: Added Alembic for database schema version control
 - **Automatic Migrations**: Migrations run automatically on server startup
@@ -283,6 +295,39 @@ Tests run automatically on push/PR via GitHub Actions:
 - Integration tests with PostgreSQL
 - AI tests with mocked Gemini API
 - See `.github/workflows/test.yml` for details
+
+### UI Testing with Test Mode
+
+When testing the Admin UI without dealing with OAuth:
+
+#### Quick Start
+```bash
+# Enable test mode in docker-compose.override.yml
+cp docker-compose.override.example.yml docker-compose.override.yml
+# Edit the file and uncomment ADCP_AUTH_TEST_MODE=true
+
+# Start services
+docker-compose up
+
+# Run UI tests
+ADCP_AUTH_TEST_MODE=true uv run pytest tests/ui/test_auth_mode.py -v
+```
+
+#### Available Test Users
+- `test_super_admin@example.com` / `test123` - Full admin access
+- `test_tenant_admin@example.com` / `test123` - Tenant admin (requires tenant_id)
+- `test_tenant_user@example.com` / `test123` - Tenant user (requires tenant_id)
+
+#### Test Login Options
+1. **Web UI**: Visit `/test/login` for dedicated test login page
+2. **Programmatic**: POST to `/test/auth` with credentials
+3. **Regular Login**: Test form appears on normal login pages when enabled
+
+#### Important Notes
+- **NEVER** enable `ADCP_AUTH_TEST_MODE` in production
+- Visual warnings appear throughout UI when test mode is active
+- Test endpoints return 404 when test mode is disabled
+- Use `docker-compose.override.yml`, never modify main `docker-compose.yml`
 
 ## Configuration
 
@@ -560,6 +605,11 @@ When making changes, test:
 11. ✅ Task persistence and status updates
 12. ✅ AI product features (templates, bulk upload, suggestions API)
 13. ✅ Default product creation for new tenants
+14. ✅ UI test mode (when working on Admin UI features):
+    - Enable with `ADCP_AUTH_TEST_MODE=true`
+    - Verify warning banners appear
+    - Test with provided test users
+    - Ensure test endpoints return 404 when disabled
 
 ## Recent Improvements Summary
 
