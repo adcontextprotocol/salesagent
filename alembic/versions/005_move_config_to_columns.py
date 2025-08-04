@@ -1,7 +1,7 @@
 """Move config JSON to proper database columns
 
-Revision ID: 004
-Revises: 003
+Revision ID: 005
+Revises: 004
 Create Date: 2025-02-04
 
 """
@@ -11,8 +11,8 @@ import json
 
 
 # revision identifiers, used by Alembic.
-revision = '004'
-down_revision = '003'
+revision = '005'
+down_revision = '004'
 branch_labels = None
 depends_on = None
 
