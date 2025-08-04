@@ -15,6 +15,22 @@ import pytest
 # Configuration
 DEFAULT_TENANT_ID = "default"
 
+# Test user credentials from environment variables with defaults
+TEST_USERS = {
+    'super_admin': {
+        'email': os.environ.get('TEST_SUPER_ADMIN_EMAIL', 'test_super_admin@example.com'),
+        'password': os.environ.get('TEST_SUPER_ADMIN_PASSWORD', 'test123')
+    },
+    'tenant_admin': {
+        'email': os.environ.get('TEST_TENANT_ADMIN_EMAIL', 'test_tenant_admin@example.com'),
+        'password': os.environ.get('TEST_TENANT_ADMIN_PASSWORD', 'test123')
+    },
+    'tenant_user': {
+        'email': os.environ.get('TEST_TENANT_USER_EMAIL', 'test_tenant_user@example.com'),
+        'password': os.environ.get('TEST_TENANT_USER_PASSWORD', 'test123')
+    }
+}
+
 
 class TestAuthMode:
     """Test suite for authentication mode bypass."""
@@ -46,8 +62,8 @@ class TestAuthMode:
         """Test super admin login flow."""
         # Login
         login_data = {
-            'email': 'test_super_admin@example.com',
-            'password': 'test123'
+            'email': TEST_USERS['super_admin']['email'],
+            'password': TEST_USERS['super_admin']['password']
         }
         response = session.post(urljoin(base_url, '/test/auth'), 
                                data=login_data, 
@@ -57,7 +73,7 @@ class TestAuthMode:
         # Verify access to dashboard
         response = session.get(base_url)
         assert response.status_code == 200
-        assert 'test_super_admin@example.com' in response.text
+        assert TEST_USERS['super_admin']['email'] in response.text
         assert 'TEST MODE ACTIVE' in response.text
         
         # Verify can see tenants
@@ -70,8 +86,8 @@ class TestAuthMode:
         
         # Login with tenant_id
         login_data = {
-            'email': 'test_tenant_admin@example.com',
-            'password': 'test123',
+            'email': TEST_USERS['tenant_admin']['email'],
+            'password': TEST_USERS['tenant_admin']['password'],
             'tenant_id': DEFAULT_TENANT_ID
         }
         response = session.post(urljoin(base_url, '/test/auth'), 
@@ -88,8 +104,8 @@ class TestAuthMode:
         """Test access to operations dashboard."""
         # Login first
         login_data = {
-            'email': 'test_super_admin@example.com',
-            'password': 'test123'
+            'email': TEST_USERS['super_admin']['email'],
+            'password': TEST_USERS['super_admin']['password']
         }
         session.post(urljoin(base_url, '/test/auth'), data=login_data)
         
@@ -102,8 +118,8 @@ class TestAuthMode:
         """Test logout functionality."""
         # Login first
         login_data = {
-            'email': 'test_super_admin@example.com',
-            'password': 'test123'
+            'email': TEST_USERS['super_admin']['email'],
+            'password': TEST_USERS['super_admin']['password']
         }
         session.post(urljoin(base_url, '/test/auth'), data=login_data)
         

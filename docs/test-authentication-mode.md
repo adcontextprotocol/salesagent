@@ -26,6 +26,24 @@ docker-compose up
 ADCP_AUTH_TEST_MODE=true python admin_ui.py
 ```
 
+### Customizing Test Credentials (Optional)
+
+You can customize test user emails and passwords using environment variables:
+
+```bash
+# Custom test user emails
+export TEST_SUPER_ADMIN_EMAIL=custom_admin@test.com
+export TEST_TENANT_ADMIN_EMAIL=custom_tenant_admin@test.com
+export TEST_TENANT_USER_EMAIL=custom_user@test.com
+
+# Custom passwords (defaults to 'test123' if not set)
+export TEST_SUPER_ADMIN_PASSWORD=secure_test_pass_1
+export TEST_TENANT_ADMIN_PASSWORD=secure_test_pass_2
+export TEST_TENANT_USER_PASSWORD=secure_test_pass_3
+```
+
+This allows you to use more secure passwords in your test environments while maintaining the convenience of defaults.
+
 ## Visual Indicators
 
 When test mode is enabled, you'll see:
@@ -37,13 +55,15 @@ When test mode is enabled, you'll see:
 
 ## Available Test Users
 
-Three pre-configured test users are available:
+Three pre-configured test users are available (with defaults shown):
 
-| Email | Role | Password | Notes |
-|-------|------|----------|-------|
-| `test_super_admin@example.com` | Super Admin | `test123` | Full system access |
-| `test_tenant_admin@example.com` | Tenant Admin | `test123` | Requires tenant_id |
-| `test_tenant_user@example.com` | Tenant User | `test123` | Requires tenant_id |
+| Email (Default) | Role | Password (Default) | Environment Variables |
+|----------------|------|-------------------|---------------------|
+| `test_super_admin@example.com` | Super Admin | `test123` | `TEST_SUPER_ADMIN_EMAIL` / `TEST_SUPER_ADMIN_PASSWORD` |
+| `test_tenant_admin@example.com` | Tenant Admin | `test123` | `TEST_TENANT_ADMIN_EMAIL` / `TEST_TENANT_ADMIN_PASSWORD` |
+| `test_tenant_user@example.com` | Tenant User | `test123` | `TEST_TENANT_USER_EMAIL` / `TEST_TENANT_USER_PASSWORD` |
+
+**Note**: The defaults are provided for convenience, but you should use environment variables to set more secure passwords in your test environments.
 
 ## Usage Methods
 
