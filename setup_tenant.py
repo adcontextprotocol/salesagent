@@ -62,6 +62,14 @@ def create_tenant(args):
             "max_daily_budget": args.max_daily_budget,
             "enable_aee_signals": True
         },
+        "policy_settings": {
+            "enabled": True,
+            "require_manual_review": False,
+            "prohibited_advertisers": [],
+            "prohibited_categories": [],
+            "prohibited_tactics": []
+            # Default policies are defined in the application code
+        },
         "admin_token": args.admin_token or secrets.token_urlsafe(32)
     })
     
