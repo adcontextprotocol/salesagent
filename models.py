@@ -18,12 +18,23 @@ class Tenant(Base):
     tenant_id = Column(String(50), primary_key=True)
     name = Column(String(255), nullable=False)
     subdomain = Column(String(100), unique=True, nullable=False)
-    config = Column(JSON, nullable=False)  # JSONB in PostgreSQL
+    config = Column(JSON, nullable=False)  # JSONB in PostgreSQL - TO BE REMOVED
     created_at = Column(DateTime, nullable=False, server_default=func.now())
     updated_at = Column(DateTime, nullable=False, server_default=func.now(), onupdate=func.now())
     is_active = Column(Boolean, default=True)
     billing_plan = Column(String(50), default='standard')
     billing_contact = Column(String(255))
+    
+    # New columns from migration
+    ad_server = Column(String(50))
+    max_daily_budget = Column(Integer, nullable=False, default=10000)
+    enable_aee_signals = Column(Boolean, nullable=False, default=True)
+    authorized_emails = Column(JSON)  # JSON array
+    authorized_domains = Column(JSON)  # JSON array
+    slack_webhook_url = Column(String(500))
+    admin_token = Column(String(100))
+    auto_approve_formats = Column(JSON)  # JSON array
+    human_review_required = Column(Boolean, nullable=False, default=True)
     
     # Relationships
     products = relationship("Product", back_populates="tenant", cascade="all, delete-orphan")
@@ -32,6 +43,7 @@ class Tenant(Base):
     media_buys = relationship("MediaBuy", back_populates="tenant", cascade="all, delete-orphan")
     tasks = relationship("Task", back_populates="tenant", cascade="all, delete-orphan")
     audit_logs = relationship("AuditLog", back_populates="tenant", cascade="all, delete-orphan")
+    adapter_config = relationship("AdapterConfig", back_populates="tenant", uselist=False, cascade="all, delete-orphan")
     
     __table_args__ = (
         Index('idx_subdomain', 'subdomain'),
@@ -212,5 +224,51 @@ class AuditLog(Base):
     __table_args__ = (
         Index('idx_audit_logs_tenant', 'tenant_id'),
         Index('idx_audit_logs_timestamp', 'timestamp'),
+    )
+
+
+class SuperadminConfig(Base):
+    __tablename__ = 'superadmin_config'
+    
+    config_key = Column(String(100), primary_key=True)
+    config_value = Column(Text)
+    description = Column(Text)
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
+    updated_by = Column(String(255))
+
+
+class AdapterConfig(Base):
+    __tablename__ = 'adapter_config'
+    
+    tenant_id = Column(String(50), ForeignKey('tenants.tenant_id', ondelete='CASCADE'), primary_key=True)
+    adapter_type = Column(String(50), nullable=False)
+    
+    # Mock adapter
+    mock_dry_run = Column(Boolean)
+    
+    # Google Ad Manager
+    gam_network_code = Column(String(50))
+    gam_refresh_token = Column(Text)
+    gam_company_id = Column(String(50))
+    gam_trafficker_id = Column(String(50))
+    gam_manual_approval_required = Column(Boolean, default=False)
+    
+    # Kevel
+    kevel_network_id = Column(String(50))
+    kevel_api_key = Column(String(100))
+    kevel_manual_approval_required = Column(Boolean, default=False)
+    
+    # Triton
+    triton_station_id = Column(String(50))
+    triton_api_key = Column(String(100))
+    
+    created_at = Column(DateTime, server_default=func.now())
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
+    
+    # Relationships
+    tenant = relationship("Tenant", back_populates="adapter_config")
+    
+    __table_args__ = (
+        Index('idx_adapter_config_type', 'adapter_type'),
     )
 

@@ -5,6 +5,8 @@ import os
 from typing import List, Dict, Any, Optional, Tuple
 from googleads import ad_manager
 import google.oauth2.service_account
+from google.auth.transport.requests import Request
+from google.oauth2.credentials import Credentials
 from flask import Flask, render_template, request, jsonify, redirect, url_for, flash
 
 from adapters.base import AdServerAdapter, CreativeEngineAdapter
@@ -33,14 +35,25 @@ class GoogleAdManager(AdServerAdapter):
         super().__init__(config, principal, dry_run, creative_engine, tenant_id)
         self.network_code = self.config.get("network_code")
         self.key_file = self.config.get("service_account_key_file")
+        self.refresh_token = self.config.get("refresh_token")
         self.company_id = self.config.get("company_id")
         self.trafficker_id = self.config.get("trafficker_id", None)
 
         # Use adapter_principal_id as the advertiser_id
         self.advertiser_id = self.adapter_principal_id
 
-        if not self.dry_run and not all([self.network_code, self.key_file, self.advertiser_id, self.trafficker_id, self.company_id]):
-            raise ValueError("GAM config is missing one of 'network_code', 'service_account_key_file', 'advertiser_id', 'trafficker_id', or 'company_id'")
+        # Check for either service account or OAuth credentials
+        if not self.dry_run:
+            if not self.network_code:
+                raise ValueError("GAM config is missing 'network_code'")
+            if not self.advertiser_id:
+                raise ValueError("GAM config is missing 'advertiser_id'")
+            if not self.trafficker_id:
+                raise ValueError("GAM config is missing 'trafficker_id'")
+            if not self.company_id:
+                raise ValueError("GAM config is missing 'company_id'")
+            if not self.key_file and not self.refresh_token:
+                raise ValueError("GAM config requires either 'service_account_key_file' or 'refresh_token'")
 
         if not self.dry_run:
             self.client = self._init_client()
@@ -52,23 +65,61 @@ class GoogleAdManager(AdServerAdapter):
         self._load_geo_mappings()
 
     def _init_client(self):
-        """Initializes the Ad Manager client."""
+        """Initializes the Ad Manager client using the helper function."""
         try:
-            oauth2_credentials = google.oauth2.service_account.Credentials.from_service_account_file(
-                self.key_file,
-                scopes=['https.www.googleapis.com/auth/dfp']
-            )
+            # Use the new helper function if we have a tenant_id
+            if self.tenant_id:
+                from gam_helper import get_ad_manager_client_for_tenant
+                return get_ad_manager_client_for_tenant(self.tenant_id)
+            
+            # Fallback to old method for backward compatibility
+            if self.refresh_token:
+                # Use OAuth with refresh token
+                oauth2_credentials = self._get_oauth_credentials()
+            else:
+                # Use service account (legacy)
+                oauth2_credentials = google.oauth2.service_account.Credentials.from_service_account_file(
+                    self.key_file,
+                    scopes=['https://www.googleapis.com/auth/dfp']
+                )
+            
             return google.ads.ad_manager.GoogleAdManagerClient(
                 oauth2_credentials,
                 application_name=f"AdCP-Buy-Side-Agent-{self.network_code}"
             )
-        except FileNotFoundError:
-            print(f"Error: Service account key file not found at '{self.key_file}'.")
-            print("Please ensure the path in your tenant configuration is correct.")
-            raise
         except Exception as e:
             print(f"Error initializing GAM client: {e}")
             raise
+    
+    def _get_oauth_credentials(self):
+        """Get OAuth credentials using refresh token and superadmin config."""
+        from database import db_session
+        from models import SuperadminConfig
+        
+        # Get OAuth client credentials from superadmin config
+        client_id_config = db_session.query(SuperadminConfig).filter_by(config_key='gam_oauth_client_id').first()
+        client_secret_config = db_session.query(SuperadminConfig).filter_by(config_key='gam_oauth_client_secret').first()
+        
+        if not client_id_config or not client_id_config.config_value:
+            raise ValueError("GAM OAuth Client ID not configured in superadmin settings")
+        if not client_secret_config or not client_secret_config.config_value:
+            raise ValueError("GAM OAuth Client Secret not configured in superadmin settings")
+        
+        # Create credentials from refresh token
+        credentials = Credentials(
+            None,  # No access token yet
+            refresh_token=self.refresh_token,
+            token_uri='https://oauth2.googleapis.com/token',
+            client_id=client_id_config.config_value,
+            client_secret=client_secret_config.config_value,
+            scopes=['https://www.googleapis.com/auth/dfp']
+        )
+        
+        # Refresh the access token if needed
+        if not credentials.valid:
+            credentials.refresh(Request())
+        
+        return credentials
     
     # Supported device types and their GAM mappings
     DEVICE_TYPE_MAP = {

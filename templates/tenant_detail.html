@@ -221,23 +221,35 @@
                     <li>Simulates real ad server responses</li>
                 </ul>
                 
-                {% elif ns.current_adapter == 'gam' %}
+                {% elif ns.current_adapter == 'google_ad_manager' or ns.current_adapter == 'gam' %}
                 <p style="margin: 0.5rem 0;">
                     Connected to Google Ad Manager
                 </p>
                 <div style="margin-top: 1rem;">
                     <strong>Configuration Status:</strong>
                     <ul style="margin: 0.5rem 0; padding-left: 1.5rem;">
-                        {% if ns.adapter_config.get('network_id') %}
-                        <li>✅ Network ID: {{ ns.adapter_config.get('network_id') }}</li>
+                        {% if ns.adapter_config.get('network_code') %}
+                        <li>✅ Network Code: {{ ns.adapter_config.get('network_code') }}</li>
                         {% else %}
-                        <li>❌ Network ID: Not configured</li>
+                        <li>❌ Network Code: Not configured</li>
                         {% endif %}
                         
-                        {% if ns.adapter_config.get('api_version') %}
-                        <li>✅ API Version: {{ ns.adapter_config.get('api_version') }}</li>
+                        {% if ns.adapter_config.get('refresh_token') %}
+                        <li>✅ OAuth Refresh Token: Configured</li>
                         {% else %}
-                        <li>✅ API Version: Using default</li>
+                        <li>❌ OAuth Refresh Token: Not configured</li>
+                        {% endif %}
+                        
+                        {% if ns.adapter_config.get('company_id') %}
+                        <li>✅ Company ID: {{ ns.adapter_config.get('company_id') }}</li>
+                        {% else %}
+                        <li>❌ Company ID: Not configured</li>
+                        {% endif %}
+                        
+                        {% if ns.adapter_config.get('trafficker_id') %}
+                        <li>✅ Trafficker ID: {{ ns.adapter_config.get('trafficker_id') }}</li>
+                        {% else %}
+                        <li>❌ Trafficker ID: Not configured</li>
                         {% endif %}
                     </ul>
                 </div>
@@ -356,21 +368,34 @@
                     <input type="hidden" name="adapter" value="gam">
                     
                     <div class="form-group">
-                        <label for="gam_network_id">Network ID</label>
-                        <input type="text" id="gam_network_id" name="network_id" required 
+                        <label for="gam_network_code">Network Code</label>
+                        <input type="text" id="gam_network_code" name="network_code" required 
                                placeholder="e.g., 123456789">
                         <small>Found in GAM under Admin → Global Settings</small>
                     </div>
                     
                     <div class="form-group">
-                        <label for="gam_credentials">Service Account Credentials</label>
-                        <textarea id="gam_credentials" name="credentials" required 
-                                  placeholder="Paste your service account JSON here"></textarea>
+                        <label for="gam_refresh_token">OAuth Refresh Token</label>
+                        <input type="text" id="gam_refresh_token" name="refresh_token" required 
+                               placeholder="Your OAuth refresh token">
                         <small>
-                            <a href="https://developers.google.com/ad-manager/api/authentication" target="_blank">
-                                How to create service account credentials
-                            </a>
+                            Obtained from OAuth flow using the client credentials configured in 
+                            <a href="/settings">Settings</a>
                         </small>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="gam_company_id">Company ID</label>
+                        <input type="text" id="gam_company_id" name="company_id" required 
+                               placeholder="e.g., 123456">
+                        <small>Your advertiser company ID in GAM</small>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="gam_trafficker_id">Trafficker ID</label>
+                        <input type="text" id="gam_trafficker_id" name="trafficker_id" required 
+                               placeholder="e.g., 789012">
+                        <small>User ID with trafficking permissions in GAM</small>
                     </div>
                     
                     <button type="submit" class="btn">Connect Google Ad Manager</button>

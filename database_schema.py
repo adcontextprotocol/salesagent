@@ -145,6 +145,14 @@ CREATE INDEX IF NOT EXISTS idx_tasks_media_buy ON tasks(media_buy_id);
 CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status);
 CREATE INDEX IF NOT EXISTS idx_audit_logs_tenant ON audit_logs(tenant_id);
 CREATE INDEX IF NOT EXISTS idx_audit_logs_timestamp ON audit_logs(timestamp);
+
+CREATE TABLE IF NOT EXISTS superadmin_config (
+    config_key TEXT PRIMARY KEY,
+    config_value TEXT,
+    description TEXT,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_by TEXT
+);
 """
 
 SCHEMA_POSTGRESQL = """
@@ -292,6 +300,14 @@ CREATE INDEX IF NOT EXISTS idx_tasks_media_buy ON tasks(media_buy_id);
 CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status);
 CREATE INDEX IF NOT EXISTS idx_audit_logs_tenant ON audit_logs(tenant_id);
 CREATE INDEX IF NOT EXISTS idx_audit_logs_timestamp ON audit_logs(timestamp);
+
+CREATE TABLE IF NOT EXISTS superadmin_config (
+    config_key VARCHAR(100) PRIMARY KEY,
+    config_value TEXT,
+    description TEXT,
+    updated_at TIMESTAMP DEFAULT NOW(),
+    updated_by VARCHAR(255)
+);
 """
 
 def get_schema(db_type: str) -> str:
