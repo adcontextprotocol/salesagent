@@ -1,0 +1,132 @@
+{% extends "base.html" %}
+
+{% block title %}Policy Review - {{ tenant_name }}{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-md-12">
+            <h1>Policy Review Task</h1>
+            <nav aria-label="breadcrumb">
+                <ol class="breadcrumb">
+                    <li class="breadcrumb-item"><a href="/tenant/{{ tenant_id }}">Dashboard</a></li>
+                    <li class="breadcrumb-item"><a href="/tenant/{{ tenant_id }}/policy">Policy Settings</a></li>
+                    <li class="breadcrumb-item active">Review Task</li>
+                </ol>
+            </nav>
+        </div>
+    </div>
+
+    <div class="row mt-4">
+        <div class="col-md-8">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0">Review Details</h5>
+                </div>
+                <div class="card-body">
+                    <dl class="row">
+                        <dt class="col-sm-3">Task ID:</dt>
+                        <dd class="col-sm-9">{{ task_id }}</dd>
+
+                        <dt class="col-sm-3">Created:</dt>
+                        <dd class="col-sm-9">{{ created_at }}</dd>
+
+                        <dt class="col-sm-3">Principal:</dt>
+                        <dd class="col-sm-9">{{ details.principal_id or 'Unknown' }}</dd>
+
+                        <dt class="col-sm-3">Policy Status:</dt>
+                        <dd class="col-sm-9">
+                            <span class="badge badge-warning">{{ details.policy_status or 'Restricted' }}</span>
+                        </dd>
+                    </dl>
+
+                    <hr>
+
+                    <h6>Advertising Brief</h6>
+                    <div class="alert alert-secondary">
+                        <p class="mb-0">{{ details.brief or 'No brief provided' }}</p>
+                    </div>
+
+                    {% if details.promoted_offering %}
+                    <h6>Advertiser/Product Description</h6>
+                    <div class="alert alert-info">
+                        <p class="mb-0">{{ details.promoted_offering }}</p>
+                    </div>
+                    {% endif %}
+
+                    {% if details.restrictions %}
+                    <h6>Policy Restrictions Identified</h6>
+                    <ul class="list-group mb-3">
+                        {% for restriction in details.restrictions %}
+                        <li class="list-group-item">{{ restriction }}</li>
+                        {% endfor %}
+                    </ul>
+                    {% endif %}
+
+                    {% if details.reason %}
+                    <h6>Initial Assessment</h6>
+                    <div class="alert alert-warning">
+                        <p class="mb-0">{{ details.reason }}</p>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-4">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0">Review Action</h5>
+                </div>
+                <div class="card-body">
+                    <form action="/tenant/{{ tenant_id }}/policy/review/{{ task_id }}" method="POST">
+                        <div class="form-group">
+                            <label for="review_notes">Review Notes</label>
+                            <textarea class="form-control" id="review_notes" name="review_notes" 
+                                      rows="5" placeholder="Add your review comments..."></textarea>
+                        </div>
+
+                        <div class="form-group">
+                            <button type="submit" name="action" value="approve" class="btn btn-success btn-block">
+                                <i class="fas fa-check"></i> Approve Brief
+                            </button>
+                            <button type="submit" name="action" value="reject" class="btn btn-danger btn-block">
+                                <i class="fas fa-times"></i> Reject Brief
+                            </button>
+                        </div>
+
+                        <a href="/tenant/{{ tenant_id }}/policy" class="btn btn-secondary btn-block">
+                            Cancel
+                        </a>
+                    </form>
+                </div>
+            </div>
+
+            <div class="card mt-3">
+                <div class="card-header">
+                    <h6 class="mb-0">Review Guidelines</h6>
+                </div>
+                <div class="card-body">
+                    <small>
+                        <p><strong>Consider approving if:</strong></p>
+                        <ul>
+                            <li>The advertiser is legitimate</li>
+                            <li>Content is appropriate for your audience</li>
+                            <li>No deceptive claims are made</li>
+                            <li>Complies with local regulations</li>
+                        </ul>
+                        
+                        <p><strong>Consider rejecting if:</strong></p>
+                        <ul>
+                            <li>Targets vulnerable populations</li>
+                            <li>Contains misleading information</li>
+                            <li>Violates platform policies</li>
+                            <li>Poses brand safety risks</li>
+                        </ul>
+                    </small>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
