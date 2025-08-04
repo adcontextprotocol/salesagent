@@ -87,23 +87,32 @@ if not SUPER_ADMIN_EMAILS and not SUPER_ADMIN_DOMAINS:
     SUPER_ADMIN_DOMAINS = []  # e.g., ['example.com']
 
 # Test mode users - predefined for automated testing
-TEST_USERS = {
-    'test_super_admin@example.com': {
-        'name': 'Test Super Admin',
-        'role': 'super_admin',
-        'password': 'test123'  # Simple password for testing only
-    },
-    'test_tenant_admin@example.com': {
-        'name': 'Test Tenant Admin', 
-        'role': 'tenant_admin',
-        'password': 'test123'
-    },
-    'test_tenant_user@example.com': {
-        'name': 'Test Tenant User',
-        'role': 'tenant_user', 
-        'password': 'test123'
+# Passwords are loaded from environment variables with defaults for convenience
+TEST_USERS = {}
+if TEST_MODE_ENABLED:
+    # Only populate test users when test mode is enabled
+    TEST_USERS = {
+        os.environ.get('TEST_SUPER_ADMIN_EMAIL', 'test_super_admin@example.com'): {
+            'name': 'Test Super Admin',
+            'role': 'super_admin',
+            'password': os.environ.get('TEST_SUPER_ADMIN_PASSWORD', 'test123')
+        },
+        os.environ.get('TEST_TENANT_ADMIN_EMAIL', 'test_tenant_admin@example.com'): {
+            'name': 'Test Tenant Admin', 
+            'role': 'tenant_admin',
+            'password': os.environ.get('TEST_TENANT_ADMIN_PASSWORD', 'test123')
+        },
+        os.environ.get('TEST_TENANT_USER_EMAIL', 'test_tenant_user@example.com'): {
+            'name': 'Test Tenant User',
+            'role': 'tenant_user', 
+            'password': os.environ.get('TEST_TENANT_USER_PASSWORD', 'test123')
+        }
     }
-}
+    
+    # Log test mode configuration (without passwords)
+    print("Test mode users configured:")
+    for email in TEST_USERS:
+        print(f"  - {email} ({TEST_USERS[email]['role']})")
 
 # Initialize OAuth
 oauth = OAuth(app)

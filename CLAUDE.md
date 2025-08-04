@@ -122,6 +122,7 @@ When working in a Conductor workspace (e.g., `.conductor/quito/`):
 - **Activation**: Set `ADCP_AUTH_TEST_MODE=true` environment variable
 - **Test Users**: Pre-configured users for super admin, tenant admin, and tenant user roles
 - **Security**: Disabled by default, returns 404 when not enabled, visual warnings throughout UI
+- **Customizable Credentials**: Test user emails and passwords configurable via environment variables (TEST_*_EMAIL, TEST_*_PASSWORD)
 - **Login Methods**: Test form on login pages, dedicated `/test/login` page, POST to `/test/auth`
 - **Docker Setup**: Use `docker-compose.override.yml` (never modify main docker-compose.yml)
 - **Documentation**: See `docs/test-authentication-mode.md` for complete guide

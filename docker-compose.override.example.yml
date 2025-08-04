@@ -10,6 +10,14 @@ services:
       # ⚠️ NEVER use this in production!
       # - ADCP_AUTH_TEST_MODE=true
       
+      # Customize test user credentials (optional - defaults shown)
+      # - TEST_SUPER_ADMIN_EMAIL=test_super_admin@example.com
+      # - TEST_SUPER_ADMIN_PASSWORD=test123
+      # - TEST_TENANT_ADMIN_EMAIL=test_tenant_admin@example.com
+      # - TEST_TENANT_ADMIN_PASSWORD=test123
+      # - TEST_TENANT_USER_EMAIL=test_tenant_user@example.com
+      # - TEST_TENANT_USER_PASSWORD=test123
+      
       # Enable Flask debug mode for development
       # - FLASK_DEBUG=1
       
