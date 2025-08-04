@@ -34,18 +34,20 @@ class TestAdcpServerV2_3(unittest.TestCase):
                 timestamp_func = "CURRENT_TIMESTAMP"
             
             conn.execute(f"""
-                INSERT INTO tenants (tenant_id, name, subdomain, config, billing_plan, created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?, {timestamp_func}, {timestamp_func})
+                INSERT INTO tenants (tenant_id, name, subdomain, billing_plan, created_at, updated_at,
+                                   ad_server, max_daily_budget, enable_aee_signals, 
+                                   auto_approve_formats, human_review_required)
+                VALUES (?, ?, ?, ?, {timestamp_func}, {timestamp_func}, ?, ?, ?, ?, ?)
             """, (
                 tenant_id,
                 "Test Tenant",
                 f"test_{tenant_id[:8]}",
-                json.dumps({
-                    "adapters": {"mock": {"enabled": True}},
-                    "features": {"max_daily_budget": 10000},
-                    "creative_engine": {"auto_approve_formats": ["display_300x250", "display_728x90"]}
-                }),
-                "test"
+                "test",
+                "mock",  # ad_server
+                10000,   # max_daily_budget
+                True,    # enable_aee_signals
+                json.dumps(["display_300x250", "display_728x90"]),  # auto_approve_formats
+                False    # human_review_required
             ))
             
             # Create test products
@@ -63,6 +65,12 @@ class TestAdcpServerV2_3(unittest.TestCase):
                 """, (prod_data[0], tenant_id, prod_data[1], prod_data[2], prod_data[3], prod_data[4], 
                       prod_data[5], prod_data[6], prod_data[7], json.dumps({"countries": ["US", "CA"]}), json.dumps({})))
             
+            # Add adapter config for mock
+            conn.execute("""
+                INSERT INTO adapter_config (tenant_id, adapter_type, mock_dry_run)
+                VALUES (?, ?, ?)
+            """, (tenant_id, "mock", False))
+            
             conn.connection.commit()
             
             # Set the tenant in context
@@ -70,11 +78,11 @@ class TestAdcpServerV2_3(unittest.TestCase):
                 'tenant_id': tenant_id,
                 'name': 'Test Tenant',
                 'subdomain': f"test_{tenant_id[:8]}",
-                'config': {
-                    "adapters": {"mock": {"enabled": True}},
-                    "features": {"max_daily_budget": 10000},
-                    "creative_engine": {"auto_approve_formats": ["display_300x250", "display_728x90"]}
-                }
+                'ad_server': 'mock',
+                'max_daily_budget': 10000,
+                'enable_aee_signals': True,
+                'auto_approve_formats': ["display_300x250", "display_728x90"],
+                'human_review_required': False
             })
         finally:
             conn.close()
