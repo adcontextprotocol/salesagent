@@ -26,7 +26,7 @@
             <input type="text" 
                    id="gam_oauth_client_id" 
                    name="gam_oauth_client_id" 
-                   value="{{ config_items.get('gam_oauth_client_id', {}).get('value', '') }}"
+                   value="{{ config_items.get('gam_oauth_client_id', {}).get('value', '') if config_items.get('gam_oauth_client_id', {}).get('value') else '' }}"
                    placeholder="e.g., 123456789-abcdef.apps.googleusercontent.com">
             <small style="color: #666;">{{ config_items.get('gam_oauth_client_id', {}).get('description', '') }}</small>
         </div>
@@ -36,9 +36,14 @@
             <input type="password" 
                    id="gam_oauth_client_secret" 
                    name="gam_oauth_client_secret" 
-                   value="{{ config_items.get('gam_oauth_client_secret', {}).get('value', '') }}"
                    placeholder="Enter client secret">
-            <small style="color: #666;">{{ config_items.get('gam_oauth_client_secret', {}).get('description', '') }}</small>
+            <small style="color: #666;">{{ config_items.get('gam_oauth_client_secret', {}).get('description', '') }}<br>
+            {% if config_items.get('gam_oauth_client_secret', {}).get('value') %}
+            <span style="color: #28a745;">✓ Client secret is configured</span>
+            {% else %}
+            <span style="color: #dc3545;">✗ No client secret configured</span>
+            {% endif %}
+            </small>
         </div>
         
         <div style="background: #f0f8ff; padding: 1rem; border-radius: 4px; margin: 1rem 0;">

@@ -145,14 +145,38 @@ class XandrAdapter(AdServerAdapter):
         
         # Send Slack notification
         from slack_notifier import get_slack_notifier
-        slack = get_slack_notifier(self.tenant_config)
-        slack.notify_new_task(
-            task_id=task_id,
-            task_type=operation,
-            title=f"Xandr: {operation.replace('_', ' ').title()}",
-            description=f"Manual approval required for {self.principal.name}",
-            media_buy_id=details.get('media_buy_id', 'N/A')
+        from db_config import get_db_connection
+        
+        # Get tenant config for Slack webhooks
+        conn = get_db_connection()
+        cursor = conn.execute(
+            "SELECT slack_webhook_url, config FROM tenants WHERE tenant_id = ?",
+            (self.tenant_id,)
         )
+        row = cursor.fetchone()
+        conn.close()
+        
+        if row:
+            config_json = row[1]
+            if isinstance(config_json, str):
+                config_json = json.loads(config_json)
+            
+            # Build config for Slack notifier
+            tenant_config = {
+                'features': {
+                    'slack_webhook_url': row[0],
+                    'slack_audit_webhook_url': config_json.get('features', {}).get('slack_audit_webhook_url')
+                }
+            }
+            
+            slack = get_slack_notifier(tenant_config)
+            slack.notify_new_task(
+                task_id=task_id,
+                task_type=operation,
+                title=f"Xandr: {operation.replace('_', ' ').title()}",
+                description=f"Manual approval required for {self.principal.name}",
+                media_buy_id=details.get('media_buy_id', 'N/A')
+            )
         
         return task_id
     

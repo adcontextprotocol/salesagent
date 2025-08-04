@@ -978,7 +978,7 @@ class GoogleAdManager(AdServerAdapter):
         @app.route('/adapters/gam/config/<tenant_id>/<product_id>', methods=['GET', 'POST'])
         def gam_product_config(tenant_id, product_id):
             from database import db_session
-            from models import Product, Tenant
+            from models import Product, Tenant, AdapterConfig
             
             # Get tenant and product
             tenant = db_session.query(Tenant).filter_by(tenant_id=tenant_id).first()
@@ -995,8 +995,9 @@ class GoogleAdManager(AdServerAdapter):
                 flash('Product not found', 'error')
                 return redirect(url_for('products', tenant_id=tenant_id))
             
-            # Get network code from tenant config
-            network_code = tenant.config.get('adapters', {}).get('google_ad_manager', {}).get('network_code', 'XXXXX')
+            # Get network code from adapter config
+            adapter_config = session.query(AdapterConfig).filter_by(tenant_id=tenant_id).first()
+            network_code = adapter_config.gam_network_code if adapter_config else 'XXXXX'
             
             if request.method == 'POST':
                 try:

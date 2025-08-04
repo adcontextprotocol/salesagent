@@ -32,9 +32,12 @@ class Tenant(Base):
     authorized_emails = Column(JSON)  # JSON array
     authorized_domains = Column(JSON)  # JSON array
     slack_webhook_url = Column(String(500))
+    slack_audit_webhook_url = Column(String(500))
+    hitl_webhook_url = Column(String(500))
     admin_token = Column(String(100))
     auto_approve_formats = Column(JSON)  # JSON array
     human_review_required = Column(Boolean, nullable=False, default=True)
+    policy_settings = Column(JSON)  # JSON object
     
     # Relationships
     products = relationship("Product", back_populates="tenant", cascade="all, delete-orphan")
