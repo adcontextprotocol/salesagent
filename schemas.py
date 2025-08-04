@@ -171,6 +171,20 @@ class Product(BaseModel):
         default=None,
         description="Ad server-specific configuration for implementing this product (placements, line item settings, etc.)"
     )
+    
+    # Audience characteristics fields
+    policy_compliance: Optional[str] = Field(
+        default=None,
+        description="Policy compliance information returned during product discovery"
+    )
+    targeted_ages: Optional[Literal["children", "teens", "adults"]] = Field(
+        default=None,
+        description="Target age group for this product's audience"
+    )
+    verified_minimum_age: Optional[int] = Field(
+        default=None,
+        description="Minimum age requirement with age verification/gating implemented (e.g., 18, 21)"
+    )
 
 # --- Admin Tool Schemas ---
 class PrincipalSummary(BaseModel):
@@ -219,6 +233,7 @@ class UpdatePerformanceIndexResponse(BaseModel):
 # --- Discovery ---
 class GetProductsRequest(BaseModel):
     brief: str
+    promoted_offering: Optional[str] = Field(None, description="Description of the advertiser and the product or service being promoted")
 
 class GetProductsResponse(BaseModel):
     products: List[Product]
