@@ -126,21 +126,29 @@ Respond with a JSON object containing:
 Be strict in your analysis. When in doubt, mark as restricted rather than allowed."""
 
         # Add tenant-specific policies if provided
-        if tenant_policies and tenant_policies.get("custom_rules"):
-            custom_rules = tenant_policies["custom_rules"]
+        if tenant_policies:
             rules_text = []
             
-            if custom_rules.get("prohibited_advertisers"):
-                rules_text.append(f"Prohibited advertisers: {', '.join(custom_rules['prohibited_advertisers'])}")
+            # Default prohibited categories and tactics are enforced for all
+            default_categories = tenant_policies.get("default_prohibited_categories", [])
+            default_tactics = tenant_policies.get("default_prohibited_tactics", [])
             
-            if custom_rules.get("prohibited_categories"):
-                rules_text.append(f"Prohibited categories: {', '.join(custom_rules['prohibited_categories'])}")
+            # Combine default and custom policies
+            all_prohibited_advertisers = tenant_policies.get("prohibited_advertisers", [])
+            all_prohibited_categories = default_categories + tenant_policies.get("prohibited_categories", [])
+            all_prohibited_tactics = default_tactics + tenant_policies.get("prohibited_tactics", [])
             
-            if custom_rules.get("prohibited_tactics"):
-                rules_text.append(f"Prohibited tactics: {', '.join(custom_rules['prohibited_tactics'])}")
+            if all_prohibited_advertisers:
+                rules_text.append(f"Prohibited advertisers/domains: {', '.join(all_prohibited_advertisers)}")
+            
+            if all_prohibited_categories:
+                rules_text.append(f"Prohibited content categories: {', '.join(all_prohibited_categories)}")
+            
+            if all_prohibited_tactics:
+                rules_text.append(f"Prohibited advertising tactics: {', '.join(all_prohibited_tactics)}")
             
             if rules_text:
-                system_prompt += f"\n\nAdditional tenant-specific rules:\n" + "\n".join(rules_text)
+                system_prompt += f"\n\nPolicy rules to enforce:\n" + "\n".join(rules_text)
         
         try:
             response = await self.model.generate_content([
