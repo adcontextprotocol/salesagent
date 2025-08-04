@@ -1,7 +1,7 @@
 """Add superadmin configuration table
 
-Revision ID: 004
-Revises: 003
+Revision ID: 004_add_superadmin_config
+Revises: 003_add_policy_compliance_fields
 Create Date: 2025-02-04
 
 """
@@ -10,8 +10,8 @@ import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision = '004'
-down_revision = '003'
+revision = '004_add_superadmin_config'
+down_revision = '003_add_policy_compliance_fields'
 branch_labels = None
 depends_on = None
 
