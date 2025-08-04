@@ -129,7 +129,7 @@ class TestAIProductService:
                 mock_conn = Mock()
                 mock_cursor = Mock()
                 mock_cursor.fetchone.side_effect = [
-                    ({'config': json.dumps({'adapters': {'mock': {'enabled': True}}})},),  # tenant config
+                    ('mock',),  # ad_server from tenants table
                     (('principal_1', 'Test Principal', 'token', json.dumps({})),)  # principal
                 ]
                 mock_conn.execute.return_value = mock_cursor
