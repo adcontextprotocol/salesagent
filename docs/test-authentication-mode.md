@@ -72,51 +72,29 @@ response = session.post('http://localhost:8001/test/auth', data={
 })
 ```
 
-## Example: Selenium Testing
+## Example: Running the Test Suite
 
-```python
-from selenium import webdriver
-from selenium.webdriver.common.by import By
-from selenium.webdriver.support.ui import Select
+```bash
+# Enable test mode
+export ADCP_AUTH_TEST_MODE=true
 
-# Ensure test mode is enabled
-os.environ['ADCP_AUTH_TEST_MODE'] = 'true'
+# Start services with override
+cp docker-compose.override.example.yml docker-compose.override.yml
+# Edit override file to enable test mode, then:
+docker-compose up -d
 
-driver = webdriver.Chrome()
-driver.get('http://localhost:8001/login')
-
-# Use test login form
-email_select = Select(driver.find_element(By.NAME, 'email'))
-email_select.select_by_value('test_super_admin@example.com')
-
-password_field = driver.find_element(By.NAME, 'password')
-password_field.send_keys('test123')
-
-submit_button = driver.find_element(By.CSS_SELECTOR, 'button[type="submit"]')
-submit_button.click()
-
-# Now authenticated and can test protected pages
+# Run the test suite
+uv run pytest tests/ui/test_auth_mode.py -v
 ```
 
-## Example: Playwright Testing
+The test suite in `tests/ui/test_auth_mode.py` includes:
+- Test login page accessibility
+- Super admin authentication
+- Tenant admin authentication  
+- Operations dashboard access
+- Logout functionality
 
-```javascript
-const { test, expect } = require('@playwright/test');
-
-test('admin dashboard access', async ({ page }) => {
-  // Ensure ADCP_AUTH_TEST_MODE=true is set
-  
-  await page.goto('http://localhost:8001/test/login');
-  
-  await page.selectOption('select[name="email"]', 'test_super_admin@example.com');
-  await page.fill('input[name="password"]', 'test123');
-  await page.click('button[type="submit"]');
-  
-  // Verify redirect to dashboard
-  await expect(page).toHaveURL(/.*\/$/);
-  await expect(page.locator('text=Tenants')).toBeVisible();
-});
-```
+For custom testing with Selenium, Playwright, or other frameworks, refer to the test implementation in `tests/ui/test_auth_mode.py` as a reference.
 
 ## CI/CD Integration
 
@@ -203,9 +181,19 @@ stage('UI Tests') {
 
 This approach keeps your main configuration clean and makes it easy to toggle test mode without affecting the core setup.
 
-## Example Test Scripts
+## Running Tests
 
-See the following example scripts in the repository:
-- `test_auth_mode_example.py` - Basic usage demonstration
-- `test_selenium_example.py` - Selenium browser automation example
+The UI tests are located in `tests/ui/` directory:
+
+```bash
+# Run all UI tests
+uv run pytest tests/ui/test_auth_mode.py -v
+
+# Run a specific test
+uv run pytest tests/ui/test_auth_mode.py::TestAuthMode::test_super_admin_login -v
+```
+
+See also:
+- `tests/ui/test_auth_mode.py` - Complete test suite for authentication mode
+- `tests/ui/README.md` - UI testing documentation
 - `docker-compose.override.example.yml` - Example override configuration

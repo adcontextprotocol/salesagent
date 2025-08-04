@@ -125,7 +125,7 @@ When working in a Conductor workspace (e.g., `.conductor/quito/`):
 - **Login Methods**: Test form on login pages, dedicated `/test/login` page, POST to `/test/auth`
 - **Docker Setup**: Use `docker-compose.override.yml` (never modify main docker-compose.yml)
 - **Documentation**: See `docs/test-authentication-mode.md` for complete guide
-- **Example Scripts**: `test_auth_mode_example.py`, `test_selenium_example.py`
+- **Test Suite**: `tests/ui/test_auth_mode.py` - Complete pytest suite for UI testing
 - **IMPORTANT**: Never enable in production! Clear warning banners shown when active
 
 ### Database Migrations Support 
@@ -309,7 +309,7 @@ cp docker-compose.override.example.yml docker-compose.override.yml
 docker-compose up
 
 # Run UI tests
-ADCP_AUTH_TEST_MODE=true uv run python test_ui_auth_simple_fixed.py
+ADCP_AUTH_TEST_MODE=true uv run pytest tests/ui/test_auth_mode.py -v
 ```
 
 #### Available Test Users
