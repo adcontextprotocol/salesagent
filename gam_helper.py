@@ -1,11 +1,8 @@
 """Helper functions for Google Ad Manager OAuth integration."""
 
 from typing import Optional
-from google.auth.transport.requests import Request
-from google.oauth2.credentials import Credentials
-from googleads import ad_manager
-from database import db_session
-from models import Tenant, AdapterConfig, SuperadminConfig
+from googleads import oauth2, ad_manager
+from db_config import get_db_connection
 import logging
 
 logger = logging.getLogger(__name__)
@@ -32,56 +29,78 @@ def get_ad_manager_client_for_tenant(tenant_id: str) -> Optional[ad_manager.AdMa
         Exception: If OAuth token refresh fails
     """
     # Get tenant and adapter config
-    tenant = db_session.query(Tenant).filter_by(tenant_id=tenant_id).first()
-    if not tenant:
-        raise ValueError(f"Tenant {tenant_id} not found")
-    
-    if tenant.ad_server != 'google_ad_manager':
-        raise ValueError(f"Tenant {tenant_id} is not configured for Google Ad Manager (using {tenant.ad_server})")
-    
-    adapter_config = db_session.query(AdapterConfig).filter_by(tenant_id=tenant_id).first()
-    if not adapter_config:
-        raise ValueError(f"No adapter configuration found for tenant {tenant_id}")
-    
-    # Validate required GAM fields
-    if not adapter_config.gam_network_code:
-        raise ValueError(f"GAM network code not configured for tenant {tenant_id}")
-    if not adapter_config.gam_refresh_token:
-        raise ValueError(f"GAM refresh token not configured for tenant {tenant_id}")
-    
-    # Get OAuth client credentials from superadmin config
-    client_id_config = db_session.query(SuperadminConfig).filter_by(config_key='gam_oauth_client_id').first()
-    client_secret_config = db_session.query(SuperadminConfig).filter_by(config_key='gam_oauth_client_secret').first()
-    
-    if not client_id_config or not client_id_config.config_value:
-        raise ValueError("GAM OAuth Client ID not configured in superadmin settings")
-    if not client_secret_config or not client_secret_config.config_value:
-        raise ValueError("GAM OAuth Client Secret not configured in superadmin settings")
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        
+        # Get tenant
+        cursor.execute(
+            "SELECT name, ad_server FROM tenants WHERE tenant_id = %s",
+            (tenant_id,)
+        )
+        tenant_row = cursor.fetchone()
+        if not tenant_row:
+            raise ValueError(f"Tenant {tenant_id} not found")
+        
+        tenant_name, ad_server = tenant_row
+        
+        if ad_server != 'google_ad_manager':
+            raise ValueError(f"Tenant {tenant_id} is not configured for Google Ad Manager (using {ad_server})")
+        
+        # Get adapter config
+        cursor.execute(
+            "SELECT gam_network_code, gam_refresh_token FROM adapter_config WHERE tenant_id = %s",
+            (tenant_id,)
+        )
+        adapter_row = cursor.fetchone()
+        if not adapter_row:
+            raise ValueError(f"No adapter configuration found for tenant {tenant_id}")
+        
+        gam_network_code, gam_refresh_token = adapter_row
+        
+        # Validate required GAM fields
+        if not gam_network_code:
+            raise ValueError(f"GAM network code not configured for tenant {tenant_id}")
+        if not gam_refresh_token:
+            raise ValueError(f"GAM refresh token not configured for tenant {tenant_id}")
+        
+        # Get OAuth client credentials from superadmin config
+        cursor.execute(
+            "SELECT config_value FROM superadmin_config WHERE config_key = 'gam_oauth_client_id'"
+        )
+        client_id_row = cursor.fetchone()
+        
+        cursor.execute(
+            "SELECT config_value FROM superadmin_config WHERE config_key = 'gam_oauth_client_secret'"
+        )
+        client_secret_row = cursor.fetchone()
+        
+        if not client_id_row or not client_id_row[0]:
+            raise ValueError("GAM OAuth Client ID not configured in superadmin settings")
+        if not client_secret_row or not client_secret_row[0]:
+            raise ValueError("GAM OAuth Client Secret not configured in superadmin settings")
+        
+        client_id = client_id_row[0]
+        client_secret = client_secret_row[0]
     
     try:
-        # Create OAuth2 credentials
-        credentials = Credentials(
-            None,  # No access token yet
-            refresh_token=adapter_config.gam_refresh_token,
-            token_uri='https://oauth2.googleapis.com/token',
-            client_id=client_id_config.config_value,
-            client_secret=client_secret_config.config_value,
-            scopes=['https://www.googleapis.com/auth/dfp']
+        # Create GoogleAds OAuth2 client
+        oauth2_client = oauth2.GoogleRefreshTokenClient(
+            client_id=client_id,
+            client_secret=client_secret,
+            refresh_token=gam_refresh_token
         )
         
-        # Refresh the access token if needed
-        if not credentials.valid:
-            logger.info(f"Refreshing access token for tenant {tenant_id}")
-            credentials.refresh(Request())
+        # The client will automatically refresh the token when needed
+        logger.info(f"Created OAuth2 client for tenant {tenant_id}")
         
         # Create and return the Ad Manager client
         client = ad_manager.AdManagerClient(
-            credentials,
-            adapter_config.gam_network_code,
-            application_name=f"AdCP-Sales-Agent-{tenant.name}"
+            oauth2_client,
+            f"AdCP-Sales-Agent-{tenant_name}",
+            network_code=gam_network_code
         )
         
-        logger.info(f"Successfully created GAM client for tenant {tenant_id} (network: {adapter_config.gam_network_code})")
+        logger.info(f"Successfully created GAM client for tenant {tenant_id} (network: {gam_network_code})")
         return client
         
     except Exception as e:
