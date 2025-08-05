@@ -23,6 +23,10 @@ app.logger.setLevel(logging.INFO)
 # Import schemas after Flask app is created
 from schemas import Principal
 
+# Import and register super admin API blueprint
+from superadmin_api import superadmin_api
+app.register_blueprint(superadmin_api)
+
 # Configure for being mounted at different paths
 class ProxyFix:
     def __init__(self, app):
