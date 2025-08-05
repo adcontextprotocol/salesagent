@@ -35,6 +35,7 @@ def create_tenant(args):
                     "enabled": True,
                     "network_code": args.gam_network_code,
                     "company_id": args.gam_company_id,
+                    "refresh_token": args.gam_refresh_token,
                     "manual_approval_required": args.manual_approval
                 }
             }
@@ -150,6 +151,7 @@ def main():
     # Adapter-specific options
     parser.add_argument('--gam-network-code', help='Google Ad Manager network code')
     parser.add_argument('--gam-company-id', help='Google Ad Manager company ID')
+    parser.add_argument('--gam-refresh-token', help='Google Ad Manager OAuth refresh token')
     parser.add_argument('--kevel-network-id', help='Kevel network ID')
     parser.add_argument('--kevel-api-key', help='Kevel API key')
     
@@ -165,8 +167,11 @@ def main():
     args = parser.parse_args()
     
     # Validate adapter-specific requirements
-    if args.adapter == 'google_ad_manager' and not args.gam_network_code:
-        parser.error("--gam-network-code required for Google Ad Manager")
+    if args.adapter == 'google_ad_manager':
+        if not args.gam_network_code:
+            parser.error("--gam-network-code required for Google Ad Manager")
+        if not args.gam_refresh_token:
+            parser.error("--gam-refresh-token required for Google Ad Manager (OAuth refresh token)")
     if args.adapter == 'kevel' and not args.kevel_network_id:
         parser.error("--kevel-network-id required for Kevel")
     

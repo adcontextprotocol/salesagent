@@ -154,7 +154,7 @@
         
         <div style="margin-bottom: 2rem;">
             <h4>Authorized Email Addresses</h4>
-            {% set auth_emails = tenant.config.get('authorized_emails', []) %}
+            {% set auth_emails = tenant.authorized_emails or [] %}
             {% if auth_emails %}
             <ul style="list-style: none; padding: 0;">
                 {% for email in auth_emails %}
@@ -170,7 +170,7 @@
         
         <div style="margin-bottom: 2rem;">
             <h4>Authorized Email Domains</h4>
-            {% set auth_domains = tenant.config.get('authorized_domains', []) %}
+            {% set auth_domains = tenant.authorized_domains or [] %}
             {% if auth_domains %}
             <ul style="list-style: none; padding: 0;">
                 {% for domain in auth_domains %}
@@ -195,15 +195,7 @@
     <div class="card">
         <h3>Ad Server Setup</h3>
         
-        {% set adapters = tenant.config.get('adapters', {}) %}
-        {% set ns = namespace(current_adapter=None, adapter_config=None) %}
-        
-        {% for adapter_name, config in adapters.items() %}
-            {% if config.get('enabled', False) %}
-                {% set ns.current_adapter = adapter_name %}
-                {% set ns.adapter_config = config %}
-            {% endif %}
-        {% endfor %}
+        {% set ns = namespace(current_adapter=tenant.ad_server, adapter_config=adapter_config) %}
         
         {% if tenant.active_adapter %}
             <!-- Show current adapter configuration -->
@@ -222,23 +214,35 @@
                     <li>Simulates real ad server responses</li>
                 </ul>
                 
-                {% elif ns.current_adapter == 'gam' %}
+                {% elif ns.current_adapter == 'google_ad_manager' or ns.current_adapter == 'gam' %}
                 <p style="margin: 0.5rem 0;">
                     Connected to Google Ad Manager
                 </p>
                 <div style="margin-top: 1rem;">
                     <strong>Configuration Status:</strong>
                     <ul style="margin: 0.5rem 0; padding-left: 1.5rem;">
-                        {% if ns.adapter_config.get('network_id') %}
-                        <li>✅ Network ID: {{ ns.adapter_config.get('network_id') }}</li>
+                        {% if ns.adapter_config.get('network_code') %}
+                        <li>✅ Network Code: {{ ns.adapter_config.get('network_code') }}</li>
                         {% else %}
-                        <li>❌ Network ID: Not configured</li>
+                        <li>❌ Network Code: Not configured</li>
                         {% endif %}
                         
-                        {% if ns.adapter_config.get('api_version') %}
-                        <li>✅ API Version: {{ ns.adapter_config.get('api_version') }}</li>
+                        {% if ns.adapter_config.get('refresh_token') %}
+                        <li>✅ OAuth Refresh Token: Configured</li>
                         {% else %}
-                        <li>✅ API Version: Using default</li>
+                        <li>❌ OAuth Refresh Token: Not configured</li>
+                        {% endif %}
+                        
+                        {% if ns.adapter_config.get('company_id') %}
+                        <li>✅ Company ID: {{ ns.adapter_config.get('company_id') }}</li>
+                        {% else %}
+                        <li>❌ Company ID: Not configured</li>
+                        {% endif %}
+                        
+                        {% if ns.adapter_config.get('trafficker_id') %}
+                        <li>✅ Trafficker ID: {{ ns.adapter_config.get('trafficker_id') }}</li>
+                        {% else %}
+                        <li>❌ Trafficker ID: Not configured</li>
                         {% endif %}
                     </ul>
                 </div>
@@ -286,11 +290,11 @@
                 </div>
                 {% endif %}
                 
-                {% if ns.current_adapter != 'mock' %}
                 <div style="margin-top: 1rem;">
-                    <button onclick="toggleAdapterSetup()" class="btn btn-secondary">Reconfigure</button>
+                    <button onclick="toggleAdapterSetup()" class="btn btn-secondary">
+                        {% if ns.current_adapter == 'mock' %}Change Ad Server{% else %}Reconfigure{% endif %}
+                    </button>
                 </div>
-                {% endif %}
             </div>
         {% else %}
             <!-- No adapter configured - show setup flow -->
@@ -353,30 +357,60 @@
             
             <div id="gamSetup" class="adapter-setup" style="display: none;">
                 <h4>Google Ad Manager Setup</h4>
-                <form method="POST" action="/tenant/{{ tenant.tenant_id }}/setup_adapter">
-                    <input type="hidden" name="adapter" value="gam">
-                    
+                
+                <!-- Step 1: Refresh Token -->
+                <div id="gamStep1">
                     <div class="form-group">
-                        <label for="gam_network_id">Network ID</label>
-                        <input type="text" id="gam_network_id" name="network_id" required 
-                               placeholder="e.g., 123456789">
-                        <small>Found in GAM under Admin → Global Settings</small>
-                    </div>
-                    
-                    <div class="form-group">
-                        <label for="gam_credentials">Service Account Credentials</label>
-                        <textarea id="gam_credentials" name="credentials" required 
-                                  placeholder="Paste your service account JSON here"></textarea>
+                        <label for="gam_refresh_token_test">OAuth Refresh Token</label>
+                        <input type="text" id="gam_refresh_token_test" 
+                               value="{{ adapter_config.get('refresh_token', '') if adapter_config and ns.current_adapter == 'google_ad_manager' else '' }}"
+                               placeholder="Your OAuth refresh token">
                         <small>
-                            <a href="https://developers.google.com/ad-manager/api/authentication" target="_blank">
-                                How to create service account credentials
-                            </a>
+                            Obtained from OAuth flow using the client credentials configured in 
+                            <a href="/settings">Settings</a>
                         </small>
                     </div>
-                    
-                    <button type="submit" class="btn">Connect Google Ad Manager</button>
+                    <button type="button" onclick="testGAMConnection()" class="btn">Test Connection</button>
                     <button type="button" onclick="cancelSetup()" class="btn btn-secondary">Cancel</button>
-                </form>
+                    
+                    <div id="gamConnectionResult" style="margin-top: 1rem; display: none;">
+                        <div class="alert" id="gamConnectionMessage"></div>
+                    </div>
+                </div>
+                
+                <!-- Step 2: Select Network and Details -->
+                <div id="gamStep2" style="display: none;">
+                    <form method="POST" action="/tenant/{{ tenant.tenant_id }}/setup_adapter">
+                        <input type="hidden" name="adapter" value="gam">
+                        <input type="hidden" id="gam_refresh_token" name="refresh_token" value="">
+                        
+                        <div class="form-group">
+                            <label for="gam_network_code">Network</label>
+                            <select id="gam_network_code" name="network_code" required>
+                                <option value="">Select a network...</option>
+                            </select>
+                            <small>Choose the Google Ad Manager network to connect</small>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="gam_company_id">Advertiser Company</label>
+                            <select id="gam_company_id" name="company_id" required>
+                                <option value="">Select a company...</option>
+                            </select>
+                            <small>Choose your advertiser company</small>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="gam_trafficker_id">Trafficker User ID</label>
+                            <input type="text" id="gam_trafficker_id" name="trafficker_id" required 
+                                   placeholder="e.g., 789012">
+                            <small>Your user ID: <span id="gamCurrentUserId"></span></small>
+                        </div>
+                        
+                        <button type="submit" class="btn">Connect Google Ad Manager</button>
+                        <button type="button" onclick="backToStep1()" class="btn btn-secondary">Back</button>
+                    </form>
+                </div>
             </div>
             
             <div id="kevelSetup" class="adapter-setup" style="display: none;">
@@ -436,19 +470,30 @@
         <h3>Configuration</h3>
         <form method="POST" action="/tenant/{{ tenant.tenant_id }}/update">
             <div class="form-group">
-                <label for="config">JSON Configuration</label>
-                <textarea name="config" id="config" required>{{ config_for_editing | tojson(indent=2) }}</textarea>
-                {% if session.role == 'super_admin' %}
-                <small style="color: #666;">
-                    Includes authorization settings: "authorized_emails" and "authorized_domains"<br>
-                    Note: Ad server adapters are configured in the "Ad Server Setup" tab
-                </small>
-                {% else %}
-                <small style="color: #666;">
-                    Note: Ad server configuration is managed in the "Ad Server Setup" tab
-                </small>
-                {% endif %}
+                <label for="max_daily_budget">Maximum Daily Budget</label>
+                <input type="number" id="max_daily_budget" name="max_daily_budget" 
+                       value="{{ tenant.max_daily_budget }}" min="0" step="100">
+                <small>Maximum daily spend limit across all campaigns</small>
             </div>
+            
+            <div class="form-group">
+                <label>
+                    <input type="checkbox" name="enable_aee_signals" value="true"
+                           {% if tenant.enable_aee_signals %}checked{% endif %}>
+                    Enable AEE Signals
+                </label>
+                <small>Allow use of Audience Expansion Engine signals for targeting</small>
+            </div>
+            
+            <div class="form-group">
+                <label>
+                    <input type="checkbox" name="human_review_required" value="true"
+                           {% if tenant.human_review_required %}checked{% endif %}>
+                    Require Human Review for Creatives
+                </label>
+                <small>All creatives must be manually approved before use</small>
+            </div>
+            
             <button type="submit" class="btn">Update Configuration</button>
             <a href="/" class="btn btn-secondary">Cancel</a>
         </form>
@@ -595,7 +640,7 @@
             <div class="form-group">
                 <label for="slack_webhook_url">Task Notifications Webhook URL</label>
                 <input type="url" id="slack_webhook_url" name="slack_webhook_url" 
-                       value="{{ tenant.config.get('features', {}).get('slack_webhook_url', '') }}"
+                       value="{{ tenant.slack_webhook_url or '' }}"
                        placeholder="https://hooks.slack.com/services/YOUR/WEBHOOK/URL">
                 <small>Receives notifications for new tasks and creative approvals</small>
             </div>
@@ -603,7 +648,7 @@
             <div class="form-group">
                 <label for="slack_audit_webhook_url">Audit Log Webhook URL (Optional)</label>
                 <input type="url" id="slack_audit_webhook_url" name="slack_audit_webhook_url" 
-                       value="{{ tenant.config.get('features', {}).get('slack_audit_webhook_url', '') }}"
+                       value="{{ tenant.slack_audit_webhook_url or '' }}"
                        placeholder="https://hooks.slack.com/services/YOUR/AUDIT/WEBHOOK">
                 <small>Separate channel for audit logs and security alerts</small>
             </div>
@@ -793,6 +838,101 @@ function toggleAdapterSetup() {
     } else {
         setupDiv.style.display = 'none';
     }
+}
+
+// GAM Setup Functions
+function testGAMConnection() {
+    const refreshToken = document.getElementById('gam_refresh_token_test').value;
+    const resultDiv = document.getElementById('gamConnectionResult');
+    const messageDiv = document.getElementById('gamConnectionMessage');
+    
+    if (!refreshToken) {
+        resultDiv.style.display = 'block';
+        messageDiv.className = 'alert alert-error';
+        messageDiv.textContent = 'Please enter a refresh token';
+        return;
+    }
+    
+    // Show loading
+    resultDiv.style.display = 'block';
+    messageDiv.className = 'alert alert-info';
+    messageDiv.textContent = 'Testing connection...';
+    
+    fetch('/api/gam/test-connection', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ refresh_token: refreshToken })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            messageDiv.className = 'alert alert-success';
+            messageDiv.textContent = data.message;
+            
+            // Populate the hidden refresh token field
+            document.getElementById('gam_refresh_token').value = refreshToken;
+            
+            // Populate networks dropdown
+            const networkSelect = document.getElementById('gam_network_code');
+            networkSelect.innerHTML = '<option value="">Select a network...</option>';
+            
+            if (data.networks && data.networks.length > 0) {
+                data.networks.forEach(network => {
+                    const option = document.createElement('option');
+                    option.value = network.networkCode;
+                    option.textContent = `${network.displayName} (${network.networkCode})`;
+                    networkSelect.appendChild(option);
+                });
+                
+                // If only one network, select it automatically
+                if (data.networks.length === 1) {
+                    networkSelect.value = data.networks[0].networkCode;
+                }
+            }
+            
+            // Populate companies dropdown
+            const companySelect = document.getElementById('gam_company_id');
+            companySelect.innerHTML = '<option value="">Select a company...</option>';
+            
+            if (data.companies && data.companies.length > 0) {
+                data.companies.forEach(company => {
+                    const option = document.createElement('option');
+                    option.value = company.id;
+                    option.textContent = company.name;
+                    companySelect.appendChild(option);
+                });
+            }
+            
+            // Show current user ID
+            if (data.current_user) {
+                document.getElementById('gamCurrentUserId').textContent = 
+                    `${data.current_user.name} (ID: ${data.current_user.id})`;
+                // Pre-fill the trafficker ID with current user
+                document.getElementById('gam_trafficker_id').value = data.current_user.id;
+            }
+            
+            // Switch to step 2
+            setTimeout(() => {
+                document.getElementById('gamStep1').style.display = 'none';
+                document.getElementById('gamStep2').style.display = 'block';
+            }, 1000);
+            
+        } else {
+            messageDiv.className = 'alert alert-error';
+            messageDiv.textContent = data.error || 'Connection failed';
+        }
+    })
+    .catch(error => {
+        messageDiv.className = 'alert alert-error';
+        messageDiv.textContent = 'Error: ' + error;
+    });
+}
+
+function backToStep1() {
+    document.getElementById('gamStep1').style.display = 'block';
+    document.getElementById('gamStep2').style.display = 'none';
 }
 
 // Slack Integration Functions
