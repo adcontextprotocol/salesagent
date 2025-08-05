@@ -13,7 +13,7 @@
                 {% if tenant.active_adapter %}
                     {% if tenant.active_adapter == 'mock' %}
                         <span style="color: #95a5a6;">Mock (Testing)</span>
-                    {% elif tenant.active_adapter == 'gam' %}
+                    {% elif tenant.active_adapter == 'google_ad_manager' %}
                         <span style="color: #3498db;">Google Ad Manager</span>
                     {% elif tenant.active_adapter == 'kevel' %}
                         <span style="color: #9b59b6;">Kevel</span>
@@ -135,7 +135,7 @@
     </div>
     <div class="tab" data-tab="integrations">Integrations</div>
     <div class="tab" data-tab="tokens">API Tokens</div>
-    {% if tenant.active_adapter == 'gam' %}
+    {% if tenant.active_adapter == 'google_ad_manager' %}
     <a href="/tenant/{{ tenant.tenant_id }}/inventory" class="tab" style="text-decoration: none; color: inherit;">Inventory →</a>
     <a href="/tenant/{{ tenant.tenant_id }}/targeting" class="tab" style="text-decoration: none; color: inherit;">Targeting →</a>
     {% endif %}
@@ -225,7 +225,7 @@
                     <li>Simulates real ad server responses</li>
                 </ul>
                 
-                {% elif ns.current_adapter == 'gam' %}
+                {% elif ns.current_adapter == 'google_ad_manager' %}
                 <p style="margin: 0.5rem 0;">
                     Connected to Google Ad Manager
                 </p>
