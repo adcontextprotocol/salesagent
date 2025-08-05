@@ -87,7 +87,7 @@ def create_tenant(args):
         json.dumps(config),
         datetime.now().isoformat(),
         datetime.now().isoformat(),
-        True if db_config['type'] == 'sqlite' else 1,
+        1 if db_config['type'] == 'sqlite' else True,
         "standard"
     ))
     
