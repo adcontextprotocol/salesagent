@@ -11,7 +11,7 @@ primary_region = "iad"
 
 # Single service configuration
 [[services]]
-  internal_port = 8080
+  internal_port = 8000
   protocol = "tcp"
   auto_stop_machines = "stop"
   auto_start_machines = true
