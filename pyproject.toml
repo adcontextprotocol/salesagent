@@ -23,6 +23,7 @@ dependencies = [
     "alembic>=1.13.0",
     "sqlalchemy>=2.0.0",
     "watchdog>=6.0.0",
+    "waitress>=3.0.0",
 ]
 
 
