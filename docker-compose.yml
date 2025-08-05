@@ -51,13 +51,13 @@ services:
 
   admin-ui:
     build: .
-    command: ./start_admin_ui.sh
+    command: python admin_ui_prod.py
     environment:
       DATABASE_URL: postgresql://adcp_user:secure_password_change_me@postgres:5432/adcp?sslmode=disable
       ADMIN_UI_PORT: ${ADMIN_UI_PORT:-8003}
       FLASK_APP: admin_ui.py
       FLASK_ENV: production
-      FLASK_DEBUG: ""
+      FLASK_DEBUG: 0
       # Gemini API key (required for AI features)
       GEMINI_API_KEY: ${GEMINI_API_KEY}
       # Super admin authorization (set these via .env file)
@@ -67,6 +67,8 @@ services:
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
       GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
       GOOGLE_OAUTH_CREDENTIALS_FILE: ${GOOGLE_OAUTH_CREDENTIALS_FILE:-}
+      # Test mode
+      ADCP_AUTH_TEST_MODE: ${ADCP_AUTH_TEST_MODE:-false}
     
     depends_on:
       postgres:

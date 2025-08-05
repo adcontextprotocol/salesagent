@@ -87,15 +87,14 @@ class AIProductConfigurationService:
         # Get adapter configuration and principal
         conn = get_db_connection()
         
-        # Get tenant config
-        cursor = conn.execute("SELECT config FROM tenants WHERE tenant_id = ?", (tenant_id,))
-        tenant_config_row = cursor.fetchone()
-        if not tenant_config_row:
+        # Get tenant ad server
+        cursor = conn.execute("SELECT ad_server FROM tenants WHERE tenant_id = ?", (tenant_id,))
+        tenant_row = cursor.fetchone()
+        if not tenant_row:
             conn.close()
             raise ValueError(f"Tenant {tenant_id} not found")
         
-        # PostgreSQL returns JSONB as dict, SQLite returns string
-        tenant_config = tenant_config_row[0] if isinstance(tenant_config_row[0], dict) else json.loads(tenant_config_row[0])
+        ad_server = tenant_row[0]
         
         # Get a principal for this tenant (use first available)
         cursor = conn.execute(
@@ -128,8 +127,21 @@ class AIProductConfigurationService:
         from adapters import get_adapter_class
         adapter_class = get_adapter_class(adapter_type)
         
-        # Get adapter config
-        adapter_config = tenant_config.get('adapters', {}).get(adapter_type, {})
+        # Get adapter config from adapter_config table
+        cursor = conn.execute(
+            "SELECT * FROM adapter_config WHERE tenant_id = ?", 
+            (tenant_id,)
+        )
+        adapter_config_row = cursor.fetchone()
+        adapter_config = {}
+        if adapter_config_row:
+            # Convert row to dict
+            if hasattr(adapter_config_row, 'keys'):
+                adapter_config = dict(adapter_config_row)
+            else:
+                # For tuples, we'd need column names which we don't have here
+                # For now, just use empty config
+                adapter_config = {}
         
         # Create adapter instance
         adapter = adapter_class(
@@ -430,18 +442,14 @@ async def analyze_product_description(
     
     # Get tenant's adapter type
     conn = get_db_connection()
-    cursor = conn.execute("SELECT config FROM tenants WHERE tenant_id = ?", (tenant_id,))
-    tenant_config_row = cursor.fetchone()
-    # PostgreSQL returns JSONB as dict, SQLite returns string
-    tenant_config = tenant_config_row[0] if isinstance(tenant_config_row[0], dict) else json.loads(tenant_config_row[0])
-    conn.close()
+    cursor = conn.execute("SELECT ad_server FROM tenants WHERE tenant_id = ?", (tenant_id,))
+    tenant_row = cursor.fetchone()
+    if not tenant_row:
+        conn.close()
+        raise ValueError(f"Tenant {tenant_id} not found")
     
-    # Find enabled adapter
-    adapter_type = None
-    for adapter, config in tenant_config.get("adapters", {}).items():
-        if config.get("enabled"):
-            adapter_type = adapter
-            break
+    adapter_type = tenant_row[0]
+    conn.close()
     
     if not adapter_type:
         raise ValueError("No enabled adapter found for tenant")

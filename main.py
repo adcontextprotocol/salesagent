@@ -24,6 +24,7 @@ from config_loader import (
 from db_config import get_db_connection
 from slack_notifier import get_slack_notifier
 from product_catalog_providers.factory import get_product_catalog_provider
+from policy_check_service import PolicyCheckService, PolicyStatus
 
 # --- Authentication ---
 
@@ -31,7 +32,7 @@ def get_principal_from_token(token: str, tenant_id: str) -> Optional[str]:
     """Looks up a principal_id from the database using a token."""
     # Check for tenant admin token first
     tenant = get_current_tenant()
-    if tenant and token == tenant['config'].get('admin_token'):
+    if tenant and token == tenant.get('admin_token'):
         return f"{tenant['tenant_id']}_admin"
     
     conn = get_db_connection()
@@ -71,10 +72,16 @@ def get_principal_from_context(context: Optional[Context]) -> Optional[str]:
         if not tenant_id:
             tenant_id = 'default'
         
-        # Load tenant by ID
+        # Load tenant by ID with all new fields
         conn = get_db_connection()
         cursor = conn.execute(
-            "SELECT tenant_id, name, subdomain, config FROM tenants WHERE tenant_id = ? AND is_active = ?",
+            """SELECT tenant_id, name, subdomain, ad_server, max_daily_budget, 
+                      enable_aee_signals, authorized_emails, authorized_domains, 
+                      slack_webhook_url, admin_token, auto_approve_formats, 
+                      human_review_required, slack_audit_webhook_url, hitl_webhook_url,
+                      policy_settings
+               FROM tenants 
+               WHERE tenant_id = ? AND is_active = ?""",
             (tenant_id, True)
         )
         row = cursor.fetchone()
@@ -84,12 +91,23 @@ def get_principal_from_context(context: Optional[Context]) -> Optional[str]:
             print(f"No active tenant found for ID: {tenant_id}")
             return None
             
-        # Set tenant context
+        # Set tenant context with new fields
         tenant_dict = {
             'tenant_id': row[0],
             'name': row[1],
             'subdomain': row[2],
-            'config': json.loads(row[3])
+            'ad_server': row[3],
+            'max_daily_budget': row[4],
+            'enable_aee_signals': row[5],
+            'authorized_emails': json.loads(row[6]) if row[6] else [],
+            'authorized_domains': json.loads(row[7]) if row[7] else [],
+            'slack_webhook_url': row[8],
+            'admin_token': row[9],
+            'auto_approve_formats': json.loads(row[10]) if row[10] else [],
+            'human_review_required': row[11],
+            'slack_audit_webhook_url': row[12],
+            'hitl_webhook_url': row[13],
+            'policy_settings': json.loads(row[14]) if row[14] else None
         }
         set_current_tenant(tenant_dict)
         
@@ -154,22 +172,45 @@ def get_adapter_principal_id(principal_id: str, adapter: str) -> Optional[str]:
 
 def get_adapter(principal: Principal, dry_run: bool = False):
     """Get the appropriate adapter instance for the selected adapter type."""
-    # Get tenant-specific adapter config
+    # Get tenant and adapter config from database
     tenant = get_current_tenant()
-    adapters_config = tenant['config'].get('adapters', {})
+    selected_adapter = tenant.get('ad_server', 'mock')
     
-    # Find the first enabled adapter
-    selected_adapter = None
-    adapter_config = {}
+    # Get adapter config from adapter_config table
+    conn = get_db_connection()
+    cursor = conn.execute(
+        """SELECT adapter_type, mock_dry_run, gam_network_code, gam_refresh_token,
+                  gam_company_id, gam_trafficker_id, gam_manual_approval_required,
+                  kevel_network_id, kevel_api_key, kevel_manual_approval_required,
+                  triton_station_id, triton_api_key
+           FROM adapter_config 
+           WHERE tenant_id = ?""",
+        (tenant['tenant_id'],)
+    )
+    row = cursor.fetchone()
+    conn.close()
     
-    for adapter_name, config in adapters_config.items():
-        if config.get('enabled'):
-            selected_adapter = adapter_name
-            adapter_config = config.copy()
-            break
+    adapter_config = {'enabled': True}
+    if row:
+        adapter_type = row[0]
+        if adapter_type == 'mock':
+            adapter_config['dry_run'] = row[1]
+        elif adapter_type == 'google_ad_manager':
+            adapter_config['network_code'] = row[2]
+            adapter_config['refresh_token'] = row[3]
+            adapter_config['company_id'] = row[4]
+            adapter_config['trafficker_id'] = row[5]
+            adapter_config['manual_approval_required'] = row[6]
+        elif adapter_type == 'kevel':
+            adapter_config['network_id'] = row[7]
+            adapter_config['api_key'] = row[8]
+            adapter_config['manual_approval_required'] = row[9]
+        elif adapter_type == 'triton':
+            adapter_config['station_id'] = row[10]
+            adapter_config['api_key'] = row[11]
     
     if not selected_adapter:
-        # Default to mock if no adapters enabled
+        # Default to mock if no adapter specified
         selected_adapter = 'mock'
         adapter_config = {'enabled': True}
     
@@ -208,8 +249,8 @@ except RuntimeError as e:
 mcp = FastMCP(name="AdCPSalesAgent")
 console = Console()
 
-# Initialize creative engine with config
-creative_engine_config = config.get('creative_engine', {})
+# Initialize creative engine with minimal config (will be tenant-specific later)
+creative_engine_config = {}
 creative_engine = MockCreativeEngine(creative_engine_config)
 
 def load_media_buys_from_db():
@@ -294,6 +335,77 @@ async def get_products(req: GetProductsRequest, context: Context) -> GetProducts
     principal = get_principal_object(principal_id) if principal_id else None
     principal_data = principal.model_dump() if principal else None
     
+    # Check policy compliance first
+    policy_service = PolicyCheckService()
+    policy_result = await policy_service.check_brief_compliance(
+        brief=req.brief,
+        promoted_offering=req.promoted_offering,
+        tenant_policies=tenant.get('config', {}).get('policy_settings')  # TODO: Move to database
+    )
+    
+    # Log the policy check
+    audit_logger.log(
+        operation="policy_check",
+        tenant_id=tenant['tenant_id'],
+        principal_id=principal_id,
+        success=policy_result.status != PolicyStatus.BLOCKED,
+        details={
+            "brief": req.brief[:100] + "..." if len(req.brief) > 100 else req.brief,
+            "promoted_offering": req.promoted_offering[:100] + "..." if req.promoted_offering and len(req.promoted_offering) > 100 else req.promoted_offering,
+            "policy_status": policy_result.status,
+            "reason": policy_result.reason,
+            "restrictions": policy_result.restrictions
+        }
+    )
+    
+    # Handle policy result based on settings
+    policy_settings = tenant.get('config', {}).get('policy_settings', {})  # TODO: Move to database
+    
+    if policy_result.status == PolicyStatus.BLOCKED:
+        # Always block if policy says blocked
+        logger.warning(f"Brief blocked by policy: {policy_result.reason}")
+        return GetProductsResponse(products=[])
+    
+    # If restricted and manual review is required, create a task
+    if (policy_result.status == PolicyStatus.RESTRICTED and 
+        policy_settings.get('require_manual_review', False)):
+        
+        # Create a manual review task
+        conn = get_db_connection()
+        task_id = f"policy_review_{tenant['tenant_id']}_{int(datetime.utcnow().timestamp())}"
+        
+        task_details = {
+            "brief": req.brief,
+            "promoted_offering": req.promoted_offering,
+            "principal_id": principal_id,
+            "policy_status": policy_result.status,
+            "restrictions": policy_result.restrictions,
+            "reason": policy_result.reason
+        }
+        
+        conn.execute("""
+            INSERT INTO tasks (
+                tenant_id, task_id, media_buy_id, task_type, 
+                status, details, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?)
+        """, (
+            tenant['tenant_id'],
+            task_id,
+            None,  # No media buy associated
+            'policy_review',
+            'pending',
+            json.dumps(task_details),
+            datetime.utcnow()
+        ))
+        
+        conn.connection.commit()
+        conn.close()
+        
+        logger.info(f"Created policy review task {task_id} for restricted brief")
+        
+        # Return empty list with message about pending review
+        return GetProductsResponse(products=[])
+    
     # Get the product catalog provider for this tenant
     provider = await get_product_catalog_provider(
         tenant['tenant_id'],
@@ -309,7 +421,25 @@ async def get_products(req: GetProductsRequest, context: Context) -> GetProducts
         context=None  # Could add additional context here if needed
     )
     
-    return GetProductsResponse(products=products)
+    # Filter products based on policy compliance
+    eligible_products = []
+    for product in products:
+        is_eligible, reason = policy_service.check_product_eligibility(
+            policy_result,
+            product.model_dump()
+        )
+        
+        if is_eligible:
+            # Add policy compliance information to product
+            if policy_result.status == PolicyStatus.RESTRICTED:
+                product.policy_compliance = f"Restricted: {', '.join(policy_result.restrictions)}"
+            else:
+                product.policy_compliance = "Compliant"
+            eligible_products.append(product)
+        else:
+            logger.info(f"Product {product.product_id} excluded: {reason}")
+    
+    return GetProductsResponse(products=eligible_products)
 
 @mcp.tool
 async def get_signals(req: GetSignalsRequest, context: Context) -> GetSignalsResponse:
@@ -540,7 +670,11 @@ def submit_creatives(req: SubmitCreativesRequest, context: Context) -> SubmitCre
     
     # Initialize creative engine with tenant config
     tenant = get_current_tenant()
-    creative_engine_config = tenant['config'].get('creative_engine', {})
+    # Build creative engine config from tenant fields
+    creative_engine_config = {
+        'auto_approve_formats': tenant.get('auto_approve_formats', []),
+        'human_review_required': tenant.get('human_review_required', True)
+    }
     creative_engine = MockCreativeEngine(creative_engine_config)
     
     # Process creatives through the creative engine
@@ -555,6 +689,14 @@ def submit_creatives(req: SubmitCreativesRequest, context: Context) -> SubmitCre
                 principal = get_principal_object(principal_id)
                 creative = next((c for c in req.creatives if c.creative_id == status.creative_id), None)
                 
+                # Build notifier config from tenant fields
+                notifier_config = {
+                    'features': {
+                        'slack_webhook_url': tenant.get('slack_webhook_url'),
+                        'slack_audit_webhook_url': tenant['config'].get('features', {}).get('slack_audit_webhook_url')  # TODO: Move to database
+                    }
+                }
+                slack_notifier = get_slack_notifier(notifier_config)
                 slack_notifier.notify_creative_pending(
                     creative_id=status.creative_id,
                     principal_name=principal.name if principal else principal_id,
@@ -1164,7 +1306,11 @@ def create_creative(req: CreateCreativeRequest, context: Context) -> CreateCreat
     
     # Initialize creative engine with tenant config
     tenant = get_current_tenant()
-    creative_engine_config = tenant['config'].get('creative_engine', {})
+    # Build creative engine config from tenant fields
+    creative_engine_config = {
+        'auto_approve_formats': tenant.get('auto_approve_formats', []),
+        'human_review_required': tenant.get('human_review_required', True)
+    }
     creative_engine = MockCreativeEngine(creative_engine_config)
     
     # Process through creative engine for approval
@@ -1551,7 +1697,7 @@ def create_human_task(req: CreateHumanTaskRequest, context: Context) -> CreateHu
     
     # Send webhook notification for urgent tasks (if configured)
     tenant = get_current_tenant()
-    webhook_url = tenant['config'].get("features", {}).get("hitl_webhook_url")
+    webhook_url = tenant['config'].get("features", {}).get("hitl_webhook_url")  # TODO: Move to database
     if webhook_url and req.priority == "urgent":
         try:
             import requests
@@ -1568,7 +1714,14 @@ def create_human_task(req: CreateHumanTaskRequest, context: Context) -> CreateHu
     
     # Send Slack notification for new tasks
     try:
-        slack_notifier = get_slack_notifier(tenant['config'])
+        # Build notifier config from tenant fields
+        notifier_config = {
+            'features': {
+                'slack_webhook_url': tenant.get('slack_webhook_url'),
+                'slack_audit_webhook_url': tenant['config'].get('features', {}).get('slack_audit_webhook_url')  # TODO: Move to database
+            }
+        }
+        slack_notifier = get_slack_notifier(notifier_config)
         slack_notifier.notify_new_task(
             task_id=task_id,
             task_type=req.task_type,
@@ -1745,7 +1898,14 @@ def complete_task(req: CompleteTaskRequest, context: Context) -> Dict[str, str]:
     
     # Send Slack notification for task completion
     try:
-        slack_notifier = get_slack_notifier(tenant['config'])
+        # Build notifier config from tenant fields
+        notifier_config = {
+            'features': {
+                'slack_webhook_url': tenant.get('slack_webhook_url'),
+                'slack_audit_webhook_url': tenant['config'].get('features', {}).get('slack_audit_webhook_url')  # TODO: Move to database
+            }
+        }
+        slack_notifier = get_slack_notifier(notifier_config)
         slack_notifier.notify_task_completed(
             task_id=req.task_id,
             task_type=task.task_type,
