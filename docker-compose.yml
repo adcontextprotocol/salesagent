@@ -56,7 +56,7 @@ services:
       DATABASE_URL: postgresql://adcp_user:secure_password_change_me@postgres:5432/adcp?sslmode=disable
       ADMIN_UI_PORT: ${ADMIN_UI_PORT:-8004}
       FLASK_ENV: production
-      FLASK_DEBUG: 0
+      FLASK_DEBUG: ${FLASK_DEBUG:-0}
       # Gemini API key (required for AI features)
       GEMINI_API_KEY: ${GEMINI_API_KEY}
       # Super admin authorization (set these via .env file)
@@ -68,7 +68,6 @@ services:
       GOOGLE_OAUTH_CREDENTIALS_FILE: ${GOOGLE_OAUTH_CREDENTIALS_FILE:-}
       # Test mode
       ADCP_AUTH_TEST_MODE: ${ADCP_AUTH_TEST_MODE:-false}
-      FLASK_DEBUG: ${FLASK_DEBUG:-0}
     
     depends_on:
       postgres:
