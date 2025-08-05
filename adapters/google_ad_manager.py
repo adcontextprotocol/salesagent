@@ -5,6 +5,8 @@ import os
 from typing import List, Dict, Any, Optional, Tuple
 from googleads import ad_manager
 import google.oauth2.service_account
+from google.auth.transport.requests import Request
+from google.oauth2.credentials import Credentials
 from flask import Flask, render_template, request, jsonify, redirect, url_for, flash
 
 from adapters.base import AdServerAdapter, CreativeEngineAdapter
@@ -33,14 +35,25 @@ class GoogleAdManager(AdServerAdapter):
         super().__init__(config, principal, dry_run, creative_engine, tenant_id)
         self.network_code = self.config.get("network_code")
         self.key_file = self.config.get("service_account_key_file")
+        self.refresh_token = self.config.get("refresh_token")
         self.company_id = self.config.get("company_id")
         self.trafficker_id = self.config.get("trafficker_id", None)
 
         # Use adapter_principal_id as the advertiser_id
         self.advertiser_id = self.adapter_principal_id
 
-        if not self.dry_run and not all([self.network_code, self.key_file, self.advertiser_id, self.trafficker_id, self.company_id]):
-            raise ValueError("GAM config is missing one of 'network_code', 'service_account_key_file', 'advertiser_id', 'trafficker_id', or 'company_id'")
+        # Check for either service account or OAuth credentials
+        if not self.dry_run:
+            if not self.network_code:
+                raise ValueError("GAM config is missing 'network_code'")
+            if not self.advertiser_id:
+                raise ValueError("GAM config is missing 'advertiser_id'")
+            if not self.trafficker_id:
+                raise ValueError("GAM config is missing 'trafficker_id'")
+            if not self.company_id:
+                raise ValueError("GAM config is missing 'company_id'")
+            if not self.key_file and not self.refresh_token:
+                raise ValueError("GAM config requires either 'service_account_key_file' or 'refresh_token'")
 
         if not self.dry_run:
             self.client = self._init_client()
@@ -52,23 +65,66 @@ class GoogleAdManager(AdServerAdapter):
         self._load_geo_mappings()
 
     def _init_client(self):
-        """Initializes the Ad Manager client."""
+        """Initializes the Ad Manager client using the helper function."""
         try:
-            oauth2_credentials = google.oauth2.service_account.Credentials.from_service_account_file(
-                self.key_file,
-                scopes=['https.www.googleapis.com/auth/dfp']
-            )
-            return google.ads.ad_manager.GoogleAdManagerClient(
-                oauth2_credentials,
-                application_name=f"AdCP-Buy-Side-Agent-{self.network_code}"
-            )
-        except FileNotFoundError:
-            print(f"Error: Service account key file not found at '{self.key_file}'.")
-            print("Please ensure the path in your tenant configuration is correct.")
-            raise
+            # Use the new helper function if we have a tenant_id
+            if self.tenant_id:
+                from gam_helper import get_ad_manager_client_for_tenant
+                return get_ad_manager_client_for_tenant(self.tenant_id)
+            
+            # Fallback to old method for backward compatibility
+            if self.refresh_token:
+                # Use OAuth with refresh token
+                oauth2_credentials = self._get_oauth_credentials()
+            else:
+                # Use service account (legacy)
+                oauth2_credentials = google.oauth2.service_account.Credentials.from_service_account_file(
+                    self.key_file,
+                    scopes=['https://www.googleapis.com/auth/dfp']
+                )
+            
+            # This should not be reached anymore since we use gam_helper
+            # but keeping for backward compatibility
+            raise NotImplementedError("Direct GoogleAdManagerClient creation is deprecated. Use gam_helper instead.")
         except Exception as e:
             print(f"Error initializing GAM client: {e}")
             raise
+    
+    def _get_oauth_credentials(self):
+        """Get OAuth credentials using refresh token and superadmin config."""
+        from db_config import get_db_connection
+        from googleads import oauth2
+        
+        # Get OAuth client credentials from superadmin config
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            
+            cursor.execute(
+                "SELECT config_value FROM superadmin_config WHERE config_key = 'gam_oauth_client_id'"
+            )
+            client_id_row = cursor.fetchone()
+            
+            cursor.execute(
+                "SELECT config_value FROM superadmin_config WHERE config_key = 'gam_oauth_client_secret'"
+            )
+            client_secret_row = cursor.fetchone()
+            
+            if not client_id_row or not client_id_row[0]:
+                raise ValueError("GAM OAuth Client ID not configured in superadmin settings")
+            if not client_secret_row or not client_secret_row[0]:
+                raise ValueError("GAM OAuth Client Secret not configured in superadmin settings")
+            
+            client_id = client_id_row[0]
+            client_secret = client_secret_row[0]
+        
+        # Create GoogleAds OAuth2 client
+        oauth2_client = oauth2.GoogleRefreshTokenClient(
+            client_id=client_id,
+            client_secret=client_secret,
+            refresh_token=self.refresh_token
+        )
+        
+        return oauth2_client
     
     # Supported device types and their GAM mappings
     DEVICE_TYPE_MAP = {
@@ -292,18 +348,23 @@ class GoogleAdManager(AdServerAdapter):
     def create_media_buy(self, request: CreateMediaBuyRequest, packages: List[MediaPackage], start_time: datetime, end_time: datetime) -> CreateMediaBuyResponse:
         """Creates a new Order and associated LineItems in Google Ad Manager."""
         # Get products to access implementation_config
-        from database import db_session
-        from models import Product
+        from db_config import get_db_connection
         
         # Create a map of package_id to product for easy lookup
         products_map = {}
-        for package in packages:
-            product = db_session.query(Product).filter_by(
-                tenant_id=self.tenant_id,
-                product_id=package.package_id  # package_id is actually product_id
-            ).first()
-            if product:
-                products_map[package.package_id] = product
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            for package in packages:
+                cursor.execute(
+                    "SELECT product_id, implementation_config FROM products WHERE tenant_id = %s AND product_id = %s",
+                    (self.tenant_id, package.package_id)  # package_id is actually product_id
+                )
+                product_row = cursor.fetchone()
+                if product_row:
+                    products_map[package.package_id] = {
+                        'product_id': product_row[0],
+                        'implementation_config': product_row[1] or {}
+                    }
         
         # Log operation
         self.audit_logger.log_operation(
@@ -338,9 +399,9 @@ class GoogleAdManager(AdServerAdapter):
         applied_team_ids = []
         if products_map:
             first_product = next(iter(products_map.values()))
-            if first_product.implementation_config:
-                order_name_template = first_product.implementation_config.get('order_name_template', order_name_template)
-                applied_team_ids = first_product.implementation_config.get('applied_team_ids', [])
+            if first_product.get('implementation_config'):
+                order_name_template = first_product['implementation_config'].get('order_name_template', order_name_template)
+                applied_team_ids = first_product['implementation_config'].get('applied_team_ids', [])
         
         # Format order name
         order_name = order_name_template.format(
@@ -402,7 +463,7 @@ class GoogleAdManager(AdServerAdapter):
         for package in packages:
             # Get product-specific configuration
             product = products_map.get(package.package_id)
-            impl_config = product.implementation_config if product else {}
+            impl_config = product.get('implementation_config', {}) if product else {}
             
             # Build targeting - merge product targeting with request overlay
             targeting = self._build_targeting(request.targeting_overlay)
@@ -926,26 +987,42 @@ class GoogleAdManager(AdServerAdapter):
         
         @app.route('/adapters/gam/config/<tenant_id>/<product_id>', methods=['GET', 'POST'])
         def gam_product_config(tenant_id, product_id):
-            from database import db_session
-            from models import Product, Tenant
+            from db_config import get_db_connection
             
             # Get tenant and product
-            tenant = db_session.query(Tenant).filter_by(tenant_id=tenant_id).first()
-            if not tenant:
-                flash('Tenant not found', 'error')
-                return redirect(url_for('tenants'))
+            with get_db_connection() as conn:
+                cursor = conn.cursor()
+                
+                cursor.execute(
+                    "SELECT name FROM tenants WHERE tenant_id = %s",
+                    (tenant_id,)
+                )
+                tenant_row = cursor.fetchone()
+                if not tenant_row:
+                    flash('Tenant not found', 'error')
+                    return redirect(url_for('tenants'))
+                
+                cursor.execute(
+                    "SELECT product_id, name, implementation_config FROM products WHERE tenant_id = %s AND product_id = %s",
+                    (tenant_id, product_id)
+                )
+                product_row = cursor.fetchone()
             
-            product = db_session.query(Product).filter_by(
-                tenant_id=tenant_id,
-                product_id=product_id
-            ).first()
-            
-            if not product:
+            if not product_row:
                 flash('Product not found', 'error')
                 return redirect(url_for('products', tenant_id=tenant_id))
             
-            # Get network code from tenant config
-            network_code = tenant.config.get('adapters', {}).get('google_ad_manager', {}).get('network_code', 'XXXXX')
+            product_id_db, product_name, implementation_config = product_row
+            
+            # Get network code from adapter config
+            with get_db_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute(
+                    "SELECT gam_network_code FROM adapter_config WHERE tenant_id = %s",
+                    (tenant_id,)
+                )
+                adapter_row = cursor.fetchone()
+                network_code = adapter_row[0] if adapter_row else 'XXXXX'
             
             if request.method == 'POST':
                 try:
@@ -1033,8 +1110,13 @@ class GoogleAdManager(AdServerAdapter):
                     validation_result = self.validate_product_config(config)
                     if validation_result[0]:
                         # Save to database
-                        product.implementation_config = config
-                        db_session.commit()
+                        with get_db_connection() as conn:
+                            cursor = conn.cursor()
+                            cursor.execute(
+                                "UPDATE products SET implementation_config = %s WHERE tenant_id = %s AND product_id = %s",
+                                (config, tenant_id, product_id)
+                            )
+                            conn.connection.commit()
                         flash('GAM configuration saved successfully', 'success')
                         return redirect(url_for('edit_product', tenant_id=tenant_id, product_id=product_id))
                     else:
@@ -1044,11 +1126,11 @@ class GoogleAdManager(AdServerAdapter):
                     flash(f'Error saving configuration: {str(e)}', 'error')
             
             # Load existing config or defaults
-            config = product.implementation_config or {}
+            config = implementation_config or {}
             
             return render_template('adapters/gam_product_config.html',
                                  tenant_id=tenant_id,
-                                 product=product,
+                                 product={'product_id': product_id_db, 'name': product_name},
                                  config=config,
                                  network_code=network_code)
     
