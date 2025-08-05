@@ -7,7 +7,7 @@ app = "adcp-sales-agent"
 primary_region = "iad"
 
 [build]
-  dockerfile = "Dockerfile.fly.simple"
+  dockerfile = "Dockerfile.fly"
 
 # Single service configuration
 [[services]]

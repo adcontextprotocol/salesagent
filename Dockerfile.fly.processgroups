@@ -1,0 +1,64 @@
+# Fly.io optimized Dockerfile for AdCP Sales Agent with Process Groups
+FROM python:3.12-slim AS builder
+
+# Install build dependencies
+RUN apt-get update && apt-get install -y \
+    gcc \
+    libpq-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install uv
+RUN pip install uv
+
+# Set up caching for uv
+ENV UV_CACHE_DIR=/cache/uv
+ENV UV_TOOL_DIR=/cache/uv-tools
+ENV UV_PYTHON_PREFERENCE=only-system
+
+# Copy project files
+WORKDIR /app
+COPY pyproject.toml uv.lock ./
+
+# Install dependencies
+RUN --mount=type=cache,target=/cache/uv \
+    --mount=type=cache,target=/root/.cache/pip \
+    uv sync --frozen
+
+# Runtime stage
+FROM python:3.12-slim
+
+# Install runtime dependencies
+RUN apt-get update && apt-get install -y \
+    libpq5 \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# Copy virtual environment from builder
+COPY --from=builder /app/.venv /app/.venv
+
+# Copy application code
+COPY . .
+
+# Add .venv to PATH
+ENV PATH="/app/.venv/bin:$PATH"
+ENV PYTHONUNBUFFERED=1
+
+# Fly.io specific environment
+ENV ADCP_SALES_PORT=8080
+ENV ADMIN_UI_PORT=8001
+
+# Create entrypoint script for Fly.io with process group support
+RUN echo '#!/bin/bash\nset -e\n\n# Create required directories\nmkdir -p /data/logs /data/uploads\n\n# Run migrations only for MCP process\nif [ "$FLY_PROCESS_GROUP" = "mcp" ]; then\n    echo "Running database migrations..."\n    python migrate.py || echo "Migration failed, continuing..."\nfi\n\n# Check FLY_PROCESS_GROUP and run appropriate service\nif [ "$FLY_PROCESS_GROUP" = "admin" ]; then\n    echo "Starting Admin UI on port 8001..."\n    exec python admin_ui.py\nelse\n    echo "Starting MCP Server on port 8080..."\n    # Use run_server.py which handles the proper binding\n    exec python run_server.py\nfi' > /app/fly-entrypoint.sh && \
+    chmod +x /app/fly-entrypoint.sh
+
+# Health check will be different per process
+HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
+    CMD if [ "$FLY_PROCESS_GROUP" = "admin" ]; then curl -f http://localhost:8001/health || exit 1; else curl -f http://localhost:8080/health || exit 1; fi
+
+# Expose both ports
+EXPOSE 8080 8001
+
+# Use the fly-specific entrypoint
+CMD ["/app/fly-entrypoint.sh"]
