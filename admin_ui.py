@@ -6,14 +6,19 @@ import secrets
 import json
 import os
 import uuid
+import logging
 from datetime import datetime, timezone
 from functools import wraps
 from authlib.integrations.flask_client import OAuth
 from db_config import get_db_connection
 from validation import FormValidator, validate_form_data, sanitize_form_data
 
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+
 app = Flask(__name__)
 app.secret_key = os.environ.get('FLASK_SECRET_KEY', secrets.token_hex(32))
+app.logger.setLevel(logging.INFO)
 
 # Import schemas after Flask app is created
 from schemas import Principal
@@ -635,15 +640,15 @@ def tenant_detail(tenant_id):
             # Convert row to dict based on adapter type
             if active_adapter == 'google_ad_manager':
                 adapter_config = {
-                    'network_code': adapter_row[2],  # gam_network_code
-                    'refresh_token': adapter_row[3],  # gam_refresh_token
-                    'company_id': adapter_row[4],     # gam_company_id
-                    'trafficker_id': adapter_row[5],  # gam_trafficker_id
-                    'manual_approval_required': adapter_row[6]  # gam_manual_approval_required
+                    'network_code': adapter_row[3],  # gam_network_code (after mock_dry_run)
+                    'refresh_token': adapter_row[4],  # gam_refresh_token
+                    'company_id': adapter_row[5],     # gam_company_id
+                    'trafficker_id': adapter_row[6],  # gam_trafficker_id
+                    'manual_approval_required': adapter_row[7]  # gam_manual_approval_required
                 }
             elif active_adapter == 'mock':
                 adapter_config = {
-                    'dry_run': adapter_row[1]  # mock_dry_run
+                    'dry_run': adapter_row[2]  # mock_dry_run (position 2)
                 }
             # Add other adapters as needed
     
@@ -1415,6 +1420,12 @@ def setup_adapter(tenant_id):
             """, (tenant_id, mapped_adapter, False))
         
         elif adapter_type == 'gam':
+            # Log the form data for debugging
+            app.logger.info(f"GAM setup for tenant {tenant_id}")
+            app.logger.info(f"Form data: network_code={request.form.get('network_code')}, "
+                          f"company_id={request.form.get('company_id')}, "
+                          f"trafficker_id={request.form.get('trafficker_id')}")
+            
             conn.execute("""
                 INSERT INTO adapter_config (
                     tenant_id, adapter_type, gam_network_code, gam_refresh_token,
@@ -1572,44 +1583,67 @@ def test_gam_connection():
         temp_config = TempConfig(refresh_token)
         
         # Test by creating credentials and making a simple API call
-        from google.oauth2.credentials import Credentials
-        from google.auth.transport.requests import Request
-        import google.ads.ad_manager
+        from googleads import oauth2, ad_manager
         
-        credentials = Credentials(
-            token=None,
-            refresh_token=refresh_token,
-            token_uri='https://oauth2.googleapis.com/token',
+        # Create GoogleAds OAuth2 client with refresh token
+        oauth2_client = oauth2.GoogleRefreshTokenClient(
             client_id=oauth_config['client_id'],
             client_secret=oauth_config['client_secret'],
-            scopes=['https://www.googleapis.com/auth/dfp']
+            refresh_token=refresh_token
         )
         
-        # Refresh the token to test if it's valid
+        # Test if credentials are valid by trying to refresh
         try:
-            credentials.refresh(Request())
+            # This will attempt to refresh the token
+            oauth2_client.Refresh()
         except Exception as e:
             return jsonify({"error": f"Invalid refresh token: {str(e)}"}), 400
         
         # Initialize GAM client to get network info
-        client = google.ads.ad_manager.GoogleAdManagerClient(
-            oauth2_credentials=credentials,
-            application_name="AdCP-Sales-Agent-Setup"
+        # Note: We don't need to specify network_code for getAllNetworks call
+        client = ad_manager.AdManagerClient(
+            oauth2_client,
+            "AdCP-Sales-Agent-Setup"
         )
         
         # Get network service
         network_service = client.GetService('NetworkService', version='v202408')
         
-        # Get current network(s) user has access to
+        # Get all networks user has access to
         try:
-            current_network = network_service.getCurrentNetwork()
-            networks = [{
-                "id": current_network['id'],
-                "displayName": current_network['displayName'],
-                "networkCode": current_network['networkCode']
-            }]
+            # Try to get all networks first
+            app.logger.info("Attempting to call getAllNetworks()")
+            all_networks = network_service.getAllNetworks()
+            app.logger.info(f"getAllNetworks() returned: {all_networks}")
+            networks = []
+            if all_networks:
+                app.logger.info(f"Processing {len(all_networks)} networks")
+                for network in all_networks:
+                    app.logger.info(f"Network data: {network}")
+                    networks.append({
+                        "id": network['id'],
+                        "displayName": network['displayName'],
+                        "networkCode": network['networkCode']
+                    })
+            else:
+                app.logger.info("getAllNetworks() returned empty/None")
+        except AttributeError as e:
+            # getAllNetworks might not be available, fall back to getCurrentNetwork
+            app.logger.info(f"getAllNetworks not available (AttributeError: {e}), falling back to getCurrentNetwork")
+            try:
+                current_network = network_service.getCurrentNetwork()
+                app.logger.info(f"getCurrentNetwork() returned: {current_network}")
+                networks = [{
+                    "id": current_network['id'],
+                    "displayName": current_network['displayName'],
+                    "networkCode": current_network['networkCode']
+                }]
+            except Exception as e:
+                app.logger.error(f"Failed to get network info: {e}")
+                networks = []
         except Exception as e:
-            # User might have access to multiple networks
+            app.logger.error(f"Failed to get networks: {e}")
+            app.logger.exception("Full exception details:")
             networks = []
         
         result = {
@@ -1621,29 +1655,45 @@ def test_gam_connection():
         # If we got a network, fetch companies and users
         if networks:
             try:
+                # Reinitialize client with network code for subsequent calls
+                network_code = networks[0]['networkCode']
+                app.logger.info(f"Reinitializing client with network code: {network_code}")
+                
+                client = ad_manager.AdManagerClient(
+                    oauth2_client,
+                    "AdCP-Sales-Agent-Setup",
+                    network_code=network_code
+                )
+                
                 # Get company service for advertisers
                 company_service = client.GetService('CompanyService', version='v202408')
                 
                 # Build a statement to get advertisers
-                from google.ads.ad_manager import StatementBuilder
-                statement_builder = StatementBuilder()
+                from googleads import ad_manager as gam_utils
+                statement_builder = gam_utils.StatementBuilder()
                 statement_builder.Where('type = :type')
                 statement_builder.WithBindVariable('type', 'ADVERTISER')
                 statement_builder.Limit(100)
                 
                 # Get companies
+                app.logger.info("Calling getCompaniesByStatement for ADVERTISER companies")
                 response = company_service.getCompaniesByStatement(
                     statement_builder.ToStatement()
                 )
+                app.logger.info(f"getCompaniesByStatement response: {response}")
                 
                 companies = []
                 if response and hasattr(response, 'results'):
+                    app.logger.info(f"Found {len(response.results)} companies")
                     for company in response.results:
+                        app.logger.info(f"Company: id={company.id}, name={company.name}, type={company.type}")
                         companies.append({
                             "id": company.id,
                             "name": company.name,
                             "type": company.type
                         })
+                else:
+                    app.logger.info("No companies found in response")
                 
                 result['companies'] = companies
                 
