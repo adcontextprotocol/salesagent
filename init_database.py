@@ -44,18 +44,36 @@ def init_db():
         # Create default tenant
         conn.execute("""
             INSERT INTO tenants (
-                tenant_id, name, subdomain, config,
-                created_at, updated_at, is_active, billing_plan
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                tenant_id, name, subdomain,
+                created_at, updated_at, is_active, billing_plan,
+                ad_server, max_daily_budget, enable_aee_signals,
+                admin_token, human_review_required, auto_approve_formats
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
             "default",
             "Default Publisher",
             "localhost",  # Works with localhost:8080
-            json.dumps(default_config),
             datetime.now().isoformat(),
             datetime.now().isoformat(),
             True,  # Boolean works for both SQLite and PostgreSQL
-            "standard"
+            "standard",
+            "mock",  # ad_server
+            10000,  # max_daily_budget
+            True,  # enable_aee_signals
+            admin_token,  # admin_token
+            True,  # human_review_required
+            json.dumps(["display_300x250", "display_728x90", "display_320x50"])  # auto_approve_formats
+        ))
+        
+        # Create adapter config for mock adapter
+        conn.execute("""
+            INSERT INTO adapter_config (
+                tenant_id, adapter_type, mock_dry_run
+            ) VALUES (?, ?, ?)
+        """, (
+            "default",
+            "mock",
+            False
         ))
         
         # Only create sample advertisers if this is a development environment
