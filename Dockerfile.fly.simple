@@ -1,0 +1,55 @@
+# Simple Fly.io Dockerfile for AdCP Sales Agent
+FROM python:3.12-slim
+
+# Install dependencies
+RUN apt-get update && apt-get install -y \
+    libpq5 \
+    curl \
+    gcc \
+    libpq-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Python packages
+RUN pip install uv
+
+WORKDIR /app
+
+# Copy and install dependencies
+COPY pyproject.toml uv.lock ./
+RUN uv sync
+
+# Copy application
+COPY . .
+
+# Add .venv to PATH
+ENV PATH="/app/.venv/bin:$PATH"
+ENV PYTHONUNBUFFERED=1
+
+# Fly.io environment
+ENV ADCP_SALES_PORT=8080
+ENV ADMIN_UI_PORT=8001
+
+# Create startup script
+RUN echo '#!/bin/bash\n\
+set -e\n\
+\n\
+# Run migrations\n\
+python migrate.py || echo "Migration failed, continuing..."\n\
+\n\
+# Start services in background\n\
+python run_server.py &\n\
+python admin_ui.py &\n\
+\n\
+# Wait for services to start\n\
+sleep 5\n\
+\n\
+# Start proxy\n\
+exec python fly-proxy.py' > /app/start.sh && chmod +x /app/start.sh
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
+    CMD curl -f http://localhost:8080/health || exit 1
+
+EXPOSE 8080
+
+CMD ["/app/start.sh"]

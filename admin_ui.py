@@ -608,6 +608,11 @@ def tenant_root(tenant_id):
         return redirect(url_for('tenant_detail', tenant_id=tenant_id))
     return redirect(url_for('tenant_login', tenant_id=tenant_id))
 
+@app.route('/health')
+def health():
+    """Health check endpoint for monitoring."""
+    return "OK", 200
+
 @app.route('/')
 @require_auth()
 def index():
