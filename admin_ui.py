@@ -27,7 +27,7 @@ from schemas import Principal
 from superadmin_api import superadmin_api
 app.register_blueprint(superadmin_api)
 
-# Configure for being mounted at different paths
+# Configure for being mounted at different paths and proxy headers
 class ProxyFix:
     def __init__(self, app):
         self.app = app
@@ -40,6 +40,15 @@ class ProxyFix:
             path_info = environ['PATH_INFO']
             if path_info.startswith(script_name):
                 environ['PATH_INFO'] = path_info[len(script_name):]
+        
+        # Handle proxy headers for correct URL generation
+        if environ.get('HTTP_X_FORWARDED_HOST'):
+            environ['HTTP_HOST'] = environ['HTTP_X_FORWARDED_HOST']
+        if environ.get('HTTP_X_FORWARDED_PROTO'):
+            environ['wsgi.url_scheme'] = environ['HTTP_X_FORWARDED_PROTO']
+        if environ.get('HTTP_X_FORWARDED_PORT'):
+            environ['SERVER_PORT'] = environ['HTTP_X_FORWARDED_PORT']
+            
         return self.app(environ, start_response)
 
 app.wsgi_app = ProxyFix(app.wsgi_app)
@@ -149,17 +158,88 @@ def parse_json_config(config_str):
     else:
         return {}
 
+def get_tenant_config_from_db(conn, tenant_id):
+    """Build tenant config from individual database columns."""
+    cursor = conn.execute("""
+        SELECT ad_server, max_daily_budget, enable_aee_signals,
+               authorized_emails, authorized_domains, slack_webhook_url,
+               slack_audit_webhook_url, hitl_webhook_url, admin_token,
+               auto_approve_formats, human_review_required, policy_settings
+        FROM tenants WHERE tenant_id = ?
+    """, (tenant_id,))
+    
+    row = cursor.fetchone()
+    if not row:
+        return None
+    
+    # Build config object from columns
+    config = {
+        'adapters': {},
+        'features': {
+            'max_daily_budget': row[1] or 10000,
+            'enable_aee_signals': bool(row[2])
+        },
+        'creative_engine': {
+            'human_review_required': bool(row[10])
+        }
+    }
+    
+    # Add adapter configuration
+    if row[0]:  # ad_server
+        # Get adapter-specific config from adapter_config table
+        adapter_cursor = conn.execute(
+            "SELECT * FROM adapter_config WHERE tenant_id = ? AND adapter_type = ?",
+            (tenant_id, row[0])
+        )
+        adapter_row = adapter_cursor.fetchone()
+        
+        adapter_config = {'enabled': True}
+        if adapter_row:
+            # TODO: Map adapter-specific fields based on adapter type
+            pass
+        
+        config['adapters'][row[0]] = adapter_config
+    
+    # Add optional fields
+    if row[3]:  # authorized_emails
+        config['authorized_emails'] = json.loads(row[3]) if isinstance(row[3], str) else row[3]
+    if row[4]:  # authorized_domains
+        config['authorized_domains'] = json.loads(row[4]) if isinstance(row[4], str) else row[4]
+    if row[5]:  # slack_webhook_url
+        config['features']['slack_webhook_url'] = row[5]
+    if row[6]:  # slack_audit_webhook_url
+        config['features']['slack_audit_webhook_url'] = row[6]
+    if row[7]:  # hitl_webhook_url
+        config['features']['hitl_webhook_url'] = row[7]
+    if row[8]:  # admin_token
+        config['admin_token'] = row[8]
+    if row[9]:  # auto_approve_formats
+        config['creative_engine']['auto_approve_formats'] = json.loads(row[9]) if isinstance(row[9], str) else row[9]
+    if row[11]:  # policy_settings
+        config['policy_settings'] = json.loads(row[11]) if isinstance(row[11], str) else row[11]
+    
+    return config
+
 def is_super_admin(email):
     """Check if email is authorized as super admin."""
+    # Debug logging
+    app.logger.info(f"Checking super admin for email: {email}")
+    app.logger.info(f"SUPER_ADMIN_EMAILS: {SUPER_ADMIN_EMAILS}")
+    app.logger.info(f"SUPER_ADMIN_DOMAINS: {SUPER_ADMIN_DOMAINS}")
+    
     # Check explicit email list
     if email in SUPER_ADMIN_EMAILS:
+        app.logger.info(f"Email {email} found in SUPER_ADMIN_EMAILS")
         return True
     
     # Check domain
     domain = email.split('@')[1] if '@' in email else ''
+    app.logger.info(f"Email domain: {domain}")
     if domain and domain in SUPER_ADMIN_DOMAINS:
+        app.logger.info(f"Domain {domain} found in SUPER_ADMIN_DOMAINS")
         return True
     
+    app.logger.info(f"Email {email} is not a super admin")
     return False
 
 def is_tenant_admin(email, tenant_id=None):
@@ -273,23 +353,163 @@ def tenant_google_auth(tenant_id):
     """Initiate Google OAuth flow for specific tenant."""
     # Store tenant_id in session for callback
     session['oauth_tenant_id'] = tenant_id
-    redirect_uri = url_for('tenant_google_callback', tenant_id=tenant_id, _external=True)
+    # Use the centralized callback for all OAuth flows
+    redirect_uri = url_for('google_callback', _external=True)
     return google.authorize_redirect(redirect_uri)
 
 @app.route('/auth/google/callback')
 def google_callback():
-    """Handle Google OAuth callback for super admin."""
+    """Handle Google OAuth callback for both super admin and tenant users."""
     try:
         token = google.authorize_access_token()
         user_info = token.get('userinfo')
         
         if not user_info:
+            # Check if this was a tenant-specific login attempt
+            oauth_tenant_id = session.pop('oauth_tenant_id', None)
+            if oauth_tenant_id:
+                return redirect(url_for('tenant_login', tenant_id=oauth_tenant_id))
             return redirect(url_for('login'))
         
         email = user_info.get('email')
         if not email:
-            return render_template('login.html', error='No email address provided by Google', tenant_id=None)
+            oauth_tenant_id = session.pop('oauth_tenant_id', None)
+            return render_template('login.html', 
+                                 error='No email address provided by Google', 
+                                 tenant_id=oauth_tenant_id)
         
+        app.logger.info(f"OAuth callback received email: {email}")
+        
+        # Check if this is a tenant-specific login attempt
+        oauth_tenant_id = session.pop('oauth_tenant_id', None)
+        
+        if oauth_tenant_id:
+            # Tenant-specific authentication flow
+            conn = get_db_connection()
+            
+            # First check if user is in the users table for this tenant
+            cursor = conn.execute("""
+                SELECT u.user_id, u.role, u.name, t.name as tenant_name, u.is_active
+                FROM users u
+                JOIN tenants t ON u.tenant_id = t.tenant_id
+                WHERE u.email = ? AND u.tenant_id = ?
+            """, (email, oauth_tenant_id))
+            user_row = cursor.fetchone()
+            
+            # Update last login if user exists
+            if user_row:
+                user_id, user_role, user_name, tenant_name, is_active = user_row
+                
+                if not is_active:
+                    conn.close()
+                    return render_template('login.html', 
+                                         error='Your account has been disabled',
+                                         tenant_id=oauth_tenant_id)
+                
+                # Update last login and Google ID
+                conn.execute("""
+                    UPDATE users 
+                    SET last_login = ?, google_id = ?
+                    WHERE user_id = ?
+                """, (datetime.now().isoformat(), user_info.get('sub'), user_id))
+                conn.connection.commit()
+                conn.close()
+                
+                session['authenticated'] = True
+                session['role'] = user_role  # Use actual user role from DB
+                session['user_id'] = user_id
+                session['tenant_id'] = oauth_tenant_id
+                session['tenant_name'] = tenant_name
+                session['email'] = email
+                session['username'] = user_name or user_info.get('name', email)
+                
+                # Redirect to originally requested URL if stored
+                next_url = session.pop('next_url', None)
+                if next_url:
+                    return redirect(next_url)
+                return redirect(url_for('tenant_detail', tenant_id=oauth_tenant_id))
+            
+            # If not in users table, check legacy tenant admin config
+            if is_tenant_admin(email, oauth_tenant_id):
+                # Get tenant name for session
+                cursor = conn.execute("SELECT name FROM tenants WHERE tenant_id = ?", (oauth_tenant_id,))
+                tenant = cursor.fetchone()
+                conn.close()
+                
+                session['authenticated'] = True
+                session['role'] = 'tenant_admin'  # Legacy role
+                session['tenant_id'] = oauth_tenant_id
+                session['tenant_name'] = tenant[0] if tenant else oauth_tenant_id
+                session['email'] = email
+                session['username'] = user_info.get('name', email)
+                
+                # Redirect to originally requested URL if stored
+                next_url = session.pop('next_url', None)
+                if next_url:
+                    return redirect(next_url)
+                return redirect(url_for('tenant_detail', tenant_id=oauth_tenant_id))
+            
+            # Check if super admin trying to access tenant
+            if is_super_admin(email):
+                # Get tenant name for session
+                cursor = conn.execute("SELECT name FROM tenants WHERE tenant_id = ?", (oauth_tenant_id,))
+                tenant = cursor.fetchone()
+                conn.close()
+                
+                session['authenticated'] = True
+                session['role'] = 'super_admin'
+                session['email'] = email
+                session['username'] = user_info.get('name', email)
+                
+                if tenant:
+                    session['tenant_name'] = tenant[0]
+                
+                # Super admin can access any tenant
+                # Redirect to originally requested URL if stored
+                next_url = session.pop('next_url', None)
+                if next_url:
+                    return redirect(next_url)
+                return redirect(url_for('tenant_detail', tenant_id=oauth_tenant_id))
+            
+            # Fall back to checking tenant config
+            config = get_tenant_config_from_db(conn, oauth_tenant_id)
+            conn.close()
+            
+            if config:
+                # Check if user is authorized for this tenant
+                authorized_emails = config.get('authorized_emails', [])
+                authorized_domains = config.get('authorized_domains', [])
+                
+                domain = email.split('@')[1] if '@' in email else None
+                
+                if email in authorized_emails or (domain and domain in authorized_domains):
+                    session['authenticated'] = True
+                    session['role'] = 'tenant_user'
+                    session['tenant_id'] = oauth_tenant_id
+                    session['email'] = email
+                    session['username'] = user_info.get('name', email)
+                    
+                    # Get tenant name
+                    conn = get_db_connection()
+                    cursor = conn.execute("SELECT name FROM tenants WHERE tenant_id = ?", (oauth_tenant_id,))
+                    tenant = cursor.fetchone()
+                    conn.close()
+                    
+                    if tenant:
+                        session['tenant_name'] = tenant[0]
+                    
+                    # Redirect to originally requested URL if stored
+                    next_url = session.pop('next_url', None)
+                    if next_url:
+                        return redirect(next_url)
+                    return redirect(url_for('tenant_detail', tenant_id=oauth_tenant_id))
+            
+            # Not authorized for this tenant
+            return render_template('login.html', 
+                                 error=f'Email {email} is not authorized for this tenant',
+                                 tenant_id=oauth_tenant_id)
+        
+        # Standard super admin flow (no tenant_id in session)
         # Check if super admin
         if is_super_admin(email):
             session['authenticated'] = True
@@ -333,116 +553,12 @@ def google_callback():
         
     except Exception as e:
         app.logger.error(f"OAuth callback error: {e}")
-        return render_template('login.html', error='Authentication failed', tenant_id=None)
+        oauth_tenant_id = session.pop('oauth_tenant_id', None)
+        return render_template('login.html', 
+                             error='Authentication failed', 
+                             tenant_id=oauth_tenant_id)
 
-@app.route('/tenant/<tenant_id>/auth/google/callback')
-def tenant_google_callback(tenant_id):
-    """Handle Google OAuth callback for specific tenant."""
-    try:
-        token = google.authorize_access_token()
-        user_info = token.get('userinfo')
-        
-        if not user_info:
-            return redirect(url_for('tenant_login', tenant_id=tenant_id))
-        
-        email = user_info.get('email')
-        if not email:
-            return render_template('login.html', 
-                                 error='No email address provided by Google',
-                                 tenant_id=tenant_id)
-        
-        # First check if user is in the users table for this tenant
-        conn = get_db_connection()
-        cursor = conn.execute("""
-            SELECT u.user_id, u.role, u.name, t.name as tenant_name, u.is_active
-            FROM users u
-            JOIN tenants t ON u.tenant_id = t.tenant_id
-            WHERE u.email = ? AND u.tenant_id = ?
-        """, (email, tenant_id))
-        user_row = cursor.fetchone()
-        
-        # Update last login if user exists
-        if user_row:
-            user_id, user_role, user_name, tenant_name, is_active = user_row
-            
-            if not is_active:
-                conn.close()
-                return render_template('login.html', 
-                                     error='Your account has been disabled',
-                                     tenant_id=tenant_id)
-            
-            # Update last login and Google ID
-            conn.execute("""
-                UPDATE users 
-                SET last_login = ?, google_id = ?
-                WHERE user_id = ?
-            """, (datetime.now().isoformat(), user_info.get('sub'), user_id))
-            conn.connection.commit()
-            conn.close()
-            
-            session['authenticated'] = True
-            session['role'] = user_role  # Use actual user role from DB
-            session['user_id'] = user_id
-            session['tenant_id'] = tenant_id
-            session['tenant_name'] = tenant_name
-            session['email'] = email
-            session['username'] = user_name or user_info.get('name', email)
-            session.pop('oauth_tenant_id', None)  # Clean up
-            
-            # Redirect to originally requested URL if stored
-            next_url = session.pop('next_url', None)
-            if next_url:
-                return redirect(next_url)
-            return redirect(url_for('tenant_detail', tenant_id=tenant_id))
-        
-        # If not in users table, check legacy tenant admin config
-        if is_tenant_admin(email, tenant_id):
-            # Get tenant name for session
-            cursor = conn.execute("SELECT name FROM tenants WHERE tenant_id = ?", (tenant_id,))
-            tenant = cursor.fetchone()
-            conn.close()
-            
-            session['authenticated'] = True
-            session['role'] = 'tenant_admin'  # Legacy role
-            session['tenant_id'] = tenant_id
-            session['tenant_name'] = tenant[0] if tenant else tenant_id
-            session['email'] = email
-            session['username'] = user_info.get('name', email)
-            session.pop('oauth_tenant_id', None)  # Clean up
-            
-            # Redirect to originally requested URL if stored
-            next_url = session.pop('next_url', None)
-            if next_url:
-                return redirect(next_url)
-            return redirect(url_for('tenant_detail', tenant_id=tenant_id))
-        
-        conn.close()
-        
-        # Check if super admin trying to access tenant
-        if is_super_admin(email):
-            session['authenticated'] = True
-            session['role'] = 'super_admin'
-            session['email'] = email
-            session['username'] = user_info.get('name', email)
-            session.pop('oauth_tenant_id', None)  # Clean up
-            
-            # Super admin can access any tenant
-            # Redirect to originally requested URL if stored
-            next_url = session.pop('next_url', None)
-            if next_url:
-                return redirect(next_url)
-            return redirect(url_for('tenant_detail', tenant_id=tenant_id))
-        
-        # Not authorized for this tenant
-        return render_template('login.html', 
-                             error=f'Email {email} is not authorized to access this tenant',
-                             tenant_id=tenant_id)
-        
-    except Exception as e:
-        app.logger.error(f"OAuth callback error: {e}")
-        return render_template('login.html', 
-                             error='Authentication failed',
-                             tenant_id=tenant_id)
+# Removed tenant-specific callback - now handled by the centralized callback
 
 @app.route('/auth/select-tenant', methods=['POST'])
 def select_tenant():
@@ -611,6 +727,11 @@ def tenant_root(tenant_id):
     if session.get('authenticated'):
         return redirect(url_for('tenant_detail', tenant_id=tenant_id))
     return redirect(url_for('tenant_login', tenant_id=tenant_id))
+
+@app.route('/health')
+def health():
+    """Health check endpoint for monitoring."""
+    return "OK", 200
 
 @app.route('/')
 @require_auth()
@@ -1485,12 +1606,9 @@ def get_adapter_inventory_schema(tenant_id, adapter_name):
     try:
         # Get tenant config to instantiate adapter
         conn = get_db_connection()
-        cursor = conn.execute("SELECT config FROM tenants WHERE tenant_id = ?", (tenant_id,))
-        row = cursor.fetchone()
-        if not row:
+        config_data = get_tenant_config_from_db(conn, tenant_id)
+        if not config_data:
             return jsonify({"error": "Tenant not found"}), 404
-        
-        config_data = row[0]
         # PostgreSQL returns JSONB as dict, SQLite returns string
         tenant_config = config_data if isinstance(config_data, dict) else json.loads(config_data)
         adapter_config = tenant_config.get('adapters', {}).get(adapter_name, {})
@@ -1694,8 +1812,8 @@ def create_principal(tenant_id):
     return render_template('create_principal.html', tenant_id=tenant_id)
 
 @app.route('/api/health')
-def health():
-    """Health check endpoint."""
+def api_health():
+    """API health check endpoint."""
     try:
         conn = get_db_connection()
         conn.execute("SELECT 1")
@@ -2079,10 +2197,9 @@ def add_product(tenant_id):
                 implementation_config = {}
             
             # Build implementation config based on adapter
-            cursor = conn.execute("SELECT config FROM tenants WHERE tenant_id = ?", (tenant_id,))
-            config_data = cursor.fetchone()[0]
-            # PostgreSQL returns JSONB as dict, SQLite returns string
-            tenant_config = config_data if isinstance(config_data, dict) else json.loads(config_data)
+            tenant_config = get_tenant_config_from_db(conn, tenant_id)
+            if not tenant_config:
+                return jsonify({"error": "Tenant not found"}), 404
             
             # Handle regular form submission fields if not from AI
             if not ai_config:
@@ -2346,11 +2463,10 @@ def get_product_templates(tenant_id):
         
         # Get tenant's industry from config
         conn = get_db_connection()
-        cursor = conn.execute("SELECT config FROM tenants WHERE tenant_id = ?", (tenant_id,))
-        config_row = cursor.fetchone()
+        config = get_tenant_config_from_db(conn, tenant_id)
         conn.close()
         
-        if not config_row:
+        if not config:
             return jsonify({"error": "Tenant not found"}), 404
         
         config = config_row[0] if isinstance(config_row[0], dict) else json.loads(config_row[0])
@@ -2597,9 +2713,9 @@ def update_policy_settings(tenant_id):
         conn = get_db_connection()
         
         # Get current config
-        cursor = conn.execute("SELECT config FROM tenants WHERE tenant_id = ?", (tenant_id,))
-        config_str = cursor.fetchone()[0]
-        config = parse_json_config(config_str)
+        config = get_tenant_config_from_db(conn, tenant_id)
+        if not config:
+            return jsonify({"error": "Tenant not found"}), 404
         
         # Parse the form data for lists
         def parse_textarea_lines(field_name):
@@ -3482,12 +3598,9 @@ def analyze_ad_server_inventory(tenant_id):
         conn = get_db_connection()
         
         # Get tenant config to determine adapter
-        cursor = conn.execute("SELECT config FROM tenants WHERE tenant_id = ?", (tenant_id,))
-        config_row = cursor.fetchone()
-        if not config_row:
+        config = get_tenant_config_from_db(conn, tenant_id)
+        if not config:
             return jsonify({"error": "Tenant not found"}), 404
-        
-        config = config_row[0] if isinstance(config_row[0], dict) else json.loads(config_row[0])
         
         # Find enabled adapter
         adapter_type = None
@@ -3660,17 +3773,18 @@ def register_adapter_routes():
         print("Starting adapter route registration...")
         # Get all enabled adapters across all tenants
         conn = get_db_connection()
-        cursor = conn.execute("SELECT config FROM tenants")
+        cursor = conn.execute("SELECT tenant_id, ad_server FROM tenants WHERE ad_server IS NOT NULL")
         
         registered_adapters = set()
         for row in cursor.fetchall():
-            print(f"Processing row: {type(row)}")
-            # Handle both tuple (PostgreSQL) and Row object (SQLite)
-            config_data = row[0] if isinstance(row, tuple) else row['config']
-            print(f"Config data type: {type(config_data)}")
-            # PostgreSQL returns JSONB as dict, SQLite returns string
-            tenant_config = config_data if isinstance(config_data, dict) else json.loads(config_data)
-            print(f"Tenant config type: {type(tenant_config)}")
+            tenant_id = row[0]
+            ad_server = row[1]
+            print(f"Processing tenant {tenant_id} with adapter {ad_server}")
+            
+            tenant_config = get_tenant_config_from_db(conn, tenant_id)
+            if not tenant_config:
+                continue
+                
             adapters_config = tenant_config.get('adapters', {})
             
             for adapter_name, adapter_config in adapters_config.items():
