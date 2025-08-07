@@ -429,6 +429,209 @@ Each tenant has a JSON config in the database:
 }
 ```
 
+## Fly.io Deployment
+
+### Overview
+
+The AdCP Sales Agent can be deployed to Fly.io with a single-machine architecture that runs all services (MCP server, Admin UI, and proxy) on one VM. This deployment uses:
+
+- **Proxy Architecture**: A lightweight aiohttp proxy (port 8000) routes requests to internal services
+- **MCP Server**: FastMCP server running on internal port 8080
+- **Admin UI**: Flask application running on internal port 8001
+- **PostgreSQL**: Managed PostgreSQL cluster on Fly.io
+- **Persistent Volume**: 1GB volume mounted at `/data` for file storage
+
+### Architecture Diagram
+
+```
+Internet
+    ↓
+Fly.io Edge (ports 80/443)
+    ↓
+Proxy (port 8000)
+    ├── /mcp/* → MCP Server (8080)
+    ├── /admin, /auth, /api, /static → Admin UI (8001)
+    └── / → redirect to /admin
+```
+
+### Prerequisites
+
+1. **Fly.io CLI**: Install from https://fly.io/docs/flyctl/install/
+2. **Fly.io Account**: Sign up at https://fly.io
+3. **Google OAuth Credentials**: For Admin UI authentication
+4. **Gemini API Key**: For AI features
+
+### Initial Setup
+
+1. **Clone and navigate to the repository**:
+   ```bash
+   git clone https://github.com/adcontextprotocol/salesagent.git
+   cd salesagent
+   ```
+
+2. **Login to Fly.io**:
+   ```bash
+   fly auth login
+   ```
+
+3. **Create the app**:
+   ```bash
+   fly apps create adcp-sales-agent
+   ```
+
+4. **Create PostgreSQL cluster**:
+   ```bash
+   fly postgres create --name adcp-db --region iad --initial-cluster-size 1 --vm-size shared-cpu-1x --volume-size 10
+   fly postgres attach adcp-db --app adcp-sales-agent
+   ```
+
+5. **Create persistent volume**:
+   ```bash
+   fly volumes create adcp_data --region iad --size 1
+   ```
+
+6. **Set required secrets**:
+   ```bash
+   # OAuth configuration
+   fly secrets set GOOGLE_CLIENT_ID="your-client-id.apps.googleusercontent.com"
+   fly secrets set GOOGLE_CLIENT_SECRET="your-client-secret"
+   
+   # Admin configuration
+   fly secrets set SUPER_ADMIN_EMAILS="admin1@example.com,admin2@example.com"
+   fly secrets set SUPER_ADMIN_DOMAINS="example.com"
+   
+   # API keys
+   fly secrets set GEMINI_API_KEY="your-gemini-api-key"
+   ```
+
+7. **Configure OAuth redirect URI**:
+   
+   In your Google Cloud Console, add this redirect URI:
+   ```
+   https://adcp-sales-agent.fly.dev/auth/google/callback
+   ```
+   
+   This single URI handles both super admin and tenant-specific authentication.
+
+8. **Deploy the application**:
+   ```bash
+   fly deploy
+   ```
+
+### How It Works
+
+#### Single OAuth Redirect URI
+
+The system uses a consolidated OAuth callback that handles multiple authentication flows:
+
+1. **Super Admin Login** (`/login`):
+   - Initiates OAuth flow
+   - Callback checks if email is in `SUPER_ADMIN_EMAILS` or domain in `SUPER_ADMIN_DOMAINS`
+   - Grants full system access
+
+2. **Tenant Login** (`/tenant/<tenant_id>/login`):
+   - Stores `tenant_id` in session before OAuth
+   - Callback retrieves `tenant_id` from session
+   - Checks user authorization for specific tenant
+   - Grants tenant-specific access
+
+#### Proxy Configuration
+
+The `fly-proxy.py` handles:
+- **Request Routing**: Routes based on path prefixes
+- **SSE Support**: Streams Server-Sent Events for MCP protocol
+- **Header Forwarding**: Adds X-Forwarded-* headers for proper URL generation
+- **Path Rewriting**: Strips `/admin` prefix when routing to Admin UI
+
+#### Service Management
+
+The deployment uses `debug_start.sh` which:
+1. Runs database migrations
+2. Starts MCP server and Admin UI as background processes
+3. Waits for services to be healthy
+4. Starts the proxy as the main process
+
+### Accessing the Deployment
+
+- **Admin UI**: https://adcp-sales-agent.fly.dev/admin
+- **MCP Endpoint**: https://adcp-sales-agent.fly.dev/mcp/
+- **Health Check**: https://adcp-sales-agent.fly.dev/health
+
+### Using with MCP Inspector
+
+```bash
+# Install MCP Inspector
+npm install -g @modelcontextprotocol/inspector
+
+# Connect to your deployed server
+npx inspector https://adcp-sales-agent.fly.dev/mcp/
+```
+
+You'll need to add the `x-adcp-auth` header with a valid token.
+
+### Monitoring and Logs
+
+```bash
+# View real-time logs
+fly logs
+
+# Check app status
+fly status
+
+# SSH into the machine
+fly ssh console
+
+# View specific service logs inside machine
+fly ssh console -C "tail -f /tmp/mcp_server.log"
+fly ssh console -C "tail -f /tmp/admin_ui.log"
+```
+
+### Updating the Deployment
+
+```bash
+# Make your changes
+git add -A
+git commit -m "Your changes"
+
+# Deploy updates
+fly deploy
+
+# If you need to update secrets
+fly secrets set KEY="new-value"
+```
+
+### Scaling Considerations
+
+The current setup runs all services on a single machine. For production scaling:
+
+1. **Horizontal Scaling**: Use `Dockerfile.fly.processgroups` for multi-machine setup
+2. **Database Scaling**: Upgrade PostgreSQL cluster size
+3. **Volume Scaling**: Increase volume size as needed
+4. **Region Scaling**: Add more regions for global availability
+
+### Troubleshooting
+
+1. **502 Errors**: Check if all services started correctly:
+   ```bash
+   fly ssh console -C "ps aux | grep python"
+   ```
+
+2. **OAuth Issues**: Ensure redirect URI is exactly:
+   ```
+   https://adcp-sales-agent.fly.dev/auth/google/callback
+   ```
+
+3. **Database Connection**: Verify DATABASE_URL is set:
+   ```bash
+   fly ssh console -C "env | grep DATABASE_URL"
+   ```
+
+4. **Service Health**: Check individual service health:
+   ```bash
+   fly ssh console -C "curl http://localhost:8080/health"
+   fly ssh console -C "curl http://localhost:8001/health"
+   ```
+
 ## Common Operations
 
 ### Running the Server (Docker - Recommended)

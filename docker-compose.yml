@@ -57,7 +57,7 @@ services:
       ADMIN_UI_PORT: ${ADMIN_UI_PORT:-8003}
       FLASK_APP: admin_ui.py
       FLASK_ENV: production
-      FLASK_DEBUG: 0
+      FLASK_DEBUG: ${FLASK_DEBUG:-0}
       # Gemini API key (required for AI features)
       GEMINI_API_KEY: ${GEMINI_API_KEY}
       # Super admin authorization (set these via .env file)
