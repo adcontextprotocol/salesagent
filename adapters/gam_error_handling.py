@@ -287,16 +287,22 @@ def with_retry(
                         time.sleep(delay)
                     else:
                         # Don't retry - log and raise
+                        error_dict = gam_error.to_dict()
+                        # Remove 'message' key to avoid conflict with logging system
+                        error_dict.pop('message', None)
                         logger.error(
                             f"{op_name} failed with {gam_error.error_type.value}: {str(gam_error)}",
-                            extra=gam_error.to_dict()
+                            extra=error_dict
                         )
                         raise gam_error
             
             # All retries exhausted
+            error_dict = last_exception.to_dict() if last_exception else {}
+            # Remove 'message' key to avoid conflict with logging system
+            error_dict.pop('message', None)
             logger.error(
                 f"{op_name} failed after {retry_config.max_attempts} attempts",
-                extra=last_exception.to_dict() if last_exception else {}
+                extra=error_dict
             )
             raise last_exception
             

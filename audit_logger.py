@@ -140,17 +140,10 @@ class AuditLogger:
             if tenant_id:
                 try:
                     conn = get_db_connection()
-                    cursor = conn.execute("SELECT name, config FROM tenants WHERE tenant_id = ?", (tenant_id,))
+                    cursor = conn.execute("SELECT name FROM tenants WHERE tenant_id = ?", (tenant_id,))
                     result = cursor.fetchone()
                     if result:
-                        tenant_name = result[0]
-                        # Handle both string and dict config
-                        config_data = result[1]
-                        if isinstance(config_data, str):
-                            import json
-                            tenant_config = json.loads(config_data)
-                        else:
-                            tenant_config = config_data
+                        tenant_name = result['name']
                     conn.close()
                 except:
                     pass

@@ -340,7 +340,7 @@ async def get_products(req: GetProductsRequest, context: Context) -> GetProducts
     policy_result = await policy_service.check_brief_compliance(
         brief=req.brief,
         promoted_offering=req.promoted_offering,
-        tenant_policies=tenant.get('config', {}).get('policy_settings')  # TODO: Move to database
+        tenant_policies=json.loads(tenant.get('policy_settings') or '{}') if tenant.get('policy_settings') else None
     )
     
     # Log the policy check
@@ -359,7 +359,7 @@ async def get_products(req: GetProductsRequest, context: Context) -> GetProducts
     )
     
     # Handle policy result based on settings
-    policy_settings = tenant.get('config', {}).get('policy_settings', {})  # TODO: Move to database
+    policy_settings = json.loads(tenant.get('policy_settings') or '{}') if tenant.get('policy_settings') else {}
     
     if policy_result.status == PolicyStatus.BLOCKED:
         # Always block if policy says blocked
@@ -409,7 +409,7 @@ async def get_products(req: GetProductsRequest, context: Context) -> GetProducts
     # Get the product catalog provider for this tenant
     provider = await get_product_catalog_provider(
         tenant['tenant_id'],
-        tenant['config']
+        {}  # Config is no longer needed for provider initialization
     )
     
     # Query products using the brief
@@ -693,7 +693,7 @@ def submit_creatives(req: SubmitCreativesRequest, context: Context) -> SubmitCre
                 notifier_config = {
                     'features': {
                         'slack_webhook_url': tenant.get('slack_webhook_url'),
-                        'slack_audit_webhook_url': tenant['config'].get('features', {}).get('slack_audit_webhook_url')  # TODO: Move to database
+                        'slack_audit_webhook_url': tenant.get('slack_audit_webhook_url')
                     }
                 }
                 slack_notifier = get_slack_notifier(notifier_config)
@@ -1697,7 +1697,7 @@ def create_human_task(req: CreateHumanTaskRequest, context: Context) -> CreateHu
     
     # Send webhook notification for urgent tasks (if configured)
     tenant = get_current_tenant()
-    webhook_url = tenant['config'].get("features", {}).get("hitl_webhook_url")  # TODO: Move to database
+    webhook_url = tenant.get("hitl_webhook_url")
     if webhook_url and req.priority == "urgent":
         try:
             import requests
@@ -1718,7 +1718,7 @@ def create_human_task(req: CreateHumanTaskRequest, context: Context) -> CreateHu
         notifier_config = {
             'features': {
                 'slack_webhook_url': tenant.get('slack_webhook_url'),
-                'slack_audit_webhook_url': tenant['config'].get('features', {}).get('slack_audit_webhook_url')  # TODO: Move to database
+                'slack_audit_webhook_url': tenant.get('slack_audit_webhook_url')
             }
         }
         slack_notifier = get_slack_notifier(notifier_config)
@@ -1902,7 +1902,7 @@ def complete_task(req: CompleteTaskRequest, context: Context) -> Dict[str, str]:
         notifier_config = {
             'features': {
                 'slack_webhook_url': tenant.get('slack_webhook_url'),
-                'slack_audit_webhook_url': tenant['config'].get('features', {}).get('slack_audit_webhook_url')  # TODO: Move to database
+                'slack_audit_webhook_url': tenant.get('slack_audit_webhook_url')
             }
         }
         slack_notifier = get_slack_notifier(notifier_config)

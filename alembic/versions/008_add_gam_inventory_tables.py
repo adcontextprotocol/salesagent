@@ -1,7 +1,7 @@
 """Add GAM inventory tables
 
-Revision ID: 003
-Revises: 002
+Revision ID: 008_add_gam_inventory_tables
+Revises: 007_remove_config_json_column
 Create Date: 2025-01-28
 
 """
@@ -10,8 +10,8 @@ import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
 
 # revision identifiers, used by Alembic.
-revision = '003'
-down_revision = '002'
+revision = '008_add_gam_inventory_tables'
+down_revision = '007_remove_config_json_column'
 branch_labels = None
 depends_on = None
 

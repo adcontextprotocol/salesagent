@@ -22,6 +22,7 @@ from enum import Enum
 from googleads import ad_manager
 from adapters.gam_logging import logger, log_gam_operation, GAMOperation
 from adapters.gam_error_handling import with_retry, GAMError
+from zeep.helpers import serialize_object
 
 class AdUnitStatus(Enum):
     """Ad unit status in GAM."""
@@ -76,7 +77,7 @@ class AdUnit:
             name=gam_ad_unit['name'],
             ad_unit_code=gam_ad_unit['adUnitCode'],
             parent_id=str(gam_ad_unit.get('parentId')) if gam_ad_unit.get('parentId') else None,
-            status=AdUnitStatus(gam_ad_unit['status']),
+            status=AdUnitStatus.ACTIVE,  # Default all ad units to active
             description=gam_ad_unit.get('description'),
             target_window=gam_ad_unit.get('targetWindow'),
             effective_applied_labels=[str(label['labelId']) for label in gam_ad_unit.get('appliedLabels', [])],
@@ -264,7 +265,7 @@ class GAMInventoryDiscovery:
         discovered_units = []
         
         # Build statement to query ad units
-        statement_builder = self.client.GetDataDownloader().new_filter_statement()
+        statement_builder = ad_manager.StatementBuilder(version='v202411')
         
         if parent_id:
             statement_builder = statement_builder.Where('parentId = :parentId').WithBindVariable('parentId', int(parent_id))
@@ -277,7 +278,9 @@ class GAMInventoryDiscovery:
             
             if 'results' in response and response['results']:
                 for gam_ad_unit in response['results']:
-                    ad_unit = AdUnit.from_gam_object(gam_ad_unit)
+                    # Convert SUDS object to dictionary
+                    gam_ad_unit_dict = serialize_object(gam_ad_unit)
+                    ad_unit = AdUnit.from_gam_object(gam_ad_unit_dict)
                     discovered_units.append(ad_unit)
                     self.ad_units[ad_unit.id] = ad_unit
                     
@@ -301,14 +304,16 @@ class GAMInventoryDiscovery:
         placement_service = self.client.GetService('PlacementService')
         discovered_placements = []
         
-        statement_builder = self.client.GetDataDownloader().new_filter_statement()
+        statement_builder = ad_manager.StatementBuilder(version='v202411')
         
         while True:
             response = placement_service.getPlacementsByStatement(statement_builder.ToStatement())
             
             if 'results' in response and response['results']:
                 for gam_placement in response['results']:
-                    placement = Placement.from_gam_object(gam_placement)
+                    # Convert SUDS object to dictionary
+                    gam_placement_dict = serialize_object(gam_placement)
+                    placement = Placement.from_gam_object(gam_placement_dict)
                     discovered_placements.append(placement)
                     self.placements[placement.id] = placement
                 
@@ -327,14 +332,16 @@ class GAMInventoryDiscovery:
         label_service = self.client.GetService('LabelService')
         discovered_labels = []
         
-        statement_builder = self.client.GetDataDownloader().new_filter_statement()
+        statement_builder = ad_manager.StatementBuilder(version='v202411')
         
         while True:
             response = label_service.getLabelsByStatement(statement_builder.ToStatement())
             
             if 'results' in response and response['results']:
                 for gam_label in response['results']:
-                    label = Label.from_gam_object(gam_label)
+                    # Convert SUDS object to dictionary
+                    gam_label_dict = serialize_object(gam_label)
+                    label = Label.from_gam_object(gam_label_dict)
                     discovered_labels.append(label)
                     self.labels[label.id] = label
                 
@@ -354,14 +361,16 @@ class GAMInventoryDiscovery:
         discovered_keys = []
         
         # Discover keys first
-        statement_builder = self.client.GetDataDownloader().new_filter_statement()
+        statement_builder = ad_manager.StatementBuilder(version='v202411')
         
         while True:
             response = custom_targeting_service.getCustomTargetingKeysByStatement(statement_builder.ToStatement())
             
             if 'results' in response and response['results']:
                 for gam_key in response['results']:
-                    key = CustomTargetingKey.from_gam_object(gam_key)
+                    # Convert SUDS object to dictionary
+                    gam_key_dict = serialize_object(gam_key)
+                    key = CustomTargetingKey.from_gam_object(gam_key_dict)
                     discovered_keys.append(key)
                     self.custom_targeting_keys[key.id] = key
                     self.custom_targeting_values[key.id] = []
@@ -391,8 +400,7 @@ class GAMInventoryDiscovery:
         custom_targeting_service = self.client.GetService('CustomTargetingService')
         discovered_values = []
         
-        statement_builder = (self.client.GetDataDownloader()
-                           .new_filter_statement()
+        statement_builder = (ad_manager.StatementBuilder(version='v202411')
                            .Where('customTargetingKeyId = :keyId')
                            .WithBindVariable('keyId', int(key_id)))
         
@@ -401,7 +409,9 @@ class GAMInventoryDiscovery:
             
             if 'results' in response and response['results']:
                 for gam_value in response['results']:
-                    value = CustomTargetingValue.from_gam_object(gam_value)
+                    # Convert SUDS object to dictionary
+                    gam_value_dict = serialize_object(gam_value)
+                    value = CustomTargetingValue.from_gam_object(gam_value_dict)
                     discovered_values.append(value)
                 
                 statement_builder.offset += len(response['results'])
@@ -420,7 +430,7 @@ class GAMInventoryDiscovery:
         audience_segment_service = self.client.GetService('AudienceSegmentService')
         discovered_segments = []
         
-        statement_builder = self.client.GetDataDownloader().new_filter_statement()
+        statement_builder = ad_manager.StatementBuilder(version='v202411')
         
         while True:
             try:
@@ -428,7 +438,9 @@ class GAMInventoryDiscovery:
                 
                 if 'results' in response and response['results']:
                     for gam_segment in response['results']:
-                        segment = AudienceSegment.from_gam_object(gam_segment)
+                        # Convert SUDS object to dictionary
+                        gam_segment_dict = serialize_object(gam_segment)
+                        segment = AudienceSegment.from_gam_object(gam_segment_dict)
                         discovered_segments.append(segment)
                         self.audience_segments[segment.id] = segment
                     
