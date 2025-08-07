@@ -40,6 +40,22 @@
         </div>
     </div>
 
+    <!-- Inventory Explanation -->
+    <div class="row mt-3">
+        <div class="col-12">
+            <div class="alert alert-info">
+                <h6 class="alert-heading">Understanding Inventory Types</h6>
+                <ul class="mb-0">
+                    <li><strong>Ad Units</strong> - The actual ad slots where ads are displayed (e.g., homepage banner, article sidebar)</li>
+                    <li><strong>Placements</strong> - Groups of ad units that can be targeted together</li>
+                    <li><strong>Custom Targeting</strong> - Key-value pairs for precise ad targeting (e.g., content_type=sports, user_segment=premium)</li>
+                    <li><strong>Labels</strong> - Tags for organizing and categorizing inventory</li>
+                </ul>
+                <small class="d-block mt-2">The "All Inventory" view shows everything, while "Ad Units" filters to just the ad slots.</small>
+            </div>
+        </div>
+    </div>
+
     <!-- Search and Filters -->
     <div class="row mt-4">
         <div class="col-12">
@@ -211,12 +227,26 @@ let inventoryTree = null;
 
 // Initialize on page load
 document.addEventListener('DOMContentLoaded', function() {
+    // Check for URL parameters to pre-filter
+    const urlParams = new URLSearchParams(window.location.search);
+    const typeParam = urlParams.get('type');
+    if (typeParam) {
+        document.getElementById('inventoryType').value = typeParam;
+    }
+    
     loadInventoryStatus();
     loadAdUnitTree();
+    
+    // If type is specified, do initial search
+    if (typeParam) {
+        searchInventory();
+    }
 });
 
 function loadInventoryStatus() {
-    fetch(`/api/tenant/${tenantId}/inventory/tree`)
+    fetch(`/api/tenant/${tenantId}/inventory/tree`, {
+        credentials: 'same-origin'
+    })
         .then(response => response.json())
         .then(data => {
             const syncStatus = document.getElementById('syncStatus');
@@ -224,11 +254,26 @@ function loadInventoryStatus() {
             
             if (data.last_sync) {
                 const lastSync = new Date(data.last_sync);
-                const hoursAgo = Math.floor((Date.now() - lastSync) / (1000 * 60 * 60));
+                const now = new Date();
+                const diffMs = now - lastSync;
+                const diffMins = Math.floor(diffMs / (1000 * 60));
+                const diffHours = Math.floor(diffMins / 60);
+                const diffDays = Math.floor(diffHours / 24);
+                
+                let timeAgo;
+                if (diffDays > 0) {
+                    timeAgo = `${diffDays} day${diffDays > 1 ? 's' : ''} ago`;
+                } else if (diffHours > 0) {
+                    timeAgo = `${diffHours} hour${diffHours > 1 ? 's' : ''} ago`;
+                } else if (diffMins > 0) {
+                    timeAgo = `${diffMins} minute${diffMins > 1 ? 's' : ''} ago`;
+                } else {
+                    timeAgo = 'just now';
+                }
                 
                 syncStatus.innerHTML = `
                     Last synced: ${lastSync.toLocaleString()}
-                    <span class="text-muted">(${hoursAgo} hours ago)</span>
+                    <span class="text-muted">(${timeAgo})</span>
                     ${data.needs_refresh ? '<span class="badge bg-warning ms-2">Needs Refresh</span>' : ''}
                 `;
             } else {
@@ -255,7 +300,10 @@ function syncInventory() {
     btn.disabled = true;
     btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Syncing...';
     
-    fetch(`/api/tenant/${tenantId}/inventory/sync`, { method: 'POST' })
+    fetch(`/api/tenant/${tenantId}/inventory/sync`, { 
+        method: 'POST',
+        credentials: 'same-origin'
+    })
         .then(response => response.json())
         .then(data => {
             if (data.error) {
@@ -435,7 +483,9 @@ function searchInventory() {
     if (type) params.append('type', type);
     if (status) params.append('status', status);
     
-    fetch(`/api/tenant/${tenantId}/inventory/search?${params}`)
+    fetch(`/api/tenant/${tenantId}/inventory/search?${params}`, {
+        credentials: 'same-origin'
+    })
         .then(response => response.json())
         .then(data => {
             showSearchResults(data.results);

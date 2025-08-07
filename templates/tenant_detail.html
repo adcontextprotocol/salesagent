@@ -70,6 +70,18 @@
                 {% endif %}
             </div>
         </div>
+        
+        {% if tenant.ad_server == 'google_ad_manager' %}
+        <div>
+            <strong style="color: #666; font-size: 0.9em;">Inventory Sync</strong>
+            <div style="margin-top: 0.5rem;" id="sync-status">
+                <span class="text-muted">Loading...</span>
+            </div>
+            <button onclick="triggerSync('{{ tenant.tenant_id }}')" class="btn btn-small" style="margin-top: 0.5rem;" id="sync-button">
+                Sync Now
+            </button>
+        </div>
+        {% endif %}
     </div>
     
     <div style="margin-top: 1.5rem; padding-top: 1rem; border-top: 1px solid #e0e0e0; display: flex; justify-content: space-between; align-items: center; color: #666; font-size: 0.85em;">
@@ -136,7 +148,8 @@
     <div class="tab" data-tab="integrations">Integrations</div>
     <div class="tab" data-tab="tokens">API Tokens</div>
     {% if tenant.active_adapter == 'google_ad_manager' %}
-    <a href="/tenant/{{ tenant.tenant_id }}/inventory" class="tab" style="text-decoration: none; color: inherit;">Inventory →</a>
+    <a href="/tenant/{{ tenant.tenant_id }}/inventory?type=ad_unit" class="tab" style="text-decoration: none; color: inherit;">Ad Units →</a>
+    <a href="/tenant/{{ tenant.tenant_id }}/inventory" class="tab" style="text-decoration: none; color: inherit;">All Inventory →</a>
     <a href="/tenant/{{ tenant.tenant_id }}/targeting" class="tab" style="text-decoration: none; color: inherit;">Targeting →</a>
     {% endif %}
     <a href="/tenant/{{ tenant.tenant_id }}/operations" class="tab" style="text-decoration: none; color: inherit;">Operations →</a>
@@ -979,5 +992,117 @@ function testSlack() {
         messageDiv.textContent = '❌ Error: ' + error;
     });
 }
+
+// Load sync status for GAM tenants
+{% if tenant.ad_server == 'google_ad_manager' %}
+function loadSyncStatus() {
+    // Get the API key from superadmin config
+    fetch('/api/tenant/{{ tenant.tenant_id }}/sync/status', {
+        credentials: 'same-origin'
+    })
+        .then(response => response.json())
+        .then(data => {
+            const statusDiv = document.getElementById('sync-status');
+            
+            if (data.last_sync) {
+                const lastSync = new Date(data.last_sync);
+                const now = new Date();
+                const diffMs = now - lastSync;
+                const diffMins = Math.floor(diffMs / (1000 * 60));
+                const diffHours = Math.floor(diffMins / 60);
+                const diffDays = Math.floor(diffHours / 24);
+                
+                let timeAgo;
+                if (diffDays > 0) {
+                    timeAgo = `${diffDays} day${diffDays > 1 ? 's' : ''} ago`;
+                } else if (diffHours > 0) {
+                    timeAgo = `${diffHours} hour${diffHours > 1 ? 's' : ''} ago`;
+                } else if (diffMins > 0) {
+                    timeAgo = `${diffMins} minute${diffMins > 1 ? 's' : ''} ago`;
+                } else {
+                    timeAgo = 'just now';
+                }
+                
+                let statusHtml = `<span style="font-size: 0.9em;">`;
+                
+                if (data.sync_running) {
+                    statusHtml += `<span class="text-info">🔄 Syncing...</span>`;
+                } else if (diffHours > 24) {
+                    statusHtml += `<span class="text-warning">⚠️ ${timeAgo}</span>`;
+                } else {
+                    statusHtml += `<span class="text-success">✓ ${timeAgo}</span>`;
+                }
+                
+                if (data.item_count) {
+                    statusHtml += `<br><small class="text-muted">${data.item_count.toLocaleString()} total inventory items</small>`;
+                    
+                    // Show breakdown if available
+                    if (data.breakdown) {
+                        statusHtml += `<br><small class="text-muted" style="font-size: 0.8em;">`;
+                        if (data.breakdown.ad_units) statusHtml += `${data.breakdown.ad_units} ad units, `;
+                        if (data.breakdown.custom_targeting_keys) statusHtml += `${data.breakdown.custom_targeting_keys} targeting keys, `;
+                        if (data.breakdown.custom_targeting_values) statusHtml += `${data.breakdown.custom_targeting_values} targeting values`;
+                        statusHtml += `</small>`;
+                    }
+                }
+                
+                statusHtml += `</span>`;
+                statusDiv.innerHTML = statusHtml;
+            } else {
+                statusDiv.innerHTML = '<span class="text-warning">Never synced</span>';
+            }
+        })
+        .catch(error => {
+            console.error('Failed to load sync status:', error);
+            document.getElementById('sync-status').innerHTML = '<span class="text-muted">Unable to load</span>';
+        });
+}
+
+// Trigger manual sync
+function triggerSync(tenantId) {
+    const button = document.getElementById('sync-button');
+    const statusDiv = document.getElementById('sync-status');
+    
+    // Disable button and show loading
+    button.disabled = true;
+    button.textContent = 'Syncing...';
+    statusDiv.innerHTML = '<span class="text-info">🔄 Starting sync...</span>';
+    
+    fetch(`/api/tenant/${tenantId}/sync/trigger`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        credentials: 'same-origin'
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            statusDiv.innerHTML = '<span class="text-success">✓ Sync started</span>';
+            // Reload sync status after a delay
+            setTimeout(() => {
+                loadSyncStatus();
+                button.disabled = false;
+                button.textContent = 'Sync Now';
+            }, 2000);
+        } else {
+            statusDiv.innerHTML = `<span class="text-danger">✗ ${data.error || 'Sync failed'}</span>`;
+            button.disabled = false;
+            button.textContent = 'Sync Now';
+        }
+    })
+    .catch(error => {
+        console.error('Sync error:', error);
+        statusDiv.innerHTML = '<span class="text-danger">✗ Failed to start sync</span>';
+        button.disabled = false;
+        button.textContent = 'Sync Now';
+    });
+}
+
+// Load sync status on page load
+document.addEventListener('DOMContentLoaded', function() {
+    loadSyncStatus();
+});
+{% endif %}
 </script>
 {% endblock %}
