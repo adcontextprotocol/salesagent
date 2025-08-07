@@ -619,9 +619,15 @@ def index():
     # Super admins see all tenants
     conn = get_db_connection()
     cursor = conn.execute("""
-        SELECT tenant_id, name, subdomain, is_active, created_at
-        FROM tenants
-        ORDER BY created_at DESC
+        SELECT t.tenant_id, t.name, t.subdomain, t.is_active, t.created_at, t.ad_server,
+               s.completed_at as last_sync, s.status as sync_status, s.summary
+        FROM tenants t
+        LEFT JOIN (
+            SELECT tenant_id, completed_at, status, summary,
+                   ROW_NUMBER() OVER (PARTITION BY tenant_id ORDER BY started_at DESC) as rn
+            FROM sync_jobs
+        ) s ON t.tenant_id = s.tenant_id AND s.rn = 1
+        ORDER BY t.created_at DESC
     """)
     tenants = []
     for row in cursor.fetchall():
@@ -633,15 +639,45 @@ def index():
             except:
                 pass
         
+        last_sync = row[6]
+        if last_sync and isinstance(last_sync, str):
+            try:
+                last_sync = datetime.fromisoformat(last_sync.replace('T', ' '))
+            except:
+                pass
+        
+        sync_summary = None
+        if row[8]:
+            try:
+                import json
+                sync_summary = json.loads(row[8])
+            except:
+                pass
+        
         tenants.append({
             'tenant_id': row[0],
             'name': row[1],
             'subdomain': row[2],
             'is_active': row[3],
-            'created_at': created_at
+            'created_at': created_at,
+            'ad_server': row[5],
+            'last_sync': last_sync,
+            'sync_status': row[7],
+            'sync_summary': sync_summary
         })
+    # Get superadmin API key if super admin
+    api_key = None
+    if session.get('role') == 'super_admin':
+        cursor = conn.execute("""
+            SELECT config_value FROM superadmin_config 
+            WHERE config_key = 'api_key'
+        """)
+        row = cursor.fetchone()
+        if row:
+            api_key = row[0]
+    
     conn.close()
-    return render_template('index.html', tenants=tenants)
+    return render_template('index.html', tenants=tenants, now=datetime.now(), superadmin_api_key=api_key)
 
 @app.route('/settings')
 @require_auth(admin_only=True)
@@ -1047,6 +1083,125 @@ def test_slack(tenant_id):
         return jsonify({"success": False, "error": str(e)})
 
 
+@app.route('/api/tenant/<tenant_id>/sync/trigger', methods=['POST'])
+@require_auth()
+def trigger_tenant_sync(tenant_id):
+    """Trigger sync for a tenant (admin only)."""
+    # Check access
+    if session.get('role') == 'tenant_admin' and session.get('tenant_id') != tenant_id:
+        return jsonify({'success': False, 'error': 'Access denied'}), 403
+    
+    if session.get('role') not in ['super_admin', 'tenant_admin', 'admin']:
+        return jsonify({'success': False, 'error': 'Admin access required'}), 403
+    
+    try:
+        # Import sync API functions
+        from sync_api import initialize_superadmin_api_key
+        import requests
+        
+        # Get or create API key
+        api_key = initialize_superadmin_api_key()
+        
+        # Trigger sync via internal API call
+        sync_response = requests.post(
+            f'http://localhost:{os.environ.get("ADMIN_UI_PORT", 8001)}/api/v1/sync/trigger/{tenant_id}',
+            headers={'X-API-Key': api_key},
+            json={'sync_type': 'full'},
+            timeout=60
+        )
+        
+        if sync_response.status_code == 200:
+            return jsonify({'success': True, 'message': 'Sync started successfully'})
+        else:
+            return jsonify({'success': False, 'error': 'Failed to start sync'}), 500
+    except Exception as e:
+        app.logger.error(f"Failed to trigger sync: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/tenant/<tenant_id>/sync/status')
+@require_auth()
+def get_tenant_sync_status(tenant_id):
+    """Get sync status for a tenant (for UI display)."""
+    # Check access
+    if session.get('role') != 'super_admin' and session.get('tenant_id') != tenant_id:
+        return jsonify({'error': 'Access denied'}), 403
+    
+    try:
+        from models import SyncJob, GAMInventory
+        from sqlalchemy.orm import scoped_session
+        from gam_inventory_service import SessionLocal
+        
+        db_session = scoped_session(SessionLocal)
+        db_session.remove()  # Start fresh
+        
+        # Get last completed sync
+        last_sync = db_session.query(SyncJob).filter(
+            SyncJob.tenant_id == tenant_id,
+            SyncJob.status == 'completed'
+        ).order_by(SyncJob.completed_at.desc()).first()
+        
+        # Check if sync is currently running
+        running_sync = db_session.query(SyncJob).filter(
+            SyncJob.tenant_id == tenant_id,
+            SyncJob.status.in_(['pending', 'running'])
+        ).first()
+        
+        # Get item count and breakdown by type
+        item_count = db_session.query(GAMInventory).filter_by(
+            tenant_id=tenant_id
+        ).count()
+        
+        # Get breakdown by inventory type
+        from sqlalchemy import func
+        breakdown_query = db_session.query(
+            GAMInventory.inventory_type,
+            func.count(GAMInventory.id).label('count')
+        ).filter(
+            GAMInventory.tenant_id == tenant_id,
+            GAMInventory.status != 'STALE'
+        ).group_by(
+            GAMInventory.inventory_type
+        ).all()
+        
+        breakdown = {}
+        for inv_type, count in breakdown_query:
+            # Map database types to display names
+            if inv_type == 'ad_unit':
+                breakdown['ad_units'] = count
+            elif inv_type == 'custom_targeting_key':
+                breakdown['custom_targeting_keys'] = count
+            elif inv_type == 'custom_targeting_value':
+                breakdown['custom_targeting_values'] = count
+            elif inv_type == 'placement':
+                breakdown['placements'] = count
+            elif inv_type == 'label':
+                breakdown['labels'] = count
+            elif inv_type == 'audience_segment':
+                breakdown['audience_segments'] = count
+        
+        response = {
+            'sync_running': running_sync is not None,
+            'item_count': item_count,
+            'breakdown': breakdown
+        }
+        
+        if last_sync:
+            response['last_sync'] = last_sync.completed_at.isoformat()
+            if last_sync.summary:
+                try:
+                    summary = json.loads(last_sync.summary)
+                    response['summary'] = summary
+                except:
+                    pass
+        
+        db_session.remove()
+        return jsonify(response), 200
+        
+    except Exception as e:
+        app.logger.error(f"Failed to get sync status: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
 @app.route('/create_tenant', methods=['GET', 'POST'])
 @require_auth(admin_only=True)
 def create_tenant():
@@ -1131,7 +1286,7 @@ def inventory_browser(tenant_id):
     
     # Get tenant info
     conn = get_db_connection()
-    cursor = conn.execute("SELECT * FROM tenants WHERE tenant_id = ?", (tenant_id,))
+    cursor = conn.execute("SELECT tenant_id, name, ad_server FROM tenants WHERE tenant_id = ?", (tenant_id,))
     tenant_row = cursor.fetchone()
     conn.close()
     
@@ -1139,18 +1294,23 @@ def inventory_browser(tenant_id):
         abort(404)
     
     # Convert row to dict
-    tenant = dict(tenant_row)
-    if tenant['config']:
-        tenant['config'] = json.loads(tenant['config'])
+    tenant = {
+        'tenant_id': tenant_row['tenant_id'],
+        'name': tenant_row['name'],
+        'ad_server': tenant_row['ad_server']
+    }
     
     # Check if GAM is enabled
-    gam_enabled = tenant['config'].get('adapters', {}).get('google_ad_manager', {}).get('enabled', False)
-    
-    if not gam_enabled:
+    if tenant['ad_server'] != 'google_ad_manager':
         flash('Google Ad Manager is not enabled for this tenant', 'warning')
         return redirect(url_for('tenant_detail', tenant_id=tenant_id))
     
     return render_template('inventory_browser.html', tenant=tenant)
+
+# Note: Inventory tree and search endpoints are provided by gam_inventory_service.py
+# The following routes are registered there:
+# - /api/tenant/<tenant_id>/inventory/tree 
+# - /api/tenant/<tenant_id>/inventory/search
 
 @app.route('/tenant/<tenant_id>/targeting')
 @require_auth()
@@ -1163,7 +1323,7 @@ def targeting_browser(tenant_id):
     # Get tenant info
     conn = get_db_connection()
     cursor = conn.execute("""
-        SELECT tenant_id, name, config
+        SELECT tenant_id, name, ad_server
         FROM tenants
         WHERE tenant_id = ?
     """, (tenant_id,))
@@ -1175,18 +1335,143 @@ def targeting_browser(tenant_id):
         abort(404)
     
     tenant = {
-        'tenant_id': tenant_row[0],
-        'name': tenant_row[1],
-        'config': json.loads(tenant_row[2]) if tenant_row[2] else {}
+        'tenant_id': tenant_row['tenant_id'],
+        'name': tenant_row['name'],
+        'ad_server': tenant_row['ad_server']
     }
     
     # Check if GAM is enabled
-    gam_config = tenant['config'].get('adapters', {}).get('google_ad_manager', {})
-    if not gam_config.get('enabled'):
+    if tenant['ad_server'] != 'google_ad_manager':
         flash('Google Ad Manager is not enabled for this tenant')
         return redirect(url_for('tenant_detail', tenant_id=tenant_id))
     
-    return render_template('targeting_browser.html', tenant=tenant)
+    return render_template('targeting_browser_simple.html', tenant=tenant)
+
+@app.route('/api/tenant/<tenant_id>/targeting/all')
+@require_auth()
+def get_all_targeting_data(tenant_id):
+    """Get all targeting data (custom targeting, audiences, labels) from database."""
+    app.logger.info(f"get_all_targeting_data called for tenant {tenant_id}")
+    app.logger.info(f"Session role: {session.get('role')}, Session tenant: {session.get('tenant_id')}")
+    
+    # Check access
+    if session.get('role') != 'super_admin' and session.get('tenant_id') != tenant_id:
+        app.logger.warning(f"Access denied for tenant {tenant_id}")
+        return jsonify({'error': 'Access denied'}), 403
+    
+    try:
+        # Use SQLAlchemy to query the data
+        from models import GAMInventory
+        from sqlalchemy.orm import scoped_session
+        from gam_inventory_service import SessionLocal
+        
+        db_session = scoped_session(SessionLocal)
+        
+        # Get custom targeting keys
+        custom_keys = db_session.query(GAMInventory).filter(
+            GAMInventory.tenant_id == tenant_id,
+            GAMInventory.inventory_type == 'custom_targeting_key',
+            GAMInventory.status != 'STALE'
+        ).all()
+        
+        # Get custom targeting values
+        custom_values = db_session.query(GAMInventory).filter(
+            GAMInventory.tenant_id == tenant_id,
+            GAMInventory.inventory_type == 'custom_targeting_value',
+            GAMInventory.status != 'STALE'
+        ).all()
+        
+        # Group values by key
+        values_by_key = {}
+        for value in custom_values:
+            key_id = value.inventory_metadata.get('custom_targeting_key_id') if value.inventory_metadata else None
+            if key_id:
+                if key_id not in values_by_key:
+                    values_by_key[key_id] = []
+                values_by_key[key_id].append({
+                    'id': value.inventory_id,
+                    'name': value.name,
+                    'display_name': value.name
+                })
+        
+        # Get audience segments
+        audiences = db_session.query(GAMInventory).filter(
+            GAMInventory.tenant_id == tenant_id,
+            GAMInventory.inventory_type == 'audience_segment',
+            GAMInventory.status != 'STALE'
+        ).all()
+        
+        # Get labels
+        labels = db_session.query(GAMInventory).filter(
+            GAMInventory.tenant_id == tenant_id,
+            GAMInventory.inventory_type == 'label',
+            GAMInventory.status != 'STALE'
+        ).all()
+        
+        # Get last sync info
+        from models import SyncJob
+        last_sync = db_session.query(SyncJob).filter(
+            SyncJob.tenant_id == tenant_id,
+            SyncJob.sync_type.in_(['full', 'incremental']),
+            SyncJob.status == 'completed'
+        ).order_by(SyncJob.completed_at.desc()).first()
+        
+        # Format the response to match frontend expectations
+        app.logger.info(f"Found {len(custom_keys)} custom keys for tenant {tenant_id}")
+        app.logger.info(f"Found {len(custom_values)} custom values for tenant {tenant_id}")
+        app.logger.info(f"Found {len(audiences)} audiences for tenant {tenant_id}")
+        app.logger.info(f"Found {len(labels)} labels for tenant {tenant_id}")
+        
+        result = {
+            'last_sync': last_sync.completed_at.isoformat() if last_sync else None,
+            'customKeys': [
+                {
+                    'id': key.inventory_id,
+                    'name': key.name,
+                    'display_name': key.inventory_metadata.get('display_name', key.name) if key.inventory_metadata else key.name,
+                    'type': key.inventory_metadata.get('type', 'PREDEFINED') if key.inventory_metadata else 'PREDEFINED',
+                    'metadata': {
+                        'reportable_type': key.inventory_metadata.get('reportable_type', '') if key.inventory_metadata else '',
+                        'values_count': len(values_by_key.get(key.inventory_id, []))
+                    }
+                }
+                for key in custom_keys
+            ],
+            'customValues': values_by_key,
+            'audiences': [
+                {
+                    'id': audience.inventory_id,
+                    'name': audience.name,
+                    'description': audience.inventory_metadata.get('description', '') if audience.inventory_metadata else '',
+                    'size': audience.inventory_metadata.get('size', 0) if audience.inventory_metadata else 0,
+                    'type': audience.inventory_metadata.get('type', 'UNKNOWN') if audience.inventory_metadata else 'UNKNOWN'
+                }
+                for audience in audiences
+            ],
+            'labels': [
+                {
+                    'id': label.inventory_id,
+                    'name': label.name,
+                    'label_type': label.inventory_metadata.get('label_type', 'N/A') if label.inventory_metadata else 'N/A',
+                    'ad_category': label.inventory_metadata.get('ad_category', 'N/A') if label.inventory_metadata else 'N/A',
+                    'is_active': label.inventory_metadata.get('is_active', False) if label.inventory_metadata else False,
+                    'description': label.inventory_metadata.get('description', '') if label.inventory_metadata else ''
+                }
+                for label in labels
+            ]
+        }
+        
+        db_session.remove()
+        
+        app.logger.info(f"Returning targeting data with {len(result['customKeys'])} keys")
+        app.logger.info(f"Result keys: {list(result.keys())}")
+        return jsonify(result)
+        
+    except Exception as e:
+        app.logger.error(f"Error fetching targeting data: {e}")
+        import traceback
+        app.logger.error(traceback.format_exc())
+        return jsonify({'error': str(e)}), 500
 
 @app.route('/tenant/<tenant_id>/product/<product_id>/inventory')
 @require_auth()
@@ -1629,20 +1914,12 @@ def get_adapter_inventory_schema(tenant_id, adapter_name):
         return jsonify({"error": "Access denied"}), 403
     
     try:
-        # Get tenant config to instantiate adapter
+        # Check if adapter is configured
         conn = get_db_connection()
-        cursor = conn.execute("SELECT config FROM tenants WHERE tenant_id = ?", (tenant_id,))
+        cursor = conn.execute("SELECT adapter_type FROM adapter_config WHERE tenant_id = ? AND adapter_type = ?", (tenant_id, adapter_name))
         row = cursor.fetchone()
         if not row:
-            return jsonify({"error": "Tenant not found"}), 404
-        
-        config_data = row[0]
-        # PostgreSQL returns JSONB as dict, SQLite returns string
-        tenant_config = config_data if isinstance(config_data, dict) else json.loads(config_data)
-        adapter_config = tenant_config.get('adapters', {}).get(adapter_name, {})
-        
-        if not adapter_config.get('enabled'):
-            return jsonify({"error": f"Adapter {adapter_name} is not enabled"}), 400
+            return jsonify({"error": f"Adapter {adapter_name} is not configured for this tenant"}), 404
         
         # Create a dummy principal for schema retrieval
         dummy_principal = Principal(
@@ -1769,7 +2046,34 @@ def setup_adapter(tenant_id):
         conn.connection.commit()
         conn.close()
         
-        flash('Ad server configuration updated successfully!', 'success')
+        # Trigger initial sync for GAM
+        if adapter_type == 'gam' and request.form.get('refresh_token'):
+            try:
+                # Import sync API functions
+                from sync_api import initialize_superadmin_api_key
+                import requests
+                
+                # Get or create API key
+                api_key = initialize_superadmin_api_key()
+                
+                # Trigger sync via internal API call
+                sync_response = requests.post(
+                    f'http://localhost:{os.environ.get("ADMIN_UI_PORT", 8001)}/api/v1/sync/trigger/{tenant_id}',
+                    headers={'X-API-Key': api_key},
+                    json={'sync_type': 'full'},
+                    timeout=60
+                )
+                
+                if sync_response.status_code == 200:
+                    flash('Ad server configuration updated and initial sync started!', 'success')
+                else:
+                    flash('Ad server configuration updated. You can manually sync from the tenant page.', 'success')
+            except Exception as e:
+                app.logger.error(f"Failed to trigger initial sync: {e}")
+                flash('Ad server configuration updated. You can manually sync from the tenant page.', 'success')
+        else:
+            flash('Ad server configuration updated successfully!', 'success')
+        
         return redirect(url_for('tenant_detail', tenant_id=tenant_id) + '#adserver')
     except Exception as e:
         conn.close()
@@ -2036,41 +2340,40 @@ def list_products(tenant_id):
     
     conn = get_db_connection()
     
-    # Get tenant and config
-    cursor = conn.execute("SELECT name, config FROM tenants WHERE tenant_id = ?", (tenant_id,))
+    # Get tenant name
+    cursor = conn.execute("SELECT name FROM tenants WHERE tenant_id = ?", (tenant_id,))
     row = cursor.fetchone()
-    tenant_name = row[0]
-    config_data = row[1]
-    # PostgreSQL returns JSONB as dict, SQLite returns string
-    tenant_config = config_data if isinstance(config_data, dict) else json.loads(config_data)
+    tenant_name = row['name']
+    
+    # Get active adapter from adapter_config table
+    adapter_cursor = conn.execute("SELECT adapter_type FROM adapter_config WHERE tenant_id = ?", (tenant_id,))
+    adapter_row = adapter_cursor.fetchone()
     
     # Get active adapter and its UI endpoint
     adapter_ui_endpoint = None
-    adapters = tenant_config.get('adapters', {})
-    for adapter_name, config in adapters.items():
-        if config.get('enabled'):
-            # Create dummy principal to get UI endpoint
-            dummy_principal = Principal(
-                tenant_id=tenant_id,
-                principal_id="ui_query",
-                name="UI Query",
-                access_token="",
-                platform_mappings={}
-            )
-            
-            try:
-                if adapter_name == 'google_ad_manager':
-                    from adapters.google_ad_manager import GoogleAdManager
-                    adapter = GoogleAdManager(config, dummy_principal, dry_run=True, tenant_id=tenant_id)
-                    adapter_ui_endpoint = adapter.get_config_ui_endpoint()
-                elif adapter_name == 'mock':
-                    from adapters.mock_ad_server import MockAdServer
-                    adapter = MockAdServer(config, dummy_principal, dry_run=True, tenant_id=tenant_id)
-                    adapter_ui_endpoint = adapter.get_config_ui_endpoint()
-                # Add other adapters as needed
-            except:
-                pass
-            break
+    if adapter_row:
+        adapter_name = adapter_row['adapter_type']
+        # Create dummy principal to get UI endpoint
+        dummy_principal = Principal(
+            tenant_id=tenant_id,
+            principal_id="ui_query",
+            name="UI Query",
+            access_token="",
+            platform_mappings={}
+        )
+        
+        try:
+            if adapter_name == 'google_ad_manager':
+                from adapters.google_ad_manager import GoogleAdManager
+                adapter = GoogleAdManager({}, dummy_principal, dry_run=True, tenant_id=tenant_id)
+                adapter_ui_endpoint = adapter.get_config_ui_endpoint()
+            elif adapter_name == 'mock':
+                from adapters.mock_ad_server import MockAdServer
+                adapter = MockAdServer({}, dummy_principal, dry_run=True, tenant_id=tenant_id)
+                adapter_ui_endpoint = adapter.get_config_ui_endpoint()
+            # Add other adapters as needed
+        except:
+            pass
     
     # Get products
     cursor = conn.execute("""
@@ -2182,16 +2485,12 @@ def edit_product_basic(tenant_id, product_id):
     }
     
     # Get tenant adapter
-    tenant_cursor = conn.execute("SELECT config FROM tenants WHERE tenant_id = ?", (tenant_id,))
-    tenant_row = tenant_cursor.fetchone()
+    tenant_cursor = conn.execute("SELECT adapter_type FROM adapter_config WHERE tenant_id = ?", (tenant_id,))
+    adapter_row = tenant_cursor.fetchone()
     tenant_adapter = None
-    if tenant_row and tenant_row['config']:
-        config = json.loads(tenant_row['config'])
-        # Find active adapter
-        for adapter_name in ['google_ad_manager', 'kevel', 'triton', 'mock']:
-            if config.get('adapters', {}).get(adapter_name, {}).get('enabled'):
-                tenant_adapter = 'gam' if adapter_name == 'google_ad_manager' else adapter_name
-                break
+    if adapter_row:
+        adapter_name = adapter_row['adapter_type']
+        tenant_adapter = 'gam' if adapter_name == 'google_ad_manager' else adapter_name
     
     conn.close()
     return render_template('edit_product.html', 
@@ -2237,11 +2536,10 @@ def add_product(tenant_id):
                 targeting_template = {}
                 implementation_config = {}
             
-            # Build implementation config based on adapter
-            cursor = conn.execute("SELECT config FROM tenants WHERE tenant_id = ?", (tenant_id,))
-            config_data = cursor.fetchone()[0]
-            # PostgreSQL returns JSONB as dict, SQLite returns string
-            tenant_config = config_data if isinstance(config_data, dict) else json.loads(config_data)
+            # Get the active adapter for this tenant
+            cursor = conn.execute("SELECT adapter_type FROM adapter_config WHERE tenant_id = ?", (tenant_id,))
+            adapter_row = cursor.fetchone()
+            active_adapter = adapter_row['adapter_type'] if adapter_row else None
             
             # Handle regular form submission fields if not from AI
             if not ai_config:
@@ -2503,17 +2801,9 @@ def get_product_templates(tenant_id):
     try:
         from default_products import get_industry_specific_products
         
-        # Get tenant's industry from config
-        conn = get_db_connection()
-        cursor = conn.execute("SELECT config FROM tenants WHERE tenant_id = ?", (tenant_id,))
-        config_row = cursor.fetchone()
-        conn.close()
-        
-        if not config_row:
-            return jsonify({"error": "Tenant not found"}), 404
-        
-        config = config_row[0] if isinstance(config_row[0], dict) else json.loads(config_row[0])
-        industry = config.get('industry', 'general')
+        # For now, default to 'general' industry since we don't have industry column
+        # TODO: Add industry column to tenants table if needed
+        industry = 'general'
         
         templates = get_industry_specific_products(industry)
         
@@ -2654,15 +2944,16 @@ def policy_settings(tenant_id):
     
     conn = get_db_connection()
     
-    # Get tenant info and config
-    cursor = conn.execute("SELECT name, config FROM tenants WHERE tenant_id = ?", (tenant_id,))
+    # Get tenant info and policy settings
+    cursor = conn.execute("SELECT name, policy_settings FROM tenants WHERE tenant_id = ?", (tenant_id,))
     tenant = cursor.fetchone()
     if not tenant:
         conn.close()
         return "Tenant not found", 404
     
-    tenant_name, config_str = tenant
-    config = parse_json_config(config_str)
+    tenant_name = tenant['name']
+    policy_settings = tenant['policy_settings']
+    config = policy_settings if isinstance(policy_settings, dict) else json.loads(policy_settings or '{}')
     
     # Define default policies that all publishers start with
     default_policies = {
@@ -2756,9 +3047,9 @@ def update_policy_settings(tenant_id):
         conn = get_db_connection()
         
         # Get current config
-        cursor = conn.execute("SELECT config FROM tenants WHERE tenant_id = ?", (tenant_id,))
-        config_str = cursor.fetchone()[0]
-        config = parse_json_config(config_str)
+        cursor = conn.execute("SELECT policy_settings FROM tenants WHERE tenant_id = ?", (tenant_id,))
+        policy_row = cursor.fetchone()
+        current_policy = policy_row['policy_settings'] if isinstance(policy_row['policy_settings'], dict) else json.loads(policy_row['policy_settings'] or '{}')
         
         # Parse the form data for lists
         def parse_textarea_lines(field_name):
@@ -2774,7 +3065,7 @@ def update_policy_settings(tenant_id):
             'prohibited_categories': parse_textarea_lines('prohibited_categories'),
             'prohibited_tactics': parse_textarea_lines('prohibited_tactics'),
             # Keep default policies (they don't change from form)
-            'default_prohibited_categories': config.get('policy_settings', {}).get('default_prohibited_categories', [
+            'default_prohibited_categories': current_policy.get('default_prohibited_categories', [
                 'illegal_content',
                 'hate_speech', 
                 'violence',
@@ -2782,7 +3073,7 @@ def update_policy_settings(tenant_id):
                 'misleading_health_claims',
                 'financial_scams'
             ]),
-            'default_prohibited_tactics': config.get('policy_settings', {}).get('default_prohibited_tactics', [
+            'default_prohibited_tactics': current_policy.get('default_prohibited_tactics', [
                 'targeting_children_under_13',
                 'discriminatory_targeting',
                 'deceptive_claims',
@@ -2791,14 +3082,12 @@ def update_policy_settings(tenant_id):
             ])
         }
         
-        config['policy_settings'] = policy_settings
-        
-        # Update database
+        # Update database with new policy settings
         conn.execute("""
             UPDATE tenants 
-            SET config = ?
+            SET policy_settings = ?
             WHERE tenant_id = ?
-        """, (json.dumps(config), tenant_id))
+        """, (json.dumps(policy_settings), tenant_id))
         
         conn.connection.commit()
         conn.close()
@@ -3640,22 +3929,11 @@ def analyze_ad_server_inventory(tenant_id):
     try:
         conn = get_db_connection()
         
-        # Get tenant config to determine adapter
-        cursor = conn.execute("SELECT config FROM tenants WHERE tenant_id = ?", (tenant_id,))
-        config_row = cursor.fetchone()
-        if not config_row:
-            return jsonify({"error": "Tenant not found"}), 404
+        # Get active adapter for tenant
+        cursor = conn.execute("SELECT adapter_type FROM adapter_config WHERE tenant_id = ?", (tenant_id,))
+        adapter_row = cursor.fetchone()
         
-        config = config_row[0] if isinstance(config_row[0], dict) else json.loads(config_row[0])
-        
-        # Find enabled adapter
-        adapter_type = None
-        adapter_config = None
-        for adapter, cfg in config.get('adapters', {}).items():
-            if cfg.get('enabled'):
-                adapter_type = adapter
-                adapter_config = cfg
-                break
+        adapter_type = adapter_row['adapter_type'] if adapter_row else None
         
         if not adapter_type:
             # Return mock data if no adapter configured
@@ -3817,56 +4095,46 @@ def register_adapter_routes():
     """Register UI routes from all available adapters."""
     try:
         print("Starting adapter route registration...")
-        # Get all enabled adapters across all tenants
+        # Get all unique adapter types across all tenants
         conn = get_db_connection()
-        cursor = conn.execute("SELECT config FROM tenants")
+        cursor = conn.execute("SELECT DISTINCT adapter_type FROM adapter_config")
         
         registered_adapters = set()
         for row in cursor.fetchall():
-            print(f"Processing row: {type(row)}")
-            # Handle both tuple (PostgreSQL) and Row object (SQLite)
-            config_data = row[0] if isinstance(row, tuple) else row['config']
-            print(f"Config data type: {type(config_data)}")
-            # PostgreSQL returns JSONB as dict, SQLite returns string
-            tenant_config = config_data if isinstance(config_data, dict) else json.loads(config_data)
-            print(f"Tenant config type: {type(tenant_config)}")
-            adapters_config = tenant_config.get('adapters', {})
-            
-            for adapter_name, adapter_config in adapters_config.items():
-                if adapter_config.get('enabled') and adapter_name not in registered_adapters:
-                    # Create a dummy principal for route registration
-                    dummy_principal = Principal(
-                        tenant_id="system",
-                        principal_id="route_registration",
-                        name="Route Registration",
-                        access_token="",
-                        platform_mappings={}
-                    )
-                    
-                    # Import and register adapter routes
-                    try:
-                        if adapter_name == 'google_ad_manager':
-                            print(f"Registering routes for {adapter_name}")
-                            print(f"Adapter config: {adapter_config}")
-                            from adapters.google_ad_manager import GoogleAdManager
-                            adapter = GoogleAdManager(adapter_config, dummy_principal, dry_run=True, tenant_id="system")
+            adapter_name = row['adapter_type']
+            if adapter_name not in registered_adapters:
+                # Create a dummy principal for route registration
+                dummy_principal = Principal(
+                    tenant_id="system",
+                    principal_id="route_registration",
+                    name="Route Registration",
+                    access_token="",
+                    platform_mappings={}
+                )
+                
+                # Import and register adapter routes
+                try:
+                    if adapter_name == 'google_ad_manager':
+                        print(f"Registering routes for {adapter_name}")
+                        from adapters.google_ad_manager import GoogleAdManager
+                        adapter = GoogleAdManager({}, dummy_principal, dry_run=True, tenant_id="system")
+                        adapter.register_ui_routes(app)
+                        registered_adapters.add(adapter_name)
+                    elif adapter_name == 'mock':
+                        print(f"Registering routes for {adapter_name}")
+                        from adapters.mock_ad_server import MockAdServer
+                        adapter = MockAdServer({}, dummy_principal, dry_run=True, tenant_id="system")
+                        adapter.register_ui_routes(app)
+                        registered_adapters.add(adapter_name)
+                    elif adapter_name == 'kevel':
+                        from adapters.kevel import KevelAdapter
+                        adapter = KevelAdapter({}, dummy_principal, dry_run=True)
+                        if hasattr(adapter, 'register_ui_routes'):
                             adapter.register_ui_routes(app)
                             registered_adapters.add(adapter_name)
-                        elif adapter_name == 'mock':
-                            print(f"Registering routes for {adapter_name}")
-                            from adapters.mock_ad_server import MockAdServer
-                            adapter = MockAdServer(adapter_config, dummy_principal, dry_run=True, tenant_id="system")
-                            adapter.register_ui_routes(app)
-                            registered_adapters.add(adapter_name)
-                        elif adapter_name == 'kevel':
-                            from adapters.kevel import KevelAdapter
-                            adapter = KevelAdapter(adapter_config, dummy_principal, dry_run=True)
-                            if hasattr(adapter, 'register_ui_routes'):
-                                adapter.register_ui_routes(app)
-                                registered_adapters.add(adapter_name)
-                        # Add other adapters as they implement UI routes
-                    except Exception as e:
-                        print(f"Warning: Failed to register routes for {adapter_name}: {e}")
+                    # Add other adapters as they implement UI routes
+                except Exception as e:
+                    print(f"Warning: Failed to register routes for {adapter_name}: {e}")
         
         conn.close()
         print(f"Registered UI routes for adapters: {', '.join(registered_adapters)}")
@@ -3878,6 +4146,14 @@ def register_adapter_routes():
 
 # Register adapter routes at module level (needed for import)
 register_adapter_routes()
+
+# Register sync API blueprint
+try:
+    from sync_api import sync_api
+    app.register_blueprint(sync_api)
+    print("Registered sync API blueprint")
+except Exception as e:
+    print(f"Warning: Failed to register sync API blueprint: {e}")
 
 if __name__ == '__main__':
     # Create templates directory
