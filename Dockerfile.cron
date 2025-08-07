@@ -1,0 +1,46 @@
+# Dockerfile for AdCP sync cron jobs
+FROM python:3.12-slim
+
+# Install supercronic (cron for containers)
+ENV SUPERCRONIC_URL=https://github.com/aptible/supercronic/releases/download/v0.2.24/supercronic-linux-amd64 \
+    SUPERCRONIC=supercronic-linux-amd64 \
+    SUPERCRONIC_SHA1SUM=6817299e04457e5d6ec4809c72ee13a43e95ba41
+
+RUN apt-get update && apt-get install -y \
+    curl \
+    libpq5 \
+    && rm -rf /var/lib/apt/lists/* \
+    && curl -fsSLO "$SUPERCRONIC_URL" \
+    && echo "${SUPERCRONIC_SHA1SUM}  ${SUPERCRONIC}" | sha1sum -c - \
+    && chmod +x "$SUPERCRONIC" \
+    && mv "$SUPERCRONIC" "/usr/local/bin/${SUPERCRONIC}" \
+    && ln -s "/usr/local/bin/${SUPERCRONIC}" /usr/local/bin/supercronic
+
+# Create non-root user
+RUN useradd -m -u 1000 adcp
+
+WORKDIR /app
+
+# Copy requirements first for better caching
+COPY pyproject.toml uv.lock ./
+
+# Install Python dependencies
+RUN pip install uv && \
+    uv sync --frozen
+
+# Copy application code
+COPY . .
+
+# Copy crontab
+COPY crontab /app/crontab
+
+# Change ownership
+RUN chown -R adcp:adcp /app
+
+USER adcp
+
+# Set Python path
+ENV PYTHONPATH=/app/.venv/lib/python3.12/site-packages:/app
+
+# Run supercronic
+CMD ["supercronic", "/app/crontab"]
