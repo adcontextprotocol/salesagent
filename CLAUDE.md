@@ -589,6 +589,35 @@ curl -X POST -H "Cookie: session=YOUR_SESSION" \
 - **`default_products.py`**: Default product templates for new tenants
 - **`test_ai_product_basic.py`**: Core AI product feature tests
 
+## Best Practices for UI Development
+
+### Template Development
+1. **Always extend base.html** - Don't create standalone HTML files
+2. **Check CSS dependencies** - If using Bootstrap classes, ensure Bootstrap is loaded
+3. **Avoid global CSS** - Use scoped classes or inline styles for specific components
+4. **Test in isolation** - Create simple versions first (like targeting_browser_simple.html)
+
+### JavaScript Best Practices
+1. **Handle null/undefined** - Always use defensive coding: `(value || defaultValue)`
+2. **Check element existence** - Before using: `if (element) { ... }`
+3. **Add console logging** - Help future debugging with clear log messages
+4. **Use try/catch** - Wrap API calls and DOM manipulation
+5. **Test data structure** - Log API responses to verify format
+
+### API Development
+1. **Return consistent JSON** - Never mix HTML and JSON responses
+2. **Add debug logging** - Use `app.logger.info()` to track execution
+3. **Check authentication** - Verify session/token before processing
+4. **Handle errors gracefully** - Return proper HTTP status codes with error messages
+5. **Document response format** - Add comments showing expected JSON structure
+
+### Docker & Deployment
+1. **Always rebuild after changes** - `docker-compose build` before testing
+2. **Check container health** - `docker ps` to verify running state
+3. **Monitor logs** - `docker-compose logs -f` during debugging
+4. **Clean restart if needed** - `docker-compose down && docker-compose up -d`
+5. **Use volumes for development** - Mount code for hot reloading
+
 ## Testing Checklist
 
 When making changes, test:
@@ -610,6 +639,11 @@ When making changes, test:
     - Verify warning banners appear
     - Test with provided test users
     - Ensure test endpoints return 404 when disabled
+15. ✅ **UI rendering** (new!):
+    - Check browser console for errors
+    - Verify elements have non-zero dimensions
+    - Test with browser dev tools open
+    - Clear cache between major CSS changes
 
 ## Recent Improvements Summary
 
@@ -671,3 +705,243 @@ Based on common issues encountered, follow these guidelines when working with da
 - SQLite doesn't have native boolean type - use `server_default='0'` for False
 - PostgreSQL handles booleans properly, but keep SQLite compatibility in mind
 - Always test with both databases if making schema changes
+
+## Critical Issues to Avoid (MUST READ)
+
+Based on the GAM inventory sync incident (12 cascading errors), here are critical patterns to avoid:
+
+### 1. **Database Schema Changes**
+⚠️ **NEVER** remove a column without checking ALL code references:
+```bash
+# ALWAYS run this before removing any column:
+grep -r "column_name" . --include="*.py" | grep -v alembic
+```
+
+**Common Mistake**: Removing `tenant.config` column broke 10+ files
+**Solution**: Update all code BEFORE running migration
+
+### 2. **Model Import Confusion**
+⚠️ **CRITICAL**: Know which model to import:
+```python
+# WRONG - causes AttributeError
+from models import Principal  # SQLAlchemy ORM model (no methods)
+
+# CORRECT - for business logic
+from schemas import Principal  # Pydantic model (has get_adapter_id())
+```
+
+**Rule**: 
+- `models.py` = Database ORM models (for queries)
+- `schemas.py` = API/business models (for logic)
+
+### 3. **Database Connection Patterns**
+⚠️ **ALWAYS** use proper session management:
+```python
+# WRONG - can cause transaction errors
+db_session = SessionLocal()  # Global session
+
+# CORRECT - thread-safe sessions
+from sqlalchemy.orm import scoped_session
+db_session = scoped_session(SessionLocal)
+
+# In endpoints, ALWAYS clean up:
+try:
+    db_session.remove()  # Start fresh
+    # ... do work ...
+    db_session.commit()
+except Exception:
+    db_session.rollback()
+    raise
+finally:
+    db_session.remove()  # Clean up
+```
+
+### 4. **External API Changes**
+⚠️ **ALWAYS** check API documentation for deprecations:
+```python
+# WRONG - deprecated in googleads v24+
+statement_builder = client.GetDataDownloader().new_filter_statement()
+
+# CORRECT - current API
+from googleads import ad_manager
+statement_builder = ad_manager.StatementBuilder(version='v202411')
+```
+
+### 5. **PostgreSQL vs SQLite Differences**
+⚠️ **ALWAYS** handle database differences:
+```python
+# WRONG - returns tuple in PostgreSQL
+cursor = conn.execute("SELECT * FROM table")
+row = cursor.fetchone()
+data = row['column']  # AttributeError!
+
+# CORRECT - use DictCursor
+from psycopg2.extras import DictCursor
+conn = psycopg2.connect(..., cursor_factory=DictCursor)
+```
+
+### 6. **Column Length Constraints**
+⚠️ **ALWAYS** validate data length before database:
+```python
+# WRONG - database will reject if too long
+inventory_type = "custom_targeting_value"  # 22 chars
+Column(String(20))  # Too short!
+
+# CORRECT - check in model
+inventory_type = Column(String(30))  # Sufficient length
+```
+
+### 7. **SOAP/SUDS Objects**
+⚠️ **ALWAYS** convert SOAP objects to dicts:
+```python
+# WRONG - SUDS objects don't support dict access
+ad_unit = gam_response['results'][0]
+name = ad_unit['name']  # AttributeError!
+
+# CORRECT - serialize first
+from zeep.helpers import serialize_object
+ad_unit_dict = serialize_object(ad_unit)
+name = ad_unit_dict['name']
+```
+
+## Pre-Change Checklist for Claude
+
+Before making ANY database or API changes:
+
+1. **Check current schema**:
+   ```bash
+   # See what exists
+   grep -r "Column(" models.py
+   sqlite3 adcp_local.db ".schema table_name"
+   ```
+
+2. **Search for usage**:
+   ```bash
+   # Find all references
+   grep -r "field_name" . --include="*.py"
+   ```
+
+3. **Test with both databases**:
+   ```bash
+   # SQLite
+   DATABASE_URL=sqlite:///test.db python your_script.py
+   
+   # PostgreSQL
+   docker-compose up -d postgres
+   DATABASE_URL=postgresql://... python your_script.py
+   ```
+
+4. **Run validation scripts**:
+   ```bash
+   ./scripts/check_schema_references.py
+   ./scripts/validate_column_lengths.py
+   ./scripts/check_api_deprecations.py
+   ```
+
+5. **Test the full workflow**:
+   ```bash
+   ./scripts/test_migration.sh --full-workflow
+   ```
+
+## UI Debugging Guide (Lessons from Targeting Page Fix)
+
+### Problem: UI Pages Show Loading But No Data
+
+**Symptoms:**
+- Page shows "Loading..." indefinitely
+- Console shows data is loaded (`targetingData` has values)
+- DOM elements exist but aren't visible
+- `offsetHeight` and `offsetWidth` return 0
+
+**Root Causes & Solutions:**
+
+1. **Missing CSS/JS Dependencies**
+   - **Issue**: Templates use Bootstrap classes but Bootstrap isn't loaded
+   - **Fix**: Add Bootstrap CSS/JS to base.html:
+   ```html
+   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+   ```
+
+2. **CSS Conflicts**
+   - **Issue**: Global CSS reset breaks framework styles
+   - **Bad**: `* { margin: 0; padding: 0; }`
+   - **Fix**: Remove global resets, use scoped styles
+
+3. **Container Collapse**
+   - **Issue**: Parent containers have 0 dimensions
+   - **Debug**: Check all parent elements:
+   ```javascript
+   let el = document.getElementById('target');
+   while (el) {
+     console.log(el.tagName, el.offsetWidth, el.offsetHeight);
+     el = el.parentElement;
+   }
+   ```
+   - **Fix**: Add explicit dimensions: `min-height`, `min-width`
+
+4. **JavaScript Null Handling**
+   - **Issue**: Code doesn't handle null/undefined from API
+   - **Bad**: `key.display_name.toLowerCase()`
+   - **Good**: `(key.display_name || '').toLowerCase()`
+
+5. **Authentication Issues**
+   - **Issue**: API returns HTML login page instead of JSON
+   - **Check**: Response headers for `Content-Type`
+   - **Fix**: Add `credentials: 'same-origin'` to fetch calls
+
+### Debugging Workflow
+
+1. **Check if containers are running:**
+   ```bash
+   docker ps | grep abu-dhabi
+   # If not running: docker-compose up -d
+   ```
+
+2. **Verify data in console:**
+   ```javascript
+   console.log(targetingData);  // Should have data
+   document.getElementById('keys-list').children.length;  // Should be > 0
+   ```
+
+3. **Check element visibility:**
+   ```javascript
+   const el = document.querySelector('.list-group-item');
+   console.log('Display:', getComputedStyle(el).display);
+   console.log('Height:', el.offsetHeight);
+   console.log('Width:', el.offsetWidth);
+   ```
+
+4. **Force visibility (temporary fix):**
+   ```javascript
+   el.style.cssText = 'display: block !important; height: auto !important;';
+   ```
+
+## Quick Reference: Common Fixes
+
+| Error | Fix |
+|-------|-----|
+| `'tuple' object has no attribute 'keys'` | Add `cursor_factory=DictCursor` to PostgreSQL |
+| `'Principal' object has no attribute 'get_adapter_id'` | Import from `schemas`, not `models` |
+| `current transaction is aborted` | Use `db_session.remove()` before operations |
+| `value too long for type character varying` | Increase column length in migration |
+| `'DataDownloader' object has no attribute 'new_filter_statement'` | Use `StatementBuilder` instead |
+| `AdUnit instance has no attribute 'get'` | Use `serialize_object()` on SUDS objects |
+| `'Tenant' object has no attribute 'config'` | Config column was removed - use new columns |
+| `Requested revision X overlaps with other requested revisions Y` | Run migrations sequentially or check for circular dependencies |
+| **UI shows "Loading..." forever** | Check Bootstrap is loaded, remove CSS conflicts, add dimensions |
+| **Elements in DOM but invisible** | Parent has 0 width/height - add min dimensions |
+| **JavaScript `TypeError` on null** | Add null checks: `(value || '').method()` |
+| **API returns HTML not JSON** | Missing auth - add `credentials: 'same-origin'` |
+
+### Known Issues
+
+#### Alembic Migration Overlap Error
+If you encounter "Requested revision 005_move_config_to_columns overlaps with other requested revisions 004_add_superadmin_config" when running migrations:
+
+**Workaround**: This is a known issue with alembic's dependency resolution in complex migration chains. To resolve:
+1. Ensure all migration files have consistent revision ID formats
+2. Check that down_revision references are correct in each migration file
+3. If the issue persists, consider running migrations sequentially or using `alembic stamp` to manually set the version
+
+**Note**: The migration files themselves are correct - this is an alembic-specific issue with how it resolves the dependency graph.
