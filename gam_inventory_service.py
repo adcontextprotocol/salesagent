@@ -12,14 +12,22 @@ import logging
 from typing import Dict, Any, List, Optional, Set
 from datetime import datetime, timedelta
 from sqlalchemy.orm import Session
-from sqlalchemy import and_, or_, func
+from sqlalchemy import and_, or_, func, String
 
-from models import GAMInventory, ProductInventoryMapping, Product, Tenant
+from models import GAMInventory, ProductInventoryMapping, Product, Tenant, Base
 from adapters.gam_inventory_discovery import (
     GAMInventoryDiscovery, AdUnit, Placement, Label,
     AdUnitStatus, CustomTargetingKey, CustomTargetingValue, AudienceSegment
 )
-from database import db_session
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker, scoped_session
+from db_config import DatabaseConfig
+
+# Create database session factory
+engine = create_engine(DatabaseConfig.get_connection_string())
+SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+# Use scoped_session for thread-local sessions
+db_session = scoped_session(SessionLocal)
 
 logger = logging.getLogger(__name__)
 
@@ -52,13 +60,8 @@ class GAMInventoryService:
         # Save to database
         self._save_inventory_to_db(tenant_id, discovery)
         
-        # Update tenant config with sync timestamp
-        tenant = self.db.query(Tenant).filter_by(tenant_id=tenant_id).first()
-        if tenant:
-            if 'gam_inventory' not in tenant.config:
-                tenant.config['gam_inventory'] = {}
-            tenant.config['gam_inventory']['last_sync'] = datetime.now().isoformat()
-            self.db.commit()
+        # Sync timestamp is already stored in gam_inventory.last_synced
+        # No need to update tenant config
         
         return sync_summary
     
@@ -181,12 +184,15 @@ class GAMInventoryService:
                 last_synced=sync_time
             )
         
-        # Mark old items as potentially stale
+        # Mark old items as potentially stale (but keep ad units active)
         stale_cutoff = sync_time - timedelta(seconds=1)
+        
+        # Don't mark ad units as STALE - they should remain ACTIVE
         self.db.query(GAMInventory).filter(
             and_(
                 GAMInventory.tenant_id == tenant_id,
-                GAMInventory.last_synced < stale_cutoff
+                GAMInventory.last_synced < stale_cutoff,
+                GAMInventory.inventory_type != 'ad_unit'  # Keep ad units active
             )
         ).update({'status': 'STALE'})
         
@@ -256,11 +262,11 @@ class GAMInventoryService:
             if parent_id and parent_id in unit_map:
                 unit_map[parent_id]['children'].append(unit_map[unit.inventory_id])
         
-        # Get sync info
-        tenant = self.db.query(Tenant).filter_by(tenant_id=tenant_id).first()
-        last_sync = None
-        if tenant and 'gam_inventory' in tenant.config:
-            last_sync = tenant.config['gam_inventory'].get('last_sync')
+        # Get last sync info from gam_inventory table
+        last_sync_result = self.db.query(func.max(GAMInventory.last_synced)).filter(
+            GAMInventory.tenant_id == tenant_id
+        ).scalar()
+        last_sync = last_sync_result.isoformat() if last_sync_result else None
         
         return {
             'root_units': root_units,
@@ -671,11 +677,11 @@ class GAMInventoryService:
             )
         ).all()
         
-        # Get last sync info
-        tenant = self.db.query(Tenant).filter_by(tenant_id=tenant_id).first()
-        last_sync = None
-        if tenant and 'gam_inventory' in tenant.config:
-            last_sync = tenant.config['gam_inventory'].get('last_sync')
+        # Get last sync info from gam_inventory table
+        last_sync_result = self.db.query(func.max(GAMInventory.last_synced)).filter(
+            GAMInventory.tenant_id == tenant_id
+        ).scalar()
+        last_sync = last_sync_result.isoformat() if last_sync_result else None
         
         # Format response
         return {
@@ -726,29 +732,60 @@ class GAMInventoryService:
 def create_inventory_endpoints(app):
     """Create Flask endpoints for inventory management."""
     
+    # Check if endpoints already exist to avoid duplicate registration
+    if 'get_inventory_tree' in app.view_functions:
+        logger.info("Inventory endpoints already registered, skipping")
+        return
+    
     @app.route('/api/tenant/<tenant_id>/inventory/sync', methods=['POST'])
     def sync_inventory(tenant_id):
         """Trigger inventory sync for tenant."""
         from flask import jsonify
         
+        # Remove any existing session to start fresh
+        db_session.remove()
+        
         try:
             # Get GAM client
             from adapters.google_ad_manager import GoogleAdManager
+            from models import Tenant, AdapterConfig
             tenant = db_session.query(Tenant).filter_by(tenant_id=tenant_id).first()
             if not tenant:
+                db_session.remove()
                 return jsonify({'error': 'Tenant not found'}), 404
             
-            gam_config = tenant.config.get('adapters', {}).get('google_ad_manager', {})
-            if not gam_config.get('enabled'):
+            # Check if GAM is the active adapter
+            if tenant.ad_server != 'google_ad_manager':
+                db_session.remove()
                 return jsonify({'error': 'GAM not enabled for tenant'}), 400
             
+            # Get adapter config from adapter_config table
+            adapter_config = db_session.query(AdapterConfig).filter_by(
+                tenant_id=tenant_id
+            ).first()
+            
+            if not adapter_config:
+                db_session.remove()
+                return jsonify({'error': 'GAM configuration not found'}), 400
+            
+            # Build GAM config from adapter_config columns
+            gam_config = {
+                'enabled': True,
+                'network_code': adapter_config.gam_network_code,
+                'refresh_token': adapter_config.gam_refresh_token,
+                'company_id': adapter_config.gam_company_id,
+                'trafficker_id': adapter_config.gam_trafficker_id,
+                'manual_approval_required': adapter_config.gam_manual_approval_required
+            }
+            
             # Create dummy principal for client initialization
-            from models import Principal
+            from schemas import Principal
             principal = Principal(
-                tenant_id=tenant_id,
                 principal_id='system',
                 name='System',
-                platform_mappings={}
+                platform_mappings={
+                    'gam_advertiser_id': adapter_config.gam_company_id or 'system'
+                }
             )
             
             adapter = GoogleAdManager(gam_config, principal, tenant_id=tenant_id)
@@ -757,16 +794,26 @@ def create_inventory_endpoints(app):
             service = GAMInventoryService(db_session)
             summary = service.sync_tenant_inventory(tenant_id, adapter.client)
             
+            # Commit the transaction
+            db_session.commit()
+            
             return jsonify(summary)
             
         except Exception as e:
             logger.error(f"Inventory sync failed: {e}", exc_info=True)
+            db_session.rollback()
             return jsonify({'error': str(e)}), 500
+        finally:
+            # Always remove the session to clean up
+            db_session.remove()
     
     @app.route('/api/tenant/<tenant_id>/inventory/tree')
     def get_inventory_tree(tenant_id):
         """Get ad unit tree for tenant."""
         from flask import jsonify
+        
+        # Remove any existing session to start fresh
+        db_session.remove()
         
         try:
             service = GAMInventoryService(db_session)
@@ -775,12 +822,18 @@ def create_inventory_endpoints(app):
             
         except Exception as e:
             logger.error(f"Failed to get inventory tree: {e}", exc_info=True)
+            db_session.rollback()
             return jsonify({'error': str(e)}), 500
+        finally:
+            db_session.remove()
     
     @app.route('/api/tenant/<tenant_id>/inventory/search')
     def search_inventory(tenant_id):
         """Search inventory with filters."""
         from flask import request, jsonify
+        
+        # Remove any existing session to start fresh
+        db_session.remove()
         
         try:
             service = GAMInventoryService(db_session)
@@ -797,7 +850,10 @@ def create_inventory_endpoints(app):
             
         except Exception as e:
             logger.error(f"Inventory search failed: {e}", exc_info=True)
+            db_session.rollback()
             return jsonify({'error': str(e)}), 500
+        finally:
+            db_session.remove()
     
     @app.route('/api/tenant/<tenant_id>/product/<product_id>/inventory')
     def get_product_inventory(tenant_id, product_id):
