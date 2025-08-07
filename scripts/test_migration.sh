@@ -113,12 +113,12 @@ if [ "$FULL_WORKFLOW" = true ]; then
     sleep 5  # Wait for PostgreSQL to start
     
     # Run migrations on PostgreSQL
-    export DATABASE_URL="postgresql://adcp_user:secure_password_change_me@localhost:5432/adcp_test"
+    export DATABASE_URL="postgresql://adcp_user:${POSTGRES_PASSWORD:-postgres}@localhost:5432/adcp_test"
     export DB_TYPE="postgresql"
     
     # Create test database
-    PGPASSWORD=secure_password_change_me psql -h localhost -U adcp_user -d postgres -c "DROP DATABASE IF EXISTS adcp_test;"
-    PGPASSWORD=secure_password_change_me psql -h localhost -U adcp_user -d postgres -c "CREATE DATABASE adcp_test;"
+    PGPASSWORD="${POSTGRES_PASSWORD:-postgres}" psql -h localhost -U adcp_user -d postgres -c "DROP DATABASE IF EXISTS adcp_test;"
+    PGPASSWORD="${POSTGRES_PASSWORD:-postgres}" psql -h localhost -U adcp_user -d postgres -c "CREATE DATABASE adcp_test;"
     
     # Run migrations
     run_test "PostgreSQL migrations" "python migrate.py"

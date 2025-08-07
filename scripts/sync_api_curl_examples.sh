@@ -79,5 +79,5 @@ fi
 
 echo ""
 echo "✅ Done! You can also use httpie for prettier output:"
-echo "   http GET ${BASE_URL}/api/v1/sync/status/${TENANT_ID} X-API-Key:${API_KEY}"
-echo "   http POST ${BASE_URL}/api/v1/sync/trigger/${TENANT_ID} X-API-Key:${API_KEY} sync_type=incremental"
+echo "   http GET ${BASE_URL}/api/v1/sync/status/${TENANT_ID} X-API-Key:<YOUR_API_KEY>"
+echo "   http POST ${BASE_URL}/api/v1/sync/trigger/${TENANT_ID} X-API-Key:<YOUR_API_KEY> sync_type=incremental"
