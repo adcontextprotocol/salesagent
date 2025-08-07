@@ -1,0 +1,24 @@
+# Fly.io cron configuration for AdCP sync jobs
+# To deploy: fly launch --config fly-cron.toml
+
+app = "adcp-sync-cron"
+primary_region = "iad"
+
+[build]
+  dockerfile = "Dockerfile.cron"
+
+[env]
+  # Inherit database connection from main app
+  DATABASE_URL = "postgresql://adcp_user:secure_password_change_me@adcp-postgres.internal:5432/adcp"
+
+[[services]]
+  internal_port = 8080
+  protocol = "tcp"
+  
+[processes]
+  cron = "supercronic /app/crontab"
+
+# Mount the crontab file
+[[mounts]]
+  source = "crontab"
+  destination = "/app/crontab"
