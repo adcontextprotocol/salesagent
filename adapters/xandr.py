@@ -150,22 +150,19 @@ class XandrAdapter(AdServerAdapter):
         # Get tenant config for Slack webhooks
         conn = get_db_connection()
         cursor = conn.execute(
-            "SELECT slack_webhook_url, config FROM tenants WHERE tenant_id = ?",
+            "SELECT slack_webhook_url FROM tenants WHERE tenant_id = ?",
             (self.tenant_id,)
         )
         row = cursor.fetchone()
         conn.close()
         
         if row:
-            config_json = row[1]
-            if isinstance(config_json, str):
-                config_json = json.loads(config_json)
+            slack_webhook_url = row['slack_webhook_url']
             
             # Build config for Slack notifier
             tenant_config = {
                 'features': {
-                    'slack_webhook_url': row[0],
-                    'slack_audit_webhook_url': config_json.get('features', {}).get('slack_audit_webhook_url')
+                    'slack_webhook_url': slack_webhook_url
                 }
             }
             

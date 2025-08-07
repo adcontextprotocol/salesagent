@@ -1,7 +1,7 @@
 """Add superadmin API key support
 
-Revision ID: 008_add_superadmin_api_key
-Revises: 007_remove_config_json_column
+Revision ID: 011_add_superadmin_api_key
+Revises: 010_add_sync_tracking
 Create Date: 2025-01-06
 
 """
@@ -11,8 +11,8 @@ from datetime import datetime
 
 
 # revision identifiers, used by Alembic.
-revision = '008_add_superadmin_api_key'
-down_revision = '007_remove_config_json_column'
+revision = '011_add_superadmin_api_key'
+down_revision = '010_add_sync_tracking'
 branch_labels = None
 depends_on = None
 

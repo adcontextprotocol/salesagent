@@ -1,0 +1,71 @@
+repos:
+  - repo: local
+    hooks:
+      # Check for removed columns still referenced in code
+      - id: check-schema-references
+        name: Check schema references
+        entry: python scripts/check_schema_references.py
+        language: system
+        pass_filenames: false
+        always_run: true
+        
+      # Validate model column lengths
+      - id: validate-column-lengths
+        name: Validate database column lengths
+        entry: python scripts/validate_column_lengths.py
+        language: system
+        files: '(models|schemas)\.py$'
+        
+      # Check for tenant.config references
+      - id: no-tenant-config
+        name: No tenant.config references
+        entry: sh -c 'if grep -r "tenant\.config\|tenant\[.config.\]" --include="*.py" . | grep -v "test_migration\|postmortem\|pre-commit"; then echo "Found tenant.config references!"; exit 1; fi'
+        language: system
+        pass_filenames: false
+        
+      # Validate migrations can run
+      - id: test-migrations
+        name: Test database migrations
+        entry: sh -c 'cp adcp_local.db .test.db && DATABASE_URL=sqlite:///.test.db python migrate.py && rm .test.db'
+        language: system
+        pass_filenames: false
+        stages: [commit]
+        
+      # Check for API deprecations
+      - id: check-api-deprecations
+        name: Check for deprecated API usage
+        entry: python scripts/check_api_deprecations.py
+        language: system
+        files: 'adapters/.*\.py$'
+        
+      # Validate Pydantic vs SQLAlchemy imports
+      - id: validate-model-imports
+        name: Validate model imports
+        entry: python scripts/validate_model_imports.py
+        language: system
+        files: '\.py$'
+
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.4.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-added-large-files
+        args: ['--maxkb=1000']
+      - id: check-json
+      - id: check-merge-conflict
+      - id: check-ast
+      - id: debug-statements
+
+  - repo: https://github.com/psf/black
+    rev: 23.3.0
+    hooks:
+      - id: black
+        language_version: python3.12
+
+  - repo: https://github.com/charliermarsh/ruff-pre-commit
+    rev: v0.0.272
+    hooks:
+      - id: ruff
+        args: [--fix, --exit-non-zero-on-fix]

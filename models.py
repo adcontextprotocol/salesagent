@@ -18,7 +18,6 @@ class Tenant(Base):
     tenant_id = Column(String(50), primary_key=True)
     name = Column(String(255), nullable=False)
     subdomain = Column(String(100), unique=True, nullable=False)
-    config = Column(JSON, nullable=False)  # JSONB in PostgreSQL - TO BE REMOVED
     created_at = Column(DateTime, nullable=False, server_default=func.now())
     updated_at = Column(DateTime, nullable=False, server_default=func.now(), onupdate=func.now())
     is_active = Column(Boolean, default=True)
@@ -275,3 +274,77 @@ class AdapterConfig(Base):
         Index('idx_adapter_config_type', 'adapter_type'),
     )
 
+
+class GAMInventory(Base):
+    __tablename__ = 'gam_inventory'
+    
+    id = Column(Integer, primary_key=True)
+    tenant_id = Column(String(50), ForeignKey('tenants.tenant_id', ondelete='CASCADE'), nullable=False)
+    inventory_type = Column(String(30), nullable=False)  # 'ad_unit', 'placement', 'label', 'custom_targeting_key', 'custom_targeting_value'
+    inventory_id = Column(String(50), nullable=False)  # GAM ID
+    name = Column(String(255), nullable=False)
+    path = Column(JSON)  # Array of path components for ad units
+    status = Column(String(20), nullable=False)
+    inventory_metadata = Column(JSON)  # Full inventory details
+    last_synced = Column(DateTime, nullable=False, default=func.now())
+    created_at = Column(DateTime, nullable=False, default=func.now())
+    updated_at = Column(DateTime, nullable=False, default=func.now(), onupdate=func.now())
+    
+    # Relationships
+    tenant = relationship("Tenant")
+    
+    __table_args__ = (
+        UniqueConstraint('tenant_id', 'inventory_type', 'inventory_id', name='uq_gam_inventory'),
+        Index('idx_gam_inventory_tenant', 'tenant_id'),
+        Index('idx_gam_inventory_type', 'inventory_type'),
+        Index('idx_gam_inventory_status', 'status'),
+    )
+
+
+class ProductInventoryMapping(Base):
+    __tablename__ = 'product_inventory_mappings'
+    
+    id = Column(Integer, primary_key=True)
+    tenant_id = Column(String(50), ForeignKey('tenants.tenant_id', ondelete='CASCADE'), nullable=False)
+    product_id = Column(String(50), nullable=False)
+    inventory_type = Column(String(30), nullable=False)  # 'ad_unit' or 'placement'
+    inventory_id = Column(String(50), nullable=False)  # GAM inventory ID
+    is_primary = Column(Boolean, default=False)  # Primary targeting for the product
+    created_at = Column(DateTime, nullable=False, default=func.now())
+    
+    # Add foreign key constraint for product
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ['tenant_id', 'product_id'],
+            ['products.tenant_id', 'products.product_id'],
+            ondelete='CASCADE'
+        ),
+        Index('idx_product_inventory_mapping', 'tenant_id', 'product_id'),
+        UniqueConstraint('tenant_id', 'product_id', 'inventory_type', 'inventory_id', 
+                        name='uq_product_inventory'),
+    )
+
+
+class SyncJob(Base):
+    __tablename__ = 'sync_jobs'
+    
+    sync_id = Column(String(50), primary_key=True)
+    tenant_id = Column(String(50), ForeignKey('tenants.tenant_id', ondelete='CASCADE'), nullable=False)
+    adapter_type = Column(String(50), nullable=False)
+    sync_type = Column(String(20), nullable=False)  # inventory, targeting, full
+    status = Column(String(20), nullable=False)  # pending, running, completed, failed
+    started_at = Column(DateTime, nullable=False)
+    completed_at = Column(DateTime)
+    summary = Column(Text)  # JSON with counts, details
+    error_message = Column(Text)
+    triggered_by = Column(String(50), nullable=False)  # user, cron, system
+    triggered_by_id = Column(String(255))  # user email or system identifier
+    
+    # Relationships
+    tenant = relationship("Tenant")
+    
+    __table_args__ = (
+        Index('idx_sync_jobs_tenant', 'tenant_id'),
+        Index('idx_sync_jobs_status', 'status'),
+        Index('idx_sync_jobs_started', 'started_at'),
+    )
