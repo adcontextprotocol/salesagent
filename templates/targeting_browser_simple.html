@@ -1,0 +1,329 @@
+{% extends "base.html" %}
+
+{% block title %}Targeting Criteria Browser - {{ tenant.name }}{% endblock %}
+
+{% block content %}
+<style>
+    .targeting-container {
+        padding: 20px;
+    }
+    
+    .targeting-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 20px;
+    }
+    
+    .targeting-content {
+        display: flex;
+        gap: 20px;
+    }
+    
+    .keys-panel {
+        width: 400px;
+        background: white;
+        border: 1px solid #ddd;
+        border-radius: 4px;
+        padding: 15px;
+    }
+    
+    .values-panel {
+        flex: 1;
+        background: white;
+        border: 1px solid #ddd;
+        border-radius: 4px;
+        padding: 15px;
+    }
+    
+    .search-box {
+        display: flex;
+        margin-bottom: 15px;
+    }
+    
+    .search-box input {
+        flex: 1;
+        padding: 8px;
+        border: 1px solid #ccc;
+        border-radius: 4px 0 0 4px;
+    }
+    
+    .search-box button {
+        padding: 8px 15px;
+        border: 1px solid #ccc;
+        border-left: none;
+        border-radius: 0 4px 4px 0;
+        background: #f8f9fa;
+        cursor: pointer;
+    }
+    
+    .keys-list {
+        max-height: 600px;
+        overflow-y: auto;
+        border: 1px solid #e0e0e0;
+        border-radius: 4px;
+    }
+    
+    .key-item {
+        display: block;
+        padding: 12px;
+        border-bottom: 1px solid #e0e0e0;
+        cursor: pointer;
+        text-decoration: none;
+        color: #333;
+        background: white;
+    }
+    
+    .key-item:hover {
+        background: #f8f9fa;
+    }
+    
+    .key-item.active {
+        background: #007bff;
+        color: white;
+    }
+    
+    .key-item-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: start;
+    }
+    
+    .key-name {
+        font-weight: 600;
+        margin-bottom: 4px;
+    }
+    
+    .key-id {
+        font-size: 12px;
+        color: #666;
+    }
+    
+    .key-badge {
+        padding: 4px 8px;
+        border-radius: 3px;
+        font-size: 11px;
+        font-weight: 600;
+        background: #6c757d;
+        color: white;
+    }
+    
+    .key-badge.primary {
+        background: #007bff;
+    }
+</style>
+
+<div class="targeting-container">
+    <div class="targeting-header">
+        <h1>Targeting Criteria Browser</h1>
+        <div>
+            <button onclick="syncTargeting()" style="padding: 8px 15px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer;">
+                Sync All Targeting
+            </button>
+            <a href="{{ url_for('tenant_detail', tenant_id=tenant.tenant_id) }}" style="padding: 8px 15px; background: #6c757d; color: white; text-decoration: none; border-radius: 4px; display: inline-block; margin-left: 10px;">
+                Back to Tenant
+            </a>
+        </div>
+    </div>
+    
+    <div id="sync-info" style="padding: 10px; background: #d1ecf1; border: 1px solid #bee5eb; border-radius: 4px; margin-bottom: 20px;">
+        <span id="sync-message">Loading targeting data...</span>
+    </div>
+    
+    <div class="targeting-content">
+        <div class="keys-panel">
+            <h3>Custom Targeting Keys</h3>
+            <div class="search-box">
+                <input type="text" id="search-keys" placeholder="Search keys..." onkeyup="renderCustomKeys()">
+                <button onclick="renderCustomKeys()">Search</button>
+            </div>
+            <div class="keys-list" id="keys-list">
+                <!-- Keys will be loaded here -->
+            </div>
+        </div>
+        
+        <div class="values-panel">
+            <h3>Values for Selected Key</h3>
+            <div id="selected-key-info">
+                <p style="color: #666;">Select a key to view its values</p>
+            </div>
+            <div class="search-box">
+                <input type="text" id="search-values" placeholder="Search values..." disabled onkeyup="if(currentKeyId) renderCustomValues(currentKeyId)">
+                <button onclick="if(currentKeyId) renderCustomValues(currentKeyId)" disabled>Search</button>
+            </div>
+            <div id="values-list">
+                <!-- Values will be loaded here -->
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+const tenantId = '{{ tenant.tenant_id }}';
+let currentKeyId = null;
+let targetingData = {
+    customKeys: [],
+    customValues: {},
+    audiences: [],
+    labels: []
+};
+
+// Load all targeting data
+async function loadTargetingData() {
+    try {
+        console.log('Loading targeting data...');
+        const response = await fetch(`/api/tenant/${tenantId}/targeting/all`, {
+            credentials: 'same-origin'
+        });
+        
+        if (!response.ok) {
+            throw new Error(`Failed to load: ${response.status}`);
+        }
+        
+        const data = await response.json();
+        targetingData = data;
+        console.log('Loaded data:', data);
+        
+        // Update UI
+        updateSyncInfo(data.last_sync);
+        renderCustomKeys();
+        
+    } catch (error) {
+        console.error('Error loading targeting data:', error);
+        document.getElementById('sync-message').textContent = 'Failed to load targeting data';
+    }
+}
+
+// Update sync info
+function updateSyncInfo(lastSync) {
+    const syncMessage = document.getElementById('sync-message');
+    if (lastSync) {
+        const date = new Date(lastSync);
+        syncMessage.textContent = `Last synced: ${date.toLocaleString()}`;
+    } else {
+        syncMessage.textContent = 'No sync data available';
+    }
+}
+
+// Render custom targeting keys
+function renderCustomKeys() {
+    console.log('Rendering keys...');
+    const keysList = document.getElementById('keys-list');
+    const searchTerm = (document.getElementById('search-keys').value || '').toLowerCase();
+    
+    if (!targetingData.customKeys || targetingData.customKeys.length === 0) {
+        keysList.innerHTML = '<p style="padding: 20px; text-align: center; color: #666;">No targeting keys found</p>';
+        return;
+    }
+    
+    const filteredKeys = targetingData.customKeys.filter(key => 
+        key.name.toLowerCase().includes(searchTerm) ||
+        (key.display_name || '').toLowerCase().includes(searchTerm)
+    );
+    
+    console.log(`Rendering ${filteredKeys.length} keys`);
+    
+    // Clear and rebuild
+    keysList.innerHTML = '';
+    
+    filteredKeys.forEach(key => {
+        const item = document.createElement('a');
+        item.href = '#';
+        item.className = 'key-item';
+        item.onclick = (e) => {
+            e.preventDefault();
+            selectKey(key);
+            return false;
+        };
+        
+        const header = document.createElement('div');
+        header.className = 'key-item-header';
+        
+        const leftDiv = document.createElement('div');
+        const nameDiv = document.createElement('div');
+        nameDiv.className = 'key-name';
+        nameDiv.textContent = key.display_name || key.name;
+        leftDiv.appendChild(nameDiv);
+        
+        const idDiv = document.createElement('div');
+        idDiv.className = 'key-id';
+        idDiv.textContent = `Key: ${key.name}`;
+        leftDiv.appendChild(idDiv);
+        
+        const rightDiv = document.createElement('div');
+        const badge = document.createElement('span');
+        badge.className = key.type === 'PREDEFINED' ? 'key-badge primary' : 'key-badge';
+        badge.textContent = key.type || 'UNKNOWN';
+        rightDiv.appendChild(badge);
+        
+        header.appendChild(leftDiv);
+        header.appendChild(rightDiv);
+        item.appendChild(header);
+        
+        keysList.appendChild(item);
+    });
+    
+    console.log('Keys rendered');
+}
+
+// Select a key
+function selectKey(key) {
+    currentKeyId = key.id;
+    
+    // Update active state
+    document.querySelectorAll('.key-item').forEach(item => {
+        item.classList.remove('active');
+    });
+    event.target.closest('.key-item').classList.add('active');
+    
+    // Update selected key info
+    document.getElementById('selected-key-info').innerHTML = `
+        <h4>${key.display_name || key.name}</h4>
+        <p>Type: ${key.type} | Values: ${key.metadata?.values_count || 0}</p>
+    `;
+    
+    // Enable value search
+    document.getElementById('search-values').disabled = false;
+    document.querySelector('#search-values + button').disabled = false;
+    
+    // Load values
+    renderCustomValues(key.id);
+}
+
+// Render values
+function renderCustomValues(keyId) {
+    const valuesList = document.getElementById('values-list');
+    const values = targetingData.customValues[keyId] || [];
+    
+    if (values.length === 0) {
+        valuesList.innerHTML = '<p style="padding: 20px; text-align: center; color: #666;">No values found</p>';
+        return;
+    }
+    
+    const searchTerm = (document.getElementById('search-values').value || '').toLowerCase();
+    const filteredValues = values.filter(value => 
+        value.name.toLowerCase().includes(searchTerm) ||
+        (value.display_name || '').toLowerCase().includes(searchTerm)
+    );
+    
+    valuesList.innerHTML = `
+        <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 10px;">
+            ${filteredValues.map(value => `
+                <div style="padding: 10px; border: 1px solid #e0e0e0; border-radius: 4px;">
+                    <strong>${value.display_name || value.name}</strong><br>
+                    <small style="color: #666;">Value: ${value.name}</small>
+                </div>
+            `).join('')}
+        </div>
+    `;
+}
+
+// Sync targeting
+async function syncTargeting() {
+    alert('Sync functionality not implemented in simple view');
+}
+
+// Load data on page load
+loadTargetingData();
+</script>
+{% endblock %}

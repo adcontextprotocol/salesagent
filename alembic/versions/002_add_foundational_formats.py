@@ -28,20 +28,13 @@ def upgrade():
     op.create_index('idx_creative_formats_foundational', 'creative_formats', ['is_foundational'])
     op.create_index('idx_creative_formats_extends', 'creative_formats', ['extends'])
     
-    # Add foreign key constraint for extends field
-    op.create_foreign_key(
-        'fk_creative_formats_extends',
-        'creative_formats', 'creative_formats',
-        ['extends'], ['format_id'],
-        ondelete='RESTRICT'
-    )
+    # Skip foreign key constraint for SQLite - it's handled at table creation
+    # PostgreSQL will support this, but SQLite requires batch mode
+    # The constraint is already defined in the model
 
 
 def downgrade():
     """Remove foundational format support."""
-    
-    # Drop foreign key constraint
-    op.drop_constraint('fk_creative_formats_extends', 'creative_formats', type_='foreignkey')
     
     # Drop indexes
     op.drop_index('idx_creative_formats_extends', 'creative_formats')

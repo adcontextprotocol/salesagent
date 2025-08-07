@@ -22,12 +22,43 @@ This project is a Python-based reference implementation of the Advertising Conte
 
 ## Quick Start
 
-### Prerequisites
+### Docker Deployment (Recommended)
+
+The easiest way to run the AdCP Sales Agent is with Docker Compose:
+
+```bash
+# Clone the repository
+git clone https://github.com/adcontextprotocol/salesagent.git
+cd salesagent
+
+# Create .env file with required configuration
+cp .env.example .env
+# Edit .env and add your GEMINI_API_KEY and OAuth credentials
+
+# Start all services
+docker-compose up -d
+
+# View logs
+docker-compose logs -f
+
+# Access the Admin UI
+open http://localhost:8001
+
+# Stop services
+docker-compose down
+```
+
+This starts:
+- PostgreSQL database (port 5432)
+- AdCP MCP server (port 8080)
+- Admin UI with OAuth (port 8001)
+
+### Prerequisites for Local Development
 - Python 3.12+
 - `uv` for package management
 - Optional: PostgreSQL for production deployments
 
-### Installation
+### Local Installation
 ```bash
 # Install uv if not already installed
 pip install uv
@@ -458,6 +489,36 @@ docker exec -it adcp-server python setup_tenant.py "Publisher Name"
 ```
 
 See [Docker Deployment Guide](docs/docker-deployment.md) for production configuration.
+
+### Troubleshooting
+
+#### Common Issues
+
+**UI Pages Not Displaying Data:**
+- Check that Bootstrap CSS/JS are loaded (View Page Source)
+- Verify containers are running: `docker ps`
+- Check browser console for JavaScript errors
+- Ensure API endpoints return JSON, not HTML login pages
+- Clear browser cache and cookies
+
+**Container Won't Start:**
+- Check ports aren't in use: `lsof -i :8001` or `lsof -i :8080`
+- Verify .env file has required variables
+- Check Docker logs: `docker-compose logs admin-ui`
+- Ensure database migrations ran: `docker exec -it adcp-server python migrate.py`
+
+**Authentication Issues:**
+- Verify OAuth credentials in .env
+- Check SUPER_ADMIN_EMAILS includes your email
+- Ensure cookies are enabled for localhost
+- Try incognito/private browsing mode
+
+**Database Connection Errors:**
+- For Docker: Ensure postgres container is healthy
+- Check DATABASE_URL in .env matches docker-compose.yml
+- Verify database exists: `docker exec -it postgres psql -U adcp_user -d adcp`
+
+See [Troubleshooting Guide](docs/troubleshooting.md) for more detailed solutions.
 
 ### Additional Guides
 

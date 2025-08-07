@@ -1,0 +1,541 @@
+{% extends "base.html" %}
+
+{% block title %}Targeting Criteria Browser - {{ tenant.name }}{% endblock %}
+
+{% block content %}
+<style>
+    /* Ensure list items are visible */
+    .list-group-item {
+        display: block !important;
+        padding: 0.75rem 1.25rem !important;
+        margin-bottom: -1px !important;
+        background-color: #fff !important;
+        border: 1px solid rgba(0,0,0,.125) !important;
+        color: #212529 !important;
+        text-decoration: none !important;
+        width: 100% !important;
+        min-height: 50px !important;
+    }
+    
+    .list-group-item:hover {
+        background-color: #f8f9fa !important;
+        cursor: pointer !important;
+    }
+    
+    .list-group-item.active {
+        background-color: #007bff !important;
+        border-color: #007bff !important;
+        color: white !important;
+    }
+    
+    /* Ensure badges are visible */
+    .badge {
+        display: inline-block !important;
+        padding: 0.25em 0.6em !important;
+        font-size: 0.75rem !important;
+        font-weight: 700 !important;
+        color: #fff !important;
+    }
+    
+    .badge.bg-primary {
+        background-color: #0d6efd !important;
+    }
+    
+    .badge.bg-secondary {
+        background-color: #6c757d !important;
+    }
+</style>
+<div class="container-fluid">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h1>Targeting Criteria Browser</h1>
+        <div>
+            <button class="btn btn-primary" id="sync-targeting">
+                <i class="fas fa-sync"></i> Sync All Targeting
+            </button>
+            <a href="{{ url_for('tenant_detail', tenant_id=tenant.tenant_id) }}" class="btn btn-secondary">
+                Back to Tenant
+            </a>
+        </div>
+    </div>
+
+    <!-- Last Sync Info -->
+    <div class="alert alert-info" id="sync-info">
+        <i class="fas fa-info-circle"></i> 
+        <span id="sync-message">Loading targeting data...</span>
+    </div>
+
+    <!-- Tabs for different targeting types -->
+    <ul class="nav nav-tabs mb-4" role="tablist">
+        <li class="nav-item">
+            <a class="nav-link active" data-bs-toggle="tab" href="#custom-targeting" role="tab">
+                Custom Targeting
+            </a>
+        </li>
+        <li class="nav-item">
+            <a class="nav-link" data-bs-toggle="tab" href="#audience-segments" role="tab">
+                Audience Segments
+            </a>
+        </li>
+        <li class="nav-item">
+            <a class="nav-link" data-bs-toggle="tab" href="#labels" role="tab">
+                Labels
+            </a>
+        </li>
+    </ul>
+
+    <!-- Tab Content -->
+    <div class="tab-content" style="min-height: 700px;">
+        <!-- Custom Targeting Tab -->
+        <div class="tab-pane fade show active" id="custom-targeting" role="tabpanel" style="display: block !important; opacity: 1 !important;">
+            <div class="row" style="min-height: 600px;">
+                <div class="col-md-4" style="min-width: 350px;">
+                    <h3>Custom Targeting Keys</h3>
+                    <div class="input-group mb-3">
+                        <input type="text" class="form-control" id="search-keys" placeholder="Search keys...">
+                        <button class="btn btn-outline-secondary" type="button">
+                            <i class="fas fa-search"></i>
+                        </button>
+                    </div>
+                    <div class="list-group" id="keys-list" style="min-height: 400px; max-height: 600px; overflow-y: auto; background-color: #f8f9fa; border: 1px solid #dee2e6;">
+                        <!-- Keys will be loaded here -->
+                    </div>
+                </div>
+                <div class="col-md-8" style="min-width: 500px;">
+                    <h3>Values for Selected Key</h3>
+                    <div id="selected-key-info" class="mb-3">
+                        <p class="text-muted">Select a key to view its values</p>
+                    </div>
+                    <div class="input-group mb-3">
+                        <input type="text" class="form-control" id="search-values" placeholder="Search values..." disabled>
+                        <button class="btn btn-outline-secondary" type="button" disabled>
+                            <i class="fas fa-search"></i>
+                        </button>
+                    </div>
+                    <div id="values-list" style="max-height: 600px; overflow-y: auto;">
+                        <!-- Values will be loaded here -->
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Audience Segments Tab -->
+        <div class="tab-pane fade" id="audience-segments" role="tabpanel">
+            <div class="row mb-3">
+                <div class="col-md-6">
+                    <div class="input-group">
+                        <input type="text" class="form-control" id="search-audiences" placeholder="Search audiences...">
+                        <button class="btn btn-outline-secondary" type="button">
+                            <i class="fas fa-search"></i>
+                        </button>
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <select class="form-select" id="audience-type-filter">
+                        <option value="">All Types</option>
+                        <option value="FIRST_PARTY">First-Party Data</option>
+                        <option value="THIRD_PARTY">Third-Party Data</option>
+                    </select>
+                </div>
+            </div>
+            
+            <div class="row" id="audience-cards">
+                <!-- Audience cards will be loaded here -->
+            </div>
+        </div>
+
+        <!-- Labels Tab -->
+        <div class="tab-pane fade" id="labels" role="tabpanel">
+            <div class="input-group mb-3">
+                <input type="text" class="form-control" id="search-labels" placeholder="Search labels...">
+                <button class="btn btn-outline-secondary" type="button">
+                    <i class="fas fa-search"></i>
+                </button>
+            </div>
+            
+            <div class="table-responsive">
+                <table class="table table-hover">
+                    <thead>
+                        <tr>
+                            <th>Label Name</th>
+                            <th>Type</th>
+                            <th>Category</th>
+                            <th>Status</th>
+                            <th>Description</th>
+                        </tr>
+                    </thead>
+                    <tbody id="labels-tbody">
+                        <!-- Labels will be loaded here -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Sync Progress Modal -->
+<div class="modal fade" id="syncModal" tabindex="-1" style="display: none;" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Syncing Targeting Data</h5>
+            </div>
+            <div class="modal-body">
+                <div class="text-center">
+                    <div class="spinner-border" role="status">
+                        <span class="visually-hidden">Loading...</span>
+                    </div>
+                    <p class="mt-3">Discovering targeting criteria from Google Ad Manager...</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+const tenantId = '{{ tenant.tenant_id }}';
+let currentKeyId = null;
+let targetingData = {
+    customKeys: [],
+    customValues: {},
+    audiences: [],
+    labels: []
+};
+
+// Load all targeting data
+async function loadTargetingData() {
+    try {
+        const response = await fetch(`/api/tenant/${tenantId}/targeting/all`, {
+            credentials: 'same-origin'
+        });
+        
+        // Check if we got redirected to login
+        if (response.redirected || response.status === 302) {
+            window.location.href = response.url || `/tenant/${tenantId}/login`;
+            return;
+        }
+        
+        if (!response.ok) {
+            const errorText = await response.text();
+            console.error('API Error:', errorText);
+            throw new Error(`Failed to load targeting data: ${response.status}`);
+        }
+        
+        const data = await response.json();
+        targetingData = data;
+        
+        // Update UI
+        updateSyncInfo(data.last_sync);
+        renderCustomKeys();
+        renderAudiences();
+        renderLabels();
+        
+    } catch (error) {
+        console.error('Error loading targeting data:', error);
+        document.getElementById('sync-message').textContent = 'Failed to load targeting data';
+    }
+}
+
+// Update sync info
+function updateSyncInfo(lastSync) {
+    const syncMessage = document.getElementById('sync-message');
+    if (lastSync) {
+        const date = new Date(lastSync);
+        const now = new Date();
+        const diffMs = now - date;
+        const diffMins = Math.floor(diffMs / (1000 * 60));
+        const diffHours = Math.floor(diffMins / 60);
+        const diffDays = Math.floor(diffHours / 24);
+        
+        let timeAgo;
+        if (diffDays > 0) {
+            timeAgo = `${diffDays} day${diffDays > 1 ? 's' : ''} ago`;
+        } else if (diffHours > 0) {
+            timeAgo = `${diffHours} hour${diffHours > 1 ? 's' : ''} ago`;
+        } else if (diffMins > 0) {
+            timeAgo = `${diffMins} minute${diffMins > 1 ? 's' : ''} ago`;
+        } else {
+            timeAgo = 'just now';
+        }
+        
+        syncMessage.innerHTML = `Last synced: ${date.toLocaleString()} (${timeAgo})`;
+        
+        if (diffHours > 24) {
+            syncMessage.innerHTML += ' <span class="text-warning">- Consider refreshing</span>';
+        }
+    } else {
+        syncMessage.textContent = 'No sync data available - click Sync to discover targeting';
+    }
+}
+
+// Render custom targeting keys
+function renderCustomKeys() {
+    console.log('renderCustomKeys called');
+    const keysList = document.getElementById('keys-list');
+    console.log('keysList element:', keysList);
+    
+    if (!keysList) {
+        console.error('keys-list element not found!');
+        return;
+    }
+    
+    keysList.innerHTML = '';
+    
+    const searchTerm = document.getElementById('search-keys').value.toLowerCase();
+    console.log('searchTerm:', searchTerm);
+    
+    if (!targetingData.customKeys) {
+        console.error('No customKeys in targetingData!');
+        return;
+    }
+    
+    const filteredKeys = targetingData.customKeys.filter(key => 
+        key.name.toLowerCase().includes(searchTerm) ||
+        (key.display_name || '').toLowerCase().includes(searchTerm)
+    );
+    console.log('filteredKeys count:', filteredKeys.length);
+    
+    filteredKeys.forEach((key, index) => {
+        console.log(`Processing key ${index}:`, key.name);
+        const item = document.createElement('a');
+        item.href = '#';
+        item.className = 'list-group-item list-group-item-action';
+        
+        // Create elements manually to avoid innerHTML issues
+        const wrapper = document.createElement('div');
+        wrapper.className = 'd-flex justify-content-between align-items-start';
+        
+        const leftDiv = document.createElement('div');
+        const title = document.createElement('h6');
+        title.className = 'mb-1';
+        title.textContent = key.display_name || key.name;
+        leftDiv.appendChild(title);
+        
+        const subtitle = document.createElement('small');
+        subtitle.className = 'text-muted';
+        subtitle.textContent = `Key: ${key.name}`;
+        leftDiv.appendChild(subtitle);
+        
+        const rightDiv = document.createElement('div');
+        const badge = document.createElement('span');
+        badge.className = `badge bg-${key.type === 'PREDEFINED' ? 'primary' : 'secondary'}`;
+        badge.textContent = key.type || 'UNKNOWN';
+        rightDiv.appendChild(badge);
+        
+        if (key.metadata && key.metadata.values_count) {
+            rightDiv.appendChild(document.createElement('br'));
+            const small = document.createElement('small');
+            small.textContent = `${key.metadata.values_count} values`;
+            rightDiv.appendChild(small);
+        }
+        
+        wrapper.appendChild(leftDiv);
+        wrapper.appendChild(rightDiv);
+        item.appendChild(wrapper);
+        
+        item.addEventListener('click', (e) => {
+            e.preventDefault();
+            selectKey(key);
+        });
+        
+        keysList.appendChild(item);
+        
+        if (index === 0) {
+            console.log('First item created and appended');
+            console.log('Item element:', item);
+            console.log('Item in DOM?', keysList.contains(item));
+        }
+    });
+    
+    console.log('Finished rendering, keysList innerHTML length:', keysList.innerHTML.length);
+    console.log('keysList children count:', keysList.children.length);
+}
+
+// Select a custom targeting key
+function selectKey(key) {
+    currentKeyId = key.id;
+    
+    // Update UI
+    document.querySelectorAll('#keys-list .list-group-item').forEach(item => {
+        item.classList.remove('active');
+    });
+    event.target.closest('.list-group-item').classList.add('active');
+    
+    // Update selected key info
+    document.getElementById('selected-key-info').innerHTML = `
+        <h5>${key.display_name || key.name}</h5>
+        <p class="mb-2">
+            <span class="text-muted">Type:</span> ${key.type}
+            ${key.metadata.reportable_type ? `| <span class="text-muted">Reportable:</span> ${key.metadata.reportable_type}` : ''}
+        </p>
+    `;
+    
+    // Enable value search
+    document.getElementById('search-values').disabled = false;
+    document.querySelector('#search-values + button').disabled = false;
+    
+    // Load values for this key
+    renderCustomValues(key.id);
+}
+
+// Render custom targeting values
+function renderCustomValues(keyId) {
+    const valuesList = document.getElementById('values-list');
+    const values = targetingData.customValues[keyId] || [];
+    
+    const searchTerm = document.getElementById('search-values').value.toLowerCase();
+    const filteredValues = values.filter(value => 
+        value.name.toLowerCase().includes(searchTerm) ||
+        (value.display_name || '').toLowerCase().includes(searchTerm)
+    );
+    
+    if (filteredValues.length === 0) {
+        valuesList.innerHTML = '<p class="text-muted text-center">No values found</p>';
+        return;
+    }
+    
+    valuesList.innerHTML = `
+        <div class="row row-cols-1 row-cols-md-2 g-3">
+            ${filteredValues.map(value => `
+                <div class="col">
+                    <div class="card h-100">
+                        <div class="card-body">
+                            <h6 class="card-title">${value.display_name || value.name}</h6>
+                            <p class="card-text small text-muted mb-1">Value: ${value.name}</p>
+                            <p class="card-text small mb-0">
+                                ${value.match_type ? `<span class="badge bg-info">${value.match_type}</span>` : ''}
+                                ${value.status && value.status !== 'ACTIVE' ? `<span class="badge bg-warning">${value.status}</span>` : ''}
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            `).join('')}
+        </div>
+    `;
+}
+
+// Render audience segments
+function renderAudiences() {
+    const audienceCards = document.getElementById('audience-cards');
+    const searchTerm = document.getElementById('search-audiences').value.toLowerCase();
+    const typeFilter = document.getElementById('audience-type-filter').value;
+    
+    let filteredAudiences = targetingData.audiences.filter(audience => 
+        audience.name.toLowerCase().includes(searchTerm) ||
+        (audience.description && audience.description.toLowerCase().includes(searchTerm))
+    );
+    
+    if (typeFilter) {
+        filteredAudiences = filteredAudiences.filter(audience => audience.type === typeFilter);
+    }
+    
+    if (filteredAudiences.length === 0) {
+        audienceCards.innerHTML = '<div class="col-12"><p class="text-muted text-center">No audiences found</p></div>';
+        return;
+    }
+    
+    audienceCards.innerHTML = filteredAudiences.map(audience => `
+        <div class="col-md-6 col-lg-4">
+            <div class="card h-100">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-start mb-2">
+                        <h5 class="card-title">${audience.name}</h5>
+                        <span class="badge bg-${audience.type === 'FIRST_PARTY' ? 'success' : 'info'}">
+                            ${audience.type.replace('_', ' ')}
+                        </span>
+                    </div>
+                    ${audience.description ? `<p class="card-text small">${audience.description}</p>` : ''}
+                    <div class="mt-auto">
+                        ${audience.size ? `<p class="mb-1"><small>Size: ${audience.size.toLocaleString()}</small></p>` : ''}
+                        ${audience.data_provider_name ? `<p class="mb-1"><small>Provider: ${audience.data_provider_name}</small></p>` : ''}
+                        <p class="mb-0">
+                            <span class="badge bg-secondary">${audience.segment_type}</span>
+                            ${audience.status !== 'ACTIVE' ? `<span class="badge bg-warning">${audience.status}</span>` : ''}
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `).join('');
+}
+
+// Render labels
+function renderLabels() {
+    const labelsTbody = document.getElementById('labels-tbody');
+    const searchTerm = document.getElementById('search-labels').value.toLowerCase();
+    
+    const filteredLabels = targetingData.labels.filter(label => 
+        label.name.toLowerCase().includes(searchTerm) ||
+        (label.description && label.description.toLowerCase().includes(searchTerm))
+    );
+    
+    if (filteredLabels.length === 0) {
+        labelsTbody.innerHTML = '<tr><td colspan="5" class="text-center text-muted">No labels found</td></tr>';
+        return;
+    }
+    
+    labelsTbody.innerHTML = filteredLabels.map(label => `
+        <tr>
+            <td><strong>${label.name}</strong></td>
+            <td>${label.label_type || 'N/A'}</td>
+            <td>${label.ad_category || 'N/A'}</td>
+            <td>
+                <span class="badge bg-${label.is_active ? 'success' : 'secondary'}">
+                    ${label.is_active ? 'Active' : 'Inactive'}
+                </span>
+            </td>
+            <td>${label.description || ''}</td>
+        </tr>
+    `).join('');
+}
+
+// Sync targeting data
+document.getElementById('sync-targeting').addEventListener('click', async () => {
+    const modal = new bootstrap.Modal(document.getElementById('syncModal'));
+    modal.show();
+    
+    try {
+        const response = await fetch(`/api/tenant/${tenantId}/inventory/sync`, {
+            method: 'POST'
+        });
+        
+        if (!response.ok) throw new Error('Sync failed');
+        
+        const result = await response.json();
+        console.log('Sync result:', result);
+        
+        // Reload data
+        await loadTargetingData();
+        
+        modal.hide();
+        
+        // Show success message
+        const alert = document.createElement('div');
+        alert.className = 'alert alert-success alert-dismissible fade show';
+        alert.innerHTML = `
+            <strong>Sync Complete!</strong> 
+            Discovered ${result.custom_targeting.total_keys} custom targeting keys,
+            ${result.audience_segments.total} audience segments, and
+            ${result.labels.total} labels.
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        `;
+        document.querySelector('.container-fluid').insertBefore(alert, document.querySelector('h1').nextSibling);
+        
+    } catch (error) {
+        modal.hide();
+        alert('Sync failed: ' + error.message);
+    }
+});
+
+// Search handlers
+document.getElementById('search-keys').addEventListener('input', renderCustomKeys);
+document.getElementById('search-values').addEventListener('input', () => {
+    if (currentKeyId) renderCustomValues(currentKeyId);
+});
+document.getElementById('search-audiences').addEventListener('input', renderAudiences);
+document.getElementById('audience-type-filter').addEventListener('change', renderAudiences);
+document.getElementById('search-labels').addEventListener('input', renderLabels);
+
+// Load data on page load
+loadTargetingData();
+</script>
+{% endblock %}

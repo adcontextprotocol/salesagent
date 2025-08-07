@@ -19,8 +19,9 @@ ENV UV_PYTHON_PREFERENCE=only-system
 WORKDIR /app
 COPY pyproject.toml uv.lock ./
 
-# Install dependencies with caching
+# Install dependencies with caching and increased timeout
 # This layer will be cached as long as pyproject.toml and uv.lock don't change
+ENV UV_HTTP_TIMEOUT=300
 RUN --mount=type=cache,target=/cache/uv \
     --mount=type=cache,target=/root/.cache/pip \
     uv sync --frozen

@@ -114,13 +114,15 @@ class DatabaseConnection:
         
         elif self.config['type'] == 'postgresql':
             import psycopg2
+            import psycopg2.extras
             self.connection = psycopg2.connect(
                 host=self.config['host'],
                 port=self.config['port'],
                 database=self.config['database'],
                 user=self.config['user'],
                 password=self.config['password'],
-                sslmode=self.config['sslmode']
+                sslmode=self.config['sslmode'],
+                cursor_factory=psycopg2.extras.DictCursor
             )
         
         return self.connection
@@ -141,10 +143,23 @@ class DatabaseConnection:
         
         return cursor
     
+    def cursor(self):
+        """Get a database cursor."""
+        return self.connection.cursor()
+    
     def close(self):
         """Close database connection."""
         if self.connection:
             self.connection.close()
+    
+    def __enter__(self):
+        """Enter context manager."""
+        return self
+    
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        """Exit context manager and close connection."""
+        self.close()
+        return False
 
 
 def get_db_connection() -> DatabaseConnection:

@@ -27,6 +27,14 @@ from schemas import Principal
 from superadmin_api import superadmin_api
 app.register_blueprint(superadmin_api)
 
+# Import GAM inventory service for targeting browser
+from gam_inventory_service import GAMInventoryService, register_inventory_endpoints
+from sqlalchemy.orm import scoped_session
+from database_schema import SessionLocal
+
+# Create scoped session for thread safety
+db_session = scoped_session(SessionLocal)
+
 # Configure for being mounted at different paths and proxy headers
 class ProxyFix:
     def __init__(self, app):
@@ -699,7 +707,7 @@ def test_login_form():
                 </div>
                 <div class="form-group">
                     <label>Password:</label>
-                    <input type="password" name="password" value="test123" required>
+                    <input type="password" name="password" placeholder="test123" required>
                 </div>
                 <div class="form-group">
                     <label>Tenant ID (optional, required for tenant users):</label>
@@ -1244,6 +1252,28 @@ def create_tenant():
             return render_template('create_tenant.html', error=str(e))
     
     return render_template('create_tenant.html')
+
+# Targeting Browser Route
+@app.route('/tenant/<tenant_id>/targeting')
+@require_auth()
+def targeting_browser(tenant_id):
+    """Display targeting browser page."""
+    # Check access
+    if session.get('role') != 'super_admin' and session.get('tenant_id') != tenant_id:
+        return "Access denied", 403
+    
+    conn = get_db_connection()
+    cursor = conn.execute("SELECT name FROM tenants WHERE tenant_id = ?", (tenant_id,))
+    row = cursor.fetchone()
+    if not row:
+        return "Tenant not found", 404
+    
+    tenant_name = row[0]
+    conn.close()
+    
+    return render_template('targeting_browser_simple.html', 
+                         tenant_id=tenant_id, 
+                         tenant_name=tenant_name)
 
 # Operations Dashboard Route
 @app.route('/tenant/<tenant_id>/operations')
@@ -3837,6 +3867,9 @@ if __name__ == '__main__':
     
     # Register adapter routes
     register_adapter_routes()
+    
+    # Register GAM inventory endpoints
+    register_inventory_endpoints(app, db_session)
     
     if not GOOGLE_CLIENT_ID or not GOOGLE_CLIENT_SECRET:
         print("ERROR: Google OAuth credentials not found!")
