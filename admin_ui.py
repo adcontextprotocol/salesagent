@@ -23,7 +23,19 @@ app.logger.setLevel(logging.INFO)
 # Import schemas after Flask app is created
 from schemas import Principal
 
-# Configure for being mounted at different paths
+# Import and register super admin API blueprint
+from superadmin_api import superadmin_api
+app.register_blueprint(superadmin_api)
+
+# Import GAM inventory service for targeting browser
+from gam_inventory_service import GAMInventoryService, register_inventory_endpoints
+from sqlalchemy.orm import scoped_session
+from database_schema import SessionLocal
+
+# Create scoped session for thread safety
+db_session = scoped_session(SessionLocal)
+
+# Configure for being mounted at different paths and proxy headers
 class ProxyFix:
     def __init__(self, app):
         self.app = app
@@ -36,6 +48,15 @@ class ProxyFix:
             path_info = environ['PATH_INFO']
             if path_info.startswith(script_name):
                 environ['PATH_INFO'] = path_info[len(script_name):]
+        
+        # Handle proxy headers for correct URL generation
+        if environ.get('HTTP_X_FORWARDED_HOST'):
+            environ['HTTP_HOST'] = environ['HTTP_X_FORWARDED_HOST']
+        if environ.get('HTTP_X_FORWARDED_PROTO'):
+            environ['wsgi.url_scheme'] = environ['HTTP_X_FORWARDED_PROTO']
+        if environ.get('HTTP_X_FORWARDED_PORT'):
+            environ['SERVER_PORT'] = environ['HTTP_X_FORWARDED_PORT']
+            
         return self.app(environ, start_response)
 
 app.wsgi_app = ProxyFix(app.wsgi_app)
@@ -145,17 +166,88 @@ def parse_json_config(config_str):
     else:
         return {}
 
+def get_tenant_config_from_db(conn, tenant_id):
+    """Build tenant config from individual database columns."""
+    cursor = conn.execute("""
+        SELECT ad_server, max_daily_budget, enable_aee_signals,
+               authorized_emails, authorized_domains, slack_webhook_url,
+               slack_audit_webhook_url, hitl_webhook_url, admin_token,
+               auto_approve_formats, human_review_required, policy_settings
+        FROM tenants WHERE tenant_id = ?
+    """, (tenant_id,))
+    
+    row = cursor.fetchone()
+    if not row:
+        return None
+    
+    # Build config object from columns
+    config = {
+        'adapters': {},
+        'features': {
+            'max_daily_budget': row[1] or 10000,
+            'enable_aee_signals': bool(row[2])
+        },
+        'creative_engine': {
+            'human_review_required': bool(row[10])
+        }
+    }
+    
+    # Add adapter configuration
+    if row[0]:  # ad_server
+        # Get adapter-specific config from adapter_config table
+        adapter_cursor = conn.execute(
+            "SELECT * FROM adapter_config WHERE tenant_id = ? AND adapter_type = ?",
+            (tenant_id, row[0])
+        )
+        adapter_row = adapter_cursor.fetchone()
+        
+        adapter_config = {'enabled': True}
+        if adapter_row:
+            # TODO: Map adapter-specific fields based on adapter type
+            pass
+        
+        config['adapters'][row[0]] = adapter_config
+    
+    # Add optional fields
+    if row[3]:  # authorized_emails
+        config['authorized_emails'] = json.loads(row[3]) if isinstance(row[3], str) else row[3]
+    if row[4]:  # authorized_domains
+        config['authorized_domains'] = json.loads(row[4]) if isinstance(row[4], str) else row[4]
+    if row[5]:  # slack_webhook_url
+        config['features']['slack_webhook_url'] = row[5]
+    if row[6]:  # slack_audit_webhook_url
+        config['features']['slack_audit_webhook_url'] = row[6]
+    if row[7]:  # hitl_webhook_url
+        config['features']['hitl_webhook_url'] = row[7]
+    if row[8]:  # admin_token
+        config['admin_token'] = row[8]
+    if row[9]:  # auto_approve_formats
+        config['creative_engine']['auto_approve_formats'] = json.loads(row[9]) if isinstance(row[9], str) else row[9]
+    if row[11]:  # policy_settings
+        config['policy_settings'] = json.loads(row[11]) if isinstance(row[11], str) else row[11]
+    
+    return config
+
 def is_super_admin(email):
     """Check if email is authorized as super admin."""
+    # Debug logging
+    app.logger.info(f"Checking super admin for email: {email}")
+    app.logger.info(f"SUPER_ADMIN_EMAILS: {SUPER_ADMIN_EMAILS}")
+    app.logger.info(f"SUPER_ADMIN_DOMAINS: {SUPER_ADMIN_DOMAINS}")
+    
     # Check explicit email list
     if email in SUPER_ADMIN_EMAILS:
+        app.logger.info(f"Email {email} found in SUPER_ADMIN_EMAILS")
         return True
     
     # Check domain
     domain = email.split('@')[1] if '@' in email else ''
+    app.logger.info(f"Email domain: {domain}")
     if domain and domain in SUPER_ADMIN_DOMAINS:
+        app.logger.info(f"Domain {domain} found in SUPER_ADMIN_DOMAINS")
         return True
     
+    app.logger.info(f"Email {email} is not a super admin")
     return False
 
 def is_tenant_admin(email, tenant_id=None):
@@ -269,23 +361,163 @@ def tenant_google_auth(tenant_id):
     """Initiate Google OAuth flow for specific tenant."""
     # Store tenant_id in session for callback
     session['oauth_tenant_id'] = tenant_id
-    redirect_uri = url_for('tenant_google_callback', tenant_id=tenant_id, _external=True)
+    # Use the centralized callback for all OAuth flows
+    redirect_uri = url_for('google_callback', _external=True)
     return google.authorize_redirect(redirect_uri)
 
 @app.route('/auth/google/callback')
 def google_callback():
-    """Handle Google OAuth callback for super admin."""
+    """Handle Google OAuth callback for both super admin and tenant users."""
     try:
         token = google.authorize_access_token()
         user_info = token.get('userinfo')
         
         if not user_info:
+            # Check if this was a tenant-specific login attempt
+            oauth_tenant_id = session.pop('oauth_tenant_id', None)
+            if oauth_tenant_id:
+                return redirect(url_for('tenant_login', tenant_id=oauth_tenant_id))
             return redirect(url_for('login'))
         
         email = user_info.get('email')
         if not email:
-            return render_template('login.html', error='No email address provided by Google', tenant_id=None)
+            oauth_tenant_id = session.pop('oauth_tenant_id', None)
+            return render_template('login.html', 
+                                 error='No email address provided by Google', 
+                                 tenant_id=oauth_tenant_id)
         
+        app.logger.info(f"OAuth callback received email: {email}")
+        
+        # Check if this is a tenant-specific login attempt
+        oauth_tenant_id = session.pop('oauth_tenant_id', None)
+        
+        if oauth_tenant_id:
+            # Tenant-specific authentication flow
+            conn = get_db_connection()
+            
+            # First check if user is in the users table for this tenant
+            cursor = conn.execute("""
+                SELECT u.user_id, u.role, u.name, t.name as tenant_name, u.is_active
+                FROM users u
+                JOIN tenants t ON u.tenant_id = t.tenant_id
+                WHERE u.email = ? AND u.tenant_id = ?
+            """, (email, oauth_tenant_id))
+            user_row = cursor.fetchone()
+            
+            # Update last login if user exists
+            if user_row:
+                user_id, user_role, user_name, tenant_name, is_active = user_row
+                
+                if not is_active:
+                    conn.close()
+                    return render_template('login.html', 
+                                         error='Your account has been disabled',
+                                         tenant_id=oauth_tenant_id)
+                
+                # Update last login and Google ID
+                conn.execute("""
+                    UPDATE users 
+                    SET last_login = ?, google_id = ?
+                    WHERE user_id = ?
+                """, (datetime.now().isoformat(), user_info.get('sub'), user_id))
+                conn.connection.commit()
+                conn.close()
+                
+                session['authenticated'] = True
+                session['role'] = user_role  # Use actual user role from DB
+                session['user_id'] = user_id
+                session['tenant_id'] = oauth_tenant_id
+                session['tenant_name'] = tenant_name
+                session['email'] = email
+                session['username'] = user_name or user_info.get('name', email)
+                
+                # Redirect to originally requested URL if stored
+                next_url = session.pop('next_url', None)
+                if next_url:
+                    return redirect(next_url)
+                return redirect(url_for('tenant_detail', tenant_id=oauth_tenant_id))
+            
+            # If not in users table, check legacy tenant admin config
+            if is_tenant_admin(email, oauth_tenant_id):
+                # Get tenant name for session
+                cursor = conn.execute("SELECT name FROM tenants WHERE tenant_id = ?", (oauth_tenant_id,))
+                tenant = cursor.fetchone()
+                conn.close()
+                
+                session['authenticated'] = True
+                session['role'] = 'tenant_admin'  # Legacy role
+                session['tenant_id'] = oauth_tenant_id
+                session['tenant_name'] = tenant[0] if tenant else oauth_tenant_id
+                session['email'] = email
+                session['username'] = user_info.get('name', email)
+                
+                # Redirect to originally requested URL if stored
+                next_url = session.pop('next_url', None)
+                if next_url:
+                    return redirect(next_url)
+                return redirect(url_for('tenant_detail', tenant_id=oauth_tenant_id))
+            
+            # Check if super admin trying to access tenant
+            if is_super_admin(email):
+                # Get tenant name for session
+                cursor = conn.execute("SELECT name FROM tenants WHERE tenant_id = ?", (oauth_tenant_id,))
+                tenant = cursor.fetchone()
+                conn.close()
+                
+                session['authenticated'] = True
+                session['role'] = 'super_admin'
+                session['email'] = email
+                session['username'] = user_info.get('name', email)
+                
+                if tenant:
+                    session['tenant_name'] = tenant[0]
+                
+                # Super admin can access any tenant
+                # Redirect to originally requested URL if stored
+                next_url = session.pop('next_url', None)
+                if next_url:
+                    return redirect(next_url)
+                return redirect(url_for('tenant_detail', tenant_id=oauth_tenant_id))
+            
+            # Fall back to checking tenant config
+            config = get_tenant_config_from_db(conn, oauth_tenant_id)
+            conn.close()
+            
+            if config:
+                # Check if user is authorized for this tenant
+                authorized_emails = config.get('authorized_emails', [])
+                authorized_domains = config.get('authorized_domains', [])
+                
+                domain = email.split('@')[1] if '@' in email else None
+                
+                if email in authorized_emails or (domain and domain in authorized_domains):
+                    session['authenticated'] = True
+                    session['role'] = 'tenant_user'
+                    session['tenant_id'] = oauth_tenant_id
+                    session['email'] = email
+                    session['username'] = user_info.get('name', email)
+                    
+                    # Get tenant name
+                    conn = get_db_connection()
+                    cursor = conn.execute("SELECT name FROM tenants WHERE tenant_id = ?", (oauth_tenant_id,))
+                    tenant = cursor.fetchone()
+                    conn.close()
+                    
+                    if tenant:
+                        session['tenant_name'] = tenant[0]
+                    
+                    # Redirect to originally requested URL if stored
+                    next_url = session.pop('next_url', None)
+                    if next_url:
+                        return redirect(next_url)
+                    return redirect(url_for('tenant_detail', tenant_id=oauth_tenant_id))
+            
+            # Not authorized for this tenant
+            return render_template('login.html', 
+                                 error=f'Email {email} is not authorized for this tenant',
+                                 tenant_id=oauth_tenant_id)
+        
+        # Standard super admin flow (no tenant_id in session)
         # Check if super admin
         if is_super_admin(email):
             session['authenticated'] = True
@@ -329,116 +561,12 @@ def google_callback():
         
     except Exception as e:
         app.logger.error(f"OAuth callback error: {e}")
-        return render_template('login.html', error='Authentication failed', tenant_id=None)
+        oauth_tenant_id = session.pop('oauth_tenant_id', None)
+        return render_template('login.html', 
+                             error='Authentication failed', 
+                             tenant_id=oauth_tenant_id)
 
-@app.route('/tenant/<tenant_id>/auth/google/callback')
-def tenant_google_callback(tenant_id):
-    """Handle Google OAuth callback for specific tenant."""
-    try:
-        token = google.authorize_access_token()
-        user_info = token.get('userinfo')
-        
-        if not user_info:
-            return redirect(url_for('tenant_login', tenant_id=tenant_id))
-        
-        email = user_info.get('email')
-        if not email:
-            return render_template('login.html', 
-                                 error='No email address provided by Google',
-                                 tenant_id=tenant_id)
-        
-        # First check if user is in the users table for this tenant
-        conn = get_db_connection()
-        cursor = conn.execute("""
-            SELECT u.user_id, u.role, u.name, t.name as tenant_name, u.is_active
-            FROM users u
-            JOIN tenants t ON u.tenant_id = t.tenant_id
-            WHERE u.email = ? AND u.tenant_id = ?
-        """, (email, tenant_id))
-        user_row = cursor.fetchone()
-        
-        # Update last login if user exists
-        if user_row:
-            user_id, user_role, user_name, tenant_name, is_active = user_row
-            
-            if not is_active:
-                conn.close()
-                return render_template('login.html', 
-                                     error='Your account has been disabled',
-                                     tenant_id=tenant_id)
-            
-            # Update last login and Google ID
-            conn.execute("""
-                UPDATE users 
-                SET last_login = ?, google_id = ?
-                WHERE user_id = ?
-            """, (datetime.now().isoformat(), user_info.get('sub'), user_id))
-            conn.connection.commit()
-            conn.close()
-            
-            session['authenticated'] = True
-            session['role'] = user_role  # Use actual user role from DB
-            session['user_id'] = user_id
-            session['tenant_id'] = tenant_id
-            session['tenant_name'] = tenant_name
-            session['email'] = email
-            session['username'] = user_name or user_info.get('name', email)
-            session.pop('oauth_tenant_id', None)  # Clean up
-            
-            # Redirect to originally requested URL if stored
-            next_url = session.pop('next_url', None)
-            if next_url:
-                return redirect(next_url)
-            return redirect(url_for('tenant_detail', tenant_id=tenant_id))
-        
-        # If not in users table, check legacy tenant admin config
-        if is_tenant_admin(email, tenant_id):
-            # Get tenant name for session
-            cursor = conn.execute("SELECT name FROM tenants WHERE tenant_id = ?", (tenant_id,))
-            tenant = cursor.fetchone()
-            conn.close()
-            
-            session['authenticated'] = True
-            session['role'] = 'tenant_admin'  # Legacy role
-            session['tenant_id'] = tenant_id
-            session['tenant_name'] = tenant[0] if tenant else tenant_id
-            session['email'] = email
-            session['username'] = user_info.get('name', email)
-            session.pop('oauth_tenant_id', None)  # Clean up
-            
-            # Redirect to originally requested URL if stored
-            next_url = session.pop('next_url', None)
-            if next_url:
-                return redirect(next_url)
-            return redirect(url_for('tenant_detail', tenant_id=tenant_id))
-        
-        conn.close()
-        
-        # Check if super admin trying to access tenant
-        if is_super_admin(email):
-            session['authenticated'] = True
-            session['role'] = 'super_admin'
-            session['email'] = email
-            session['username'] = user_info.get('name', email)
-            session.pop('oauth_tenant_id', None)  # Clean up
-            
-            # Super admin can access any tenant
-            # Redirect to originally requested URL if stored
-            next_url = session.pop('next_url', None)
-            if next_url:
-                return redirect(next_url)
-            return redirect(url_for('tenant_detail', tenant_id=tenant_id))
-        
-        # Not authorized for this tenant
-        return render_template('login.html', 
-                             error=f'Email {email} is not authorized to access this tenant',
-                             tenant_id=tenant_id)
-        
-    except Exception as e:
-        app.logger.error(f"OAuth callback error: {e}")
-        return render_template('login.html', 
-                             error='Authentication failed',
-                             tenant_id=tenant_id)
+# Removed tenant-specific callback - now handled by the centralized callback
 
 @app.route('/auth/select-tenant', methods=['POST'])
 def select_tenant():
@@ -608,6 +736,11 @@ def tenant_root(tenant_id):
         return redirect(url_for('tenant_detail', tenant_id=tenant_id))
     return redirect(url_for('tenant_login', tenant_id=tenant_id))
 
+@app.route('/health')
+def health():
+    """Health check endpoint for monitoring."""
+    return "OK", 200
+
 @app.route('/')
 @require_auth()
 def index():
@@ -619,15 +752,9 @@ def index():
     # Super admins see all tenants
     conn = get_db_connection()
     cursor = conn.execute("""
-        SELECT t.tenant_id, t.name, t.subdomain, t.is_active, t.created_at, t.ad_server,
-               s.completed_at as last_sync, s.status as sync_status, s.summary
-        FROM tenants t
-        LEFT JOIN (
-            SELECT tenant_id, completed_at, status, summary,
-                   ROW_NUMBER() OVER (PARTITION BY tenant_id ORDER BY started_at DESC) as rn
-            FROM sync_jobs
-        ) s ON t.tenant_id = s.tenant_id AND s.rn = 1
-        ORDER BY t.created_at DESC
+        SELECT tenant_id, name, subdomain, is_active, created_at
+        FROM tenants
+        ORDER BY created_at DESC
     """)
     tenants = []
     for row in cursor.fetchall():
@@ -639,45 +766,15 @@ def index():
             except:
                 pass
         
-        last_sync = row[6]
-        if last_sync and isinstance(last_sync, str):
-            try:
-                last_sync = datetime.fromisoformat(last_sync.replace('T', ' '))
-            except:
-                pass
-        
-        sync_summary = None
-        if row[8]:
-            try:
-                import json
-                sync_summary = json.loads(row[8])
-            except:
-                pass
-        
         tenants.append({
             'tenant_id': row[0],
             'name': row[1],
             'subdomain': row[2],
             'is_active': row[3],
-            'created_at': created_at,
-            'ad_server': row[5],
-            'last_sync': last_sync,
-            'sync_status': row[7],
-            'sync_summary': sync_summary
+            'created_at': created_at
         })
-    # Get superadmin API key if super admin
-    api_key = None
-    if session.get('role') == 'super_admin':
-        cursor = conn.execute("""
-            SELECT config_value FROM superadmin_config 
-            WHERE config_key = 'api_key'
-        """)
-        row = cursor.fetchone()
-        if row:
-            api_key = row[0]
-    
     conn.close()
-    return render_template('index.html', tenants=tenants, now=datetime.now(), superadmin_api_key=api_key)
+    return render_template('index.html', tenants=tenants)
 
 @app.route('/settings')
 @require_auth(admin_only=True)
@@ -1083,125 +1180,6 @@ def test_slack(tenant_id):
         return jsonify({"success": False, "error": str(e)})
 
 
-@app.route('/api/tenant/<tenant_id>/sync/trigger', methods=['POST'])
-@require_auth()
-def trigger_tenant_sync(tenant_id):
-    """Trigger sync for a tenant (admin only)."""
-    # Check access
-    if session.get('role') == 'tenant_admin' and session.get('tenant_id') != tenant_id:
-        return jsonify({'success': False, 'error': 'Access denied'}), 403
-    
-    if session.get('role') not in ['super_admin', 'tenant_admin', 'admin']:
-        return jsonify({'success': False, 'error': 'Admin access required'}), 403
-    
-    try:
-        # Import sync API functions
-        from sync_api import initialize_superadmin_api_key
-        import requests
-        
-        # Get or create API key
-        api_key = initialize_superadmin_api_key()
-        
-        # Trigger sync via internal API call
-        sync_response = requests.post(
-            f'http://localhost:{os.environ.get("ADMIN_UI_PORT", 8001)}/api/v1/sync/trigger/{tenant_id}',
-            headers={'X-API-Key': api_key},
-            json={'sync_type': 'full'},
-            timeout=60
-        )
-        
-        if sync_response.status_code == 200:
-            return jsonify({'success': True, 'message': 'Sync started successfully'})
-        else:
-            return jsonify({'success': False, 'error': 'Failed to start sync'}), 500
-    except Exception as e:
-        app.logger.error(f"Failed to trigger sync: {e}")
-        return jsonify({'success': False, 'error': str(e)}), 500
-
-@app.route('/api/tenant/<tenant_id>/sync/status')
-@require_auth()
-def get_tenant_sync_status(tenant_id):
-    """Get sync status for a tenant (for UI display)."""
-    # Check access
-    if session.get('role') != 'super_admin' and session.get('tenant_id') != tenant_id:
-        return jsonify({'error': 'Access denied'}), 403
-    
-    try:
-        from models import SyncJob, GAMInventory
-        from sqlalchemy.orm import scoped_session
-        from gam_inventory_service import SessionLocal
-        
-        db_session = scoped_session(SessionLocal)
-        db_session.remove()  # Start fresh
-        
-        # Get last completed sync
-        last_sync = db_session.query(SyncJob).filter(
-            SyncJob.tenant_id == tenant_id,
-            SyncJob.status == 'completed'
-        ).order_by(SyncJob.completed_at.desc()).first()
-        
-        # Check if sync is currently running
-        running_sync = db_session.query(SyncJob).filter(
-            SyncJob.tenant_id == tenant_id,
-            SyncJob.status.in_(['pending', 'running'])
-        ).first()
-        
-        # Get item count and breakdown by type
-        item_count = db_session.query(GAMInventory).filter_by(
-            tenant_id=tenant_id
-        ).count()
-        
-        # Get breakdown by inventory type
-        from sqlalchemy import func
-        breakdown_query = db_session.query(
-            GAMInventory.inventory_type,
-            func.count(GAMInventory.id).label('count')
-        ).filter(
-            GAMInventory.tenant_id == tenant_id,
-            GAMInventory.status != 'STALE'
-        ).group_by(
-            GAMInventory.inventory_type
-        ).all()
-        
-        breakdown = {}
-        for inv_type, count in breakdown_query:
-            # Map database types to display names
-            if inv_type == 'ad_unit':
-                breakdown['ad_units'] = count
-            elif inv_type == 'custom_targeting_key':
-                breakdown['custom_targeting_keys'] = count
-            elif inv_type == 'custom_targeting_value':
-                breakdown['custom_targeting_values'] = count
-            elif inv_type == 'placement':
-                breakdown['placements'] = count
-            elif inv_type == 'label':
-                breakdown['labels'] = count
-            elif inv_type == 'audience_segment':
-                breakdown['audience_segments'] = count
-        
-        response = {
-            'sync_running': running_sync is not None,
-            'item_count': item_count,
-            'breakdown': breakdown
-        }
-        
-        if last_sync:
-            response['last_sync'] = last_sync.completed_at.isoformat()
-            if last_sync.summary:
-                try:
-                    summary = json.loads(last_sync.summary)
-                    response['summary'] = summary
-                except:
-                    pass
-        
-        db_session.remove()
-        return jsonify(response), 200
-        
-    except Exception as e:
-        app.logger.error(f"Failed to get sync status: {e}")
-        return jsonify({'error': str(e)}), 500
-
-
 @app.route('/create_tenant', methods=['GET', 'POST'])
 @require_auth(admin_only=True)
 def create_tenant():
@@ -1275,285 +1253,27 @@ def create_tenant():
     
     return render_template('create_tenant.html')
 
-# Inventory Management Routes
-@app.route('/tenant/<tenant_id>/inventory')
-@require_auth()
-def inventory_browser(tenant_id):
-    """Display inventory browser for GAM ad units, placements, etc."""
-    # Check access
-    if session.get('role') != 'super_admin' and session.get('tenant_id') != tenant_id:
-        abort(403)
-    
-    # Get tenant info
-    conn = get_db_connection()
-    cursor = conn.execute("SELECT tenant_id, name, ad_server FROM tenants WHERE tenant_id = ?", (tenant_id,))
-    tenant_row = cursor.fetchone()
-    conn.close()
-    
-    if not tenant_row:
-        abort(404)
-    
-    # Convert row to dict
-    tenant = {
-        'tenant_id': tenant_row['tenant_id'],
-        'name': tenant_row['name'],
-        'ad_server': tenant_row['ad_server']
-    }
-    
-    # Check if GAM is enabled
-    if tenant['ad_server'] != 'google_ad_manager':
-        flash('Google Ad Manager is not enabled for this tenant', 'warning')
-        return redirect(url_for('tenant_detail', tenant_id=tenant_id))
-    
-    return render_template('inventory_browser.html', tenant=tenant)
-
-# Note: Inventory tree and search endpoints are provided by gam_inventory_service.py
-# The following routes are registered there:
-# - /api/tenant/<tenant_id>/inventory/tree 
-# - /api/tenant/<tenant_id>/inventory/search
-
+# Targeting Browser Route
 @app.route('/tenant/<tenant_id>/targeting')
 @require_auth()
 def targeting_browser(tenant_id):
-    """Browse all targeting criteria (custom targeting, audiences, labels)."""
+    """Display targeting browser page."""
     # Check access
     if session.get('role') != 'super_admin' and session.get('tenant_id') != tenant_id:
-        abort(403)
+        return "Access denied", 403
     
-    # Get tenant info
     conn = get_db_connection()
-    cursor = conn.execute("""
-        SELECT tenant_id, name, ad_server
-        FROM tenants
-        WHERE tenant_id = ?
-    """, (tenant_id,))
-    
-    tenant_row = cursor.fetchone()
-    conn.close()
-    
-    if not tenant_row:
-        abort(404)
-    
-    tenant = {
-        'tenant_id': tenant_row['tenant_id'],
-        'name': tenant_row['name'],
-        'ad_server': tenant_row['ad_server']
-    }
-    
-    # Check if GAM is enabled
-    if tenant['ad_server'] != 'google_ad_manager':
-        flash('Google Ad Manager is not enabled for this tenant')
-        return redirect(url_for('tenant_detail', tenant_id=tenant_id))
-    
-    return render_template('targeting_browser_simple.html', tenant=tenant)
-
-@app.route('/api/tenant/<tenant_id>/targeting/all')
-@require_auth()
-def get_all_targeting_data(tenant_id):
-    """Get all targeting data (custom targeting, audiences, labels) from database."""
-    app.logger.info(f"get_all_targeting_data called for tenant {tenant_id}")
-    app.logger.info(f"Session role: {session.get('role')}, Session tenant: {session.get('tenant_id')}")
-    
-    # Check access
-    if session.get('role') != 'super_admin' and session.get('tenant_id') != tenant_id:
-        app.logger.warning(f"Access denied for tenant {tenant_id}")
-        return jsonify({'error': 'Access denied'}), 403
-    
-    try:
-        # Use SQLAlchemy to query the data
-        from models import GAMInventory
-        from sqlalchemy.orm import scoped_session
-        from gam_inventory_service import SessionLocal
-        
-        db_session = scoped_session(SessionLocal)
-        
-        # Get custom targeting keys
-        custom_keys = db_session.query(GAMInventory).filter(
-            GAMInventory.tenant_id == tenant_id,
-            GAMInventory.inventory_type == 'custom_targeting_key',
-            GAMInventory.status != 'STALE'
-        ).all()
-        
-        # Get custom targeting values
-        custom_values = db_session.query(GAMInventory).filter(
-            GAMInventory.tenant_id == tenant_id,
-            GAMInventory.inventory_type == 'custom_targeting_value',
-            GAMInventory.status != 'STALE'
-        ).all()
-        
-        # Group values by key
-        values_by_key = {}
-        for value in custom_values:
-            key_id = value.inventory_metadata.get('custom_targeting_key_id') if value.inventory_metadata else None
-            if key_id:
-                if key_id not in values_by_key:
-                    values_by_key[key_id] = []
-                values_by_key[key_id].append({
-                    'id': value.inventory_id,
-                    'name': value.name,
-                    'display_name': value.name
-                })
-        
-        # Get audience segments
-        audiences = db_session.query(GAMInventory).filter(
-            GAMInventory.tenant_id == tenant_id,
-            GAMInventory.inventory_type == 'audience_segment',
-            GAMInventory.status != 'STALE'
-        ).all()
-        
-        # Get labels
-        labels = db_session.query(GAMInventory).filter(
-            GAMInventory.tenant_id == tenant_id,
-            GAMInventory.inventory_type == 'label',
-            GAMInventory.status != 'STALE'
-        ).all()
-        
-        # Get last sync info
-        from models import SyncJob
-        last_sync = db_session.query(SyncJob).filter(
-            SyncJob.tenant_id == tenant_id,
-            SyncJob.sync_type.in_(['full', 'incremental']),
-            SyncJob.status == 'completed'
-        ).order_by(SyncJob.completed_at.desc()).first()
-        
-        # Format the response to match frontend expectations
-        app.logger.info(f"Found {len(custom_keys)} custom keys for tenant {tenant_id}")
-        app.logger.info(f"Found {len(custom_values)} custom values for tenant {tenant_id}")
-        app.logger.info(f"Found {len(audiences)} audiences for tenant {tenant_id}")
-        app.logger.info(f"Found {len(labels)} labels for tenant {tenant_id}")
-        
-        result = {
-            'last_sync': last_sync.completed_at.isoformat() if last_sync else None,
-            'customKeys': [
-                {
-                    'id': key.inventory_id,
-                    'name': key.name,
-                    'display_name': key.inventory_metadata.get('display_name', key.name) if key.inventory_metadata else key.name,
-                    'type': key.inventory_metadata.get('type', 'PREDEFINED') if key.inventory_metadata else 'PREDEFINED',
-                    'metadata': {
-                        'reportable_type': key.inventory_metadata.get('reportable_type', '') if key.inventory_metadata else '',
-                        'values_count': len(values_by_key.get(key.inventory_id, []))
-                    }
-                }
-                for key in custom_keys
-            ],
-            'customValues': values_by_key,
-            'audiences': [
-                {
-                    'id': audience.inventory_id,
-                    'name': audience.name,
-                    'description': audience.inventory_metadata.get('description', '') if audience.inventory_metadata else '',
-                    'size': audience.inventory_metadata.get('size', 0) if audience.inventory_metadata else 0,
-                    'type': audience.inventory_metadata.get('type', 'UNKNOWN') if audience.inventory_metadata else 'UNKNOWN'
-                }
-                for audience in audiences
-            ],
-            'labels': [
-                {
-                    'id': label.inventory_id,
-                    'name': label.name,
-                    'label_type': label.inventory_metadata.get('label_type', 'N/A') if label.inventory_metadata else 'N/A',
-                    'ad_category': label.inventory_metadata.get('ad_category', 'N/A') if label.inventory_metadata else 'N/A',
-                    'is_active': label.inventory_metadata.get('is_active', False) if label.inventory_metadata else False,
-                    'description': label.inventory_metadata.get('description', '') if label.inventory_metadata else ''
-                }
-                for label in labels
-            ]
-        }
-        
-        db_session.remove()
-        
-        app.logger.info(f"Returning targeting data with {len(result['customKeys'])} keys")
-        app.logger.info(f"Result keys: {list(result.keys())}")
-        return jsonify(result)
-        
-    except Exception as e:
-        app.logger.error(f"Error fetching targeting data: {e}")
-        import traceback
-        app.logger.error(traceback.format_exc())
-        return jsonify({'error': str(e)}), 500
-
-@app.route('/tenant/<tenant_id>/product/<product_id>/inventory')
-@require_auth()
-def product_inventory_config(tenant_id, product_id):
-    """Configure inventory targeting for a product."""
-    # Check access
-    if session.get('role') == 'viewer':
-        abort(403)
-    
-    if session.get('role') != 'super_admin' and session.get('tenant_id') != tenant_id:
-        abort(403)
-    
-    # Get tenant and product info
-    conn = get_db_connection()
-    
-    # Get tenant
     cursor = conn.execute("SELECT name FROM tenants WHERE tenant_id = ?", (tenant_id,))
-    tenant = cursor.fetchone()
+    row = cursor.fetchone()
+    if not row:
+        return "Tenant not found", 404
     
-    if not tenant:
-        conn.close()
-        abort(404)
-    
-    # Get product
-    cursor = conn.execute("""
-        SELECT product_id, name, formats, countries, implementation_config
-        FROM products
-        WHERE tenant_id = ? AND product_id = ?
-    """, (tenant_id, product_id))
-    
-    product_row = cursor.fetchone()
+    tenant_name = row[0]
     conn.close()
     
-    if not product_row:
-        abort(404)
-    
-    # Convert to dict and parse JSON fields
-    product = dict(product_row)
-    if product['formats']:
-        product['formats'] = json.loads(product['formats'])
-    if product['implementation_config']:
-        product['implementation_config'] = json.loads(product['implementation_config'])
-    
-    return render_template('product_inventory_config.html',
-                         tenant_id=tenant_id,
-                         tenant_name=tenant['name'],
-                         product=product)
-
-# API endpoints for inventory management (used by JS)
-@app.route('/api/tenant/<tenant_id>/products')
-@require_auth()
-def api_get_products(tenant_id):
-    """API endpoint to get products for tenant."""
-    # Check access
-    if session.get('role') != 'super_admin' and session.get('tenant_id') != tenant_id:
-        return jsonify({'error': 'Access denied'}), 403
-    
-    conn = get_db_connection()
-    cursor = conn.execute("""
-        SELECT product_id, name, description, formats, delivery_type
-        FROM products
-        WHERE tenant_id = ?
-        ORDER BY name
-    """, (tenant_id,))
-    
-    products = []
-    for row in cursor.fetchall():
-        product = dict(row)
-        if product['formats']:
-            product['formats'] = json.loads(product['formats'])
-        products.append(product)
-    
-    conn.close()
-    
-    return jsonify({'products': products})
-
-# Import inventory service endpoints
-try:
-    from gam_inventory_service import create_inventory_endpoints
-    create_inventory_endpoints(app)
-except ImportError:
-    print("Warning: GAM inventory service not available")
+    return render_template('targeting_browser_simple.html', 
+                         tenant_id=tenant_id, 
+                         tenant_name=tenant_name)
 
 # Operations Dashboard Route
 @app.route('/tenant/<tenant_id>/operations')
@@ -1914,12 +1634,17 @@ def get_adapter_inventory_schema(tenant_id, adapter_name):
         return jsonify({"error": "Access denied"}), 403
     
     try:
-        # Check if adapter is configured
+        # Get tenant config to instantiate adapter
         conn = get_db_connection()
-        cursor = conn.execute("SELECT adapter_type FROM adapter_config WHERE tenant_id = ? AND adapter_type = ?", (tenant_id, adapter_name))
-        row = cursor.fetchone()
-        if not row:
-            return jsonify({"error": f"Adapter {adapter_name} is not configured for this tenant"}), 404
+        config_data = get_tenant_config_from_db(conn, tenant_id)
+        if not config_data:
+            return jsonify({"error": "Tenant not found"}), 404
+        # PostgreSQL returns JSONB as dict, SQLite returns string
+        tenant_config = config_data if isinstance(config_data, dict) else json.loads(config_data)
+        adapter_config = tenant_config.get('adapters', {}).get(adapter_name, {})
+        
+        if not adapter_config.get('enabled'):
+            return jsonify({"error": f"Adapter {adapter_name} is not enabled"}), 400
         
         # Create a dummy principal for schema retrieval
         dummy_principal = Principal(
@@ -2046,34 +1771,7 @@ def setup_adapter(tenant_id):
         conn.connection.commit()
         conn.close()
         
-        # Trigger initial sync for GAM
-        if adapter_type == 'gam' and request.form.get('refresh_token'):
-            try:
-                # Import sync API functions
-                from sync_api import initialize_superadmin_api_key
-                import requests
-                
-                # Get or create API key
-                api_key = initialize_superadmin_api_key()
-                
-                # Trigger sync via internal API call
-                sync_response = requests.post(
-                    f'http://localhost:{os.environ.get("ADMIN_UI_PORT", 8001)}/api/v1/sync/trigger/{tenant_id}',
-                    headers={'X-API-Key': api_key},
-                    json={'sync_type': 'full'},
-                    timeout=60
-                )
-                
-                if sync_response.status_code == 200:
-                    flash('Ad server configuration updated and initial sync started!', 'success')
-                else:
-                    flash('Ad server configuration updated. You can manually sync from the tenant page.', 'success')
-            except Exception as e:
-                app.logger.error(f"Failed to trigger initial sync: {e}")
-                flash('Ad server configuration updated. You can manually sync from the tenant page.', 'success')
-        else:
-            flash('Ad server configuration updated successfully!', 'success')
-        
+        flash('Ad server configuration updated successfully!', 'success')
         return redirect(url_for('tenant_detail', tenant_id=tenant_id) + '#adserver')
     except Exception as e:
         conn.close()
@@ -2144,8 +1842,8 @@ def create_principal(tenant_id):
     return render_template('create_principal.html', tenant_id=tenant_id)
 
 @app.route('/api/health')
-def health():
-    """Health check endpoint."""
+def api_health():
+    """API health check endpoint."""
     try:
         conn = get_db_connection()
         conn.execute("SELECT 1")
@@ -2340,40 +2038,41 @@ def list_products(tenant_id):
     
     conn = get_db_connection()
     
-    # Get tenant name
-    cursor = conn.execute("SELECT name FROM tenants WHERE tenant_id = ?", (tenant_id,))
+    # Get tenant and config
+    cursor = conn.execute("SELECT name, config FROM tenants WHERE tenant_id = ?", (tenant_id,))
     row = cursor.fetchone()
-    tenant_name = row['name']
-    
-    # Get active adapter from adapter_config table
-    adapter_cursor = conn.execute("SELECT adapter_type FROM adapter_config WHERE tenant_id = ?", (tenant_id,))
-    adapter_row = adapter_cursor.fetchone()
+    tenant_name = row[0]
+    config_data = row[1]
+    # PostgreSQL returns JSONB as dict, SQLite returns string
+    tenant_config = config_data if isinstance(config_data, dict) else json.loads(config_data)
     
     # Get active adapter and its UI endpoint
     adapter_ui_endpoint = None
-    if adapter_row:
-        adapter_name = adapter_row['adapter_type']
-        # Create dummy principal to get UI endpoint
-        dummy_principal = Principal(
-            tenant_id=tenant_id,
-            principal_id="ui_query",
-            name="UI Query",
-            access_token="",
-            platform_mappings={}
-        )
-        
-        try:
-            if adapter_name == 'google_ad_manager':
-                from adapters.google_ad_manager import GoogleAdManager
-                adapter = GoogleAdManager({}, dummy_principal, dry_run=True, tenant_id=tenant_id)
-                adapter_ui_endpoint = adapter.get_config_ui_endpoint()
-            elif adapter_name == 'mock':
-                from adapters.mock_ad_server import MockAdServer
-                adapter = MockAdServer({}, dummy_principal, dry_run=True, tenant_id=tenant_id)
-                adapter_ui_endpoint = adapter.get_config_ui_endpoint()
-            # Add other adapters as needed
-        except:
-            pass
+    adapters = tenant_config.get('adapters', {})
+    for adapter_name, config in adapters.items():
+        if config.get('enabled'):
+            # Create dummy principal to get UI endpoint
+            dummy_principal = Principal(
+                tenant_id=tenant_id,
+                principal_id="ui_query",
+                name="UI Query",
+                access_token="",
+                platform_mappings={}
+            )
+            
+            try:
+                if adapter_name == 'google_ad_manager':
+                    from adapters.google_ad_manager import GoogleAdManager
+                    adapter = GoogleAdManager(config, dummy_principal, dry_run=True, tenant_id=tenant_id)
+                    adapter_ui_endpoint = adapter.get_config_ui_endpoint()
+                elif adapter_name == 'mock':
+                    from adapters.mock_ad_server import MockAdServer
+                    adapter = MockAdServer(config, dummy_principal, dry_run=True, tenant_id=tenant_id)
+                    adapter_ui_endpoint = adapter.get_config_ui_endpoint()
+                # Add other adapters as needed
+            except:
+                pass
+            break
     
     # Get products
     cursor = conn.execute("""
@@ -2484,19 +2183,10 @@ def edit_product_basic(tenant_id, product_id):
         'price_guidance': price_guidance
     }
     
-    # Get tenant adapter
-    tenant_cursor = conn.execute("SELECT adapter_type FROM adapter_config WHERE tenant_id = ?", (tenant_id,))
-    adapter_row = tenant_cursor.fetchone()
-    tenant_adapter = None
-    if adapter_row:
-        adapter_name = adapter_row['adapter_type']
-        tenant_adapter = 'gam' if adapter_name == 'google_ad_manager' else adapter_name
-    
     conn.close()
     return render_template('edit_product.html', 
                          tenant_id=tenant_id,
-                         product=product,
-                         tenant_adapter=tenant_adapter)
+                         product=product)
 
 @app.route('/tenant/<tenant_id>/products/add', methods=['GET', 'POST'])
 @require_auth()
@@ -2536,10 +2226,10 @@ def add_product(tenant_id):
                 targeting_template = {}
                 implementation_config = {}
             
-            # Get the active adapter for this tenant
-            cursor = conn.execute("SELECT adapter_type FROM adapter_config WHERE tenant_id = ?", (tenant_id,))
-            adapter_row = cursor.fetchone()
-            active_adapter = adapter_row['adapter_type'] if adapter_row else None
+            # Build implementation config based on adapter
+            tenant_config = get_tenant_config_from_db(conn, tenant_id)
+            if not tenant_config:
+                return jsonify({"error": "Tenant not found"}), 404
             
             # Handle regular form submission fields if not from AI
             if not ai_config:
@@ -2801,9 +2491,16 @@ def get_product_templates(tenant_id):
     try:
         from default_products import get_industry_specific_products
         
-        # For now, default to 'general' industry since we don't have industry column
-        # TODO: Add industry column to tenants table if needed
-        industry = 'general'
+        # Get tenant's industry from config
+        conn = get_db_connection()
+        config = get_tenant_config_from_db(conn, tenant_id)
+        conn.close()
+        
+        if not config:
+            return jsonify({"error": "Tenant not found"}), 404
+        
+        config = config_row[0] if isinstance(config_row[0], dict) else json.loads(config_row[0])
+        industry = config.get('industry', 'general')
         
         templates = get_industry_specific_products(industry)
         
@@ -2944,16 +2641,15 @@ def policy_settings(tenant_id):
     
     conn = get_db_connection()
     
-    # Get tenant info and policy settings
-    cursor = conn.execute("SELECT name, policy_settings FROM tenants WHERE tenant_id = ?", (tenant_id,))
+    # Get tenant info and config
+    cursor = conn.execute("SELECT name, config FROM tenants WHERE tenant_id = ?", (tenant_id,))
     tenant = cursor.fetchone()
     if not tenant:
         conn.close()
         return "Tenant not found", 404
     
-    tenant_name = tenant['name']
-    policy_settings = tenant['policy_settings']
-    config = policy_settings if isinstance(policy_settings, dict) else json.loads(policy_settings or '{}')
+    tenant_name, config_str = tenant
+    config = parse_json_config(config_str)
     
     # Define default policies that all publishers start with
     default_policies = {
@@ -3047,9 +2743,9 @@ def update_policy_settings(tenant_id):
         conn = get_db_connection()
         
         # Get current config
-        cursor = conn.execute("SELECT policy_settings FROM tenants WHERE tenant_id = ?", (tenant_id,))
-        policy_row = cursor.fetchone()
-        current_policy = policy_row['policy_settings'] if isinstance(policy_row['policy_settings'], dict) else json.loads(policy_row['policy_settings'] or '{}')
+        config = get_tenant_config_from_db(conn, tenant_id)
+        if not config:
+            return jsonify({"error": "Tenant not found"}), 404
         
         # Parse the form data for lists
         def parse_textarea_lines(field_name):
@@ -3065,7 +2761,7 @@ def update_policy_settings(tenant_id):
             'prohibited_categories': parse_textarea_lines('prohibited_categories'),
             'prohibited_tactics': parse_textarea_lines('prohibited_tactics'),
             # Keep default policies (they don't change from form)
-            'default_prohibited_categories': current_policy.get('default_prohibited_categories', [
+            'default_prohibited_categories': config.get('policy_settings', {}).get('default_prohibited_categories', [
                 'illegal_content',
                 'hate_speech', 
                 'violence',
@@ -3073,7 +2769,7 @@ def update_policy_settings(tenant_id):
                 'misleading_health_claims',
                 'financial_scams'
             ]),
-            'default_prohibited_tactics': current_policy.get('default_prohibited_tactics', [
+            'default_prohibited_tactics': config.get('policy_settings', {}).get('default_prohibited_tactics', [
                 'targeting_children_under_13',
                 'discriminatory_targeting',
                 'deceptive_claims',
@@ -3082,12 +2778,14 @@ def update_policy_settings(tenant_id):
             ])
         }
         
-        # Update database with new policy settings
+        config['policy_settings'] = policy_settings
+        
+        # Update database
         conn.execute("""
             UPDATE tenants 
-            SET policy_settings = ?
+            SET config = ?
             WHERE tenant_id = ?
-        """, (json.dumps(policy_settings), tenant_id))
+        """, (json.dumps(config), tenant_id))
         
         conn.connection.commit()
         conn.close()
@@ -3929,11 +3627,19 @@ def analyze_ad_server_inventory(tenant_id):
     try:
         conn = get_db_connection()
         
-        # Get active adapter for tenant
-        cursor = conn.execute("SELECT adapter_type FROM adapter_config WHERE tenant_id = ?", (tenant_id,))
-        adapter_row = cursor.fetchone()
+        # Get tenant config to determine adapter
+        config = get_tenant_config_from_db(conn, tenant_id)
+        if not config:
+            return jsonify({"error": "Tenant not found"}), 404
         
-        adapter_type = adapter_row['adapter_type'] if adapter_row else None
+        # Find enabled adapter
+        adapter_type = None
+        adapter_config = None
+        for adapter, cfg in config.get('adapters', {}).items():
+            if cfg.get('enabled'):
+                adapter_type = adapter
+                adapter_config = cfg
+                break
         
         if not adapter_type:
             # Return mock data if no adapter configured
@@ -4095,46 +3801,57 @@ def register_adapter_routes():
     """Register UI routes from all available adapters."""
     try:
         print("Starting adapter route registration...")
-        # Get all unique adapter types across all tenants
+        # Get all enabled adapters across all tenants
         conn = get_db_connection()
-        cursor = conn.execute("SELECT DISTINCT adapter_type FROM adapter_config")
+        cursor = conn.execute("SELECT tenant_id, ad_server FROM tenants WHERE ad_server IS NOT NULL")
         
         registered_adapters = set()
         for row in cursor.fetchall():
-            adapter_name = row['adapter_type']
-            if adapter_name not in registered_adapters:
-                # Create a dummy principal for route registration
-                dummy_principal = Principal(
-                    tenant_id="system",
-                    principal_id="route_registration",
-                    name="Route Registration",
-                    access_token="",
-                    platform_mappings={}
-                )
+            tenant_id = row[0]
+            ad_server = row[1]
+            print(f"Processing tenant {tenant_id} with adapter {ad_server}")
+            
+            tenant_config = get_tenant_config_from_db(conn, tenant_id)
+            if not tenant_config:
+                continue
                 
-                # Import and register adapter routes
-                try:
-                    if adapter_name == 'google_ad_manager':
-                        print(f"Registering routes for {adapter_name}")
-                        from adapters.google_ad_manager import GoogleAdManager
-                        adapter = GoogleAdManager({}, dummy_principal, dry_run=True, tenant_id="system")
-                        adapter.register_ui_routes(app)
-                        registered_adapters.add(adapter_name)
-                    elif adapter_name == 'mock':
-                        print(f"Registering routes for {adapter_name}")
-                        from adapters.mock_ad_server import MockAdServer
-                        adapter = MockAdServer({}, dummy_principal, dry_run=True, tenant_id="system")
-                        adapter.register_ui_routes(app)
-                        registered_adapters.add(adapter_name)
-                    elif adapter_name == 'kevel':
-                        from adapters.kevel import KevelAdapter
-                        adapter = KevelAdapter({}, dummy_principal, dry_run=True)
-                        if hasattr(adapter, 'register_ui_routes'):
+            adapters_config = tenant_config.get('adapters', {})
+            
+            for adapter_name, adapter_config in adapters_config.items():
+                if adapter_config.get('enabled') and adapter_name not in registered_adapters:
+                    # Create a dummy principal for route registration
+                    dummy_principal = Principal(
+                        tenant_id="system",
+                        principal_id="route_registration",
+                        name="Route Registration",
+                        access_token="",
+                        platform_mappings={}
+                    )
+                    
+                    # Import and register adapter routes
+                    try:
+                        if adapter_name == 'google_ad_manager':
+                            print(f"Registering routes for {adapter_name}")
+                            print(f"Adapter config: {adapter_config}")
+                            from adapters.google_ad_manager import GoogleAdManager
+                            adapter = GoogleAdManager(adapter_config, dummy_principal, dry_run=True, tenant_id="system")
                             adapter.register_ui_routes(app)
                             registered_adapters.add(adapter_name)
-                    # Add other adapters as they implement UI routes
-                except Exception as e:
-                    print(f"Warning: Failed to register routes for {adapter_name}: {e}")
+                        elif adapter_name == 'mock':
+                            print(f"Registering routes for {adapter_name}")
+                            from adapters.mock_ad_server import MockAdServer
+                            adapter = MockAdServer(adapter_config, dummy_principal, dry_run=True, tenant_id="system")
+                            adapter.register_ui_routes(app)
+                            registered_adapters.add(adapter_name)
+                        elif adapter_name == 'kevel':
+                            from adapters.kevel import KevelAdapter
+                            adapter = KevelAdapter(adapter_config, dummy_principal, dry_run=True)
+                            if hasattr(adapter, 'register_ui_routes'):
+                                adapter.register_ui_routes(app)
+                                registered_adapters.add(adapter_name)
+                        # Add other adapters as they implement UI routes
+                    except Exception as e:
+                        print(f"Warning: Failed to register routes for {adapter_name}: {e}")
         
         conn.close()
         print(f"Registered UI routes for adapters: {', '.join(registered_adapters)}")
@@ -4144,20 +3861,15 @@ def register_adapter_routes():
         print(f"Warning: Failed to register adapter routes: {e}")
         traceback.print_exc()
 
-# Register adapter routes at module level (needed for import)
-register_adapter_routes()
-
-# Register sync API blueprint
-try:
-    from sync_api import sync_api
-    app.register_blueprint(sync_api)
-    print("Registered sync API blueprint")
-except Exception as e:
-    print(f"Warning: Failed to register sync API blueprint: {e}")
-
 if __name__ == '__main__':
     # Create templates directory
     os.makedirs('templates', exist_ok=True)
+    
+    # Register adapter routes
+    register_adapter_routes()
+    
+    # Register GAM inventory endpoints
+    register_inventory_endpoints(app, db_session)
     
     if not GOOGLE_CLIENT_ID or not GOOGLE_CLIENT_SECRET:
         print("ERROR: Google OAuth credentials not found!")
@@ -4175,7 +3887,7 @@ if __name__ == '__main__':
     # Run server
     port = int(os.environ.get('ADMIN_UI_PORT', 8001))  # Match OAuth redirect URI
     # Debug mode off for production
-    debug = False  # Force debug off in Docker
+    debug = os.environ.get('FLASK_DEBUG', '0') == '1'
     
     print(f"DEBUG: FLASK_DEBUG={os.environ.get('FLASK_DEBUG')}, debug={debug}")
     print(f"Starting Admin UI with Google OAuth on port {port}")

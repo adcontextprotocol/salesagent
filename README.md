@@ -413,22 +413,43 @@ Example targeting overlay:
 
 ### Production Deployment (Fly.io)
 
-The server is ready for deployment on Fly.io:
+Deploy the AdCP Sales Agent to Fly.io with managed PostgreSQL and automatic SSL:
 
 ```bash
-# Create app
+# 1. Install Fly CLI and login
+fly auth login
+
+# 2. Create the app
 fly apps create adcp-sales-agent
 
-# Set ad server credentials (example for GAM)
-fly secrets set AD_SERVER_ADAPTER="gam" --app adcp-sales-agent
-fly secrets set GAM_NETWORK_CODE="123456789" --app adcp-sales-agent
-fly secrets set GAM_SERVICE_ACCOUNT_JSON='{"type":"service_account"...}' --app adcp-sales-agent
+# 3. Create PostgreSQL cluster
+fly postgres create --name adcp-db --region iad
+fly postgres attach adcp-db --app adcp-sales-agent
 
-# Deploy
-fly deploy --app adcp-sales-agent
+# 4. Create persistent volume for file storage
+fly volumes create adcp_data --region iad --size 1
+
+# 5. Set required secrets
+fly secrets set \
+  GOOGLE_CLIENT_ID="your-client-id.apps.googleusercontent.com" \
+  GOOGLE_CLIENT_SECRET="your-client-secret" \
+  SUPER_ADMIN_EMAILS="admin@example.com" \
+  SUPER_ADMIN_DOMAINS="example.com" \
+  GEMINI_API_KEY="your-gemini-api-key"
+
+# 6. Configure OAuth redirect URI in Google Cloud Console:
+#    https://adcp-sales-agent.fly.dev/auth/google/callback
+
+# 7. Deploy
+fly deploy
 ```
 
-For detailed deployment instructions, see [FLY_DEPLOYMENT.md](FLY_DEPLOYMENT.md).
+After deployment:
+- Admin UI: https://adcp-sales-agent.fly.dev/admin
+- MCP Endpoint: https://adcp-sales-agent.fly.dev/mcp/
+- Single OAuth redirect URI for all authentication flows
+
+For detailed deployment instructions and architecture overview, see the [Fly.io Deployment section in CLAUDE.md](CLAUDE.md#flyio-deployment).
 
 ## Documentation
 
@@ -439,7 +460,7 @@ For detailed deployment instructions, see [FLY_DEPLOYMENT.md](FLY_DEPLOYMENT.md)
 - **[Platform Mapping Guide](docs/platform-mapping-guide.md)**: How AdCP concepts map to ad servers
 - **[Targeting Implementation](docs/targeting-implementation.md)**: Targeting capabilities and examples
 - **[Adapter Development](docs/adapter-development.md)**: How to add new ad server support
-- **[Deployment Guide](FLY_DEPLOYMENT.md)**: Production deployment instructions
+- **[Deployment Guide](CLAUDE.md#flyio-deployment)**: Fly.io deployment instructions
 
 ### Docker Deployment
 
