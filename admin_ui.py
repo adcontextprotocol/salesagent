@@ -707,7 +707,7 @@ def test_login_form():
                 </div>
                 <div class="form-group">
                     <label>Password:</label>
-                    <input type="password" name="password" value="test123" required>
+                    <input type="password" name="password" placeholder="test123" required>
                 </div>
                 <div class="form-group">
                     <label>Tenant ID (optional, required for tenant users):</label>
