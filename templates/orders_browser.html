@@ -384,6 +384,7 @@ function displayOrderDetails(order) {
                                 <th>Delivered</th>
                                 <th>Progress</th>
                                 <th>CPM</th>
+                                <th>Actions</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -400,6 +401,14 @@ function displayOrderDetails(order) {
                                     <td>${li.stats_impressions ? formatNumber(li.stats_impressions) : '0'}</td>
                                     <td>${liDeliveryPercentage.toFixed(1)}%</td>
                                     <td>${li.cost_per_unit ? '$' + li.cost_per_unit.toFixed(2) : '-'}</td>
+                                    <td>
+                                        <a href="/tenant/${tenantId}/gam/line-item/${li.line_item_id}" 
+                                           class="btn btn-sm btn-outline-info" 
+                                           target="_blank"
+                                           title="View full line item details including targeting, creatives, and JSON representation">
+                                            <i class="bi bi-box-arrow-up-right"></i> Details
+                                        </a>
+                                    </td>
                                 </tr>
                                 `;
                             }).join('')}
