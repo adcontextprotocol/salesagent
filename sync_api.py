@@ -434,6 +434,233 @@ def get_sync_stats():
         db_session.remove()
 
 
+@sync_api.route('/tenant/<tenant_id>/orders/sync', methods=['POST'])
+@require_superadmin_api_key
+def sync_tenant_orders(tenant_id):
+    """Trigger orders and line items sync for a tenant."""
+    db_session.remove()  # Clean start
+    try:
+        
+        # Get tenant and adapter config
+        tenant = db_session.query(Tenant).filter_by(tenant_id=tenant_id).first()
+        if not tenant:
+            return jsonify({'error': 'Tenant not found'}), 404
+        
+        adapter_config = db_session.query(AdapterConfig).filter_by(
+            tenant_id=tenant_id,
+            adapter_type='google_ad_manager'
+        ).first()
+        
+        if not adapter_config or not adapter_config.gam_network_code:
+            return jsonify({'error': 'GAM not configured for tenant'}), 400
+        
+        # Create sync job
+        sync_id = f"orders_sync_{tenant_id}_{int(datetime.now().timestamp())}"
+        sync_job = SyncJob(
+            sync_id=sync_id,
+            tenant_id=tenant_id,
+            adapter_type='google_ad_manager',
+            sync_type='orders',
+            status='running',
+            started_at=datetime.now(timezone.utc),
+            triggered_by='api',
+            triggered_by_id='superadmin_api'
+        )
+        
+        db_session.add(sync_job)
+        db_session.commit()
+        
+        try:
+            # Initialize GAM client
+            from adapters.google_ad_manager import GoogleAdManager
+            from schemas import Principal
+            from gam_orders_service import GAMOrdersService
+            
+            # Create dummy principal for sync
+            principal = Principal(
+                principal_id='system',
+                name='System',
+                platform_mappings={
+                    'gam_advertiser_id': adapter_config.gam_company_id or 'system'
+                }
+            )
+            
+            # Build GAM config
+            gam_config = {
+                'enabled': True,
+                'network_code': adapter_config.gam_network_code,
+                'refresh_token': adapter_config.gam_refresh_token,
+                'company_id': adapter_config.gam_company_id,
+                'trafficker_id': adapter_config.gam_trafficker_id,
+                'manual_approval_required': adapter_config.gam_manual_approval_required
+            }
+            
+            adapter = GoogleAdManager(gam_config, principal, tenant_id=tenant_id)
+            
+            # Perform sync
+            service = GAMOrdersService(db_session)
+            summary = service.sync_tenant_orders(tenant_id, adapter.client)
+            
+            # Update sync job with results
+            sync_job.status = 'completed'
+            sync_job.completed_at = datetime.now(timezone.utc)
+            sync_job.summary = json.dumps(summary)
+            db_session.commit()
+            
+            return jsonify({
+                'sync_id': sync_id,
+                'status': 'completed',
+                'summary': summary
+            }), 200
+            
+        except Exception as e:
+            logger.error(f"Orders sync failed for tenant {tenant_id}: {e}", exc_info=True)
+            
+            # Update sync job with error
+            sync_job.status = 'failed'
+            sync_job.completed_at = datetime.now(timezone.utc)
+            sync_job.error_message = str(e)
+            db_session.commit()
+            
+            return jsonify({
+                'sync_id': sync_id,
+                'status': 'failed',
+                'error': str(e)
+            }), 500
+            
+    except Exception as e:
+        logger.error(f"Failed to trigger orders sync: {e}", exc_info=True)
+        db_session.rollback()
+        return jsonify({'error': str(e)}), 500
+    finally:
+        db_session.remove()
+
+
+@sync_api.route('/tenant/<tenant_id>/orders', methods=['GET'])
+@require_superadmin_api_key
+def get_tenant_orders(tenant_id):
+    """Get orders for a tenant."""
+    try:
+        db_session.remove()  # Start fresh
+        
+        from gam_orders_service import GAMOrdersService
+        
+        # Validate tenant_id
+        if not tenant_id or len(tenant_id) > 50:
+            return jsonify({'error': 'Invalid tenant_id'}), 400
+        
+        # Parse and validate filters from query params
+        filters = {}
+        
+        status = request.args.get('status')
+        if status:
+            # Validate status is one of allowed values
+            valid_statuses = ['DRAFT', 'PENDING_APPROVAL', 'APPROVED', 'PAUSED', 'CANCELED', 'DELETED']
+            if status not in valid_statuses:
+                return jsonify({'error': f'Invalid status. Must be one of: {", ".join(valid_statuses)}'}), 400
+            filters['status'] = status
+            
+        advertiser_id = request.args.get('advertiser_id')
+        if advertiser_id:
+            # Validate advertiser_id format (alphanumeric)
+            if not advertiser_id.isalnum() or len(advertiser_id) > 50:
+                return jsonify({'error': 'Invalid advertiser_id'}), 400
+            filters['advertiser_id'] = advertiser_id
+            
+        search = request.args.get('search')
+        if search:
+            # Limit search string length for safety
+            if len(search) > 200:
+                return jsonify({'error': 'Search string too long (max 200 characters)'}), 400
+            filters['search'] = search
+            
+        has_line_items = request.args.get('has_line_items')
+        if has_line_items:
+            # Validate boolean string
+            if has_line_items not in ['true', 'false']:
+                return jsonify({'error': 'has_line_items must be "true" or "false"'}), 400
+            filters['has_line_items'] = has_line_items
+        
+        service = GAMOrdersService(db_session)
+        orders = service.get_orders(tenant_id, filters)
+        
+        return jsonify({
+            'total': len(orders),
+            'orders': orders
+        }), 200
+        
+    except Exception as e:
+        logger.error(f"Failed to get orders: {e}", exc_info=True)
+        return jsonify({'error': str(e)}), 500
+    finally:
+        db_session.remove()
+
+
+@sync_api.route('/tenant/<tenant_id>/orders/<order_id>', methods=['GET'])
+@require_superadmin_api_key
+def get_order_details(tenant_id, order_id):
+    """Get detailed information about an order including line items."""
+    try:
+        db_session.remove()  # Start fresh
+        
+        # Validate inputs
+        if not tenant_id or len(tenant_id) > 50:
+            return jsonify({'error': 'Invalid tenant_id'}), 400
+        if not order_id or len(order_id) > 50:
+            return jsonify({'error': 'Invalid order_id'}), 400
+        
+        from gam_orders_service import GAMOrdersService
+        
+        service = GAMOrdersService(db_session)
+        order_details = service.get_order_details(tenant_id, order_id)
+        
+        if not order_details:
+            return jsonify({'error': 'Order not found'}), 404
+        
+        return jsonify(order_details), 200
+        
+    except Exception as e:
+        logger.error(f"Failed to get order details: {e}", exc_info=True)
+        return jsonify({'error': str(e)}), 500
+    finally:
+        db_session.remove()
+
+
+@sync_api.route('/tenant/<tenant_id>/line-items', methods=['GET'])
+@require_superadmin_api_key
+def get_tenant_line_items(tenant_id):
+    """Get line items for a tenant."""
+    try:
+        db_session.remove()  # Start fresh
+        
+        from gam_orders_service import GAMOrdersService
+        
+        # Parse filters from query params
+        filters = {}
+        if request.args.get('status'):
+            filters['status'] = request.args.get('status')
+        if request.args.get('line_item_type'):
+            filters['line_item_type'] = request.args.get('line_item_type')
+        if request.args.get('search'):
+            filters['search'] = request.args.get('search')
+        
+        order_id = request.args.get('order_id')
+        
+        service = GAMOrdersService(db_session)
+        line_items = service.get_line_items(tenant_id, order_id, filters)
+        
+        return jsonify({
+            'total': len(line_items),
+            'line_items': line_items
+        }), 200
+        
+    except Exception as e:
+        logger.error(f"Failed to get line items: {e}", exc_info=True)
+        return jsonify({'error': str(e)}), 500
+    finally:
+        db_session.remove()
+
+
 def initialize_superadmin_api_key() -> str:
     """Initialize superadmin API key if not exists."""
     conn = get_db_connection()
