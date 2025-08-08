@@ -3796,6 +3796,265 @@ def create_products_bulk(tenant_id):
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+# ========================
+# GAM Line Item Viewer
+# ========================
+
+@app.route('/api/tenant/<tenant_id>/gam/line-item/<line_item_id>')
+@require_tenant_access
+def get_gam_line_item(tenant_id, line_item_id):
+    """Fetch detailed line item data from GAM."""
+    try:
+        # Get the tenant's GAM configuration
+        tenant = get_tenant_by_id(tenant_id)
+        if not tenant:
+            return jsonify({'error': 'Tenant not found'}), 404
+        
+        tenant_config = json.loads(tenant.get('config') or '{}')
+        gam_config = tenant_config.get('adapters', {}).get('google_ad_manager', {})
+        
+        if not gam_config.get('enabled'):
+            return jsonify({'error': 'GAM not enabled for this tenant'}), 400
+        
+        # Get GAM client using the helper
+        from gam_helper import get_ad_manager_client_for_tenant
+        client = get_ad_manager_client_for_tenant(tenant_id)
+        
+        # Fetch the line item
+        line_item_service = client.GetService('LineItemService')
+        statement = (client.new_statement_builder()
+                    .where('id = :lineItemId')
+                    .with_bind_variable('lineItemId', int(line_item_id))
+                    .limit(1))
+        
+        response = line_item_service.getLineItemsByStatement(statement.to_statement())
+        
+        if not response.get('results'):
+            return jsonify({'error': 'Line item not found'}), 404
+        
+        line_item = response['results'][0]
+        
+        # Fetch the associated order
+        order_service = client.GetService('OrderService')
+        order_statement = (client.new_statement_builder()
+                          .where('id = :orderId')
+                          .with_bind_variable('orderId', line_item['orderId'])
+                          .limit(1))
+        order_response = order_service.getOrdersByStatement(order_statement.to_statement())
+        order = order_response['results'][0] if order_response.get('results') else None
+        
+        # Fetch associated creatives
+        lica_service = client.GetService('LineItemCreativeAssociationService')
+        lica_statement = (client.new_statement_builder()
+                         .where('lineItemId = :lineItemId')
+                         .with_bind_variable('lineItemId', int(line_item_id)))
+        lica_response = lica_service.getLineItemCreativeAssociationsByStatement(lica_statement.to_statement())
+        creative_associations = lica_response.get('results', [])
+        
+        # Fetch creative details if any associations exist
+        creatives = []
+        if creative_associations:
+            creative_service = client.GetService('CreativeService')
+            creative_ids = [lica['creativeId'] for lica in creative_associations]
+            creative_statement = (client.new_statement_builder()
+                                 .where('id IN (:creativeIds)')
+                                 .with_bind_variable('creativeIds', creative_ids))
+            creative_response = creative_service.getCreativesByStatement(creative_statement.to_statement())
+            creatives = creative_response.get('results', [])
+        
+        # Convert to JSON-serializable format
+        from zeep.helpers import serialize_object
+        line_item_data = serialize_object(line_item)
+        order_data = serialize_object(order) if order else None
+        creatives_data = [serialize_object(c) for c in creatives]
+        
+        # Build the comprehensive response
+        result = {
+            'line_item': line_item_data,
+            'order': order_data,
+            'creatives': creatives_data,
+            'creative_associations': [serialize_object(ca) for ca in creative_associations],
+            # Convert to our internal media product JSON format
+            'media_product_json': convert_line_item_to_product_json(line_item_data, creatives_data)
+        }
+        
+        return jsonify(result)
+        
+    except Exception as e:
+        app.logger.error(f"Error fetching GAM line item: {str(e)}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/tenant/<tenant_id>/gam/line-item/<line_item_id>')
+@require_tenant_access
+def view_gam_line_item(tenant_id, line_item_id):
+    """View GAM line item details."""
+    tenant = get_tenant_by_id(tenant_id)
+    if not tenant:
+        flash('Tenant not found', 'danger')
+        return redirect(url_for('index'))
+    
+    return render_template('gam_line_item_viewer.html',
+                          tenant=tenant,
+                          tenant_id=tenant_id,
+                          line_item_id=line_item_id,
+                          user_email=session.get('user_email', 'Unknown'))
+
+def convert_line_item_to_product_json(line_item, creatives):
+    """Convert GAM line item to our internal media product JSON format."""
+    # Extract targeting information
+    targeting = line_item.get('targeting', {})
+    
+    # Build targeting overlay
+    targeting_overlay = {}
+    
+    # Geographic targeting
+    if targeting.get('geoTargeting'):
+        geo = targeting['geoTargeting']
+        if geo.get('targetedLocations'):
+            countries = [loc.get('displayName', loc.get('id')) 
+                        for loc in geo['targetedLocations'] 
+                        if loc.get('type') == 'Country']
+            if countries:
+                targeting_overlay['geo_country_any_of'] = countries
+        
+        if geo.get('excludedLocations'):
+            excluded_countries = [loc.get('displayName', loc.get('id')) 
+                                for loc in geo['excludedLocations'] 
+                                if loc.get('type') == 'Country']
+            if excluded_countries:
+                targeting_overlay['geo_country_none_of'] = excluded_countries
+    
+    # Device targeting
+    if targeting.get('technologyTargeting'):
+        tech = targeting['technologyTargeting']
+        if tech.get('deviceCategoryTargeting'):
+            devices = tech['deviceCategoryTargeting'].get('targetedDeviceCategories', [])
+            device_types = []
+            for device in devices:
+                if device.get('id') == 30000:  # Desktop
+                    device_types.append('desktop')
+                elif device.get('id') == 30001:  # Tablet
+                    device_types.append('tablet')
+                elif device.get('id') == 30002:  # Mobile
+                    device_types.append('mobile')
+            if device_types:
+                targeting_overlay['device_type_any_of'] = device_types
+    
+    # Custom targeting (key-value pairs)
+    if targeting.get('customTargeting'):
+        custom = targeting['customTargeting']
+        key_value_pairs = {}
+        
+        # Parse custom criteria - this is complex in GAM
+        if custom.get('children'):
+            for child in custom['children']:
+                if child.get('keyId') and child.get('valueIds'):
+                    # We'd need to look up the actual key/value names
+                    # For now, just store the IDs
+                    key_value_pairs[f'key_{child["keyId"]}'] = [f'value_{vid}' for vid in child['valueIds']]
+        
+        if key_value_pairs:
+            targeting_overlay['key_value_pairs'] = key_value_pairs
+    
+    # Dayparting
+    if targeting.get('dayPartTargeting'):
+        daypart = targeting['dayPartTargeting']
+        if daypart.get('dayParts'):
+            schedules = []
+            for dp in daypart['dayParts']:
+                schedule = {
+                    'days': [dp.get('dayOfWeek')],
+                    'start_hour': dp.get('startTime', {}).get('hour', 0),
+                    'end_hour': dp.get('endTime', {}).get('hour', 23)
+                }
+                schedules.append(schedule)
+            
+            if schedules:
+                targeting_overlay['dayparting'] = {
+                    'timezone': daypart.get('timeZone', 'America/New_York'),
+                    'schedules': schedules
+                }
+    
+    # Frequency cap
+    if line_item.get('frequencyCaps'):
+        freq_caps = line_item['frequencyCaps']
+        if freq_caps:
+            # Take the first frequency cap
+            cap = freq_caps[0]
+            if cap.get('maxImpressions') and cap.get('numTimeUnits'):
+                # Convert to minutes
+                time_unit = cap.get('timeUnit')
+                num_units = cap.get('numTimeUnits', 1)
+                
+                minutes = num_units
+                if time_unit == 'HOUR':
+                    minutes = num_units * 60
+                elif time_unit == 'DAY':
+                    minutes = num_units * 60 * 24
+                elif time_unit == 'WEEK':
+                    minutes = num_units * 60 * 24 * 7
+                
+                targeting_overlay['frequency_cap'] = {
+                    'suppress_minutes': minutes,
+                    'scope': 'media_buy'
+                }
+    
+    # Extract creative formats
+    formats = []
+    for creative in creatives:
+        format_type = 'display'  # Default
+        if creative.get('size'):
+            size = creative['size']
+            width = size.get('width', 0)
+            height = size.get('height', 0)
+            
+            # Determine format based on creative type and size
+            if 'VideoCreative' in creative.get('Creative.Type', ''):
+                format_type = 'video'
+            elif 'AudioCreative' in creative.get('Creative.Type', ''):
+                format_type = 'audio'
+            
+            format_dict = {
+                'format_id': f'{format_type}_{width}x{height}',
+                'name': f'{format_type.title()} {width}x{height}',
+                'type': format_type,
+                'dimensions': {'width': width, 'height': height}
+            }
+            
+            if format_dict not in formats:
+                formats.append(format_dict)
+    
+    # Build the product JSON
+    product_json = {
+        'product_id': f'gam_line_item_{line_item.get("id")}',
+        'name': line_item.get('name', 'Unknown'),
+        'description': f'GAM Line Item: {line_item.get("name", "")}',
+        'formats': formats,
+        'delivery_type': 'guaranteed' if line_item.get('lineItemType') == 'STANDARD' else 'non_guaranteed',
+        'is_fixed_price': line_item.get('costType') == 'CPM',
+        'cpm': float(line_item.get('costPerUnit', {}).get('microAmount', 0)) / 1000000.0 if line_item.get('costPerUnit') else None,
+        'targeting_overlay': targeting_overlay,
+        'implementation_config': {
+            'gam': {
+                'line_item_id': line_item.get('id'),
+                'order_id': line_item.get('orderId'),
+                'line_item_type': line_item.get('lineItemType'),
+                'priority': line_item.get('priority'),
+                'delivery_rate_type': line_item.get('deliveryRateType'),
+                'creative_placeholders': line_item.get('creativePlaceholders', []),
+                'status': line_item.get('status'),
+                'start_datetime': line_item.get('startDateTime'),
+                'end_datetime': line_item.get('endDateTime'),
+                'units_bought': line_item.get('unitsBought'),
+                'cost_type': line_item.get('costType'),
+                'discount_type': line_item.get('discountType'),
+                'allow_overbook': line_item.get('allowOverbook', False)
+            }
+        }
+    }
+    
+    return product_json
+
 # Function to register adapter routes
 def register_adapter_routes():
     """Register UI routes from all available adapters."""
