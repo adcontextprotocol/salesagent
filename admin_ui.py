@@ -1262,17 +1262,22 @@ def targeting_browser(tenant_id):
         return "Access denied", 403
     
     conn = get_db_connection()
-    cursor = conn.execute("SELECT name FROM tenants WHERE tenant_id = ?", (tenant_id,))
+    cursor = conn.execute("SELECT tenant_id, name FROM tenants WHERE tenant_id = ?", (tenant_id,))
     row = cursor.fetchone()
     if not row:
+        conn.close()
         return "Tenant not found", 404
     
-    tenant_name = row[0]
+    tenant = {
+        'tenant_id': row[0],
+        'name': row[1]
+    }
     conn.close()
     
     return render_template('targeting_browser_simple.html', 
+                         tenant=tenant,
                          tenant_id=tenant_id, 
-                         tenant_name=tenant_name)
+                         tenant_name=row[1])
 
 # Orders Browser Route
 @app.route('/tenant/<tenant_id>/orders')
@@ -3832,16 +3837,21 @@ def create_products_bulk(tenant_id):
 # ========================
 
 @app.route('/api/tenant/<tenant_id>/gam/line-item/<line_item_id>')
-@require_tenant_access
+@require_auth()
 def get_gam_line_item(tenant_id, line_item_id):
     """Fetch detailed line item data from GAM."""
     try:
         # Get the tenant's GAM configuration
-        tenant = get_tenant_by_id(tenant_id)
+        conn = get_db_connection()
+        cursor = conn.execute("SELECT * FROM tenants WHERE tenant_id = ?", (tenant_id,))
+        tenant = cursor.fetchone()
+        
         if not tenant:
+            conn.close()
             return jsonify({'error': 'Tenant not found'}), 404
         
-        tenant_config = json.loads(tenant.get('config') or '{}')
+        tenant_config = get_tenant_config_from_db(conn, tenant_id)
+        conn.close()
         gam_config = tenant_config.get('adapters', {}).get('google_ad_manager', {})
         
         if not gam_config.get('enabled'):
@@ -3916,10 +3926,14 @@ def get_gam_line_item(tenant_id, line_item_id):
         return jsonify({'error': str(e)}), 500
 
 @app.route('/tenant/<tenant_id>/gam/line-item/<line_item_id>')
-@require_tenant_access
+@require_auth()
 def view_gam_line_item(tenant_id, line_item_id):
     """View GAM line item details."""
-    tenant = get_tenant_by_id(tenant_id)
+    conn = get_db_connection()
+    cursor = conn.execute("SELECT * FROM tenants WHERE tenant_id = ?", (tenant_id,))
+    tenant = cursor.fetchone()
+    conn.close()
+    
     if not tenant:
         flash('Tenant not found', 'danger')
         return redirect(url_for('index'))
