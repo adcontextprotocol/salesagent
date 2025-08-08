@@ -27,13 +27,12 @@ from schemas import Principal
 from superadmin_api import superadmin_api
 app.register_blueprint(superadmin_api)
 
-# Import GAM inventory service for targeting browser
-from gam_inventory_service import GAMInventoryService, register_inventory_endpoints
-from sqlalchemy.orm import scoped_session
-from database_schema import SessionLocal
+# Import and register sync API blueprint
+from sync_api import sync_api
+app.register_blueprint(sync_api, url_prefix='/api/sync')
 
-# Create scoped session for thread safety
-db_session = scoped_session(SessionLocal)
+# Import GAM inventory service for targeting browser
+from gam_inventory_service import GAMInventoryService, create_inventory_endpoints as register_inventory_endpoints, SessionLocal, db_session
 
 # Configure for being mounted at different paths and proxy headers
 class ProxyFix:
@@ -1274,6 +1273,38 @@ def targeting_browser(tenant_id):
     return render_template('targeting_browser_simple.html', 
                          tenant_id=tenant_id, 
                          tenant_name=tenant_name)
+
+# Orders Browser Route
+@app.route('/tenant/<tenant_id>/orders')
+@require_auth()
+def orders_browser(tenant_id):
+    """Display GAM orders browser page."""
+    # Check access
+    if session.get('role') != 'super_admin' and session.get('tenant_id') != tenant_id:
+        return "Access denied", 403
+    
+    conn = get_db_connection()
+    cursor = conn.execute("SELECT name FROM tenants WHERE tenant_id = ?", (tenant_id,))
+    row = cursor.fetchone()
+    if not row:
+        conn.close()
+        return "Tenant not found", 404
+    
+    tenant_name = row[0]
+    
+    # Get API key for API calls
+    cursor = conn.execute(
+        "SELECT config_value FROM superadmin_config WHERE config_key = 'api_key'"
+    )
+    api_key_row = cursor.fetchone()
+    api_key = api_key_row['config_value'] if api_key_row else ''
+    
+    conn.close()
+    
+    return render_template('orders_browser.html', 
+                         tenant_id=tenant_id, 
+                         tenant_name=tenant_name,
+                         api_key=api_key)
 
 # Operations Dashboard Route
 @app.route('/tenant/<tenant_id>/operations')
