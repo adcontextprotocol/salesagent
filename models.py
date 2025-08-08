@@ -3,7 +3,7 @@
 from sqlalchemy import (
     Boolean, Column, DateTime, ForeignKey, Integer, String, Text, 
     DECIMAL, Date, JSON, UniqueConstraint, Index, CheckConstraint,
-    ForeignKeyConstraint
+    ForeignKeyConstraint, Float, BigInteger
 )
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship
@@ -325,13 +325,131 @@ class ProductInventoryMapping(Base):
     )
 
 
+class GAMOrder(Base):
+    __tablename__ = 'gam_orders'
+    
+    id = Column(Integer, primary_key=True)
+    tenant_id = Column(String(50), ForeignKey('tenants.tenant_id', ondelete='CASCADE'), nullable=False)
+    order_id = Column(String(50), nullable=False)  # GAM Order ID
+    name = Column(String(255), nullable=False)
+    advertiser_id = Column(String(50), nullable=True)
+    advertiser_name = Column(String(255), nullable=True)
+    agency_id = Column(String(50), nullable=True)
+    agency_name = Column(String(255), nullable=True)
+    trafficker_id = Column(String(50), nullable=True)
+    trafficker_name = Column(String(255), nullable=True)
+    salesperson_id = Column(String(50), nullable=True)
+    salesperson_name = Column(String(255), nullable=True)
+    status = Column(String(30), nullable=False)  # DRAFT, PENDING_APPROVAL, APPROVED, PAUSED, CANCELED, DELETED
+    start_date = Column(DateTime, nullable=True)
+    end_date = Column(DateTime, nullable=True)
+    unlimited_end_date = Column(Boolean, nullable=False, default=False)
+    total_budget = Column(Float, nullable=True)
+    currency_code = Column(String(10), nullable=True)
+    external_order_id = Column(String(100), nullable=True)  # PO number
+    po_number = Column(String(100), nullable=True)
+    notes = Column(Text, nullable=True)
+    last_modified_date = Column(DateTime, nullable=True)
+    is_programmatic = Column(Boolean, nullable=False, default=False)
+    applied_labels = Column(JSON, nullable=True)  # List of label IDs
+    effective_applied_labels = Column(JSON, nullable=True)  # List of label IDs
+    custom_field_values = Column(JSON, nullable=True)
+    order_metadata = Column(JSON, nullable=True)  # Additional GAM fields
+    last_synced = Column(DateTime, nullable=False, default=func.now())
+    created_at = Column(DateTime, nullable=False, default=func.now())
+    updated_at = Column(DateTime, nullable=False, default=func.now(), onupdate=func.now())
+    
+    # Relationships
+    tenant = relationship("Tenant")
+    line_items = relationship("GAMLineItem", back_populates="order", foreign_keys="GAMLineItem.order_id", 
+                            primaryjoin="and_(GAMOrder.tenant_id==GAMLineItem.tenant_id, GAMOrder.order_id==GAMLineItem.order_id)")
+    
+    __table_args__ = (
+        UniqueConstraint('tenant_id', 'order_id', name='uq_gam_orders'),
+        Index('idx_gam_orders_tenant', 'tenant_id'),
+        Index('idx_gam_orders_order_id', 'order_id'),
+        Index('idx_gam_orders_status', 'status'),
+        Index('idx_gam_orders_advertiser', 'advertiser_id'),
+    )
+
+
+class GAMLineItem(Base):
+    __tablename__ = 'gam_line_items'
+    
+    id = Column(Integer, primary_key=True)
+    tenant_id = Column(String(50), ForeignKey('tenants.tenant_id', ondelete='CASCADE'), nullable=False)
+    line_item_id = Column(String(50), nullable=False)  # GAM Line Item ID
+    order_id = Column(String(50), nullable=False)  # GAM Order ID
+    name = Column(String(255), nullable=False)
+    status = Column(String(30), nullable=False)  # DRAFT, PENDING_APPROVAL, APPROVED, PAUSED, ARCHIVED, CANCELED
+    line_item_type = Column(String(30), nullable=False)  # STANDARD, SPONSORSHIP, NETWORK, HOUSE, etc.
+    priority = Column(Integer, nullable=True)
+    start_date = Column(DateTime, nullable=True)
+    end_date = Column(DateTime, nullable=True)
+    unlimited_end_date = Column(Boolean, nullable=False, default=False)
+    auto_extension_days = Column(Integer, nullable=True)
+    cost_type = Column(String(20), nullable=True)  # CPM, CPC, CPD, CPA
+    cost_per_unit = Column(Float, nullable=True)
+    discount_type = Column(String(20), nullable=True)  # PERCENTAGE, ABSOLUTE_VALUE
+    discount = Column(Float, nullable=True)
+    contracted_units_bought = Column(BigInteger, nullable=True)
+    delivery_rate_type = Column(String(30), nullable=True)  # EVENLY, FRONTLOADED, AS_FAST_AS_POSSIBLE
+    goal_type = Column(String(20), nullable=True)  # LIFETIME, DAILY, NONE
+    primary_goal_type = Column(String(20), nullable=True)  # IMPRESSIONS, CLICKS, etc.
+    primary_goal_units = Column(BigInteger, nullable=True)
+    impression_limit = Column(BigInteger, nullable=True)
+    click_limit = Column(BigInteger, nullable=True)
+    target_platform = Column(String(20), nullable=True)  # WEB, MOBILE, ANY
+    environment_type = Column(String(20), nullable=True)  # BROWSER, VIDEO_PLAYER
+    allow_overbook = Column(Boolean, nullable=False, default=False)
+    skip_inventory_check = Column(Boolean, nullable=False, default=False)
+    reserve_at_creation = Column(Boolean, nullable=False, default=False)
+    stats_impressions = Column(BigInteger, nullable=True)
+    stats_clicks = Column(BigInteger, nullable=True)
+    stats_ctr = Column(Float, nullable=True)
+    stats_video_completions = Column(BigInteger, nullable=True)
+    stats_video_starts = Column(BigInteger, nullable=True)
+    stats_viewable_impressions = Column(BigInteger, nullable=True)
+    delivery_indicator_type = Column(String(30), nullable=True)  # UNDER_DELIVERY, EXPECTED_DELIVERY, OVER_DELIVERY, etc.
+    delivery_data = Column(JSON, nullable=True)  # Detailed delivery stats
+    targeting = Column(JSON, nullable=True)  # Full targeting criteria
+    creative_placeholders = Column(JSON, nullable=True)  # Creative sizes and companions
+    frequency_caps = Column(JSON, nullable=True)
+    applied_labels = Column(JSON, nullable=True)
+    effective_applied_labels = Column(JSON, nullable=True)
+    custom_field_values = Column(JSON, nullable=True)
+    third_party_measurement_settings = Column(JSON, nullable=True)
+    video_max_duration = Column(BigInteger, nullable=True)
+    line_item_metadata = Column(JSON, nullable=True)  # Additional GAM fields
+    last_modified_date = Column(DateTime, nullable=True)
+    creation_date = Column(DateTime, nullable=True)
+    external_id = Column(String(255), nullable=True)
+    last_synced = Column(DateTime, nullable=False, default=func.now())
+    created_at = Column(DateTime, nullable=False, default=func.now())
+    updated_at = Column(DateTime, nullable=False, default=func.now(), onupdate=func.now())
+    
+    # Relationships
+    tenant = relationship("Tenant")
+    order = relationship("GAMOrder", back_populates="line_items", foreign_keys=[tenant_id, order_id],
+                        primaryjoin="and_(GAMLineItem.tenant_id==GAMOrder.tenant_id, GAMLineItem.order_id==GAMOrder.order_id)")
+    
+    __table_args__ = (
+        UniqueConstraint('tenant_id', 'line_item_id', name='uq_gam_line_items'),
+        Index('idx_gam_line_items_tenant', 'tenant_id'),
+        Index('idx_gam_line_items_line_item_id', 'line_item_id'),
+        Index('idx_gam_line_items_order_id', 'order_id'),
+        Index('idx_gam_line_items_status', 'status'),
+        Index('idx_gam_line_items_type', 'line_item_type'),
+    )
+
+
 class SyncJob(Base):
     __tablename__ = 'sync_jobs'
     
     sync_id = Column(String(50), primary_key=True)
     tenant_id = Column(String(50), ForeignKey('tenants.tenant_id', ondelete='CASCADE'), nullable=False)
     adapter_type = Column(String(50), nullable=False)
-    sync_type = Column(String(20), nullable=False)  # inventory, targeting, full
+    sync_type = Column(String(20), nullable=False)  # inventory, targeting, full, orders
     status = Column(String(20), nullable=False)  # pending, running, completed, failed
     started_at = Column(DateTime, nullable=False)
     completed_at = Column(DateTime)
