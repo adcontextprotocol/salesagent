@@ -1769,7 +1769,6 @@ def setup_adapter(tenant_id):
             # Log the form data for debugging
             app.logger.info(f"GAM setup for tenant {tenant_id}")
             app.logger.info(f"Form data: network_code={request.form.get('network_code')}, "
-                          f"company_id={request.form.get('company_id')}, "
                           f"trafficker_id={request.form.get('trafficker_id')}")
             
             conn.execute("""
@@ -1781,7 +1780,7 @@ def setup_adapter(tenant_id):
             """, (tenant_id, mapped_adapter, 
                   request.form.get('network_code'),
                   request.form.get('refresh_token'),
-                  request.form.get('company_id'),
+                  None,  # company_id is now per-principal, not per-tenant
                   request.form.get('trafficker_id'),
                   False))
         
@@ -1828,11 +1827,23 @@ def create_principal(tenant_id):
     if session.get('role') in ['admin', 'manager', 'tenant_admin'] and session.get('tenant_id') != tenant_id:
         return "Access denied.", 403
     
+    # Check if tenant has GAM configured
+    conn = get_db_connection()
+    cursor = conn.execute("""
+        SELECT adapter_type 
+        FROM adapter_config 
+        WHERE tenant_id = ?
+    """, (tenant_id,))
+    adapter_row = cursor.fetchone()
+    has_gam = adapter_row and adapter_row[0] == 'google_ad_manager'
+    conn.close()
+    
     if request.method == 'POST':
         # Validate form data
         form_data = {
             'principal_id': request.form.get('principal_id', '').strip(),
-            'name': request.form.get('name', '').strip()
+            'name': request.form.get('name', '').strip(),
+            'gam_advertiser_id': request.form.get('gam_advertiser_id', '').strip() if has_gam else None
         }
         
         # Sanitize
@@ -1847,12 +1858,19 @@ def create_principal(tenant_id):
             ]
         }
         
+        # If GAM is configured, advertiser ID is required
+        if has_gam:
+            validators['gam_advertiser_id'] = [
+                lambda v: FormValidator.validate_required(v, "GAM Advertiser")
+            ]
+        
         errors = validate_form_data(form_data, validators)
         if errors:
             return render_template('create_principal.html', 
                                  tenant_id=tenant_id,
                                  errors=errors,
-                                 form_data=form_data)
+                                 form_data=form_data,
+                                 has_gam=has_gam)
         
         conn = get_db_connection()
         try:
@@ -1862,11 +1880,16 @@ def create_principal(tenant_id):
             # Generate a secure access token
             access_token = secrets.token_urlsafe(32)
             
+            # Build platform mappings
+            platform_mappings = {}
+            if has_gam and form_data.get('gam_advertiser_id'):
+                platform_mappings['gam_advertiser_id'] = form_data['gam_advertiser_id']
+            
             # Create the principal
             conn.execute("""
                 INSERT INTO principals (tenant_id, principal_id, name, platform_mappings, access_token)
                 VALUES (?, ?, ?, ?, ?)
-            """, (tenant_id, principal_id, name, json.dumps({}), access_token))
+            """, (tenant_id, principal_id, name, json.dumps(platform_mappings), access_token))
             
             conn.connection.commit()
             conn.close()
@@ -1876,9 +1899,10 @@ def create_principal(tenant_id):
             conn.close()
             return render_template('create_principal.html', 
                                  tenant_id=tenant_id,
-                                 error=str(e))
+                                 error=str(e),
+                                 has_gam=has_gam)
     
-    return render_template('create_principal.html', tenant_id=tenant_id)
+    return render_template('create_principal.html', tenant_id=tenant_id, has_gam=has_gam)
 
 @app.route('/api/health')
 def api_health():
@@ -2060,6 +2084,111 @@ def test_gam_connection():
         
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+@app.route('/api/gam/get-advertisers', methods=['POST'])
+@require_auth()
+def get_gam_advertisers():
+    """Get list of advertisers from GAM for a tenant."""
+    try:
+        tenant_id = request.json.get('tenant_id')
+        if not tenant_id:
+            return jsonify({"error": "tenant_id is required"}), 400
+        
+        # Check access - explicit role and tenant validation
+        user_role = session.get('role')
+        user_tenant_id = session.get('tenant_id')
+        
+        if user_role == 'super_admin':
+            # Super admin can access any tenant
+            pass
+        elif user_tenant_id == tenant_id and user_role in ['admin', 'manager', 'tenant_admin']:
+            # Tenant-specific roles can only access their own tenant
+            pass
+        else:
+            app.logger.warning(f"Unauthorized GAM advertisers access attempt: role={user_role}, user_tenant={user_tenant_id}, requested_tenant={tenant_id}")
+            return jsonify({"error": "Access denied"}), 403
+        
+        # Get adapter configuration for the tenant
+        conn = get_db_connection()
+        cursor = conn.execute("""
+            SELECT gam_refresh_token, gam_network_code
+            FROM adapter_config
+            WHERE tenant_id = ? AND adapter_type = 'google_ad_manager'
+        """, (tenant_id,))
+        
+        adapter_row = cursor.fetchone()
+        if not adapter_row:
+            conn.close()
+            return jsonify({"error": "GAM not configured for this tenant"}), 400
+        
+        refresh_token = adapter_row[0]
+        network_code = adapter_row[1]
+        
+        # Get OAuth credentials from superadmin config
+        cursor = conn.execute("""
+            SELECT config_key, config_value FROM superadmin_config 
+            WHERE config_key IN ('gam_oauth_client_id', 'gam_oauth_client_secret')
+        """)
+        oauth_config = {}
+        for row in cursor.fetchall():
+            if row[0] == 'gam_oauth_client_id':
+                oauth_config['client_id'] = row[1]
+            elif row[0] == 'gam_oauth_client_secret':
+                oauth_config['client_secret'] = row[1]
+        conn.close()
+        
+        if not oauth_config.get('client_id') or not oauth_config.get('client_secret'):
+            return jsonify({"error": "GAM OAuth credentials not configured"}), 400
+        
+        from googleads import oauth2, ad_manager
+        
+        # Create OAuth2 client
+        oauth2_client = oauth2.GoogleRefreshTokenClient(
+            client_id=oauth_config['client_id'],
+            client_secret=oauth_config['client_secret'],
+            refresh_token=refresh_token
+        )
+        
+        # Initialize GAM client
+        client = ad_manager.AdManagerClient(
+            oauth2_client,
+            "AdCP-Sales-Agent",
+            network_code=network_code
+        )
+        
+        # Get company service to fetch advertisers
+        company_service = client.GetService('CompanyService', version='v202408')
+        
+        # Create a statement to get ADVERTISER type companies
+        from googleads import ad_manager as gam
+        statement_builder = gam.StatementBuilder(version='v202408')
+        statement_builder.Where('type = :type')
+        statement_builder.WithBindVariable('type', 'ADVERTISER')
+        
+        advertisers = []
+        while True:
+            response = company_service.getCompaniesByStatement(
+                statement_builder.ToStatement()
+            )
+            
+            if 'results' in response and len(response['results']):
+                for company in response['results']:
+                    advertisers.append({
+                        'id': str(company.id),
+                        'name': company.name,
+                        'type': company.type,
+                        'external_id': getattr(company, 'externalId', None)
+                    })
+                statement_builder.offset += statement_builder.limit
+            else:
+                break
+        
+        return jsonify({"advertisers": advertisers})
+        
+    except Exception as e:
+        # Log detailed error for debugging but return generic message
+        app.logger.error(f"GAM advertisers fetch error for tenant {tenant_id}: {str(e)}")
+        return jsonify({"error": "Failed to load advertisers from Google Ad Manager"}), 500
 
 @app.route('/static/<path:path>')
 def send_static(path):
