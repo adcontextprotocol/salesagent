@@ -152,7 +152,6 @@
     <a href="/tenant/{{ tenant.tenant_id }}/inventory" class="tab" style="text-decoration: none; color: inherit;">All Inventory →</a>
     <a href="/tenant/{{ tenant.tenant_id }}/targeting" class="tab" style="text-decoration: none; color: inherit;">Targeting →</a>
     <a href="/tenant/{{ tenant.tenant_id }}/orders" class="tab" style="text-decoration: none; color: inherit;">Orders & Line Items →</a>
-    <a href="#" onclick="promptLineItemId(); return false;" class="tab" style="text-decoration: none; color: inherit;">View Line Item →</a>
     {% endif %}
     <a href="/tenant/{{ tenant.tenant_id }}/operations" class="tab" style="text-decoration: none; color: inherit;">Operations →</a>
     <a href="/tenant/{{ tenant.tenant_id }}/policy" class="tab" style="text-decoration: none; color: inherit;">Policy Settings →</a>
@@ -827,14 +826,6 @@ document.getElementById('mappingModal').addEventListener('click', function(e) {
         closeModal();
     }
 });
-
-// Function to prompt for Line Item ID and navigate to viewer
-function promptLineItemId() {
-    const lineItemId = prompt('Enter GAM Line Item ID:');
-    if (lineItemId && lineItemId.trim()) {
-        window.open(`/tenant/{{ tenant.tenant_id }}/gam/line-item/${lineItemId.trim()}`, '_blank');
-    }
-}
 
 // Ad Server Setup Functions
 function selectAdapter(adapter) {
