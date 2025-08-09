@@ -36,22 +36,25 @@ class GoogleAdManager(AdServerAdapter):
         self.network_code = self.config.get("network_code")
         self.key_file = self.config.get("service_account_key_file")
         self.refresh_token = self.config.get("refresh_token")
-        self.company_id = self.config.get("company_id")
         self.trafficker_id = self.config.get("trafficker_id", None)
 
-        # Use adapter_principal_id as the advertiser_id
+        # Use the principal's advertiser_id from platform_mappings
         self.advertiser_id = self.adapter_principal_id
+        # For backward compatibility, fall back to company_id if advertiser_id is not set
+        if not self.advertiser_id:
+            self.advertiser_id = self.config.get("company_id")
+        
+        # Store company_id (advertiser_id) for use in API calls
+        self.company_id = self.advertiser_id
 
         # Check for either service account or OAuth credentials
         if not self.dry_run:
             if not self.network_code:
                 raise ValueError("GAM config is missing 'network_code'")
             if not self.advertiser_id:
-                raise ValueError("GAM config is missing 'advertiser_id'")
+                raise ValueError("Principal is missing 'gam_advertiser_id' in platform_mappings")
             if not self.trafficker_id:
                 raise ValueError("GAM config is missing 'trafficker_id'")
-            if not self.company_id:
-                raise ValueError("GAM config is missing 'company_id'")
             if not self.key_file and not self.refresh_token:
                 raise ValueError("GAM config requires either 'service_account_key_file' or 'refresh_token'")
 
