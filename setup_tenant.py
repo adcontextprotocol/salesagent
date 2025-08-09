@@ -34,7 +34,7 @@ def create_tenant(args):
                 "google_ad_manager": {
                     "enabled": True,
                     "network_code": args.gam_network_code,
-                    "company_id": args.gam_company_id,
+                    # company_id is now per-principal, not per-tenant
                     "refresh_token": args.gam_refresh_token,
                     "manual_approval_required": args.manual_approval
                 }
@@ -83,55 +83,96 @@ def create_tenant(args):
         print(f"Error: Tenant '{tenant_id}' already exists")
         sys.exit(1)
     
-    # Insert tenant
+    # Extract config fields for the new schema
+    features = config.get('features', {})
+    creative_engine = config.get('creative_engine', {})
+    policy_settings = config.get('policy_settings', {})
+    
+    # Insert tenant with new schema
     conn.execute("""
         INSERT INTO tenants (
-            tenant_id, name, subdomain, config, 
+            tenant_id, name, subdomain,
+            ad_server, max_daily_budget, enable_aee_signals,
+            admin_token, auto_approve_formats, human_review_required,
+            policy_settings,
             created_at, updated_at, is_active, billing_plan
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     """, (
         tenant_id,
         args.name,
         subdomain,
-        json.dumps(config),
+        args.adapter,  # ad_server
+        features.get('max_daily_budget', 10000),
+        features.get('enable_aee_signals', True),
+        config.get('admin_token'),
+        json.dumps(creative_engine.get('auto_approve_formats', [])),
+        creative_engine.get('human_review_required', True),
+        json.dumps(policy_settings),
         datetime.now().isoformat(),
         datetime.now().isoformat(),
         1 if db_config['type'] == 'sqlite' else True,
         "standard"
     ))
     
-    # Create admin principal
-    admin_token = secrets.token_urlsafe(32)
-    conn.execute("""
-        INSERT INTO principals (
-            tenant_id, principal_id, name, 
-            platform_mappings, access_token
-        ) VALUES (?, ?, ?, ?, ?)
-    """, (
-        tenant_id,
-        f"{tenant_id}_admin",
-        f"{args.name} Admin",
-        json.dumps({}),
-        admin_token
-    ))
+    # Insert adapter configuration if not mock
+    if args.adapter == 'google_ad_manager':
+        conn.execute("""
+            INSERT INTO adapter_config (
+                tenant_id, adapter_type, gam_network_code, gam_refresh_token,
+                gam_manual_approval_required
+            ) VALUES (?, ?, ?, ?, ?)
+        """, (
+            tenant_id,
+            'google_ad_manager',
+            args.gam_network_code,
+            args.gam_refresh_token,
+            args.manual_approval
+        ))
+    elif args.adapter == 'kevel':
+        conn.execute("""
+            INSERT INTO adapter_config (
+                tenant_id, adapter_type, kevel_network_id, kevel_api_key,
+                kevel_manual_approval_required
+            ) VALUES (?, ?, ?, ?, ?)
+        """, (
+            tenant_id,
+            'kevel',
+            args.kevel_network_id,
+            args.kevel_api_key,
+            args.manual_approval
+        ))
+    elif args.adapter == 'mock':
+        conn.execute("""
+            INSERT INTO adapter_config (
+                tenant_id, adapter_type, mock_dry_run
+            ) VALUES (?, ?, ?)
+        """, (
+            tenant_id,
+            'mock',
+            False
+        ))
     
     conn.connection.commit()
     conn.close()
     
     print(f"""
-✅ Tenant created successfully!
+✅ Tenant (Publisher) created successfully!
 
+Publisher: {args.name}
 Tenant ID: {tenant_id}
-Name: {args.name}
 Subdomain: {subdomain}
 
-🌐 Access URL: http://{subdomain}.localhost:8080
+🌐 Admin UI: http://localhost:8001
+   (Login with your Google account to manage this publisher)
 
-🔑 Admin Token: {config['admin_token']}
-   (Use this as x-adcp-auth header for admin operations)
+📝 Next Steps:
+1. Access the Admin UI to complete setup
+2. Configure your ad server integration (if not done)
+3. Create principals for each advertiser who will buy inventory
+4. Share API tokens with advertisers to access the MCP API
 
-🔑 Principal Token: {admin_token}
-   (Use this for regular API operations)
+💡 Remember: Principals represent advertisers, not the publisher.
+   Each advertiser gets their own principal with unique API access.
 
 📝 To update configuration:
    python manage_tenant.py update {tenant_id} --key "features.max_daily_budget" --value 50000
@@ -150,8 +191,7 @@ def main():
     
     # Adapter-specific options
     parser.add_argument('--gam-network-code', help='Google Ad Manager network code')
-    parser.add_argument('--gam-company-id', help='Google Ad Manager company ID')
-    parser.add_argument('--gam-refresh-token', help='Google Ad Manager OAuth refresh token')
+    parser.add_argument('--gam-refresh-token', help='Google Ad Manager OAuth refresh token (advertisers are now selected per principal)')
     parser.add_argument('--kevel-network-id', help='Kevel network ID')
     parser.add_argument('--kevel-api-key', help='Kevel API key')
     
