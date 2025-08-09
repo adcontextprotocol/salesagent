@@ -137,7 +137,7 @@
     {% endif %}
     <div class="tab" data-tab="users">Users</div>
     <div class="tab" data-tab="principals">
-        Principals {% if not tab_status.principals %}⚠️{% endif %}
+        Advertisers {% if not tab_status.principals %}⚠️{% endif %}
     </div>
     <div class="tab" data-tab="products">
         Products {% if not tab_status.products %}⚠️{% endif %}
@@ -411,18 +411,18 @@
                         </div>
                         
                         <div class="form-group">
-                            <label for="gam_company_id">Advertiser Company</label>
-                            <select id="gam_company_id" name="company_id" required>
-                                <option value="">Select a company...</option>
-                            </select>
-                            <small>Choose your advertiser company</small>
-                        </div>
-                        
-                        <div class="form-group">
                             <label for="gam_trafficker_id">Trafficker User ID</label>
                             <input type="text" id="gam_trafficker_id" name="trafficker_id" required 
                                    placeholder="e.g., 789012">
                             <small>Your user ID: <span id="gamCurrentUserId"></span></small>
+                        </div>
+                        
+                        <div style="background: #e3f2fd; padding: 1rem; border-radius: 8px; margin: 1rem 0;">
+                            <h5 style="margin: 0 0 0.5rem 0;">📝 Note about Advertisers</h5>
+                            <p style="margin: 0; font-size: 14px;">
+                                Advertisers are now configured per principal. After setting up GAM, 
+                                you'll select the advertiser when creating each principal.
+                            </p>
                         </div>
                         
                         <button type="submit" class="btn">Connect Google Ad Manager</button>
@@ -529,20 +529,20 @@
 <div id="principals" class="tab-content">
     <div class="card">
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
-            <h3 style="margin: 0;">Principals (Advertisers)</h3>
+            <h3 style="margin: 0;">Advertisers</h3>
             {% if ns.current_adapter and session.role != 'viewer' %}
-            <a href="/tenant/{{ tenant.tenant_id }}/principals/create" class="btn">Create Principal</a>
+            <a href="/tenant/{{ tenant.tenant_id }}/principals/create" class="btn">Add Advertiser</a>
             {% endif %}
         </div>
         {% if principals %}
         <table>
             <thead>
                 <tr>
-                    <th>ID</th>
-                    <th>Name</th>
-                    <th>Platform Mappings</th>
+                    <th>Advertiser ID</th>
+                    <th>Advertiser Name</th>
+                    <th>Ad Server Mapping</th>
                     <th>Created</th>
-                    <th>Type</th>
+                    <th>API Token</th>
                     <th>Actions</th>
                 </tr>
             </thead>
@@ -554,16 +554,16 @@
                     <td>
                         <div style="font-size: 0.9em;">
                             {% if principal.platform_mappings %}
-                                {% if principal.platform_mappings.gam %}
-                                    <div><strong>GAM:</strong> {{ principal.platform_mappings.gam.advertiser_id }}</div>
+                                {% if principal.platform_mappings.gam_advertiser_id %}
+                                    <div><strong>GAM Advertiser ID:</strong> {{ principal.platform_mappings.gam_advertiser_id }}</div>
                                 {% endif %}
-                                {% if principal.platform_mappings.kevel %}
-                                    <div><strong>Kevel:</strong> {{ principal.platform_mappings.kevel.advertiser_id }}</div>
+                                {% if principal.platform_mappings.kevel_advertiser_id %}
+                                    <div><strong>Kevel:</strong> {{ principal.platform_mappings.kevel_advertiser_id }}</div>
                                 {% endif %}
-                                {% if principal.platform_mappings.triton %}
-                                    <div><strong>Triton:</strong> {{ principal.platform_mappings.triton.advertiser_id }}</div>
+                                {% if principal.platform_mappings.triton_advertiser_id %}
+                                    <div><strong>Triton:</strong> {{ principal.platform_mappings.triton_advertiser_id }}</div>
                                 {% endif %}
-                                {% if not principal.platform_mappings.gam and not principal.platform_mappings.kevel and not principal.platform_mappings.triton %}
+                                {% if not principal.platform_mappings.gam_advertiser_id and not principal.platform_mappings.kevel_advertiser_id and not principal.platform_mappings.triton_advertiser_id %}
                                     <span style="color: #999;">No mappings</span>
                                 {% endif %}
                             {% else %}
@@ -583,11 +583,10 @@
                         {% endif %}
                     </td>
                     <td>
-                        {% if principal.principal_id.endswith('_admin') %}
-                        <span class="status status-active">Admin</span>
-                        {% else %}
-                        <span class="status">Advertiser</span>
-                        {% endif %}
+                        <button onclick="showApiToken('{{ principal.access_token }}')" 
+                                class="btn" style="padding: 4px 8px; font-size: 12px;">
+                            View Token
+                        </button>
                     </td>
                     <td>
                         <button onclick="editMappings('{{ principal.principal_id }}', '{{ principal.name }}', {{ principal.platform_mappings | tojson }})" 
@@ -601,24 +600,24 @@
         </table>
         {% else %}
         <div style="text-align: center; padding: 40px; background: #f8f9fa; border-radius: 8px;">
-            <h4 style="margin-bottom: 20px;">No Principals Yet</h4>
+            <h4 style="margin-bottom: 20px;">No Advertisers Yet</h4>
             
             {% if tenant.active_adapter %}
             <p style="margin-bottom: 20px;">
-                Principals represent your advertisers or API clients who will create campaigns through the Sales Agent.
+                Add advertisers who will buy inventory from your platform.
             </p>
             <p style="margin-bottom: 30px;">
-                Each principal gets their own API access token to interact with the MCP server.
+                Each advertiser gets their own API token to create and manage campaigns through the MCP API.
             </p>
             <a href="/tenant/{{ tenant.tenant_id }}/principals/create" class="btn">
-                Create Your First Principal
+                Add Your First Advertiser
             </a>
             {% else %}
             <p style="margin-bottom: 20px; color: #856404;">
-                ⚠️ You need to set up your ad server before creating principals.
+                ⚠️ You need to set up your ad server before adding advertisers.
             </p>
             <p style="margin-bottom: 30px;">
-                Principals are your advertisers who will create campaigns through the Sales Agent.
+                Once configured, you can add advertisers who will buy inventory through the Sales Agent API.
             </p>
             <a href="#" onclick="document.querySelector('[data-tab=adserver]').click(); return false;" class="btn">
                 Set Up Ad Server First
@@ -785,6 +784,60 @@ print(result)</pre>
 </div>
 
 <script>
+function showApiToken(token) {
+    // Create a modal or alert to show the token
+    const message = `API Token for this advertiser:\n\n${token}\n\nShare this token with the advertiser to access the MCP API.\nUse as x-adcp-auth header in API requests.`;
+    
+    // Create a simple modal
+    const modal = document.createElement('div');
+    modal.style.cssText = 'position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; z-index: 10000;';
+    
+    const content = document.createElement('div');
+    content.style.cssText = 'background: white; padding: 2rem; border-radius: 8px; max-width: 500px; width: 90%;';
+    content.innerHTML = `
+        <h3 style="margin-top: 0;">API Access Token</h3>
+        <div id="token-container" style="background: #f5f5f5; padding: 1rem; border-radius: 4px; margin: 1rem 0; word-break: break-all; font-family: monospace;">
+            <!-- Token will be inserted safely via textContent -->
+        </div>
+        <p style="color: #666; font-size: 14px;">
+            Share this token with the advertiser. They will use it as the <code>x-adcp-auth</code> header when making API requests.
+        </p>
+        <button id="copy-btn" class="btn" style="margin-right: 1rem;">Copy Token</button>
+        <button onclick="this.closest('div[style*=fixed]').remove();" class="btn btn-secondary">Close</button>
+    `;
+    
+    // Safely insert token content to prevent XSS
+    const tokenContainer = content.querySelector('#token-container');
+    tokenContainer.textContent = token;
+    
+    // Add copy functionality with proper token reference
+    const copyBtn = content.querySelector('#copy-btn');
+    copyBtn.onclick = function() {
+        navigator.clipboard.writeText(token).then(() => {
+            alert('Token copied to clipboard!');
+        }).catch(() => {
+            // Fallback for older browsers
+            const textArea = document.createElement('textarea');
+            textArea.value = token;
+            document.body.appendChild(textArea);
+            textArea.select();
+            document.execCommand('copy');
+            document.body.removeChild(textArea);
+            alert('Token copied to clipboard!');
+        });
+    };
+    
+    modal.appendChild(content);
+    document.body.appendChild(modal);
+    
+    // Close on background click
+    modal.addEventListener('click', function(e) {
+        if (e.target === modal) {
+            modal.remove();
+        }
+    });
+}
+
 function editMappings(principalId, principalName, currentMappings) {
     // Set form action
     document.getElementById('mappingForm').action = `/tenant/{{ tenant.tenant_id }}/principal/${principalId}/update_mappings`;
@@ -908,19 +961,6 @@ function testGAMConnection() {
                 if (data.networks.length === 1) {
                     networkSelect.value = data.networks[0].networkCode;
                 }
-            }
-            
-            // Populate companies dropdown
-            const companySelect = document.getElementById('gam_company_id');
-            companySelect.innerHTML = '<option value="">Select a company...</option>';
-            
-            if (data.companies && data.companies.length > 0) {
-                data.companies.forEach(company => {
-                    const option = document.createElement('option');
-                    option.value = company.id;
-                    option.textContent = company.name;
-                    companySelect.appendChild(option);
-                });
             }
             
             // Show current user ID
