@@ -733,11 +733,13 @@ def create_inventory_endpoints(app):
     """Create Flask endpoints for inventory management."""
     
     # Check if endpoints already exist to avoid duplicate registration
-    if 'get_inventory_tree' in app.view_functions:
+    if 'gam_inventory_tree' in app.view_functions:
         logger.info("Inventory endpoints already registered, skipping")
         return
     
-    @app.route('/api/tenant/<tenant_id>/inventory/sync', methods=['POST'])
+    logger.info("Registering GAM inventory endpoints...")
+    
+    @app.route('/api/tenant/<tenant_id>/inventory/sync', methods=['POST'], endpoint='gam_inventory_sync')
     def sync_inventory(tenant_id):
         """Trigger inventory sync for tenant."""
         from flask import jsonify
@@ -807,7 +809,7 @@ def create_inventory_endpoints(app):
             # Always remove the session to clean up
             db_session.remove()
     
-    @app.route('/api/tenant/<tenant_id>/inventory/tree')
+    @app.route('/api/tenant/<tenant_id>/inventory/tree', endpoint='gam_inventory_tree')
     def get_inventory_tree(tenant_id):
         """Get ad unit tree for tenant."""
         from flask import jsonify
@@ -827,7 +829,7 @@ def create_inventory_endpoints(app):
         finally:
             db_session.remove()
     
-    @app.route('/api/tenant/<tenant_id>/inventory/search')
+    @app.route('/api/tenant/<tenant_id>/inventory/search', endpoint='gam_inventory_search')
     def search_inventory(tenant_id):
         """Search inventory with filters."""
         from flask import request, jsonify
@@ -930,3 +932,5 @@ def create_inventory_endpoints(app):
         except Exception as e:
             logger.error(f"Failed to get targeting data: {e}", exc_info=True)
             return jsonify({'error': str(e)}), 500
+    
+    logger.info("GAM inventory endpoints successfully registered")
