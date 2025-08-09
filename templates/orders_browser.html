@@ -8,6 +8,25 @@
         <div class="col-12">
             <h2>GAM Orders - {{ tenant_name }}</h2>
             
+            <!-- Quick Line Item Search -->
+            <div class="card mb-4">
+                <div class="card-body">
+                    <div class="row align-items-center">
+                        <div class="col-md-8">
+                            <div class="input-group">
+                                <input type="text" class="form-control" id="lineItemIdSearch" placeholder="Enter Line Item ID to view details...">
+                                <button class="btn btn-outline-primary" onclick="searchLineItem()">
+                                    <i class="bi bi-search"></i> View Line Item
+                                </button>
+                            </div>
+                        </div>
+                        <div class="col-md-4 text-end">
+                            <small class="text-muted">Tip: You can also click "Details" on any line item below</small>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
             <!-- Sync Controls -->
             <div class="card mb-4">
                 <div class="card-body">
@@ -124,6 +143,17 @@ document.addEventListener('DOMContentLoaded', function() {
 
 function applyFilters() {
     loadOrders();
+}
+
+function searchLineItem() {
+    const lineItemId = document.getElementById('lineItemIdSearch').value.trim();
+    if (!lineItemId) {
+        alert('Please enter a Line Item ID');
+        return;
+    }
+    
+    // Open the line item viewer in a new tab
+    window.open(`/tenant/${tenantId}/gam/line-item/${lineItemId}`, '_blank');
 }
 
 function loadOrders() {

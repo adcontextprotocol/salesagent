@@ -1279,6 +1279,38 @@ def targeting_browser(tenant_id):
                          tenant_id=tenant_id, 
                          tenant_name=row[1])
 
+# Inventory Browser Route
+@app.route('/tenant/<tenant_id>/inventory')
+@require_auth()
+def inventory_browser(tenant_id):
+    """Display inventory browser page."""
+    # Check access
+    if session.get('role') != 'super_admin' and session.get('tenant_id') != tenant_id:
+        return "Access denied", 403
+    
+    conn = get_db_connection()
+    cursor = conn.execute("SELECT tenant_id, name FROM tenants WHERE tenant_id = ?", (tenant_id,))
+    row = cursor.fetchone()
+    if not row:
+        conn.close()
+        return "Tenant not found", 404
+    
+    tenant = {
+        'tenant_id': row[0],
+        'name': row[1]
+    }
+    
+    # Get inventory type from query param
+    inventory_type = request.args.get('type', 'all')
+    
+    conn.close()
+    
+    return render_template('inventory_browser.html', 
+                         tenant=tenant,
+                         tenant_id=tenant_id, 
+                         tenant_name=row[1],
+                         inventory_type=inventory_type)
+
 # Orders Browser Route
 @app.route('/tenant/<tenant_id>/orders')
 @require_auth()
@@ -1302,7 +1334,7 @@ def orders_browser(tenant_id):
         "SELECT config_value FROM superadmin_config WHERE config_key = 'api_key'"
     )
     api_key_row = cursor.fetchone()
-    api_key = api_key_row['config_value'] if api_key_row else ''
+    api_key = api_key_row[0] if api_key_row else ''
     
     conn.close()
     
@@ -4173,7 +4205,7 @@ if __name__ == '__main__':
     register_adapter_routes()
     
     # Register GAM inventory endpoints
-    register_inventory_endpoints(app, db_session)
+    register_inventory_endpoints(app)
     
     if not GOOGLE_CLIENT_ID or not GOOGLE_CLIENT_SECRET:
         print("ERROR: Google OAuth credentials not found!")
