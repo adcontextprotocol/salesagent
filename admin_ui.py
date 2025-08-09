@@ -1189,6 +1189,8 @@ def create_tenant():
             tenant_id = request.form.get('tenant_id') or tenant_name.lower().replace(' ', '_')
             subdomain = request.form.get('subdomain') or tenant_id
             
+            app.logger.info(f"Creating tenant: name={tenant_name}, id={tenant_id}, subdomain={subdomain}")
+            
             # Parse authorization lists
             authorized_emails = [email.strip() for email in request.form.get('authorized_emails', '').split(',') if email.strip()]
             authorized_domains = [domain.strip() for domain in request.form.get('authorized_domains', '').split(',') if domain.strip()]
@@ -1200,20 +1202,20 @@ def create_tenant():
             
             conn = get_db_connection()
             
-            # Create tenant with new fields
+            # Create tenant with new fields (config column removed)
             conn.execute("""
                 INSERT INTO tenants (
-                    tenant_id, name, subdomain, config,
+                    tenant_id, name, subdomain,
                     created_at, updated_at, is_active,
                     ad_server, max_daily_budget, enable_aee_signals,
                     authorized_emails, authorized_domains,
-                    auto_approve_formats, human_review_required
+                    auto_approve_formats, human_review_required,
+                    admin_token
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
                 tenant_id,
                 tenant_name,
                 subdomain,
-                json.dumps(config),
                 datetime.now().isoformat(),
                 datetime.now().isoformat(),
                 True,
@@ -1223,8 +1225,11 @@ def create_tenant():
                 json.dumps(authorized_emails),  # authorized_emails
                 json.dumps(authorized_domains),  # authorized_domains
                 json.dumps([]),  # auto_approve_formats
-                True  # human_review_required
+                True,  # human_review_required
+                config.get('admin_token', f'admin_{tenant_id}_{secrets.token_hex(16)}')  # admin_token
             ))
+            
+            app.logger.info(f"Tenant {tenant_id} inserted successfully")
             
             # Create admin principal with access token
             admin_token = secrets.token_urlsafe(32)
@@ -1248,6 +1253,9 @@ def create_tenant():
             return redirect(url_for('tenant_detail', tenant_id=tenant_id))
             
         except Exception as e:
+            app.logger.error(f"Error creating tenant: {str(e)}")
+            import traceback
+            app.logger.error(traceback.format_exc())
             return render_template('create_tenant.html', error=str(e))
     
     return render_template('create_tenant.html')
