@@ -1,10 +1,10 @@
 {% extends "base.html" %}
 
-{% block title %}Create Principal - AdCP Admin{% endblock %}
+{% block title %}Add Advertiser - AdCP Admin{% endblock %}
 
 {% block content %}
 <div class="card" style="max-width: 600px; margin: 0 auto;">
-    <h2>Create New Principal</h2>
+    <h2>Add New Advertiser</h2>
     
     {% if error %}
     <div class="alert alert-error">{{ error }}</div>
@@ -18,36 +18,53 @@
     
     <form method="POST" style="margin-top: 2rem;">
         <div class="form-group">
-            <label for="principal_id">Principal ID</label>
+            <label for="principal_id">Advertiser ID</label>
             <input type="text" id="principal_id" name="principal_id" required 
                    pattern="[a-zA-Z0-9_-]+" 
-                   placeholder="e.g., nike_corp, advertiser_123"
+                   placeholder="e.g., nike, coca_cola, ford_motors"
                    title="Only letters, numbers, underscores, and hyphens allowed"
                    value="{{ form_data.principal_id if form_data else '' }}"
                    class="{{ 'error' if errors and 'principal_id' in errors else '' }}">
-            <small>This will be used as a unique identifier. Use lowercase with underscores.</small>
+            <small>A unique identifier for this advertiser. Use lowercase with underscores.</small>
         </div>
         
         <div class="form-group">
-            <label for="name">Display Name</label>
+            <label for="name">Advertiser Name</label>
             <input type="text" id="name" name="name" required 
                    placeholder="e.g., Nike Corporation"
                    value="{{ form_data.name if form_data else '' }}"
                    class="{{ 'error' if errors and 'name' in errors else '' }}">
-            <small>The friendly name that will be shown in the UI.</small>
+            <small>The advertiser's company name as it will appear in reports.</small>
         </div>
+        
+        {% if has_gam %}
+        <div class="form-group">
+            <label for="gam_advertiser_id">GAM Advertiser <span style="color: red;">*</span></label>
+            <select id="gam_advertiser_id" name="gam_advertiser_id" required
+                    class="{{ 'error' if errors and 'gam_advertiser_id' in errors else '' }}">
+                <option value="">Loading advertisers...</option>
+            </select>
+            <small>Select which advertiser company this is in Google Ad Manager.</small>
+            <div id="advertiser-loading-error" style="display: none; color: red; margin-top: 0.5rem;"></div>
+        </div>
+        {% endif %}
         
         <div style="background: #f8f9fa; padding: 1rem; border-radius: 8px; margin: 2rem 0;">
             <h4 style="margin-top: 0;">What happens next?</h4>
             <ol style="margin: 0.5rem 0; padding-left: 1.5rem;">
-                <li>A secure API token will be generated for this principal</li>
-                <li>You can configure platform mappings (e.g., GAM advertiser IDs)</li>
-                <li>The principal can use their token to access the MCP API</li>
+                <li>A secure API token will be generated for this advertiser</li>
+                {% if has_gam %}
+                <li>The advertiser will be linked to their GAM account</li>
+                {% else %}
+                <li>You can configure ad server mappings later if needed</li>
+                {% endif %}
+                <li>Share the API token with the advertiser to access the MCP API</li>
+                <li>The advertiser can create and manage campaigns programmatically</li>
             </ol>
         </div>
         
         <div style="display: flex; gap: 1rem;">
-            <button type="submit" class="btn">Create Principal</button>
+            <button type="submit" class="btn">Add Advertiser</button>
             <a href="/tenant/{{ tenant_id }}" class="btn btn-secondary">Cancel</a>
         </div>
     </form>
@@ -58,4 +75,83 @@ input:invalid {
     border-color: #dc3545;
 }
 </style>
+
+{% if has_gam %}
+<script>
+// Load GAM advertisers when page loads
+document.addEventListener('DOMContentLoaded', function() {
+    loadAdvertisers();
+});
+
+function loadAdvertisers() {
+    const selectElement = document.getElementById('gam_advertiser_id');
+    const errorDiv = document.getElementById('advertiser-loading-error');
+    
+    // Show loading state
+    selectElement.innerHTML = '<option value="">Loading advertisers...</option>';
+    selectElement.disabled = true;
+    errorDiv.style.display = 'none';
+    
+    // Fetch advertisers from API
+    fetch('/api/gam/get-advertisers', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+            tenant_id: '{{ tenant_id }}'
+        }),
+        credentials: 'same-origin'
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.error) {
+            throw new Error(data.error);
+        }
+        
+        // Clear loading state
+        selectElement.innerHTML = '';
+        selectElement.disabled = false;
+        
+        // Add default option
+        const defaultOption = document.createElement('option');
+        defaultOption.value = '';
+        defaultOption.textContent = 'Select an advertiser...';
+        selectElement.appendChild(defaultOption);
+        
+        // Add advertiser options
+        if (data.advertisers && data.advertisers.length > 0) {
+            data.advertisers.forEach(advertiser => {
+                const option = document.createElement('option');
+                option.value = advertiser.id;
+                option.textContent = advertiser.name;
+                selectElement.appendChild(option);
+            });
+            
+            // If we have form_data with a previous selection, restore it
+            {% if form_data and form_data.gam_advertiser_id %}
+            selectElement.value = '{{ form_data.gam_advertiser_id }}';
+            {% endif %}
+        } else {
+            // No advertisers found
+            const noAdvertisersOption = document.createElement('option');
+            noAdvertisersOption.value = '';
+            noAdvertisersOption.textContent = 'No advertisers found in GAM';
+            noAdvertisersOption.disabled = true;
+            selectElement.appendChild(noAdvertisersOption);
+            
+            errorDiv.textContent = 'No advertisers found. Please create an advertiser in Google Ad Manager first.';
+            errorDiv.style.display = 'block';
+        }
+    })
+    .catch(error => {
+        console.error('Error loading advertisers:', error);
+        selectElement.innerHTML = '<option value="">Failed to load advertisers</option>';
+        selectElement.disabled = false;
+        errorDiv.textContent = 'Error loading advertisers: ' + error.message;
+        errorDiv.style.display = 'block';
+    });
+}
+</script>
+{% endif %}
 {% endblock %}

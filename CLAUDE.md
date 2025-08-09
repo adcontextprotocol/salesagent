@@ -117,6 +117,18 @@ When working in a Conductor workspace (e.g., `.conductor/quito/`):
 - **Product Suggestions API**: REST endpoints for programmatic product discovery
 - **Smart Matching**: AI analyzes ad server inventory to recommend optimal placements
 
+### Principal-Level Advertiser Management (Latest)
+- **Architecture Change**: Advertisers are now configured per-principal, not per-tenant
+- **Each Principal = One Advertiser**: Clear separation between publisher (tenant owner) and advertisers (principals)
+- **GAM Integration**: Each principal selects their own GAM advertiser ID during creation
+- **No Admin Principals**: Publishers don't need principals - they own the tenant
+- **UI Improvements**: 
+  - "Principals" renamed to "Advertisers" throughout UI
+  - "Create Principal" → "Add Advertiser"
+  - Clear messaging that principals represent advertisers buying inventory
+- **API Tokens**: Each advertiser gets their own token for MCP API access
+- **Migration**: Existing tenants have company_id migrated to all principals automatically
+
 ### Test Authentication Mode (UI Testing)
 - **Purpose**: Bypass OAuth for automated UI testing in CI/CD pipelines
 - **Activation**: Set `ADCP_AUTH_TEST_MODE=true` environment variable
@@ -665,21 +677,28 @@ uv run python init_database.py
 uv run python run_server.py
 ```
 
-### Managing Tenants
+### Managing Tenants (Publishers)
 ```bash
-# Create new tenant with default products (inside Docker container)
+# Create new publisher/tenant (inside Docker container)
 docker exec -it adcp-buy-server-adcp-server-1 python setup_tenant.py "Publisher Name" \
   --adapter google_ad_manager \
   --gam-network-code 123456 \
-  --industry news  # Optional: adds industry-specific products
+  --gam-refresh-token YOUR_REFRESH_TOKEN
+# Note: No --gam-company-id needed anymore - advertisers are configured per-principal
 
-# Create tenant without default products
+# Create publisher with mock adapter for testing
 docker exec -it adcp-buy-server-adcp-server-1 python setup_tenant.py "Publisher Name" \
-  --adapter mock \
-  --skip-default-products
+  --adapter mock
 
 # Access Admin UI
 open http://localhost:8001
+
+# After creating tenant:
+# 1. Login to Admin UI with Google OAuth
+# 2. Go to "Advertisers" tab (formerly "Principals")
+# 3. Click "Add Advertiser" to create advertisers who will buy inventory
+# 4. Each advertiser selects their own GAM advertiser ID
+# 5. Share API tokens with advertisers for MCP API access
 ```
 
 ### Running Simulations
