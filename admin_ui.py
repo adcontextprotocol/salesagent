@@ -3899,16 +3899,17 @@ def get_gam_line_item(tenant_id, line_item_id):
         
         # Get GAM client using the helper
         from gam_helper import get_ad_manager_client_for_tenant
+        from googleads import ad_manager
         client = get_ad_manager_client_for_tenant(tenant_id)
         
         # Fetch the line item
         line_item_service = client.GetService('LineItemService')
-        statement = (client.new_statement_builder()
-                    .where('id = :lineItemId')
-                    .with_bind_variable('lineItemId', int(line_item_id))
-                    .limit(1))
+        statement = (ad_manager.StatementBuilder(version='v202411')
+                    .Where('id = :lineItemId')
+                    .WithBindVariable('lineItemId', int(line_item_id))
+                    .Limit(1))
         
-        response = line_item_service.getLineItemsByStatement(statement.to_statement())
+        response = line_item_service.getLineItemsByStatement(statement.ToStatement())
         
         if not response.get('results'):
             return jsonify({'error': 'Line item not found'}), 404
@@ -3917,19 +3918,19 @@ def get_gam_line_item(tenant_id, line_item_id):
         
         # Fetch the associated order
         order_service = client.GetService('OrderService')
-        order_statement = (client.new_statement_builder()
-                          .where('id = :orderId')
-                          .with_bind_variable('orderId', line_item['orderId'])
-                          .limit(1))
-        order_response = order_service.getOrdersByStatement(order_statement.to_statement())
+        order_statement = (ad_manager.StatementBuilder(version='v202411')
+                          .Where('id = :orderId')
+                          .WithBindVariable('orderId', line_item['orderId'])
+                          .Limit(1))
+        order_response = order_service.getOrdersByStatement(order_statement.ToStatement())
         order = order_response['results'][0] if order_response.get('results') else None
         
         # Fetch associated creatives
         lica_service = client.GetService('LineItemCreativeAssociationService')
-        lica_statement = (client.new_statement_builder()
-                         .where('lineItemId = :lineItemId')
-                         .with_bind_variable('lineItemId', int(line_item_id)))
-        lica_response = lica_service.getLineItemCreativeAssociationsByStatement(lica_statement.to_statement())
+        lica_statement = (ad_manager.StatementBuilder(version='v202411')
+                         .Where('lineItemId = :lineItemId')
+                         .WithBindVariable('lineItemId', int(line_item_id)))
+        lica_response = lica_service.getLineItemCreativeAssociationsByStatement(lica_statement.ToStatement())
         creative_associations = lica_response.get('results', [])
         
         # Fetch creative details if any associations exist
@@ -3937,10 +3938,10 @@ def get_gam_line_item(tenant_id, line_item_id):
         if creative_associations:
             creative_service = client.GetService('CreativeService')
             creative_ids = [lica['creativeId'] for lica in creative_associations]
-            creative_statement = (client.new_statement_builder()
-                                 .where('id IN (:creativeIds)')
-                                 .with_bind_variable('creativeIds', creative_ids))
-            creative_response = creative_service.getCreativesByStatement(creative_statement.to_statement())
+            creative_statement = (ad_manager.StatementBuilder(version='v202411')
+                                 .Where('id IN (:creativeIds)')
+                                 .WithBindVariable('creativeIds', creative_ids))
+            creative_response = creative_service.getCreativesByStatement(creative_statement.ToStatement())
             creatives = creative_response.get('results', [])
         
         # Convert to JSON-serializable format
@@ -4205,15 +4206,15 @@ def register_adapter_routes():
         print(f"Warning: Failed to register adapter routes: {e}")
         traceback.print_exc()
 
+# Register adapter routes at module level
+register_adapter_routes()
+
+# Register GAM inventory endpoints at module level
+register_inventory_endpoints(app)
+
 if __name__ == '__main__':
     # Create templates directory
     os.makedirs('templates', exist_ok=True)
-    
-    # Register adapter routes
-    register_adapter_routes()
-    
-    # Register GAM inventory endpoints
-    register_inventory_endpoints(app)
     
     if not GOOGLE_CLIENT_ID or not GOOGLE_CLIENT_SECRET:
         print("ERROR: Google OAuth credentials not found!")
