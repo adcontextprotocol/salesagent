@@ -4010,11 +4010,14 @@ def create_products_bulk(tenant_id):
 def get_gam_line_item(tenant_id, line_item_id):
     """Fetch detailed line item data from GAM."""
     try:
-        # Validate line_item_id is numeric
+        # Validate line_item_id is numeric and follows GAM ID format
         try:
             line_item_id_int = int(line_item_id)
             if line_item_id_int <= 0:
                 return jsonify({'error': 'Invalid line item ID'}), 400
+            # GAM line item IDs are typically 10+ digits
+            if len(str(line_item_id_int)) < 8:
+                return jsonify({'error': 'Invalid GAM line item ID format'}), 400
         except (ValueError, TypeError):
             return jsonify({'error': 'Line item ID must be a positive number'}), 400
         
@@ -4128,28 +4131,34 @@ def view_gam_line_item(tenant_id, line_item_id):
                           line_item_id=line_item_id,
                           user_email=session.get('user_email', 'Unknown'))
 
-def convert_line_item_to_product_json(line_item, creatives):
-    """Convert GAM line item to our internal media product JSON format."""
-    # Extract targeting information
-    targeting = line_item.get('targeting', {})
-    
-    # Build targeting overlay
+def extract_targeting_overlay(targeting):
+    """Extract targeting overlay from GAM targeting object."""
     targeting_overlay = {}
     
     # Geographic targeting
     if targeting.get('geoTargeting'):
         geo = targeting['geoTargeting']
         if geo.get('targetedLocations'):
-            countries = [loc.get('displayName', loc.get('id')) 
-                        for loc in geo['targetedLocations'] 
-                        if loc.get('type') == 'Country']
+            countries = []
+            for loc in geo['targetedLocations']:
+                if loc.get('type', '').upper() == 'COUNTRY':
+                    # Map common country names to ISO codes
+                    display_name = loc.get('displayName', '')
+                    if display_name == 'United States' or loc.get('id') == 2840:
+                        countries.append('US')
+                    elif display_name == 'Canada' or loc.get('id') == 2124:
+                        countries.append('CA')
+                    elif display_name == 'United Kingdom' or loc.get('id') == 2826:
+                        countries.append('GB')
+                    else:
+                        countries.append(display_name or str(loc.get('id')))
             if countries:
                 targeting_overlay['geo_country_any_of'] = countries
         
         if geo.get('excludedLocations'):
             excluded_countries = [loc.get('displayName', loc.get('id')) 
                                 for loc in geo['excludedLocations'] 
-                                if loc.get('type') == 'Country']
+                                if loc.get('type', '').upper() == 'COUNTRY']
             if excluded_countries:
                 targeting_overlay['geo_country_none_of'] = excluded_countries
     
@@ -4160,6 +4169,7 @@ def convert_line_item_to_product_json(line_item, creatives):
             devices = tech['deviceCategoryTargeting'].get('targetedDeviceCategories', [])
             device_types = []
             for device in devices:
+                # GAM device category IDs
                 if device.get('id') == 30000:  # Desktop
                     device_types.append('desktop')
                 elif device.get('id') == 30001:  # Tablet
@@ -4173,19 +4183,85 @@ def convert_line_item_to_product_json(line_item, creatives):
     if targeting.get('customTargeting'):
         custom = targeting['customTargeting']
         key_value_pairs = {}
-        
-        # Parse custom criteria - this is complex in GAM
-        if custom.get('children'):
-            for child in custom['children']:
-                if child.get('keyId') and child.get('valueIds'):
-                    # We'd need to look up the actual key/value names
-                    # For now, just store the IDs
-                    key_value_pairs[f'key_{child["keyId"]}'] = [f'value_{vid}' for vid in child['valueIds']]
-        
-        if key_value_pairs:
-            targeting_overlay['key_value_pairs'] = key_value_pairs
+        # TODO: Parse custom targeting tree structure if needed
+        targeting_overlay['key_value_pairs'] = key_value_pairs
     
-    # Dayparting
+    return targeting_overlay
+
+def extract_frequency_caps(line_item):
+    """Extract frequency caps and convert to suppress_minutes."""
+    if not line_item.get('frequencyCaps'):
+        return None
+    
+    # Convert frequency caps to suppress_minutes
+    for cap in line_item['frequencyCaps']:
+        if cap.get('timeUnit') == 'MINUTE' and cap.get('numTimeUnits'):
+            return cap['numTimeUnits']
+        elif cap.get('timeUnit') == 'HOUR' and cap.get('numTimeUnits'):
+            return cap['numTimeUnits'] * 60
+        elif cap.get('timeUnit') == 'DAY' and cap.get('numTimeUnits'):
+            return cap['numTimeUnits'] * 60 * 24
+    return None
+
+def extract_creative_formats(line_item, creatives):
+    """Extract creative formats from line item and creatives."""
+    formats = []
+    seen_formats = set()
+    
+    # Extract from creative placeholders
+    if line_item.get('creativePlaceholders'):
+        for placeholder in line_item['creativePlaceholders']:
+            size = placeholder.get('size')
+            if size:
+                width = size.get('width', 0)
+                height = size.get('height', 0)
+                format_id = f"display_{width}x{height}"
+                if format_id not in seen_formats:
+                    formats.append({
+                        'id': format_id,
+                        'display_name': f"Display {width}x{height}",
+                        'creative_type': 'display',
+                        'width': width,
+                        'height': height
+                    })
+                    seen_formats.add(format_id)
+    
+    # Also check actual creatives
+    for creative in creatives:
+        if creative.get('size'):
+            width = creative['size'].get('width', 0)
+            height = creative['size'].get('height', 0)
+            
+            # Determine format type based on creative type
+            format_type = 'display'
+            if 'VideoCreative' in creative.get('Creative.Type', ''):
+                format_type = 'video'
+                format_id = f"video_{width}x{height}"
+            elif 'AudioCreative' in creative.get('Creative.Type', ''):
+                format_type = 'audio'
+                format_id = f"audio"
+            else:
+                format_id = f"display_{width}x{height}"
+            
+            if format_id not in seen_formats:
+                formats.append({
+                    'id': format_id,
+                    'display_name': f"{format_type.title()} {width}x{height}" if format_type != 'audio' else 'Audio',
+                    'creative_type': format_type,
+                    'width': width,
+                    'height': height
+                })
+                seen_formats.add(format_id)
+    
+    return formats
+
+def convert_line_item_to_product_json(line_item, creatives):
+    """Convert GAM line item to our internal media product JSON format."""
+    # Extract targeting information
+    targeting = line_item.get('targeting', {})
+    targeting_overlay = extract_targeting_overlay(targeting)
+    
+    # Add dayparting if present
     if targeting.get('dayPartTargeting'):
         daypart = targeting['dayPartTargeting']
         if daypart.get('dayParts'):
@@ -4204,54 +4280,16 @@ def convert_line_item_to_product_json(line_item, creatives):
                     'schedules': schedules
                 }
     
-    # Frequency cap
-    if line_item.get('frequencyCaps'):
-        freq_caps = line_item['frequencyCaps']
-        if freq_caps:
-            # Take the first frequency cap
-            cap = freq_caps[0]
-            if cap.get('maxImpressions') and cap.get('numTimeUnits'):
-                # Convert to minutes
-                time_unit = cap.get('timeUnit')
-                num_units = cap.get('numTimeUnits', 1)
-                
-                minutes = num_units
-                if time_unit == 'HOUR':
-                    minutes = num_units * 60
-                elif time_unit == 'DAY':
-                    minutes = num_units * 60 * 24
-                elif time_unit == 'WEEK':
-                    minutes = num_units * 60 * 24 * 7
-                
-                targeting_overlay['frequency_cap'] = {
-                    'suppress_minutes': minutes,
-                    'scope': 'media_buy'
-                }
+    # Add frequency cap if present
+    suppress_minutes = extract_frequency_caps(line_item)
+    if suppress_minutes:
+        targeting_overlay['frequency_cap'] = {
+            'suppress_minutes': suppress_minutes,
+            'scope': 'media_buy'
+        }
     
     # Extract creative formats
-    formats = []
-    for creative in creatives:
-        format_type = 'display'  # Default
-        if creative.get('size'):
-            size = creative['size']
-            width = size.get('width', 0)
-            height = size.get('height', 0)
-            
-            # Determine format based on creative type and size
-            if 'VideoCreative' in creative.get('Creative.Type', ''):
-                format_type = 'video'
-            elif 'AudioCreative' in creative.get('Creative.Type', ''):
-                format_type = 'audio'
-            
-            format_dict = {
-                'format_id': f'{format_type}_{width}x{height}',
-                'name': f'{format_type.title()} {width}x{height}',
-                'type': format_type,
-                'dimensions': {'width': width, 'height': height}
-            }
-            
-            if format_dict not in formats:
-                formats.append(format_dict)
+    formats = extract_creative_formats(line_item, creatives)
     
     # Build the product JSON
     product_json = {
