@@ -1270,17 +1270,54 @@ def targeting_browser(tenant_id):
         return "Access denied", 403
     
     conn = get_db_connection()
-    cursor = conn.execute("SELECT name FROM tenants WHERE tenant_id = ?", (tenant_id,))
+    cursor = conn.execute("SELECT tenant_id, name FROM tenants WHERE tenant_id = ?", (tenant_id,))
     row = cursor.fetchone()
     if not row:
+        conn.close()
         return "Tenant not found", 404
     
-    tenant_name = row[0]
+    tenant = {
+        'tenant_id': row[0],
+        'name': row[1]
+    }
     conn.close()
     
     return render_template('targeting_browser_simple.html', 
+                         tenant=tenant,
                          tenant_id=tenant_id, 
-                         tenant_name=tenant_name)
+                         tenant_name=row[1])
+
+# Inventory Browser Route
+@app.route('/tenant/<tenant_id>/inventory')
+@require_auth()
+def inventory_browser(tenant_id):
+    """Display inventory browser page."""
+    # Check access
+    if session.get('role') != 'super_admin' and session.get('tenant_id') != tenant_id:
+        return "Access denied", 403
+    
+    conn = get_db_connection()
+    cursor = conn.execute("SELECT tenant_id, name FROM tenants WHERE tenant_id = ?", (tenant_id,))
+    row = cursor.fetchone()
+    if not row:
+        conn.close()
+        return "Tenant not found", 404
+    
+    tenant = {
+        'tenant_id': row[0],
+        'name': row[1]
+    }
+    
+    # Get inventory type from query param
+    inventory_type = request.args.get('type', 'all')
+    
+    conn.close()
+    
+    return render_template('inventory_browser.html', 
+                         tenant=tenant,
+                         tenant_id=tenant_id, 
+                         tenant_name=row[1],
+                         inventory_type=inventory_type)
 
 # Orders Browser Route
 @app.route('/tenant/<tenant_id>/orders')
@@ -1305,7 +1342,7 @@ def orders_browser(tenant_id):
         "SELECT config_value FROM superadmin_config WHERE config_key = 'api_key'"
     )
     api_key_row = cursor.fetchone()
-    api_key = api_key_row['config_value'] if api_key_row else ''
+    api_key = api_key_row[0] if api_key_row else ''
     
     conn.close()
     
@@ -3964,6 +4001,327 @@ def create_products_bulk(tenant_id):
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+# ========================
+# GAM Line Item Viewer
+# ========================
+
+@app.route('/api/tenant/<tenant_id>/gam/line-item/<line_item_id>')
+@require_auth()
+def get_gam_line_item(tenant_id, line_item_id):
+    """Fetch detailed line item data from GAM."""
+    try:
+        # Validate line_item_id is numeric and follows GAM ID format
+        try:
+            line_item_id_int = int(line_item_id)
+            if line_item_id_int <= 0:
+                return jsonify({'error': 'Invalid line item ID'}), 400
+            # GAM line item IDs are typically 10+ digits
+            if len(str(line_item_id_int)) < 8:
+                return jsonify({'error': 'Invalid GAM line item ID format'}), 400
+        except (ValueError, TypeError):
+            return jsonify({'error': 'Line item ID must be a positive number'}), 400
+        
+        # Get the tenant's GAM configuration
+        conn = get_db_connection()
+        cursor = conn.execute("SELECT * FROM tenants WHERE tenant_id = ?", (tenant_id,))
+        tenant = cursor.fetchone()
+        
+        if not tenant:
+            conn.close()
+            return jsonify({'error': 'Tenant not found'}), 404
+        
+        tenant_config = get_tenant_config_from_db(conn, tenant_id)
+        conn.close()
+        gam_config = tenant_config.get('adapters', {}).get('google_ad_manager', {})
+        
+        if not gam_config.get('enabled'):
+            return jsonify({'error': 'GAM not enabled for this tenant'}), 400
+        
+        # Get GAM client using the helper
+        from gam_helper import get_ad_manager_client_for_tenant
+        from googleads import ad_manager
+        from zeep.helpers import serialize_object
+        
+        try:
+            client = get_ad_manager_client_for_tenant(tenant_id)
+        except Exception as e:
+            return jsonify({'error': f'Failed to connect to GAM: {str(e)}'}), 500
+        
+        # Fetch the line item
+        line_item_service = client.GetService('LineItemService')
+        statement = (ad_manager.StatementBuilder(version='v202411')
+                    .Where('id = :lineItemId')
+                    .WithBindVariable('lineItemId', line_item_id_int)
+                    .Limit(1))
+        
+        response = line_item_service.getLineItemsByStatement(statement.ToStatement())
+        
+        # Check if response has results (SOAP object, not dict)
+        if not hasattr(response, 'results') or not response.results or len(response.results) == 0:
+            return jsonify({'error': 'Line item not found'}), 404
+        
+        # Serialize the SOAP object to dict
+        line_item = serialize_object(response.results[0])
+        
+        # Fetch the associated order
+        order_service = client.GetService('OrderService')
+        order_statement = (ad_manager.StatementBuilder(version='v202411')
+                          .Where('id = :orderId')
+                          .WithBindVariable('orderId', line_item['orderId'])
+                          .Limit(1))
+        order_response = order_service.getOrdersByStatement(order_statement.ToStatement())
+        order = serialize_object(order_response.results[0]) if hasattr(order_response, 'results') and order_response.results else None
+        
+        # Fetch associated creatives
+        lica_service = client.GetService('LineItemCreativeAssociationService')
+        lica_statement = (ad_manager.StatementBuilder(version='v202411')
+                         .Where('lineItemId = :lineItemId')
+                         .WithBindVariable('lineItemId', line_item_id_int))
+        lica_response = lica_service.getLineItemCreativeAssociationsByStatement(lica_statement.ToStatement())
+        creative_associations = serialize_object(lica_response.results) if hasattr(lica_response, 'results') and lica_response.results else []
+        
+        # Fetch creative details if any associations exist
+        creatives = []
+        if creative_associations:
+            creative_service = client.GetService('CreativeService')
+            creative_ids = [lica['creativeId'] for lica in creative_associations]
+            creative_statement = (ad_manager.StatementBuilder(version='v202411')
+                                 .Where('id IN (:creativeIds)')
+                                 .WithBindVariable('creativeIds', creative_ids))
+            creative_response = creative_service.getCreativesByStatement(creative_statement.ToStatement())
+            creatives = serialize_object(creative_response.results) if hasattr(creative_response, 'results') and creative_response.results else []
+        
+        # Data is already serialized above, just assign
+        line_item_data = line_item
+        order_data = order
+        creatives_data = creatives
+        
+        # Build the comprehensive response
+        result = {
+            'line_item': line_item_data,
+            'order': order_data,
+            'creatives': creatives_data,
+            'creative_associations': creative_associations if isinstance(creative_associations, list) else [],
+            # Convert to our internal media product JSON format
+            'media_product_json': convert_line_item_to_product_json(line_item_data, creatives_data)
+        }
+        
+        return jsonify(result)
+        
+    except Exception as e:
+        app.logger.error(f"Error fetching GAM line item: {str(e)}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/tenant/<tenant_id>/gam/line-item/<line_item_id>')
+@require_auth()
+def view_gam_line_item(tenant_id, line_item_id):
+    """View GAM line item details."""
+    conn = get_db_connection()
+    cursor = conn.execute("SELECT * FROM tenants WHERE tenant_id = ?", (tenant_id,))
+    tenant = cursor.fetchone()
+    conn.close()
+    
+    if not tenant:
+        flash('Tenant not found', 'danger')
+        return redirect(url_for('index'))
+    
+    return render_template('gam_line_item_viewer.html',
+                          tenant=tenant,
+                          tenant_id=tenant_id,
+                          line_item_id=line_item_id,
+                          user_email=session.get('user_email', 'Unknown'))
+
+def extract_targeting_overlay(targeting):
+    """Extract targeting overlay from GAM targeting object."""
+    targeting_overlay = {}
+    
+    # Geographic targeting
+    if targeting.get('geoTargeting'):
+        geo = targeting['geoTargeting']
+        if geo.get('targetedLocations'):
+            countries = []
+            for loc in geo['targetedLocations']:
+                if loc.get('type', '').upper() == 'COUNTRY':
+                    # Map common country names to ISO codes
+                    display_name = loc.get('displayName', '')
+                    if display_name == 'United States' or loc.get('id') == 2840:
+                        countries.append('US')
+                    elif display_name == 'Canada' or loc.get('id') == 2124:
+                        countries.append('CA')
+                    elif display_name == 'United Kingdom' or loc.get('id') == 2826:
+                        countries.append('GB')
+                    else:
+                        countries.append(display_name or str(loc.get('id')))
+            if countries:
+                targeting_overlay['geo_country_any_of'] = countries
+        
+        if geo.get('excludedLocations'):
+            excluded_countries = [loc.get('displayName', loc.get('id')) 
+                                for loc in geo['excludedLocations'] 
+                                if loc.get('type', '').upper() == 'COUNTRY']
+            if excluded_countries:
+                targeting_overlay['geo_country_none_of'] = excluded_countries
+    
+    # Device targeting
+    if targeting.get('technologyTargeting'):
+        tech = targeting['technologyTargeting']
+        if tech.get('deviceCategoryTargeting'):
+            devices = tech['deviceCategoryTargeting'].get('targetedDeviceCategories', [])
+            device_types = []
+            for device in devices:
+                # GAM device category IDs
+                if device.get('id') == 30000:  # Desktop
+                    device_types.append('desktop')
+                elif device.get('id') == 30001:  # Tablet
+                    device_types.append('tablet')
+                elif device.get('id') == 30002:  # Mobile
+                    device_types.append('mobile')
+            if device_types:
+                targeting_overlay['device_type_any_of'] = device_types
+    
+    # Custom targeting (key-value pairs)
+    if targeting.get('customTargeting'):
+        custom = targeting['customTargeting']
+        key_value_pairs = {}
+        # TODO: Parse custom targeting tree structure if needed
+        targeting_overlay['key_value_pairs'] = key_value_pairs
+    
+    return targeting_overlay
+
+def extract_frequency_caps(line_item):
+    """Extract frequency caps and convert to suppress_minutes."""
+    if not line_item.get('frequencyCaps'):
+        return None
+    
+    # Convert frequency caps to suppress_minutes
+    for cap in line_item['frequencyCaps']:
+        if cap.get('timeUnit') == 'MINUTE' and cap.get('numTimeUnits'):
+            return cap['numTimeUnits']
+        elif cap.get('timeUnit') == 'HOUR' and cap.get('numTimeUnits'):
+            return cap['numTimeUnits'] * 60
+        elif cap.get('timeUnit') == 'DAY' and cap.get('numTimeUnits'):
+            return cap['numTimeUnits'] * 60 * 24
+    return None
+
+def extract_creative_formats(line_item, creatives):
+    """Extract creative formats from line item and creatives."""
+    formats = []
+    seen_formats = set()
+    
+    # Extract from creative placeholders
+    if line_item.get('creativePlaceholders'):
+        for placeholder in line_item['creativePlaceholders']:
+            size = placeholder.get('size')
+            if size:
+                width = size.get('width', 0)
+                height = size.get('height', 0)
+                format_id = f"display_{width}x{height}"
+                if format_id not in seen_formats:
+                    formats.append({
+                        'id': format_id,
+                        'display_name': f"Display {width}x{height}",
+                        'creative_type': 'display',
+                        'width': width,
+                        'height': height
+                    })
+                    seen_formats.add(format_id)
+    
+    # Also check actual creatives
+    for creative in creatives:
+        if creative.get('size'):
+            width = creative['size'].get('width', 0)
+            height = creative['size'].get('height', 0)
+            
+            # Determine format type based on creative type
+            format_type = 'display'
+            if 'VideoCreative' in creative.get('Creative.Type', ''):
+                format_type = 'video'
+                format_id = f"video_{width}x{height}"
+            elif 'AudioCreative' in creative.get('Creative.Type', ''):
+                format_type = 'audio'
+                format_id = f"audio"
+            else:
+                format_id = f"display_{width}x{height}"
+            
+            if format_id not in seen_formats:
+                formats.append({
+                    'id': format_id,
+                    'display_name': f"{format_type.title()} {width}x{height}" if format_type != 'audio' else 'Audio',
+                    'creative_type': format_type,
+                    'width': width,
+                    'height': height
+                })
+                seen_formats.add(format_id)
+    
+    return formats
+
+def convert_line_item_to_product_json(line_item, creatives):
+    """Convert GAM line item to our internal media product JSON format."""
+    # Extract targeting information
+    targeting = line_item.get('targeting', {})
+    targeting_overlay = extract_targeting_overlay(targeting)
+    
+    # Add dayparting if present
+    if targeting.get('dayPartTargeting'):
+        daypart = targeting['dayPartTargeting']
+        if daypart.get('dayParts'):
+            schedules = []
+            for dp in daypart['dayParts']:
+                schedule = {
+                    'days': [dp.get('dayOfWeek')],
+                    'start_hour': dp.get('startTime', {}).get('hour', 0),
+                    'end_hour': dp.get('endTime', {}).get('hour', 23)
+                }
+                schedules.append(schedule)
+            
+            if schedules:
+                targeting_overlay['dayparting'] = {
+                    'timezone': daypart.get('timeZone', 'America/New_York'),
+                    'schedules': schedules
+                }
+    
+    # Add frequency cap if present
+    suppress_minutes = extract_frequency_caps(line_item)
+    if suppress_minutes:
+        targeting_overlay['frequency_cap'] = {
+            'suppress_minutes': suppress_minutes,
+            'scope': 'media_buy'
+        }
+    
+    # Extract creative formats
+    formats = extract_creative_formats(line_item, creatives)
+    
+    # Build the product JSON
+    product_json = {
+        'product_id': f'gam_line_item_{line_item.get("id")}',
+        'name': line_item.get('name', 'Unknown'),
+        'description': f'GAM Line Item: {line_item.get("name", "")}',
+        'formats': formats,
+        'delivery_type': 'guaranteed' if line_item.get('lineItemType') == 'STANDARD' else 'non_guaranteed',
+        'is_fixed_price': line_item.get('costType') == 'CPM',
+        'cpm': float(line_item.get('costPerUnit', {}).get('microAmount', 0)) / 1000000.0 if line_item.get('costPerUnit') else None,
+        'targeting_overlay': targeting_overlay,
+        'implementation_config': {
+            'gam': {
+                'line_item_id': line_item.get('id'),
+                'order_id': line_item.get('orderId'),
+                'line_item_type': line_item.get('lineItemType'),
+                'priority': line_item.get('priority'),
+                'delivery_rate_type': line_item.get('deliveryRateType'),
+                'creative_placeholders': line_item.get('creativePlaceholders', []),
+                'status': line_item.get('status'),
+                'start_datetime': line_item.get('startDateTime'),
+                'end_datetime': line_item.get('endDateTime'),
+                'units_bought': line_item.get('unitsBought'),
+                'cost_type': line_item.get('costType'),
+                'discount_type': line_item.get('discountType'),
+                'allow_overbook': line_item.get('allowOverbook', False)
+            }
+        }
+    }
+    
+    return product_json
+
 # Function to register adapter routes
 def register_adapter_routes():
     """Register UI routes from all available adapters."""
@@ -4029,15 +4387,15 @@ def register_adapter_routes():
         print(f"Warning: Failed to register adapter routes: {e}")
         traceback.print_exc()
 
+# Register adapter routes at module level
+register_adapter_routes()
+
+# Register GAM inventory endpoints at module level
+register_inventory_endpoints(app)
+
 if __name__ == '__main__':
     # Create templates directory
     os.makedirs('templates', exist_ok=True)
-    
-    # Register adapter routes
-    register_adapter_routes()
-    
-    # Register GAM inventory endpoints
-    register_inventory_endpoints(app, db_session)
     
     if not GOOGLE_CLIENT_ID or not GOOGLE_CLIENT_SECRET:
         print("ERROR: Google OAuth credentials not found!")

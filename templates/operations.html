@@ -65,6 +65,7 @@
                         <th>End Date</th>
                         <th>Status</th>
                         <th>Created</th>
+                        <th>Actions</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -88,6 +89,11 @@
                             {% endif %}
                         </td>
                         <td>{{ buy.created_at.strftime('%Y-%m-%d %H:%M') if buy.created_at else 'N/A' }}</td>
+                        <td>
+                            <a href="/tenant/{{ tenant.tenant_id }}/gam/order/{{ buy.media_buy_id }}/line-items" class="btn btn-sm btn-link" title="View GAM Line Items">
+                                View Line Items
+                            </a>
+                        </td>
                     </tr>
                     {% endfor %}
                 </tbody>
