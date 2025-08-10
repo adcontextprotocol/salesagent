@@ -1,5 +1,37 @@
 # AdCP Sales Agent Server - Claude Agent Notes
 
+## Documentation Guidelines
+
+### IMPORTANT: Keep Documentation Simple
+
+The documentation has been consolidated into 5 core files in the `docs/` directory:
+
+1. **README.md** - Quick start and overview
+2. **SETUP.md** - Installation, configuration, deployment
+3. **DEVELOPMENT.md** - Adapter development, testing, extending the system  
+4. **OPERATIONS.md** - Admin UI, tenant management, monitoring
+5. **ARCHITECTURE.md** - System design, database schema, technical details
+6. **TROUBLESHOOTING.md** - Common issues and solutions
+
+**Documentation Rules:**
+- **DO NOT** create new documentation files unless absolutely necessary
+- **DO** update existing documentation files when adding features
+- **DO** keep documentation concise and practical
+- **DO NOT** duplicate information across files
+- **DO** use the appropriate file based on the topic:
+  - Setup/config changes → SETUP.md
+  - Code/adapter changes → DEVELOPMENT.md
+  - Admin/operations → OPERATIONS.md
+  - Design decisions → ARCHITECTURE.md
+  - Error fixes → TROUBLESHOOTING.md
+
+When documenting:
+1. Find the most relevant existing file
+2. Add to the appropriate section
+3. Keep examples practical and tested
+4. Remove outdated information
+5. Avoid creating new files
+
 ## Project Overview
 
 This is a Python-based reference implementation of the Advertising Context Protocol (AdCP) V2.3 sales agent. It demonstrates how publishers expose advertising inventory to AI-driven clients through a standardized MCP (Model Context Protocol) interface.
