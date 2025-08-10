@@ -256,22 +256,53 @@ uv run pytest
 
 ## Testing Strategy
 
-### 1. Unit Tests
-- **`test_ai_product_basic.py`**: Tests default products, industry templates
-- **`test_adapters.py`**: Adapter interfaces and base functionality
-- **`test_adapter_targeting.py`**: Targeting system validation
-- **`test_creative_format_parsing.py`**: Creative format parsing logic
+### Test Organization
 
-### 2. Integration Tests
-- **`test_ai_product_features.py`**: Full AI product feature tests (requires mocking)
-- **`test_main.py`**: Core MCP server functionality
-- **`test_admin_creative_approval.py`**: Creative approval workflows
-- **`test_human_task_queue.py`**: Human-in-the-loop task management
-- **`simulation_full.py`**: Full end-to-end campaign lifecycle
+Tests are organized in a clear directory structure:
 
-### 3. API Tests
-- **`test_auth.py`**: Authentication and authorization
-- **`tests/unit/test_admin_ui_oauth.py`**: OAuth integration
+```
+tests/
+├── unit/           # Fast, isolated unit tests
+├── integration/    # Tests requiring database/services
+├── e2e/           # End-to-end full system tests
+├── ui/            # Admin UI interface tests
+├── fixtures/      # Test data and fixtures
+└── utils/         # Test utilities
+```
+
+### 1. Unit Tests (`tests/unit/`)
+- **Purpose**: Test individual components in isolation
+- **Runtime**: < 1 second per test
+- **Key tests**:
+  - `test_targeting.py`: Targeting system validation
+  - `test_creative_parsing.py`: Creative format parsing
+  - `test_auth.py`: Authentication logic
+  - `test_admin_api.py`: Admin API endpoints
+  - `adapters/test_base.py`: Adapter interface compliance
+
+### 2. Integration Tests (`tests/integration/`)
+- **Purpose**: Test component interactions with database
+- **Runtime**: < 5 seconds per test
+- **Key tests**:
+  - `test_main.py`: MCP server functionality
+  - `test_creative_approval.py`: Creative approval workflows
+  - `test_human_tasks.py`: Human-in-the-loop tasks
+  - `test_ai_products.py`: AI product features
+  - `test_policy.py`: Policy compliance checks
+
+### 3. End-to-End Tests (`tests/e2e/`)
+- **Purpose**: Test complete user workflows
+- **Runtime**: < 30 seconds per test
+- **Key tests**:
+  - `test_gam_integration.py`: Real GAM adapter integration
+  - Full campaign lifecycle testing
+
+### 4. UI Tests (`tests/ui/`)
+- **Purpose**: Test web interface functionality
+- **Key tests**:
+  - `test_auth_mode.py`: Test authentication mode
+  - `test_gam_viewer.py`: GAM line item viewer
+  - `test_parsing_ui.py`: Creative parsing UI
 
 ### Running Tests
 
@@ -280,31 +311,44 @@ uv run pytest
 # Run all tests
 uv run pytest
 
-# Run specific test file
-uv run pytest test_ai_product_basic.py -v
+# Run by category
+uv run pytest tests/unit/              # Unit tests only
+uv run pytest tests/integration/       # Integration tests
+uv run pytest tests/e2e/               # End-to-end tests
+
+# Run with markers
+uv run pytest -m unit                  # Fast unit tests
+uv run pytest -m "not slow"            # Skip slow tests
+uv run pytest -m ai                    # AI-related tests
 
 # Run with coverage
 uv run pytest --cov=. --cov-report=html
 
-# Run tests by category
-uv run python run_tests.py unit       # Unit tests only
-uv run python run_tests.py integration # Integration tests
-uv run python run_tests.py --list     # List all categories
+# Use the test runner script
+uv run python scripts/run_tests.py unit       # Unit tests only
+uv run python scripts/run_tests.py integration # Integration tests
+uv run python scripts/run_tests.py all        # All tests
+uv run python scripts/run_tests.py --list     # List categories
+uv run python scripts/run_tests.py --coverage # With coverage
 ```
 
 #### In Docker Container
 ```bash
 # Run tests inside the container
-docker exec -it adcp-buy-server-adcp-server-1 pytest test_ai_product_basic.py
+docker exec -it adcp-buy-server-adcp-server-1 pytest tests/unit/
 
-# Run integration test script
-docker exec -it adcp-buy-server-adcp-server-1 ./test_ai_integration.sh
+# Run specific test
+docker exec -it adcp-buy-server-adcp-server-1 pytest tests/integration/test_main.py -v
+
+# Run with test runner
+docker exec -it adcp-buy-server-adcp-server-1 python scripts/run_tests.py all
 ```
 
 #### CI/CD Pipeline
 Tests run automatically on push/PR via GitHub Actions:
 - Unit tests with mocked dependencies
 - Integration tests with PostgreSQL
+- Coverage reporting to track test completeness
 - AI tests with mocked Gemini API
 - See `.github/workflows/test.yml` for details
 

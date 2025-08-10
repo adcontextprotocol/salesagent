@@ -1,0 +1,126 @@
+{
+  "run_of_site": {
+    "product_id": "ros_display",
+    "name": "Run of Site - Display",
+    "type": "guaranteed",
+    "description": "Premium display inventory across all site sections",
+    "formats": ["display_300x250", "display_728x90", "display_320x50"],
+    "targeting_template": {
+      "geo_country": ["US", "CA"],
+      "device_type": ["desktop", "mobile", "tablet"],
+      "viewability": 0.7
+    },
+    "pricing": {
+      "min_cpm": 5.0,
+      "recommended_cpm": 10.0,
+      "min_spend": 1000.0,
+      "currency": "USD"
+    },
+    "inventory_type": "display",
+    "availability": "immediate"
+  },
+  "homepage_takeover": {
+    "product_id": "homepage_premium",
+    "name": "Homepage Takeover",
+    "type": "guaranteed",
+    "description": "Exclusive homepage presence with multiple placements",
+    "formats": ["display_970x250", "display_728x90", "display_300x600"],
+    "targeting_template": {
+      "geo_country": ["US"],
+      "device_type": ["desktop"],
+      "viewability": 0.8,
+      "placement": ["homepage"]
+    },
+    "pricing": {
+      "min_cpm": 25.0,
+      "recommended_cpm": 40.0,
+      "min_spend": 5000.0,
+      "currency": "USD"
+    },
+    "inventory_type": "display",
+    "availability": "limited"
+  },
+  "video_preroll": {
+    "product_id": "video_pre",
+    "name": "Video Pre-Roll",
+    "type": "guaranteed",
+    "description": "Premium video pre-roll inventory",
+    "formats": ["video_16x9", "video_outstream"],
+    "targeting_template": {
+      "geo_country": ["US", "CA", "UK"],
+      "device_type": ["desktop", "mobile", "ctv"],
+      "video_placement": ["pre-roll"],
+      "completion_rate": 0.8
+    },
+    "pricing": {
+      "min_cpm": 15.0,
+      "recommended_cpm": 25.0,
+      "min_spend": 2500.0,
+      "currency": "USD"
+    },
+    "inventory_type": "video",
+    "availability": "immediate"
+  },
+  "mobile_app": {
+    "product_id": "mobile_app_display",
+    "name": "Mobile App Display",
+    "type": "non_guaranteed",
+    "description": "Display inventory in mobile applications",
+    "formats": ["display_320x50", "display_300x250", "display_320x480"],
+    "targeting_template": {
+      "geo_country": ["US"],
+      "device_type": ["mobile"],
+      "device_os": ["ios", "android"],
+      "app_categories": ["news", "sports", "entertainment"]
+    },
+    "pricing": {
+      "min_cpm": 3.0,
+      "recommended_cpm": 7.0,
+      "min_spend": 500.0,
+      "currency": "USD"
+    },
+    "inventory_type": "display",
+    "availability": "immediate"
+  },
+  "native_content": {
+    "product_id": "native_feed",
+    "name": "Native Content Feed",
+    "type": "non_guaranteed",
+    "description": "Native advertising within content feeds",
+    "formats": ["native_content", "native_app_install"],
+    "targeting_template": {
+      "geo_country": ["US", "CA"],
+      "device_type": ["desktop", "mobile"],
+      "content_category": ["news", "lifestyle", "technology"]
+    },
+    "pricing": {
+      "min_cpm": 8.0,
+      "recommended_cpm": 15.0,
+      "min_spend": 1500.0,
+      "currency": "USD"
+    },
+    "inventory_type": "native",
+    "availability": "immediate"
+  },
+  "podcast_audio": {
+    "product_id": "podcast_ads",
+    "name": "Podcast Audio Ads",
+    "type": "guaranteed",
+    "description": "Audio advertising in premium podcasts",
+    "formats": ["audio_30s", "audio_60s"],
+    "targeting_template": {
+      "geo_country": ["US"],
+      "demo_age_range": ["25-34", "35-44", "45-54"],
+      "content_category": ["business", "technology", "health"],
+      "podcast_genre": ["business", "comedy", "news"]
+    },
+    "pricing": {
+      "min_cpm": 20.0,
+      "recommended_cpm": 30.0,
+      "min_spend": 3000.0,
+      "currency": "USD"
+    },
+    "inventory_type": "audio",
+    "availability": "limited"
+  }
+}

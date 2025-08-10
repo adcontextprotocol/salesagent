@@ -12,6 +12,7 @@ import requests
 from urllib.parse import urljoin
 
 
+@pytest.mark.requires_server
 class TestGAMLineItemViewerUI:
     """Test suite for GAM Line Item Viewer UI."""
     
@@ -26,7 +27,7 @@ class TestGAMLineItemViewerUI:
         """Create a session for maintaining cookies."""
         return requests.Session()
     
-    @pytest.fixture(autouse=True)
+    @pytest.fixture(autouse=True, scope="class")
     def authenticate(self, session, base_url):
         """Authenticate as super admin before each test."""
         if os.environ.get('ADCP_AUTH_TEST_MODE', '').lower() != 'true':

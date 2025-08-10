@@ -3,18 +3,25 @@
 
 import asyncio
 import json
+import os
 import sys
+import pytest
 from pathlib import Path
 from typing import Dict, Any, List
+from unittest.mock import patch, MagicMock
 
 # Add parent directory to path
 sys.path.append(str(Path(__file__).parent))
 
-from ai_creative_format_service import AICreativeFormatService
-
-
+# Mark test to skip if GEMINI_API_KEY is not set
+@pytest.mark.skipif(
+    os.getenv('GEMINI_API_KEY') == 'test_key_for_mocking',
+    reason="Requires real GEMINI_API_KEY for AI testing"
+)
+@pytest.mark.ai
 async def test_parsing_examples():
     """Test parsing against all examples and compare results."""
+    from ai_creative_format_service import AICreativeFormatService
     service = AICreativeFormatService()
     examples_dir = Path(__file__).parent / "creative_format_parsing_examples"
     
