@@ -4010,6 +4010,14 @@ def create_products_bulk(tenant_id):
 def get_gam_line_item(tenant_id, line_item_id):
     """Fetch detailed line item data from GAM."""
     try:
+        # Validate line_item_id is numeric
+        try:
+            line_item_id_int = int(line_item_id)
+            if line_item_id_int <= 0:
+                return jsonify({'error': 'Invalid line item ID'}), 400
+        except (ValueError, TypeError):
+            return jsonify({'error': 'Line item ID must be a positive number'}), 400
+        
         # Get the tenant's GAM configuration
         conn = get_db_connection()
         cursor = conn.execute("SELECT * FROM tenants WHERE tenant_id = ?", (tenant_id,))
@@ -4029,21 +4037,28 @@ def get_gam_line_item(tenant_id, line_item_id):
         # Get GAM client using the helper
         from gam_helper import get_ad_manager_client_for_tenant
         from googleads import ad_manager
-        client = get_ad_manager_client_for_tenant(tenant_id)
+        from zeep.helpers import serialize_object
+        
+        try:
+            client = get_ad_manager_client_for_tenant(tenant_id)
+        except Exception as e:
+            return jsonify({'error': f'Failed to connect to GAM: {str(e)}'}), 500
         
         # Fetch the line item
         line_item_service = client.GetService('LineItemService')
         statement = (ad_manager.StatementBuilder(version='v202411')
                     .Where('id = :lineItemId')
-                    .WithBindVariable('lineItemId', int(line_item_id))
+                    .WithBindVariable('lineItemId', line_item_id_int)
                     .Limit(1))
         
         response = line_item_service.getLineItemsByStatement(statement.ToStatement())
         
-        if not response.get('results'):
+        # Check if response has results (SOAP object, not dict)
+        if not hasattr(response, 'results') or not response.results or len(response.results) == 0:
             return jsonify({'error': 'Line item not found'}), 404
         
-        line_item = response['results'][0]
+        # Serialize the SOAP object to dict
+        line_item = serialize_object(response.results[0])
         
         # Fetch the associated order
         order_service = client.GetService('OrderService')
@@ -4052,15 +4067,15 @@ def get_gam_line_item(tenant_id, line_item_id):
                           .WithBindVariable('orderId', line_item['orderId'])
                           .Limit(1))
         order_response = order_service.getOrdersByStatement(order_statement.ToStatement())
-        order = order_response['results'][0] if order_response.get('results') else None
+        order = serialize_object(order_response.results[0]) if hasattr(order_response, 'results') and order_response.results else None
         
         # Fetch associated creatives
         lica_service = client.GetService('LineItemCreativeAssociationService')
         lica_statement = (ad_manager.StatementBuilder(version='v202411')
                          .Where('lineItemId = :lineItemId')
-                         .WithBindVariable('lineItemId', int(line_item_id)))
+                         .WithBindVariable('lineItemId', line_item_id_int))
         lica_response = lica_service.getLineItemCreativeAssociationsByStatement(lica_statement.ToStatement())
-        creative_associations = lica_response.get('results', [])
+        creative_associations = serialize_object(lica_response.results) if hasattr(lica_response, 'results') and lica_response.results else []
         
         # Fetch creative details if any associations exist
         creatives = []
@@ -4071,20 +4086,19 @@ def get_gam_line_item(tenant_id, line_item_id):
                                  .Where('id IN (:creativeIds)')
                                  .WithBindVariable('creativeIds', creative_ids))
             creative_response = creative_service.getCreativesByStatement(creative_statement.ToStatement())
-            creatives = creative_response.get('results', [])
+            creatives = serialize_object(creative_response.results) if hasattr(creative_response, 'results') and creative_response.results else []
         
-        # Convert to JSON-serializable format
-        from zeep.helpers import serialize_object
-        line_item_data = serialize_object(line_item)
-        order_data = serialize_object(order) if order else None
-        creatives_data = [serialize_object(c) for c in creatives]
+        # Data is already serialized above, just assign
+        line_item_data = line_item
+        order_data = order
+        creatives_data = creatives
         
         # Build the comprehensive response
         result = {
             'line_item': line_item_data,
             'order': order_data,
             'creatives': creatives_data,
-            'creative_associations': [serialize_object(ca) for ca in creative_associations],
+            'creative_associations': creative_associations if isinstance(creative_associations, list) else [],
             # Convert to our internal media product JSON format
             'media_product_json': convert_line_item_to_product_json(line_item_data, creatives_data)
         }
