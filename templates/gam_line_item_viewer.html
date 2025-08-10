@@ -3,6 +3,22 @@
 {% block title %}GAM Line Item Viewer - {{ tenant['name'] }}{% endblock %}
 
 {% block content %}
+<style>
+    /* Custom styles for line item viewer */
+    .tab-content {
+        margin-top: 1rem;
+    }
+    
+    /* Ensure proper Bootstrap tab behavior */
+    .tab-pane {
+        display: none;
+    }
+    
+    .tab-pane.active {
+        display: block;
+    }
+</style>
+
 <div class="container-fluid">
     <h1 class="mb-4">GAM Line Item Viewer</h1>
     
@@ -14,6 +30,7 @@
                 <input type="text" id="lineItemId" class="form-control" placeholder="Enter Line Item ID" value="{{ line_item_id }}">
                 <button class="btn btn-primary" onclick="loadLineItem()">Load Line Item</button>
             </div>
+            <small class="text-muted">Line Item ID: {{ line_item_id }} | Tenant: {{ tenant_id }}</small>
         </div>
     </div>
 
@@ -157,11 +174,42 @@
 <script>
 let currentLineItemData = null;
 
+// HTML escaping function to prevent XSS
+function escapeHtml(unsafe) {
+    if (unsafe === null || unsafe === undefined) return 'N/A';
+    return String(unsafe)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
+}
+
+// Format number with thousand separators
+function formatNumber(num) {
+    if (num === null || num === undefined) return '0';
+    return Number(num).toLocaleString();
+}
+
 // Load line item if ID is provided in URL
 window.addEventListener('DOMContentLoaded', function() {
+    // Initialize Bootstrap tabs properly
+    const triggerTabList = document.querySelectorAll('#lineItemTabs button[data-bs-toggle="tab"]');
+    triggerTabList.forEach(triggerEl => {
+        const tabTrigger = new bootstrap.Tab(triggerEl);
+        
+        triggerEl.addEventListener('click', event => {
+            event.preventDefault();
+            tabTrigger.show();
+        });
+    });
+    
     const lineItemId = document.getElementById('lineItemId').value;
     if (lineItemId) {
-        loadLineItem();
+        // Add a small delay to ensure authentication is established
+        setTimeout(() => {
+            loadLineItem();
+        }, 500);
     }
 });
 
@@ -182,12 +230,31 @@ async function loadLineItem() {
     
     try {
         const response = await fetch(`/api/tenant/{{ tenant_id }}/gam/line-item/${lineItemId}`, {
-            credentials: 'same-origin'
+            method: 'GET',
+            credentials: 'include',
+            headers: {
+                'Accept': 'application/json'
+            }
         });
         
+        // Check if we got redirected to login (HTML response)
+        const contentType = response.headers.get('content-type');
+        if (contentType && contentType.includes('text/html')) {
+            // We got redirected to login, reload the page to go through auth
+            window.location.reload();
+            return;
+        }
+        
         if (!response.ok) {
-            const error = await response.json();
-            throw new Error(error.error || 'Failed to fetch line item');
+            let errorMsg = 'Failed to fetch line item';
+            try {
+                const error = await response.json();
+                errorMsg = error.error || errorMsg;
+            } catch (e) {
+                // Response wasn't JSON
+                errorMsg = `HTTP ${response.status}: ${response.statusText}`;
+            }
+            throw new Error(errorMsg);
         }
         
         currentLineItemData = await response.json();
@@ -201,45 +268,48 @@ async function loadLineItem() {
 }
 
 function displayLineItemData(data) {
+    if (!data || !data.line_item) {
+        showError('Invalid data received from server');
+        return;
+    }
+    
     document.getElementById('lineItemContent').style.display = 'block';
     
-    // Display basic information
-    displayBasicInfo(data.line_item);
-    
-    // Display order information
-    displayOrderInfo(data.order);
-    
-    // Display pricing information
-    displayPricingInfo(data.line_item);
-    
-    // Display schedule information
-    displayScheduleInfo(data.line_item);
-    
-    // Display targeting
-    displayTargeting(data.line_item.targeting);
-    
-    // Display creatives
-    displayCreatives(data.creatives, data.creative_associations);
-    
-    // Display delivery settings
-    displayDeliverySettings(data.line_item);
-    
-    // Display raw data
-    document.getElementById('rawData').textContent = JSON.stringify(data, null, 2);
-    
-    // Display product JSON
-    document.getElementById('productJsonContent').textContent = JSON.stringify(data.media_product_json, null, 2);
+    try {
+        // Display all sections
+        displayBasicInfo(data.line_item);
+        displayOrderInfo(data.order);
+        displayPricingInfo(data.line_item);
+        displayScheduleInfo(data.line_item);
+        
+        if (data.line_item.targeting) {
+            displayTargeting(data.line_item.targeting);
+        }
+        
+        displayCreatives(data.creatives, data.creative_associations);
+        displayDeliverySettings(data.line_item);
+        
+        // Display raw data
+        document.getElementById('rawData').textContent = JSON.stringify(data, null, 2);
+        
+        // Display product JSON
+        if (data.media_product_json) {
+            document.getElementById('productJsonContent').textContent = JSON.stringify(data.media_product_json, null, 2);
+        }
+    } catch (error) {
+        showError('Error displaying data: ' + error.message);
+    }
 }
 
 function displayBasicInfo(lineItem) {
     const tbody = document.getElementById('basicInfo');
     tbody.innerHTML = `
-        <tr><td><strong>Line Item ID:</strong></td><td>${lineItem.id}</td></tr>
-        <tr><td><strong>Name:</strong></td><td>${lineItem.name}</td></tr>
-        <tr><td><strong>Type:</strong></td><td>${lineItem.lineItemType}</td></tr>
-        <tr><td><strong>Status:</strong></td><td><span class="badge bg-${getStatusBadgeClass(lineItem.status)}">${lineItem.status}</span></td></tr>
-        <tr><td><strong>Priority:</strong></td><td>${lineItem.priority || 'N/A'}</td></tr>
-        <tr><td><strong>External ID:</strong></td><td>${lineItem.externalId || 'N/A'}</td></tr>
+        <tr><td><strong>Line Item ID:</strong></td><td>${escapeHtml(lineItem.id)}</td></tr>
+        <tr><td><strong>Name:</strong></td><td>${escapeHtml(lineItem.name)}</td></tr>
+        <tr><td><strong>Type:</strong></td><td>${escapeHtml(lineItem.lineItemType)}</td></tr>
+        <tr><td><strong>Status:</strong></td><td><span class="badge bg-${getStatusBadgeClass(lineItem.status)}">${escapeHtml(lineItem.status)}</span></td></tr>
+        <tr><td><strong>Priority:</strong></td><td>${escapeHtml(lineItem.priority)}</td></tr>
+        <tr><td><strong>External ID:</strong></td><td>${escapeHtml(lineItem.externalId)}</td></tr>
     `;
 }
 
@@ -251,11 +321,11 @@ function displayOrderInfo(order) {
     }
     
     tbody.innerHTML = `
-        <tr><td><strong>Order ID:</strong></td><td>${order.id}</td></tr>
-        <tr><td><strong>Order Name:</strong></td><td>${order.name}</td></tr>
-        <tr><td><strong>Advertiser:</strong></td><td>${order.advertiserId}</td></tr>
-        <tr><td><strong>Trafficker:</strong></td><td>${order.traffickerId || 'N/A'}</td></tr>
-        <tr><td><strong>Status:</strong></td><td><span class="badge bg-${getStatusBadgeClass(order.status)}">${order.status}</span></td></tr>
+        <tr><td><strong>Order ID:</strong></td><td>${escapeHtml(order.id)}</td></tr>
+        <tr><td><strong>Order Name:</strong></td><td>${escapeHtml(order.name)}</td></tr>
+        <tr><td><strong>Advertiser:</strong></td><td>${escapeHtml(order.advertiserId)}</td></tr>
+        <tr><td><strong>Trafficker:</strong></td><td>${escapeHtml(order.traffickerId)}</td></tr>
+        <tr><td><strong>Status:</strong></td><td><span class="badge bg-${getStatusBadgeClass(order.status)}">${escapeHtml(order.status)}</span></td></tr>
     `;
 }
 
@@ -266,11 +336,26 @@ function displayPricingInfo(lineItem) {
         cpm = lineItem.costPerUnit.microAmount / 1000000;
     }
     
+    // Get delivery stats if available
+    let impressionsDelivered = 0;
+    let clicksDelivered = 0;
+    if (lineItem.stats && lineItem.stats.impressionsDelivered) {
+        impressionsDelivered = lineItem.stats.impressionsDelivered;
+        clicksDelivered = lineItem.stats.clicksDelivered || 0;
+    }
+    
+    // Calculate delivery percentage
+    const goal = lineItem.unitsBought || 0;
+    const deliveryPercentage = goal > 0 ? (impressionsDelivered / goal * 100).toFixed(1) : 0;
+    
     tbody.innerHTML = `
         <tr><td><strong>Cost Type:</strong></td><td>${lineItem.costType}</td></tr>
         <tr><td><strong>CPM:</strong></td><td>$${cpm.toFixed(2)}</td></tr>
-        <tr><td><strong>Units Bought:</strong></td><td>${lineItem.unitsBought || 0}</td></tr>
-        <tr><td><strong>Total Budget:</strong></td><td>$${((lineItem.unitsBought || 0) * cpm / 1000).toFixed(2)}</td></tr>
+        <tr><td><strong>Units Bought (Goal):</strong></td><td>${goal.toLocaleString()}</td></tr>
+        <tr><td><strong>Impressions Delivered:</strong></td><td>${impressionsDelivered.toLocaleString()} (${deliveryPercentage}%)</td></tr>
+        <tr><td><strong>Clicks Delivered:</strong></td><td>${clicksDelivered.toLocaleString()}</td></tr>
+        <tr><td><strong>Total Budget:</strong></td><td>$${((goal) * cpm / 1000).toFixed(2)}</td></tr>
+        <tr><td><strong>Spent (Est.):</strong></td><td>$${((impressionsDelivered) * cpm / 1000).toFixed(2)}</td></tr>
         <tr><td><strong>Discount:</strong></td><td>${lineItem.discount || 0}%</td></tr>
         <tr><td><strong>Value Cost Per Unit:</strong></td><td>${lineItem.valueCostPerUnit ? `$${(lineItem.valueCostPerUnit.microAmount / 1000000).toFixed(2)}` : 'N/A'}</td></tr>
     `;
@@ -312,7 +397,7 @@ function displayTargeting(targeting) {
         if (targeting.geoTargeting.targetedLocations && targeting.geoTargeting.targetedLocations.length > 0) {
             html += '<li><strong>Included:</strong><ul>';
             targeting.geoTargeting.targetedLocations.forEach(loc => {
-                html += `<li>${loc.displayName || loc.id} (${loc.type})</li>`;
+                html += `<li>${escapeHtml(loc.displayName || loc.id)} (${escapeHtml(loc.type)})</li>`;
             });
             html += '</ul></li>';
         }
@@ -320,7 +405,7 @@ function displayTargeting(targeting) {
         if (targeting.geoTargeting.excludedLocations && targeting.geoTargeting.excludedLocations.length > 0) {
             html += '<li><strong>Excluded:</strong><ul>';
             targeting.geoTargeting.excludedLocations.forEach(loc => {
-                html += `<li>${loc.displayName || loc.id} (${loc.type})</li>`;
+                html += `<li>${escapeHtml(loc.displayName || loc.id)} (${escapeHtml(loc.type)})</li>`;
             });
             html += '</ul></li>';
         }
@@ -338,7 +423,7 @@ function displayTargeting(targeting) {
         if (tech.deviceCategoryTargeting) {
             html += '<li><strong>Device Categories:</strong><ul>';
             (tech.deviceCategoryTargeting.targetedDeviceCategories || []).forEach(device => {
-                html += `<li>${device.name || device.id}</li>`;
+                html += `<li>${escapeHtml(device.name || device.id)}</li>`;
             });
             html += '</ul></li>';
         }
@@ -346,7 +431,7 @@ function displayTargeting(targeting) {
         if (tech.browserTargeting) {
             html += '<li><strong>Browsers:</strong><ul>';
             (tech.browserTargeting.browsers || []).forEach(browser => {
-                html += `<li>${browser.name || browser.id}</li>`;
+                html += `<li>${escapeHtml(browser.name || browser.id)}</li>`;
             });
             html += '</ul></li>';
         }
@@ -367,13 +452,13 @@ function displayTargeting(targeting) {
         html += '<div class="col-md-6 mb-3">';
         html += '<h6>Daypart Targeting</h6>';
         html += '<ul class="list-unstyled">';
-        html += `<li><strong>Timezone:</strong> ${targeting.dayPartTargeting.timeZone}</li>`;
+        html += `<li><strong>Timezone:</strong> ${escapeHtml(targeting.dayPartTargeting.timeZone)}</li>`;
         
         if (targeting.dayPartTargeting.dayParts) {
             html += '<li><strong>Schedule:</strong><ul>';
             targeting.dayPartTargeting.dayParts.forEach(dp => {
                 const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-                html += `<li>${days[dp.dayOfWeek - 1]}: ${dp.startTime.hour}:00 - ${dp.endTime.hour}:00</li>`;
+                html += `<li>${escapeHtml(days[dp.dayOfWeek - 1])}: ${escapeHtml(dp.startTime.hour)}:00 - ${escapeHtml(dp.endTime.hour)}:00</li>`;
             });
             html += '</ul></li>';
         }
@@ -390,13 +475,13 @@ function displayTargeting(targeting) {
         if (targeting.inventoryTargeting.targetedAdUnits) {
             html += '<li><strong>Ad Units:</strong><ul>';
             targeting.inventoryTargeting.targetedAdUnits.forEach(unit => {
-                html += `<li>${unit.adUnitId} ${unit.includeDescendants ? '(+ descendants)' : ''}</li>`;
+                html += `<li>${escapeHtml(unit.adUnitId)} ${unit.includeDescendants ? '(+ descendants)' : ''}</li>`;
             });
             html += '</ul></li>';
         }
         
         if (targeting.inventoryTargeting.targetedPlacementIds) {
-            html += '<li><strong>Placements:</strong> ' + targeting.inventoryTargeting.targetedPlacementIds.join(', ') + '</li>';
+            html += '<li><strong>Placements:</strong> ' + targeting.inventoryTargeting.targetedPlacementIds.map(id => escapeHtml(id)).join(', ') + '</li>';
         }
         
         html += '</ul></div>';
@@ -418,13 +503,15 @@ function displayCreatives(creatives, associations) {
     html += '<thead><tr><th>Creative ID</th><th>Name</th><th>Type</th><th>Size</th><th>Status</th></tr></thead><tbody>';
     
     creatives.forEach(creative => {
-        const size = creative.size ? `${creative.size.width}x${creative.size.height}` : 'N/A';
+        const size = creative.size ? `${escapeHtml(creative.size.width)}x${escapeHtml(creative.size.height)}` : 'N/A';
+        const previewLink = creative.previewUrl ? 
+            `<a href="${escapeHtml(creative.previewUrl)}" target="_blank">Preview</a>` : 'N/A';
         html += `<tr>`;
-        html += `<td>${creative.id}</td>`;
-        html += `<td>${creative.name}</td>`;
-        html += `<td>${creative['Creative.Type'] || 'Unknown'}</td>`;
+        html += `<td>${escapeHtml(creative.id)}</td>`;
+        html += `<td>${escapeHtml(creative.name)}</td>`;
+        html += `<td>${escapeHtml(creative['Creative.Type'] || 'Unknown')}</td>`;
         html += `<td>${size}</td>`;
-        html += `<td>${creative.previewUrl ? '<a href="' + creative.previewUrl + '" target="_blank">Preview</a>' : 'N/A'}</td>`;
+        html += `<td>${previewLink}</td>`;
         html += `</tr>`;
     });
     
