@@ -99,6 +99,7 @@ class DatabaseConnection:
     def __init__(self):
         self.config = DatabaseConfig.get_db_config()
         self.connection = None
+        self.placeholder = '?' if self.config['type'] == 'sqlite' else '%s'
     
     def connect(self):
         """Connect to database based on configuration."""

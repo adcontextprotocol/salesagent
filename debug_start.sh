@@ -18,6 +18,10 @@ echo "Starting Admin UI on port 8001..."
 python admin_ui.py > /tmp/admin_ui.log 2>&1 &
 ADMIN_PID=$!
 
+echo "Starting A2A server on port 8090..."
+python start_a2a.py > /tmp/a2a_server.log 2>&1 &
+A2A_PID=$!
+
 # Wait and check
 sleep 5
 echo "Service status:"
@@ -37,10 +41,19 @@ else
     tail -20 /tmp/admin_ui.log
 fi
 
+if kill -0 $A2A_PID 2>/dev/null; then
+    echo "✓ A2A server is running (PID: $A2A_PID)"
+else
+    echo "✗ A2A server failed to start"
+    echo "Last 20 lines of A2A log:"
+    tail -20 /tmp/a2a_server.log
+fi
+
 # Test endpoints
 echo "Testing endpoints:"
 curl -s http://localhost:8080/health && echo " ✓ MCP health check OK" || echo " ✗ MCP health check failed"
 curl -s http://localhost:8001/health && echo " ✓ Admin UI health check OK" || echo " ✗ Admin UI health check failed"
+curl -s http://localhost:8090/.well-known/agent-card.json | grep -q "AdCP Sales Agent" && echo " ✓ A2A Agent Card OK" || echo " ✗ A2A Agent Card failed"
 
 # Start proxy
 echo "Starting proxy on port 8000..."

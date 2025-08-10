@@ -82,5 +82,36 @@ services:
       # - ./client_secret.json:/app/client_secret.json:ro
       - ./audit_logs:/app/audit_logs
 
+  a2a-server:
+    build: .
+    command: python start_a2a.py
+    environment:
+      # Database configuration
+      DATABASE_URL: postgresql://adcp_user:secure_password_change_me@postgres:5432/adcp?sslmode=disable
+      
+      # A2A specific settings
+      A2A_PORT: ${A2A_PORT:-8090}
+      A2A_ALLOWED_ORIGINS: ${A2A_ALLOWED_ORIGINS:-http://localhost:3000,http://localhost:8000}
+      
+      # Gemini API key (optional for policy checks)
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      
+      # Optional: Dry run mode
+      # ADCP_DRY_RUN: true
+    
+    depends_on:
+      postgres:
+        condition: service_healthy
+    
+    ports:
+      - "${A2A_PORT:-8090}:8090"
+    
+    volumes:
+      # Optional: Mount audit logs
+      - ./audit_logs:/app/audit_logs
+      
+      # Optional: Mount for development
+      # - .:/app
+
 volumes:
   postgres_data:

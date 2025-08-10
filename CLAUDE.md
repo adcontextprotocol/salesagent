@@ -34,13 +34,20 @@ The server provides:
 - Adapters can provide custom configuration UIs via Flask routes
 - Adapter-specific validation and field definitions
 
-### 3. FastMCP Integration
-- Uses FastMCP for the server framework
-- HTTP transport with header-based authentication (`x-adcp-auth`)
-- Context parameter provides access to HTTP request headers
-- Tools are exposed as MCP methods
+### 3. Dual Protocol Support (MCP + A2A)
+- **MCP Server**: FastMCP framework on port 8080
+- **A2A Server**: JSON-RPC 2.0 on port 8090
+- **Shared TaskExecutor**: Both protocols delegate to common business logic
+- **Symmetric Facades**: Thin protocol adapters with no business logic
+- **Unified Authentication**: Same `x-adcp-auth` header for both protocols
 
 ## Core Components
+
+### Protocol Layer
+- **`task_executor.py`**: Core business logic, protocol-agnostic
+- **`mcp_facade.py`**: MCP protocol adapter using FastMCP
+- **`a2a_facade.py`**: A2A protocol adapter with Agent Card support
+- **`start_a2a.py`**: Standalone A2A server launcher
 
 ### `main.py` - Server Implementation
 - FastMCP server exposing AdCP tools
@@ -100,9 +107,84 @@ When working in a Conductor workspace (e.g., `.conductor/quito/`):
    - Test with `docker compose up` in the workspace
    - Ensure no version-controlled files are modified unintentionally
 
+## A2A Protocol Implementation Guidelines
+
+### Overview
+The system now supports both MCP and Google's Agent2Agent (A2A) protocols through a shared TaskExecutor architecture. Both protocols are thin facades over common business logic.
+
+### Key Implementation Decisions
+
+1. **Structured Data Responses**: ALL task responses MUST include full structured data, not just text summaries
+   - Product queries return complete product objects with all AdCP fields
+   - Media buy operations return full media buy details
+   - Status queries return comprehensive status objects
+
+2. **A2A Task Format**: All A2A responses (except message/send) return Task objects:
+   ```json
+   {
+     "kind": "task",
+     "id": "task_id",
+     "status": {
+       "state": "completed",
+       "message": "optional message"
+     },
+     "artifact": { /* actual data */ },
+     "history": []
+   }
+   ```
+
+3. **Message/Send Special Handling**: Returns Message objects with multiple parts:
+   ```json
+   {
+     "kind": "message",
+     "messageId": "msg_id",
+     "role": "agent",
+     "parts": [
+       {"kind": "text", "text": "Summary"},
+       {"kind": "data", "mimeType": "application/json", "data": {/* structured data */}}
+     ]
+   }
+   ```
+
+### Testing Requirements
+
+1. **Unit Tests**: All A2A methods must have unit tests verifying:
+   - No echo responses (agent provides intelligent responses)
+   - Structured data is included
+   - Proper Task/Message format
+
+2. **Integration Tests**: Use `test_a2a_structured_data.py` to verify:
+   - All required AdCP fields are present
+   - Response formats match A2A spec
+   - Error handling follows protocol
+
+### Known Spec Ambiguities
+
+Based on implementation experience, these areas need clarification:
+
+1. **Optional vs Required Fields**: Not all products have all fields (e.g., price_model may be null for bonus inventory)
+2. **Message/Send Data Parts**: Should always include structured data for entity queries
+3. **Targeting Capabilities**: Core dimensions (geo, device) should be mandatory
+4. **Error Responses**: Use Task with failed status, not JSON-RPC errors
+
+### Production Deployment
+
+The A2A server is now included in production deployments:
+- Runs on port 8090 internally
+- Accessible via `/a2a/rpc` through the proxy
+- Agent Card at `/.well-known/agent-card.json`
+
 ## Recent Major Changes
 
-### AdCP v2.4 Protocol Updates (Latest)
+### Agent2Agent (A2A) Protocol Support (Latest)
+- **Dual Protocol Support**: Added Google's A2A protocol alongside existing MCP implementation
+- **Symmetric Facade Architecture**: Both protocols are thin facades over shared TaskExecutor
+- **A2A Server**: Runs on port 8090 with Agent Card at `/.well-known/agent-card.json`
+- **JSON-RPC 2.0**: Full compliance with A2A specification using official a2a-sdk
+- **Shared Operations**: Identical 8 operations exposed through both protocols
+- **Context Management**: Context IDs generated but not yet persisted (future enhancement)
+
+### AdCP v2.4 Protocol Updates
 - **Renamed Endpoints**: `list_products` renamed to `get_products` to align with signals agent spec
 - **Signal Discovery**: Added optional `get_signals` endpoint for discovering available signals (audiences, contextual, geographic, etc.)
 - **Enhanced Targeting**: Added `signals` field to targeting overlay for direct signal activation
@@ -663,6 +745,21 @@ uv run python init_database.py
 
 # Start MCP server and Admin UI
 uv run python run_server.py
+
+# Start A2A server (separate terminal)
+uv run python start_a2a.py
+```
+
+### Testing A2A Protocol
+```bash
+# Get Agent Card
+curl http://localhost:8090/.well-known/agent-card.json | jq .name
+
+# Make RPC call
+curl -X POST http://localhost:8090/rpc \
+  -H "Content-Type: application/json" \
+  -H "x-adcp-auth: test_token_123" \
+  -d '{"jsonrpc": "2.0", "method": "get_products", "params": {}, "id": 1}'
 ```
 
 ### Managing Tenants

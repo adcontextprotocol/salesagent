@@ -2324,6 +2324,54 @@ def check_aee_requirements(req: CheckAEERequirementsRequest, context: Context) -
         available_dimensions=available_keys
     )
 
+# ========== Core Messaging Tools ==========
+
+@mcp.tool
+def send_message(content: str, context_id: Optional[str] = None, metadata: Optional[Dict] = None, context: Context = None) -> Dict[str, Any]:
+    """Send a message in the conversation."""
+    principal_id = _get_principal_id_from_context(context)
+    
+    # Get TaskExecutor instance
+    from task_executor import TaskExecutor
+    executor = TaskExecutor()
+    
+    return executor.send_message(
+        principal_id=principal_id,
+        content=content,
+        context_id=context_id,
+        metadata=metadata,
+        protocol="mcp"
+    )
+
+@mcp.tool  
+def get_messages(context_id: Optional[str] = None, limit: int = 50, offset: int = 0, context: Context = None) -> Dict[str, Any]:
+    """Get conversation messages."""
+    principal_id = _get_principal_id_from_context(context)
+    
+    from task_executor import TaskExecutor
+    executor = TaskExecutor()
+    
+    return executor.get_messages(
+        principal_id=principal_id,
+        context_id=context_id,
+        limit=limit,
+        offset=offset
+    )
+
+@mcp.tool
+def clear_context(context_id: str, context: Context = None) -> Dict[str, Any]:
+    """Clear conversation context."""
+    principal_id = _get_principal_id_from_context(context)
+    
+    from task_executor import TaskExecutor
+    executor = TaskExecutor()
+    
+    return executor.clear_context(
+        principal_id=principal_id,
+        context_id=context_id
+    )
+
+
 # Creative macro support is now simplified to a single creative_macro string
 # that AEE can provide as a third type of provided_signal.
 # Ad servers like GAM can inject this string into creatives.

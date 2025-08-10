@@ -16,6 +16,11 @@ ADMIN_PATHS = {
     '/logout', '/login', '/test', '/health/admin', '/tenant'
 }
 
+# Routes that should go to A2A server
+A2A_PATHS = {
+    '/a2a', '/.well-known/agent-card.json'
+}
+
 async def proxy_handler(request):
     """Route requests to appropriate backend service"""
     path = request.path_qs
@@ -28,18 +33,31 @@ async def proxy_handler(request):
     if path == '/health':
         return web.Response(text='healthy\n')
     
-    # Check if this should go to admin UI
-    for admin_path in ADMIN_PATHS:
-        if path.startswith(admin_path):
-            # For /admin route, strip the prefix and forward to /
-            if path == '/admin':
-                target_url = "http://localhost:8001/"
+    # Check if this should go to A2A server
+    for a2a_path in A2A_PATHS:
+        if path.startswith(a2a_path):
+            # Strip /a2a prefix for RPC endpoint
+            if path.startswith('/a2a/rpc'):
+                target_url = f"http://localhost:8090/rpc{path[8:]}"  # Remove /a2a/rpc, keep /rpc
+            elif path.startswith('/a2a'):
+                target_url = f"http://localhost:8090{path[4:]}"  # Remove /a2a prefix
             else:
-                target_url = f"http://localhost:8001{path}"
+                # Agent card and other direct paths
+                target_url = f"http://localhost:8090{path}"
             break
     else:
-        # Default to MCP server
-        target_url = f"http://localhost:8080{path}"
+        # Check if this should go to admin UI
+        for admin_path in ADMIN_PATHS:
+            if path.startswith(admin_path):
+                # For /admin route, strip the prefix and forward to /
+                if path == '/admin':
+                    target_url = "http://localhost:8001/"
+                else:
+                    target_url = f"http://localhost:8001{path}"
+                break
+        else:
+            # Default to MCP server
+            target_url = f"http://localhost:8080{path}"
     
     logger.info(f"Proxying {request.method} {path} -> {target_url}")
     

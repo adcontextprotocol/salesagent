@@ -1,10 +1,12 @@
-# AdCP Sales Agent (V2.3)
+# AdCP Sales Agent (V2.4)
 
-This project is a Python-based reference implementation of the Advertising Context Protocol (AdCP) V2.3 sales agent. It demonstrates how publishers expose advertising inventory to AI-driven clients through a standardized MCP (Model Context Protocol) interface.
+This project is a Python-based reference implementation of the Advertising Context Protocol (AdCP) V2.4 sales agent. It demonstrates how publishers expose advertising inventory to AI-driven clients through both MCP (Model Context Protocol) and Google's Agent2Agent (A2A) protocol interfaces.
 
 ## Key Features
 
+- **Dual Protocol Support**: Both MCP (port 8080) and A2A (port 8090) protocols with shared business logic
 - **MCP Server Implementation**: Built with FastMCP, exposing tools for AI agents to interact with ad inventory
+- **A2A Protocol Support**: Full Google Agent2Agent implementation with Agent Card and JSON-RPC 2.0
 - **Multi-Tenant Architecture**: Database-backed tenant isolation with subdomain routing support
 - **Multiple Ad Server Support**: Adapter pattern supporting Google Ad Manager, Kevel, Triton, and mock implementations
 - **Advanced Targeting**: Comprehensive targeting system with overlay and managed-only dimensions
@@ -51,6 +53,7 @@ docker-compose down
 This starts:
 - PostgreSQL database (port 5432)
 - AdCP MCP server (port 8080)
+- A2A Protocol server (port 8090)
 - Admin UI with OAuth (port 8001)
 
 ### Prerequisites for Local Development
@@ -214,17 +217,78 @@ async with client:
 
 ### Available MCP Tools
 
-- `list_products` - Discover available ad inventory
+- `get_products` - Discover available ad inventory  
 - `create_media_buy` - Create new campaigns
 - `get_media_buy_delivery` - Check campaign performance
 - `update_media_buy` - Modify active campaigns
-- `add_creative_assets` - Submit creative materials
-- `get_creatives` - List creative assets
-- `update_performance_index` - Adjust optimization parameters
-- `get_all_media_buy_delivery` - Bulk delivery reporting (admin only)
-- `review_pending_creatives` - Approve/reject creatives (admin only)
-- `list_human_tasks` - View manual approval queue (admin only)
-- `complete_human_task` - Process manual approvals (admin only)
+- `submit_creatives` - Submit creative materials
+- `get_creative_status` - Check creative approval status
+- `get_media_buy_status` - Get campaign status
+- `get_targeting_capabilities` - Available targeting options
+- `create_human_task` - Request manual intervention
+- `verify_task` - Verify task completion
+
+## A2A Protocol Support
+
+The server also implements Google's Agent2Agent (A2A) protocol for AI agent communication:
+
+### A2A Features
+- **Agent Card**: Discoverable at `/.well-known/agent-card.json`
+- **JSON-RPC 2.0**: Standard RPC endpoint at `/rpc`
+- **Structured Data**: All responses include full AdCP data structures
+- **Message Handling**: Intelligent conversational interface with `message/send`
+- **Task Format**: Consistent task-based responses for all operations
+
+### Using the A2A Protocol
+
+```python
+import httpx
+import json
+
+# Connect to A2A server
+url = "http://localhost:8090/rpc"
+headers = {
+    "Content-Type": "application/json",
+    "x-adcp-auth": "your_access_token"
+}
+
+# Send a message
+request = {
+    "jsonrpc": "2.0",
+    "method": "message/send",
+    "params": {
+        "message": {
+            "parts": [{"kind": "text", "text": "Show me video inventory"}],
+            "role": "user"
+        }
+    },
+    "id": 1
+}
+
+response = httpx.post(url, json=request, headers=headers)
+result = response.json()
+
+# Response includes both text and structured data
+# {
+#   "result": {
+#     "kind": "message",
+#     "role": "agent",
+#     "parts": [
+#       {"kind": "text", "text": "I found 3 video products..."},
+#       {"kind": "data", "mimeType": "application/json", "data": {...}}
+#     ]
+#   }
+# }
+```
+
+### A2A Methods
+
+All MCP tools are also available via A2A:
+- `get_products` - Get available products with full data
+- `create_media_buy` - Create campaigns, returns complete details
+- `message/send` - Conversational interface with structured responses
+- `message/list` - Retrieve conversation history
+- `context/clear` - Clear conversation context
 
 ## Admin UI & Operations Dashboard
 
@@ -407,6 +471,64 @@ Example targeting overlay:
   "day_of_week_any_of": ["mon", "tue", "wed", "thu", "fri"],
   "hour_of_day_any_of": [9, 10, 11, 12, 13, 14, 15, 16, 17]
 }
+```
+
+## Authentication & Security
+
+### Token-Based Authentication
+
+Both MCP and A2A protocols use the same token-based authentication system:
+
+1. **Principal Tokens**: For API clients (advertisers/buyers)
+2. **Admin Tokens**: For tenant administration
+3. **Super Admin**: OAuth-based for system administration
+
+All requests must include the authentication header:
+```http
+x-adcp-auth: your_secure_token
+```
+
+### Setting Up Authentication
+
+#### 1. Create a Tenant
+```bash
+docker exec -it adcp-server python setup_tenant.py "Publisher Name" --adapter mock
+# Save the generated tenant_id and admin_token
+```
+
+#### 2. Create API Principals
+```python
+# Using the Admin UI or via database
+from db_config import get_db_connection
+import secrets, string
+
+# Generate secure token
+token = ''.join(secrets.choice(string.ascii_letters + string.digits) for _ in range(48))
+
+conn = get_db_connection()
+conn.execute('''
+    INSERT INTO principals (tenant_id, principal_id, name, access_token)
+    VALUES (?, ?, ?, ?)
+''', ('your_tenant_id', 'advertiser_001', 'Advertiser Name', token))
+conn.commit()
+
+print(f'Token: {token}')  # Save this securely
+```
+
+#### 3. Production Security
+
+For production deployments:
+
+1. **Generate strong tokens** (minimum 32 characters)
+2. **Never commit tokens** to version control  
+3. **Use HTTPS** for all API calls
+4. **Rotate tokens** regularly
+5. **Monitor audit logs** for suspicious activity
+
+```bash
+# Check authentication attempts
+docker exec -it adcp-server sqlite3 /app/adcp.db \
+  "SELECT * FROM audit_logs WHERE operation='authenticate' ORDER BY timestamp DESC LIMIT 10"
 ```
 
 ## Deployment

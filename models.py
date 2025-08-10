@@ -466,3 +466,55 @@ class SyncJob(Base):
         Index('idx_sync_jobs_status', 'status'),
         Index('idx_sync_jobs_started', 'started_at'),
     )
+
+class Context(Base):
+    """Conversation context for maintaining state across messages."""
+    __tablename__ = 'contexts'
+    
+    context_id = Column(String(50), primary_key=True)
+    tenant_id = Column(String(50), ForeignKey('tenants.tenant_id', ondelete='CASCADE'), nullable=False)
+    principal_id = Column(String(100), nullable=False)
+    protocol = Column(String(20), nullable=False)  # 'mcp' or 'a2a'
+    state = Column(Text)  # JSON state data
+    context_metadata = Column('metadata', Text)  # JSON metadata (renamed to avoid SQLAlchemy conflict)
+    created_at = Column(DateTime, server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now(), nullable=False)
+    last_accessed_at = Column(DateTime, server_default=func.now(), nullable=False)
+    expires_at = Column(DateTime)
+    is_active = Column(Boolean, default=True, nullable=False)
+    
+    # Relationships
+    tenant = relationship("Tenant", backref="contexts")
+    messages = relationship("ContextMessage", back_populates="context", cascade="all, delete-orphan", order_by="ContextMessage.sequence_num")
+    
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ['tenant_id', 'principal_id'],
+            ['principals.tenant_id', 'principals.principal_id'],
+            ondelete='CASCADE'
+        ),
+        Index('idx_contexts_tenant_principal', 'tenant_id', 'principal_id'),
+        Index('idx_contexts_expires_at', 'expires_at'),
+        Index('idx_contexts_last_accessed', 'last_accessed_at'),
+    )
+
+class ContextMessage(Base):
+    """Individual messages within a context."""
+    __tablename__ = 'context_messages'
+    
+    message_id = Column(String(50), primary_key=True)
+    context_id = Column(String(50), ForeignKey('contexts.context_id', ondelete='CASCADE'), nullable=False)
+    sequence_num = Column(Integer, nullable=False)
+    message_type = Column(String(20), nullable=False)  # 'request' or 'response'
+    method = Column(String(100))  # The method/tool called
+    request_data = Column(Text)  # JSON request
+    response_data = Column(Text)  # JSON response
+    created_at = Column(DateTime, server_default=func.now(), nullable=False)
+    
+    # Relationships
+    context = relationship("Context", back_populates="messages")
+    
+    __table_args__ = (
+        UniqueConstraint('context_id', 'sequence_num', name='uq_context_sequence'),
+        Index('idx_messages_context_seq', 'context_id', 'sequence_num'),
+    )
