@@ -4109,7 +4109,9 @@ def get_gam_line_item(tenant_id, line_item_id):
         return jsonify(result)
         
     except Exception as e:
+        import traceback
         app.logger.error(f"Error fetching GAM line item: {str(e)}")
+        app.logger.error(f"Traceback: {traceback.format_exc()}")
         return jsonify({'error': str(e)}), 500
 
 @app.route('/tenant/<tenant_id>/gam/line-item/<line_item_id>')

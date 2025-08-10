@@ -1,3 +1,4 @@
+import pytest
 import unittest
 import os
 import json
@@ -8,6 +9,7 @@ from config_loader import set_current_tenant, get_default_tenant, get_current_te
 from db_config import get_db_connection
 import uuid
 
+@pytest.mark.integration
 class TestAdcpServerV2_3(unittest.TestCase):
     """
     Tests for the V2.3 AdCP Buy-Side Server.

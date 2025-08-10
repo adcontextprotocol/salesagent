@@ -6,18 +6,73 @@ on:
   pull_request:
     branches: [ main ]
 
+env:
+  PYTHON_VERSION: '3.12'
+  UV_VERSION: '0.4.18'
+
 jobs:
-  test:
+  unit-tests:
+    name: Unit Tests
     runs-on: ubuntu-latest
-    # Only test on Python 3.12 as required by pyproject.toml
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+    
+    - name: Install uv
+      run: |
+        curl -LsSf https://astral.sh/uv/${{ env.UV_VERSION }}/install.sh | sh
+        echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+    
+    - name: Cache uv dependencies
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.cache/uv
+          .venv
+        key: ${{ runner.os }}-uv-${{ hashFiles('**/uv.lock') }}
+        restore-keys: |
+          ${{ runner.os }}-uv-
+    
+    - name: Install dependencies
+      run: |
+        uv sync
+    
+    - name: Run unit tests
+      env:
+        GEMINI_API_KEY: test_key_for_mocking
+        GOOGLE_CLIENT_ID: test_client_id
+        GOOGLE_CLIENT_SECRET: test_client_secret
+        SUPER_ADMIN_EMAILS: test@example.com
+        DATABASE_URL: sqlite:///test.db
+        ADCP_TESTING: true
+      run: |
+        uv run pytest tests/unit/ -v --tb=short --cov=. --cov-report=xml --cov-report=term-missing
+    
+    - name: Upload coverage to Codecov
+      if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+      uses: codecov/codecov-action@v4
+      with:
+        file: ./coverage.xml
+        flags: unit
+        name: unit-tests
+        fail_ci_if_error: false
+
+  integration-tests:
+    name: Integration Tests
+    runs-on: ubuntu-latest
     
     services:
       postgres:
-        image: postgres:15-alpine
+        image: postgres:15
         env:
-          POSTGRES_DB: adcp_test
           POSTGRES_USER: adcp_user
           POSTGRES_PASSWORD: test_password
+          POSTGRES_DB: adcp_test
         options: >-
           --health-cmd pg_isready
           --health-interval 10s
@@ -25,112 +80,165 @@ jobs:
           --health-retries 5
         ports:
           - 5432:5432
-
-    steps:
-    - uses: actions/checkout@v4
     
-    - name: Set up Python 3.12
-      uses: actions/setup-python@v5
-      with:
-        python-version: '3.12'
-    
-    - name: Cache pip packages
-      uses: actions/cache@v4
-      with:
-        path: ~/.cache/pip
-        key: ${{ runner.os }}-pip-${{ hashFiles('**/pyproject.toml') }}
-        restore-keys: |
-          ${{ runner.os }}-pip-
-    
-    - name: Install dependencies
-      run: |
-        python -m pip install --upgrade pip
-        pip install pytest pytest-mock pytest-cov pytest-asyncio
-        # Install project dependencies
-        pip install pydantic sqlalchemy psycopg2-binary flask authlib requests fastmcp
-        pip install google-generativeai rich google-ads googleads
-        pip install beautifulsoup4 aiohttp alembic watchdog
-        pip install fastapi uvicorn requests-oauthlib
-    
-    - name: Initialize test database
-      env:
-        DATABASE_URL: postgresql://adcp_user:test_password@localhost:5432/adcp_test
-        DB_TYPE: postgresql
-      run: |
-        python init_database_ci.py
-    
-    - name: Run tests
-      env:
-        DATABASE_URL: postgresql://adcp_user:test_password@localhost:5432/adcp_test
-        DB_TYPE: postgresql
-        CI: true
-        GEMINI_API_KEY: test_key_for_mocking  # Tests use mocks, not real API
-        GOOGLE_CLIENT_ID: test_client_id
-        GOOGLE_CLIENT_SECRET: test_client_secret
-        SUPER_ADMIN_EMAILS: test@example.com
-      run: |
-        # Run comprehensive test suite with coverage
-        # Unit tests first (no database required)
-        pytest tests/unit/test_admin_ui_oauth.py tests/test_adapters.py test_adapter_targeting.py test_creative_format_parsing.py -v --tb=short --cov=. --cov-append --junitxml=test-results-unit.xml || true
-        
-        # Integration tests (require database)
-        pytest test_main.py -v --tb=short --cov=. --cov-append --junitxml=test-results-integration.xml || true
-        
-        # AI tests (mocked, no real API calls)
-        # Note: test_ai_product_features.py has some tests that need refactoring
-        pytest test_ai_product_basic.py -v --tb=short --cov=. --cov-append --junitxml=test-results-ai-basic.xml || true
-        pytest test_ai_product_features.py -v --tb=short --cov=. --cov-append --junitxml=test-results-ai-features.xml -k "not test_create_product_from_description and not test_product_suggestions_api and not test_quick_create_products_api and not test_ai_integration and not test_bulk_product_upload_csv" || true
-        
-        # Generate coverage reports
-        # No need to combine when using --cov-append
-        coverage xml || echo "No coverage.xml generated"
-        coverage report || echo "No coverage report generated"
-    
-    - name: Upload coverage to Codecov
-      if: always()
-      uses: codecov/codecov-action@v4
-      with:
-        token: ${{ secrets.CODECOV_TOKEN }}
-        file: ./coverage.xml
-        fail_ci_if_error: false
-    
-    - name: Upload test results
-      uses: actions/upload-artifact@v4
-      if: always()
-      with:
-        name: test-results
-        path: test-results.xml
-    
-    - name: Upload coverage report
-      uses: actions/upload-artifact@v4
-      if: always()
-      with:
-        name: coverage-report
-        path: htmlcov/
-
-  lint:
-    runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v4
     
     - name: Set up Python
       uses: actions/setup-python@v5
       with:
-        python-version: '3.12'
+        python-version: ${{ env.PYTHON_VERSION }}
     
-    - name: Install linting tools
+    - name: Install uv
       run: |
-        python -m pip install --upgrade pip
-        pip install black isort flake8 mypy
+        curl -LsSf https://astral.sh/uv/${{ env.UV_VERSION }}/install.sh | sh
+        echo "$HOME/.cargo/bin" >> $GITHUB_PATH
     
-    - name: Run black
-      run: black --check .
+    - name: Cache uv dependencies
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.cache/uv
+          .venv
+        key: ${{ runner.os }}-uv-${{ hashFiles('**/uv.lock') }}
+        restore-keys: |
+          ${{ runner.os }}-uv-
+    
+    - name: Install dependencies
+      run: |
+        uv sync
+    
+    - name: Run database migrations
+      env:
+        DATABASE_URL: postgresql://adcp_user:test_password@localhost:5432/adcp_test
+      run: |
+        uv run python migrate.py
+    
+    - name: Run integration tests
+      env:
+        DATABASE_URL: postgresql://adcp_user:test_password@localhost:5432/adcp_test
+        GEMINI_API_KEY: test_key_for_mocking
+        GOOGLE_CLIENT_ID: test_client_id
+        GOOGLE_CLIENT_SECRET: test_client_secret
+        SUPER_ADMIN_EMAILS: test@example.com
+        ADCP_TESTING: true
+      run: |
+        uv run pytest tests/integration/ -v --tb=short --cov=. --cov-report=xml --cov-report=term-missing
+    
+    - name: Upload coverage to Codecov
+      if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+      uses: codecov/codecov-action@v4
+      with:
+        file: ./coverage.xml
+        flags: integration
+        name: integration-tests
+        fail_ci_if_error: false
+
+  e2e-tests:
+    name: E2E Tests
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: adcp_user
+          POSTGRES_PASSWORD: test_password
+          POSTGRES_DB: adcp_test
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+    
+    - name: Install uv
+      run: |
+        curl -LsSf https://astral.sh/uv/${{ env.UV_VERSION }}/install.sh | sh
+        echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+    
+    - name: Install dependencies
+      run: |
+        uv sync
+    
+    - name: Run database migrations
+      env:
+        DATABASE_URL: postgresql://adcp_user:test_password@localhost:5432/adcp_test
+      run: |
+        uv run python migrate.py
+    
+    - name: Initialize test data
+      env:
+        DATABASE_URL: postgresql://adcp_user:test_password@localhost:5432/adcp_test
+      run: |
+        uv run python init_database.py
+    
+    - name: Run E2E tests
+      env:
+        DATABASE_URL: postgresql://adcp_user:test_password@localhost:5432/adcp_test
+        GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY || 'test_key_for_mocking' }}
+        GOOGLE_CLIENT_ID: test_client_id
+        GOOGLE_CLIENT_SECRET: test_client_secret
+        SUPER_ADMIN_EMAILS: test@example.com
+        ADCP_TESTING: true
+      run: |
+        uv run pytest tests/e2e/ -v --tb=short
+      continue-on-error: true  # E2E tests may be flaky
+
+  lint:
+    name: Lint & Type Check
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+    
+    - name: Install uv
+      run: |
+        curl -LsSf https://astral.sh/uv/${{ env.UV_VERSION }}/install.sh | sh
+        echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+    
+    - name: Install dependencies
+      run: |
+        uv sync
+        uv add --dev ruff mypy
+    
+    - name: Run Ruff linter
+      run: |
+        uv run ruff check . --config pyproject.toml || true
       continue-on-error: true
     
-    - name: Run isort
-      run: isort --check-only .
+    - name: Run Ruff formatter
+      run: |
+        uv run ruff format . --check --config pyproject.toml || true
       continue-on-error: true
+
+  test-summary:
+    name: Test Summary
+    runs-on: ubuntu-latest
+    needs: [unit-tests, integration-tests]
+    if: always()
     
-    - name: Run flake8
-      run: flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
-      continue-on-error: true
+    steps:
+    - name: Check test results
+      run: |
+        if [ "${{ needs.unit-tests.result }}" = "failure" ] || [ "${{ needs.integration-tests.result }}" = "failure" ]; then
+          echo "❌ Tests failed"
+          exit 1
+        else
+          echo "✅ All required tests passed"
+        fi

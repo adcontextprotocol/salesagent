@@ -22,3 +22,10 @@ def get_adapter(adapter_type: str, config: dict, principal):
     if not adapter_class:
         raise ValueError(f"Unknown adapter type: {adapter_type}")
     return adapter_class(config, principal)
+
+def get_adapter_class(adapter_type: str):
+    """Get the adapter class for a given adapter type."""
+    adapter_class = ADAPTER_REGISTRY.get(adapter_type.lower())
+    if not adapter_class:
+        raise ValueError(f"Unknown adapter type: {adapter_type}")
+    return adapter_class

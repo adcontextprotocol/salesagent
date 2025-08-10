@@ -3,6 +3,7 @@
 Test script for AI task verification functionality.
 """
 
+import pytest
 import json
 import asyncio
 from datetime import datetime, date, timedelta
@@ -15,6 +16,9 @@ console = Console()
 BASE_URL = "http://localhost:8080"
 ADMIN_TOKEN = "admin"
 ACME_TOKEN = "acme_corp_token"
+
+# Mark all tests in this module as requiring a server
+pytestmark = pytest.mark.requires_server
 
 def make_request(endpoint: str, data: dict, token: str = ACME_TOKEN):
     """Make a request to the AdCP server."""

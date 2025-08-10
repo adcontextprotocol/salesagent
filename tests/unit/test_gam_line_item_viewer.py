@@ -96,9 +96,11 @@ class TestGAMLineItemViewer:
             }
         ]
     
+    @patch('zeep.helpers.serialize_object')
+    @patch('googleads.ad_manager')
     @patch('gam_helper.get_ad_manager_client_for_tenant')
     @patch('admin_ui.get_db_connection')
-    def test_get_gam_line_item_success(self, mock_db, mock_gam_client, 
+    def test_get_gam_line_item_success(self, mock_db, mock_gam_client, mock_ad_manager, mock_serialize, 
                                        mock_line_item_response, 
                                        mock_order_response,
                                        mock_creative_response):
@@ -107,9 +109,58 @@ class TestGAMLineItemViewer:
         
         # Setup mocks
         mock_conn = Mock()
-        mock_cursor = Mock()
-        mock_cursor.fetchone.return_value = {'tenant_id': 'test_tenant'}
-        mock_conn.execute.return_value = mock_cursor
+        
+        # Create two cursors for the two queries
+        # First query: SELECT * FROM tenants WHERE tenant_id = ?
+        mock_cursor1 = Mock()
+        mock_cursor1.fetchone.return_value = (
+            'test_tenant',  # tenant_id
+            'Test Tenant',  # name
+            'test',  # subdomain
+            json.dumps({  # config
+                'adapters': {
+                    'google_ad_manager': {
+                        'enabled': True,
+                        'network_code': '123456'
+                    }
+                }
+            }),
+            'standard',  # billing_plan
+            True,  # is_active
+            json.dumps([]),  # authorized_emails
+            json.dumps([])  # authorized_domains
+        )
+        
+        # Second query: get_tenant_config_from_db columns
+        mock_cursor2 = Mock()
+        mock_cursor2.fetchone.return_value = (
+            'google_ad_manager',  # ad_server
+            10000,  # max_daily_budget
+            True,  # enable_aee_signals
+            json.dumps([]),  # authorized_emails
+            json.dumps([]),  # authorized_domains
+            None,  # slack_webhook_url
+            None,  # slack_audit_webhook_url
+            None,  # hitl_webhook_url
+            'test_token',  # admin_token
+            json.dumps(['display_300x250']),  # auto_approve_formats
+            False,  # human_review_required
+            json.dumps({'enabled': False})  # policy_settings
+        )
+        
+        # Third query: adapter_config table
+        mock_cursor3 = Mock()
+        mock_cursor3.fetchone.return_value = (
+            'test_tenant',  # tenant_id
+            'google_ad_manager',  # adapter_type
+            '123456',  # network_code
+            None,  # refresh_token
+            None  # company_id
+        )
+        
+        # Setup execute to return different cursors for different queries
+        mock_conn.execute.side_effect = [mock_cursor1, mock_cursor2, mock_cursor3]
+        mock_conn.close = Mock()  # Mock the close method
         mock_db.return_value = mock_conn
         
         # Mock GAM client responses
@@ -145,14 +196,49 @@ class TestGAMLineItemViewer:
         
         mock_gam_client.return_value = mock_client
         
+        # Mock ad_manager.StatementBuilder
+        mock_statement = Mock()
+        mock_statement.Where.return_value = mock_statement
+        mock_statement.WithBindVariable.return_value = mock_statement
+        mock_statement.Limit.return_value = mock_statement
+        mock_statement.ToStatement.return_value = {}
+        mock_ad_manager.StatementBuilder.return_value = mock_statement
+        
+        # Mock serialize_object to return the appropriate test data
+        def serialize_mock(obj):
+            # Check what's being serialized and return the appropriate test data
+            # This will be called for line_item, order, and creatives
+            if hasattr(obj, 'id'):
+                id_value = getattr(obj, 'id', None)
+                if id_value == 7046143587:
+                    return mock_line_item_response
+                elif id_value == 12345:
+                    return mock_order_response
+                elif id_value == 138524791074:
+                    return mock_creative_response[0]
+            # For lists of objects
+            if isinstance(obj, list) and len(obj) > 0:
+                return mock_creative_response
+            # Default behavior
+            return mock_line_item_response
+        
+        mock_serialize.side_effect = serialize_mock
+        
         # Test the endpoint
         with app.test_client() as client:
-            # Mock authentication
+            # Mock authentication properly
             with client.session_transaction() as sess:
-                sess['user_email'] = 'test@example.com'
-                sess['is_super_admin'] = True
+                sess['authenticated'] = True
+                sess['role'] = 'super_admin'
+                sess['email'] = 'test@example.com'
+                sess['tenant_id'] = 'test_tenant'
             
             response = client.get('/api/tenant/test_tenant/gam/line-item/7046143587')
+            
+            # Debug the response if it fails
+            if response.status_code != 200:
+                print(f"Response status: {response.status_code}")
+                print(f"Response data: {response.data}")
             
             assert response.status_code == 200
             data = json.loads(response.data)
@@ -164,24 +250,87 @@ class TestGAMLineItemViewer:
             assert 'creative_associations' in data
             assert 'media_product_json' in data
     
-    def test_line_item_id_validation(self):
+    @patch('admin_ui.get_db_connection')
+    def test_line_item_id_validation(self, mock_db):
         """Test that line item ID validation works correctly."""
         from admin_ui import app
         
+        # Setup database mock
+        mock_conn = Mock()
+        
+        # Since we're testing multiple invalid IDs, we need to handle multiple calls
+        # Each invalid ID will trigger two queries
+        def create_cursor_tenant():
+            cursor = Mock()
+            cursor.fetchone.return_value = (
+                'test_tenant',  # tenant_id
+                'Test Tenant',  # name
+                'test',  # subdomain
+                json.dumps({  # config
+                    'adapters': {
+                        'google_ad_manager': {
+                            'enabled': True,
+                            'network_code': '123456'
+                        }
+                    }
+                }),
+                'standard',  # billing_plan
+                True,  # is_active
+                json.dumps([]),  # authorized_emails
+                json.dumps([])  # authorized_domains
+            )
+            return cursor
+        
+        def create_cursor_config():
+            cursor = Mock()
+            cursor.fetchone.return_value = (
+                'google_ad_manager',  # ad_server
+                10000,  # max_daily_budget
+                True,  # enable_aee_signals
+                json.dumps([]),  # authorized_emails
+                json.dumps([]),  # authorized_domains
+                None,  # slack_webhook_url
+                None,  # slack_audit_webhook_url
+                None,  # hitl_webhook_url
+                'test_token',  # admin_token
+                json.dumps(['display_300x250']),  # auto_approve_formats
+                False,  # human_review_required
+                json.dumps({'enabled': False})  # policy_settings
+            )
+            return cursor
+        
+        # Create cursors for each invalid ID test (2 queries per test)
+        cursors = []
+        invalid_ids_400 = ['abc', '-123', '0', 'null']
+        for _ in invalid_ids_400:
+            cursors.append(create_cursor_tenant())
+            cursors.append(create_cursor_config())
+        
+        mock_conn.execute.side_effect = cursors
+        mock_conn.close = Mock()
+        mock_db.return_value = mock_conn
+        
         with app.test_client() as client:
-            # Mock authentication
+            # Mock authentication properly
             with client.session_transaction() as sess:
-                sess['user_email'] = 'test@example.com'
-                sess['is_super_admin'] = True
+                sess['authenticated'] = True
+                sess['role'] = 'super_admin'
+                sess['email'] = 'test@example.com'
+                sess['tenant_id'] = 'test_tenant'
             
             # Test invalid line item IDs
-            invalid_ids = ['abc', '-123', '0', '', 'null']
+            # Note: empty string won't match the route, so it returns 404
+            invalid_ids_400 = ['abc', '-123', '0', 'null']
             
-            for invalid_id in invalid_ids:
+            for invalid_id in invalid_ids_400:
                 response = client.get(f'/api/tenant/test_tenant/gam/line-item/{invalid_id}')
-                assert response.status_code == 400
+                assert response.status_code == 400, f"Expected 400 for ID '{invalid_id}', got {response.status_code}"
                 data = json.loads(response.data)
                 assert 'error' in data
+            
+            # Test empty string separately - should give 404 as route won't match
+            response = client.get(f'/api/tenant/test_tenant/gam/line-item/')
+            assert response.status_code == 404
     
     def test_convert_line_item_to_product_json(self):
         """Test conversion of GAM line item to internal product JSON format."""
