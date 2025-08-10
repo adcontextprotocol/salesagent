@@ -96,7 +96,7 @@ class TestGAMLineItemViewer:
             }
         ]
     
-    @patch('admin_ui.get_ad_manager_client_for_tenant')
+    @patch('gam_helper.get_ad_manager_client_for_tenant')
     @patch('admin_ui.get_db_connection')
     def test_get_gam_line_item_success(self, mock_db, mock_gam_client, 
                                        mock_line_item_response, 
@@ -228,7 +228,7 @@ class TestGAMLineItemViewer:
         result = convert_line_item_to_product_json(line_item, creatives)
         
         # Verify basic fields
-        assert result['product_id'] == 'line_item_7046143587'
+        assert result['product_id'] == 'gam_line_item_7046143587'
         assert result['name'] == 'Test Line Item'
         assert result['delivery_type'] == 'guaranteed'
         assert result['is_fixed_price'] is True
