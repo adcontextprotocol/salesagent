@@ -1,0 +1,608 @@
+{% extends "base.html" %}
+
+{% block title %}GAM Line Item Viewer - {{ tenant['name'] }}{% endblock %}
+
+{% block content %}
+<style>
+    /* Custom styles for line item viewer */
+    .tab-content {
+        margin-top: 1rem;
+    }
+    
+    /* Ensure proper Bootstrap tab behavior */
+    .tab-pane {
+        display: none;
+    }
+    
+    .tab-pane.active {
+        display: block;
+    }
+</style>
+
+<div class="container-fluid">
+    <h1 class="mb-4">GAM Line Item Viewer</h1>
+    
+    <!-- Line Item ID Input -->
+    <div class="card mb-4">
+        <div class="card-body">
+            <h5 class="card-title">View Line Item</h5>
+            <div class="input-group">
+                <input type="text" id="lineItemId" class="form-control" placeholder="Enter Line Item ID" value="{{ line_item_id }}">
+                <button class="btn btn-primary" onclick="loadLineItem()">Load Line Item</button>
+            </div>
+            <small class="text-muted">Line Item ID: {{ line_item_id }} | Tenant: {{ tenant_id }}</small>
+        </div>
+    </div>
+
+    <!-- Loading indicator -->
+    <div id="loading" class="alert alert-info" style="display: none;">
+        <div class="spinner-border spinner-border-sm me-2" role="status"></div>
+        Loading line item data from GAM...
+    </div>
+
+    <!-- Error display -->
+    <div id="error" class="alert alert-danger" style="display: none;"></div>
+
+    <!-- Line Item Data Display -->
+    <div id="lineItemContent" style="display: none;">
+        
+        <!-- Navigation Tabs -->
+        <ul class="nav nav-tabs mb-3" id="lineItemTabs" role="tablist">
+            <li class="nav-item" role="presentation">
+                <button class="nav-link active" id="overview-tab" data-bs-toggle="tab" data-bs-target="#overview" type="button">Overview</button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="targeting-tab" data-bs-toggle="tab" data-bs-target="#targeting" type="button">Targeting</button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="creatives-tab" data-bs-toggle="tab" data-bs-target="#creatives" type="button">Creatives</button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="delivery-tab" data-bs-toggle="tab" data-bs-target="#delivery" type="button">Delivery Settings</button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="raw-tab" data-bs-toggle="tab" data-bs-target="#raw" type="button">Raw GAM Data</button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="product-json-tab" data-bs-toggle="tab" data-bs-target="#product-json" type="button">Product JSON</button>
+            </li>
+        </ul>
+
+        <!-- Tab Content -->
+        <div class="tab-content" id="lineItemTabContent">
+            
+            <!-- Overview Tab -->
+            <div class="tab-pane fade show active" id="overview" role="tabpanel">
+                <div class="row">
+                    <div class="col-md-6">
+                        <div class="card mb-3">
+                            <div class="card-header">Basic Information</div>
+                            <div class="card-body">
+                                <table class="table table-sm">
+                                    <tbody id="basicInfo"></tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="card mb-3">
+                            <div class="card-header">Order Information</div>
+                            <div class="card-body">
+                                <table class="table table-sm">
+                                    <tbody id="orderInfo"></tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="card mb-3">
+                    <div class="card-header">Pricing & Budget</div>
+                    <div class="card-body">
+                        <table class="table table-sm">
+                            <tbody id="pricingInfo"></tbody>
+                        </table>
+                    </div>
+                </div>
+                
+                <div class="card mb-3">
+                    <div class="card-header">Schedule</div>
+                    <div class="card-body">
+                        <table class="table table-sm">
+                            <tbody id="scheduleInfo"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Targeting Tab -->
+            <div class="tab-pane fade" id="targeting" role="tabpanel">
+                <div class="card">
+                    <div class="card-header">Targeting Criteria</div>
+                    <div class="card-body">
+                        <div id="targetingContent"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Creatives Tab -->
+            <div class="tab-pane fade" id="creatives" role="tabpanel">
+                <div class="card">
+                    <div class="card-header">Associated Creatives</div>
+                    <div class="card-body">
+                        <div id="creativesContent"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Delivery Settings Tab -->
+            <div class="tab-pane fade" id="delivery" role="tabpanel">
+                <div class="card">
+                    <div class="card-header">Delivery Configuration</div>
+                    <div class="card-body">
+                        <div id="deliveryContent"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Raw GAM Data Tab -->
+            <div class="tab-pane fade" id="raw" role="tabpanel">
+                <div class="card">
+                    <div class="card-header">Raw GAM Response</div>
+                    <div class="card-body">
+                        <pre id="rawData" class="bg-light p-3" style="max-height: 600px; overflow-y: auto;"></pre>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Product JSON Tab -->
+            <div class="tab-pane fade" id="product-json" role="tabpanel">
+                <div class="card">
+                    <div class="card-header">
+                        Internal Media Product JSON
+                        <button class="btn btn-sm btn-secondary float-end" onclick="copyProductJson()">Copy JSON</button>
+                    </div>
+                    <div class="card-body">
+                        <pre id="productJsonContent" class="bg-light p-3" style="max-height: 600px; overflow-y: auto;"></pre>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+let currentLineItemData = null;
+
+// HTML escaping function to prevent XSS
+function escapeHtml(unsafe) {
+    if (unsafe === null || unsafe === undefined) return 'N/A';
+    return String(unsafe)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
+}
+
+// Format number with thousand separators
+function formatNumber(num) {
+    if (num === null || num === undefined) return '0';
+    return Number(num).toLocaleString();
+}
+
+// Load line item if ID is provided in URL
+window.addEventListener('DOMContentLoaded', function() {
+    // Initialize Bootstrap tabs properly
+    const triggerTabList = document.querySelectorAll('#lineItemTabs button[data-bs-toggle="tab"]');
+    triggerTabList.forEach(triggerEl => {
+        const tabTrigger = new bootstrap.Tab(triggerEl);
+        
+        triggerEl.addEventListener('click', event => {
+            event.preventDefault();
+            tabTrigger.show();
+        });
+    });
+    
+    const lineItemId = document.getElementById('lineItemId').value;
+    if (lineItemId) {
+        // Add a small delay to ensure authentication is established
+        setTimeout(() => {
+            loadLineItem();
+        }, 500);
+    }
+});
+
+async function loadLineItem() {
+    const lineItemId = document.getElementById('lineItemId').value.trim();
+    if (!lineItemId) {
+        showError('Please enter a Line Item ID');
+        return;
+    }
+    
+    // Update URL
+    window.history.pushState({}, '', `/tenant/{{ tenant_id }}/gam/line-item/${lineItemId}`);
+    
+    // Show loading
+    document.getElementById('loading').style.display = 'block';
+    document.getElementById('error').style.display = 'none';
+    document.getElementById('lineItemContent').style.display = 'none';
+    
+    try {
+        const response = await fetch(`/api/tenant/{{ tenant_id }}/gam/line-item/${lineItemId}`, {
+            method: 'GET',
+            credentials: 'include',
+            headers: {
+                'Accept': 'application/json'
+            }
+        });
+        
+        // Check if we got redirected to login (HTML response)
+        const contentType = response.headers.get('content-type');
+        if (contentType && contentType.includes('text/html')) {
+            // We got redirected to login, reload the page to go through auth
+            window.location.reload();
+            return;
+        }
+        
+        if (!response.ok) {
+            let errorMsg = 'Failed to fetch line item';
+            try {
+                const error = await response.json();
+                errorMsg = error.error || errorMsg;
+            } catch (e) {
+                // Response wasn't JSON
+                errorMsg = `HTTP ${response.status}: ${response.statusText}`;
+            }
+            throw new Error(errorMsg);
+        }
+        
+        currentLineItemData = await response.json();
+        displayLineItemData(currentLineItemData);
+        
+    } catch (error) {
+        showError(`Error loading line item: ${error.message}`);
+    } finally {
+        document.getElementById('loading').style.display = 'none';
+    }
+}
+
+function displayLineItemData(data) {
+    if (!data || !data.line_item) {
+        showError('Invalid data received from server');
+        return;
+    }
+    
+    document.getElementById('lineItemContent').style.display = 'block';
+    
+    try {
+        // Display all sections
+        displayBasicInfo(data.line_item);
+        displayOrderInfo(data.order);
+        displayPricingInfo(data.line_item);
+        displayScheduleInfo(data.line_item);
+        
+        if (data.line_item.targeting) {
+            displayTargeting(data.line_item.targeting);
+        }
+        
+        displayCreatives(data.creatives, data.creative_associations);
+        displayDeliverySettings(data.line_item);
+        
+        // Display raw data
+        document.getElementById('rawData').textContent = JSON.stringify(data, null, 2);
+        
+        // Display product JSON
+        if (data.media_product_json) {
+            document.getElementById('productJsonContent').textContent = JSON.stringify(data.media_product_json, null, 2);
+        }
+    } catch (error) {
+        showError('Error displaying data: ' + error.message);
+    }
+}
+
+function displayBasicInfo(lineItem) {
+    const tbody = document.getElementById('basicInfo');
+    tbody.innerHTML = `
+        <tr><td><strong>Line Item ID:</strong></td><td>${escapeHtml(lineItem.id)}</td></tr>
+        <tr><td><strong>Name:</strong></td><td>${escapeHtml(lineItem.name)}</td></tr>
+        <tr><td><strong>Type:</strong></td><td>${escapeHtml(lineItem.lineItemType)}</td></tr>
+        <tr><td><strong>Status:</strong></td><td><span class="badge bg-${getStatusBadgeClass(lineItem.status)}">${escapeHtml(lineItem.status)}</span></td></tr>
+        <tr><td><strong>Priority:</strong></td><td>${escapeHtml(lineItem.priority)}</td></tr>
+        <tr><td><strong>External ID:</strong></td><td>${escapeHtml(lineItem.externalId)}</td></tr>
+    `;
+}
+
+function displayOrderInfo(order) {
+    const tbody = document.getElementById('orderInfo');
+    if (!order) {
+        tbody.innerHTML = '<tr><td>Order information not available</td></tr>';
+        return;
+    }
+    
+    tbody.innerHTML = `
+        <tr><td><strong>Order ID:</strong></td><td>${escapeHtml(order.id)}</td></tr>
+        <tr><td><strong>Order Name:</strong></td><td>${escapeHtml(order.name)}</td></tr>
+        <tr><td><strong>Advertiser:</strong></td><td>${escapeHtml(order.advertiserId)}</td></tr>
+        <tr><td><strong>Trafficker:</strong></td><td>${escapeHtml(order.traffickerId)}</td></tr>
+        <tr><td><strong>Status:</strong></td><td><span class="badge bg-${getStatusBadgeClass(order.status)}">${escapeHtml(order.status)}</span></td></tr>
+    `;
+}
+
+function displayPricingInfo(lineItem) {
+    const tbody = document.getElementById('pricingInfo');
+    let cpm = 0;
+    if (lineItem.costPerUnit && lineItem.costPerUnit.microAmount) {
+        cpm = lineItem.costPerUnit.microAmount / 1000000;
+    }
+    
+    // Get delivery stats if available
+    let impressionsDelivered = 0;
+    let clicksDelivered = 0;
+    if (lineItem.stats && lineItem.stats.impressionsDelivered) {
+        impressionsDelivered = lineItem.stats.impressionsDelivered;
+        clicksDelivered = lineItem.stats.clicksDelivered || 0;
+    }
+    
+    // Calculate delivery percentage
+    const goal = lineItem.unitsBought || 0;
+    const deliveryPercentage = goal > 0 ? (impressionsDelivered / goal * 100).toFixed(1) : 0;
+    
+    tbody.innerHTML = `
+        <tr><td><strong>Cost Type:</strong></td><td>${lineItem.costType}</td></tr>
+        <tr><td><strong>CPM:</strong></td><td>$${cpm.toFixed(2)}</td></tr>
+        <tr><td><strong>Units Bought (Goal):</strong></td><td>${goal.toLocaleString()}</td></tr>
+        <tr><td><strong>Impressions Delivered:</strong></td><td>${impressionsDelivered.toLocaleString()} (${deliveryPercentage}%)</td></tr>
+        <tr><td><strong>Clicks Delivered:</strong></td><td>${clicksDelivered.toLocaleString()}</td></tr>
+        <tr><td><strong>Total Budget:</strong></td><td>$${((goal) * cpm / 1000).toFixed(2)}</td></tr>
+        <tr><td><strong>Spent (Est.):</strong></td><td>$${((impressionsDelivered) * cpm / 1000).toFixed(2)}</td></tr>
+        <tr><td><strong>Discount:</strong></td><td>${lineItem.discount || 0}%</td></tr>
+        <tr><td><strong>Value Cost Per Unit:</strong></td><td>${lineItem.valueCostPerUnit ? `$${(lineItem.valueCostPerUnit.microAmount / 1000000).toFixed(2)}` : 'N/A'}</td></tr>
+    `;
+}
+
+function displayScheduleInfo(lineItem) {
+    const tbody = document.getElementById('scheduleInfo');
+    
+    function formatDateTime(dt) {
+        if (!dt) return 'N/A';
+        return `${dt.date.year}-${String(dt.date.month).padStart(2, '0')}-${String(dt.date.day).padStart(2, '0')} ${String(dt.hour || 0).padStart(2, '0')}:${String(dt.minute || 0).padStart(2, '0')}`;
+    }
+    
+    tbody.innerHTML = `
+        <tr><td><strong>Start Date:</strong></td><td>${formatDateTime(lineItem.startDateTime)}</td></tr>
+        <tr><td><strong>End Date:</strong></td><td>${formatDateTime(lineItem.endDateTime)}</td></tr>
+        <tr><td><strong>Delivery Rate Type:</strong></td><td>${lineItem.deliveryRateType}</td></tr>
+        <tr><td><strong>Creation Date:</strong></td><td>${formatDateTime(lineItem.creationDateTime)}</td></tr>
+        <tr><td><strong>Last Modified:</strong></td><td>${formatDateTime(lineItem.lastModifiedDateTime)}</td></tr>
+    `;
+}
+
+function displayTargeting(targeting) {
+    const container = document.getElementById('targetingContent');
+    
+    if (!targeting) {
+        container.innerHTML = '<p>No targeting configured</p>';
+        return;
+    }
+    
+    let html = '<div class="row">';
+    
+    // Geographic targeting
+    if (targeting.geoTargeting) {
+        html += '<div class="col-md-6 mb-3">';
+        html += '<h6>Geographic Targeting</h6>';
+        html += '<ul class="list-unstyled">';
+        
+        if (targeting.geoTargeting.targetedLocations && targeting.geoTargeting.targetedLocations.length > 0) {
+            html += '<li><strong>Included:</strong><ul>';
+            targeting.geoTargeting.targetedLocations.forEach(loc => {
+                html += `<li>${escapeHtml(loc.displayName || loc.id)} (${escapeHtml(loc.type)})</li>`;
+            });
+            html += '</ul></li>';
+        }
+        
+        if (targeting.geoTargeting.excludedLocations && targeting.geoTargeting.excludedLocations.length > 0) {
+            html += '<li><strong>Excluded:</strong><ul>';
+            targeting.geoTargeting.excludedLocations.forEach(loc => {
+                html += `<li>${escapeHtml(loc.displayName || loc.id)} (${escapeHtml(loc.type)})</li>`;
+            });
+            html += '</ul></li>';
+        }
+        
+        html += '</ul></div>';
+    }
+    
+    // Technology targeting
+    if (targeting.technologyTargeting) {
+        html += '<div class="col-md-6 mb-3">';
+        html += '<h6>Technology Targeting</h6>';
+        html += '<ul class="list-unstyled">';
+        
+        const tech = targeting.technologyTargeting;
+        if (tech.deviceCategoryTargeting) {
+            html += '<li><strong>Device Categories:</strong><ul>';
+            (tech.deviceCategoryTargeting.targetedDeviceCategories || []).forEach(device => {
+                html += `<li>${escapeHtml(device.name || device.id)}</li>`;
+            });
+            html += '</ul></li>';
+        }
+        
+        if (tech.browserTargeting) {
+            html += '<li><strong>Browsers:</strong><ul>';
+            (tech.browserTargeting.browsers || []).forEach(browser => {
+                html += `<li>${escapeHtml(browser.name || browser.id)}</li>`;
+            });
+            html += '</ul></li>';
+        }
+        
+        html += '</ul></div>';
+    }
+    
+    // Custom targeting
+    if (targeting.customTargeting) {
+        html += '<div class="col-md-12 mb-3">';
+        html += '<h6>Custom Targeting (Key-Value Pairs)</h6>';
+        html += '<pre class="bg-light p-2">' + JSON.stringify(targeting.customTargeting, null, 2) + '</pre>';
+        html += '</div>';
+    }
+    
+    // Day part targeting
+    if (targeting.dayPartTargeting) {
+        html += '<div class="col-md-6 mb-3">';
+        html += '<h6>Daypart Targeting</h6>';
+        html += '<ul class="list-unstyled">';
+        html += `<li><strong>Timezone:</strong> ${escapeHtml(targeting.dayPartTargeting.timeZone)}</li>`;
+        
+        if (targeting.dayPartTargeting.dayParts) {
+            html += '<li><strong>Schedule:</strong><ul>';
+            targeting.dayPartTargeting.dayParts.forEach(dp => {
+                const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+                html += `<li>${escapeHtml(days[dp.dayOfWeek - 1])}: ${escapeHtml(dp.startTime.hour)}:00 - ${escapeHtml(dp.endTime.hour)}:00</li>`;
+            });
+            html += '</ul></li>';
+        }
+        
+        html += '</ul></div>';
+    }
+    
+    // Inventory targeting
+    if (targeting.inventoryTargeting) {
+        html += '<div class="col-md-6 mb-3">';
+        html += '<h6>Inventory Targeting</h6>';
+        html += '<ul class="list-unstyled">';
+        
+        if (targeting.inventoryTargeting.targetedAdUnits) {
+            html += '<li><strong>Ad Units:</strong><ul>';
+            targeting.inventoryTargeting.targetedAdUnits.forEach(unit => {
+                html += `<li>${escapeHtml(unit.adUnitId)} ${unit.includeDescendants ? '(+ descendants)' : ''}</li>`;
+            });
+            html += '</ul></li>';
+        }
+        
+        if (targeting.inventoryTargeting.targetedPlacementIds) {
+            html += '<li><strong>Placements:</strong> ' + targeting.inventoryTargeting.targetedPlacementIds.map(id => escapeHtml(id)).join(', ') + '</li>';
+        }
+        
+        html += '</ul></div>';
+    }
+    
+    html += '</div>';
+    container.innerHTML = html;
+}
+
+function displayCreatives(creatives, associations) {
+    const container = document.getElementById('creativesContent');
+    
+    if (!creatives || creatives.length === 0) {
+        container.innerHTML = '<p>No creatives associated with this line item</p>';
+        return;
+    }
+    
+    let html = '<div class="table-responsive"><table class="table table-sm">';
+    html += '<thead><tr><th>Creative ID</th><th>Name</th><th>Type</th><th>Size</th><th>Status</th></tr></thead><tbody>';
+    
+    creatives.forEach(creative => {
+        const size = creative.size ? `${escapeHtml(creative.size.width)}x${escapeHtml(creative.size.height)}` : 'N/A';
+        const previewLink = creative.previewUrl ? 
+            `<a href="${escapeHtml(creative.previewUrl)}" target="_blank">Preview</a>` : 'N/A';
+        html += `<tr>`;
+        html += `<td>${escapeHtml(creative.id)}</td>`;
+        html += `<td>${escapeHtml(creative.name)}</td>`;
+        html += `<td>${escapeHtml(creative['Creative.Type'] || 'Unknown')}</td>`;
+        html += `<td>${size}</td>`;
+        html += `<td>${previewLink}</td>`;
+        html += `</tr>`;
+    });
+    
+    html += '</tbody></table></div>';
+    container.innerHTML = html;
+}
+
+function displayDeliverySettings(lineItem) {
+    const container = document.getElementById('deliveryContent');
+    
+    let html = '<div class="row">';
+    
+    // Delivery settings
+    html += '<div class="col-md-6">';
+    html += '<h6>Delivery Configuration</h6>';
+    html += '<ul class="list-unstyled">';
+    html += `<li><strong>Delivery Rate Type:</strong> ${lineItem.deliveryRateType}</li>`;
+    html += `<li><strong>Roadblocking Type:</strong> ${lineItem.roadblockingType || 'NONE'}</li>`;
+    html += `<li><strong>Skip Inventory Check:</strong> ${lineItem.skipInventoryCheck ? 'Yes' : 'No'}</li>`;
+    html += `<li><strong>Allow Overbook:</strong> ${lineItem.allowOverbook ? 'Yes' : 'No'}</li>`;
+    html += `<li><strong>Reserve Inventory:</strong> ${lineItem.reserveAtCreation ? 'Yes' : 'No'}</li>`;
+    html += '</ul>';
+    html += '</div>';
+    
+    // Frequency caps
+    if (lineItem.frequencyCaps && lineItem.frequencyCaps.length > 0) {
+        html += '<div class="col-md-6">';
+        html += '<h6>Frequency Caps</h6>';
+        html += '<ul class="list-unstyled">';
+        lineItem.frequencyCaps.forEach(cap => {
+            html += `<li>${cap.maxImpressions} impressions per ${cap.numTimeUnits} ${cap.timeUnit}</li>`;
+        });
+        html += '</ul>';
+        html += '</div>';
+    }
+    
+    // Creative placeholders
+    if (lineItem.creativePlaceholders && lineItem.creativePlaceholders.length > 0) {
+        html += '<div class="col-md-12">';
+        html += '<h6>Creative Placeholders</h6>';
+        html += '<table class="table table-sm">';
+        html += '<thead><tr><th>Size</th><th>Expected Count</th><th>Companions</th></tr></thead><tbody>';
+        
+        lineItem.creativePlaceholders.forEach(placeholder => {
+            const size = placeholder.size ? `${placeholder.size.width}x${placeholder.size.height}` : 'Flexible';
+            const companions = placeholder.companions ? placeholder.companions.map(c => `${c.size.width}x${c.size.height}`).join(', ') : 'None';
+            html += `<tr>`;
+            html += `<td>${size}</td>`;
+            html += `<td>${placeholder.expectedCreativeCount || 1}</td>`;
+            html += `<td>${companions}</td>`;
+            html += `</tr>`;
+        });
+        
+        html += '</tbody></table>';
+        html += '</div>';
+    }
+    
+    html += '</div>';
+    container.innerHTML = html;
+}
+
+function getStatusBadgeClass(status) {
+    const statusMap = {
+        'ACTIVE': 'success',
+        'READY': 'info',
+        'PAUSED': 'warning',
+        'INACTIVE': 'secondary',
+        'ARCHIVED': 'dark',
+        'DRAFT': 'light',
+        'DISAPPROVED': 'danger',
+        'PENDING_APPROVAL': 'warning',
+        'COMPLETED': 'primary',
+        'CANCELED': 'danger'
+    };
+    return statusMap[status] || 'secondary';
+}
+
+function showError(message) {
+    const errorDiv = document.getElementById('error');
+    errorDiv.textContent = message;
+    errorDiv.style.display = 'block';
+}
+
+function copyProductJson() {
+    const jsonText = document.getElementById('productJsonContent').textContent;
+    navigator.clipboard.writeText(jsonText).then(() => {
+        alert('Product JSON copied to clipboard!');
+    }).catch(err => {
+        console.error('Failed to copy:', err);
+        alert('Failed to copy JSON. Please select and copy manually.');
+    });
+}
+</script>
+{% endblock %}

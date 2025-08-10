@@ -8,6 +8,25 @@
         <div class="col-12">
             <h2>GAM Orders - {{ tenant_name }}</h2>
             
+            <!-- Quick Line Item Search -->
+            <div class="card mb-4">
+                <div class="card-body">
+                    <div class="row align-items-center">
+                        <div class="col-md-8">
+                            <div class="input-group">
+                                <input type="text" class="form-control" id="lineItemIdSearch" placeholder="Enter Line Item ID to view details...">
+                                <button class="btn btn-outline-primary" onclick="searchLineItem()">
+                                    <i class="bi bi-search"></i> View Line Item
+                                </button>
+                            </div>
+                        </div>
+                        <div class="col-md-4 text-end">
+                            <small class="text-muted">Tip: You can also click "Details" on any line item below</small>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
             <!-- Sync Controls -->
             <div class="card mb-4">
                 <div class="card-body">
@@ -39,8 +58,11 @@
                                 <option value="DRAFT">Draft</option>
                                 <option value="PENDING_APPROVAL">Pending Approval</option>
                                 <option value="APPROVED">Approved</option>
+                                <option value="DELIVERING">Delivering</option>
+                                <option value="READY">Ready</option>
                                 <option value="PAUSED">Paused</option>
                                 <option value="CANCELED">Canceled</option>
+                                <option value="COMPLETED">Completed</option>
                             </select>
                         </div>
                         <div class="col-md-2">
@@ -124,6 +146,17 @@ document.addEventListener('DOMContentLoaded', function() {
 
 function applyFilters() {
     loadOrders();
+}
+
+function searchLineItem() {
+    const lineItemId = document.getElementById('lineItemIdSearch').value.trim();
+    if (!lineItemId) {
+        alert('Please enter a Line Item ID');
+        return;
+    }
+    
+    // Open the line item viewer in a new tab
+    window.open(`/tenant/${tenantId}/gam/line-item/${lineItemId}`, '_blank');
 }
 
 function loadOrders() {
@@ -384,6 +417,7 @@ function displayOrderDetails(order) {
                                 <th>Delivered</th>
                                 <th>Progress</th>
                                 <th>CPM</th>
+                                <th>Actions</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -400,6 +434,14 @@ function displayOrderDetails(order) {
                                     <td>${li.stats_impressions ? formatNumber(li.stats_impressions) : '0'}</td>
                                     <td>${liDeliveryPercentage.toFixed(1)}%</td>
                                     <td>${li.cost_per_unit ? '$' + li.cost_per_unit.toFixed(2) : '-'}</td>
+                                    <td>
+                                        <a href="/tenant/${tenantId}/gam/line-item/${li.line_item_id}" 
+                                           class="btn btn-sm btn-outline-info" 
+                                           target="_blank"
+                                           title="View full line item details including targeting, creatives, and JSON representation">
+                                            <i class="bi bi-box-arrow-up-right"></i> Details
+                                        </a>
+                                    </td>
                                 </tr>
                                 `;
                             }).join('')}
