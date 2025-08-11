@@ -14,6 +14,8 @@ from ai_product_service import AIProductConfigurationService, ProductDescription
 from default_products import get_default_products, create_default_products_for_tenant, get_industry_specific_products
 from admin_ui import app
 
+pytestmark = pytest.mark.integration
+
 
 class TestDefaultProducts:
     """Test default product functionality."""
@@ -201,8 +203,9 @@ class TestAIProductService:
                 assert analysis['suggested_cpm_range']['min'] > 15.0
 
 
+@pytest.mark.requires_db
 class TestProductAPIs:
-    """Test the Flask API endpoints."""
+    """Test the Flask API endpoints - requires database."""
     
     @pytest.fixture
     def client(self):
@@ -218,13 +221,14 @@ class TestProductAPIs:
     def auth_session(self, client):
         """Create authenticated session."""
         with client.session_transaction() as sess:
+            sess['authenticated'] = True  # Mark as authenticated
             sess['email'] = 'test@example.com'
             sess['role'] = 'super_admin'
             sess['tenant_id'] = 'test_tenant'
     
     def test_product_suggestions_api(self, client, auth_session):
         """Test product suggestions API endpoint."""
-        with patch('admin_ui.get_industry_specific_products') as mock_products:
+        with patch('default_products.get_industry_specific_products') as mock_products:
             mock_products.return_value = [
                 {
                     "product_id": "test_product",
@@ -237,6 +241,9 @@ class TestProductAPIs:
             
             # Test with industry filter
             response = client.get('/api/tenant/test_tenant/products/suggestions?industry=news')
+            if response.status_code != 200:
+                print(f"Response: {response.status_code}")
+                print(f"Data: {response.data}")
             assert response.status_code == 200
             
             data = json.loads(response.data)
@@ -249,27 +256,36 @@ class TestProductAPIs:
         csv_data = """name,product_id,formats,delivery_type,cpm
 Test Product,test_prod,"display_300x250,display_728x90",guaranteed,15.0
 """
+        from io import BytesIO
         
         with patch('admin_ui.get_db_connection') as mock_db:
             mock_conn = Mock()
-            mock_conn.execute.return_value = Mock()
+            # Mock cursor for execute.fetchone() and other queries
+            mock_cursor = Mock()
+            mock_cursor.fetchone.return_value = None  # No existing product
+            mock_conn.execute.return_value = mock_cursor
             mock_conn.commit.return_value = None
             mock_db.return_value = mock_conn
             
+            # Create proper file upload data
+            data = {
+                'file': (BytesIO(csv_data.encode()), 'products.csv')
+            }
+            
             response = client.post(
                 '/tenant/test_tenant/products/bulk/upload',
-                data={'file': (csv_data.encode(), 'products.csv')},
+                data=data,
                 content_type='multipart/form-data'
             )
             
             assert response.status_code == 200
-            data = json.loads(response.data)
-            assert data['success'] is True
-            assert data['created'] == 1
+            result = json.loads(response.data)
+            assert result['success'] is True
+            assert result['created'] == 1
     
     def test_quick_create_products_api(self, client, auth_session):
         """Test quick create API."""
-        with patch('admin_ui.get_default_products') as mock_products:
+        with patch('default_products.get_default_products') as mock_products:
             mock_products.return_value = [
                 {
                     "product_id": "run_of_site_display",
@@ -321,7 +337,7 @@ def test_ai_integration():
         
         # Mock the database parts
         with patch('ai_product_service.get_db_connection'):
-            with patch('ai_product_service.get_adapter_class'):
+            with patch('adapters.get_adapter_class'):
                 # This will fail but we just want to verify the model is working
                 try:
                     await service.create_product_from_description(

@@ -1,11 +1,14 @@
 #!/usr/bin/env python3
 """Quick test script to verify Gemini 2.5 Flash AI integration."""
 
+import pytest
 import os
 import sys
 import asyncio
 import json
 from ai_product_service import AIProductConfigurationService, ProductDescription
+
+pytestmark = pytest.mark.integration
 
 async def test_gemini_integration():
     """Test that Gemini 2.5 Flash is working correctly."""

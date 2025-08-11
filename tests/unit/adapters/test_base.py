@@ -4,6 +4,8 @@ from datetime import datetime, timedelta
 from adapters.mock_ad_server import MockAdServer
 from schemas import MediaPackage, CreateMediaBuyRequest, Principal
 
+pytestmark = pytest.mark.unit
+
 @pytest.fixture
 def sample_packages():
     """A fixture to create a sample list of media packages for use in tests."""

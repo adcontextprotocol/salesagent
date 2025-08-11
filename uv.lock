@@ -34,6 +34,8 @@ dependencies = [
 [package.optional-dependencies]
 dev = [
     { name = "pytest" },
+    { name = "pytest-asyncio" },
+    { name = "pytest-cov" },
     { name = "pytest-mock" },
 ]
 ui-tests = [
@@ -68,7 +70,9 @@ requires-dist = [
     { name = "playwright", marker = "extra == 'ui-tests'", specifier = "==1.48.0" },
     { name = "psycopg2-binary", specifier = ">=2.9.9" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.3.2" },
+    { name = "pytest-asyncio", marker = "extra == 'dev'", specifier = ">=1.1.0" },
     { name = "pytest-asyncio", marker = "extra == 'ui-tests'", specifier = ">=1.1.0" },
+    { name = "pytest-cov", marker = "extra == 'dev'", specifier = ">=6.2.1" },
     { name = "pytest-mock", marker = "extra == 'dev'", specifier = ">=3.14.0" },
     { name = "pytest-playwright", marker = "extra == 'ui-tests'", specifier = "==0.6.1" },
     { name = "requests", specifier = ">=2.32.3" },

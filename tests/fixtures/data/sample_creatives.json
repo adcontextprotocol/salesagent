@@ -1,0 +1,157 @@
+{
+  "display_300x250": {
+    "format_id": "display_300x250",
+    "name": "Medium Rectangle Display",
+    "dimensions": {
+      "width": 300,
+      "height": 250
+    },
+    "content": {
+      "headline": "Discover Amazing Products",
+      "body": "Shop our latest collection with exclusive online offers.",
+      "cta_text": "Shop Now",
+      "image_url": "https://example.com/creatives/300x250.jpg",
+      "click_url": "https://example.com/landing",
+      "advertiser": "Example Store",
+      "logo_url": "https://example.com/logo.png"
+    },
+    "requirements": {
+      "max_file_size": 150000,
+      "file_types": ["jpg", "png", "gif"],
+      "animation_max_duration": 30
+    }
+  },
+  "display_728x90": {
+    "format_id": "display_728x90",
+    "name": "Leaderboard Display",
+    "dimensions": {
+      "width": 728,
+      "height": 90
+    },
+    "content": {
+      "headline": "Limited Time Offer",
+      "body": "Save 20% on all items this week only",
+      "cta_text": "Learn More",
+      "image_url": "https://example.com/creatives/728x90.jpg",
+      "click_url": "https://example.com/promo",
+      "advertiser": "Example Store"
+    },
+    "requirements": {
+      "max_file_size": 150000,
+      "file_types": ["jpg", "png", "gif"],
+      "animation_max_duration": 30
+    }
+  },
+  "display_320x50": {
+    "format_id": "display_320x50",
+    "name": "Mobile Banner",
+    "dimensions": {
+      "width": 320,
+      "height": 50
+    },
+    "content": {
+      "headline": "Download Our App",
+      "cta_text": "Install",
+      "image_url": "https://example.com/creatives/320x50.jpg",
+      "click_url": "https://example.com/app",
+      "advertiser": "Example App"
+    },
+    "requirements": {
+      "max_file_size": 50000,
+      "file_types": ["jpg", "png"],
+      "animation_max_duration": 0
+    }
+  },
+  "video_16x9": {
+    "format_id": "video_16x9",
+    "name": "Standard Video",
+    "dimensions": {
+      "aspect_ratio": "16:9",
+      "min_width": 640,
+      "min_height": 360
+    },
+    "content": {
+      "video_url": "https://example.com/creatives/video.mp4",
+      "thumbnail_url": "https://example.com/creatives/video_thumb.jpg",
+      "duration": 30,
+      "click_url": "https://example.com/video-landing",
+      "advertiser": "Example Brand",
+      "companion_banner": {
+        "image_url": "https://example.com/creatives/companion.jpg",
+        "dimensions": "300x250"
+      }
+    },
+    "requirements": {
+      "max_file_size": 10000000,
+      "file_types": ["mp4", "webm"],
+      "max_duration": 30,
+      "min_duration": 6,
+      "codecs": ["h264", "vp9"],
+      "bitrate_max": 2500
+    }
+  },
+  "native_content": {
+    "format_id": "native_content",
+    "name": "Native Content Ad",
+    "content": {
+      "headline": "10 Tips for Better Sleep",
+      "description": "Discover scientifically proven methods to improve your sleep quality",
+      "thumbnail_url": "https://example.com/creatives/native_thumb.jpg",
+      "sponsor_name": "Sleep Well Inc.",
+      "sponsor_logo": "https://example.com/sponsor_logo.png",
+      "click_url": "https://example.com/article",
+      "cta_text": "Read More"
+    },
+    "requirements": {
+      "headline_max_chars": 90,
+      "description_max_chars": 140,
+      "thumbnail_dimensions": "1200x627",
+      "logo_dimensions": "200x200"
+    }
+  },
+  "audio_30s": {
+    "format_id": "audio_30s",
+    "name": "30 Second Audio Ad",
+    "content": {
+      "audio_url": "https://example.com/creatives/audio_30s.mp3",
+      "transcript": "This is a sample 30-second audio advertisement...",
+      "advertiser": "Example Audio Brand",
+      "click_url": "https://example.com/audio-landing",
+      "duration": 30
+    },
+    "requirements": {
+      "max_file_size": 2000000,
+      "file_types": ["mp3", "aac"],
+      "duration": 30,
+      "bitrate_min": 128,
+      "bitrate_max": 320,
+      "sample_rate": 44100
+    }
+  },
+  "rich_media": {
+    "format_id": "rich_media",
+    "name": "Rich Media Interactive",
+    "dimensions": {
+      "width": 300,
+      "height": 600
+    },
+    "content": {
+      "html5_url": "https://example.com/creatives/rich_media.html",
+      "fallback_image": "https://example.com/creatives/fallback.jpg",
+      "click_url": "https://example.com/interactive",
+      "advertiser": "Interactive Brand",
+      "interaction_tracking": {
+        "expansions": true,
+        "video_plays": true,
+        "engagements": true
+      }
+    },
+    "requirements": {
+      "max_file_size": 300000,
+      "file_types": ["html", "js", "css"],
+      "max_initial_load": 200000,
+      "max_subsequent_load": 100000,
+      "max_animation_duration": 15
+    }
+  }
+}

@@ -1,3 +1,4 @@
+import pytest
 import asyncio
 from datetime import date
 from fastmcp.client import Client
@@ -7,6 +8,8 @@ from rich.rule import Rule
 from typing import Dict
 
 from schemas import *
+
+pytestmark = pytest.mark.unit
 
 console = Console()
 PURINA_TOKEN = "purina_secret_token_abc123"
