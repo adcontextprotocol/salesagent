@@ -1,8 +1,11 @@
 #!/usr/bin/env python3
 """Mock response showing what the GAM line item viewer API returns."""
 
+import pytest
 import json
 from datetime import datetime
+
+pytestmark = pytest.mark.integration
 
 # This is what the API endpoint /api/tenant/{tenant_id}/gam/line-item/7047822666 would return
 mock_response = {

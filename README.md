@@ -185,6 +185,65 @@ open http://localhost:8001  # OAuth-based secure login (default port, configurab
 python client_mcp.py --token "purina_token" --test
 ```
 
+## Testing
+
+The project includes a comprehensive test suite organized by test type and purpose.
+
+### Test Organization
+
+```
+tests/
+├── unit/           # Fast, isolated unit tests
+├── integration/    # Tests requiring database/services  
+├── e2e/           # End-to-end full system tests
+├── ui/            # Admin UI interface tests
+├── fixtures/      # Test data and fixtures
+└── utils/         # Test utilities
+```
+
+### Running Tests
+
+```bash
+# Run all tests
+uv run pytest
+
+# Run by category
+uv run pytest tests/unit/              # Unit tests only
+uv run pytest tests/integration/       # Integration tests
+uv run pytest tests/e2e/               # End-to-end tests
+
+# Run with markers
+uv run pytest -m unit                  # Fast unit tests
+uv run pytest -m "not slow"            # Skip slow tests
+uv run pytest -m ai                    # AI-related tests
+
+# Run with coverage
+uv run pytest --cov=. --cov-report=html
+
+# Use the test runner script
+uv run python scripts/run_tests.py unit       # Unit tests only
+uv run python scripts/run_tests.py integration # Integration tests
+uv run python scripts/run_tests.py all        # All tests
+uv run python scripts/run_tests.py --list     # List categories
+```
+
+### Test Categories
+
+- **Unit Tests**: Fast, isolated tests of individual components (< 1s each)
+- **Integration Tests**: Tests requiring database or external services (< 5s each)
+- **E2E Tests**: Complete user workflow tests (< 30s each)
+- **UI Tests**: Admin interface functionality tests
+
+### Writing Tests
+
+Tests follow pytest conventions:
+- Test files should be named `test_*.py`
+- Test functions should be named `test_<what>_<condition>_<expected>`
+- Use fixtures for reusable setup
+- Mock external dependencies in unit tests
+
+See `TEST_ORGANIZATION.md` for detailed testing guidelines and best practices.
+
 ## Using the MCP Interface
 
 AdCP Sales Agent is an MCP server, not a REST API. AI agents connect using the MCP protocol:
