@@ -191,6 +191,67 @@ function formatNumber(num) {
     return Number(num).toLocaleString();
 }
 
+// Parse custom targeting tree structure into readable HTML
+function parseCustomTargeting(customTargeting) {
+    if (!customTargeting) return null;
+    
+    let html = '';
+    
+    function parseNode(node, depth = 0) {
+        const indent = depth * 20;
+        let nodeHtml = '';
+        
+        if (node.logicalOperator) {
+            // This is a group node
+            nodeHtml += `<div style="margin-left: ${indent}px; margin-bottom: 10px;">`;
+            nodeHtml += `<span class="badge bg-primary">${escapeHtml(node.logicalOperator)}</span>`;
+            
+            if (node.children && node.children.length > 0) {
+                nodeHtml += '<div class="mt-2">';
+                node.children.forEach((child, index) => {
+                    if (index > 0 && !child.logicalOperator) {
+                        nodeHtml += `<div style="margin-left: ${indent + 20}px; margin-bottom: 5px;"><span class="text-muted">${escapeHtml(node.logicalOperator)}</span></div>`;
+                    }
+                    nodeHtml += parseNode(child, depth + 1);
+                });
+                nodeHtml += '</div>';
+            }
+            nodeHtml += '</div>';
+        } else if (node.keyId !== undefined) {
+            // This is a key-value node
+            nodeHtml += `<div style="margin-left: ${indent}px; margin-bottom: 8px;" class="key-value-item">`;
+            nodeHtml += '<div class="d-flex align-items-center">';
+            
+            // Key
+            nodeHtml += `<span class="badge bg-secondary me-2">Key ID: ${escapeHtml(node.keyId)}</span>`;
+            
+            // Operator
+            nodeHtml += `<span class="badge bg-info me-2">${escapeHtml(node.operator || 'IS')}</span>`;
+            
+            // Values
+            if (node.valueIds && node.valueIds.length > 0) {
+                nodeHtml += '<span class="badge bg-success">Value IDs: ';
+                nodeHtml += node.valueIds.map(id => escapeHtml(id)).join(', ');
+                nodeHtml += '</span>';
+            } else if (node.values && node.values.length > 0) {
+                nodeHtml += '<span class="badge bg-success">Values: ';
+                nodeHtml += node.values.map(v => escapeHtml(v.name || v)).join(', ');
+                nodeHtml += '</span>';
+            }
+            
+            nodeHtml += '</div>';
+            nodeHtml += '</div>';
+        }
+        
+        return nodeHtml;
+    }
+    
+    // Start parsing from the root
+    html = parseNode(customTargeting);
+    
+    return html || null;
+}
+
 // Load line item if ID is provided in URL
 window.addEventListener('DOMContentLoaded', function() {
     // Initialize Bootstrap tabs properly
@@ -439,11 +500,29 @@ function displayTargeting(targeting) {
         html += '</ul></div>';
     }
     
-    // Custom targeting
+    // Custom targeting (Key-Value Pairs)
     if (targeting.customTargeting) {
         html += '<div class="col-md-12 mb-3">';
         html += '<h6>Custom Targeting (Key-Value Pairs)</h6>';
-        html += '<pre class="bg-light p-2">' + JSON.stringify(targeting.customTargeting, null, 2) + '</pre>';
+        html += '<div class="card">';
+        html += '<div class="card-body">';
+        
+        // Parse and display the custom targeting tree
+        const customTargetingHtml = parseCustomTargeting(targeting.customTargeting);
+        if (customTargetingHtml) {
+            html += customTargetingHtml;
+        } else {
+            html += '<p class="text-muted">No key-value pairs configured</p>';
+        }
+        
+        // Also show the raw structure in a collapsible section
+        html += '<details class="mt-3">';
+        html += '<summary class="text-muted" style="cursor: pointer;">View Raw Structure</summary>';
+        html += '<pre class="bg-light p-2 mt-2" style="font-size: 0.85em;">' + JSON.stringify(targeting.customTargeting, null, 2) + '</pre>';
+        html += '</details>';
+        
+        html += '</div>';
+        html += '</div>';
         html += '</div>';
     }
     
