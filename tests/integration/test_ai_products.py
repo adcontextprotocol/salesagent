@@ -254,23 +254,32 @@ class TestProductAPIs:
         csv_data = """name,product_id,formats,delivery_type,cpm
 Test Product,test_prod,"display_300x250,display_728x90",guaranteed,15.0
 """
+        from io import BytesIO
         
         with patch('admin_ui.get_db_connection') as mock_db:
             mock_conn = Mock()
-            mock_conn.execute.return_value = Mock()
+            # Mock cursor for execute.fetchone() and other queries
+            mock_cursor = Mock()
+            mock_cursor.fetchone.return_value = None  # No existing product
+            mock_conn.execute.return_value = mock_cursor
             mock_conn.commit.return_value = None
             mock_db.return_value = mock_conn
             
+            # Create proper file upload data
+            data = {
+                'file': (BytesIO(csv_data.encode()), 'products.csv')
+            }
+            
             response = client.post(
                 '/tenant/test_tenant/products/bulk/upload',
-                data={'file': (csv_data.encode(), 'products.csv')},
+                data=data,
                 content_type='multipart/form-data'
             )
             
             assert response.status_code == 200
-            data = json.loads(response.data)
-            assert data['success'] is True
-            assert data['created'] == 1
+            result = json.loads(response.data)
+            assert result['success'] is True
+            assert result['created'] == 1
     
     def test_quick_create_products_api(self, client, auth_session):
         """Test quick create API."""
