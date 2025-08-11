@@ -1,12 +1,15 @@
 #!/usr/bin/env python3
 """Test targeting validation within each adapter."""
 
+import pytest
 from schemas import Targeting, Dayparting, DaypartSchedule, FrequencyCap
 from adapters.google_ad_manager import GoogleAdManager
 from adapters.kevel import Kevel
 from adapters.triton_digital import TritonDigital
 from schemas import Principal
 import json
+
+pytestmark = pytest.mark.unit
 
 # Create mock principal for testing
 mock_principal = Principal(

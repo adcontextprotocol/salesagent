@@ -8,6 +8,8 @@ import sys
 import pytest
 from pathlib import Path
 from typing import Dict, Any, List
+
+pytestmark = pytest.mark.unit
 from unittest.mock import patch, MagicMock
 
 # Add parent directory to path

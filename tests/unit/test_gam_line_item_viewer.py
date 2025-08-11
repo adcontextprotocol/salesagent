@@ -8,6 +8,8 @@ Tests the API endpoint, data conversion, and display logic.
 import pytest
 import json
 from unittest.mock import Mock, patch, MagicMock
+
+pytestmark = pytest.mark.unit
 from datetime import datetime
 
 # Import the functions we're testing

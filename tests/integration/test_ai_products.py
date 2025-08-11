@@ -14,6 +14,8 @@ from ai_product_service import AIProductConfigurationService, ProductDescription
 from default_products import get_default_products, create_default_products_for_tenant, get_industry_specific_products
 from admin_ui import app
 
+pytestmark = pytest.mark.integration
+
 
 class TestDefaultProducts:
     """Test default product functionality."""

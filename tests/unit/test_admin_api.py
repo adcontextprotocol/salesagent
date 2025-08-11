@@ -8,6 +8,8 @@ from flask import Flask
 from superadmin_api import superadmin_api
 import logging
 
+pytestmark = pytest.mark.unit
+
 # Disable logging during tests
 logging.disable(logging.CRITICAL)
 
