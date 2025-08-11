@@ -173,6 +173,11 @@ class ProductFactory:
         }
         video_defaults.update(kwargs)
         return ProductFactory.create(**video_defaults)
+    
+    @staticmethod
+    def create_batch(count: int = 3, **kwargs) -> List[Dict[str, Any]]:
+        """Create multiple test products."""
+        return [ProductFactory.create(**kwargs) for _ in range(count)]
 
 
 class MediaBuyFactory:
