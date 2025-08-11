@@ -40,7 +40,7 @@ jobs:
     
     - name: Install dependencies
       run: |
-        uv sync --group dev
+        uv sync --extra dev
     
     - name: Run unit tests
       env:
@@ -106,7 +106,7 @@ jobs:
     
     - name: Install dependencies
       run: |
-        uv sync --group dev
+        uv sync --extra dev
     
     - name: Run database migrations
       env:
@@ -169,7 +169,7 @@ jobs:
     
     - name: Install dependencies
       run: |
-        uv sync --group dev
+        uv sync --extra dev
     
     - name: Run database migrations
       env:
@@ -214,7 +214,7 @@ jobs:
     
     - name: Install dependencies
       run: |
-        uv sync --group dev
+        uv sync --extra dev
     
     - name: Run Ruff linter
       run: |
