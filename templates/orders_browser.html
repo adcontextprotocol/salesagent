@@ -458,16 +458,28 @@ function syncOrders() {
     syncButton.disabled = true;
     syncButton.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Syncing...';
     
+    // Try session-based authentication first, fall back to API key if available
+    const headers = {
+        'Content-Type': 'application/json'
+    };
+    
+    // Only add API key if it exists and is not empty
+    const apiKey = {{ api_key|tojson|safe }};
+    if (apiKey && apiKey !== '') {
+        headers['X-API-Key'] = apiKey;
+    }
+    
     fetch(`/api/sync/tenant/${tenantId}/orders/sync`, {
         method: 'POST',
-        headers: {
-            'X-API-Key': {{ api_key|tojson|safe }}
-        }
+        credentials: 'same-origin',  // Include session cookies
+        headers: headers
     })
     .then(response => response.json())
     .then(data => {
         if (data.status === 'completed') {
-            alert(`Sync completed! Synced ${data.summary.orders.total} orders and ${data.summary.line_items.total} line items.`);
+            const orderCount = data.summary?.orders?.total || 0;
+            const lineItemCount = data.summary?.line_items?.total || 0;
+            alert(`Sync completed! Synced ${orderCount} orders and ${lineItemCount} line items.`);
             loadOrders();
         } else {
             alert('Sync failed: ' + (data.error || 'Unknown error'));
