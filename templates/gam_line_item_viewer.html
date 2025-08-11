@@ -2,6 +2,10 @@
 
 {% block title %}GAM Line Item Viewer - {{ tenant['name'] }}{% endblock %}
 
+{% block head %}
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+{% endblock %}
+
 {% block content %}
 <style>
     /* Custom styles for line item viewer */
@@ -344,7 +348,7 @@ function displayLineItemData(data) {
         displayScheduleInfo(data.line_item);
         
         if (data.line_item.targeting) {
-            displayTargeting(data.line_item.targeting);
+            displayTargeting(data.line_item.targeting, data.inventory_details);
         }
         
         displayCreatives(data.creatives, data.creative_associations);
@@ -439,7 +443,7 @@ function displayScheduleInfo(lineItem) {
     `;
 }
 
-function displayTargeting(targeting) {
+function displayTargeting(targeting, inventoryDetails) {
     const container = document.getElementById('targetingContent');
     
     if (!targeting) {
@@ -448,6 +452,110 @@ function displayTargeting(targeting) {
     }
     
     let html = '<div class="row">';
+    
+    // Inventory targeting - MOVED TO TOP AND ENHANCED
+    if (targeting.inventoryTargeting) {
+        html += '<div class="col-md-12 mb-4">';
+        html += '<div class="card">';
+        html += '<div class="card-header bg-primary text-white">';
+        html += '<h5 class="mb-0">Inventory Targeting (Ad Units & Placements)</h5>';
+        html += '</div>';
+        html += '<div class="card-body">';
+        
+        // Placements section
+        if (targeting.inventoryTargeting.targetedPlacementIds && targeting.inventoryTargeting.targetedPlacementIds.length > 0) {
+            html += '<div class="mb-3">';
+            html += '<h6><i class="bi bi-folder2-open"></i> Targeted Placements</h6>';
+            html += '<div class="table-responsive">';
+            html += '<table class="table table-sm table-hover">';
+            html += '<thead><tr><th>Placement Name</th><th>ID</th><th>Status</th><th>Ad Units in Placement</th></tr></thead>';
+            html += '<tbody>';
+            
+            targeting.inventoryTargeting.targetedPlacementIds.forEach(placementId => {
+                const placement = inventoryDetails?.placements?.[placementId];
+                if (placement) {
+                    html += '<tr>';
+                    html += `<td><strong>${escapeHtml(placement.name)}</strong>`;
+                    if (placement.description) {
+                        html += `<br><small class="text-muted">${escapeHtml(placement.description)}</small>`;
+                    }
+                    html += '</td>';
+                    html += `<td><code>${escapeHtml(placementId)}</code></td>`;
+                    html += `<td><span class="badge bg-${placement.status === 'ACTIVE' ? 'success' : 'secondary'}">${escapeHtml(placement.status)}</span></td>`;
+                    html += '<td>';
+                    if (placement.targetedAdUnitIds && placement.targetedAdUnitIds.length > 0) {
+                        html += `<small>${placement.targetedAdUnitIds.length} ad unit(s)</small>`;
+                    } else {
+                        html += '<small class="text-muted">No specific ad units</small>';
+                    }
+                    html += '</td>';
+                    html += '</tr>';
+                } else {
+                    html += '<tr>';
+                    html += `<td colspan="4">Placement ID: <code>${escapeHtml(placementId)}</code> <small class="text-muted">(Details not available)</small></td>`;
+                    html += '</tr>';
+                }
+            });
+            
+            html += '</tbody></table>';
+            html += '</div>';
+            html += '</div>';
+        }
+        
+        // Ad Units section with hierarchy
+        if (targeting.inventoryTargeting.targetedAdUnits && targeting.inventoryTargeting.targetedAdUnits.length > 0) {
+            html += '<div class="mb-3">';
+            html += '<h6><i class="bi bi-diagram-3"></i> Targeted Ad Units</h6>';
+            html += '<div class="table-responsive">';
+            html += '<table class="table table-sm table-hover">';
+            html += '<thead><tr><th>Ad Unit Hierarchy</th><th>ID</th><th>Code</th><th>Include Descendants</th><th>Status</th></tr></thead>';
+            html += '<tbody>';
+            
+            targeting.inventoryTargeting.targetedAdUnits.forEach(targetedUnit => {
+                const adUnit = inventoryDetails?.ad_units?.[targetedUnit.adUnitId];
+                if (adUnit) {
+                    html += '<tr>';
+                    html += '<td>';
+                    html += `<div class="d-flex align-items-center">`;
+                    // Show hierarchy with indentation
+                    const pathParts = adUnit.fullPath.split(' > ');
+                    const indent = (pathParts.length - 1) * 20;
+                    html += `<div style="margin-left: ${indent}px;">`;
+                    html += `<i class="bi bi-folder me-1"></i>`;
+                    html += `<strong>${escapeHtml(adUnit.name)}</strong>`;
+                    if (pathParts.length > 1) {
+                        html += `<br><small class="text-muted" style="margin-left: 20px;">Path: ${escapeHtml(adUnit.fullPath)}</small>`;
+                    }
+                    html += '</div>';
+                    html += '</div>';
+                    html += '</td>';
+                    html += `<td><code>${escapeHtml(targetedUnit.adUnitId)}</code></td>`;
+                    html += `<td><code>${escapeHtml(adUnit.adUnitCode || 'N/A')}</code></td>`;
+                    html += `<td>${targetedUnit.includeDescendants ? '<span class="badge bg-info">Yes</span>' : '<span class="badge bg-secondary">No</span>'}</td>`;
+                    html += `<td><span class="badge bg-${adUnit.status === 'ACTIVE' ? 'success' : 'secondary'}">${escapeHtml(adUnit.status)}</span></td>`;
+                    html += '</tr>';
+                } else {
+                    html += '<tr>';
+                    html += `<td colspan="5">Ad Unit ID: <code>${escapeHtml(targetedUnit.adUnitId)}</code> ${targetedUnit.includeDescendants ? '(+ descendants)' : ''} <small class="text-muted">(Details not available)</small></td>`;
+                    html += '</tr>';
+                }
+            });
+            
+            html += '</tbody></table>';
+            html += '</div>';
+            html += '</div>';
+        }
+        
+        // If neither placements nor ad units are targeted
+        if ((!targeting.inventoryTargeting.targetedAdUnits || targeting.inventoryTargeting.targetedAdUnits.length === 0) &&
+            (!targeting.inventoryTargeting.targetedPlacementIds || targeting.inventoryTargeting.targetedPlacementIds.length === 0)) {
+            html += '<p class="text-muted">No specific inventory targeted (Run of Network)</p>';
+        }
+        
+        html += '</div>'; // card-body
+        html += '</div>'; // card
+        html += '</div>'; // col-md-12
+    }
     
     // Geographic targeting
     if (targeting.geoTargeting) {
@@ -540,27 +648,6 @@ function displayTargeting(targeting) {
                 html += `<li>${escapeHtml(days[dp.dayOfWeek - 1])}: ${escapeHtml(dp.startTime.hour)}:00 - ${escapeHtml(dp.endTime.hour)}:00</li>`;
             });
             html += '</ul></li>';
-        }
-        
-        html += '</ul></div>';
-    }
-    
-    // Inventory targeting
-    if (targeting.inventoryTargeting) {
-        html += '<div class="col-md-6 mb-3">';
-        html += '<h6>Inventory Targeting</h6>';
-        html += '<ul class="list-unstyled">';
-        
-        if (targeting.inventoryTargeting.targetedAdUnits) {
-            html += '<li><strong>Ad Units:</strong><ul>';
-            targeting.inventoryTargeting.targetedAdUnits.forEach(unit => {
-                html += `<li>${escapeHtml(unit.adUnitId)} ${unit.includeDescendants ? '(+ descendants)' : ''}</li>`;
-            });
-            html += '</ul></li>';
-        }
-        
-        if (targeting.inventoryTargeting.targetedPlacementIds) {
-            html += '<li><strong>Placements:</strong> ' + targeting.inventoryTargeting.targetedPlacementIds.map(id => escapeHtml(id)).join(', ') + '</li>';
         }
         
         html += '</ul></div>';
