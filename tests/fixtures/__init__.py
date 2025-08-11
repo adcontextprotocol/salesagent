@@ -18,14 +18,19 @@ __all__ = [
     
     # Mocks
     'MockDatabase',
+    'MockCursor',
     'MockAdapter',
     'MockGeminiService',
+    'MockGeminiResponse',
     'MockOAuthProvider',
+    'MockHTTPRequest',
+    'MockHTTPResponse',
     
     # Builders
     'RequestBuilder',
     'ResponseBuilder',
     'TargetingBuilder',
+    'TestDataBuilder',
     
     # Data loaders
     'load_fixture_data',
