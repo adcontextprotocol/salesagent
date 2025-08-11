@@ -352,6 +352,64 @@ Tests run automatically on push/PR via GitHub Actions:
 - AI tests with mocked Gemini API
 - See `.github/workflows/test.yml` for details
 
+### Writing New Tests
+
+#### Guidelines for Adding Tests
+
+1. **Choose the Right Category**:
+   - `tests/unit/` - For testing individual functions/classes in isolation (no DB/server required)
+   - `tests/integration/` - For testing component interactions (may require DB)
+   - `tests/e2e/` - For testing complete workflows
+   - `tests/ui/` - For testing web interface functionality
+
+2. **Use Appropriate Markers**:
+   ```python
+   @pytest.mark.requires_db    # Test needs database with tables
+   @pytest.mark.requires_server # Test needs running MCP server
+   @pytest.mark.slow           # Test takes >5 seconds
+   @pytest.mark.ai             # Test involves AI features
+   ```
+
+3. **Leverage Fixtures**:
+   ```python
+   from tests.fixtures import TenantFactory, PrincipalFactory, ProductFactory
+   
+   def test_my_feature():
+       tenant = TenantFactory.create()
+       principal = PrincipalFactory.create(tenant_id=tenant["tenant_id"])
+   ```
+
+4. **Mock External Dependencies**:
+   ```python
+   from unittest.mock import patch, MagicMock
+   
+   @patch('module.external_service')
+   def test_with_mock(mock_service):
+       mock_service.return_value = {"result": "success"}
+   ```
+
+5. **Database Testing**:
+   - Unit tests: Mock database connections
+   - Integration tests: Use test database (automatic cleanup)
+   - Never test against production database
+
+6. **Naming Conventions**:
+   - Test files: `test_feature_name.py`
+   - Test classes: `TestFeatureName`
+   - Test methods: `test_specific_behavior`
+
+7. **Running Your New Tests**:
+   ```bash
+   # Run specific test file
+   uv run pytest tests/unit/test_my_feature.py -v
+   
+   # Run with debugging output
+   uv run pytest tests/unit/test_my_feature.py -v -s
+   
+   # Run only tests matching pattern
+   uv run pytest -k "test_my_feature"
+   ```
+
 ### UI Testing with Test Mode
 
 When testing the Admin UI without dealing with OAuth:

@@ -5,7 +5,7 @@ These builders provide fluent interfaces for creating test data.
 """
 
 from typing import Any, Dict, List, Optional
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import uuid
 import json
 
@@ -45,8 +45,8 @@ class RequestBuilder:
         self.data.update({
             "product_ids": product_ids or [f"prod_{uuid.uuid4().hex[:8]}"],
             "total_budget": total_budget,
-            "flight_start_date": flight_start_date or datetime.utcnow().date().isoformat(),
-            "flight_end_date": flight_end_date or (datetime.utcnow() + timedelta(days=30)).date().isoformat(),
+            "flight_start_date": flight_start_date or datetime.now(timezone.utc).date().isoformat(),
+            "flight_end_date": flight_end_date or (datetime.now(timezone.utc) + timedelta(days=30)).date().isoformat(),
             **kwargs
         })
         return self
@@ -96,7 +96,7 @@ class ResponseBuilder:
         """Initialize response builder."""
         self.data = {
             "success": True,
-            "timestamp": datetime.utcnow().isoformat()
+            "timestamp": datetime.now(timezone.utc).isoformat()
         }
         self.status_code = 200
         
@@ -124,7 +124,7 @@ class ResponseBuilder:
         self.data.update({
             "media_buy_id": media_buy_id or f"mb_{uuid.uuid4().hex[:8]}",
             "status": "created",
-            "created_at": datetime.utcnow().isoformat(),
+            "created_at": datetime.now(timezone.utc).isoformat(),
             **kwargs
         })
         return self
@@ -134,7 +134,7 @@ class ResponseBuilder:
         self.data.update({
             "creative_id": creative_id or f"creative_{uuid.uuid4().hex[:8]}",
             "status": "pending",
-            "created_at": datetime.utcnow().isoformat(),
+            "created_at": datetime.now(timezone.utc).isoformat(),
             **kwargs
         })
         return self

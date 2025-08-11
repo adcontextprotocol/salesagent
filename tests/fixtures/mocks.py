@@ -7,7 +7,7 @@ These mocks simulate external dependencies and services.
 import json
 from typing import Any, Dict, List, Optional
 from unittest.mock import MagicMock, Mock
-from datetime import datetime
+from datetime import datetime, timezone
 import uuid
 
 
@@ -116,7 +116,7 @@ class MockAdapter:
             "success": True,
             "media_buy_id": buy_id,
             "status": "active",
-            "created_at": datetime.utcnow().isoformat()
+            "created_at": datetime.now(timezone.utc).isoformat()
         }
     
     def get_media_buy_status(self, media_buy_id: str):
@@ -129,7 +129,7 @@ class MockAdapter:
             "impressions": 150000,
             "clicks": 1500,
             "spend": 1500.0,
-            "updated_at": datetime.utcnow().isoformat()
+            "updated_at": datetime.now(timezone.utc).isoformat()
         }
     
     def update_media_buy(self, media_buy_id: str, updates: Dict):

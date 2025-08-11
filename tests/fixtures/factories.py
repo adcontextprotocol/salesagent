@@ -6,7 +6,7 @@ These factories provide consistent, customizable test data generation.
 
 import json
 import secrets
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional, Dict, Any, List
 import uuid
 
@@ -58,8 +58,8 @@ class TenantFactory:
             "config": json.dumps(default_config) if isinstance(default_config, dict) else default_config,
             "billing_plan": kwargs.get("billing_plan", "standard"),
             "ad_server": kwargs.get("ad_server", "mock"),
-            "created_at": kwargs.get("created_at", datetime.utcnow().isoformat()),
-            "updated_at": kwargs.get("updated_at", datetime.utcnow().isoformat()),
+            "created_at": kwargs.get("created_at", datetime.now(timezone.utc).isoformat()),
+            "updated_at": kwargs.get("updated_at", datetime.now(timezone.utc).isoformat()),
             **kwargs
         }
     
@@ -103,8 +103,8 @@ class PrincipalFactory:
             "access_token": access_token,
             "platform_mappings": json.dumps(default_mappings) if isinstance(default_mappings, dict) else default_mappings,
             "is_active": kwargs.get("is_active", True),
-            "created_at": kwargs.get("created_at", datetime.utcnow().isoformat()),
-            "updated_at": kwargs.get("updated_at", datetime.utcnow().isoformat()),
+            "created_at": kwargs.get("created_at", datetime.now(timezone.utc).isoformat()),
+            "updated_at": kwargs.get("updated_at", datetime.now(timezone.utc).isoformat()),
             **kwargs
         }
     
@@ -158,7 +158,7 @@ class ProductFactory:
             "currency": kwargs.get("currency", "USD"),
             "inventory_type": kwargs.get("inventory_type", "display"),
             "is_active": kwargs.get("is_active", True),
-            "created_at": kwargs.get("created_at", datetime.utcnow().isoformat()),
+            "created_at": kwargs.get("created_at", datetime.now(timezone.utc).isoformat()),
             **kwargs
         }
     
@@ -191,8 +191,8 @@ class MediaBuyFactory:
         media_buy_id = media_buy_id or f"mb_{uuid.uuid4().hex[:8]}"
         principal_id = principal_id or f"principal_{uuid.uuid4().hex[:8]}"
         
-        flight_start = kwargs.get("flight_start_date", datetime.utcnow().date())
-        flight_end = kwargs.get("flight_end_date", (datetime.utcnow() + timedelta(days=30)).date())
+        flight_start = kwargs.get("flight_start_date", datetime.now(timezone.utc).date())
+        flight_end = kwargs.get("flight_end_date", (datetime.now(timezone.utc) + timedelta(days=30)).date())
         
         default_config = {
             "packages": [
@@ -218,8 +218,8 @@ class MediaBuyFactory:
             "spent_amount": kwargs.get("spent_amount", 0.0),
             "flight_start_date": flight_start.isoformat() if hasattr(flight_start, 'isoformat') else flight_start,
             "flight_end_date": flight_end.isoformat() if hasattr(flight_end, 'isoformat') else flight_end,
-            "created_at": kwargs.get("created_at", datetime.utcnow().isoformat()),
-            "updated_at": kwargs.get("updated_at", datetime.utcnow().isoformat()),
+            "created_at": kwargs.get("created_at", datetime.now(timezone.utc).isoformat()),
+            "updated_at": kwargs.get("updated_at", datetime.now(timezone.utc).isoformat()),
             **kwargs
         }
     
@@ -266,8 +266,8 @@ class CreativeFactory:
             "status": status,
             "content": json.dumps(content) if isinstance(content, dict) else content,
             "name": kwargs.get("name", f"Test Creative {creative_id[-4:]}"),
-            "created_at": kwargs.get("created_at", datetime.utcnow().isoformat()),
-            "updated_at": kwargs.get("updated_at", datetime.utcnow().isoformat()),
+            "created_at": kwargs.get("created_at", datetime.now(timezone.utc).isoformat()),
+            "updated_at": kwargs.get("updated_at", datetime.now(timezone.utc).isoformat()),
             "approved_at": kwargs.get("approved_at"),
             "approved_by": kwargs.get("approved_by"),
             **kwargs
@@ -277,7 +277,7 @@ class CreativeFactory:
     def create_approved(**kwargs) -> Dict[str, Any]:
         """Create an approved creative."""
         kwargs["status"] = "approved"
-        kwargs["approved_at"] = datetime.utcnow().isoformat()
+        kwargs["approved_at"] = datetime.now(timezone.utc).isoformat()
         kwargs["approved_by"] = "auto_approval"
         return CreativeFactory.create(**kwargs)
     
