@@ -10,6 +10,8 @@ from superadmin_api import superadmin_api
 from database import init_db
 from db_config import DatabaseConfig
 
+pytestmark = pytest.mark.integration
+
 @pytest.fixture
 def temp_db():
     """Create a temporary database for testing."""
