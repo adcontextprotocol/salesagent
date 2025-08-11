@@ -1351,6 +1351,60 @@ def orders_browser(tenant_id):
                          tenant_name=tenant_name,
                          api_key=api_key)
 
+@app.route('/api/sync/tenant/<tenant_id>/orders/sync', methods=['POST'])
+@require_auth()
+def sync_orders_endpoint(tenant_id):
+    """Sync orders and line items from GAM - Session authenticated version."""
+    # Check access
+    if session.get('role') != 'super_admin' and session.get('tenant_id') != tenant_id:
+        return jsonify({'error': 'Access denied'}), 403
+    
+    try:
+        # Get tenant and check if GAM is configured
+        conn = get_db_connection()
+        cursor = conn.execute(
+            "SELECT ad_server FROM tenants WHERE tenant_id = ?",
+            (tenant_id,)
+        )
+        tenant = cursor.fetchone()
+        conn.close()
+        
+        if not tenant:
+            return jsonify({'error': 'Tenant not found'}), 404
+        
+        if tenant['ad_server'] != 'google_ad_manager':
+            return jsonify({'error': 'Only Google Ad Manager sync is supported'}), 400
+        
+        # Get GAM client
+        from gam_helper import get_ad_manager_client_for_tenant
+        gam_client = get_ad_manager_client_for_tenant(tenant_id)
+        
+        # Import and use the orders service
+        from gam_orders_service import GAMOrdersService, db_session
+        
+        # Clean up any existing session
+        db_session.remove()
+        
+        # Create service and perform sync
+        service = GAMOrdersService(db_session)
+        sync_summary = service.sync_tenant_orders(tenant_id, gam_client)
+        
+        # Commit changes
+        db_session.commit()
+        
+        return jsonify({
+            'status': 'completed',
+            'summary': sync_summary,
+            'message': f"Successfully synced {sync_summary.get('orders', {}).get('total', 0)} orders"
+        })
+        
+    except Exception as e:
+        logger.error(f"Error syncing orders for tenant {tenant_id}: {str(e)}")
+        db_session.rollback()
+        return jsonify({'error': str(e)}), 500
+    finally:
+        db_session.remove()
+
 # Operations Dashboard Route
 @app.route('/tenant/<tenant_id>/operations')
 @require_auth()
@@ -4091,6 +4145,77 @@ def get_gam_line_item(tenant_id, line_item_id):
             creative_response = creative_service.getCreativesByStatement(creative_statement.ToStatement())
             creatives = serialize_object(creative_response.results) if hasattr(creative_response, 'results') and creative_response.results else []
         
+        # Fetch targeted inventory details (ad units and placements)
+        inventory_details = {}
+        
+        # Fetch ad unit details if targeted
+        if (line_item.get('targeting', {}).get('inventoryTargeting', {}).get('targetedAdUnits')):
+            try:
+                ad_unit_service = client.GetService('InventoryService')
+                targeted_units = line_item['targeting']['inventoryTargeting']['targetedAdUnits']
+                ad_unit_ids = [unit['adUnitId'] for unit in targeted_units]
+                
+                # Batch fetch ad units
+                if ad_unit_ids:
+                    ad_unit_statement = (ad_manager.StatementBuilder(version='v202411')
+                                       .Where('id IN (:adUnitIds)')
+                                       .WithBindVariable('adUnitIds', ad_unit_ids))
+                    ad_unit_response = ad_unit_service.getAdUnitsByStatement(ad_unit_statement.ToStatement())
+                    
+                    if hasattr(ad_unit_response, 'results') and ad_unit_response.results:
+                        ad_units_data = serialize_object(ad_unit_response.results)
+                        # Create a mapping of ad unit ID to details including hierarchy
+                        inventory_details['ad_units'] = {}
+                        for ad_unit in ad_units_data:
+                            # Build the full path from root to this ad unit
+                            path_names = []
+                            if ad_unit.get('parentPath'):
+                                for path_unit in ad_unit['parentPath']:
+                                    path_names.append(path_unit.get('name', 'Unknown'))
+                            path_names.append(ad_unit.get('name', 'Unknown'))
+                            
+                            inventory_details['ad_units'][ad_unit['id']] = {
+                                'id': ad_unit['id'],
+                                'name': ad_unit.get('name', 'Unknown'),
+                                'fullPath': ' > '.join(path_names),
+                                'parentId': ad_unit.get('parentId'),
+                                'status': ad_unit.get('status', 'ACTIVE'),
+                                'adUnitCode': ad_unit.get('adUnitCode', '')
+                            }
+            except Exception as e:
+                app.logger.warning(f"Failed to fetch ad unit details: {str(e)}")
+                inventory_details['ad_units'] = {}
+        
+        # Fetch placement details if targeted
+        if (line_item.get('targeting', {}).get('inventoryTargeting', {}).get('targetedPlacementIds')):
+            try:
+                placement_service = client.GetService('PlacementService')
+                placement_ids = line_item['targeting']['inventoryTargeting']['targetedPlacementIds']
+                
+                if placement_ids:
+                    placement_statement = (ad_manager.StatementBuilder(version='v202411')
+                                         .Where('id IN (:placementIds)')
+                                         .WithBindVariable('placementIds', placement_ids))
+                    placement_response = placement_service.getPlacementsByStatement(placement_statement.ToStatement())
+                    
+                    if hasattr(placement_response, 'results') and placement_response.results:
+                        placements_data = serialize_object(placement_response.results)
+                        inventory_details['placements'] = {}
+                        for placement in placements_data:
+                            # Get the ad units in this placement
+                            ad_unit_ids_in_placement = placement.get('targetedAdUnitIds', [])
+                            inventory_details['placements'][placement['id']] = {
+                                'id': placement['id'],
+                                'name': placement.get('name', 'Unknown'),
+                                'description': placement.get('description', ''),
+                                'status': placement.get('status', 'ACTIVE'),
+                                'targetedAdUnitIds': ad_unit_ids_in_placement,
+                                'isAdSenseTargetingEnabled': placement.get('isAdSenseTargetingEnabled', False)
+                            }
+            except Exception as e:
+                app.logger.warning(f"Failed to fetch placement details: {str(e)}")
+                inventory_details['placements'] = {}
+        
         # Data is already serialized above, just assign
         line_item_data = line_item
         order_data = order
@@ -4102,6 +4227,7 @@ def get_gam_line_item(tenant_id, line_item_id):
             'order': order_data,
             'creatives': creatives_data,
             'creative_associations': creative_associations if isinstance(creative_associations, list) else [],
+            'inventory_details': inventory_details,  # Add the new inventory details
             # Convert to our internal media product JSON format
             'media_product_json': convert_line_item_to_product_json(line_item_data, creatives_data)
         }
