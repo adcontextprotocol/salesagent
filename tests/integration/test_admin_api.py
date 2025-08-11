@@ -1,10 +1,13 @@
 #!/usr/bin/env python3
 """Test script for the super admin API."""
 
+import pytest
 import requests
 import json
 import sys
 import os
+
+pytestmark = pytest.mark.integration
 
 def test_superadmin_api(base_url=None):
     """Test the super admin API endpoints."""
