@@ -3,8 +3,11 @@
 Simple test to verify the updated foundational creative formats JSON structure.
 """
 
+import pytest
 import json
 from pathlib import Path
+
+pytestmark = pytest.mark.unit
 
 def test_formats_json():
     """Test that the foundational formats JSON has the new asset structure."""

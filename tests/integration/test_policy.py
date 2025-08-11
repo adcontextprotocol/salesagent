@@ -5,6 +5,8 @@ from unittest.mock import Mock, patch, AsyncMock
 from policy_check_service import PolicyCheckService, PolicyStatus, PolicyCheckResult
 from schemas import GetProductsRequest, Product
 
+pytestmark = pytest.mark.integration
+
 
 @pytest.fixture
 def policy_service():

@@ -18,7 +18,7 @@ ADMIN_TOKEN = "admin"
 ACME_TOKEN = "acme_corp_token"
 
 # Mark all tests in this module as requiring a server
-pytestmark = pytest.mark.requires_server
+pytestmark = [pytest.mark.integration, pytest.mark.requires_server]
 
 def make_request(endpoint: str, data: dict, token: str = ACME_TOKEN):
     """Make a request to the AdCP server."""

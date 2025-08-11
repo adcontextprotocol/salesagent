@@ -3,6 +3,7 @@
 Test script to validate creative format parsing against stored examples.
 """
 
+import pytest
 import json
 import os
 import sys
@@ -10,6 +11,8 @@ import asyncio
 from pathlib import Path
 from typing import Dict, List, Any
 from dataclasses import asdict
+
+pytestmark = pytest.mark.unit
 
 # Add parent directory to path for imports
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))

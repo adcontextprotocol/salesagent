@@ -16,6 +16,8 @@ import os
 from unittest.mock import patch, MagicMock
 from flask import session
 
+pytestmark = pytest.mark.unit
+
 # Mock database connections and OAuth before importing admin_ui
 import sys
 mock_db = MagicMock()

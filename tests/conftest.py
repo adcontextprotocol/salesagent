@@ -30,10 +30,6 @@ os.environ.setdefault('GOOGLE_CLIENT_ID', 'test_client_id')
 os.environ.setdefault('GOOGLE_CLIENT_SECRET', 'test_client_secret')
 os.environ.setdefault('SUPER_ADMIN_EMAILS', 'test@example.com')
 
-# Mock the init_db function to prevent database initialization during tests
-sys.modules['init_database'] = Mock()
-sys.modules['init_database'].init_db = Mock()
-
 # Import fixtures modules
 from tests.fixtures import (
     TenantFactory, PrincipalFactory, ProductFactory,

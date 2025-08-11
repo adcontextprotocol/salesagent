@@ -10,6 +10,8 @@ from datetime import datetime
 # Test only the modules that don't require heavy dependencies
 from default_products import get_default_products, create_default_products_for_tenant, get_industry_specific_products
 
+pytestmark = pytest.mark.integration
+
 
 class TestDefaultProducts:
     """Test default product functionality."""
