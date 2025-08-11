@@ -1351,7 +1351,7 @@ def orders_browser(tenant_id):
                          tenant_name=tenant_name,
                          api_key=api_key)
 
-@app.route('/api/sync/tenant/<tenant_id>/orders/sync', methods=['POST'])
+@app.route('/api/tenant/<tenant_id>/sync/orders', methods=['POST'])
 @require_auth()
 def sync_orders_endpoint(tenant_id):
     """Sync orders and line items from GAM - Session authenticated version."""
@@ -1401,6 +1401,146 @@ def sync_orders_endpoint(tenant_id):
     except Exception as e:
         logger.error(f"Error syncing orders for tenant {tenant_id}: {str(e)}")
         db_session.rollback()
+        return jsonify({'error': str(e)}), 500
+    finally:
+        db_session.remove()
+
+@app.route('/api/tenant/<tenant_id>/orders', methods=['GET'])
+@require_auth()
+def get_tenant_orders_session(tenant_id):
+    """Get orders for a tenant - Session authenticated version."""
+    # Check access
+    if session.get('role') != 'super_admin' and session.get('tenant_id') != tenant_id:
+        return jsonify({'error': 'Access denied'}), 403
+    
+    try:
+        from gam_orders_service import GAMOrdersService, db_session
+        from models import GAMOrder
+        
+        # Remove any existing session to start fresh
+        db_session.remove()
+        
+        # Get query parameters
+        search = request.args.get('search')
+        status = request.args.get('status')
+        advertiser_id = request.args.get('advertiser_id')
+        has_line_items = request.args.get('has_line_items')
+        
+        # Query orders from database
+        query = db_session.query(GAMOrder).filter(GAMOrder.tenant_id == tenant_id)
+        
+        if search:
+            query = query.filter(
+                (GAMOrder.name.ilike(f'%{search}%')) |
+                (GAMOrder.order_id.ilike(f'%{search}%'))
+            )
+        
+        if status:
+            query = query.filter(GAMOrder.status == status)
+        
+        if advertiser_id:
+            query = query.filter(GAMOrder.advertiser_id == advertiser_id)
+        
+        if has_line_items == 'true':
+            query = query.filter(GAMOrder.line_item_count > 0)
+        elif has_line_items == 'false':
+            query = query.filter(GAMOrder.line_item_count == 0)
+        
+        # Order by last modified
+        query = query.order_by(GAMOrder.last_modified_datetime.desc())
+        
+        orders = query.all()
+        
+        # Convert to dict
+        result = {
+            'orders': [
+                {
+                    'order_id': o.order_id,
+                    'name': o.name,
+                    'advertiser_id': o.advertiser_id,
+                    'advertiser_name': o.advertiser_name,
+                    'status': o.status,
+                    'start_datetime': o.start_datetime.isoformat() if o.start_datetime else None,
+                    'end_datetime': o.end_datetime.isoformat() if o.end_datetime else None,
+                    'line_item_count': o.line_item_count,
+                    'total_impressions_delivered': o.total_impressions_delivered,
+                    'total_clicks_delivered': o.total_clicks_delivered,
+                    'last_modified_datetime': o.last_modified_datetime.isoformat() if o.last_modified_datetime else None
+                }
+                for o in orders
+            ],
+            'total': len(orders)
+        }
+        
+        return jsonify(result)
+        
+    except Exception as e:
+        app.logger.error(f"Error fetching orders: {str(e)}")
+        return jsonify({'error': str(e)}), 500
+    finally:
+        db_session.remove()
+
+@app.route('/api/tenant/<tenant_id>/orders/<order_id>', methods=['GET'])
+@require_auth()
+def get_order_details_session(tenant_id, order_id):
+    """Get order details - Session authenticated version."""
+    # Check access
+    if session.get('role') != 'super_admin' and session.get('tenant_id') != tenant_id:
+        return jsonify({'error': 'Access denied'}), 403
+    
+    try:
+        from gam_orders_service import GAMOrdersService, db_session
+        from models import GAMOrder, GAMLineItem
+        
+        db_session.remove()
+        
+        # Get order
+        order = db_session.query(GAMOrder).filter(
+            GAMOrder.tenant_id == tenant_id,
+            GAMOrder.order_id == order_id
+        ).first()
+        
+        if not order:
+            return jsonify({'error': 'Order not found'}), 404
+        
+        # Get line items
+        line_items = db_session.query(GAMLineItem).filter(
+            GAMLineItem.tenant_id == tenant_id,
+            GAMLineItem.order_id == order_id
+        ).all()
+        
+        result = {
+            'order': {
+                'order_id': order.order_id,
+                'name': order.name,
+                'advertiser_id': order.advertiser_id,
+                'advertiser_name': order.advertiser_name,
+                'status': order.status,
+                'start_datetime': order.start_datetime.isoformat() if order.start_datetime else None,
+                'end_datetime': order.end_datetime.isoformat() if order.end_datetime else None,
+                'total_impressions_delivered': order.total_impressions_delivered,
+                'total_clicks_delivered': order.total_clicks_delivered,
+            },
+            'line_items': [
+                {
+                    'line_item_id': li.line_item_id,
+                    'name': li.name,
+                    'status': li.status,
+                    'line_item_type': li.line_item_type,
+                    'priority': li.priority,
+                    'impressions_delivered': li.impressions_delivered,
+                    'clicks_delivered': li.clicks_delivered,
+                    'start_datetime': li.start_datetime.isoformat() if li.start_datetime else None,
+                    'end_datetime': li.end_datetime.isoformat() if li.end_datetime else None,
+                }
+                for li in line_items
+            ]
+        }
+        
+        return jsonify(result)
+        
+    except Exception as e:
+        app.logger.error(f"Error fetching order details: {str(e)}")
         return jsonify({'error': str(e)}), 500
     finally:
         db_session.remove()

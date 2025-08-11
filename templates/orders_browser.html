@@ -165,16 +165,14 @@ function loadOrders() {
     const advertiserId = document.getElementById('advertiserFilter').value;
     const hasLineItems = document.getElementById('lineItemsFilter').value;
     
-    let url = `/api/sync/tenant/${tenantId}/orders?`;
+    let url = `/api/tenant/${tenantId}/orders?`;
     if (searchTerm) url += `search=${encodeURIComponent(searchTerm)}&`;
     if (status) url += `status=${encodeURIComponent(status)}&`;
     if (advertiserId) url += `advertiser_id=${encodeURIComponent(advertiserId)}&`;
     if (hasLineItems) url += `has_line_items=${encodeURIComponent(hasLineItems)}&`;
     
     fetch(url, {
-        headers: {
-            'X-API-Key': {{ api_key|tojson|safe }}
-        }
+        credentials: 'same-origin'  // Include session cookies
     })
     .then(response => response.json())
     .then(data => {
@@ -297,10 +295,8 @@ function formatCurrency(amount, currency) {
 }
 
 function viewOrderDetails(orderId) {
-    fetch(`/api/sync/tenant/${tenantId}/orders/${orderId}`, {
-        headers: {
-            'X-API-Key': {{ api_key|tojson|safe }}
-        }
+    fetch(`/api/tenant/${tenantId}/orders/${orderId}`, {
+        credentials: 'same-origin'  // Include session cookies
     })
     .then(response => response.json())
     .then(data => {
@@ -469,7 +465,7 @@ function syncOrders() {
         headers['X-API-Key'] = apiKey;
     }
     
-    fetch(`/api/sync/tenant/${tenantId}/orders/sync`, {
+    fetch(`/api/tenant/${tenantId}/sync/orders`, {
         method: 'POST',
         credentials: 'same-origin',  // Include session cookies
         headers: headers
