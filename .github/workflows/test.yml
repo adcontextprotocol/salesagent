@@ -40,7 +40,7 @@ jobs:
     
     - name: Install dependencies
       run: |
-        uv sync
+        uv sync --group dev
     
     - name: Run unit tests
       env:
@@ -106,7 +106,7 @@ jobs:
     
     - name: Install dependencies
       run: |
-        uv sync
+        uv sync --group dev
     
     - name: Run database migrations
       env:
@@ -169,7 +169,7 @@ jobs:
     
     - name: Install dependencies
       run: |
-        uv sync
+        uv sync --group dev
     
     - name: Run database migrations
       env:
@@ -214,8 +214,7 @@ jobs:
     
     - name: Install dependencies
       run: |
-        uv sync
-        uv add --dev ruff mypy
+        uv sync --group dev
     
     - name: Run Ruff linter
       run: |
