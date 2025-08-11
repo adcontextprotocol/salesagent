@@ -1447,7 +1447,7 @@ def get_tenant_orders_session(tenant_id):
             query = query.filter(GAMOrder.line_item_count == 0)
         
         # Order by last modified
-        query = query.order_by(GAMOrder.last_modified_datetime.desc())
+        query = query.order_by(GAMOrder.last_modified_date.desc())
         
         orders = query.all()
         
