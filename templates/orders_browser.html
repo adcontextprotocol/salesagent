@@ -165,16 +165,14 @@ function loadOrders() {
     const advertiserId = document.getElementById('advertiserFilter').value;
     const hasLineItems = document.getElementById('lineItemsFilter').value;
     
-    let url = `/api/sync/tenant/${tenantId}/orders?`;
+    let url = `/api/tenant/${tenantId}/orders?`;
     if (searchTerm) url += `search=${encodeURIComponent(searchTerm)}&`;
     if (status) url += `status=${encodeURIComponent(status)}&`;
     if (advertiserId) url += `advertiser_id=${encodeURIComponent(advertiserId)}&`;
     if (hasLineItems) url += `has_line_items=${encodeURIComponent(hasLineItems)}&`;
     
     fetch(url, {
-        headers: {
-            'X-API-Key': {{ api_key|tojson|safe }}
-        }
+        credentials: 'same-origin'  // Include session cookies
     })
     .then(response => response.json())
     .then(data => {
@@ -200,7 +198,7 @@ function displayOrders(orders) {
         const deliveryStatus = order.delivery_status || order.status;
         const deliveryMetrics = order.delivery_metrics || {};
         const deliveryPercentage = deliveryMetrics.delivery_percentage || 0;
-        const hasLineItems = order.has_line_items;
+        const hasLineItems = order.line_item_count > 0;
         
         let progressBar = '';
         if (hasLineItems && deliveryMetrics.total_impressions_goal > 0) {
@@ -216,7 +214,7 @@ function displayOrders(orders) {
         } else if (!hasLineItems) {
             progressBar = '<span class="text-muted">No line items</span>';
         } else {
-            progressBar = '<span class="text-muted">-</span>';
+            progressBar = `<span class="text-muted">${order.line_item_count} line item${order.line_item_count > 1 ? 's' : ''}</span>`;
         }
         
         return `
@@ -297,14 +295,16 @@ function formatCurrency(amount, currency) {
 }
 
 function viewOrderDetails(orderId) {
-    fetch(`/api/sync/tenant/${tenantId}/orders/${orderId}`, {
-        headers: {
-            'X-API-Key': {{ api_key|tojson|safe }}
-        }
+    fetch(`/api/tenant/${tenantId}/orders/${orderId}`, {
+        credentials: 'same-origin'  // Include session cookies
     })
     .then(response => response.json())
     .then(data => {
-        displayOrderDetails(data);
+        // API returns data nested under 'order' property
+        const order = data.order || data;
+        // Attach line_items from the response
+        order.line_items = data.line_items || [];
+        displayOrderDetails(order);
         const modal = new bootstrap.Modal(document.getElementById('orderDetailsModal'));
         modal.show();
     })
@@ -469,7 +469,7 @@ function syncOrders() {
         headers['X-API-Key'] = apiKey;
     }
     
-    fetch(`/api/sync/tenant/${tenantId}/orders/sync`, {
+    fetch(`/api/tenant/${tenantId}/sync/orders`, {
         method: 'POST',
         credentials: 'same-origin',  // Include session cookies
         headers: headers

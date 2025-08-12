@@ -1109,7 +1109,7 @@ function triggerSync(tenantId) {
     button.textContent = 'Syncing...';
     statusDiv.innerHTML = '<span class="text-info">🔄 Starting sync...</span>';
     
-    fetch(`/api/tenant/${tenantId}/sync/trigger`, {
+    fetch(`/api/tenant/${tenantId}/sync/orders`, {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json'
