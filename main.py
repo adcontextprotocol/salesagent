@@ -591,6 +591,11 @@ def create_media_buy(req: CreateMediaBuyRequest, context: Context) -> CreateMedi
     catalog = get_product_catalog()
     products_in_buy = [p for p in catalog if p.product_id in req.product_ids]
     
+    # Note: Key-value pairs are NOT aggregated here anymore.
+    # Each product maintains its own custom_targeting_keys in implementation_config
+    # which will be applied separately to its corresponding line item in GAM.
+    # The adapter (google_ad_manager.py) handles this per-product targeting at line 491-494
+    
     # Convert products to MediaPackages (simplified for now)
     packages = []
     for product in products_in_buy:
