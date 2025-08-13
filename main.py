@@ -1265,71 +1265,13 @@ def update_package(req: UpdatePackageRequest, context: Context) -> UpdateMediaBu
 
 @mcp.tool
 def get_media_buy_delivery(req: GetMediaBuyDeliveryRequest, context: Context) -> GetMediaBuyDeliveryResponse:
-    _verify_principal(req.media_buy_id, context)
-    buy_request, principal_id = media_buys[req.media_buy_id]
+    """Get delivery data for one or more media buys.
     
-    # Get the Principal object
-    principal = get_principal_object(principal_id)
-    if not principal:
-        raise ToolError(f"Principal {principal_id} not found")
-    
-    # Get the appropriate adapter
-    adapter = get_adapter(principal, dry_run=DRY_RUN_MODE)
-    
-    # Create a ReportingPeriod for the adapter
-    reporting_period = ReportingPeriod(
-        start=datetime.combine(req.today - timedelta(days=1), datetime.min.time()),
-        end=datetime.combine(req.today, datetime.min.time()),
-        start_date=req.today - timedelta(days=1),
-        end_date=req.today
-    )
-    
-    # Get delivery data from the adapter
-    # Use the requested date for simulation, not the current time
-    simulation_datetime = datetime.combine(req.today, datetime.min.time())
-    delivery_response = adapter.get_media_buy_delivery(req.media_buy_id, reporting_period, simulation_datetime)
-    
-    # Convert adapter response to expected format
-    # Calculate totals from the adapter response
-    total_spend = delivery_response.totals.spend if hasattr(delivery_response, 'totals') else 0
-    total_impressions = delivery_response.totals.impressions if hasattr(delivery_response, 'totals') else 0
-    
-    # Calculate days elapsed
-    days_elapsed = (req.today - buy_request.flight_start_date).days
-    total_days = (buy_request.flight_end_date - buy_request.flight_start_date).days
-    
-    # Determine pacing
-    expected_spend = (buy_request.total_budget / total_days) * days_elapsed if total_days > 0 else 0
-    if total_spend > expected_spend * 1.1:
-        pacing = "ahead"
-    elif total_spend < expected_spend * 0.9:
-        pacing = "behind"
-    else:
-        pacing = "on_track"
-    
-    # Determine status
-    if req.today < buy_request.flight_start_date:
-        status = "pending_start"
-    elif req.today > buy_request.flight_end_date:
-        status = "completed"
-    else:
-        status = "delivering"
-    
-    return GetMediaBuyDeliveryResponse(
-        media_buy_id=req.media_buy_id,
-        status=status,
-        spend=total_spend,
-        impressions=total_impressions,
-        pacing=pacing,
-        days_elapsed=days_elapsed,
-        total_days=total_days
-    )
-
-@mcp.tool
-def get_all_media_buy_delivery(req: GetAllMediaBuyDeliveryRequest, context: Context) -> GetAllMediaBuyDeliveryResponse:
-    """Get delivery data for all active media buys owned by the principal.
-    
-    This is optimized for performance by batching requests when possible.
+    Supports:
+    - Single buy: media_buy_ids=["buy_123"]
+    - Multiple buys: media_buy_ids=["buy_123", "buy_456"] 
+    - All active buys: filter="active" (default)
+    - All buys: filter="all"
     """
     principal_id = _get_principal_id_from_context(context)
     
@@ -1341,22 +1283,33 @@ def get_all_media_buy_delivery(req: GetAllMediaBuyDeliveryRequest, context: Cont
     # Get the appropriate adapter
     adapter = get_adapter(principal, dry_run=DRY_RUN_MODE)
     
-    # Filter media buys for this principal
-    principal_media_buys = []
+    # Determine which media buys to fetch
+    target_media_buys = []
+    
     if req.media_buy_ids:
-        # Use specific IDs if provided
+        # Specific media buy IDs requested
         for media_buy_id in req.media_buy_ids:
             if media_buy_id in media_buys:
                 buy_request, buy_principal_id = media_buys[media_buy_id]
                 if buy_principal_id == principal_id:
-                    principal_media_buys.append((media_buy_id, buy_request))
+                    target_media_buys.append((media_buy_id, buy_request))
                 else:
                     console.print(f"[yellow]Skipping {media_buy_id} - not owned by principal[/yellow]")
+            else:
+                console.print(f"[yellow]Media buy {media_buy_id} not found[/yellow]")
     else:
-        # Get all media buys for this principal
+        # Use status_filter to determine which buys to fetch
         for media_buy_id, (buy_request, buy_principal_id) in media_buys.items():
             if buy_principal_id == principal_id:
-                principal_media_buys.append((media_buy_id, buy_request))
+                # Apply status filter
+                if req.status_filter == "all":
+                    target_media_buys.append((media_buy_id, buy_request))
+                elif req.status_filter == "completed":
+                    if req.today > buy_request.flight_end_date:
+                        target_media_buys.append((media_buy_id, buy_request))
+                else:  # "active" (default)
+                    if buy_request.flight_start_date <= req.today <= buy_request.flight_end_date:
+                        target_media_buys.append((media_buy_id, buy_request))
     
     # Collect delivery data for each media buy
     deliveries = []
@@ -1364,7 +1317,7 @@ def get_all_media_buy_delivery(req: GetAllMediaBuyDeliveryRequest, context: Cont
     total_impressions = 0
     active_count = 0
     
-    for media_buy_id, buy_request in principal_media_buys:
+    for media_buy_id, buy_request in target_media_buys:
         # Create a ReportingPeriod for the adapter
         reporting_period = ReportingPeriod(
             start=datetime.combine(req.today - timedelta(days=1), datetime.min.time()),
@@ -1404,8 +1357,8 @@ def get_all_media_buy_delivery(req: GetAllMediaBuyDeliveryRequest, context: Cont
                 status = "delivering"
                 active_count += 1
             
-            # Add to results
-            deliveries.append(GetMediaBuyDeliveryResponse(
+            # Add to deliveries list
+            deliveries.append(MediaBuyDeliveryData(
                 media_buy_id=media_buy_id,
                 status=status,
                 spend=spend,
@@ -1415,28 +1368,45 @@ def get_all_media_buy_delivery(req: GetAllMediaBuyDeliveryRequest, context: Cont
                 total_days=total_days
             ))
             
+            # Update totals
             total_spend += spend
             total_impressions += impressions
             
         except Exception as e:
-            console.print(f"[red]Error fetching delivery for {media_buy_id}: {e}[/red]")
-            # Add a placeholder response
-            deliveries.append(GetMediaBuyDeliveryResponse(
-                media_buy_id=media_buy_id,
-                status="error",
-                spend=0,
-                impressions=0,
-                pacing="unknown",
-                days_elapsed=0,
-                total_days=0
-            ))
+            console.print(f"[red]Error getting delivery for {media_buy_id}: {e}[/red]")
+            # Continue with other media buys
     
-    return GetAllMediaBuyDeliveryResponse(
+    return GetMediaBuyDeliveryResponse(
         deliveries=deliveries,
         total_spend=total_spend,
         total_impressions=total_impressions,
         active_count=active_count,
         summary_date=req.today
+    )
+
+@mcp.tool 
+def get_all_media_buy_delivery(req: GetAllMediaBuyDeliveryRequest, context: Context) -> GetAllMediaBuyDeliveryResponse:
+    """DEPRECATED: Use get_media_buy_delivery with filter parameter instead.
+    
+    This endpoint is maintained for backward compatibility only.
+    """
+    # Convert to unified request format
+    unified_request = GetMediaBuyDeliveryRequest(
+        media_buy_ids=req.media_buy_ids,
+        status_filter="all" if not req.media_buy_ids else None,
+        today=req.today
+    )
+    
+    # Call the unified endpoint
+    unified_response = get_media_buy_delivery(unified_request, context)
+    
+    # Convert response to deprecated format (they're actually the same now)
+    return GetAllMediaBuyDeliveryResponse(
+        deliveries=unified_response.deliveries,
+        total_spend=unified_response.total_spend,
+        total_impressions=unified_response.total_impressions,
+        active_count=unified_response.active_count,
+        summary_date=unified_response.summary_date
     )
 
 @mcp.tool
@@ -1796,25 +1766,6 @@ def approve_creative(req: ApproveCreativeRequest, context: Context) -> ApproveCr
         new_status=new_status,
         detail=detail
     )
-
-@mcp.tool
-def get_principal_summary(context: Context) -> GetPrincipalSummaryResponse:
-    _get_principal_id_from_context(context)  # Authenticate and set tenant
-    tenant = get_current_tenant()
-    
-    conn = get_db_connection()
-    cursor = conn.execute(
-        "SELECT principal_id, name, platform_mappings FROM principals WHERE tenant_id = ?",
-        (tenant['tenant_id'],)
-    )
-    rows = cursor.fetchall()
-    conn.close()
-    summaries = [PrincipalSummary(
-        principal_id=row[0], name=row[1], platform_mappings=json.loads(row[2]),
-        live_media_buys=sum(1 for _, pid in media_buys.values() if pid == row[0]),
-        total_spend=sum(br.total_budget for br, pid in media_buys.values() if pid == row[0])
-    ) for row in rows]
-    return GetPrincipalSummaryResponse(principals=summaries)
 
 @mcp.tool
 def update_performance_index(req: UpdatePerformanceIndexRequest, context: Context) -> UpdatePerformanceIndexResponse:
