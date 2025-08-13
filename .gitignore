@@ -66,6 +66,10 @@ tmp/
 test_auth_state.json
 screenshots/
 
+# Runtime files
+*.pid
+server.pid
+
 # Conductor workspace files
 conductor_ports.json
 conductor_ports.lock
