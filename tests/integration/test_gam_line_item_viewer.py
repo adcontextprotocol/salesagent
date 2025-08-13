@@ -6,8 +6,9 @@ from unittest.mock import Mock, patch, MagicMock
 from datetime import datetime
 from zeep.helpers import serialize_object
 
-# Mark all tests in this module as requiring database
-pytestmark = pytest.mark.requires_db
+# Mark all tests in this module as requiring database and server
+# These tests use SQLAlchemy ORM which needs a real database
+pytestmark = [pytest.mark.requires_db, pytest.mark.skip_ci]
 
 
 @pytest.fixture
