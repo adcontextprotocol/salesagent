@@ -1,10 +1,13 @@
 """Database-backed product catalog provider (current implementation)."""
 
 import json
+import logging
 from typing import List, Dict, Any, Optional
 from .base import ProductCatalogProvider
 from schemas import Product
 from db_config import get_db_connection
+
+logger = logging.getLogger(__name__)
 
 
 class DatabaseProductCatalog(ProductCatalogProvider):
@@ -55,6 +58,19 @@ class DatabaseProductCatalog(ProductCatalogProvider):
             if product_data.get('price_guidance'):
                 if isinstance(product_data['price_guidance'], str):
                     product_data['price_guidance'] = json.loads(product_data['price_guidance'])
+                
+                # Fix price_guidance structure - convert min/max to floor/percentiles
+                if isinstance(product_data['price_guidance'], dict):
+                    pg = product_data['price_guidance']
+                    if 'min' in pg or 'max' in pg:
+                        # Convert min/max to floor and percentiles
+                        min_val = pg.get('min', pg.get('floor', 0))
+                        max_val = pg.get('max', 10)
+                        product_data['price_guidance'] = {
+                            'floor': min_val,
+                            'p50': (min_val + max_val) / 2,  # Median as midpoint
+                            'p90': max_val * 0.9  # 90th percentile
+                        }
             
             # Remove implementation_config - it's internal and should NEVER be exposed to buyers
             # This contains proprietary ad server configuration details
@@ -74,6 +90,64 @@ class DatabaseProductCatalog(ProductCatalogProvider):
             if product_data.get('formats'):
                 fixed_formats = []
                 for format_obj in product_data['formats']:
+                    # Handle case where format_obj might be a string instead of dict
+                    if isinstance(format_obj, str):
+                        # Check if it's a JSON string first
+                        try:
+                            parsed = json.loads(format_obj)
+                            if isinstance(parsed, dict):
+                                format_obj = parsed
+                            else:
+                                # It's just a format identifier string like "display_300x250"
+                                # Convert to proper format object
+                                format_parts = format_obj.split('_')
+                                if len(format_parts) >= 2:
+                                    format_type = format_parts[0]  # e.g., "display"
+                                    dimensions = '_'.join(format_parts[1:])  # e.g., "300x250"
+                                else:
+                                    format_type = "unknown"
+                                    dimensions = format_obj
+                                
+                                format_obj = {
+                                    "format_id": format_obj,  # Use the string as the format_id
+                                    "name": format_obj,
+                                    "type": format_type,
+                                    "description": f"{format_type.title()} {dimensions} format",
+                                    "delivery_options": {
+                                        "hosted": None,
+                                        "vast": None if format_type != "video" else {"required": False}
+                                    }
+                                }
+                        except (json.JSONDecodeError, TypeError):
+                            # It's a plain string format identifier
+                            format_parts = format_obj.split('_')
+                            if len(format_parts) >= 2:
+                                format_type = format_parts[0]  # e.g., "display"
+                                dimensions = '_'.join(format_parts[1:])  # e.g., "300x250"
+                            else:
+                                format_type = "unknown"
+                                dimensions = format_obj
+                            
+                            format_obj = {
+                                "format_id": format_obj,  # Use the string as the format_id
+                                "name": format_obj,
+                                "type": format_type,
+                                "description": f"{format_type.title()} {dimensions} format",
+                                "delivery_options": {
+                                    "hosted": None,
+                                    "vast": None if format_type != "video" else {"required": False}
+                                }
+                            }
+                    
+                    # Ensure we have a dictionary
+                    if not isinstance(format_obj, dict):
+                        logger.warning(f"Skipping non-dict format after conversion: {format_obj}")
+                        continue
+                    
+                    # Ensure format has required format_id field
+                    if not format_obj.get('format_id'):
+                        format_obj['format_id'] = format_obj.get('name', 'unknown_format')
+                    
                     # Ensure format has required description field
                     if not format_obj.get('description'):
                         format_obj['description'] = f"{format_obj.get('name', 'Unknown Format')} - {format_obj.get('type', 'unknown')} format"
