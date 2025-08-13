@@ -2707,13 +2707,16 @@ def list_products(tenant_id):
     
     conn = get_db_connection()
     
-    # Get tenant and config
-    cursor = conn.execute("SELECT name, config FROM tenants WHERE tenant_id = ?", (tenant_id,))
+    # Get tenant name
+    cursor = conn.execute("SELECT name FROM tenants WHERE tenant_id = ?", (tenant_id,))
     row = cursor.fetchone()
+    if not row:
+        conn.close()
+        return "Tenant not found", 404
     tenant_name = row[0]
-    config_data = row[1]
-    # PostgreSQL returns JSONB as dict, SQLite returns string
-    tenant_config = config_data if isinstance(config_data, dict) else json.loads(config_data)
+    
+    # Get tenant config using helper function
+    tenant_config = get_tenant_config_from_db(conn, tenant_id)
     
     # Get active adapter and its UI endpoint
     adapter_ui_endpoint = None
@@ -3310,15 +3313,20 @@ def policy_settings(tenant_id):
     
     conn = get_db_connection()
     
-    # Get tenant info and config
-    cursor = conn.execute("SELECT name, config FROM tenants WHERE tenant_id = ?", (tenant_id,))
+    # Get tenant info
+    cursor = conn.execute("SELECT name FROM tenants WHERE tenant_id = ?", (tenant_id,))
     tenant = cursor.fetchone()
     if not tenant:
         conn.close()
         return "Tenant not found", 404
     
-    tenant_name, config_str = tenant
-    config = parse_json_config(config_str)
+    tenant_name = tenant[0]
+    
+    # Get tenant config using helper function
+    config = get_tenant_config_from_db(conn, tenant_id)
+    if not config:
+        conn.close()
+        return "Tenant config not found", 404
     
     # Define default policies that all publishers start with
     default_policies = {
