@@ -98,11 +98,13 @@ class TestGAMLineItemViewer:
             }
         ]
     
+    @patch('gam_orders_service.db_session')
     @patch('zeep.helpers.serialize_object')
     @patch('googleads.ad_manager')
     @patch('gam_helper.get_ad_manager_client_for_tenant')
     @patch('admin_ui.get_db_connection')
     def test_get_gam_line_item_success(self, mock_db, mock_gam_client, mock_ad_manager, mock_serialize, 
+                                       mock_db_session,
                                        mock_line_item_response, 
                                        mock_order_response,
                                        mock_creative_response):
@@ -156,7 +158,7 @@ class TestGAMLineItemViewer:
             'test_tenant',  # tenant_id
             'google_ad_manager',  # adapter_type
             '123456',  # network_code
-            None,  # refresh_token
+            None,  # refresh_token - None means dry-run mode
             None  # company_id
         )
         
@@ -165,66 +167,66 @@ class TestGAMLineItemViewer:
         mock_conn.close = Mock()  # Mock the close method
         mock_db.return_value = mock_conn
         
-        # Mock GAM client responses
-        mock_client = Mock()
-        mock_line_item_service = Mock()
-        mock_order_service = Mock()
-        mock_creative_service = Mock()
-        mock_lica_service = Mock()
+        # Mock database session for dry-run mode
+        from datetime import datetime
         
-        # Setup service responses
-        mock_line_item_response_obj = Mock()
-        mock_line_item_response_obj.results = [Mock(**mock_line_item_response)]
-        mock_line_item_service.getLineItemsByStatement.return_value = mock_line_item_response_obj
+        # Mock GAMLineItem object
+        mock_line_item_obj = Mock()
+        mock_line_item_obj.tenant_id = 'test_tenant'
+        mock_line_item_obj.line_item_id = 7046143587
+        mock_line_item_obj.name = 'Test Line Item'
+        mock_line_item_obj.order_id = 12345
+        mock_line_item_obj.status = 'DELIVERING'
+        mock_line_item_obj.line_item_type = 'STANDARD'
+        mock_line_item_obj.priority = 8
+        mock_line_item_obj.start_date = datetime(2025, 2, 1)
+        mock_line_item_obj.end_date = datetime(2025, 2, 28)
+        mock_line_item_obj.unlimited_end_date = False
+        mock_line_item_obj.cost_type = 'CPM'
+        mock_line_item_obj.cost_per_unit = 4.0
+        mock_line_item_obj.goal_type = 'LIFETIME'
+        mock_line_item_obj.primary_goal_type = 'IMPRESSIONS'
+        mock_line_item_obj.primary_goal_units = 1000000
+        mock_line_item_obj.stats_impressions = 500000
+        mock_line_item_obj.stats_clicks = 2500
+        mock_line_item_obj.stats_ctr = 0.5
+        mock_line_item_obj.stats_video_completions = None
+        mock_line_item_obj.stats_video_starts = None
+        mock_line_item_obj.stats_viewable_impressions = 400000
+        mock_line_item_obj.targeting = mock_line_item_response['targeting']
+        mock_line_item_obj.creative_placeholders = []
+        mock_line_item_obj.frequency_caps = []
+        mock_line_item_obj.delivery_rate_type = 'EVENLY'
+        mock_line_item_obj.delivery_indicator_type = None
+        mock_line_item_obj.last_modified_date = datetime.now()
         
-        mock_order_response_obj = Mock()
-        mock_order_response_obj.results = [Mock(**mock_order_response)]
-        mock_order_service.getOrdersByStatement.return_value = mock_order_response_obj
+        # Mock GAMOrder object
+        mock_order_obj = Mock()
+        mock_order_obj.tenant_id = 'test_tenant'
+        mock_order_obj.order_id = 12345
+        mock_order_obj.name = 'Test Order'
+        mock_order_obj.advertiser_id = 67890
+        mock_order_obj.advertiser_name = 'Test Advertiser'
+        mock_order_obj.trafficker_id = 11111
+        mock_order_obj.trafficker_name = 'Test Trafficker'
+        mock_order_obj.status = 'APPROVED'
+        mock_order_obj.start_date = datetime(2025, 2, 1)
+        mock_order_obj.end_date = datetime(2025, 2, 28)
+        mock_order_obj.currency_code = 'USD'
+        mock_order_obj.total_budget = 5000.0
+        mock_order_obj.external_order_id = None
+        mock_order_obj.po_number = None
+        mock_order_obj.notes = None
         
-        mock_creative_response_obj = Mock()
-        mock_creative_response_obj.results = [Mock(**c) for c in mock_creative_response]
-        mock_creative_service.getCreativesByStatement.return_value = mock_creative_response_obj
+        # Mock query results
+        mock_query = Mock()
+        mock_query.filter.return_value = mock_query
+        mock_query.first.side_effect = [mock_line_item_obj, mock_order_obj]
+        mock_db_session.query.return_value = mock_query
+        mock_db_session.remove = Mock()
         
-        mock_lica_response_obj = Mock()
-        mock_lica_response_obj.results = []
-        mock_lica_service.getLineItemCreativeAssociationsByStatement.return_value = mock_lica_response_obj
-        
-        mock_client.GetService.side_effect = lambda s: {
-            'LineItemService': mock_line_item_service,
-            'OrderService': mock_order_service,
-            'CreativeService': mock_creative_service,
-            'LineItemCreativeAssociationService': mock_lica_service
-        }[s]
-        
-        mock_gam_client.return_value = mock_client
-        
-        # Mock ad_manager.StatementBuilder
-        mock_statement = Mock()
-        mock_statement.Where.return_value = mock_statement
-        mock_statement.WithBindVariable.return_value = mock_statement
-        mock_statement.Limit.return_value = mock_statement
-        mock_statement.ToStatement.return_value = {}
-        mock_ad_manager.StatementBuilder.return_value = mock_statement
-        
-        # Mock serialize_object to return the appropriate test data
-        def serialize_mock(obj):
-            # Check what's being serialized and return the appropriate test data
-            # This will be called for line_item, order, and creatives
-            if hasattr(obj, 'id'):
-                id_value = getattr(obj, 'id', None)
-                if id_value == 7046143587:
-                    return mock_line_item_response
-                elif id_value == 12345:
-                    return mock_order_response
-                elif id_value == 138524791074:
-                    return mock_creative_response[0]
-            # For lists of objects
-            if isinstance(obj, list) and len(obj) > 0:
-                return mock_creative_response
-            # Default behavior
-            return mock_line_item_response
-        
-        mock_serialize.side_effect = serialize_mock
+        # Since we're testing dry-run mode (no refresh_token), GAM client won't be used
+        # But we'll keep the mocks in case the code path changes
         
         # Test the endpoint
         with app.test_client() as client:
@@ -261,7 +263,7 @@ class TestGAMLineItemViewer:
         mock_conn = Mock()
         
         # Since we're testing multiple invalid IDs, we need to handle multiple calls
-        # Each invalid ID will trigger two queries
+        # Each invalid ID will trigger a query for the tenant
         def create_cursor_tenant():
             cursor = Mock()
             cursor.fetchone.return_value = (
@@ -283,30 +285,11 @@ class TestGAMLineItemViewer:
             )
             return cursor
         
-        def create_cursor_config():
-            cursor = Mock()
-            cursor.fetchone.return_value = (
-                'google_ad_manager',  # ad_server
-                10000,  # max_daily_budget
-                True,  # enable_aee_signals
-                json.dumps([]),  # authorized_emails
-                json.dumps([]),  # authorized_domains
-                None,  # slack_webhook_url
-                None,  # slack_audit_webhook_url
-                None,  # hitl_webhook_url
-                'test_token',  # admin_token
-                json.dumps(['display_300x250']),  # auto_approve_formats
-                False,  # human_review_required
-                json.dumps({'enabled': False})  # policy_settings
-            )
-            return cursor
-        
-        # Create cursors for each invalid ID test (2 queries per test)
+        # Create cursors for each invalid ID test (1 query per test)
         cursors = []
-        invalid_ids_400 = ['abc', '-123', '0', 'null']
+        invalid_ids_400 = ['abc', '-123', '0', 'null', '12345']  # Added '12345' which is too short (< 8 digits)
         for _ in invalid_ids_400:
             cursors.append(create_cursor_tenant())
-            cursors.append(create_cursor_config())
         
         mock_conn.execute.side_effect = cursors
         mock_conn.close = Mock()
@@ -321,14 +304,21 @@ class TestGAMLineItemViewer:
                 sess['tenant_id'] = 'test_tenant'
             
             # Test invalid line item IDs
-            # Note: empty string won't match the route, so it returns 404
-            invalid_ids_400 = ['abc', '-123', '0', 'null']
+            invalid_ids_with_expected_errors = [
+                ('abc', 'Line item ID must be a numeric value'),
+                ('-123', 'Line item ID must be a positive number'),
+                ('0', 'Line item ID must be a positive number'),
+                ('null', 'Line item ID must be a numeric value'),
+                ('12345', 'Invalid GAM line item ID format')  # Too short (< 8 digits)
+            ]
             
-            for invalid_id in invalid_ids_400:
+            for invalid_id, expected_error in invalid_ids_with_expected_errors:
                 response = client.get(f'/api/tenant/test_tenant/gam/line-item/{invalid_id}')
                 assert response.status_code == 400, f"Expected 400 for ID '{invalid_id}', got {response.status_code}"
                 data = json.loads(response.data)
                 assert 'error' in data
+                # Optionally check that the error message contains expected text
+                assert expected_error in data['error'] or 'must be' in data['error']
             
             # Test empty string separately - should give 404 as route won't match
             response = client.get(f'/api/tenant/test_tenant/gam/line-item/')

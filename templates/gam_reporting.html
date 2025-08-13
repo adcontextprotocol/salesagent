@@ -306,7 +306,6 @@ function updateTableView(aggregation) {
             <th>CTR</th>
             <th>Spend</th>
             <th>CPM</th>
-            <th>eCPM</th>
         </tr>
     `;
     
@@ -314,7 +313,7 @@ function updateTableView(aggregation) {
     tableBody.innerHTML = '';
     
     if (data.length === 0) {
-        tableBody.innerHTML = '<tr><td colspan="7" class="text-center">No data available</td></tr>';
+        tableBody.innerHTML = '<tr><td colspan="6" class="text-center">No data available</td></tr>';
         return;
     }
     
@@ -328,7 +327,6 @@ function updateTableView(aggregation) {
             <td>${row.clicks.toLocaleString()}</td>
             <td>${row.ctr.toFixed(2)}%</td>
             <td>$${row.spend.toFixed(2)}</td>
-            <td>$${row.cpm.toFixed(2)}</td>
             <td>$${row.cpm.toFixed(2)}</td>
         `;
         tableBody.appendChild(tr);
@@ -378,7 +376,6 @@ function aggregateData(data, by) {
                 impressions: 0,
                 clicks: 0,
                 spend: 0,
-                cpm_sum: 0,
                 count: 0
             };
         } else if (name && name !== key && !name.startsWith('Advertiser ')) {
@@ -389,7 +386,6 @@ function aggregateData(data, by) {
         aggregated[key].impressions += row.impressions || 0;
         aggregated[key].clicks += row.clicks || 0;
         aggregated[key].spend += row.spend || 0;
-        aggregated[key].cpm_sum += row.cpm || 0;
         aggregated[key].count += 1;
     });
     
@@ -397,8 +393,7 @@ function aggregateData(data, by) {
     return Object.values(aggregated).map(item => ({
         ...item,
         ctr: item.impressions > 0 ? (item.clicks / item.impressions * 100) : 0,
-        cpm: item.impressions > 0 ? (item.spend / item.impressions * 1000) : 0,
-        cpm: item.count > 0 ? (item.cpm_sum / item.count) : 0
+        cpm: item.impressions > 0 ? (item.spend / item.impressions * 1000) : 0
     })).sort((a, b) => b.spend - a.spend);
 }
 
@@ -593,7 +588,6 @@ function exportData() {
             row.clicks,
             row.ctr.toFixed(2),
             row.spend.toFixed(2),
-            row.cpm.toFixed(2),
             row.cpm.toFixed(2)
         ].join(','))
     ].join('\n');

@@ -231,13 +231,56 @@
         </div>
         
         <!-- Custom Targeting -->
-        <h4 style="margin-top: 2rem; border-bottom: 1px solid #ddd; padding-bottom: 0.5rem;">Custom Targeting</h4>
+        <h4 style="margin-top: 2rem; border-bottom: 1px solid #ddd; padding-bottom: 0.5rem;">Custom Targeting (Key-Value Pairs)</h4>
         
         <div class="form-group">
-            <label for="custom_targeting_keys">Custom Key-Value Pairs</label>
-            <textarea id="custom_targeting_keys" name="custom_targeting_keys" rows="3" 
-                      placeholder='{"category": "sports", "premium": "true", "audience": "millennials"}'>{{ config.custom_targeting_keys|tojson(indent=2) if config.custom_targeting_keys else '' }}</textarea>
-            <small style="color: #666;">JSON format for custom targeting keys</small>
+            <label>GAM Custom Targeting Configuration</label>
+            <p style="color: #666; font-size: 0.9em;">
+                Configure custom targeting structure using existing GAM key-value pairs. These keys and values must already exist in your GAM account.
+                <br><small><strong>Note:</strong> This references existing GAM keys - it does NOT create new keys in GAM. Find Key IDs and Value IDs in GAM under Inventory → Key-values.</small>
+            </p>
+            
+            <!-- Custom Targeting Structure Builder -->
+            <div id="keyValueBuilder" class="border rounded p-3 mb-3" style="background: #f8f9fa;">
+                <div class="alert alert-info mb-3" style="font-size: 0.85em;">
+                    <strong>ℹ️ How to use:</strong>
+                    <ul class="mb-0" style="padding-left: 20px;">
+                        <li>Build targeting expressions using existing GAM Key IDs and Value IDs</li>
+                        <li>Use logical operators (AND/OR) to combine multiple criteria</li>
+                        <li>The structure will be applied exactly as configured to each line item</li>
+                    </ul>
+                </div>
+                
+                <div id="customTargetingStructure">
+                    <!-- Custom targeting structure will be built here -->
+                </div>
+                
+                <button type="button" class="btn btn-sm btn-primary" onclick="addTargetingNode()">
+                    + Add Targeting Criteria
+                </button>
+            </div>
+            
+            <!-- Hidden field to store the custom targeting structure -->
+            <input type="hidden" id="custom_targeting_keys" name="custom_targeting_keys" value='{{ config.custom_targeting_keys|tojson if config.custom_targeting_keys else "{}" }}'>
+            
+            <!-- Raw JSON view (collapsible) -->
+            <details>
+                <summary style="cursor: pointer; color: #666; font-size: 0.9em;">View/Edit Raw GAM Targeting Structure</summary>
+                <textarea id="custom_targeting_keys_raw" rows="8" class="form-control mt-2"
+                          placeholder='{
+  "logicalOperator": "OR",
+  "children": [
+    {
+      "logicalOperator": "AND",
+      "children": [
+        {"keyId": 12345, "valueIds": [67890, 67891], "operator": "IS"}
+      ]
+    }
+  ]
+}'
+                          onblur="updateFromRawJson()">{{ config.custom_targeting_keys|tojson(indent=2) if config.custom_targeting_keys else '{}' }}</textarea>
+                <small class="text-muted">Enter the exact GAM custom targeting structure with Key IDs and Value IDs from your GAM account.</small>
+            </details>
         </div>
         
         <!-- Advanced Settings -->
@@ -345,6 +388,183 @@
 </div>
 
 <script>
+// Custom Targeting Structure Builder Functions
+let customTargetingData = null;
+
+// Initialize custom targeting builder on page load
+document.addEventListener('DOMContentLoaded', function() {
+    // Load existing custom targeting structure from the hidden field
+    const existingData = document.getElementById('custom_targeting_keys').value;
+    if (existingData && existingData !== '{}') {
+        try {
+            customTargetingData = JSON.parse(existingData);
+            // Display existing structure
+            displayCustomTargetingStructure(customTargetingData);
+        } catch (e) {
+            console.error('Error parsing existing custom targeting data:', e);
+        }
+    }
+});
+
+function displayCustomTargetingStructure(structure) {
+    const container = document.getElementById('customTargetingStructure');
+    if (!structure) {
+        container.innerHTML = '<p class="text-muted">No custom targeting configured</p>';
+        return;
+    }
+    
+    // For now, just show the structure in a readable format
+    // In a full implementation, this would be an interactive tree editor
+    container.innerHTML = `
+        <div class="alert alert-warning">
+            <strong>Current Configuration:</strong>
+            <pre style="margin-top: 10px; background: white; padding: 10px; border-radius: 4px;">
+${JSON.stringify(structure, null, 2)}
+            </pre>
+            <small>Edit the raw JSON below to modify the targeting structure.</small>
+        </div>
+    `;
+}
+
+function addTargetingNode() {
+    // Simplified for now - in production this would open a modal to build the structure
+    alert('To configure custom targeting:\n\n1. Use the "View/Edit Raw GAM Targeting Structure" section below\n2. Enter your GAM Key IDs and Value IDs\n3. Use the structure shown in the placeholder\n\nNote: Key IDs and Value IDs must exist in your GAM account.');
+    
+    // Expand the raw editor
+    const details = document.querySelector('details');
+    if (details) {
+        details.open = true;
+    }
+}
+
+// Keep old function name for compatibility but update behavior
+function addKeyValuePair(existingKey = '', existingValue = '') {
+    const container = document.getElementById('keyValuePairs');
+    const pairId = 'kvp_' + Date.now();
+    
+    const pairDiv = document.createElement('div');
+    pairDiv.className = 'key-value-pair mb-2 p-2 border rounded';
+    pairDiv.id = pairId;
+    pairDiv.style.background = '#fff';
+    
+    pairDiv.innerHTML = `
+        <div class="row align-items-center">
+            <div class="col-md-4">
+                <input type="text" class="form-control form-control-sm" 
+                       placeholder="Key (e.g., category)" 
+                       value="${escapeHtml(existingKey)}"
+                       onchange="updateKeyValue('${pairId}')"
+                       data-role="key">
+            </div>
+            <div class="col-md-6">
+                <input type="text" class="form-control form-control-sm" 
+                       placeholder="Value (e.g., sports)" 
+                       value="${escapeHtml(existingValue)}"
+                       onchange="updateKeyValue('${pairId}')"
+                       data-role="value">
+            </div>
+            <div class="col-md-2">
+                <button type="button" class="btn btn-sm btn-danger" onclick="removeKeyValuePair('${pairId}')">
+                    Remove
+                </button>
+            </div>
+        </div>
+    `;
+    
+    container.appendChild(pairDiv);
+    
+    // If this is a new pair (not loading existing), update the data
+    if (!existingKey && !existingValue) {
+        updateKeyValue(pairId);
+    }
+}
+
+function displayKeyValuePair(key, value) {
+    addKeyValuePair(key, value);
+}
+
+function removeKeyValuePair(pairId) {
+    const pairDiv = document.getElementById(pairId);
+    if (pairDiv) {
+        const keyInput = pairDiv.querySelector('[data-role="key"]');
+        if (keyInput && keyInput.value) {
+            delete keyValueData[keyInput.value];
+        }
+        pairDiv.remove();
+        updateHiddenField();
+    }
+}
+
+function updateKeyValue(pairId) {
+    const pairDiv = document.getElementById(pairId);
+    if (!pairDiv) return;
+    
+    const keyInput = pairDiv.querySelector('[data-role="key"]');
+    const valueInput = pairDiv.querySelector('[data-role="value"]');
+    
+    if (keyInput && valueInput) {
+        const key = keyInput.value.trim();
+        const value = valueInput.value.trim();
+        
+        if (key) {
+            // Remove old key if it was changed
+            const oldKey = keyInput.getAttribute('data-old-key');
+            if (oldKey && oldKey !== key) {
+                delete keyValueData[oldKey];
+            }
+            
+            // Set new key-value
+            keyValueData[key] = value;
+            keyInput.setAttribute('data-old-key', key);
+            
+            updateHiddenField();
+        }
+    }
+}
+
+function updateHiddenField() {
+    // Update the hidden field with the current key-value data
+    document.getElementById('custom_targeting_keys').value = JSON.stringify(keyValueData);
+    
+    // Also update the raw JSON textarea if it's visible
+    const rawTextarea = document.getElementById('custom_targeting_keys_raw');
+    if (rawTextarea) {
+        rawTextarea.value = JSON.stringify(keyValueData, null, 2);
+    }
+}
+
+function updateFromRawJson() {
+    const rawTextarea = document.getElementById('custom_targeting_keys_raw');
+    if (!rawTextarea) return;
+    
+    try {
+        const newData = JSON.parse(rawTextarea.value || '{}');
+        customTargetingData = newData;
+        
+        // Update the hidden field
+        document.getElementById('custom_targeting_keys').value = JSON.stringify(customTargetingData);
+        
+        // Update the display
+        displayCustomTargetingStructure(customTargetingData);
+    } catch (e) {
+        alert('Invalid JSON format. Please check your syntax and ensure you have valid GAM targeting structure.');
+        // Revert to current data
+        if (customTargetingData) {
+            rawTextarea.value = JSON.stringify(customTargetingData, null, 2);
+        }
+    }
+}
+
+function escapeHtml(unsafe) {
+    if (unsafe === null || unsafe === undefined) return '';
+    return String(unsafe)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
+}
+
 function validateConfig() {
     // Validate creative placeholders
     const placeholders = document.querySelectorAll('.creative-placeholder-item');

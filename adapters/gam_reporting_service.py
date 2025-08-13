@@ -128,9 +128,13 @@ class GAMReportingService:
         tz = pytz.timezone(requested_tz)
         now = datetime.now(tz)
         
-        # Base dimensions for all reports - simplified for compatibility with AD_SERVER metrics
+        # Base dimensions for all reports - include both IDs and names
         # Note: Including too many dimensions causes "COLUMNS_NOT_SUPPORTED_FOR_REQUESTED_DIMENSIONS" errors
-        base_dimensions = ['ADVERTISER_ID', 'ORDER_ID', 'LINE_ITEM_ID']
+        base_dimensions = [
+            'ADVERTISER_ID', 'ADVERTISER_NAME',
+            'ORDER_ID', 'ORDER_NAME', 
+            'LINE_ITEM_ID', 'LINE_ITEM_NAME'
+        ]
         
         if date_range == "today":
             # Today by hour - need both DATE and HOUR dimensions for hourly reporting
@@ -307,10 +311,13 @@ class GAMReportingService:
         # Map possible CSV column names to our field names
         # GAM CSV might use different names than the API constants
         column_mappings = {
-            # Dimensions - only the ones we're actually using
+            # Dimensions - including both IDs and names
             'Dimension.ADVERTISER_ID': 'ADVERTISER_ID',
+            'Dimension.ADVERTISER_NAME': 'ADVERTISER_NAME',
             'Dimension.ORDER_ID': 'ORDER_ID',
+            'Dimension.ORDER_NAME': 'ORDER_NAME',
             'Dimension.LINE_ITEM_ID': 'LINE_ITEM_ID',
+            'Dimension.LINE_ITEM_NAME': 'LINE_ITEM_NAME',
             'Dimension.DATE': 'DATE',
             'Dimension.HOUR': 'HOUR',
             # Metrics - only including the ones we're actually requesting
