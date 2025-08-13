@@ -1,0 +1,651 @@
+{% extends "base.html" %}
+
+{% block title %}GAM Reporting - {{ tenant.name }}{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <h1>GAM Reporting - {{ tenant.name }}</h1>
+    
+    <!-- Controls -->
+    <div class="card mb-4">
+        <div class="card-body">
+            <div class="row">
+                <div class="col-md-3">
+                    <label for="date-range">Date Range</label>
+                    <select id="date-range" class="form-control" onchange="updateReports()">
+                        <option value="today">Today (Hourly)</option>
+                        <option value="this_month" selected>This Month (Daily)</option>
+                        <option value="lifetime">Lifetime (Daily)</option>
+                    </select>
+                </div>
+                <div class="col-md-3">
+                    <label for="timezone">Timezone</label>
+                    <select id="timezone" class="form-control" onchange="updateReports()">
+                        <option value="America/New_York">Eastern Time</option>
+                        <option value="America/Chicago">Central Time</option>
+                        <option value="America/Denver">Mountain Time</option>
+                        <option value="America/Los_Angeles">Pacific Time</option>
+                        <option value="UTC">UTC</option>
+                    </select>
+                </div>
+                <div class="col-md-3">
+                    <label for="aggregation">Aggregate By</label>
+                    <select id="aggregation" class="form-control" onchange="updateViews()">
+                        <option value="advertiser">Advertiser</option>
+                        <option value="country">Country</option>
+                        <option value="ad_unit">Ad Unit</option>
+                        <option value="order">Order</option>
+                        <option value="line_item">Line Item</option>
+                    </select>
+                </div>
+                <div class="col-md-3">
+                    <label>&nbsp;</label>
+                    <button class="btn btn-primary btn-block" onclick="exportData()">Export Data</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Summary Cards -->
+    <div class="row mb-4">
+        <div class="col-md-3">
+            <div class="card">
+                <div class="card-body">
+                    <h5 class="card-title">Total Impressions</h5>
+                    <h2 id="total-impressions">-</h2>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card">
+                <div class="card-body">
+                    <h5 class="card-title">Total Spend</h5>
+                    <h2 id="total-spend">-</h2>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card">
+                <div class="card-body">
+                    <h5 class="card-title">Average CPM</h5>
+                    <h2 id="avg-cpm">-</h2>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card">
+                <div class="card-body">
+                    <h5 class="card-title">Countries</h5>
+                    <h2 id="country-count">-</h2>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Tabs for Different Views -->
+    <ul class="nav nav-tabs" id="reportTabs" role="tablist">
+        <li class="nav-item">
+            <a class="nav-link active" id="table-tab" data-bs-toggle="tab" data-bs-target="#table" href="#table" role="tab">Table View</a>
+        </li>
+        <li class="nav-item">
+            <a class="nav-link" id="chart-tab" data-bs-toggle="tab" data-bs-target="#chart" href="#chart" role="tab">Time Series</a>
+        </li>
+        <li class="nav-item">
+            <a class="nav-link" id="heatmap-tab" data-bs-toggle="tab" data-bs-target="#heatmap" href="#heatmap" role="tab">Country Heatmap</a>
+        </li>
+        <li class="nav-item">
+            <a class="nav-link" id="adunit-tab" data-bs-toggle="tab" data-bs-target="#adunit" href="#adunit" role="tab">Ad Unit Analysis</a>
+        </li>
+    </ul>
+
+    <div class="tab-content" id="reportTabContent">
+        <!-- Table View -->
+        <div class="tab-pane fade show active" id="table" role="tabpanel">
+            <div class="card mt-3">
+                <div class="card-body">
+                    <div id="table-loading" class="text-center py-5" style="display: none;">
+                        <div class="spinner-border" role="status">
+                            <span class="sr-only">Loading...</span>
+                        </div>
+                        <p class="mt-2">Loading GAM reporting data...</p>
+                    </div>
+                    <div id="table-container">
+                        <div class="table-responsive">
+                            <table class="table table-striped table-hover" id="data-table">
+                                <thead id="table-header"></thead>
+                                <tbody id="table-body"></tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Time Series Chart -->
+        <div class="tab-pane fade" id="chart" role="tabpanel">
+            <div class="card mt-3">
+                <div class="card-body">
+                    <canvas id="time-chart" style="max-height: 400px;"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <!-- Country Heatmap -->
+        <div class="tab-pane fade" id="heatmap" role="tabpanel">
+            <div class="card mt-3">
+                <div class="card-body">
+                    <h4>CPM by Country</h4>
+                    <div id="world-map" style="height: 500px;"></div>
+                    <div id="country-table" class="mt-4">
+                        <table class="table table-sm">
+                            <thead>
+                                <tr>
+                                    <th>Country</th>
+                                    <th>Impressions</th>
+                                    <th>Spend</th>
+                                    <th>CPM</th>
+                                    <th>CTR</th>
+                                </tr>
+                            </thead>
+                            <tbody id="country-tbody"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Ad Unit Analysis -->
+        <div class="tab-pane fade" id="adunit" role="tabpanel">
+            <div class="card mt-3">
+                <div class="card-body">
+                    <h4>Performance by Ad Unit</h4>
+                    <canvas id="adunit-chart" style="max-height: 400px;"></canvas>
+                    <div class="mt-4">
+                        <table class="table table-sm">
+                            <thead>
+                                <tr>
+                                    <th>Ad Unit</th>
+                                    <th>Impressions</th>
+                                    <th>Spend</th>
+                                    <th>CPM</th>
+                                    <th>Fill Rate</th>
+                                </tr>
+                            </thead>
+                            <tbody id="adunit-tbody"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Include required libraries -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.min.js"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.min.css">
+<script src="https://cdn.jsdelivr.net/npm/leaflet-choropleth@1.1.4/dist/choropleth.js"></script>
+
+<script>
+let currentData = null;
+let timeChart = null;
+let adUnitChart = null;
+let worldMap = null;
+
+function showLoadingIndicators() {
+    // Show loading for table
+    document.getElementById('table-loading').style.display = 'block';
+    document.getElementById('table-container').style.display = 'none';
+    
+    // Show loading for charts
+    const chartContainers = ['time-chart-container', 'heatmap-container', 'ad-unit-container'];
+    chartContainers.forEach(id => {
+        const container = document.getElementById(id);
+        if (container) {
+            container.innerHTML = '<div class="text-center py-5 loading-indicator"><i class="fas fa-spinner fa-spin"></i> Loading...</div>';
+        }
+    });
+}
+
+function hideLoadingIndicators() {
+    // Hide table loading and force display the container
+    const tableLoading = document.getElementById('table-loading');
+    const tableContainer = document.getElementById('table-container');
+    
+    if (tableLoading) {
+        tableLoading.style.display = 'none';
+    }
+    
+    if (tableContainer) {
+        // Force display with important to override any other styles
+        tableContainer.style.cssText = 'display: block !important;';
+    }
+}
+
+async function updateReports() {
+    const dateRange = document.getElementById('date-range').value;
+    const timezone = document.getElementById('timezone').value;
+    
+    // Show loading indicators for all tabs
+    showLoadingIndicators();
+    
+    // Update loading message
+    const loadingElements = document.querySelectorAll('.loading-indicator');
+    loadingElements.forEach(el => {
+        if (el.textContent) {
+            el.textContent = 'Loading GAM data...';
+        }
+    });
+    
+    try {
+        const response = await fetch(`/api/tenant/{{ tenant.tenant_id }}/gam/reporting?date_range=${dateRange}&timezone=${timezone}`, {
+            credentials: 'same-origin'
+        });
+        
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        
+        const result = await response.json();
+        currentData = result;
+        
+        console.log(`Loaded ${result.data.length} rows of data`);
+        
+        updateSummaryCards(result.data);
+        updateViews();
+        
+    } catch (error) {
+        console.error('Error fetching report:', error);
+        alert('Failed to load report data. Please try again.');
+    } finally {
+        hideLoadingIndicators();
+    }
+}
+
+function updateSummaryCards(data) {
+    const totals = data.reduce((acc, row) => {
+        acc.impressions += row.impressions || 0;
+        acc.spend += row.spend || 0;
+        acc.clicks += row.clicks || 0;
+        // Countries not available in simplified data
+        return acc;
+    }, { impressions: 0, spend: 0, clicks: 0 });
+    
+    const avgCpm = totals.impressions > 0 ? (totals.spend / totals.impressions * 1000) : 0;
+    
+    document.getElementById('total-impressions').textContent = totals.impressions.toLocaleString();
+    document.getElementById('total-spend').textContent = '$' + totals.spend.toFixed(2);
+    document.getElementById('avg-cpm').textContent = '$' + avgCpm.toFixed(2);
+    document.getElementById('country-count').textContent = 'N/A'; // Not available in simplified data
+}
+
+function updateViews() {
+    if (!currentData) return;
+    
+    const aggregation = document.getElementById('aggregation').value;
+    
+    updateTableView(aggregation);
+    updateTimeChart(aggregation);
+    updateCountryHeatmap();
+    updateAdUnitAnalysis();
+}
+
+function updateTableView(aggregation) {
+    const data = aggregateData(currentData.data, aggregation);
+    console.log(`Aggregated data for ${aggregation}:`, data.slice(0, 5)); // Debug first 5 rows
+    
+    const tableHeader = document.getElementById('table-header');
+    const tableBody = document.getElementById('table-body');
+    
+    // Create header
+    tableHeader.innerHTML = `
+        <tr>
+            <th>${aggregation.charAt(0).toUpperCase() + aggregation.slice(1).replace('_', ' ')}</th>
+            <th>Impressions</th>
+            <th>Clicks</th>
+            <th>CTR</th>
+            <th>Spend</th>
+            <th>CPM</th>
+            <th>eCPM</th>
+        </tr>
+    `;
+    
+    // Create rows
+    tableBody.innerHTML = '';
+    
+    if (data.length === 0) {
+        tableBody.innerHTML = '<tr><td colspan="7" class="text-center">No data available</td></tr>';
+        return;
+    }
+    
+    data.forEach(row => {
+        const tr = document.createElement('tr');
+        // Display name based on available fields
+        const displayName = row.line_item_name || row.order_name || row.advertiser_name || row.name || 'Unknown';
+        tr.innerHTML = `
+            <td>${displayName}</td>
+            <td>${row.impressions.toLocaleString()}</td>
+            <td>${row.clicks.toLocaleString()}</td>
+            <td>${row.ctr.toFixed(2)}%</td>
+            <td>$${row.spend.toFixed(2)}</td>
+            <td>$${row.cpm.toFixed(2)}</td>
+            <td>$${row.cpm.toFixed(2)}</td>
+        `;
+        tableBody.appendChild(tr);
+    });
+    
+    console.log(`Added ${data.length} rows to table`);
+}
+
+function aggregateData(data, by) {
+    const aggregated = {};
+    
+    // Debug: log first few rows to see what we have
+    console.log('Sample data rows:', data.slice(0, 3));
+    
+    data.forEach(row => {
+        let key, name;
+        switch(by) {
+            case 'advertiser':
+                key = row.advertiser_id || 'Unknown';
+                // Use advertiser name if available, otherwise show ID with prefix
+                name = row.advertiser_name || `Advertiser ${key}`;
+                break;
+            case 'country':
+                key = 'All'; // Country data not available in simplified report
+                name = 'All Countries';
+                break;
+            case 'ad_unit':
+                key = 'All'; // Ad unit data not available in simplified report
+                name = 'All Ad Units';
+                break;
+            case 'order':
+                key = row.order_id || 'Unknown';
+                name = row.order_name || key;
+                break;
+            case 'line_item':
+                key = row.line_item_id || 'Unknown';
+                name = row.line_item_name || key;
+                break;
+            default:
+                key = 'Unknown';
+                name = 'Unknown';
+        }
+        
+        if (!aggregated[key]) {
+            aggregated[key] = {
+                name: name,
+                impressions: 0,
+                clicks: 0,
+                spend: 0,
+                cpm_sum: 0,
+                count: 0
+            };
+        } else if (name && name !== key && !name.startsWith('Advertiser ')) {
+            // Update name if we get a real name (not just "Advertiser ID")
+            aggregated[key].name = name;
+        }
+        
+        aggregated[key].impressions += row.impressions || 0;
+        aggregated[key].clicks += row.clicks || 0;
+        aggregated[key].spend += row.spend || 0;
+        aggregated[key].cpm_sum += row.cpm || 0;
+        aggregated[key].count += 1;
+    });
+    
+    // Calculate derived metrics
+    return Object.values(aggregated).map(item => ({
+        ...item,
+        ctr: item.impressions > 0 ? (item.clicks / item.impressions * 100) : 0,
+        cpm: item.impressions > 0 ? (item.spend / item.impressions * 1000) : 0,
+        cpm: item.count > 0 ? (item.cpm_sum / item.count) : 0
+    })).sort((a, b) => b.spend - a.spend);
+}
+
+function updateTimeChart(aggregation) {
+    const ctx = document.getElementById('time-chart').getContext('2d');
+    
+    // Group data by date
+    const timeData = {};
+    currentData.data.forEach(row => {
+        const date = row.timestamp.split('T')[0];
+        if (!timeData[date]) {
+            timeData[date] = { impressions: 0, spend: 0, clicks: 0 };
+        }
+        timeData[date].impressions += row.impressions || 0;
+        timeData[date].spend += row.spend || 0;
+        timeData[date].clicks += row.clicks || 0;
+    });
+    
+    const labels = Object.keys(timeData).sort();
+    const impressions = labels.map(date => timeData[date].impressions);
+    const spend = labels.map(date => timeData[date].spend);
+    
+    if (timeChart) {
+        timeChart.destroy();
+    }
+    
+    timeChart = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: labels,
+            datasets: [{
+                label: 'Impressions',
+                data: impressions,
+                borderColor: 'rgb(75, 192, 192)',
+                backgroundColor: 'rgba(75, 192, 192, 0.2)',
+                yAxisID: 'y1',
+            }, {
+                label: 'Spend ($)',
+                data: spend,
+                borderColor: 'rgb(255, 99, 132)',
+                backgroundColor: 'rgba(255, 99, 132, 0.2)',
+                yAxisID: 'y2',
+            }]
+        },
+        options: {
+            responsive: true,
+            interaction: {
+                mode: 'index',
+                intersect: false,
+            },
+            scales: {
+                y1: {
+                    type: 'linear',
+                    display: true,
+                    position: 'left',
+                    title: {
+                        display: true,
+                        text: 'Impressions'
+                    }
+                },
+                y2: {
+                    type: 'linear',
+                    display: true,
+                    position: 'right',
+                    title: {
+                        display: true,
+                        text: 'Spend ($)'
+                    },
+                    grid: {
+                        drawOnChartArea: false,
+                    }
+                }
+            }
+        }
+    });
+}
+
+function updateCountryHeatmap() {
+    // Country data not available in simplified report
+    const tbody = document.getElementById('country-tbody');
+    tbody.innerHTML = '<tr><td colspan="5" class="text-center">Country-level data not available in simplified report</td></tr>';
+    
+    // Hide map since country data is not available
+    const mapContainer = document.getElementById('world-map');
+    if (mapContainer) {
+        mapContainer.innerHTML = '<div class="text-center p-4">Map visualization not available without country data</div>';
+    }
+}
+
+function updateMapMarkers(map, countryData) {
+    // Clear existing markers
+    map.eachLayer(layer => {
+        if (layer instanceof L.Marker) {
+            map.removeLayer(layer);
+        }
+    });
+    
+    // Add markers for top countries (simplified)
+    countryData.slice(0, 10).forEach(country => {
+        const coords = getCountryCoordinates(country.name);
+        if (coords) {
+            const marker = L.circleMarker(coords, {
+                radius: Math.min(20, Math.sqrt(country.impressions / 1000)),
+                fillColor: getCPMColor(country.cpm),
+                color: '#000',
+                weight: 1,
+                opacity: 1,
+                fillOpacity: 0.8
+            }).addTo(map);
+            
+            marker.bindPopup(`
+                <strong>${country.name}</strong><br>
+                Impressions: ${country.impressions.toLocaleString()}<br>
+                CPM: $${country.cpm.toFixed(2)}<br>
+                Spend: $${country.spend.toFixed(2)}
+            `);
+        }
+    });
+}
+
+function getCPMColor(cpm) {
+    // Color scale from green (low CPM) to red (high CPM)
+    if (cpm < 1) return '#00ff00';
+    if (cpm < 5) return '#90EE90';
+    if (cpm < 10) return '#FFD700';
+    if (cpm < 20) return '#FFA500';
+    return '#FF4500';
+}
+
+function getCountryCode(countryName) {
+    // Simplified mapping - in production, use a complete mapping
+    const mapping = {
+        'United States': 'US',
+        'Canada': 'CA',
+        'United Kingdom': 'GB',
+        'Germany': 'DE',
+        'France': 'FR',
+        'Japan': 'JP',
+        'Australia': 'AU',
+        'Brazil': 'BR',
+        'India': 'IN',
+        'Mexico': 'MX'
+    };
+    return mapping[countryName] || null;
+}
+
+function getCountryCoordinates(countryName) {
+    // Simplified coordinates - in production, use a complete mapping
+    const coords = {
+        'United States': [39.8283, -98.5795],
+        'Canada': [56.1304, -106.3468],
+        'United Kingdom': [55.3781, -3.4360],
+        'Germany': [51.1657, 10.4515],
+        'France': [46.2276, 2.2137],
+        'Japan': [36.2048, 138.2529],
+        'Australia': [-25.2744, 133.7751],
+        'Brazil': [-14.2350, -51.9253],
+        'India': [20.5937, 78.9629],
+        'Mexico': [23.6345, -102.5528]
+    };
+    return coords[countryName] || null;
+}
+
+function updateAdUnitAnalysis() {
+    // Ad unit data not available in simplified report
+    const tbody = document.getElementById('adunit-tbody');
+    tbody.innerHTML = '<tr><td colspan="5" class="text-center">Ad unit data not available in simplified report</td></tr>';
+    
+    // Hide chart
+    const chartContainer = document.getElementById('adunit-chart');
+    if (chartContainer) {
+        const ctx = chartContainer.getContext('2d');
+        ctx.clearRect(0, 0, chartContainer.width, chartContainer.height);
+        ctx.font = '14px Arial';
+        ctx.textAlign = 'center';
+        ctx.fillText('Chart not available without ad unit data', chartContainer.width/2, chartContainer.height/2);
+    }
+}
+
+function exportData() {
+    if (!currentData) return;
+    
+    const aggregation = document.getElementById('aggregation').value;
+    const data = aggregateData(currentData.data, aggregation);
+    
+    // Convert to CSV
+    const csv = [
+        [aggregation, 'Impressions', 'Clicks', 'CTR', 'Spend', 'CPM'].join(','),
+        ...data.map(row => [
+            row.name,
+            row.impressions,
+            row.clicks,
+            row.ctr.toFixed(2),
+            row.spend.toFixed(2),
+            row.cpm.toFixed(2),
+            row.cpm.toFixed(2)
+        ].join(','))
+    ].join('\n');
+    
+    // Download
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.setAttribute('hidden', '');
+    a.setAttribute('href', url);
+    a.setAttribute('download', `gam_report_${aggregation}_${new Date().toISOString()}.csv`);
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+}
+
+// Initialize on page load
+document.addEventListener('DOMContentLoaded', function() {
+    updateReports();
+});
+</script>
+
+<style>
+/* Override base.html's tab-content hiding */
+#reportTabContent {
+    display: block !important;
+}
+
+#reportTabContent .tab-pane {
+    display: none;
+}
+
+#reportTabContent .tab-pane.show.active {
+    display: block !important;
+}
+
+.card {
+    margin-bottom: 1rem;
+}
+
+.table-hover tbody tr:hover {
+    background-color: rgba(0, 123, 255, 0.1);
+}
+
+#world-map {
+    border: 1px solid #dee2e6;
+    border-radius: 0.25rem;
+}
+
+.nav-tabs .nav-link.active {
+    background-color: #f8f9fa;
+    border-bottom-color: #f8f9fa;
+}
+</style>
+{% endblock %}

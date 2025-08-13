@@ -31,6 +31,10 @@ app.register_blueprint(superadmin_api)
 from sync_api import sync_api
 app.register_blueprint(sync_api, url_prefix='/api/sync')
 
+# Import and register GAM reporting API blueprint
+from adapters.gam_reporting_api import gam_reporting_api
+app.register_blueprint(gam_reporting_api)
+
 # Import GAM inventory service for targeting browser
 from gam_inventory_service import GAMInventoryService, create_inventory_endpoints as register_inventory_endpoints, SessionLocal, db_session
 
@@ -326,6 +330,43 @@ def require_auth(admin_only=False):
             if admin_only and session.get('role') != 'super_admin':
                 return "Access denied. Super admin required.", 403
                 
+            return f(*args, **kwargs)
+        return decorated_function
+    return decorator
+
+def require_tenant_access(api_mode=False):
+    """Decorator that checks both authentication and tenant access.
+    
+    Args:
+        api_mode: If True, returns JSON errors instead of HTML responses
+    """
+    def decorator(f):
+        @wraps(f)
+        def decorated_function(*args, **kwargs):
+            # Check authentication
+            if not session.get('authenticated'):
+                if api_mode:
+                    return jsonify({'error': 'Authentication required'}), 401
+                session['next_url'] = request.url
+                tenant_id = kwargs.get('tenant_id') or session.get('tenant_id')
+                if tenant_id:
+                    return redirect(url_for('tenant_login', tenant_id=tenant_id))
+                return redirect(url_for('login'))
+            
+            # Get tenant_id from route
+            tenant_id = kwargs.get('tenant_id')
+            if not tenant_id:
+                if api_mode:
+                    return jsonify({'error': 'Tenant ID required'}), 400
+                return "Tenant ID required", 400
+            
+            # Check tenant access
+            if session.get('role') != 'super_admin':
+                if session.get('tenant_id') != tenant_id:
+                    if api_mode:
+                        return jsonify({'error': 'Access denied'}), 403
+                    return "Access denied", 403
+            
             return f(*args, **kwargs)
         return decorated_function
     return decorator
@@ -1404,6 +1445,162 @@ def sync_orders_endpoint(tenant_id):
         return jsonify({'error': str(e)}), 500
     finally:
         db_session.remove()
+
+# GAM Reporting Route
+@app.route('/tenant/<tenant_id>/reporting')
+@require_auth()
+def gam_reporting_dashboard(tenant_id):
+    """Display GAM reporting dashboard."""
+    # Verify tenant access
+    if session.get('role') != 'super_admin' and session.get('tenant_id') != tenant_id:
+        return "Access denied", 403
+    
+    # Get tenant and check if it's using GAM
+    conn = get_db_connection()
+    tenant_cursor = conn.execute(
+        "SELECT * FROM tenants WHERE tenant_id = ?",
+        (tenant_id,)
+    )
+    tenant = tenant_cursor.fetchone()
+    
+    if not tenant:
+        conn.close()
+        return "Tenant not found", 404
+    
+    # Check if tenant is using Google Ad Manager
+    if tenant.get('ad_server') != 'google_ad_manager':
+        conn.close()
+        return render_template('error.html', 
+            error_title="GAM Reporting Not Available",
+            error_message=f"This tenant is currently using {tenant.get('ad_server', 'no ad server')}. GAM Reporting is only available for tenants using Google Ad Manager.",
+            back_url=f"/tenant/{tenant_id}"
+        ), 400
+    
+    conn.close()
+    return render_template('gam_reporting.html', tenant=tenant)
+
+# Sync Status API for Admin UI
+@app.route('/api/tenant/<tenant_id>/sync/status')
+@require_auth()
+def get_tenant_sync_status(tenant_id):
+    """Get sync status for a tenant."""
+    # Verify tenant access
+    if session.get('role') != 'super_admin' and session.get('tenant_id') != tenant_id:
+        return jsonify({'error': 'Access denied'}), 403
+    
+    conn = get_db_connection()
+    
+    # Check if tenant exists and uses GAM
+    tenant_cursor = conn.execute(
+        "SELECT ad_server FROM tenants WHERE tenant_id = ?",
+        (tenant_id,)
+    )
+    tenant = tenant_cursor.fetchone()
+    
+    if not tenant:
+        conn.close()
+        return jsonify({'error': 'Tenant not found'}), 404
+    
+    if tenant.get('ad_server') != 'google_ad_manager':
+        conn.close()
+        return jsonify({'error': 'Sync only available for GAM tenants'}), 400
+    
+    # Get latest sync job
+    sync_cursor = conn.execute("""
+        SELECT started_at, status, summary 
+        FROM sync_jobs 
+        WHERE tenant_id = ? 
+        ORDER BY started_at DESC 
+        LIMIT 1
+    """, (tenant_id,))
+    sync_job = sync_cursor.fetchone()
+    
+    # Get inventory counts
+    inventory_cursor = conn.execute("""
+        SELECT 
+            COUNT(CASE WHEN inventory_type = 'ad_unit' THEN 1 END) as ad_units,
+            COUNT(CASE WHEN inventory_type = 'custom_targeting_key' THEN 1 END) as custom_targeting_keys,
+            COUNT(CASE WHEN inventory_type = 'custom_targeting_value' THEN 1 END) as custom_targeting_values,
+            COUNT(*) as total
+        FROM gam_inventory 
+        WHERE tenant_id = ?
+    """, (tenant_id,))
+    counts = inventory_cursor.fetchone()
+    
+    conn.close()
+    
+    response = {
+        'last_sync': None,
+        'sync_running': False,
+        'item_count': counts['total'] if counts else 0,
+        'breakdown': None
+    }
+    
+    if sync_job:
+        response['last_sync'] = sync_job['started_at']
+        response['sync_running'] = sync_job['status'] == 'running'
+        
+        if counts and counts['total'] > 0:
+            response['breakdown'] = {
+                'ad_units': counts['ad_units'],
+                'custom_targeting_keys': counts['custom_targeting_keys'],
+                'custom_targeting_values': counts['custom_targeting_values']
+            }
+    
+    return jsonify(response)
+
+# Trigger Sync API for Admin UI
+@app.route('/api/tenant/<tenant_id>/sync/trigger', methods=['POST'])
+@require_auth()
+def trigger_tenant_sync(tenant_id):
+    """Trigger a sync for a GAM tenant."""
+    # Verify tenant access  
+    if session.get('role') != 'super_admin':
+        return jsonify({'error': 'Only super admins can trigger sync'}), 403
+    
+    conn = get_db_connection()
+    
+    # Check if tenant exists and uses GAM
+    tenant_cursor = conn.execute(
+        "SELECT ad_server FROM tenants WHERE tenant_id = ?",
+        (tenant_id,)
+    )
+    tenant = tenant_cursor.fetchone()
+    
+    if not tenant:
+        conn.close()
+        return jsonify({'error': 'Tenant not found'}), 404
+    
+    if tenant.get('ad_server') != 'google_ad_manager':
+        conn.close()
+        return jsonify({'error': 'Sync only available for GAM tenants'}), 400
+    
+    try:
+        # Create a new sync job
+        import uuid
+        from datetime import datetime
+        
+        sync_id = str(uuid.uuid4())
+        conn.execute("""
+            INSERT INTO sync_jobs (sync_id, tenant_id, adapter_type, sync_type, status, started_at, triggered_by)
+            VALUES (?, ?, 'google_ad_manager', 'manual', 'pending', ?, 'admin_ui')
+        """, (sync_id, tenant_id, datetime.utcnow()))
+        conn.commit()
+        
+        # Note: In a real implementation, this would trigger an async job
+        # For now, we'll just mark it as pending and let the background worker handle it
+        
+        conn.close()
+        return jsonify({
+            'success': True,
+            'sync_id': sync_id,
+            'message': 'Sync job queued successfully'
+        })
+        
+    except Exception as e:
+        conn.close()
+        logger.error(f"Error triggering sync for tenant {tenant_id}: {str(e)}")
+        return jsonify({'error': 'Failed to trigger sync', 'details': str(e)}), 500
 
 # Operations Dashboard Route
 @app.route('/tenant/<tenant_id>/operations')
