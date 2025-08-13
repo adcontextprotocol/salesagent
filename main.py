@@ -1798,25 +1798,6 @@ def approve_creative(req: ApproveCreativeRequest, context: Context) -> ApproveCr
     )
 
 @mcp.tool
-def get_principal_summary(context: Context) -> GetPrincipalSummaryResponse:
-    _get_principal_id_from_context(context)  # Authenticate and set tenant
-    tenant = get_current_tenant()
-    
-    conn = get_db_connection()
-    cursor = conn.execute(
-        "SELECT principal_id, name, platform_mappings FROM principals WHERE tenant_id = ?",
-        (tenant['tenant_id'],)
-    )
-    rows = cursor.fetchall()
-    conn.close()
-    summaries = [PrincipalSummary(
-        principal_id=row[0], name=row[1], platform_mappings=json.loads(row[2]),
-        live_media_buys=sum(1 for _, pid in media_buys.values() if pid == row[0]),
-        total_spend=sum(br.total_budget for br, pid in media_buys.values() if pid == row[0])
-    ) for row in rows]
-    return GetPrincipalSummaryResponse(principals=summaries)
-
-@mcp.tool
 def update_performance_index(req: UpdatePerformanceIndexRequest, context: Context) -> UpdatePerformanceIndexResponse:
     _verify_principal(req.media_buy_id, context)
     buy_request, principal_id = media_buys[req.media_buy_id]
