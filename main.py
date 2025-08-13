@@ -1298,13 +1298,13 @@ def get_media_buy_delivery(req: GetMediaBuyDeliveryRequest, context: Context) ->
             else:
                 console.print(f"[yellow]Media buy {media_buy_id} not found[/yellow]")
     else:
-        # Use filter to determine which buys to fetch
+        # Use status_filter to determine which buys to fetch
         for media_buy_id, (buy_request, buy_principal_id) in media_buys.items():
             if buy_principal_id == principal_id:
-                # Apply filter
-                if req.filter == "all":
+                # Apply status filter
+                if req.status_filter == "all":
                     target_media_buys.append((media_buy_id, buy_request))
-                elif req.filter == "completed":
+                elif req.status_filter == "completed":
                     if req.today > buy_request.flight_end_date:
                         target_media_buys.append((media_buy_id, buy_request))
                 else:  # "active" (default)
@@ -1393,7 +1393,7 @@ def get_all_media_buy_delivery(req: GetAllMediaBuyDeliveryRequest, context: Cont
     # Convert to unified request format
     unified_request = GetMediaBuyDeliveryRequest(
         media_buy_ids=req.media_buy_ids,
-        filter="all" if not req.media_buy_ids else None,
+        status_filter="all" if not req.media_buy_ids else None,
         today=req.today
     )
     
