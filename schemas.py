@@ -172,6 +172,20 @@ class Product(BaseModel):
         description="Ad server-specific configuration for implementing this product (placements, line item settings, etc.)"
     )
     
+    def model_dump(self, **kwargs):
+        """Override model_dump to always exclude implementation_config."""
+        kwargs['exclude'] = kwargs.get('exclude', set())
+        if isinstance(kwargs['exclude'], set):
+            kwargs['exclude'].add('implementation_config')
+        return super().model_dump(**kwargs)
+    
+    def dict(self, **kwargs):
+        """Override dict to always exclude implementation_config (for backward compat)."""
+        kwargs['exclude'] = kwargs.get('exclude', set())
+        if isinstance(kwargs['exclude'], set):
+            kwargs['exclude'].add('implementation_config')
+        return super().dict(**kwargs)
+    
     # Audience characteristics fields
     policy_compliance: Optional[str] = Field(
         default=None,
@@ -233,10 +247,20 @@ class UpdatePerformanceIndexResponse(BaseModel):
 # --- Discovery ---
 class GetProductsRequest(BaseModel):
     brief: str
-    promoted_offering: Optional[str] = Field(None, description="Description of the advertiser and the product or service being promoted")
+    promoted_offering: str = Field(..., description="Description of the advertiser and the product or service being promoted (REQUIRED per AdCP spec)")
 
 class GetProductsResponse(BaseModel):
     products: List[Product]
+    
+    def model_dump(self, **kwargs):
+        """Override to ensure products exclude implementation_config."""
+        data = super().model_dump(**kwargs)
+        # Ensure each product excludes implementation_config
+        if 'products' in data:
+            for product in data['products']:
+                if 'implementation_config' in product:
+                    del product['implementation_config']
+        return data
 
 # --- Creative Lifecycle ---
 class CreativeGroup(BaseModel):
@@ -309,12 +333,18 @@ class CreativeAssignment(BaseModel):
     
     is_active: bool = True
 
-class SubmitCreativesRequest(BaseModel):
+class AddCreativeAssetsRequest(BaseModel):
+    """Request to add creative assets to a media buy (AdCP spec compliant)."""
     media_buy_id: str
     creatives: List[Creative]
 
-class SubmitCreativesResponse(BaseModel):
+class AddCreativeAssetsResponse(BaseModel):
+    """Response from adding creative assets (AdCP spec compliant)."""
     statuses: List[CreativeStatus]
+
+# Legacy aliases for backward compatibility (to be removed)
+SubmitCreativesRequest = AddCreativeAssetsRequest
+SubmitCreativesResponse = AddCreativeAssetsResponse
 
 class CheckCreativeStatusRequest(BaseModel):
     creative_ids: List[str]
@@ -406,7 +436,7 @@ class CreateMediaBuyRequest(BaseModel):
     flight_start_date: date
     flight_end_date: date
     total_budget: float
-    targeting_overlay: Targeting
+    targeting_overlay: Optional[Targeting] = None
     po_number: Optional[str] = None
     pacing: Literal["even", "asap", "daily_budget"] = "even"
     daily_budget: Optional[float] = None
@@ -416,10 +446,23 @@ class CreateMediaBuyRequest(BaseModel):
     enable_creative_macro: Optional[bool] = False  # Enable AEE to provide creative_macro signal
 
 class CreateMediaBuyResponse(BaseModel):
+    context_id: str  # Added per AdCP spec - used to check status
     media_buy_id: str
-    status: str
+    status: str  # pending_creative, active, paused, completed
     detail: str
     creative_deadline: Optional[datetime] = None
+
+class CheckMediaBuyStatusRequest(BaseModel):
+    context_id: str  # The context ID returned from create_media_buy
+
+class CheckMediaBuyStatusResponse(BaseModel):
+    media_buy_id: str
+    status: str  # pending_creative, active, paused, completed, failed
+    detail: Optional[str] = None
+    creative_count: int = 0
+    packages: Optional[List[Dict[str, Any]]] = None
+    budget_spent: float = 0.0
+    budget_remaining: float = 0.0
 
 class LegacyUpdateMediaBuyRequest(BaseModel):
     """Legacy update request - kept for backward compatibility."""

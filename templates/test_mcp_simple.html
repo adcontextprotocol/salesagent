@@ -1,0 +1,40 @@
+<\!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Simple MCP Test</title>
+</head>
+<body>
+    <h1>Simple MCP Test</h1>
+    
+    <button onclick="testIt()">Test get_products</button>
+    <pre id="result"></pre>
+    
+    <script>
+        async function testIt() {
+            const resultDiv = document.getElementById('result');
+            resultDiv.textContent = 'Testing...';
+            
+            try {
+                const response = await fetch('/api/mcp-test/call', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        tool: 'get_products',
+                        params: {brief: 'all products'},
+                        access_token: 'token_6119345e4a080d7223ee631062ca0e9e',
+                        server_url: 'http://localhost:8005/mcp/'
+                    }),
+                    credentials: 'same-origin'
+                });
+                
+                const data = await response.json();
+                resultDiv.textContent = JSON.stringify(data, null, 2);
+            } catch (error) {
+                resultDiv.textContent = 'Error: ' + error.message;
+            }
+        }
+    </script>
+</body>
+</html>
+EOF < /dev/null
