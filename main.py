@@ -289,6 +289,7 @@ def load_media_buys_from_db():
 
 # --- In-Memory State ---
 media_buys: Dict[str, Tuple[CreateMediaBuyRequest, str]] = {}
+context_map: Dict[str, str] = {}  # Maps context_id to media_buy_id
 creative_assignments: Dict[str, Dict[str, List[str]]] = {}
 creative_statuses: Dict[str, CreativeStatus] = {}
 product_catalog: List[Product] = []
@@ -632,8 +633,9 @@ def create_media_buy(req: CreateMediaBuyRequest, context: Context) -> CreateMedi
     )
     
     if needs_human_approval:
-        # Generate context_id for tracking the conversation
+        # Generate permanent IDs for tracking
         context_id = f"ctx_{uuid.uuid4().hex[:12]}"
+        media_buy_id = f"mb_{uuid.uuid4().hex[:12]}"  # Permanent ID that won't change
         
         # Determine the reason for manual approval
         if adapter_manual_required and 'create_media_buy' in manual_approval_operations:
@@ -648,7 +650,7 @@ def create_media_buy(req: CreateMediaBuyRequest, context: Context) -> CreateMedi
             task_type="manual_approval",
             priority="high",
             adapter_name=adapter.__class__.adapter_name,  # Add adapter_name field
-            media_buy_id=f"pending_{uuid.uuid4().hex[:8]}",
+            media_buy_id=media_buy_id,  # Use the permanent media buy ID
             operation="create_media_buy",
             error_detail=reason,
             context_data={
@@ -656,6 +658,7 @@ def create_media_buy(req: CreateMediaBuyRequest, context: Context) -> CreateMedi
                 "principal_id": principal_id,
                 "adapter": adapter.__class__.adapter_name,
                 "context_id": context_id,  # Include for conversation tracking
+                "media_buy_id": media_buy_id,  # Store permanent ID in context
                 "approval_reason": reason,
                 "product_auto_settings": product_auto_settings,
                 "tenant_auto_create": tenant_auto_create
@@ -663,11 +666,45 @@ def create_media_buy(req: CreateMediaBuyRequest, context: Context) -> CreateMedi
             due_in_hours=4
         )
         
+        # FIRST: Store the pending media buy in database (must exist before human_tasks FK)
+        tenant = get_current_tenant()
+        conn = get_db_connection()
+        try:
+            conn.execute("""
+                INSERT INTO media_buys (
+                    media_buy_id, tenant_id, principal_id, order_name,
+                    advertiser_name, campaign_objective, kpi_goal, budget,
+                    start_date, end_date, status, raw_request, context_id
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            """, (
+                media_buy_id,
+                tenant['tenant_id'],
+                principal_id,
+                f"Pending approval - {media_buy_id}",
+                principal_id,  # Use principal_id as advertiser_name for now
+                "Pending approval",  # campaign_objective
+                "Pending",  # kpi_goal
+                req.total_budget,
+                req.flight_start_date.isoformat() if req.flight_start_date else None,
+                req.flight_end_date.isoformat() if req.flight_end_date else None,
+                'pending_manual',
+                json.dumps(req.model_dump(mode='json')),
+                context_id
+            ))
+            conn.connection.commit()
+        finally:
+            conn.close()
+        
+        # Store in memory for backward compatibility
+        media_buys[media_buy_id] = (req, principal_id)
+        context_map[context_id] = media_buy_id
+        
+        # THEN: Create the human task (after media_buy exists in DB)
         task_response = _create_human_task_internal(task_req, principal_id)
         
         return CreateMediaBuyResponse(
             context_id=context_id,  # Include context_id for status checking
-            media_buy_id=task_req.media_buy_id,
+            media_buy_id=media_buy_id,  # Use permanent ID
             status="pending_manual",
             detail=f"Manual approval required. Task ID: {task_response.task_id}",
             creative_deadline=None
@@ -702,9 +739,7 @@ def create_media_buy(req: CreateMediaBuyRequest, context: Context) -> CreateMedi
     # Store the media buy in memory (for backward compatibility)
     media_buys[response.media_buy_id] = (req, principal_id)
     # Store context_id mapping
-    if not hasattr(media_buys, 'context_map'):
-        media_buys.context_map = {}
-    media_buys.context_map[context_id] = response.media_buy_id
+    context_map[context_id] = response.media_buy_id
     
     # Store the media buy in database
     tenant = get_current_tenant()
@@ -779,8 +814,8 @@ def check_media_buy_status(req: CheckMediaBuyStatusRequest, context: Context) ->
     
     # Get the media_buy_id from context_id
     media_buy_id = None
-    if hasattr(media_buys, 'context_map') and req.context_id in media_buys.context_map:
-        media_buy_id = media_buys.context_map[req.context_id]
+    if req.context_id in context_map:
+        media_buy_id = context_map[req.context_id]
     
     # If not in memory, check database
     if not media_buy_id:
@@ -1733,41 +1768,8 @@ def approve_creative(req: ApproveCreativeRequest, context: Context) -> ApproveCr
         detail=detail
     )
 
-# DEPRECATED: get_principal_summary is NOT part of the AdCP spec
-# This tool will be removed in a future version
-# Use check_media_buy_status with context_id instead
-@mcp.tool
-def get_principal_summary(context: Context) -> GetPrincipalSummaryResponse:
-    """
-    DEPRECATED: This tool is not part of the AdCP specification.
-    Use check_media_buy_status with context_id from create_media_buy instead.
-    This tool will be removed in a future version.
-    """
-    console.print("[yellow]⚠️  WARNING: get_principal_summary is deprecated and not part of AdCP spec[/yellow]")
-    console.print("[yellow]   Use check_media_buy_status with context_id instead[/yellow]")
-    
-    _get_principal_id_from_context(context)  # Authenticate and set tenant
-    tenant = get_current_tenant()
-    
-    conn = get_db_connection()
-    cursor = conn.execute(
-        "SELECT principal_id, name, platform_mappings FROM principals WHERE tenant_id = %s",
-        (tenant['tenant_id'],)
-    )
-    rows = cursor.fetchall()
-    conn.close()
-    summaries = []
-    for row in rows:
-        # Handle JSON that might already be parsed (PostgreSQL) or string (SQLite)
-        platform_mappings = json.loads(row[2]) if isinstance(row[2], str) else row[2]
-        summaries.append(PrincipalSummary(
-            principal_id=row[0], 
-            name=row[1], 
-            platform_mappings=platform_mappings,
-            live_media_buys=sum(1 for _, pid in media_buys.values() if pid == row[0]),
-            total_spend=sum(br.total_budget for br, pid in media_buys.values() if pid == row[0])
-        ))
-    return GetPrincipalSummaryResponse(principals=summaries)
+# NOTE: get_principal_summary has been removed as it's not part of the AdCP spec
+# Use check_media_buy_status with context_id from create_media_buy instead
 
 @mcp.tool
 def update_performance_index(req: UpdatePerformanceIndexRequest, context: Context) -> UpdatePerformanceIndexResponse:
@@ -1855,19 +1857,19 @@ def _create_human_task_internal(req: CreateHumanTaskRequest, principal_id: str) 
     try:
         conn.execute("""
             INSERT INTO human_tasks (
-                tenant_id, task_id, task_type, title, 
-                description, status, assigned_to, due_by, 
-                context_data, created_at
-            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                tenant_id, task_id, task_type, media_buy_id,
+                priority, status, operation, error_detail,
+                context_data, assigned_to, due_at, created_at
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         """, (
             tenant['tenant_id'],
             task_id,
             req.task_type,
-            f"{req.task_type}: {req.error_detail[:50] if req.error_detail else 'Manual approval required'}",
-            req.error_detail,
+            req.media_buy_id,
+            req.priority,
             'pending',
-            None,  # assigned_to
-            due_by.isoformat() if due_by else None,
+            req.operation,
+            req.error_detail,
             json.dumps({
                 "principal_id": principal_id,
                 "adapter_name": req.adapter_name,
@@ -1876,6 +1878,8 @@ def _create_human_task_internal(req: CreateHumanTaskRequest, principal_id: str) 
                 "context_data": req.context_data,
                 "priority": req.priority
             }),
+            None,  # assigned_to
+            due_by.isoformat() if due_by else None,
             datetime.now().isoformat()
         ))
         conn.connection.commit()
