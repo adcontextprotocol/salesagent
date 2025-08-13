@@ -567,7 +567,7 @@ class FullLifecycleSimulation:
         console.print("\n[yellow]Testing bulk delivery retrieval (all buys)...[/yellow]")
         bulk_response = await self._call_tool("get_media_buy_delivery", {
             "req": {
-                "filter": "all",  # Get all media buys
+                "status_filter": "all",  # Get all media buys
                 "today": completion_date.isoformat()
             }
         })

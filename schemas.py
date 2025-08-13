@@ -437,14 +437,14 @@ class GetMediaBuyDeliveryRequest(BaseModel):
     Examples:
     - Single buy: media_buy_ids=["buy_123"]
     - Multiple buys: media_buy_ids=["buy_123", "buy_456"]
-    - All active buys: filter="active" (or omit media_buy_ids)
-    - All buys: filter="all"
+    - All active buys: status_filter="active" (or omit media_buy_ids)
+    - All buys: status_filter="all"
     """
     media_buy_ids: Optional[List[str]] = Field(
         None,
-        description="Specific media buy IDs to fetch. If omitted, fetches based on filter."
+        description="Specific media buy IDs to fetch. If omitted, fetches based on status_filter."
     )
-    filter: Optional[str] = Field(
+    status_filter: Optional[str] = Field(
         "active",
         description="Filter for which buys to fetch when media_buy_ids not provided: 'active', 'all', 'completed'"
     )
