@@ -130,4 +130,42 @@ Example:
 - Cannot create new advertisers (must be pre-configured)
 - Cannot access global network settings
 - Cannot modify other advertisers' resources
+
+## Reporting API
+
+### Overview
+
+The GAM adapter includes comprehensive reporting capabilities for retrieving spend and impression data:
+
+- **Date Ranges**: `lifetime` (daily), `this_month` (daily), `today` (hourly)
+- **Hierarchical Filtering**: By advertiser, order, or line item
+- **Timezone Handling**: Automatic detection and caching of network timezone
+- **Data Freshness**: 4-hour delay (per Google documentation)
+
+### API Endpoints
+
+```
+GET /api/tenant/{tenant_id}/gam/reporting
+GET /api/tenant/{tenant_id}/principals/{principal_id}/gam/reporting
+```
+
+### Timezone Behavior
+
+1. **Network Timezone**: Automatically fetched from GAM and cached in adapter config
+2. **Report Configuration**: Uses `timeZoneType: 'PUBLISHER'` for consistency
+3. **Data Format**: 
+   - DATE: `YYYY-MM-DD` format
+   - HOUR: Integer `0-23`
+   - All timestamps in network's timezone
+
+### Currency Handling
+
+- All revenue values in micros (1,000,000 micros = 1 currency unit)
+- Automatic conversion in the reporting service
+
+### Security Considerations
+
+- Reports respect principal's advertiser scope
+- No cross-advertiser data leakage
+- Audit logging for all report requests
 - Subject to GAM API rate limits per advertiser

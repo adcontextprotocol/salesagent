@@ -228,7 +228,9 @@ class TestProductAPIs:
     
     def test_product_suggestions_api(self, client, auth_session):
         """Test product suggestions API endpoint."""
-        with patch('default_products.get_industry_specific_products') as mock_products:
+        with patch('default_products.get_industry_specific_products') as mock_products, \
+             patch('admin_ui.get_db_connection') as mock_db:
+            # Mock the products returned
             mock_products.return_value = [
                 {
                     "product_id": "test_product",
@@ -238,6 +240,13 @@ class TestProductAPIs:
                     "cpm": 10.0
                 }
             ]
+            
+            # Mock database connection for existing products check
+            mock_conn = Mock()
+            mock_cursor = Mock()
+            mock_cursor.fetchall.return_value = []  # No existing products
+            mock_conn.execute.return_value = mock_cursor
+            mock_db.return_value = mock_conn
             
             # Test with industry filter
             response = client.get('/api/tenant/test_tenant/products/suggestions?industry=news')
