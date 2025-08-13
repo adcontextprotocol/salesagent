@@ -6,13 +6,14 @@ from sqlalchemy import (
     ForeignKeyConstraint, Float, BigInteger
 )
 from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import relationship
+from sqlalchemy.orm import relationship, validates
 from sqlalchemy.sql import func
 from sqlalchemy.dialects.postgresql import JSONB
+from json_validators import JSONValidatorMixin, ensure_json_array, ensure_json_object
 
 Base = declarative_base()
 
-class Tenant(Base):
+class Tenant(Base, JSONValidatorMixin):
     __tablename__ = 'tenants'
     
     tenant_id = Column(String(50), primary_key=True)
@@ -43,13 +44,16 @@ class Tenant(Base):
     principals = relationship("Principal", back_populates="tenant", cascade="all, delete-orphan")
     users = relationship("User", back_populates="tenant", cascade="all, delete-orphan")
     media_buys = relationship("MediaBuy", back_populates="tenant", cascade="all, delete-orphan")
-    tasks = relationship("Task", back_populates="tenant", cascade="all, delete-orphan")
+    # tasks table removed - replaced by workflow_steps
     audit_logs = relationship("AuditLog", back_populates="tenant", cascade="all, delete-orphan")
     adapter_config = relationship("AdapterConfig", back_populates="tenant", uselist=False, cascade="all, delete-orphan")
     
     __table_args__ = (
         Index('idx_subdomain', 'subdomain'),
     )
+    
+    # JSON validators are inherited from JSONValidatorMixin
+    # No need for duplicate validators here
 
 class CreativeFormat(Base):
     __tablename__ = 'creative_formats'
@@ -80,7 +84,7 @@ class CreativeFormat(Base):
         CheckConstraint("type IN ('display', 'video', 'audio', 'native')"),
     )
 
-class Product(Base):
+class Product(Base, JSONValidatorMixin):
     __tablename__ = 'products'
     
     tenant_id = Column(String(50), ForeignKey('tenants.tenant_id', ondelete='CASCADE'), primary_key=True)
@@ -105,7 +109,7 @@ class Product(Base):
         Index('idx_products_tenant', 'tenant_id'),
     )
 
-class Principal(Base):
+class Principal(Base, JSONValidatorMixin):
     __tablename__ = 'principals'
     
     tenant_id = Column(String(50), ForeignKey('tenants.tenant_id', ondelete='CASCADE'), primary_key=True)
@@ -167,11 +171,13 @@ class MediaBuy(Base):
     approved_by = Column(String(255))
     raw_request = Column(JSON, nullable=False)  # JSONB in PostgreSQL
     
+    # Context removed - using ObjectWorkflowMapping for lifecycle tracking
+    
     # Relationships
     tenant = relationship("Tenant", back_populates="media_buys")
     principal = relationship("Principal", foreign_keys=[tenant_id, principal_id],
                            primaryjoin="and_(MediaBuy.tenant_id==Principal.tenant_id, MediaBuy.principal_id==Principal.principal_id)")
-    tasks = relationship("Task", back_populates="media_buy", cascade="all, delete-orphan")
+    # Removed tasks and context relationships - using ObjectWorkflowMapping instead
     
     __table_args__ = (
         ForeignKeyConstraint(['tenant_id', 'principal_id'], ['principals.tenant_id', 'principals.principal_id'], ondelete='CASCADE'),
@@ -179,32 +185,7 @@ class MediaBuy(Base):
         Index('idx_media_buys_status', 'status'),
     )
 
-class Task(Base):
-    __tablename__ = 'tasks'
-    
-    task_id = Column(String(100), primary_key=True)
-    tenant_id = Column(String(50), ForeignKey('tenants.tenant_id', ondelete='CASCADE'), nullable=False)
-    media_buy_id = Column(String(100), ForeignKey('media_buys.media_buy_id', ondelete='CASCADE'), nullable=False)
-    task_type = Column(String(50), nullable=False)
-    title = Column(String(255), nullable=False)
-    description = Column(Text)
-    status = Column(String(50), nullable=False, default='pending')
-    assigned_to = Column(String(255))
-    due_date = Column(DateTime)
-    completed_at = Column(DateTime)
-    completed_by = Column(String(255))
-    task_metadata = Column('metadata', JSON)  # JSONB in PostgreSQL
-    created_at = Column(DateTime, server_default=func.now())
-    
-    # Relationships
-    tenant = relationship("Tenant", back_populates="tasks")
-    media_buy = relationship("MediaBuy", back_populates="tasks")
-    
-    __table_args__ = (
-        Index('idx_tasks_tenant', 'tenant_id'),
-        Index('idx_tasks_media_buy', 'media_buy_id'),
-        Index('idx_tasks_status', 'status'),
-    )
+# Task table removed - replaced by WorkflowStep and ObjectWorkflowMapping
 
 class AuditLog(Base):
     __tablename__ = 'audit_logs'
@@ -465,4 +446,103 @@ class SyncJob(Base):
         Index('idx_sync_jobs_tenant', 'tenant_id'),
         Index('idx_sync_jobs_status', 'status'),
         Index('idx_sync_jobs_started', 'started_at'),
+    )
+
+
+class Context(Base):
+    """Simple conversation tracker for asynchronous operations.
+    
+    For synchronous operations, no context is needed.
+    For asynchronous operations, workflow_steps table is the source of truth for status.
+    This just tracks the conversation history for clarifications and refinements.
+    """
+    __tablename__ = 'contexts'
+    
+    context_id = Column(String(100), primary_key=True)
+    tenant_id = Column(String(50), ForeignKey('tenants.tenant_id', ondelete='CASCADE'), nullable=False)
+    principal_id = Column(String(100), nullable=False)
+    
+    # Simple conversation tracking
+    conversation_history = Column(JSON, nullable=False, default=list)  # Clarifications and refinements only
+    created_at = Column(DateTime, nullable=False, server_default=func.now())
+    last_activity_at = Column(DateTime, nullable=False, server_default=func.now())
+    
+    # Relationships
+    tenant = relationship("Tenant")
+    principal = relationship("Principal", 
+                           foreign_keys=[tenant_id, principal_id],
+                           primaryjoin="and_(Context.tenant_id==Principal.tenant_id, Context.principal_id==Principal.principal_id)")
+    # Direct object relationships removed - using ObjectWorkflowMapping instead
+    workflow_steps = relationship("WorkflowStep", back_populates="context", cascade="all, delete-orphan")
+    
+    __table_args__ = (
+        ForeignKeyConstraint(['tenant_id', 'principal_id'], 
+                           ['principals.tenant_id', 'principals.principal_id'], 
+                           ondelete='CASCADE'),
+        Index('idx_contexts_tenant', 'tenant_id'),
+        Index('idx_contexts_principal', 'principal_id'),
+        Index('idx_contexts_last_activity', 'last_activity_at'),
+    )
+
+
+class WorkflowStep(Base, JSONValidatorMixin):
+    """Represents an individual step/task in a workflow.
+    
+    This serves as a work queue where each step can be queried, updated, and tracked independently.
+    Steps represent tool calls, approvals, notifications, etc.
+    """
+    __tablename__ = 'workflow_steps'
+    
+    step_id = Column(String(100), primary_key=True)
+    context_id = Column(String(100), ForeignKey('contexts.context_id', ondelete='CASCADE'), nullable=False)
+    step_type = Column(String(50), nullable=False)  # tool_call, approval, notification, etc.
+    tool_name = Column(String(100), nullable=True)  # MCP tool name if applicable
+    request_data = Column(JSON, nullable=True)  # Original request JSON
+    response_data = Column(JSON, nullable=True)  # Response/result JSON
+    status = Column(String(20), nullable=False, default='pending')  # pending, in_progress, completed, failed, requires_approval
+    owner = Column(String(20), nullable=False)  # principal, publisher, system
+    assigned_to = Column(String(255), nullable=True)  # Specific user/system if assigned
+    created_at = Column(DateTime, nullable=False, server_default=func.now())
+    completed_at = Column(DateTime, nullable=True)
+    error_message = Column(Text, nullable=True)
+    transaction_details = Column(JSON, nullable=True)  # Actual API calls made to GAM, etc.
+    comments = Column(JSON, nullable=False, default=list)  # Array of {user, timestamp, comment} objects
+    
+    # Relationships
+    context = relationship("Context", back_populates="workflow_steps")
+    object_mappings = relationship("ObjectWorkflowMapping", back_populates="workflow_step", cascade="all, delete-orphan")
+    
+    __table_args__ = (
+        Index('idx_workflow_steps_context', 'context_id'),
+        Index('idx_workflow_steps_status', 'status'),
+        Index('idx_workflow_steps_owner', 'owner'),
+        Index('idx_workflow_steps_assigned', 'assigned_to'),
+        Index('idx_workflow_steps_created', 'created_at'),
+    )
+
+
+class ObjectWorkflowMapping(Base):
+    """Maps workflow steps to business objects throughout their lifecycle.
+    
+    This allows tracking all CRUD operations and workflow steps for any object
+    (media_buy, creative, product, etc.) without tight coupling.
+    
+    Example: Query for 'media_buy', '1234' to see every action taken over its lifecycle.
+    """
+    __tablename__ = 'object_workflow_mapping'
+    
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    object_type = Column(String(50), nullable=False)  # media_buy, creative, product, etc.
+    object_id = Column(String(100), nullable=False)   # The actual object's ID
+    step_id = Column(String(100), ForeignKey('workflow_steps.step_id', ondelete='CASCADE'), nullable=False)
+    action = Column(String(50), nullable=False)       # create, update, approve, reject, etc.
+    created_at = Column(DateTime, nullable=False, server_default=func.now())
+    
+    # Relationships
+    workflow_step = relationship("WorkflowStep", back_populates="object_mappings")
+    
+    __table_args__ = (
+        Index('idx_object_workflow_type_id', 'object_type', 'object_id'),
+        Index('idx_object_workflow_step', 'step_id'),
+        Index('idx_object_workflow_created', 'created_at'),
     )

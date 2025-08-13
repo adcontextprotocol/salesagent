@@ -1618,11 +1618,11 @@ def get_order_details_session(tenant_id, order_id):
     finally:
         db_session.remove()
 
-# Operations Dashboard Route
-@app.route('/tenant/<tenant_id>/operations')
+# Workflows Dashboard Route
+@app.route('/tenant/<tenant_id>/workflows')
 @require_auth()
-def operations_dashboard(tenant_id):
-    """Display operations dashboard with media buys, tasks, and audit logs."""
+def workflows_dashboard(tenant_id):
+    """Display workflows dashboard with media buys, workflow steps, and audit logs."""
     # Verify tenant access
     if session.get('role') != 'super_admin' and session.get('tenant_id') != tenant_id:
         return "Access denied", 403
@@ -1779,7 +1779,7 @@ def operations_dashboard(tenant_id):
     
     conn.close()
     
-    return render_template('operations.html', 
+    return render_template('workflows.html', 
                          tenant=tenant,
                          summary=summary,
                          media_buys=media_buys,
