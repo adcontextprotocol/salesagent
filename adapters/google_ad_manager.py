@@ -1171,89 +1171,152 @@ class GoogleAdManager(AdServerAdapter):
     
     async def get_available_inventory(self) -> Dict[str, Any]:
         """
-        Fetch available inventory from GAM for AI-driven configuration.
+        Fetch available inventory from cached database (requires inventory sync to be run first).
         This includes custom targeting keys/values, audience segments, and ad units.
         """
         try:
-            # Import GAMInventoryDiscovery for discovering inventory
-            from adapters.gam_inventory_discovery import GAMInventoryDiscovery
-            from zeep.helpers import serialize_object
+            # Get inventory from database cache instead of fetching from GAM
+            from models import GAMInventory
+            from sqlalchemy import create_engine, and_
+            from sqlalchemy.orm import sessionmaker
+            from db_config import DatabaseConfig
             
-            # Initialize discovery service with our existing client
-            discovery = GAMInventoryDiscovery(self.client)
+            # Create database session
+            engine = create_engine(DatabaseConfig.get_connection_string())
+            Session = sessionmaker(bind=engine)
+            session = Session()
             
-            # Discover custom targeting (key-value pairs)
-            custom_targeting = discovery.discover_custom_targeting()
-            
-            # Format custom targeting keys for the wizard
-            key_values = []
-            for key in custom_targeting.get('keys', []):
-                # Get values for this key
-                values = discovery.custom_targeting_values.get(key.id, [])
-                key_values.append({
-                    'id': key.id,
-                    'name': key.name,
-                    'display_name': key.display_name,
-                    'type': key.type,
-                    'values': [
-                        {
-                            'id': v.id,
-                            'name': v.name,
-                            'display_name': v.display_name
-                        } for v in values[:20]  # Limit to first 20 values for UI
-                    ]
-                })
-            
-            # Try to discover audience segments
-            audiences = []
             try:
-                audience_segments = discovery.discover_audience_segments()
-                for segment in audience_segments[:20]:  # Limit to first 20 segments
-                    audiences.append({
-                        'id': segment.id,
-                        'name': segment.name,
-                        'size': segment.size if hasattr(segment, 'size') else 0,
-                        'type': segment.type if hasattr(segment, 'type') else 'unknown'
-                    })
-            except Exception as e:
-                # Audience segments might not be available in all GAM instances
-                self.logger.debug(f"Could not discover audience segments: {e}")
-            
-            # Try to discover ad units for placements
-            placements = []
-            try:
-                ad_units = discovery.discover_ad_units()
-                for unit in ad_units[:20]:  # Limit to first 20 ad units
-                    if unit.target_platform:
-                        placements.append({
-                            'id': unit.id,
-                            'name': unit.name,
-                            'sizes': unit.sizes or [],
-                            'platform': unit.target_platform
+                # Check if inventory has been synced
+                inventory_count = session.query(GAMInventory).filter(
+                    GAMInventory.tenant_id == self.tenant_id
+                ).count()
+                
+                if inventory_count == 0:
+                    # No inventory synced yet
+                    return {
+                        "error": "No inventory found. Please sync GAM inventory first.",
+                        "audiences": [],
+                        "formats": [],
+                        "placements": [],
+                        "key_values": [],
+                        "properties": {
+                            "needs_sync": True
+                        }
+                    }
+                
+                # Get custom targeting keys from database
+                custom_keys = session.query(GAMInventory).filter(
+                    and_(
+                        GAMInventory.tenant_id == self.tenant_id,
+                        GAMInventory.inventory_type == 'custom_targeting_key'
+                    )
+                ).all()
+                
+                # Get custom targeting values from database
+                custom_values = session.query(GAMInventory).filter(
+                    and_(
+                        GAMInventory.tenant_id == self.tenant_id,
+                        GAMInventory.inventory_type == 'custom_targeting_value'
+                    )
+                ).all()
+                
+                # Group values by key
+                values_by_key = {}
+                for value in custom_values:
+                    key_id = value.inventory_metadata.get('custom_targeting_key_id') if value.inventory_metadata else None
+                    if key_id:
+                        if key_id not in values_by_key:
+                            values_by_key[key_id] = []
+                        values_by_key[key_id].append({
+                            'id': value.inventory_id,
+                            'name': value.name,
+                            'display_name': value.path[1] if len(value.path) > 1 else value.name
                         })
-            except Exception as e:
-                self.logger.debug(f"Could not discover ad units: {e}")
-            
-            # Return formatted inventory data
-            return {
-                "audiences": audiences,
-                "formats": [],  # GAM uses standard IAB formats
-                "placements": placements,
-                "key_values": key_values,  # Custom targeting keys and values
-                "properties": {
-                    "network_code": self.network_code,
-                    "total_custom_keys": len(custom_targeting.get('keys', [])),
-                    "total_custom_values": custom_targeting.get('total_values', 0)
+                
+                # Format key-values for the wizard
+                key_values = []
+                for key in custom_keys[:20]:  # Limit to first 20 keys for UI
+                    key_data = {
+                        'id': key.inventory_id,
+                        'name': key.name,
+                        'display_name': key.path[0] if key.path else key.name,
+                        'type': key.inventory_metadata.get('type', 'CUSTOM') if key.inventory_metadata else 'CUSTOM',
+                        'values': values_by_key.get(key.inventory_id, [])[:20]  # Limit to first 20 values
+                    }
+                    key_values.append(key_data)
+                
+                # Get ad units for placements
+                ad_units = session.query(GAMInventory).filter(
+                    and_(
+                        GAMInventory.tenant_id == self.tenant_id,
+                        GAMInventory.inventory_type == 'ad_unit'
+                    )
+                ).limit(20).all()
+                
+                placements = []
+                for unit in ad_units:
+                    metadata = unit.inventory_metadata or {}
+                    placements.append({
+                        'id': unit.inventory_id,
+                        'name': unit.name,
+                        'sizes': metadata.get('sizes', []),
+                        'platform': metadata.get('target_platform', 'WEB')
+                    })
+                
+                # Get audience segments if available
+                audience_segments = session.query(GAMInventory).filter(
+                    and_(
+                        GAMInventory.tenant_id == self.tenant_id,
+                        GAMInventory.inventory_type == 'audience_segment'
+                    )
+                ).limit(20).all()
+                
+                audiences = []
+                for segment in audience_segments:
+                    metadata = segment.inventory_metadata or {}
+                    audiences.append({
+                        'id': segment.inventory_id,
+                        'name': segment.name,
+                        'size': metadata.get('size', 0),
+                        'type': metadata.get('type', 'unknown')
+                    })
+                
+                # Get last sync time
+                last_sync = session.query(GAMInventory.last_synced).filter(
+                    GAMInventory.tenant_id == self.tenant_id
+                ).order_by(GAMInventory.last_synced.desc()).first()
+                
+                last_sync_time = last_sync[0].isoformat() if last_sync else None
+                
+                # Return formatted inventory data from cache
+                return {
+                    "audiences": audiences,
+                    "formats": [],  # GAM uses standard IAB formats
+                    "placements": placements,
+                    "key_values": key_values,
+                    "properties": {
+                        "network_code": self.network_code,
+                        "total_custom_keys": len(custom_keys),
+                        "total_custom_values": len(custom_values),
+                        "last_sync": last_sync_time,
+                        "from_cache": True
+                    }
                 }
-            }
+                
+            finally:
+                session.close()
             
         except Exception as e:
-            self.logger.error(f"Error discovering GAM inventory: {e}")
-            # Return empty data on error
+            self.logger.error(f"Error fetching GAM inventory from cache: {e}")
+            # Return error indicating sync is needed
             return {
+                "error": f"Error accessing inventory cache: {str(e)}. Please run GAM inventory sync.",
                 "audiences": [],
                 "formats": [],
                 "placements": [],
                 "key_values": [],
-                "properties": {}
+                "properties": {
+                    "needs_sync": True
+                }
             }
