@@ -4,30 +4,23 @@ import uuid
 import json
 from datetime import datetime, timedelta
 from typing import Optional, Dict, Any, List
-from sqlalchemy.orm import Session, scoped_session
 from sqlalchemy import and_, or_
 
 from models import Context, MediaBuy, WorkflowStep, ObjectWorkflowMapping
-from db_config import DatabaseConfig
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
+from database_session import get_db_session, DatabaseManager
 from rich.console import Console
 
 console = Console()
 
-# Create SQLAlchemy engine and session factory
-engine = create_engine(DatabaseConfig.get_connection_string())
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
-# Thread-safe session factory
-db_session = scoped_session(SessionLocal)
-
-
-class ContextManager:
-    """Manages persistent context for conversations and tasks."""
+class ContextManager(DatabaseManager):
+    """Manages persistent context for conversations and tasks.
+    
+    Inherits from DatabaseManager for standardized session management.
+    """
     
     def __init__(self):
-        self.session = db_session
+        super().__init__()
     
     def create_context(
         self,

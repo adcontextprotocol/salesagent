@@ -22,6 +22,7 @@ from config_loader import (
     get_tenant_config, current_tenant
 )
 from db_config import get_db_connection
+from database_session import get_db_session, DatabaseManager
 from slack_notifier import get_slack_notifier
 from product_catalog_providers.factory import get_product_catalog_provider
 from policy_check_service import PolicyCheckService, PolicyStatus
@@ -35,20 +36,17 @@ def get_principal_from_token(token: str, tenant_id: str) -> Optional[str]:
     # Check for tenant admin token first
     tenant = get_current_tenant()
     if tenant and token == tenant.get('admin_token'):
-        pass  # Matched admin token
         return f"{tenant['tenant_id']}_admin"
     
-    conn = get_db_connection()
-    cursor = conn.execute(
-        "SELECT principal_id FROM principals WHERE access_token = ? AND tenant_id = ?", 
-        (token, tenant_id)
-    )
-    result = cursor.fetchone()
-    conn.close()
-    
-    # Return result if found
-    
-    return result[0] if result else None
+    # Use standardized session management
+    with get_db_session() as session:
+        from models import Principal
+        principal = session.query(Principal).filter_by(
+            access_token=token, 
+            tenant_id=tenant_id
+        ).first()
+        
+        return principal.principal_id if principal else None
 
 def get_principal_from_context(context: Optional[Context]) -> Optional[str]:
     """Extract principal ID from the FastMCP context using x-adcp-auth header."""
