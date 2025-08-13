@@ -186,16 +186,7 @@ class Product(BaseModel):
         description="Minimum age requirement with age verification/gating implemented (e.g., 18, 21)"
     )
 
-# --- Admin Tool Schemas ---
-class PrincipalSummary(BaseModel):
-    principal_id: str
-    name: str
-    platform_mappings: Dict[str, Any]
-    live_media_buys: int
-    total_spend: float
-
-class GetPrincipalSummaryResponse(BaseModel):
-    principals: List[PrincipalSummary]
+# --- Core Schemas ---
 
 class Principal(BaseModel):
     """Principal object containing authentication and adapter mapping information."""
