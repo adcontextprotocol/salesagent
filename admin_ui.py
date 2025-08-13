@@ -4366,7 +4366,9 @@ def analyze_ad_server_inventory(tenant_id):
         return jsonify({
             "audiences": inventory.get("audiences", []),
             "formats": inventory.get("creative_specs", []),
-            "placements": inventory.get("placements", [])
+            "placements": inventory.get("placements", []),
+            "key_values": inventory.get("key_values", []),
+            "properties": inventory.get("properties", {})
         })
         
     except Exception as e:

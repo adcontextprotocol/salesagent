@@ -109,6 +109,10 @@
                     <div id="audience-list"></div>
                 </div>
                 <div class="result-section">
+                    <h5>Key-Value Pairs</h5>
+                    <div id="key-values-list"></div>
+                </div>
+                <div class="result-section">
                     <h5>Custom Formats</h5>
                     <div id="format-list"></div>
                 </div>
@@ -306,8 +310,8 @@
 
 .results-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-    gap: 2rem;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 1.5rem;
     margin: 2rem 0;
 }
 
@@ -673,16 +677,25 @@ async function analyzeAdServer() {
 
 function displayAnalysisResults() {
     // Display audiences
-    const audienceHtml = adServerData.audiences.map(aud => 
+    const audienceHtml = (adServerData.audiences || []).map(aud => 
         `<div class="result-item">
             <strong>${aud.name}</strong>
-            <span class="badge">${(aud.size / 1000000).toFixed(1)}M users</span>
+            <span class="badge">${aud.size ? (aud.size / 1000000).toFixed(1) + 'M users' : 'N/A'}</span>
         </div>`
     ).join('');
     document.getElementById('audience-list').innerHTML = audienceHtml || '<p>No custom audiences found</p>';
     
+    // Display key-value pairs
+    const keyValuesHtml = (adServerData.key_values || []).map(kv => 
+        `<div class="result-item">
+            <strong>${kv.display_name || kv.name}</strong>
+            <span class="badge">${kv.values ? kv.values.length + ' values' : '0 values'}</span>
+        </div>`
+    ).join('');
+    document.getElementById('key-values-list').innerHTML = keyValuesHtml || '<p>No key-value pairs found in GAM</p>';
+    
     // Display formats
-    const formatHtml = adServerData.formats.map(fmt => 
+    const formatHtml = (adServerData.formats || []).map(fmt => 
         `<div class="result-item">
             <strong>${fmt.name}</strong>
             <span class="badge">${fmt.type}</span>
@@ -691,10 +704,10 @@ function displayAnalysisResults() {
     document.getElementById('format-list').innerHTML = formatHtml || '<p>No custom formats found</p>';
     
     // Display placements
-    const placementHtml = adServerData.placements.map(plc => 
+    const placementHtml = (adServerData.placements || []).map(plc => 
         `<div class="result-item">
             <strong>${plc.name}</strong>
-            <span class="badge">${plc.sizes.join(', ')}</span>
+            <span class="badge">${plc.sizes ? plc.sizes.join(', ') : 'N/A'}</span>
         </div>`
     ).join('');
     document.getElementById('placement-list').innerHTML = placementHtml || '<p>Standard placements only</p>';
@@ -718,8 +731,35 @@ function generateProductSuggestions() {
         });
     });
     
-    // 2. Audience-based products
-    adServerData.audiences.forEach(audience => {
+    // 2. Key-value based products (for important custom targeting)
+    if (adServerData.key_values && adServerData.key_values.length > 0) {
+        // Create products for the first few key-value pairs with multiple values
+        adServerData.key_values.slice(0, 5).forEach(kv => {
+            if (kv.values && kv.values.length > 0) {
+                selectedMarkets.forEach(market => {
+                    const country = countries.find(c => c.code === market) || {name: market};
+                    suggestedProducts.push({
+                        type: 'key_value_targeting',
+                        name: `${kv.display_name || kv.name} - ${country.name}`,
+                        product_id: `kv_${kv.name}_${market.toLowerCase()}`.replace(/\W+/g, '_'),
+                        description: `Target content tagged with ${kv.display_name || kv.name} in ${country.name}`,
+                        formats: ['display_300x250', 'display_728x90', 'native_infeed'],
+                        countries: [market],
+                        delivery_type: 'non_guaranteed',
+                        price_guidance: {min: 3.0, max: 15.0},
+                        targeting_template: {
+                            key_value_pairs: {
+                                [kv.name]: kv.values.slice(0, 5).map(v => v.name)
+                            }
+                        }
+                    });
+                });
+            }
+        });
+    }
+    
+    // 3. Audience-based products
+    (adServerData.audiences || []).forEach(audience => {
         if (audience.size > 100000) { // Only for significant audiences
             suggestedProducts.push({
                 type: 'audience',
@@ -737,8 +777,8 @@ function generateProductSuggestions() {
         }
     });
     
-    // 3. Custom format products for each market
-    adServerData.formats.forEach(format => {
+    // 4. Custom format products for each market
+    (adServerData.formats || []).forEach(format => {
         selectedMarkets.forEach(market => {
             const country = countries.find(c => c.code === market) || {name: market};
             suggestedProducts.push({

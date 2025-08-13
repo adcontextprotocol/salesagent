@@ -1168,3 +1168,92 @@ class GoogleAdManager(AdServerAdapter):
             
         except Exception as e:
             return False, str(e)
+    
+    async def get_available_inventory(self) -> Dict[str, Any]:
+        """
+        Fetch available inventory from GAM for AI-driven configuration.
+        This includes custom targeting keys/values, audience segments, and ad units.
+        """
+        try:
+            # Import GAMInventoryDiscovery for discovering inventory
+            from adapters.gam_inventory_discovery import GAMInventoryDiscovery
+            from zeep.helpers import serialize_object
+            
+            # Initialize discovery service with our existing client
+            discovery = GAMInventoryDiscovery(self.client)
+            
+            # Discover custom targeting (key-value pairs)
+            custom_targeting = discovery.discover_custom_targeting()
+            
+            # Format custom targeting keys for the wizard
+            key_values = []
+            for key in custom_targeting.get('keys', []):
+                # Get values for this key
+                values = discovery.custom_targeting_values.get(key.id, [])
+                key_values.append({
+                    'id': key.id,
+                    'name': key.name,
+                    'display_name': key.display_name,
+                    'type': key.type,
+                    'values': [
+                        {
+                            'id': v.id,
+                            'name': v.name,
+                            'display_name': v.display_name
+                        } for v in values[:20]  # Limit to first 20 values for UI
+                    ]
+                })
+            
+            # Try to discover audience segments
+            audiences = []
+            try:
+                audience_segments = discovery.discover_audience_segments()
+                for segment in audience_segments[:20]:  # Limit to first 20 segments
+                    audiences.append({
+                        'id': segment.id,
+                        'name': segment.name,
+                        'size': segment.size if hasattr(segment, 'size') else 0,
+                        'type': segment.type if hasattr(segment, 'type') else 'unknown'
+                    })
+            except Exception as e:
+                # Audience segments might not be available in all GAM instances
+                self.logger.debug(f"Could not discover audience segments: {e}")
+            
+            # Try to discover ad units for placements
+            placements = []
+            try:
+                ad_units = discovery.discover_ad_units()
+                for unit in ad_units[:20]:  # Limit to first 20 ad units
+                    if unit.target_platform:
+                        placements.append({
+                            'id': unit.id,
+                            'name': unit.name,
+                            'sizes': unit.sizes or [],
+                            'platform': unit.target_platform
+                        })
+            except Exception as e:
+                self.logger.debug(f"Could not discover ad units: {e}")
+            
+            # Return formatted inventory data
+            return {
+                "audiences": audiences,
+                "formats": [],  # GAM uses standard IAB formats
+                "placements": placements,
+                "key_values": key_values,  # Custom targeting keys and values
+                "properties": {
+                    "network_code": self.network_code,
+                    "total_custom_keys": len(custom_targeting.get('keys', [])),
+                    "total_custom_values": custom_targeting.get('total_values', 0)
+                }
+            }
+            
+        except Exception as e:
+            self.logger.error(f"Error discovering GAM inventory: {e}")
+            # Return empty data on error
+            return {
+                "audiences": [],
+                "formats": [],
+                "placements": [],
+                "key_values": [],
+                "properties": {}
+            }
