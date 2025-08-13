@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Test workflow functionality with a running server."""
 
+import pytest
 import asyncio
 import json
 from fastmcp.client import Client
@@ -10,6 +11,7 @@ from datetime import datetime
 
 console = Console()
 
+@pytest.mark.requires_server
 async def test_workflow_with_manual_approval():
     """Test creating a media buy that requires manual approval."""
     
