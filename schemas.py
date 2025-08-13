@@ -641,6 +641,7 @@ class CreateHumanTaskRequest(BaseModel):
     """Request to create a human task."""
     task_type: str
     priority: str = "medium"
+    adapter_name: Optional[str] = None  # Added to match HumanTask schema
     
     # Context
     media_buy_id: Optional[str] = None

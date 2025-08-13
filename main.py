@@ -647,6 +647,7 @@ def create_media_buy(req: CreateMediaBuyRequest, context: Context) -> CreateMedi
         task_req = CreateHumanTaskRequest(
             task_type="manual_approval",
             priority="high",
+            adapter_name=adapter.__class__.adapter_name,  # Add adapter_name field
             media_buy_id=f"pending_{uuid.uuid4().hex[:8]}",
             operation="create_media_buy",
             error_detail=reason,
@@ -1047,6 +1048,7 @@ def update_media_buy(req: UpdateMediaBuyRequest, context: Context) -> UpdateMedi
         task_req = CreateHumanTaskRequest(
             task_type="manual_approval",
             priority="high",
+            adapter_name=adapter.__class__.adapter_name,  # Add adapter_name field
             media_buy_id=req.media_buy_id,
             operation="update_media_buy",
             error_detail="Publisher requires manual approval for all media buy updates",
