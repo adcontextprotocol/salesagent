@@ -30,7 +30,7 @@ def upgrade():
     
     # Only add constraints for PostgreSQL
     if dialect_name == 'postgresql':
-        # Tenant table constraints - cast to jsonb if needed
+        # Tenant table constraints - cast TEXT to JSONB for validation
         op.execute(text("""
             ALTER TABLE tenants 
             ADD CONSTRAINT check_authorized_emails_is_array 
@@ -55,7 +55,7 @@ def upgrade():
             CHECK (jsonb_typeof(policy_settings::jsonb) = 'object' OR policy_settings IS NULL)
         """))
         
-        # Product table constraints
+        # Product table constraints - cast TEXT to JSONB for validation
         op.execute(text("""
             ALTER TABLE products 
             ADD CONSTRAINT check_formats_is_array 
@@ -74,14 +74,14 @@ def upgrade():
             CHECK (jsonb_typeof(countries::jsonb) = 'array' OR countries IS NULL)
         """))
         
-        # Principal table constraints
+        # Principal table constraints - cast TEXT to JSONB for validation
         op.execute(text("""
             ALTER TABLE principals 
             ADD CONSTRAINT check_platform_mappings_is_object 
             CHECK (jsonb_typeof(platform_mappings::jsonb) = 'object')
         """))
         
-        # WorkflowStep table constraints
+        # WorkflowStep table constraints - cast TEXT to JSONB for validation
         op.execute(text("""
             ALTER TABLE workflow_steps 
             ADD CONSTRAINT check_comments_is_array 
@@ -100,14 +100,14 @@ def upgrade():
             CHECK (jsonb_typeof(response_data::jsonb) = 'object' OR response_data IS NULL)
         """))
         
-        # MediaBuy table constraints
+        # MediaBuy table constraints - cast TEXT to JSONB for validation
         op.execute(text("""
             ALTER TABLE media_buys 
             ADD CONSTRAINT check_raw_request_is_object 
             CHECK (jsonb_typeof(raw_request::jsonb) = 'object')
         """))
         
-        # GAM tables constraints (if they exist)
+        # GAM tables constraints (if they exist) - cast TEXT to JSONB for validation
         try:
             op.execute(text("""
                 ALTER TABLE gam_orders 

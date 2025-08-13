@@ -43,7 +43,6 @@ def get_tokens():
     
     print("\n\n💡 Example API calls:")
     print("   curl -H \"x-adcp-auth: [TOKEN]\" http://localhost:8080/mcp/tools/get_products")
-    print("   curl -H \"x-adcp-auth: [TOKEN]\" http://localhost:8080/mcp/tools/get_principal_summary")
     print("\n")
 
 if __name__ == "__main__":
