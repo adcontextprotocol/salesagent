@@ -9,4 +9,4 @@ python migrate.py
 
 # Start the server
 echo "🌐 Starting MCP server..."
-exec python run_server.py
+exec python main.py
