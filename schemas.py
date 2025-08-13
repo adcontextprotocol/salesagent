@@ -309,12 +309,20 @@ class CreativeAssignment(BaseModel):
     
     is_active: bool = True
 
-class SubmitCreativesRequest(BaseModel):
+class AddCreativeAssetsRequest(BaseModel):
+    """Request to add creative assets to a media buy."""
     media_buy_id: str
-    creatives: List[Creative]
+    creatives: List[Creative]  # TODO: Rename to 'assets' to match spec
 
-class SubmitCreativesResponse(BaseModel):
+class AddCreativeAssetsResponse(BaseModel):
+    """Response from adding creative assets."""
     statuses: List[CreativeStatus]
+    context_id: Optional[str] = None  # Persistent context ID
+    message: Optional[str] = None  # Human-readable message
+
+# Legacy aliases for backward compatibility
+SubmitCreativesRequest = AddCreativeAssetsRequest
+SubmitCreativesResponse = AddCreativeAssetsResponse
 
 class CheckCreativeStatusRequest(BaseModel):
     creative_ids: List[str]
@@ -420,6 +428,10 @@ class CreateMediaBuyResponse(BaseModel):
     status: str
     detail: str
     creative_deadline: Optional[datetime] = None
+    message: Optional[str] = None  # Human-readable message for the response
+    context_id: Optional[str] = None  # Persistent context ID for conversation continuity
+    clarification_needed: Optional[bool] = False  # Whether clarification is needed
+    clarification_details: Optional[str] = None  # What clarification is needed
 
 class LegacyUpdateMediaBuyRequest(BaseModel):
     """Legacy update request - kept for backward compatibility."""
