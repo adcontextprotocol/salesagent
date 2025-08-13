@@ -4,7 +4,7 @@
 import sys
 import os
 import tempfile
-from datetime import datetime
+from datetime import datetime, timezone
 from rich.console import Console
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, scoped_session
@@ -32,12 +32,12 @@ def test_simplified_context():
         engine = create_engine(f'sqlite:///{test_db_path}')
         Base.metadata.create_all(engine)
         
-        # Create session factory
-        SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+        # Update the global db_session to use our test database
+        from database_session import db_session
+        db_session.configure(bind=engine)
         
-        # Initialize context manager with test database session
+        # Initialize context manager (will use the configured db_session)
         ctx_manager = ContextManager()
-        ctx_manager.session = scoped_session(SessionLocal)
         
         # Test 1: Create a simple context for async operation
         console.print("\n[yellow]Test 1: Creating context for async operation[/yellow]")
@@ -45,7 +45,7 @@ def test_simplified_context():
             tenant_id="test_tenant",
             principal_id="test_principal",
             initial_conversation=[{
-                "timestamp": datetime.utcnow().isoformat(),
+                "timestamp": datetime.now(timezone.utc).isoformat(),
                 "role": "user",
                 "content": "Create a media buy that needs approval"
             }]
@@ -155,6 +155,10 @@ def test_simplified_context():
         raise
         
     finally:
+        # Clean up database session
+        ctx_manager.close()
+        db_session.remove()
+        
         # Clean up temporary database
         if os.path.exists(test_db_path):
             os.unlink(test_db_path)
