@@ -11,6 +11,7 @@ from datetime import datetime
 
 console = Console()
 
+@pytest.mark.asyncio
 @pytest.mark.requires_server
 async def test_workflow_with_manual_approval():
     """Test creating a media buy that requires manual approval."""
