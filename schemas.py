@@ -432,10 +432,29 @@ class LegacyUpdateMediaBuyRequest(BaseModel):
     creative_assignments: Optional[Dict[str, List[str]]] = None
 
 class GetMediaBuyDeliveryRequest(BaseModel):
-    media_buy_id: str
-    today: date
+    """Request delivery data for one or more media buys.
+    
+    Examples:
+    - Single buy: media_buy_ids=["buy_123"]
+    - Multiple buys: media_buy_ids=["buy_123", "buy_456"]
+    - All active buys: filter="active" (or omit media_buy_ids)
+    - All buys: filter="all"
+    """
+    media_buy_ids: Optional[List[str]] = Field(
+        None,
+        description="Specific media buy IDs to fetch. If omitted, fetches based on filter."
+    )
+    filter: Optional[str] = Field(
+        "active",
+        description="Filter for which buys to fetch when media_buy_ids not provided: 'active', 'all', 'completed'"
+    )
+    today: date = Field(
+        ...,
+        description="Reference date for calculating delivery metrics"
+    )
 
-class GetMediaBuyDeliveryResponse(BaseModel):
+class MediaBuyDeliveryData(BaseModel):
+    """Delivery data for a single media buy."""
     media_buy_id: str
     status: str
     spend: float
@@ -444,14 +463,27 @@ class GetMediaBuyDeliveryResponse(BaseModel):
     days_elapsed: int
     total_days: int
 
+class GetMediaBuyDeliveryResponse(BaseModel):
+    """Response containing delivery data for requested media buys.
+    
+    For single buy requests, 'deliveries' will contain one item.
+    For multiple/all requests, it contains all matching buys.
+    """
+    deliveries: List[MediaBuyDeliveryData]
+    total_spend: float
+    total_impressions: int
+    active_count: int
+    summary_date: date
+
+# Deprecated - kept for backward compatibility
 class GetAllMediaBuyDeliveryRequest(BaseModel):
-    """Request delivery data for all active media buys owned by the principal."""
+    """DEPRECATED: Use GetMediaBuyDeliveryRequest with filter='all' instead."""
     today: date
-    media_buy_ids: Optional[List[str]] = None  # If provided, only fetch these specific buys
+    media_buy_ids: Optional[List[str]] = None
 
 class GetAllMediaBuyDeliveryResponse(BaseModel):
-    """Bulk response containing delivery data for multiple media buys."""
-    deliveries: List[GetMediaBuyDeliveryResponse]
+    """DEPRECATED: Use GetMediaBuyDeliveryResponse instead."""
+    deliveries: List[MediaBuyDeliveryData]
     total_spend: float
     total_impressions: int
     active_count: int

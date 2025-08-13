@@ -325,15 +325,19 @@ class FullLifecycleSimulation:
         # Get current delivery status (should show as scheduled)
         delivery_response = await self._call_tool("get_media_buy_delivery", {
             "req": {
-                "media_buy_id": self.media_buy_id,
+                "media_buy_ids": [self.media_buy_id],  # Single buy as array
                 "today": pre_flight_date.isoformat()
             }
         })
         
-        status = delivery_response.get("status", "unknown")
+        # Extract single buy data from deliveries array
+        deliveries = delivery_response.get("deliveries", [])
+        delivery_data = deliveries[0] if deliveries else {}
+        
+        status = delivery_data.get("status", "unknown")
         console.print(f"  • Campaign status: {status}")
         console.print(f"  • Days until launch: 2")
-        console.print(f"  • Budget allocated: ${delivery_response.get('total_budget', 0):,.2f}")
+        console.print(f"  • Budget allocated: ${self.total_budget:,.2f}")
         
         if status == "scheduled":
             console.print("\n[green]✓ Campaign ready for launch[/green]")
@@ -359,32 +363,36 @@ class FullLifecycleSimulation:
             
             delivery_response = await self._call_tool("get_media_buy_delivery", {
                 "req": {
-                    "media_buy_id": self.media_buy_id,
+                    "media_buy_ids": [self.media_buy_id],  # Single buy as array
                     "today": check_date.isoformat()
                 }
             })
             
+            # Extract single buy data from deliveries array
+            deliveries = delivery_response.get("deliveries", [])
+            delivery_data = deliveries[0] if deliveries else {}
+            
             # Store data for trend analysis
             daily_data.append({
                 "date": check_date,
-                "spend": delivery_response.get("spend", 0),
-                "impressions": delivery_response.get("impressions", 0),
-                "pacing": delivery_response.get("pacing", "unknown")
+                "spend": delivery_data.get("spend", 0),
+                "impressions": delivery_data.get("impressions", 0),
+                "pacing": delivery_data.get("pacing", "unknown")
             })
             
             # Display current metrics
-            days_elapsed = delivery_response.get("days_elapsed", 0)
-            total_days = delivery_response.get("total_days", 0)
+            days_elapsed = delivery_data.get("days_elapsed", 0)
+            total_days = delivery_data.get("total_days", 0)
             progress = (days_elapsed / total_days * 100) if total_days > 0 else 0
             
             console.print(f"\n  📊 Day {days_elapsed} of {total_days} ({progress:.1f}% complete)")
-            console.print(f"  💰 Spend: ${delivery_response.get('spend', 0):,.2f}")
-            console.print(f"  👁️  Impressions: {delivery_response.get('impressions', 0):,}")
-            console.print(f"  📈 Pacing: {delivery_response.get('pacing', 'unknown')}")
+            console.print(f"  💰 Spend: ${delivery_data.get('spend', 0):,.2f}")
+            console.print(f"  👁️  Impressions: {delivery_data.get('impressions', 0):,}")
+            console.print(f"  📈 Pacing: {delivery_data.get('pacing', 'unknown')}")
             
             # Calculate effective CPM
-            if delivery_response.get('impressions', 0) > 0:
-                ecpm = delivery_response.get('spend', 0) / delivery_response.get('impressions', 0) * 1000
+            if delivery_data.get('impressions', 0) > 0:
+                ecpm = delivery_data.get('spend', 0) / delivery_data.get('impressions', 0) * 1000
                 console.print(f"  💵 Effective CPM: ${ecpm:.2f}")
         
         # Show performance trend
@@ -417,7 +425,7 @@ class FullLifecycleSimulation:
         # Get current performance
         delivery_response = await self._call_tool("get_media_buy_delivery", {
             "req": {
-                "media_buy_id": self.media_buy_id,
+                "media_buy_ids": [self.media_buy_id],  # Single buy as array
                 "today": optimization_date.isoformat()
             }
         })
@@ -533,27 +541,33 @@ class FullLifecycleSimulation:
         
         final_response = await self._call_tool("get_media_buy_delivery", {
             "req": {
-                "media_buy_id": self.media_buy_id,
+                "media_buy_ids": [self.media_buy_id],  # Single buy as array
                 "today": completion_date.isoformat()
             }
         })
         
+        # Extract single buy data from deliveries array
+        deliveries = final_response.get("deliveries", [])
+        final_data = deliveries[0] if deliveries else {}
+        
         # Display final results
         console.print("\n[bold green]📊 Final Campaign Report[/bold green]")
+        cpm_text = f"[bold]Effective CPM:[/bold] ${final_data.get('spend', 0) / final_data.get('impressions', 0) * 1000:.2f}" if final_data.get('impressions', 0) > 0 else ""
         console.print(Panel(
             f"[bold]Campaign ID:[/bold] {self.media_buy_id}\n"
-            f"[bold]Status:[/bold] {final_response.get('status', 'unknown')}\n"
-            f"[bold]Total Spend:[/bold] ${final_response.get('spend', 0):,.2f}\n"
-            f"[bold]Total Impressions:[/bold] {final_response.get('impressions', 0):,}\n"
-            f"[bold]Effective CPM:[/bold] ${final_response.get('spend', 0) / final_response.get('impressions', 0) * 1000:.2f}" if final_response.get('impressions', 0) > 0 else "",
+            f"[bold]Status:[/bold] {final_data.get('status', 'unknown')}\n"
+            f"[bold]Total Spend:[/bold] ${final_data.get('spend', 0):,.2f}\n"
+            f"[bold]Total Impressions:[/bold] {final_data.get('impressions', 0):,}\n"
+            f"{cpm_text}",
             title="Campaign Summary",
             border_style="green"
         ))
         
-        # Test the new bulk delivery tool
-        console.print("\n[yellow]Testing bulk delivery retrieval...[/yellow]")
-        bulk_response = await self._call_tool("get_all_media_buy_delivery", {
+        # Test bulk delivery retrieval with unified endpoint
+        console.print("\n[yellow]Testing bulk delivery retrieval (all buys)...[/yellow]")
+        bulk_response = await self._call_tool("get_media_buy_delivery", {
             "req": {
+                "filter": "all",  # Get all media buys
                 "today": completion_date.isoformat()
             }
         })
