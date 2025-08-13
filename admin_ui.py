@@ -2297,48 +2297,62 @@ def list_products(tenant_id):
     
     conn = get_db_connection()
     
-    # Get tenant and config
-    cursor = conn.execute("SELECT name, config FROM tenants WHERE tenant_id = ?", (tenant_id,))
+    # Get tenant info
+    cursor = conn.execute("SELECT name, ad_server FROM tenants WHERE tenant_id = %s", (tenant_id,))
     row = cursor.fetchone()
     tenant_name = row[0]
-    config_data = row[1]
-    # PostgreSQL returns JSONB as dict, SQLite returns string
-    tenant_config = config_data if isinstance(config_data, dict) else json.loads(config_data)
+    active_adapter = row[1]  # This is the adapter type like 'mock', 'google_ad_manager', etc.
     
     # Get active adapter and its UI endpoint
     adapter_ui_endpoint = None
-    adapters = tenant_config.get('adapters', {})
-    for adapter_name, config in adapters.items():
-        if config.get('enabled'):
-            # Create dummy principal to get UI endpoint
-            dummy_principal = Principal(
-                tenant_id=tenant_id,
-                principal_id="ui_query",
-                name="UI Query",
-                access_token="",
-                platform_mappings={}
-            )
-            
-            try:
-                if adapter_name == 'google_ad_manager':
-                    from adapters.google_ad_manager import GoogleAdManager
-                    adapter = GoogleAdManager(config, dummy_principal, dry_run=True, tenant_id=tenant_id)
-                    adapter_ui_endpoint = adapter.get_config_ui_endpoint()
-                elif adapter_name == 'mock':
-                    from adapters.mock_ad_server import MockAdServer
-                    adapter = MockAdServer(config, dummy_principal, dry_run=True, tenant_id=tenant_id)
-                    adapter_ui_endpoint = adapter.get_config_ui_endpoint()
-                # Add other adapters as needed
-            except:
-                pass
-            break
+    if active_adapter:
+        # Create dummy principal to get UI endpoint
+        dummy_principal = Principal(
+            tenant_id=tenant_id,
+            principal_id="ui_query",
+            name="UI Query",
+            access_token="",
+            platform_mappings={}
+        )
+        
+        # Get adapter configuration from adapter_config table
+        cursor = conn.execute("""
+            SELECT mock_dry_run, gam_network_code, gam_refresh_token,
+                   kevel_network_id, kevel_api_key
+            FROM adapter_config
+            WHERE tenant_id = %s
+        """, (tenant_id,))
+        adapter_row = cursor.fetchone()
+        
+        try:
+            if active_adapter == 'google_ad_manager':
+                from adapters.google_ad_manager import GoogleAdManager
+                config = {
+                    'enabled': True,
+                    'network_code': adapter_row[1] if adapter_row else None,
+                    'refresh_token': adapter_row[2] if adapter_row else None
+                }
+                adapter = GoogleAdManager(config, dummy_principal, dry_run=True, tenant_id=tenant_id)
+                adapter_ui_endpoint = adapter.get_config_ui_endpoint()
+            elif active_adapter == 'mock':
+                from adapters.mock_ad_server import MockAdServer
+                config = {
+                    'enabled': True,
+                    'dry_run': adapter_row[0] if adapter_row else False
+                }
+                adapter = MockAdServer(config, dummy_principal, dry_run=True, tenant_id=tenant_id)
+                adapter_ui_endpoint = adapter.get_config_ui_endpoint()
+            # Add other adapters as needed
+        except Exception as e:
+            app.logger.error(f"Error getting adapter UI endpoint: {e}")
+            pass
     
     # Get products
     cursor = conn.execute("""
         SELECT product_id, name, description, formats, delivery_type, 
                is_fixed_price, cpm, price_guidance, is_custom, expires_at, countries
         FROM products
-        WHERE tenant_id = ?
+        WHERE tenant_id = %s
         ORDER BY product_id
     """, (tenant_id,))
     
@@ -2900,15 +2914,17 @@ def policy_settings(tenant_id):
     
     conn = get_db_connection()
     
-    # Get tenant info and config
-    cursor = conn.execute("SELECT name, config FROM tenants WHERE tenant_id = ?", (tenant_id,))
+    # Get tenant info and policy settings
+    cursor = conn.execute("SELECT name, policy_settings FROM tenants WHERE tenant_id = %s", (tenant_id,))
     tenant = cursor.fetchone()
     if not tenant:
         conn.close()
         return "Tenant not found", 404
     
-    tenant_name, config_str = tenant
-    config = parse_json_config(config_str)
+    tenant_name = tenant[0]
+    policy_settings = tenant[1]
+    # Handle PostgreSQL (returns dict) vs SQLite (returns string)
+    config = {'policy_settings': policy_settings if isinstance(policy_settings, dict) else json.loads(policy_settings or '{}')}
     
     # Define default policies that all publishers start with
     default_policies = {
@@ -4537,6 +4553,206 @@ if __name__ == '__main__':
         print("3. Add redirect URI: http://localhost:8001/auth/google/callback")
         print("4. Download the JSON file")
         exit(1)
+    
+# ============== MCP Protocol Testing Routes (Super Admin Only) ==============
+
+@app.route('/test-simple')
+def test_simple():
+    """Simple test page - no auth required for debugging."""
+    return render_template('test_mcp_simple.html')
+
+@app.route('/mcp-test')
+@require_auth(admin_only=True)
+def mcp_test():
+    """MCP protocol testing interface for super admins."""
+    # Get all tenants and their principals
+    conn = get_db_connection()
+    
+    # Get tenants
+    cursor = conn.execute("""
+        SELECT tenant_id, name, subdomain
+        FROM tenants
+        WHERE is_active = true
+        ORDER BY name
+    """)
+    tenants = []
+    for row in cursor.fetchall():
+        tenants.append({
+            'tenant_id': row[0],
+            'name': row[1],
+            'subdomain': row[2]
+        })
+    
+    # Get all principals with their tenant info
+    cursor = conn.execute("""
+        SELECT p.principal_id, p.name, p.tenant_id, p.access_token, t.name as tenant_name
+        FROM principals p
+        JOIN tenants t ON p.tenant_id = t.tenant_id
+        WHERE t.is_active = true
+        ORDER BY t.name, p.name
+    """)
+    principals = []
+    for row in cursor.fetchall():
+        principals.append({
+            'principal_id': row[0],
+            'name': row[1],
+            'tenant_id': row[2],
+            'access_token': row[3],
+            'tenant_name': row[4]
+        })
+    
+    conn.close()
+    
+    # Get server URL - use correct port from environment
+    server_port = int(os.environ.get('ADCP_SALES_PORT', 8005))
+    server_url = f"http://localhost:{server_port}/mcp/"
+    
+    return render_template('mcp_test.html',
+                         tenants=tenants,
+                         principals=principals,
+                         server_url=server_url)
+
+@app.route('/api/mcp-test/call', methods=['POST'])
+def mcp_test_call():
+    """Make an MCP call using the official client."""
+    # For debugging, temporarily allow unauthenticated access if a special header is present
+    if request.headers.get('X-Debug-Mode') == 'test':
+        # Allow debugging without auth
+        pass
+    else:
+        # Check authentication manually for API endpoint to return JSON on failure
+        if not session.get('authenticated'):
+            return jsonify({'success': False, 'error': 'Authentication required. Please login again.'}), 401
+        if session.get('role') != 'super_admin':
+            return jsonify({'success': False, 'error': 'Super admin access required.'}), 403
+    
+    try:
+        import asyncio
+        from fastmcp.client import Client
+        from fastmcp.client.transports import StreamableHttpTransport
+        
+        data = request.json
+        if not data:
+            return jsonify({'success': False, 'error': 'Invalid request data'}), 400
+            
+        tool_name = data.get('tool')
+        tool_params = data.get('params', {})
+        access_token = data.get('access_token')
+        # If the server URL is localhost, replace with internal Docker service name
+        server_url = data.get('server_url', 'http://adcp-server:8080/mcp/')
+        if 'localhost:8005' in server_url:
+            server_url = server_url.replace('localhost:8005', 'adcp-server:8080')
+        elif 'localhost:8080' in server_url:
+            server_url = server_url.replace('localhost:8080', 'adcp-server:8080')
+        
+        if not tool_name or not access_token:
+            return jsonify({'success': False, 'error': 'Missing required parameters: tool and access_token'}), 400
+        
+        # Look up the tenant for this token
+        conn = get_db_connection()
+        cursor = conn.execute(
+            "SELECT tenant_id FROM principals WHERE access_token = %s",
+            (access_token,)
+        )
+        row = cursor.fetchone()
+        conn.close()
+        
+        tenant_id = row[0] if row else 'default'
+        
+        # Set up headers for authentication
+        # Include tenant header for proper principal resolution
+        headers = {
+            "x-adcp-auth": access_token,
+            "x-adcp-tenant": tenant_id
+        }
+        
+        # Log for debugging
+        app.logger.info(f"MCP Test Call - Tool: {tool_name}, Server: {server_url}, Token: {access_token[:20]}...")
+        
+        async def make_call():
+            """Make the actual MCP call."""
+            transport = StreamableHttpTransport(server_url, headers=headers)
+            
+            async with Client(transport) as client:
+                try:
+                    # Some tools expect params wrapped in 'req' key, others don't
+                    # Tools without req parameter: get_principal_summary, get_targeting_capabilities
+                    tools_without_req = ['get_principal_summary', 'get_targeting_capabilities']
+                    
+                    if tool_name in tools_without_req:
+                        arguments = tool_params or {}
+                    else:
+                        # Most tools have a single parameter named 'req'
+                        arguments = {"req": tool_params} if tool_params else {"req": {}}
+                    
+                    app.logger.info(f"Calling tool {tool_name} with arguments: {arguments}")
+                    result = await client.call_tool(tool_name, arguments)
+                    
+                    # Convert result to dict if it's a pydantic model or handle TextContent
+                    if hasattr(result, 'model_dump'):
+                        return {'success': True, 'result': result.model_dump()}
+                    else:
+                        # Handle various FastMCP response types
+                        import json as json_module
+                        
+                        # Check if it's a CallToolResult object
+                        if hasattr(result, 'structured_content'):
+                            # Use the structured_content which is already parsed
+                            content = result.structured_content
+                            # Remove implementation_config from products (security - proprietary data)
+                            if isinstance(content, dict) and 'products' in content:
+                                for product in content.get('products', []):
+                                    if isinstance(product, dict) and 'implementation_config' in product:
+                                        del product['implementation_config']
+                            return {'success': True, 'result': content}
+                        elif hasattr(result, 'data') and hasattr(result.data, 'model_dump'):
+                            # Use the data field if it has model_dump
+                            return {'success': True, 'result': result.data.model_dump()}
+                        elif hasattr(result, 'content'):
+                            # Handle content field which might be a list of TextContent
+                            if isinstance(result.content, list) and len(result.content) > 0:
+                                first_item = result.content[0]
+                                if hasattr(first_item, 'text'):
+                                    try:
+                                        parsed_result = json_module.loads(first_item.text)
+                                        return {'success': True, 'result': parsed_result}
+                                    except:
+                                        return {'success': True, 'result': first_item.text}
+                        
+                        # Check if result itself has text attribute
+                        if hasattr(result, 'text'):
+                            try:
+                                parsed_result = json_module.loads(result.text)
+                                return {'success': True, 'result': parsed_result}
+                            except:
+                                return {'success': True, 'result': result.text}
+                        
+                        # Fallback to string representation
+                        return {'success': True, 'result': str(result)}
+                        
+                except Exception as e:
+                    app.logger.error(f"MCP call error: {str(e)}")
+                    return {'success': False, 'error': str(e), 'error_type': type(e).__name__}
+        
+        # Run the async function
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        try:
+            result = loop.run_until_complete(make_call())
+            return jsonify(result)
+        except Exception as e:
+            app.logger.error(f"Event loop error: {str(e)}")
+            return jsonify({'success': False, 'error': f'Event loop error: {str(e)}'}), 500
+        finally:
+            loop.close()
+            
+    except ImportError as e:
+        app.logger.error(f"Import error in mcp_test_call: {str(e)}")
+        return jsonify({'success': False, 'error': f'Import error: {str(e)}'}), 500
+    except Exception as e:
+        app.logger.error(f"Unexpected error in mcp_test_call: {str(e)}")
+        return jsonify({'success': False, 'error': f'Unexpected error: {str(e)}'}), 500
+
     
     # Run server
     port = int(os.environ.get('ADMIN_UI_PORT', 8001))  # Match OAuth redirect URI

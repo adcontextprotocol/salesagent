@@ -249,7 +249,7 @@ class FullLifecycleSimulation:
         console.print("[dim]   - Kevel: Template-based or direct URLs[/dim]")
         console.print("[dim]   - Triton: Audio files only[/dim]\n")
         
-        # Check current implementation - using legacy submit_creatives for now
+        # Check current implementation - using legacy add_creative_assets for now
         creatives_request = {
             "media_buy_id": self.media_buy_id,
             "creatives": [
@@ -267,7 +267,7 @@ class FullLifecycleSimulation:
         }
         
         console.print(Panel(
-            f"[cyan]submit_creatives Request:[/cyan]\n"
+            f"[cyan]add_creative_assets Request:[/cyan]\n"
             f"  Format: VAST XML for video\n"
             f"  Count: 2 creatives (dog & cat variants)\n"
             f"  [dim]Platform will validate and approve[/dim]",
@@ -276,7 +276,7 @@ class FullLifecycleSimulation:
         ))
         
         console.print("\n[yellow]Submitting 2 video creatives for approval...[/yellow]")
-        submit_response = await self._call_tool("submit_creatives", {"req": creatives_request})
+        submit_response = await self._call_tool("add_creative_assets", {"req": creatives_request})
         
         # Check initial status
         statuses = submit_response.get("statuses", [])

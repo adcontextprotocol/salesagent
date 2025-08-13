@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>MCP Test UI - Manual Test</title>
+</head>
+<body>
+    <h1>Manual MCP UI Test</h1>
+    <p>Click the button below to open the MCP Test Interface in a new tab:</p>
+    
+    <button onclick="window.open('http://localhost:8001/mcp-test', '_blank')">
+        Open MCP Test Interface
+    </button>
+    
+    <h2>Test Instructions:</h2>
+    <ol>
+        <li>Login with test credentials:
+            <ul>
+                <li>Email: test_super_admin@example.com</li>
+                <li>Password: test123</li>
+            </ul>
+        </li>
+        <li>Select "Test Publisher" tenant</li>
+        <li>Select "Test Advertiser" principal</li>
+        <li>Click "Get Products"</li>
+        <li>If there's an error, click the "Debug" button to see raw request/response</li>
+    </ol>
+    
+    <h2>Expected Results:</h2>
+    <ul>
+        <li>✅ No more "SyntaxError: The string did not match the expected pattern"</li>
+        <li>✅ Errors should show clear messages</li>
+        <li>✅ Debug button shows modal with raw request/response data</li>
+        <li>✅ Non-JSON responses are handled gracefully</li>
+    </ul>
+</body>
+</html>
