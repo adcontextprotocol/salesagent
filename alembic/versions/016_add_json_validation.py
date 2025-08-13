@@ -30,81 +30,81 @@ def upgrade():
     
     # Only add constraints for PostgreSQL
     if dialect_name == 'postgresql':
-        # Tenant table constraints
+        # Tenant table constraints - cast to jsonb if needed
         op.execute(text("""
             ALTER TABLE tenants 
             ADD CONSTRAINT check_authorized_emails_is_array 
-            CHECK (jsonb_typeof(authorized_emails) = 'array' OR authorized_emails IS NULL)
+            CHECK (jsonb_typeof(authorized_emails::jsonb) = 'array' OR authorized_emails IS NULL)
         """))
         
         op.execute(text("""
             ALTER TABLE tenants 
             ADD CONSTRAINT check_authorized_domains_is_array 
-            CHECK (jsonb_typeof(authorized_domains) = 'array' OR authorized_domains IS NULL)
+            CHECK (jsonb_typeof(authorized_domains::jsonb) = 'array' OR authorized_domains IS NULL)
         """))
         
         op.execute(text("""
             ALTER TABLE tenants 
             ADD CONSTRAINT check_auto_approve_formats_is_array 
-            CHECK (jsonb_typeof(auto_approve_formats) = 'array' OR auto_approve_formats IS NULL)
+            CHECK (jsonb_typeof(auto_approve_formats::jsonb) = 'array' OR auto_approve_formats IS NULL)
         """))
         
         op.execute(text("""
             ALTER TABLE tenants 
             ADD CONSTRAINT check_policy_settings_is_object 
-            CHECK (jsonb_typeof(policy_settings) = 'object' OR policy_settings IS NULL)
+            CHECK (jsonb_typeof(policy_settings::jsonb) = 'object' OR policy_settings IS NULL)
         """))
         
         # Product table constraints
         op.execute(text("""
             ALTER TABLE products 
             ADD CONSTRAINT check_formats_is_array 
-            CHECK (jsonb_typeof(formats) = 'array')
+            CHECK (jsonb_typeof(formats::jsonb) = 'array')
         """))
         
         op.execute(text("""
             ALTER TABLE products 
             ADD CONSTRAINT check_targeting_template_is_object 
-            CHECK (jsonb_typeof(targeting_template) = 'object')
+            CHECK (jsonb_typeof(targeting_template::jsonb) = 'object')
         """))
         
         op.execute(text("""
             ALTER TABLE products 
             ADD CONSTRAINT check_countries_is_array 
-            CHECK (jsonb_typeof(countries) = 'array' OR countries IS NULL)
+            CHECK (jsonb_typeof(countries::jsonb) = 'array' OR countries IS NULL)
         """))
         
         # Principal table constraints
         op.execute(text("""
             ALTER TABLE principals 
             ADD CONSTRAINT check_platform_mappings_is_object 
-            CHECK (jsonb_typeof(platform_mappings) = 'object')
+            CHECK (jsonb_typeof(platform_mappings::jsonb) = 'object')
         """))
         
         # WorkflowStep table constraints
         op.execute(text("""
             ALTER TABLE workflow_steps 
             ADD CONSTRAINT check_comments_is_array 
-            CHECK (jsonb_typeof(comments) = 'array')
+            CHECK (jsonb_typeof(comments::jsonb) = 'array')
         """))
         
         op.execute(text("""
             ALTER TABLE workflow_steps 
             ADD CONSTRAINT check_request_data_is_object 
-            CHECK (jsonb_typeof(request_data) = 'object' OR request_data IS NULL)
+            CHECK (jsonb_typeof(request_data::jsonb) = 'object' OR request_data IS NULL)
         """))
         
         op.execute(text("""
             ALTER TABLE workflow_steps 
             ADD CONSTRAINT check_response_data_is_object 
-            CHECK (jsonb_typeof(response_data) = 'object' OR response_data IS NULL)
+            CHECK (jsonb_typeof(response_data::jsonb) = 'object' OR response_data IS NULL)
         """))
         
         # MediaBuy table constraints
         op.execute(text("""
             ALTER TABLE media_buys 
             ADD CONSTRAINT check_raw_request_is_object 
-            CHECK (jsonb_typeof(raw_request) = 'object')
+            CHECK (jsonb_typeof(raw_request::jsonb) = 'object')
         """))
         
         # GAM tables constraints (if they exist)
@@ -112,13 +112,13 @@ def upgrade():
             op.execute(text("""
                 ALTER TABLE gam_orders 
                 ADD CONSTRAINT check_applied_labels_is_array 
-                CHECK (jsonb_typeof(applied_labels) = 'array' OR applied_labels IS NULL)
+                CHECK (jsonb_typeof(applied_labels::jsonb) = 'array' OR applied_labels IS NULL)
             """))
             
             op.execute(text("""
                 ALTER TABLE gam_line_items 
                 ADD CONSTRAINT check_delivery_data_is_object 
-                CHECK (jsonb_typeof(delivery_data) = 'object' OR delivery_data IS NULL)
+                CHECK (jsonb_typeof(delivery_data::jsonb) = 'object' OR delivery_data IS NULL)
             """))
         except Exception:
             # Tables might not exist in all deployments
