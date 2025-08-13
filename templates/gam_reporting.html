@@ -471,33 +471,81 @@ function updateTimeChart(aggregation) {
     });
 }
 
-function updateCountryHeatmap() {
-    // Country data not available in simplified report
-    const tbody = document.getElementById('country-tbody');
-    tbody.innerHTML = '<tr><td colspan="5" class="text-center">Country-level data not available in simplified report</td></tr>';
+async function updateCountryHeatmap() {
+    const dateRange = document.getElementById('date-range').value;
+    const timezone = document.getElementById('timezone').value;
     
-    // Hide map since country data is not available
-    const mapContainer = document.getElementById('world-map');
-    if (mapContainer) {
-        mapContainer.innerHTML = '<div class="text-center p-4">Map visualization not available without country data</div>';
+    try {
+        // Fetch country breakdown data
+        const response = await fetch(`/api/tenant/{{ tenant.tenant_id }}/gam/reporting/countries?date_range=${dateRange}&timezone=${timezone}`, {
+            credentials: 'same-origin'
+        });
+        
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        
+        const result = await response.json();
+        const countries = result.data.countries || [];
+        
+        // Update country count in summary card
+        document.getElementById('country-count').textContent = result.data.total_countries || countries.length;
+        
+        // Update country table
+        const tbody = document.getElementById('country-tbody');
+        tbody.innerHTML = '';
+        
+        if (countries.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="5" class="text-center">No country data available</td></tr>';
+        } else {
+            countries.slice(0, 20).forEach(country => {
+                const row = tbody.insertRow();
+                row.innerHTML = `
+                    <td>${country.country || 'Unknown'}</td>
+                    <td>${country.impressions.toLocaleString()}</td>
+                    <td>$${country.spend.toFixed(2)}</td>
+                    <td>$${country.avg_cpm.toFixed(2)}</td>
+                    <td>${country.ctr.toFixed(2)}%</td>
+                `;
+            });
+        }
+        
+        // Initialize or update map
+        const mapContainer = document.getElementById('world-map');
+        if (mapContainer && countries.length > 0) {
+            if (!worldMap) {
+                worldMap = L.map('world-map').setView([20, 0], 2);
+                L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                    attribution: '© OpenStreetMap contributors'
+                }).addTo(worldMap);
+            }
+            
+            // Add markers for countries with data
+            updateMapMarkers(worldMap, countries);
+        }
+        
+    } catch (error) {
+        console.error('Error fetching country data:', error);
+        const tbody = document.getElementById('country-tbody');
+        tbody.innerHTML = '<tr><td colspan="5" class="text-center text-danger">Failed to load country data</td></tr>';
     }
 }
 
 function updateMapMarkers(map, countryData) {
     // Clear existing markers
     map.eachLayer(layer => {
-        if (layer instanceof L.Marker) {
+        if (layer instanceof L.CircleMarker) {
             map.removeLayer(layer);
         }
     });
     
-    // Add markers for top countries (simplified)
-    countryData.slice(0, 10).forEach(country => {
-        const coords = getCountryCoordinates(country.name);
+    // Add markers for top countries
+    countryData.slice(0, 20).forEach(country => {
+        const coords = getCountryCoordinates(country.country);
         if (coords) {
             const marker = L.circleMarker(coords, {
-                radius: Math.min(20, Math.sqrt(country.impressions / 1000)),
-                fillColor: getCPMColor(country.cpm),
+                radius: Math.min(20, Math.sqrt(country.impressions / 10000)),
+                fillColor: getCPMColor(country.avg_cpm),
                 color: '#000',
                 weight: 1,
                 opacity: 1,
@@ -505,10 +553,11 @@ function updateMapMarkers(map, countryData) {
             }).addTo(map);
             
             marker.bindPopup(`
-                <strong>${country.name}</strong><br>
+                <strong>${country.country}</strong><br>
                 Impressions: ${country.impressions.toLocaleString()}<br>
-                CPM: $${country.cpm.toFixed(2)}<br>
-                Spend: $${country.spend.toFixed(2)}
+                CPM: $${country.avg_cpm.toFixed(2)}<br>
+                Spend: $${country.spend.toFixed(2)}<br>
+                CTR: ${country.ctr.toFixed(2)}%
             `);
         }
     });
@@ -557,19 +606,130 @@ function getCountryCoordinates(countryName) {
     return coords[countryName] || null;
 }
 
-function updateAdUnitAnalysis() {
-    // Ad unit data not available in simplified report
-    const tbody = document.getElementById('adunit-tbody');
-    tbody.innerHTML = '<tr><td colspan="5" class="text-center">Ad unit data not available in simplified report</td></tr>';
+async function updateAdUnitAnalysis() {
+    const dateRange = document.getElementById('date-range').value;
+    const timezone = document.getElementById('timezone').value;
     
-    // Hide chart
-    const chartContainer = document.getElementById('adunit-chart');
-    if (chartContainer) {
-        const ctx = chartContainer.getContext('2d');
-        ctx.clearRect(0, 0, chartContainer.width, chartContainer.height);
-        ctx.font = '14px Arial';
-        ctx.textAlign = 'center';
-        ctx.fillText('Chart not available without ad unit data', chartContainer.width/2, chartContainer.height/2);
+    try {
+        // Fetch ad unit breakdown data
+        const response = await fetch(`/api/tenant/{{ tenant.tenant_id }}/gam/reporting/ad-units?date_range=${dateRange}&timezone=${timezone}`, {
+            credentials: 'same-origin'
+        });
+        
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        
+        const result = await response.json();
+        const adUnits = result.data.ad_units || [];
+        
+        // Update ad unit table
+        const tbody = document.getElementById('adunit-tbody');
+        tbody.innerHTML = '';
+        
+        if (adUnits.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="5" class="text-center">No ad unit data available</td></tr>';
+        } else {
+            // Show top 20 ad units
+            adUnits.slice(0, 20).forEach(adUnit => {
+                const fillRate = adUnit.impressions > 0 ? '100%' : '0%'; // Simplified fill rate
+                const row = tbody.insertRow();
+                row.innerHTML = `
+                    <td title="${adUnit.ad_unit_id}">${adUnit.ad_unit_name || adUnit.ad_unit_id || 'Unknown'}</td>
+                    <td>${adUnit.impressions.toLocaleString()}</td>
+                    <td>$${adUnit.spend.toFixed(2)}</td>
+                    <td>$${adUnit.avg_cpm.toFixed(2)}</td>
+                    <td>${fillRate}</td>
+                `;
+            });
+        }
+        
+        // Update chart
+        const chartContainer = document.getElementById('adunit-chart');
+        if (chartContainer && adUnits.length > 0) {
+            // Destroy existing chart if any
+            if (adUnitChart) {
+                adUnitChart.destroy();
+            }
+            
+            // Create bar chart showing top 10 ad units by spend
+            const topAdUnits = adUnits.slice(0, 10);
+            adUnitChart = new Chart(chartContainer, {
+                type: 'bar',
+                data: {
+                    labels: topAdUnits.map(au => {
+                        const name = au.ad_unit_name || au.ad_unit_id || 'Unknown';
+                        return name.length > 30 ? name.substring(0, 30) + '...' : name;
+                    }),
+                    datasets: [
+                        {
+                            label: 'Spend ($)',
+                            data: topAdUnits.map(au => au.spend),
+                            backgroundColor: 'rgba(54, 162, 235, 0.6)',
+                            borderColor: 'rgba(54, 162, 235, 1)',
+                            borderWidth: 1,
+                            yAxisID: 'y'
+                        },
+                        {
+                            label: 'CPM ($)',
+                            data: topAdUnits.map(au => au.avg_cpm),
+                            backgroundColor: 'rgba(255, 99, 132, 0.6)',
+                            borderColor: 'rgba(255, 99, 132, 1)',
+                            borderWidth: 1,
+                            type: 'line',
+                            yAxisID: 'y2'
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        title: {
+                            display: true,
+                            text: 'Top Ad Units by Spend'
+                        },
+                        tooltip: {
+                            callbacks: {
+                                afterLabel: function(context) {
+                                    const adUnit = topAdUnits[context.dataIndex];
+                                    const countries = Object.keys(adUnit.countries || {}).length;
+                                    return `Countries: ${countries}`;
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        y: {
+                            type: 'linear',
+                            display: true,
+                            position: 'left',
+                            title: {
+                                display: true,
+                                text: 'Spend ($)'
+                            }
+                        },
+                        y2: {
+                            type: 'linear',
+                            display: true,
+                            position: 'right',
+                            title: {
+                                display: true,
+                                text: 'CPM ($)'
+                            },
+                            grid: {
+                                drawOnChartArea: false
+                            }
+                        }
+                    }
+                }
+            });
+        }
+        
+    } catch (error) {
+        console.error('Error fetching ad unit data:', error);
+        const tbody = document.getElementById('adunit-tbody');
+        tbody.innerHTML = '<tr><td colspan="5" class="text-center text-danger">Failed to load ad unit data</td></tr>';
     }
 }
 

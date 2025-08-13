@@ -67,7 +67,9 @@ class GAMReportingService:
         advertiser_id: Optional[str] = None,
         order_id: Optional[str] = None,
         line_item_id: Optional[str] = None,
-        requested_timezone: str = "America/New_York"
+        requested_timezone: str = "America/New_York",
+        include_country: bool = False,
+        include_ad_unit: bool = False
     ) -> ReportingData:
         """
         Get reporting data for specified date range and filters
@@ -78,12 +80,16 @@ class GAMReportingService:
             order_id: Optional order ID filter
             line_item_id: Optional line item ID filter
             requested_timezone: Timezone for the request (data will be converted if different)
+            include_country: Include country dimension in the report
+            include_ad_unit: Include ad unit dimension in the report
             
         Returns:
             ReportingData object containing results and metadata
         """
         # Determine the appropriate dimensions and date range
-        dimensions, start_date, end_date, granularity = self._get_report_config(date_range, requested_timezone)
+        dimensions, start_date, end_date, granularity = self._get_report_config(
+            date_range, requested_timezone, include_country, include_ad_unit
+        )
         
         # Build the report query
         report_job = self._build_report_query(
@@ -123,7 +129,8 @@ class GAMReportingService:
             metrics=metrics
         )
     
-    def _get_report_config(self, date_range: str, requested_tz: str) -> tuple:
+    def _get_report_config(self, date_range: str, requested_tz: str, 
+                           include_country: bool = False, include_ad_unit: bool = False) -> tuple:
         """Get the appropriate dimensions and date range for the report type"""
         tz = pytz.timezone(requested_tz)
         now = datetime.now(tz)
@@ -135,6 +142,12 @@ class GAMReportingService:
             'ORDER_ID', 'ORDER_NAME', 
             'LINE_ITEM_ID', 'LINE_ITEM_NAME'
         ]
+        
+        # Add optional dimensions
+        if include_country:
+            base_dimensions.append('COUNTRY_NAME')
+        if include_ad_unit:
+            base_dimensions.extend(['AD_UNIT_ID', 'AD_UNIT_NAME'])
         
         if date_range == "today":
             # Today by hour - need both DATE and HOUR dimensions for hourly reporting
@@ -320,6 +333,9 @@ class GAMReportingService:
             'Dimension.LINE_ITEM_NAME': 'LINE_ITEM_NAME',
             'Dimension.DATE': 'DATE',
             'Dimension.HOUR': 'HOUR',
+            'Dimension.COUNTRY_NAME': 'COUNTRY_NAME',
+            'Dimension.AD_UNIT_ID': 'AD_UNIT_ID',
+            'Dimension.AD_UNIT_NAME': 'AD_UNIT_NAME',
             # Metrics - only including the ones we're actually requesting
             'Column.AD_SERVER_IMPRESSIONS': 'AD_SERVER_IMPRESSIONS',
             'Column.AD_SERVER_CLICKS': 'AD_SERVER_CLICKS',
@@ -354,7 +370,9 @@ class GAMReportingService:
                 timestamp,
                 normalized_row.get('ADVERTISER_ID', ''),
                 normalized_row.get('ORDER_ID', ''),
-                normalized_row.get('LINE_ITEM_ID', '')
+                normalized_row.get('LINE_ITEM_ID', ''),
+                normalized_row.get('COUNTRY_NAME', ''),
+                normalized_row.get('AD_UNIT_ID', '')
             )
             
             # Initialize or update aggregated metrics
@@ -367,6 +385,9 @@ class GAMReportingService:
                     'order_name': normalized_row.get('ORDER_NAME', ''),
                     'line_item_id': normalized_row.get('LINE_ITEM_ID', ''),
                     'line_item_name': normalized_row.get('LINE_ITEM_NAME', ''),
+                    'country': normalized_row.get('COUNTRY_NAME', ''),
+                    'ad_unit_id': normalized_row.get('AD_UNIT_ID', ''),
+                    'ad_unit_name': normalized_row.get('AD_UNIT_NAME', ''),
                     'impressions': 0,
                     'clicks': 0,
                     'revenue_micros': 0,  # Keep in micros for accurate summing
@@ -404,6 +425,9 @@ class GAMReportingService:
                 'order_name': agg_data.get('order_name', ''),
                 'line_item_id': agg_data['line_item_id'],
                 'line_item_name': agg_data.get('line_item_name', ''),
+                'country': agg_data.get('country', ''),
+                'ad_unit_id': agg_data.get('ad_unit_id', ''),
+                'ad_unit_name': agg_data.get('ad_unit_name', ''),
                 'impressions': impressions,
                 'clicks': clicks,
                 'ctr': round(ctr, 4),
@@ -520,6 +544,194 @@ class GAMReportingService:
             'unique_advertisers': unique_advertisers,
             'unique_orders': unique_orders,
             'unique_line_items': unique_line_items
+        }
+    
+    def get_country_breakdown(
+        self,
+        date_range: Literal["lifetime", "this_month", "today"],
+        advertiser_id: Optional[str] = None,
+        order_id: Optional[str] = None,
+        line_item_id: Optional[str] = None,
+        requested_timezone: str = "America/New_York"
+    ) -> Dict[str, Any]:
+        """
+        Get reporting data broken down by country
+        
+        Returns:
+            Dictionary with country-level metrics for pricing recommendations
+        """
+        report_data = self.get_reporting_data(
+            date_range=date_range,
+            advertiser_id=advertiser_id,
+            order_id=order_id,
+            line_item_id=line_item_id,
+            requested_timezone=requested_timezone,
+            include_country=True,
+            include_ad_unit=False
+        )
+        
+        # Aggregate by country
+        country_summary = {}
+        
+        for row in report_data.data:
+            country = row.get('country', 'Unknown')
+            if not country:
+                country = 'Unknown'
+                
+            if country not in country_summary:
+                country_summary[country] = {
+                    'country': country,
+                    'impressions': 0,
+                    'clicks': 0,
+                    'spend': 0.0,
+                    'unique_advertisers': set(),
+                    'unique_orders': set(),
+                    'unique_line_items': set()
+                }
+            
+            country_summary[country]['impressions'] += row['impressions']
+            country_summary[country]['clicks'] += row['clicks']
+            country_summary[country]['spend'] += row['spend']
+            
+            if row['advertiser_id']:
+                country_summary[country]['unique_advertisers'].add(row['advertiser_id'])
+            if row['order_id']:
+                country_summary[country]['unique_orders'].add(row['order_id'])
+            if row['line_item_id']:
+                country_summary[country]['unique_line_items'].add(row['line_item_id'])
+        
+        # Convert sets to counts and calculate metrics
+        for country_data in country_summary.values():
+            impressions = country_data['impressions']
+            clicks = country_data['clicks']
+            spend = country_data['spend']
+            
+            country_data['ctr'] = round((clicks / impressions * 100) if impressions > 0 else 0, 4)
+            country_data['avg_cpm'] = round((spend / impressions * 1000) if impressions > 0 else 0, 2)
+            country_data['unique_advertisers'] = len(country_data['unique_advertisers'])
+            country_data['unique_orders'] = len(country_data['unique_orders'])
+            country_data['unique_line_items'] = len(country_data['unique_line_items'])
+        
+        # Sort by spend descending
+        sorted_countries = sorted(country_summary.values(), key=lambda x: x['spend'], reverse=True)
+        
+        return {
+            'date_range': date_range,
+            'data_valid_until': report_data.data_valid_until.isoformat(),
+            'timezone': report_data.data_timezone,
+            'metrics': report_data.metrics,
+            'countries': sorted_countries,
+            'total_countries': len(sorted_countries)
+        }
+    
+    def get_ad_unit_breakdown(
+        self,
+        date_range: Literal["lifetime", "this_month", "today"],
+        advertiser_id: Optional[str] = None,
+        order_id: Optional[str] = None,
+        line_item_id: Optional[str] = None,
+        country: Optional[str] = None,
+        requested_timezone: str = "America/New_York"
+    ) -> Dict[str, Any]:
+        """
+        Get reporting data broken down by ad unit, optionally filtered by country
+        
+        Returns:
+            Dictionary with ad unit-level metrics including country breakdown
+        """
+        # Include both country and ad unit dimensions if country filter is requested
+        include_country = country is not None
+        
+        report_data = self.get_reporting_data(
+            date_range=date_range,
+            advertiser_id=advertiser_id,
+            order_id=order_id,
+            line_item_id=line_item_id,
+            requested_timezone=requested_timezone,
+            include_country=True,  # Always include country for better insights
+            include_ad_unit=True
+        )
+        
+        # Filter by country if specified
+        filtered_data = report_data.data
+        if country:
+            filtered_data = [row for row in filtered_data if row.get('country') == country]
+        
+        # Aggregate by ad unit
+        ad_unit_summary = {}
+        
+        for row in filtered_data:
+            ad_unit_id = row.get('ad_unit_id', 'Unknown')
+            if not ad_unit_id:
+                ad_unit_id = 'Unknown'
+                
+            if ad_unit_id not in ad_unit_summary:
+                ad_unit_summary[ad_unit_id] = {
+                    'ad_unit_id': ad_unit_id,
+                    'ad_unit_name': row.get('ad_unit_name', ''),
+                    'impressions': 0,
+                    'clicks': 0,
+                    'spend': 0.0,
+                    'countries': {},  # Track metrics by country
+                    'unique_advertisers': set(),
+                    'unique_orders': set(),
+                    'unique_line_items': set()
+                }
+            
+            # Aggregate overall metrics
+            ad_unit_summary[ad_unit_id]['impressions'] += row['impressions']
+            ad_unit_summary[ad_unit_id]['clicks'] += row['clicks']
+            ad_unit_summary[ad_unit_id]['spend'] += row['spend']
+            
+            # Track by country
+            country_name = row.get('country', 'Unknown')
+            if country_name not in ad_unit_summary[ad_unit_id]['countries']:
+                ad_unit_summary[ad_unit_id]['countries'][country_name] = {
+                    'impressions': 0,
+                    'clicks': 0,
+                    'spend': 0.0
+                }
+            
+            ad_unit_summary[ad_unit_id]['countries'][country_name]['impressions'] += row['impressions']
+            ad_unit_summary[ad_unit_id]['countries'][country_name]['clicks'] += row['clicks']
+            ad_unit_summary[ad_unit_id]['countries'][country_name]['spend'] += row['spend']
+            
+            if row['advertiser_id']:
+                ad_unit_summary[ad_unit_id]['unique_advertisers'].add(row['advertiser_id'])
+            if row['order_id']:
+                ad_unit_summary[ad_unit_id]['unique_orders'].add(row['order_id'])
+            if row['line_item_id']:
+                ad_unit_summary[ad_unit_id]['unique_line_items'].add(row['line_item_id'])
+        
+        # Convert sets to counts and calculate metrics
+        for ad_unit_data in ad_unit_summary.values():
+            impressions = ad_unit_data['impressions']
+            clicks = ad_unit_data['clicks']
+            spend = ad_unit_data['spend']
+            
+            ad_unit_data['ctr'] = round((clicks / impressions * 100) if impressions > 0 else 0, 4)
+            ad_unit_data['avg_cpm'] = round((spend / impressions * 1000) if impressions > 0 else 0, 2)
+            ad_unit_data['unique_advertisers'] = len(ad_unit_data['unique_advertisers'])
+            ad_unit_data['unique_orders'] = len(ad_unit_data['unique_orders'])
+            ad_unit_data['unique_line_items'] = len(ad_unit_data['unique_line_items'])
+            
+            # Calculate CPM for each country
+            for country_data in ad_unit_data['countries'].values():
+                c_impressions = country_data['impressions']
+                c_spend = country_data['spend']
+                country_data['cpm'] = round((c_spend / c_impressions * 1000) if c_impressions > 0 else 0, 2)
+        
+        # Sort by spend descending
+        sorted_ad_units = sorted(ad_unit_summary.values(), key=lambda x: x['spend'], reverse=True)
+        
+        return {
+            'date_range': date_range,
+            'data_valid_until': report_data.data_valid_until.isoformat(),
+            'timezone': report_data.data_timezone,
+            'metrics': report_data.metrics,
+            'ad_units': sorted_ad_units,
+            'total_ad_units': len(sorted_ad_units),
+            'filtered_by_country': country
         }
     
     def get_advertiser_summary(
