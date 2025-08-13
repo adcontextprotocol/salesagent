@@ -2,7 +2,7 @@
 
 import uuid
 import json
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional, Dict, Any, List
 from sqlalchemy import and_, or_
 
@@ -48,7 +48,7 @@ class ContextManager(DatabaseManager):
             tenant_id=tenant_id,
             principal_id=principal_id,
             conversation_history=initial_conversation or [],
-            last_activity_at=datetime.utcnow()
+            last_activity_at=datetime.now(timezone.utc)
         )
         
         try:
@@ -66,7 +66,8 @@ class ContextManager(DatabaseManager):
             console.print(f"[red]Failed to create context: {e}[/red]")
             raise
         finally:
-            self.session.remove()
+            # DatabaseManager handles session cleanup differently
+            pass
     
     def get_context(self, context_id: str) -> Optional[Context]:
         """Get a context by ID.
@@ -77,7 +78,7 @@ class ContextManager(DatabaseManager):
         Returns:
             The Context object or None if not found
         """
-        session = self.session()
+        session = self.session
         try:
             context = session.query(Context).filter_by(context_id=context_id).first()
             if context:
@@ -125,10 +126,11 @@ class ContextManager(DatabaseManager):
         try:
             context = self.session.query(Context).filter_by(context_id=context_id).first()
             if context:
-                context.last_activity_at = datetime.utcnow()
+                context.last_activity_at = datetime.now(timezone.utc)
                 self.session.commit()
         finally:
-            self.session.remove()
+            # DatabaseManager handles session cleanup differently
+            pass
     
     def create_workflow_step(
         self,
@@ -171,8 +173,8 @@ class ContextManager(DatabaseManager):
         if initial_comment:
             comments.append({
                 "user": "system",
-                "timestamp": datetime.utcnow().isoformat(),
-                "comment": initial_comment
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "text": initial_comment
             })
         
         step = WorkflowStep(
@@ -188,13 +190,13 @@ class ContextManager(DatabaseManager):
             error_message=error_message,
             transaction_details=transaction_details,
             comments=comments,
-            created_at=datetime.utcnow()
+            created_at=datetime.now(timezone.utc)
         )
         
         if status == "completed":
-            step.completed_at = datetime.utcnow()
+            step.completed_at = datetime.now(timezone.utc)
         
-        session = self.session()
+        session = self.session
         try:
             session.add(step)
             
@@ -206,7 +208,7 @@ class ContextManager(DatabaseManager):
                         object_id=mapping['object_id'],
                         step_id=step_id,
                         action=mapping.get('action', step_type),
-                        created_at=datetime.utcnow()
+                        created_at=datetime.now(timezone.utc)
                     )
                     session.add(obj_mapping)
             
@@ -242,14 +244,14 @@ class ContextManager(DatabaseManager):
             transaction_details: Actual API calls made
             add_comment: Optional comment to add {user, comment}
         """
-        session = self.session()
+        session = self.session
         try:
             step = session.query(WorkflowStep).filter_by(step_id=step_id).first()
             if step:
                 if status:
                     step.status = status
                     if status in ["completed", "failed"] and not step.completed_at:
-                        step.completed_at = datetime.utcnow()
+                        step.completed_at = datetime.now(timezone.utc)
                 
                 if response_data is not None:
                     step.response_data = response_data
@@ -264,8 +266,8 @@ class ContextManager(DatabaseManager):
                         step.comments = []
                     step.comments.append({
                         "user": add_comment.get("user", "system"),
-                        "timestamp": datetime.utcnow().isoformat(),
-                        "comment": add_comment["comment"]
+                        "timestamp": datetime.now(timezone.utc).isoformat(),
+                        "text": add_comment.get("text", add_comment.get("comment", ""))
                     })
                 
                 session.commit()
@@ -292,7 +294,7 @@ class ContextManager(DatabaseManager):
         Returns:
             List of pending WorkflowStep objects
         """
-        session = self.session()
+        session = self.session
         try:
             query = session.query(WorkflowStep).filter(
                 WorkflowStep.status.in_(["pending", "requires_approval"])
@@ -325,7 +327,7 @@ class ContextManager(DatabaseManager):
         Returns:
             List of workflow steps with their details
         """
-        session = self.session()
+        session = self.session
         try:
             # Query object mappings to find all related steps
             mappings = session.query(ObjectWorkflowMapping).filter_by(
@@ -371,7 +373,7 @@ class ContextManager(DatabaseManager):
             role: Message role (user, assistant, system)
             content: Message content
         """
-        session = self.session()
+        session = self.session
         try:
             context = session.query(Context).filter_by(context_id=context_id).first()
             if context:
@@ -381,9 +383,9 @@ class ContextManager(DatabaseManager):
                 context.conversation_history.append({
                     "role": role,
                     "content": content,
-                    "timestamp": datetime.utcnow().isoformat()
+                    "timestamp": datetime.now(timezone.utc).isoformat()
                 })
-                context.last_activity_at = datetime.utcnow()
+                context.last_activity_at = datetime.now(timezone.utc)
                 session.commit()
         finally:
             session.close()
@@ -418,7 +420,7 @@ class ContextManager(DatabaseManager):
         Returns:
             Status information derived from workflow steps
         """
-        session = self.session()
+        session = self.session
         try:
             steps = session.query(WorkflowStep).filter_by(context_id=context_id).all()
             
@@ -472,7 +474,7 @@ class ContextManager(DatabaseManager):
         Returns:
             List of Context objects ordered by last activity
         """
-        session = self.session()
+        session = self.session
         try:
             contexts = session.query(Context).filter_by(
                 tenant_id=tenant_id,
