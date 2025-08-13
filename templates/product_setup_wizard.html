@@ -394,6 +394,25 @@
 .wizard-actions button:only-child {
     margin-left: auto;
 }
+
+.alert {
+    padding: 1rem 1.25rem;
+    margin-bottom: 1rem;
+    border: 1px solid transparent;
+    border-radius: 0.25rem;
+}
+
+.alert-warning {
+    color: #856404;
+    background-color: #fff3cd;
+    border-color: #ffeaa7;
+}
+
+.alert h4 {
+    color: inherit;
+    margin-top: 0;
+    margin-bottom: 0.5rem;
+}
 </style>
 
 <script>
@@ -646,8 +665,36 @@ async function analyzeAdServer() {
         const response = await fetch(`{{ url_for('analyze_ad_server_inventory', tenant_id=tenant_id) }}`);
         adServerData = await response.json();
         
+        // Check if inventory sync is needed
+        if (adServerData.error && adServerData.properties && adServerData.properties.needs_sync) {
+            // Show error message about needing to sync inventory
+            document.getElementById('analysis-results').innerHTML = `
+                <div class="alert alert-warning">
+                    <h4>Inventory Sync Required</h4>
+                    <p>${adServerData.error}</p>
+                    <p>Please run the GAM inventory sync before using the Product Wizard:</p>
+                    <ol>
+                        <li>Go to the <a href="{{ url_for('gam_inventory_dashboard', tenant_id=tenant_id) }}">GAM Inventory</a> page</li>
+                        <li>Click "Sync Inventory" to fetch the latest data from GAM</li>
+                        <li>Return here after the sync completes</li>
+                    </ol>
+                </div>
+            `;
+            document.getElementById('analysis-results').style.display = 'block';
+            // Hide the next button since we can't proceed
+            document.querySelector('#step-2 .wizard-actions').style.display = 'none';
+            return;
+        }
+        
         displayAnalysisResults();
         generateProductSuggestions();
+        
+        // Show info if data is from cache
+        if (adServerData.properties && adServerData.properties.from_cache) {
+            const lastSync = adServerData.properties.last_sync ? 
+                new Date(adServerData.properties.last_sync).toLocaleString() : 'Unknown';
+            console.log(`Using cached inventory data from ${lastSync}`);
+        }
         
     } catch (error) {
         console.error('Error analyzing ad server:', error);
