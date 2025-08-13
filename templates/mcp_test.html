@@ -588,11 +588,8 @@
                 </div>
                 <div id="media-buy-status"></div>
                 
-                <hr style="margin: 20px 0;">
-                
-                <h4>Legacy: Principal Summary (Not in AdCP Spec)</h4>
-                <button class="btn-action btn-secondary" onclick="getPrincipalSummary()">Get Principal Summary</button>
-                <div id="media-buys-list"></div>
+                <!-- get_principal_summary removed - not part of AdCP spec -->
+                <!-- Use check_media_buy_status with context_id instead -->
             </div>
             
             <div class="section">
@@ -1028,39 +1025,8 @@ function getStatusBadgeClass(status) {
     }
 }
 
-async function getPrincipalSummary() {
-    // Note: AdCP spec doesn't define list_media_buys or get_media_buys
-    // We use get_principal_summary which includes media buy information
-    const result = await makeCall('get_principal_summary', {});
-    
-    if (result && result.success && result.result) {
-        // The response includes media_buys array
-        currentMediaBuys = result.result.media_buys || [];
-        const mediaBuysList = document.getElementById('media-buys-list');
-        mediaBuysList.innerHTML = '';
-        
-        currentMediaBuys.forEach(buy => {
-            const buyItem = document.createElement('div');
-            buyItem.className = 'media-buy-item';
-            buyItem.onclick = () => selectMediaBuy(buy);
-            
-            let statusColor = '#6c757d';
-            if (buy.status === 'active') statusColor = '#28a745';
-            else if (buy.status === 'pending') statusColor = '#ffc107';
-            else if (buy.status === 'completed') statusColor = '#007bff';
-            
-            buyItem.innerHTML = `
-                <strong>Media Buy: ${buy.media_buy_id}</strong><br>
-                <small>Status: <span style="color: ${statusColor}">${buy.status}</span></small><br>
-                <small>Budget: $${buy.budget_spent || 0} / $${buy.budget_total}</small><br>
-                <small>${buy.start_date} to ${buy.end_date}</small>
-                ${buy.line_item_ids ? `<br><small>Line Items: ${buy.line_item_ids.join(', ')}</small>` : ''}
-            `;
-            
-            mediaBuysList.appendChild(buyItem);
-        });
-    }
-}
+// get_principal_summary has been removed - not part of AdCP spec
+// Use check_media_buy_status with context_id from create_media_buy instead
 
 function selectMediaBuy(buy) {
     selectedMediaBuyId = buy.media_buy_id;

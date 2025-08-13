@@ -74,14 +74,10 @@ def test_mcp_workflow():
     else:
         print(f"  ❌ UNEXPECTED - Tool exists but not in AdCP spec!")
     
-    # Test 4: get_principal_summary (Our implementation for listing media buys)
-    print("\n4. Testing get_principal_summary (Our workaround)...")
-    result = call_mcp_tool("get_principal_summary", {})
-    if result.get('success'):
-        media_buys = result.get('result', {}).get('media_buys', [])
-        print(f"  ✅ SUCCESS - Found {len(media_buys)} media buys")
-    else:
-        print(f"  ❌ FAILED: {result.get('error')}")
+    # Test 4: check_media_buy_status (Use context_id from create_media_buy)
+    # NOTE: get_principal_summary has been removed - use check_media_buy_status instead
+    print("\n4. Skipping deprecated get_principal_summary test...")
+    print("   Use check_media_buy_status with context_id from create_media_buy")
     
     # Test 5: add_creative_assets (AdCP spec name)
     print("\n5. Testing add_creative_assets (AdCP spec: ✓)...")
@@ -148,7 +144,7 @@ def test_mcp_workflow():
     print("-" * 70)
     print("get_products           → get_products ✓")
     print("create_media_buy       → create_media_buy ✓")
-    print("list_media_buys        → NOT IN SPEC (we use get_principal_summary)")
+    print("list_media_buys        → NOT IN SPEC (removed - use check_media_buy_status)")
     print("add_creative_assets    → add_creative_assets (different!)")
     print("get_media_buy_delivery → get_media_buy_delivery ✓")
     print("update_media_buy       → update_media_buy ✓")

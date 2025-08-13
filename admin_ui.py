@@ -1417,7 +1417,7 @@ def operations_dashboard(tenant_id):
     # Get tenant
     conn = get_db_connection()
     tenant_cursor = conn.execute(
-        "SELECT * FROM tenants WHERE tenant_id = ?", 
+        "SELECT * FROM tenants WHERE tenant_id = %s", 
         (tenant_id,)
     )
     tenant_row = tenant_cursor.fetchone()
@@ -1448,29 +1448,29 @@ def operations_dashboard(tenant_id):
     # Active media buys count
     active_buys_cursor = conn.execute("""
         SELECT COUNT(*) FROM media_buys 
-        WHERE tenant_id = ? AND status = 'active'
+        WHERE tenant_id = %s AND status = 'active'
     """, (tenant_id,))
     active_buys = active_buys_cursor.fetchone()[0]
     
     # Pending tasks count
     pending_tasks_cursor = conn.execute("""
         SELECT COUNT(*) FROM tasks 
-        WHERE tenant_id = ? AND status = 'pending'
+        WHERE tenant_id = %s AND status = 'pending'
     """, (tenant_id,))
     pending_tasks = pending_tasks_cursor.fetchone()[0]
     
     # Completed today count
     completed_today_cursor = conn.execute("""
         SELECT COUNT(*) FROM tasks 
-        WHERE tenant_id = ? AND status = 'completed' 
-        AND DATE(completed_at) = DATE(?)
+        WHERE tenant_id = %s AND status = 'completed' 
+        AND DATE(completed_at) = DATE(%s)
     """, (tenant_id, today.isoformat()))
     completed_today = completed_today_cursor.fetchone()[0]
     
     # Total active spend
     total_spend_cursor = conn.execute("""
         SELECT SUM(budget) FROM media_buys 
-        WHERE tenant_id = ? AND status = 'active'
+        WHERE tenant_id = %s AND status = 'active'
     """, (tenant_id,))
     total_spend = total_spend_cursor.fetchone()[0] or 0
     
@@ -1484,13 +1484,26 @@ def operations_dashboard(tenant_id):
     # Get media buys
     media_buys_cursor = conn.execute("""
         SELECT * FROM media_buys 
-        WHERE tenant_id = ? 
+        WHERE tenant_id = %s 
         ORDER BY created_at DESC 
         LIMIT 100
     """, (tenant_id,))
     
     media_buys = []
     for row in media_buys_cursor:
+        # Handle datetime fields - PostgreSQL returns datetime objects, SQLite returns strings
+        created_at = row[11]
+        if created_at and isinstance(created_at, str):
+            created_at = datetime.fromisoformat(created_at)
+        
+        updated_at = row[12]
+        if updated_at and isinstance(updated_at, str):
+            updated_at = datetime.fromisoformat(updated_at)
+        
+        approved_at = row[13]
+        if approved_at and isinstance(approved_at, str):
+            approved_at = datetime.fromisoformat(approved_at)
+        
         media_buys.append({
             'media_buy_id': row[0],
             'tenant_id': row[1],
@@ -1503,26 +1516,45 @@ def operations_dashboard(tenant_id):
             'start_date': row[8],
             'end_date': row[9],
             'status': row[10],
-            'created_at': datetime.fromisoformat(row[11]) if row[11] else None,
-            'updated_at': datetime.fromisoformat(row[12]) if row[12] else None,
-            'approved_at': datetime.fromisoformat(row[13]) if row[13] else None,
+            'created_at': created_at,
+            'updated_at': updated_at,
+            'approved_at': approved_at,
             'approved_by': row[14]
         })
     
     # Get tasks
     tasks_cursor = conn.execute("""
         SELECT * FROM tasks 
-        WHERE tenant_id = ? 
+        WHERE tenant_id = %s 
         ORDER BY created_at DESC 
         LIMIT 100
     """, (tenant_id,))
     
     tasks = []
     for row in tasks_cursor:
-        due_date = datetime.fromisoformat(row[8]) if row[8] else None
+        # Handle datetime fields - PostgreSQL returns datetime objects, SQLite returns strings
+        due_date = row[8]
+        if due_date and isinstance(due_date, str):
+            due_date = datetime.fromisoformat(due_date)
+        
+        completed_at = row[9]
+        if completed_at and isinstance(completed_at, str):
+            completed_at = datetime.fromisoformat(completed_at)
+        
+        created_at = row[12]
+        if created_at and isinstance(created_at, str):
+            created_at = datetime.fromisoformat(created_at)
+        
         is_overdue = False
         if due_date and row[6] == 'pending':
             is_overdue = due_date < datetime.now()
+        
+        # Handle metadata - PostgreSQL returns dict, SQLite returns string
+        metadata = row[11]
+        if metadata and isinstance(metadata, str):
+            metadata = json.loads(metadata)
+        elif not metadata:
+            metadata = {}
             
         tasks.append({
             'task_id': row[0],
@@ -1534,27 +1566,32 @@ def operations_dashboard(tenant_id):
             'status': row[6],
             'assigned_to': row[7],
             'due_date': due_date,
-            'completed_at': datetime.fromisoformat(row[9]) if row[9] else None,
+            'completed_at': completed_at,
             'completed_by': row[10],
-            'metadata': json.loads(row[11]) if row[11] else {},
-            'created_at': datetime.fromisoformat(row[12]) if row[12] else None,
+            'metadata': metadata,
+            'created_at': created_at,
             'is_overdue': is_overdue
         })
     
     # Get audit logs
     audit_logs_cursor = conn.execute("""
         SELECT * FROM audit_logs 
-        WHERE tenant_id = ? 
+        WHERE tenant_id = %s 
         ORDER BY timestamp DESC 
         LIMIT 100
     """, (tenant_id,))
     
     audit_logs = []
     for row in audit_logs_cursor:
+        # Handle datetime fields - PostgreSQL returns datetime objects, SQLite returns strings
+        timestamp = row[2]
+        if timestamp and isinstance(timestamp, str):
+            timestamp = datetime.fromisoformat(timestamp)
+        
         audit_logs.append({
             'log_id': row[0],
             'tenant_id': row[1],
-            'timestamp': datetime.fromisoformat(row[2]) if row[2] else None,
+            'timestamp': timestamp,
             'operation': row[3],
             'principal_name': row[4],
             'principal_id': row[5],
@@ -1572,6 +1609,189 @@ def operations_dashboard(tenant_id):
                          media_buys=media_buys,
                          tasks=tasks,
                          audit_logs=audit_logs)
+
+@app.route('/tenant/<tenant_id>/media-buy/<media_buy_id>/approve')
+@require_auth()
+def media_buy_approval(tenant_id, media_buy_id):
+    """Display media buy approval page with details and dry-run preview."""
+    # Verify tenant access
+    if session.get('role') != 'super_admin' and session.get('tenant_id') != tenant_id:
+        return "Access denied", 403
+    
+    conn = get_db_connection()
+    
+    # Get the media buy details
+    buy_cursor = conn.execute("""
+        SELECT * FROM media_buys 
+        WHERE tenant_id = %s AND media_buy_id = %s
+    """, (tenant_id, media_buy_id))
+    
+    buy_row = buy_cursor.fetchone()
+    if not buy_row:
+        conn.close()
+        return "Media buy not found", 404
+    
+    # Parse the media buy
+    media_buy = {
+        'media_buy_id': buy_row[0],
+        'tenant_id': buy_row[1],
+        'principal_id': buy_row[2],
+        'order_name': buy_row[3],
+        'advertiser_name': buy_row[4],
+        'campaign_objective': buy_row[5],
+        'kpi_goal': buy_row[6],
+        'budget': buy_row[7],
+        'start_date': buy_row[8],
+        'end_date': buy_row[9],
+        'status': buy_row[10],
+        'created_at': buy_row[11] if not isinstance(buy_row[11], str) else datetime.fromisoformat(buy_row[11]),
+        'raw_request': json.loads(buy_row[15]) if buy_row[15] and isinstance(buy_row[15], str) else buy_row[15],
+        'context_id': buy_row[16] if len(buy_row) > 16 else None
+    }
+    
+    # Get associated human task if exists
+    task_cursor = conn.execute("""
+        SELECT * FROM human_tasks 
+        WHERE media_buy_id = %s AND status = 'pending'
+        ORDER BY created_at DESC LIMIT 1
+    """, (media_buy_id,))
+    
+    task_row = task_cursor.fetchone()
+    human_task = None
+    if task_row:
+        context_data = task_row[8]
+        if context_data and isinstance(context_data, str):
+            context_data = json.loads(context_data)
+        
+        human_task = {
+            'task_id': task_row[0],
+            'task_type': task_row[3],
+            'priority': task_row[4],
+            'status': task_row[5],
+            'operation': task_row[6],
+            'error_detail': task_row[7],
+            'context_data': context_data or {}
+        }
+    
+    # Get the principal details for adapter info
+    principal_cursor = conn.execute("""
+        SELECT * FROM principals 
+        WHERE tenant_id = %s AND principal_id = %s
+    """, (tenant_id, media_buy['principal_id']))
+    
+    principal_row = principal_cursor.fetchone()
+    principal = None
+    if principal_row:
+        platform_mappings = principal_row[3]
+        if isinstance(platform_mappings, str):
+            platform_mappings = json.loads(platform_mappings)
+        
+        principal = {
+            'principal_id': principal_row[0],
+            'name': principal_row[2],
+            'platform_mappings': platform_mappings
+        }
+    
+    # Get the products in this media buy
+    products = []
+    if media_buy['raw_request'] and 'product_ids' in media_buy['raw_request']:
+        product_ids = media_buy['raw_request']['product_ids']
+        for product_id in product_ids:
+            prod_cursor = conn.execute("""
+                SELECT * FROM products 
+                WHERE tenant_id = %s AND product_id = %s
+            """, (tenant_id, product_id))
+            prod_row = prod_cursor.fetchone()
+            if prod_row:
+                formats = prod_row[3]
+                if isinstance(formats, str):
+                    formats = json.loads(formats)
+                
+                targeting_template = prod_row[4]
+                if isinstance(targeting_template, str):
+                    targeting_template = json.loads(targeting_template)
+                
+                implementation_config = prod_row[11] if len(prod_row) > 11 else None
+                if implementation_config and isinstance(implementation_config, str):
+                    implementation_config = json.loads(implementation_config)
+                
+                products.append({
+                    'product_id': prod_row[0],
+                    'name': prod_row[2],
+                    'formats': formats,
+                    'targeting_template': targeting_template,
+                    'pricing_model': prod_row[5],
+                    'base_price': prod_row[6],
+                    'min_spend': prod_row[7],
+                    'implementation_config': implementation_config
+                })
+    
+    # Prepare dry-run preview (simulate what would happen in GAM)
+    dry_run_preview = generate_dry_run_preview(
+        media_buy, 
+        products, 
+        principal,
+        human_task
+    )
+    
+    conn.close()
+    
+    return render_template('media_buy_approval.html',
+                         tenant_id=tenant_id,
+                         media_buy=media_buy,
+                         human_task=human_task,
+                         principal=principal,
+                         products=products,
+                         dry_run_preview=dry_run_preview)
+
+def generate_dry_run_preview(media_buy, products, principal, human_task):
+    """Generate a dry-run preview of what would be created in GAM."""
+    preview = {
+        'order': {
+            'name': media_buy['order_name'],
+            'advertiser': media_buy['advertiser_name'],
+            'budget': media_buy['budget'],
+            'start_date': str(media_buy['start_date']),
+            'end_date': str(media_buy['end_date'])
+        },
+        'line_items': []
+    }
+    
+    # Generate preview line items for each product
+    for product in products:
+        line_item = {
+            'name': f"{product['name']} - {media_buy['media_buy_id']}",
+            'product_id': product['product_id'],
+            'formats': product.get('formats', []),
+            'targeting': product.get('targeting_template', {}),
+            'pricing_model': product.get('pricing_model', 'CPM'),
+            'base_price': product.get('base_price', 0),
+            'implementation_notes': []
+        }
+        
+        # Add implementation config details
+        if product.get('implementation_config'):
+            config = product['implementation_config']
+            if 'ad_unit_ids' in config:
+                line_item['implementation_notes'].append(
+                    f"Will target {len(config['ad_unit_ids'])} ad units"
+                )
+            if 'placement_ids' in config:
+                line_item['implementation_notes'].append(
+                    f"Will use {len(config['placement_ids'])} placements"
+                )
+            if 'custom_targeting' in config:
+                line_item['implementation_notes'].append(
+                    "Custom targeting will be applied"
+                )
+        
+        preview['line_items'].append(line_item)
+    
+    # Add any targeting overlay from the request
+    if media_buy.get('raw_request') and media_buy['raw_request'].get('targeting_overlay'):
+        preview['targeting_overlay'] = media_buy['raw_request']['targeting_overlay']
+    
+    return preview
 
 # User Management Routes
 @app.route('/tenant/<tenant_id>/users')
@@ -4676,8 +4896,8 @@ def mcp_test_call():
             async with Client(transport) as client:
                 try:
                     # Some tools expect params wrapped in 'req' key, others don't
-                    # Tools without req parameter: get_principal_summary, get_targeting_capabilities
-                    tools_without_req = ['get_principal_summary', 'get_targeting_capabilities']
+                    # Tools without req parameter: get_targeting_capabilities
+                    tools_without_req = ['get_targeting_capabilities']
                     
                     if tool_name in tools_without_req:
                         arguments = tool_params or {}
