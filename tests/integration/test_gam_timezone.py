@@ -8,6 +8,8 @@ This script runs sample reports with different timezone settings to understand:
 3. What format the timestamps come back in
 """
 
+import pytest
+
 import json
 import sys
 import os
