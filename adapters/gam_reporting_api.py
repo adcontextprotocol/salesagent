@@ -323,22 +323,21 @@ def get_principal_reporting(tenant_id: str, principal_id: str):
         # Get the GAM client for this tenant
         gam_client = get_ad_manager_client_for_tenant(tenant_id)
         
-        # Get the network timezone from tenant config
+        # Get the network timezone from adapter config
         conn = get_db_connection()
         cursor = conn.cursor()
         cursor.execute(
-            "SELECT config FROM tenants WHERE tenant_id = ?",
+            "SELECT gam_network_timezone FROM adapter_config WHERE tenant_id = ? AND adapter_type = 'google_ad_manager'",
             (tenant_id,)
         )
-        tenant = cursor.fetchone()
+        adapter_config = cursor.fetchone()
         conn.close()
         
-        if not tenant:
-            return jsonify({'error': 'Tenant not found'}), 404
-        
-        config = json.loads(tenant['config']) if isinstance(tenant['config'], str) else tenant['config']
-        gam_config = config.get('adapters', {}).get('google_ad_manager', {})
-        network_timezone = gam_config.get('network_timezone', 'America/New_York')
+        if not adapter_config:
+            # Default to America/New_York if no config found
+            network_timezone = 'America/New_York'
+        else:
+            network_timezone = adapter_config.get('gam_network_timezone', 'America/New_York')
         
         # Create reporting service
         reporting_service = GAMReportingService(gam_client, network_timezone)
@@ -429,22 +428,21 @@ def get_principal_summary(tenant_id: str, principal_id: str):
         # Get the GAM client for this tenant
         gam_client = get_ad_manager_client_for_tenant(tenant_id)
         
-        # Get the network timezone from tenant config
+        # Get the network timezone from adapter config
         conn = get_db_connection()
         cursor = conn.cursor()
         cursor.execute(
-            "SELECT config FROM tenants WHERE tenant_id = ?",
+            "SELECT gam_network_timezone FROM adapter_config WHERE tenant_id = ? AND adapter_type = 'google_ad_manager'",
             (tenant_id,)
         )
-        tenant = cursor.fetchone()
+        adapter_config = cursor.fetchone()
         conn.close()
         
-        if not tenant:
-            return jsonify({'error': 'Tenant not found'}), 404
-        
-        config = json.loads(tenant['config']) if isinstance(tenant['config'], str) else tenant['config']
-        gam_config = config.get('adapters', {}).get('google_ad_manager', {})
-        network_timezone = gam_config.get('network_timezone', 'America/New_York')
+        if not adapter_config:
+            # Default to America/New_York if no config found
+            network_timezone = 'America/New_York'
+        else:
+            network_timezone = adapter_config.get('gam_network_timezone', 'America/New_York')
         
         # Create reporting service
         reporting_service = GAMReportingService(gam_client, network_timezone)
