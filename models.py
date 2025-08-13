@@ -6,13 +6,14 @@ from sqlalchemy import (
     ForeignKeyConstraint, Float, BigInteger
 )
 from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import relationship
+from sqlalchemy.orm import relationship, validates
 from sqlalchemy.sql import func
 from sqlalchemy.dialects.postgresql import JSONB
+from json_validators import JSONValidatorMixin, ensure_json_array, ensure_json_object
 
 Base = declarative_base()
 
-class Tenant(Base):
+class Tenant(Base, JSONValidatorMixin):
     __tablename__ = 'tenants'
     
     tenant_id = Column(String(50), primary_key=True)
@@ -50,6 +51,9 @@ class Tenant(Base):
     __table_args__ = (
         Index('idx_subdomain', 'subdomain'),
     )
+    
+    # JSON validators are inherited from JSONValidatorMixin
+    # No need for duplicate validators here
 
 class CreativeFormat(Base):
     __tablename__ = 'creative_formats'
@@ -80,7 +84,7 @@ class CreativeFormat(Base):
         CheckConstraint("type IN ('display', 'video', 'audio', 'native')"),
     )
 
-class Product(Base):
+class Product(Base, JSONValidatorMixin):
     __tablename__ = 'products'
     
     tenant_id = Column(String(50), ForeignKey('tenants.tenant_id', ondelete='CASCADE'), primary_key=True)
@@ -105,7 +109,7 @@ class Product(Base):
         Index('idx_products_tenant', 'tenant_id'),
     )
 
-class Principal(Base):
+class Principal(Base, JSONValidatorMixin):
     __tablename__ = 'principals'
     
     tenant_id = Column(String(50), ForeignKey('tenants.tenant_id', ondelete='CASCADE'), primary_key=True)
@@ -481,7 +485,7 @@ class Context(Base):
     )
 
 
-class WorkflowStep(Base):
+class WorkflowStep(Base, JSONValidatorMixin):
     """Represents an individual step/task in a workflow.
     
     This serves as a work queue where each step can be queried, updated, and tracked independently.
