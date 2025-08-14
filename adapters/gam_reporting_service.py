@@ -105,7 +105,7 @@ class GAMReportingService:
         report_data = self._run_report(report_job)
         
         # Calculate data freshness
-        data_valid_until = self._calculate_data_freshness(date_range, requested_timezone)
+        data_valid_until = self._calculate_data_validity(date_range, requested_timezone)
         
         # Process and aggregate the data
         processed_data = self._process_report_data(
@@ -130,18 +130,33 @@ class GAMReportingService:
         )
     
     def _get_report_config(self, date_range: str, requested_tz: str, 
-                           include_country: bool = False, include_ad_unit: bool = False) -> tuple:
-        """Get the appropriate dimensions and date range for the report type"""
+                           include_country: bool = False, include_ad_unit: bool = False,
+                           include_date: bool = True) -> tuple:
+        """Get the appropriate dimensions and date range for the report type
+        
+        Args:
+            date_range: Time period for the report
+            requested_tz: Timezone for the report
+            include_country: Whether to include country dimension
+            include_ad_unit: Whether to include ad unit dimensions
+            include_date: Whether to include DATE dimension (False for aggregated queries)
+        """
         tz = pytz.timezone(requested_tz)
         now = datetime.now(tz)
         
-        # Base dimensions for all reports - include both IDs and names
-        # Note: Including too many dimensions causes "COLUMNS_NOT_SUPPORTED_FOR_REQUESTED_DIMENSIONS" errors
-        base_dimensions = [
-            'ADVERTISER_ID', 'ADVERTISER_NAME',
-            'ORDER_ID', 'ORDER_NAME', 
-            'LINE_ITEM_ID', 'LINE_ITEM_NAME'
-        ]
+        # Base dimensions for all reports
+        # For aggregated reports (no DATE), we can include names
+        # For time-series reports (with DATE), we only include IDs to reduce data volume
+        if not include_date:
+            # Aggregated query - include names for readability
+            base_dimensions = [
+                'ADVERTISER_ID', 'ADVERTISER_NAME',
+                'ORDER_ID', 'ORDER_NAME', 
+                'LINE_ITEM_ID', 'LINE_ITEM_NAME'
+            ]
+        else:
+            # Time-series query - only IDs to minimize data
+            base_dimensions = ['ADVERTISER_ID', 'ORDER_ID', 'LINE_ITEM_ID']
         
         # Add optional dimensions
         if include_country:
@@ -149,25 +164,48 @@ class GAMReportingService:
         if include_ad_unit:
             base_dimensions.extend(['AD_UNIT_ID', 'AD_UNIT_NAME'])
         
-        if date_range == "today":
-            # Today by hour - need both DATE and HOUR dimensions for hourly reporting
-            dimensions = ['DATE', 'HOUR'] + base_dimensions
-            start_date = now.replace(hour=0, minute=0, second=0, microsecond=0)
-            end_date = now
-            granularity = "hourly"
-        elif date_range == "this_month":
-            # This month by day
-            dimensions = ['DATE'] + base_dimensions
-            start_date = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-            end_date = now
-            granularity = "daily"
-        else:  # lifetime
-            # Lifetime by day - limited to 90 days to avoid huge datasets
-            dimensions = ['DATE'] + base_dimensions
-            # Start from 90 days ago for manageable data volume
-            start_date = (now - timedelta(days=90)).replace(hour=0, minute=0, second=0, microsecond=0)
-            end_date = now
-            granularity = "daily"
+        # For aggregated queries (e.g., country/ad unit breakdowns), skip DATE dimension
+        # This reduces data from millions of rows to thousands
+        if not include_date:
+            dimensions = base_dimensions
+            # Still set date range for filtering, but no DATE in dimensions means GAM aggregates for us
+            if date_range == "today":
+                start_date = now.replace(hour=0, minute=0, second=0, microsecond=0)
+                end_date = now
+                granularity = "total"
+            elif date_range == "this_month":
+                start_date = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+                end_date = now
+                granularity = "total"
+            else:  # lifetime
+                # For aggregated queries, we can use longer date ranges since we get one row per entity
+                start_date = (now - timedelta(days=90)).replace(hour=0, minute=0, second=0, microsecond=0)
+                end_date = now
+                granularity = "total"
+        else:
+            # Include DATE dimension for time-series data
+            if date_range == "today":
+                # Today by hour - need both DATE and HOUR dimensions for hourly reporting
+                dimensions = ['DATE', 'HOUR'] + base_dimensions
+                start_date = now.replace(hour=0, minute=0, second=0, microsecond=0)
+                end_date = now
+                granularity = "hourly"
+            elif date_range == "this_month":
+                # This month by day
+                dimensions = ['DATE'] + base_dimensions
+                start_date = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+                end_date = now
+                granularity = "daily"
+            else:  # lifetime
+                # Lifetime by day - limit based on whether we're getting detailed dimensions
+                dimensions = ['DATE'] + base_dimensions
+                # Reduce to 30 days if we have ad unit or country dimensions to avoid timeouts
+                if include_country or include_ad_unit:
+                    start_date = (now - timedelta(days=30)).replace(hour=0, minute=0, second=0, microsecond=0)
+                else:
+                    start_date = (now - timedelta(days=90)).replace(hour=0, minute=0, second=0, microsecond=0)
+                end_date = now
+                granularity = "daily"
         
         return dimensions, start_date, end_date, granularity
     
@@ -214,8 +252,9 @@ class GAMReportingService:
             except (ValueError, TypeError):
                 logger.warning(f"Invalid line_item_id format: {line_item_id}")
         
-        # NOTE: We cannot filter by AD_SERVER_IMPRESSIONS in the WHERE clause
-        # as it's not a filterable field in GAM's PQL. We'll filter during processing instead.
+        # Add minimum impressions filter for aggregated queries to reduce noise
+        # NOTE: AD_SERVER_IMPRESSIONS is not filterable in WHERE clause, but we can 
+        # filter during processing. For aggregated queries, this happens server-side.
         
         report_job = {
             'reportQuery': {
@@ -263,17 +302,24 @@ class GAMReportingService:
             
             logger.info(f"Started GAM report job with ID: {report_job_id}")
             
-            # Wait for completion
-            max_wait = 300  # 5 minutes maximum
+            # Wait for completion - longer timeout for reports with multiple dimensions
+            max_wait = 600  # 10 minutes maximum for complex reports
             wait_time = 0
+            poll_interval = 5  # Check every 5 seconds instead of 2
+            
             while wait_time < max_wait:
                 status = self.report_service.getReportJobStatus(report_job_id)
                 if status == 'COMPLETED':
                     break
                 elif status == 'FAILED':
                     raise Exception(f"GAM report job failed")
-                time.sleep(2)
-                wait_time += 2
+                
+                # Log progress for long-running reports
+                if wait_time > 0 and wait_time % 30 == 0:
+                    logger.info(f"Still waiting for GAM report {report_job_id} - {wait_time}s elapsed")
+                    
+                time.sleep(poll_interval)
+                wait_time += poll_interval
             
             if self.report_service.getReportJobStatus(report_job_id) != 'COMPLETED':
                 raise Exception(f"GAM report job timed out after {max_wait} seconds")
@@ -471,7 +517,7 @@ class GAMReportingService:
         
         return ""
     
-    def _calculate_data_freshness(self, date_range: str, requested_tz: str) -> datetime:
+    def _calculate_data_validity(self, date_range: str, requested_tz: str = "America/New_York") -> datetime:
         """
         Calculate when the data is valid until based on GAM's reporting delays
         
@@ -555,25 +601,42 @@ class GAMReportingService:
         requested_timezone: str = "America/New_York"
     ) -> Dict[str, Any]:
         """
-        Get reporting data broken down by country
+        Get reporting data broken down by country (aggregated, no DATE dimension)
         
         Returns:
             Dictionary with country-level metrics for pricing recommendations
         """
-        report_data = self.get_reporting_data(
+        # Get dimensions without DATE for aggregated query
+        dimensions, start_date, end_date, granularity = self._get_report_config(
             date_range=date_range,
+            requested_tz=requested_timezone,
+            include_country=True,
+            include_ad_unit=False,
+            include_date=False  # No DATE dimension for aggregated results
+        )
+        
+        # Build and run the report
+        report_query = self._build_report_query(
+            dimensions=dimensions,
+            start_date=start_date,
+            end_date=end_date,
             advertiser_id=advertiser_id,
             order_id=order_id,
-            line_item_id=line_item_id,
-            requested_timezone=requested_timezone,
-            include_country=True,
-            include_ad_unit=False
+            line_item_id=line_item_id
         )
+        
+        raw_data = self._run_report(report_query)
+        
+        logger.info(f"Country breakdown report returned {len(raw_data)} rows (aggregated, no DATE dimension)")
+        
+        # Process the aggregated data
+        processed_data = self._process_report_data(raw_data, granularity, requested_timezone)
         
         # Aggregate by country
         country_summary = {}
+        advertiser_names = {}  # Map advertiser_id to advertiser_name
         
-        for row in report_data.data:
+        for row in processed_data:
             country = row.get('country', 'Unknown')
             if not country:
                 country = 'Unknown'
@@ -592,6 +655,10 @@ class GAMReportingService:
             country_summary[country]['impressions'] += row['impressions']
             country_summary[country]['clicks'] += row['clicks']
             country_summary[country]['spend'] += row['spend']
+            
+            # Collect advertiser names
+            if row['advertiser_id'] and row.get('advertiser_name'):
+                advertiser_names[row['advertiser_id']] = row['advertiser_name']
             
             if row['advertiser_id']:
                 country_summary[country]['unique_advertisers'].add(row['advertiser_id'])
@@ -615,13 +682,20 @@ class GAMReportingService:
         # Sort by spend descending
         sorted_countries = sorted(country_summary.values(), key=lambda x: x['spend'], reverse=True)
         
+        # Calculate data validity and metrics
+        data_valid_until = self._calculate_data_validity(date_range)
+        metrics = self._calculate_metrics(processed_data)
+        
         return {
             'date_range': date_range,
-            'data_valid_until': report_data.data_valid_until.isoformat(),
-            'timezone': report_data.data_timezone,
-            'metrics': report_data.metrics,
+            'data_valid_until': data_valid_until.isoformat(),
+            'timezone': requested_timezone,
+            'metrics': metrics,
             'countries': sorted_countries,
-            'total_countries': len(sorted_countries)
+            'advertisers': advertiser_names,  # Include advertiser name mapping
+            'raw_data': processed_data,  # Include full data for filters
+            'total_countries': len(sorted_countries),
+            'total_rows_processed': len(raw_data)  # Show how many rows GAM returned
         }
     
     def get_ad_unit_breakdown(
@@ -634,31 +708,59 @@ class GAMReportingService:
         requested_timezone: str = "America/New_York"
     ) -> Dict[str, Any]:
         """
-        Get reporting data broken down by ad unit, optionally filtered by country
+        Get reporting data broken down by ad unit (aggregated, no DATE dimension)
         
         Returns:
             Dictionary with ad unit-level metrics including country breakdown
         """
-        # Include both country and ad unit dimensions if country filter is requested
+        # For ad unit breakdown, don't include country dimension initially to avoid timeout
+        # We'll only include country if specifically filtering by it
         include_country = country is not None
         
-        report_data = self.get_reporting_data(
+        # Get dimensions without DATE for aggregated query
+        dimensions, start_date, end_date, granularity = self._get_report_config(
             date_range=date_range,
-            advertiser_id=advertiser_id,
-            order_id=order_id,
-            line_item_id=line_item_id,
-            requested_timezone=requested_timezone,
-            include_country=True,  # Always include country for better insights
-            include_ad_unit=True
+            requested_tz=requested_timezone,
+            include_country=include_country,  # Only include if filtering by country
+            include_ad_unit=True,
+            include_date=False  # No DATE dimension for aggregated results
         )
         
-        # Filter by country if specified
-        filtered_data = report_data.data
-        if country:
-            filtered_data = [row for row in filtered_data if row.get('country') == country]
+        # Build the report query with country filter if specified
+        report_query = self._build_report_query(
+            dimensions=dimensions,
+            start_date=start_date,
+            end_date=end_date,
+            advertiser_id=advertiser_id,
+            order_id=order_id,
+            line_item_id=line_item_id
+        )
+        
+        # Add country filter to WHERE clause if specified
+        if country and report_query.get('reportQuery', {}).get('statement'):
+            if report_query['reportQuery']['statement']['query']:
+                report_query['reportQuery']['statement']['query'] += f" AND COUNTRY_NAME = '{country}'"
+            else:
+                report_query['reportQuery']['statement'] = {
+                    'query': f"WHERE COUNTRY_NAME = '{country}'"
+                }
+        
+        raw_data = self._run_report(report_query)
+        
+        logger.info(f"Ad unit breakdown report returned {len(raw_data)} rows (aggregated, no DATE dimension)")
+        
+        # Process the aggregated data
+        processed_data = self._process_report_data(raw_data, granularity, requested_timezone)
+        
+        # Filter by country if specified (in case it wasn't in WHERE clause)
+        filtered_data = processed_data
+        if country and include_country:
+            filtered_data = [row for row in processed_data if row.get('country') == country]
         
         # Aggregate by ad unit
         ad_unit_summary = {}
+        advertiser_names = {}  # Map advertiser_id to advertiser_name
+        all_countries = set()  # Track all countries in the data
         
         for row in filtered_data:
             ad_unit_id = row.get('ad_unit_id', 'Unknown')
@@ -683,18 +785,24 @@ class GAMReportingService:
             ad_unit_summary[ad_unit_id]['clicks'] += row['clicks']
             ad_unit_summary[ad_unit_id]['spend'] += row['spend']
             
-            # Track by country
-            country_name = row.get('country', 'Unknown')
-            if country_name not in ad_unit_summary[ad_unit_id]['countries']:
-                ad_unit_summary[ad_unit_id]['countries'][country_name] = {
-                    'impressions': 0,
-                    'clicks': 0,
-                    'spend': 0.0
-                }
+            # Collect advertiser names
+            if row['advertiser_id'] and row.get('advertiser_name'):
+                advertiser_names[row['advertiser_id']] = row['advertiser_name']
             
-            ad_unit_summary[ad_unit_id]['countries'][country_name]['impressions'] += row['impressions']
-            ad_unit_summary[ad_unit_id]['countries'][country_name]['clicks'] += row['clicks']
-            ad_unit_summary[ad_unit_id]['countries'][country_name]['spend'] += row['spend']
+            # Track by country only if country data is available
+            if include_country:
+                country_name = row.get('country', 'Unknown')
+                all_countries.add(country_name)
+                if country_name not in ad_unit_summary[ad_unit_id]['countries']:
+                    ad_unit_summary[ad_unit_id]['countries'][country_name] = {
+                        'impressions': 0,
+                        'clicks': 0,
+                        'spend': 0.0
+                    }
+                
+                ad_unit_summary[ad_unit_id]['countries'][country_name]['impressions'] += row['impressions']
+                ad_unit_summary[ad_unit_id]['countries'][country_name]['clicks'] += row['clicks']
+                ad_unit_summary[ad_unit_id]['countries'][country_name]['spend'] += row['spend']
             
             if row['advertiser_id']:
                 ad_unit_summary[ad_unit_id]['unique_advertisers'].add(row['advertiser_id'])
@@ -724,14 +832,22 @@ class GAMReportingService:
         # Sort by spend descending
         sorted_ad_units = sorted(ad_unit_summary.values(), key=lambda x: x['spend'], reverse=True)
         
+        # Calculate data validity and metrics
+        data_valid_until = self._calculate_data_validity(date_range)
+        metrics = self._calculate_metrics(filtered_data)
+        
         return {
             'date_range': date_range,
-            'data_valid_until': report_data.data_valid_until.isoformat(),
-            'timezone': report_data.data_timezone,
-            'metrics': report_data.metrics,
+            'data_valid_until': data_valid_until.isoformat(),
+            'timezone': requested_timezone,
+            'metrics': metrics,
             'ad_units': sorted_ad_units,
+            'advertisers': advertiser_names,  # Include advertiser name mapping
+            'countries': sorted(list(all_countries)),  # Include all countries for filter
+            'raw_data': filtered_data,  # Include full data for filters
             'total_ad_units': len(sorted_ad_units),
-            'filtered_by_country': country
+            'filtered_by_country': country,
+            'total_rows_processed': len(raw_data)  # Show how many rows GAM returned
         }
     
     def get_advertiser_summary(
