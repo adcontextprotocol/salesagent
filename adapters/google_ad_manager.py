@@ -588,6 +588,11 @@ class GoogleAdManager(AdServerAdapter):
                     self.log(f"    - ... and {len(creative_placeholders) - 3} more")
                 if impl_config.get('frequency_caps'):
                     self.log(f"  Frequency Caps: {len(impl_config['frequency_caps'])} configured")
+                # Log key-value pairs for AEE signals
+                if 'customTargeting' in targeting and targeting['customTargeting']:
+                    self.log(f"  Custom Targeting (Key-Value Pairs):")
+                    for key, value in targeting['customTargeting'].items():
+                        self.log(f"    - {key}: {value}")
                 if impl_config.get('targeted_ad_unit_ids'):
                     self.log(f"  Targeted Ad Units: {len(impl_config['targeted_ad_unit_ids'])} units")
                 if impl_config.get('environment_type') == 'VIDEO_PLAYER':

@@ -152,8 +152,9 @@
     <a href="/tenant/{{ tenant.tenant_id }}/inventory" class="tab" style="text-decoration: none; color: inherit;">All Inventory →</a>
     <a href="/tenant/{{ tenant.tenant_id }}/targeting" class="tab" style="text-decoration: none; color: inherit;">Targeting →</a>
     <a href="/tenant/{{ tenant.tenant_id }}/orders" class="tab" style="text-decoration: none; color: inherit;">Orders & Line Items →</a>
+    <a href="/tenant/{{ tenant.tenant_id }}/reporting" class="tab" style="text-decoration: none; color: inherit;">GAM Reporting →</a>
     {% endif %}
-    <a href="/tenant/{{ tenant.tenant_id }}/operations" class="tab" style="text-decoration: none; color: inherit;">Operations →</a>
+    <a href="/tenant/{{ tenant.tenant_id }}/workflows" class="tab" style="text-decoration: none; color: inherit;">Workflows →</a>
     <a href="/tenant/{{ tenant.tenant_id }}/policy" class="tab" style="text-decoration: none; color: inherit;">Policy Settings →</a>
 </div>
 
@@ -1035,7 +1036,7 @@ function testSlack() {
 }
 
 // Load sync status for GAM tenants
-{% if tenant.ad_server == 'google_ad_manager' %}
+{% if tenant and tenant.ad_server == 'google_ad_manager' %}
 function loadSyncStatus() {
     // Get the API key from superadmin config
     fetch('/api/tenant/{{ tenant.tenant_id }}/sync/status', {
@@ -1109,7 +1110,7 @@ function triggerSync(tenantId) {
     button.textContent = 'Syncing...';
     statusDiv.innerHTML = '<span class="text-info">🔄 Starting sync...</span>';
     
-    fetch(`/api/tenant/${tenantId}/sync/trigger`, {
+    fetch(`/api/tenant/${tenantId}/sync/orders`, {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json'

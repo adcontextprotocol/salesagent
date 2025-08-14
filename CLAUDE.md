@@ -321,6 +321,8 @@ tests/
   - `test_human_tasks.py`: Human-in-the-loop tasks
   - `test_ai_products.py`: AI product features
   - `test_policy.py`: Policy compliance checks
+  - `test_gam_country_adunit.py`: GAM country and ad unit reporting functionality
+  - `test_gam_reporting.py`: GAM reporting service and API endpoints
 
 ### 3. End-to-End Tests (`tests/e2e/`)
 - **Purpose**: Test complete user workflows
@@ -796,6 +798,12 @@ docker-compose build
 docker-compose up -d
 ```
 
+**Note on Database Initialization**: The `entrypoint.sh` script runs `init_db()` which is **safe and non-destructive**:
+- All tables use `CREATE TABLE IF NOT EXISTS` - existing tables are never dropped
+- Default data is only created if tables are empty (checks tenant count first)
+- No existing data is ever modified or deleted
+- The function is idempotent and can be run multiple times safely
+
 ### Running Standalone (Development Only)
 ```bash
 # Install dependencies with uv
@@ -1160,6 +1168,51 @@ ad_unit_dict = serialize_object(ad_unit)
 name = ad_unit_dict['name']
 ```
 
+### 8. **Input Validation & Security**
+⚠️ **ALWAYS** validate user input before processing:
+```python
+# WRONG - Direct use of user input
+tenant_id = request.args.get('tenant_id')
+cursor.execute(f"SELECT * FROM tenants WHERE id = '{tenant_id}'")  # SQL injection!
+
+# CORRECT - Validate and use parameterized queries
+import re
+def validate_tenant_id(tid):
+    return tid and re.match(r'^[a-zA-Z0-9_-]+$', tid) and len(tid) <= 100
+
+if not validate_tenant_id(tenant_id):
+    return jsonify({'error': 'Invalid tenant ID'}), 400
+cursor.execute("SELECT * FROM tenants WHERE id = ?", (tenant_id,))
+```
+
+**Required Validations**:
+- **IDs**: Alphanumeric with `_-` only, max 100 chars
+- **Numeric IDs**: Digits only, max 20 chars  
+- **Timezones**: Must exist in pytz database
+- **Date ranges**: Use enum values only
+
+### 9. **Resource Cleanup**
+⚠️ **ALWAYS** clean up resources with try/finally:
+```python
+# WRONG - Temp file may not be deleted on error
+tmp_file = tempfile.NamedTemporaryFile(delete=False)
+process_file(tmp_file.name)
+os.unlink(tmp_file.name)  # Never reached if process_file fails!
+
+# CORRECT - Guaranteed cleanup
+tmp_file_path = None
+try:
+    with tempfile.NamedTemporaryFile(delete=False) as tmp:
+        tmp_file_path = tmp.name
+    process_file(tmp_file_path)
+finally:
+    if tmp_file_path and os.path.exists(tmp_file_path):
+        try:
+            os.unlink(tmp_file_path)
+        except Exception as e:
+            logger.warning(f"Failed to clean up {tmp_file_path}: {e}")
+```
+
 ## Pre-Change Checklist for Claude
 
 Before making ANY database or API changes:
@@ -1289,6 +1342,9 @@ Before making ANY database or API changes:
 | **Elements in DOM but invisible** | Parent has 0 width/height - add min dimensions |
 | **JavaScript `TypeError` on null** | Add null checks: `(value || '').method()` |
 | **API returns HTML not JSON** | Missing auth - add `credentials: 'same-origin'` |
+| **SQL Injection vulnerability** | Use parameterized queries, never string concatenation |
+| **Invalid input crashes API** | Add validation functions for all user inputs |
+| **Temp files not cleaned up** | Use try/finally blocks for resource cleanup |
 
 ### Known Issues
 

@@ -31,6 +31,10 @@ app.register_blueprint(superadmin_api)
 from sync_api import sync_api
 app.register_blueprint(sync_api, url_prefix='/api/sync')
 
+# Import and register GAM reporting API blueprint
+from adapters.gam_reporting_api import gam_reporting_api
+app.register_blueprint(gam_reporting_api)
+
 # Import GAM inventory service for targeting browser
 from gam_inventory_service import GAMInventoryService, create_inventory_endpoints as register_inventory_endpoints, SessionLocal, db_session
 
@@ -326,6 +330,43 @@ def require_auth(admin_only=False):
             if admin_only and session.get('role') != 'super_admin':
                 return "Access denied. Super admin required.", 403
                 
+            return f(*args, **kwargs)
+        return decorated_function
+    return decorator
+
+def require_tenant_access(api_mode=False):
+    """Decorator that checks both authentication and tenant access.
+    
+    Args:
+        api_mode: If True, returns JSON errors instead of HTML responses
+    """
+    def decorator(f):
+        @wraps(f)
+        def decorated_function(*args, **kwargs):
+            # Check authentication
+            if not session.get('authenticated'):
+                if api_mode:
+                    return jsonify({'error': 'Authentication required'}), 401
+                session['next_url'] = request.url
+                tenant_id = kwargs.get('tenant_id') or session.get('tenant_id')
+                if tenant_id:
+                    return redirect(url_for('tenant_login', tenant_id=tenant_id))
+                return redirect(url_for('login'))
+            
+            # Get tenant_id from route
+            tenant_id = kwargs.get('tenant_id')
+            if not tenant_id:
+                if api_mode:
+                    return jsonify({'error': 'Tenant ID required'}), 400
+                return "Tenant ID required", 400
+            
+            # Check tenant access
+            if session.get('role') != 'super_admin':
+                if session.get('tenant_id') != tenant_id:
+                    if api_mode:
+                        return jsonify({'error': 'Access denied'}), 403
+                    return "Access denied", 403
+            
             return f(*args, **kwargs)
         return decorated_function
     return decorator
@@ -1351,7 +1392,7 @@ def orders_browser(tenant_id):
                          tenant_name=tenant_name,
                          api_key=api_key)
 
-@app.route('/api/sync/tenant/<tenant_id>/orders/sync', methods=['POST'])
+@app.route('/api/tenant/<tenant_id>/sync/orders', methods=['POST'])
 @require_auth()
 def sync_orders_endpoint(tenant_id):
     """Sync orders and line items from GAM - Session authenticated version."""
@@ -1405,11 +1446,380 @@ def sync_orders_endpoint(tenant_id):
     finally:
         db_session.remove()
 
-# Operations Dashboard Route
-@app.route('/tenant/<tenant_id>/operations')
+# GAM Reporting Route
+@app.route('/tenant/<tenant_id>/reporting')
 @require_auth()
-def operations_dashboard(tenant_id):
-    """Display operations dashboard with media buys, tasks, and audit logs."""
+def gam_reporting_dashboard(tenant_id):
+    """Display GAM reporting dashboard."""
+    # Verify tenant access
+    if session.get('role') != 'super_admin' and session.get('tenant_id') != tenant_id:
+        return "Access denied", 403
+    
+    # Get tenant and check if it's using GAM
+    conn = get_db_connection()
+    tenant_cursor = conn.execute(
+        "SELECT * FROM tenants WHERE tenant_id = ?",
+        (tenant_id,)
+    )
+    tenant = tenant_cursor.fetchone()
+    
+    if not tenant:
+        conn.close()
+        return "Tenant not found", 404
+    
+    # Check if tenant is using Google Ad Manager
+    if tenant.get('ad_server') != 'google_ad_manager':
+        conn.close()
+        return render_template('error.html', 
+            error_title="GAM Reporting Not Available",
+            error_message=f"This tenant is currently using {tenant.get('ad_server', 'no ad server')}. GAM Reporting is only available for tenants using Google Ad Manager.",
+            back_url=f"/tenant/{tenant_id}"
+        ), 400
+    
+    conn.close()
+    return render_template('gam_reporting.html', tenant=tenant)
+
+# Sync Status API for Admin UI
+@app.route('/api/tenant/<tenant_id>/sync/status')
+@require_auth()
+def get_tenant_sync_status(tenant_id):
+    """Get sync status for a tenant."""
+    # Verify tenant access
+    if session.get('role') != 'super_admin' and session.get('tenant_id') != tenant_id:
+        return jsonify({'error': 'Access denied'}), 403
+    
+    conn = get_db_connection()
+    
+    # Check if tenant exists and uses GAM
+    tenant_cursor = conn.execute(
+        "SELECT ad_server FROM tenants WHERE tenant_id = ?",
+        (tenant_id,)
+    )
+    tenant = tenant_cursor.fetchone()
+    
+    if not tenant:
+        conn.close()
+        return jsonify({'error': 'Tenant not found'}), 404
+    
+    if tenant.get('ad_server') != 'google_ad_manager':
+        conn.close()
+        return jsonify({'error': 'Sync only available for GAM tenants'}), 400
+    
+    # Get latest sync job
+    sync_cursor = conn.execute("""
+        SELECT started_at, status, summary 
+        FROM sync_jobs 
+        WHERE tenant_id = ? 
+        ORDER BY started_at DESC 
+        LIMIT 1
+    """, (tenant_id,))
+    sync_job = sync_cursor.fetchone()
+    
+    # Get inventory counts
+    inventory_cursor = conn.execute("""
+        SELECT 
+            COUNT(CASE WHEN inventory_type = 'ad_unit' THEN 1 END) as ad_units,
+            COUNT(CASE WHEN inventory_type = 'custom_targeting_key' THEN 1 END) as custom_targeting_keys,
+            COUNT(CASE WHEN inventory_type = 'custom_targeting_value' THEN 1 END) as custom_targeting_values,
+            COUNT(*) as total
+        FROM gam_inventory 
+        WHERE tenant_id = ?
+    """, (tenant_id,))
+    counts = inventory_cursor.fetchone()
+    
+    conn.close()
+    
+    response = {
+        'last_sync': None,
+        'sync_running': False,
+        'item_count': counts['total'] if counts else 0,
+        'breakdown': None
+    }
+    
+    if sync_job:
+        response['last_sync'] = sync_job['started_at']
+        response['sync_running'] = sync_job['status'] == 'running'
+        
+        if counts and counts['total'] > 0:
+            response['breakdown'] = {
+                'ad_units': counts['ad_units'],
+                'custom_targeting_keys': counts['custom_targeting_keys'],
+                'custom_targeting_values': counts['custom_targeting_values']
+            }
+    
+    return jsonify(response)
+
+# Trigger Sync API for Admin UI
+@app.route('/api/tenant/<tenant_id>/sync/trigger', methods=['POST'])
+@require_auth()
+def trigger_tenant_sync(tenant_id):
+    """Trigger a sync for a GAM tenant."""
+    # Verify tenant access  
+    if session.get('role') != 'super_admin':
+        return jsonify({'error': 'Only super admins can trigger sync'}), 403
+    
+    conn = get_db_connection()
+    
+    # Check if tenant exists and uses GAM
+    tenant_cursor = conn.execute(
+        "SELECT ad_server FROM tenants WHERE tenant_id = ?",
+        (tenant_id,)
+    )
+    tenant = tenant_cursor.fetchone()
+    
+    if not tenant:
+        conn.close()
+        return jsonify({'error': 'Tenant not found'}), 404
+    
+    if tenant.get('ad_server') != 'google_ad_manager':
+        conn.close()
+        return jsonify({'error': 'Sync only available for GAM tenants'}), 400
+    
+    try:
+        # Create a new sync job
+        import uuid
+        from datetime import datetime
+        
+        sync_id = str(uuid.uuid4())
+        conn.execute("""
+            INSERT INTO sync_jobs (sync_id, tenant_id, adapter_type, sync_type, status, started_at, triggered_by)
+            VALUES (?, ?, 'google_ad_manager', 'manual', 'pending', ?, 'admin_ui')
+        """, (sync_id, tenant_id, datetime.utcnow()))
+        conn.commit()
+        
+        # Note: In a real implementation, this would trigger an async job
+        # For now, we'll just mark it as pending and let the background worker handle it
+        
+        conn.close()
+        return jsonify({
+            'success': True,
+            'sync_id': sync_id,
+            'message': 'Sync job queued successfully'
+        })
+        
+    except Exception as e:
+        conn.close()
+        logger.error(f"Error triggering sync for tenant {tenant_id}: {str(e)}")
+        return jsonify({'error': 'Failed to trigger sync', 'details': str(e)}), 500
+
+@app.route('/api/tenant/<tenant_id>/orders', methods=['GET'])
+@require_auth()
+def get_tenant_orders_session(tenant_id):
+    """Get orders for a tenant - Session authenticated version."""
+    # Check access
+    if session.get('role') != 'super_admin' and session.get('tenant_id') != tenant_id:
+        return jsonify({'error': 'Access denied'}), 403
+    
+    try:
+        from gam_orders_service import GAMOrdersService, db_session
+        from models import GAMOrder, GAMLineItem
+        from sqlalchemy import func
+        
+        # Remove any existing session to start fresh
+        try:
+            db_session.remove()
+        except Exception:
+            pass  # Session might not exist yet
+        
+        # Get query parameters
+        search = request.args.get('search')
+        status = request.args.get('status')
+        advertiser_id = request.args.get('advertiser_id')
+        has_line_items = request.args.get('has_line_items')
+        
+        # Query orders from database
+        query = db_session.query(GAMOrder).filter(GAMOrder.tenant_id == tenant_id)
+        
+        if search:
+            query = query.filter(
+                (GAMOrder.name.ilike(f'%{search}%')) |
+                (GAMOrder.order_id.ilike(f'%{search}%'))
+            )
+        
+        if status:
+            query = query.filter(GAMOrder.status == status)
+        
+        if advertiser_id:
+            query = query.filter(GAMOrder.advertiser_id == advertiser_id)
+        
+        # Filter by has_line_items using exists subquery
+        if has_line_items == 'true':
+            query = query.filter(
+                db_session.query(GAMLineItem).filter(
+                    GAMLineItem.tenant_id == tenant_id,
+                    GAMLineItem.order_id == GAMOrder.order_id
+                ).exists()
+            )
+        elif has_line_items == 'false':
+            query = query.filter(
+                ~db_session.query(GAMLineItem).filter(
+                    GAMLineItem.tenant_id == tenant_id,
+                    GAMLineItem.order_id == GAMOrder.order_id
+                ).exists()
+            )
+        
+        # Order by last modified
+        query = query.order_by(GAMOrder.last_modified_date.desc())
+        
+        orders = query.all()
+        
+        # Get line item counts and stats for all orders in one query
+        line_item_stats = db_session.query(
+            GAMLineItem.order_id,
+            func.count(GAMLineItem.id).label('count'),
+            func.sum(GAMLineItem.stats_impressions).label('total_impressions'),
+            func.sum(GAMLineItem.stats_clicks).label('total_clicks')
+        ).filter(
+            GAMLineItem.tenant_id == tenant_id,
+            GAMLineItem.order_id.in_([o.order_id for o in orders]) if orders else []
+        ).group_by(GAMLineItem.order_id).all()
+        
+        # Convert to dict for easy lookup
+        stats_dict = {
+            row.order_id: {
+                'count': row.count,
+                'impressions': row.total_impressions or 0,
+                'clicks': row.total_clicks or 0
+            }
+            for row in line_item_stats
+        }
+        
+        # Convert to dict
+        result = {
+            'orders': [
+                {
+                    'order_id': o.order_id,
+                    'name': o.name,
+                    'advertiser_id': o.advertiser_id,
+                    'advertiser_name': o.advertiser_name,
+                    'status': o.status,
+                    'start_date': o.start_date.isoformat() if o.start_date else None,
+                    'end_date': o.end_date.isoformat() if o.end_date else None,
+                    'line_item_count': stats_dict.get(o.order_id, {}).get('count', 0),
+                    'total_impressions_delivered': stats_dict.get(o.order_id, {}).get('impressions', 0),
+                    'total_clicks_delivered': stats_dict.get(o.order_id, {}).get('clicks', 0),
+                    'last_modified_date': o.last_modified_date.isoformat() if o.last_modified_date else None
+                }
+                for o in orders
+            ],
+            'total': len(orders)
+        }
+        
+        return jsonify(result)
+        
+    except Exception as e:
+        app.logger.error(f"Error fetching orders: {str(e)}")
+        try:
+            db_session.rollback()
+        except Exception:
+            pass  # Session might be in invalid state
+        return jsonify({'error': str(e)}), 500
+    finally:
+        try:
+            db_session.remove()
+        except Exception:
+            pass  # Ensure cleanup doesn't fail
+
+@app.route('/api/tenant/<tenant_id>/orders/<order_id>', methods=['GET'])
+@require_auth()
+def get_order_details_session(tenant_id, order_id):
+    """Get order details - Session authenticated version."""
+    # Check access
+    if session.get('role') != 'super_admin' and session.get('tenant_id') != tenant_id:
+        return jsonify({'error': 'Access denied'}), 403
+    
+    try:
+        from gam_orders_service import GAMOrdersService, db_session
+        from models import GAMOrder, GAMLineItem
+        
+        db_session.remove()
+        
+        # Get order
+        order = db_session.query(GAMOrder).filter(
+            GAMOrder.tenant_id == tenant_id,
+            GAMOrder.order_id == order_id
+        ).first()
+        
+        if not order:
+            return jsonify({'error': 'Order not found'}), 404
+        
+        # Get line items
+        line_items = db_session.query(GAMLineItem).filter(
+            GAMLineItem.tenant_id == tenant_id,
+            GAMLineItem.order_id == order_id
+        ).all()
+        
+        # Calculate delivery metrics
+        total_impressions_delivered = sum(li.stats_impressions or 0 for li in line_items)
+        total_impressions_goal = sum(li.primary_goal_units or 0 for li in line_items if li.primary_goal_type == 'IMPRESSIONS')
+        total_clicks_goal = sum(li.primary_goal_units or 0 for li in line_items if li.primary_goal_type == 'CLICKS')
+        
+        result = {
+            'order': {
+                'order_id': order.order_id,
+                'name': order.name,
+                'advertiser_id': order.advertiser_id,
+                'advertiser_name': order.advertiser_name,
+                'agency_id': order.agency_id,
+                'agency_name': order.agency_name,
+                'trafficker_id': order.trafficker_id,
+                'trafficker_name': order.trafficker_name,
+                'salesperson_id': order.salesperson_id,
+                'salesperson_name': order.salesperson_name,
+                'status': order.status,
+                'start_date': order.start_date.isoformat() if order.start_date else None,
+                'end_date': order.end_date.isoformat() if order.end_date else None,
+                'unlimited_end_date': order.unlimited_end_date,
+                'total_budget': order.total_budget,
+                'currency_code': order.currency_code or 'USD',
+                'external_order_id': order.external_order_id,
+                'po_number': order.po_number,
+                'notes': order.notes,
+                'last_modified_date': order.last_modified_date.isoformat() if order.last_modified_date else None,
+                'total_impressions_delivered': total_impressions_delivered,
+                'total_clicks_delivered': sum(li.stats_clicks or 0 for li in line_items),
+                'delivery_metrics': {
+                    'total_impressions_delivered': total_impressions_delivered,
+                    'total_impressions_goal': total_impressions_goal,
+                    'total_clicks_delivered': sum(li.stats_clicks or 0 for li in line_items),
+                    'total_clicks_goal': total_clicks_goal,
+                },
+            },
+            'line_items': [
+                {
+                    'line_item_id': li.line_item_id,
+                    'name': li.name,
+                    'status': li.status,
+                    'line_item_type': li.line_item_type,
+                    'priority': li.priority,
+                    'primary_goal_type': li.primary_goal_type,
+                    'primary_goal_units': li.primary_goal_units,
+                    'stats_impressions': li.stats_impressions or 0,
+                    'stats_clicks': li.stats_clicks or 0,
+                    'impressions_delivered': li.stats_impressions or 0,  # Keep for backward compatibility
+                    'clicks_delivered': li.stats_clicks or 0,  # Keep for backward compatibility
+                    'cost_per_unit': float(li.cost_per_unit) / 1000000 if li.cost_per_unit else None,  # Convert from micros to dollars
+                    'delivery_percentage': (li.stats_impressions / li.primary_goal_units * 100) if li.primary_goal_units and li.primary_goal_units > 0 else 0,
+                    'start_date': li.start_date.isoformat() if li.start_date else None,
+                    'end_date': li.end_date.isoformat() if li.end_date else None,
+                }
+                for li in line_items
+            ]
+        }
+        
+        return jsonify(result)
+        
+    except Exception as e:
+        app.logger.error(f"Error fetching order details: {str(e)}")
+        return jsonify({'error': str(e)}), 500
+    finally:
+        db_session.remove()
+
+# Workflows Dashboard Route
+@app.route('/tenant/<tenant_id>/workflows')
+@require_auth()
+def workflows_dashboard(tenant_id):
+    """Display workflows dashboard with media buys, workflow steps, and audit logs."""
     # Verify tenant access
     if session.get('role') != 'super_admin' and session.get('tenant_id') != tenant_id:
         return "Access denied", 403
@@ -1603,7 +2013,7 @@ def operations_dashboard(tenant_id):
     
     conn.close()
     
-    return render_template('operations.html', 
+    return render_template('workflows.html', 
                          tenant=tenant,
                          summary=summary,
                          media_buys=media_buys,
@@ -4316,21 +4726,154 @@ def create_products_bulk(tenant_id):
 # GAM Line Item Viewer
 # ========================
 
+def get_custom_targeting_mappings(tenant_id=None):
+    """Get custom targeting mappings for a tenant.
+    
+    In production, this would fetch from GAM CustomTargetingService.
+    For now, returns mock data that can be configured per tenant.
+    """
+    # TODO: Store these in database or fetch from GAM API
+    # Could be cached in Redis/memory for performance
+    
+    # Default mappings for header bidding (common across many publishers)
+    default_key_mappings = {
+        "13748922": "hb_pb",
+        "14095946": "hb_source", 
+        "14094596": "hb_format",
+        # Add more common keys as needed
+    }
+    
+    default_value_mappings = {
+        "448589710493": "0.01",
+        "448946107548": "freestar",
+        "448946356517": "prebid",
+        "448946353802": "video",
+        # Add more common values as needed
+    }
+    
+    # In production, could override with tenant-specific mappings
+    # tenant_mappings = get_tenant_custom_mappings(tenant_id)
+    # if tenant_mappings:
+    #     key_mappings.update(tenant_mappings['keys'])
+    #     value_mappings.update(tenant_mappings['values'])
+    
+    return default_key_mappings, default_value_mappings
+
+def translate_custom_targeting(custom_targeting_node, tenant_id=None):
+    """Translate GAM custom targeting structure to readable format."""
+    if not custom_targeting_node:
+        return None
+    
+    # Get mappings (could be tenant-specific in future)
+    key_mappings, value_mappings = get_custom_targeting_mappings(tenant_id)
+    
+    def translate_node(node):
+        if not node:
+            return None
+            
+        if 'logicalOperator' in node:
+            # This is a group node with AND/OR logic
+            operator = node['logicalOperator'].lower()
+            children = []
+            if 'children' in node and node['children']:
+                for child in node['children']:
+                    translated_child = translate_node(child)
+                    if translated_child:
+                        children.append(translated_child)
+            
+            if len(children) == 1:
+                return children[0]
+            elif len(children) > 1:
+                return {operator: children}
+            return None
+            
+        elif 'keyId' in node:
+            # This is a key-value targeting node
+            key_id = str(node['keyId'])
+            key_name = key_mappings.get(key_id, f"key_{key_id}")
+            
+            operator = node.get('operator', 'IS')
+            value_ids = node.get('valueIds', [])
+            
+            # Translate value IDs to names
+            values = []
+            for value_id in value_ids:
+                value_name = value_mappings.get(str(value_id), str(value_id))
+                values.append(value_name)
+            
+            if operator == 'IS':
+                return {"key": key_name, "in": values}
+            elif operator == 'IS_NOT':
+                return {"key": key_name, "not_in": values}
+            else:
+                return {"key": key_name, "operator": operator, "values": values}
+                
+        return None
+    
+    return translate_node(custom_targeting_node)
+
+@app.route('/api/tenant/<tenant_id>/gam/custom-targeting-keys')
+@require_auth()
+def get_custom_targeting_keys(tenant_id):
+    """Fetch custom targeting keys and values for display."""
+    try:
+        # Get the mappings using the centralized function
+        key_mappings, value_mappings = get_custom_targeting_mappings(tenant_id)
+        
+        # Transform to the expected API format
+        formatted_keys = {}
+        for key_id, key_name in key_mappings.items():
+            # Generate display names from the key names
+            display_name = key_name.replace('_', ' ').replace('hb ', 'Header Bidding ').title()
+            formatted_keys[key_id] = {
+                "name": key_name,
+                "displayName": display_name
+            }
+        
+        formatted_values = {}
+        for value_id, value_name in value_mappings.items():
+            # Format display names for values
+            display_name = value_name
+            if value_name.replace('.', '').isdigit():
+                display_name = f"${value_name}"  # Format as currency if numeric
+            else:
+                display_name = value_name.title()  # Capitalize for names
+            
+            formatted_values[value_id] = {
+                "name": value_name,
+                "displayName": display_name
+            }
+        
+        return jsonify({
+            "keys": formatted_keys,
+            "values": formatted_values
+        })
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
 @app.route('/api/tenant/<tenant_id>/gam/line-item/<line_item_id>')
 @require_auth()
 def get_gam_line_item(tenant_id, line_item_id):
     """Fetch detailed line item data from GAM."""
     try:
+        # Validate tenant_id format
+        if not tenant_id or not isinstance(tenant_id, str):
+            return jsonify({'error': 'Invalid tenant ID'}), 400
+            
         # Validate line_item_id is numeric and follows GAM ID format
+        if not line_item_id or not str(line_item_id).isdigit():
+            return jsonify({'error': 'Line item ID must be a numeric value'}), 400
+            
         try:
             line_item_id_int = int(line_item_id)
             if line_item_id_int <= 0:
-                return jsonify({'error': 'Invalid line item ID'}), 400
-            # GAM line item IDs are typically 10+ digits
+                return jsonify({'error': 'Line item ID must be a positive number'}), 400
+            # GAM line item IDs are typically 8+ digits
             if len(str(line_item_id_int)) < 8:
-                return jsonify({'error': 'Invalid GAM line item ID format'}), 400
-        except (ValueError, TypeError):
-            return jsonify({'error': 'Line item ID must be a positive number'}), 400
+                return jsonify({'error': 'Invalid GAM line item ID format (must be at least 8 digits)'}), 400
+        except (ValueError, TypeError) as e:
+            app.logger.error(f"Invalid line item ID format: {line_item_id} - {str(e)}")
+            return jsonify({'error': 'Line item ID must be a valid number'}), 400
         
         # Get the tenant's GAM configuration
         conn = get_db_connection()
@@ -4348,6 +4891,95 @@ def get_gam_line_item(tenant_id, line_item_id):
         if not gam_config.get('enabled'):
             return jsonify({'error': 'GAM not enabled for this tenant'}), 400
         
+        # Check if we're in dry-run mode (no refresh token means dry-run)
+        is_dry_run = not gam_config.get('refresh_token')
+        
+        if is_dry_run:
+            # Fetch from database in dry-run mode
+            from models import GAMLineItem, GAMOrder
+            from gam_orders_service import db_session
+            
+            db_session.remove()
+            
+            # Get line item from database
+            line_item = db_session.query(GAMLineItem).filter(
+                GAMLineItem.tenant_id == tenant_id,
+                GAMLineItem.line_item_id == line_item_id
+            ).first()
+            
+            if not line_item:
+                db_session.remove()
+                return jsonify({'error': 'Line item not found in database'}), 404
+            
+            # Get the associated order
+            order = db_session.query(GAMOrder).filter(
+                GAMOrder.tenant_id == tenant_id,
+                GAMOrder.order_id == line_item.order_id
+            ).first()
+            
+            # Build response from database data
+            line_item_data = {
+                'id': line_item.line_item_id,
+                'name': line_item.name,
+                'orderId': line_item.order_id,
+                'status': line_item.status,
+                'lineItemType': line_item.line_item_type,
+                'priority': line_item.priority,
+                'startDateTime': line_item.start_date.isoformat() if line_item.start_date else None,
+                'endDateTime': line_item.end_date.isoformat() if line_item.end_date else None,
+                'unlimitedEndDateTime': line_item.unlimited_end_date,
+                'costType': line_item.cost_type,
+                'costPerUnit': {'currencyCode': 'USD', 'microAmount': int((line_item.cost_per_unit or 0) * 1000000)} if line_item.cost_per_unit else None,
+                'primaryGoal': {
+                    'goalType': line_item.goal_type,
+                    'unitType': line_item.primary_goal_type,
+                    'units': line_item.primary_goal_units
+                } if line_item.primary_goal_units else None,
+                'stats': {
+                    'impressionsDelivered': line_item.stats_impressions or 0,
+                    'clicksDelivered': line_item.stats_clicks or 0,
+                    'ctr': line_item.stats_ctr or 0,
+                    'videoCompletionsDelivered': line_item.stats_video_completions or 0,
+                    'videoStartsDelivered': line_item.stats_video_starts or 0,
+                    'viewableImpressionsDelivered': line_item.stats_viewable_impressions or 0
+                },
+                'targeting': line_item.targeting or {},
+                'creativePlaceholders': line_item.creative_placeholders or [],
+                'frequencyCaps': line_item.frequency_caps or [],
+                'deliveryRateType': line_item.delivery_rate_type,
+                'deliveryIndicator': {'type': line_item.delivery_indicator_type} if line_item.delivery_indicator_type else None,
+                'lastModifiedDateTime': line_item.last_modified_date.isoformat() if line_item.last_modified_date else None
+            }
+            
+            order_data = {
+                'id': order.order_id,
+                'name': order.name,
+                'advertiserId': order.advertiser_id,
+                'advertiserName': order.advertiser_name,
+                'traffickerId': order.trafficker_id,
+                'trafficklerName': order.trafficker_name,
+                'status': order.status,
+                'startDateTime': order.start_date.isoformat() if order.start_date else None,
+                'endDateTime': order.end_date.isoformat() if order.end_date else None,
+                'totalBudget': {'currencyCode': order.currency_code or 'USD', 'microAmount': int((order.total_budget or 0) * 1000000)} if order.total_budget else None,
+                'externalOrderId': order.external_order_id,
+                'poNumber': order.po_number,
+                'notes': order.notes
+            } if order else None
+            
+            result = {
+                'line_item': line_item_data,
+                'order': order_data,
+                'creatives': [],  # Would need to fetch from creative associations
+                'creative_associations': [],
+                'inventory_details': {},
+                'media_product_json': convert_line_item_to_product_json(line_item_data, [])
+            }
+            
+            db_session.remove()
+            return jsonify(result)
+        
+        # Original code for non-dry-run mode
         # Get GAM client using the helper
         from gam_helper import get_ad_manager_client_for_tenant
         from googleads import ad_manager
@@ -4676,6 +5308,11 @@ def convert_line_item_to_product_json(line_item, creatives):
     # Extract creative formats
     formats = extract_creative_formats(line_item, creatives)
     
+    # Translate custom targeting to human-readable format
+    key_value_targeting = None
+    if targeting.get('customTargeting'):
+        key_value_targeting = translate_custom_targeting(targeting['customTargeting'])
+    
     # Build the product JSON
     product_json = {
         'product_id': f'gam_line_item_{line_item.get("id")}',
@@ -4693,14 +5330,27 @@ def convert_line_item_to_product_json(line_item, creatives):
                 'line_item_type': line_item.get('lineItemType'),
                 'priority': line_item.get('priority'),
                 'delivery_rate_type': line_item.get('deliveryRateType'),
-                'creative_placeholders': line_item.get('creativePlaceholders', []),
                 'status': line_item.get('status'),
                 'start_datetime': line_item.get('startDateTime'),
                 'end_datetime': line_item.get('endDateTime'),
                 'units_bought': line_item.get('unitsBought'),
                 'cost_type': line_item.get('costType'),
+                'cost_per_unit': float(line_item.get('costPerUnit', {}).get('microAmount', 0)) / 1000000.0 if line_item.get('costPerUnit') else None,
                 'discount_type': line_item.get('discountType'),
-                'allow_overbook': line_item.get('allowOverbook', False)
+                'allow_overbook': line_item.get('allowOverbook', False),
+                # Add human-readable key-value targeting
+                'key_value_targeting': key_value_targeting,
+                # Add creative sizes in simple format
+                'creative_sizes': [
+                    {'width': p.get('size', {}).get('width'), 'height': p.get('size', {}).get('height')}
+                    for p in line_item.get('creativePlaceholders', [])
+                    if p.get('size')
+                ],
+                # Add ad units if present
+                'ad_units': [
+                    au.get('adUnitId') 
+                    for au in targeting.get('inventoryTargeting', {}).get('targetedAdUnits', [])
+                ] if targeting.get('inventoryTargeting', {}).get('targetedAdUnits') else []
             }
         }
     }

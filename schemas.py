@@ -200,16 +200,7 @@ class Product(BaseModel):
         description="Minimum age requirement with age verification/gating implemented (e.g., 18, 21)"
     )
 
-# --- Admin Tool Schemas ---
-class PrincipalSummary(BaseModel):
-    principal_id: str
-    name: str
-    platform_mappings: Dict[str, Any]
-    live_media_buys: int
-    total_spend: float
-
-class GetPrincipalSummaryResponse(BaseModel):
-    principals: List[PrincipalSummary]
+# --- Core Schemas ---
 
 class Principal(BaseModel):
     """Principal object containing authentication and adapter mapping information."""
@@ -336,11 +327,13 @@ class CreativeAssignment(BaseModel):
 class AddCreativeAssetsRequest(BaseModel):
     """Request to add creative assets to a media buy (AdCP spec compliant)."""
     media_buy_id: str
-    creatives: List[Creative]
+    creatives: List[Creative]  # TODO: Rename to 'assets' to match spec
 
 class AddCreativeAssetsResponse(BaseModel):
     """Response from adding creative assets (AdCP spec compliant)."""
     statuses: List[CreativeStatus]
+    context_id: Optional[str] = None  # Persistent context ID
+    message: Optional[str] = None  # Human-readable message
 
 # Legacy aliases for backward compatibility (to be removed)
 SubmitCreativesRequest = AddCreativeAssetsRequest
@@ -451,6 +444,9 @@ class CreateMediaBuyResponse(BaseModel):
     status: str  # pending_creative, active, paused, completed
     detail: str
     creative_deadline: Optional[datetime] = None
+    message: Optional[str] = None  # Human-readable message for the response
+    clarification_needed: Optional[bool] = False  # Whether clarification is needed
+    clarification_details: Optional[str] = None  # What clarification is needed
 
 class CheckMediaBuyStatusRequest(BaseModel):
     context_id: str  # The context ID returned from create_media_buy
@@ -472,10 +468,29 @@ class LegacyUpdateMediaBuyRequest(BaseModel):
     creative_assignments: Optional[Dict[str, List[str]]] = None
 
 class GetMediaBuyDeliveryRequest(BaseModel):
-    media_buy_id: str
-    today: date
+    """Request delivery data for one or more media buys.
+    
+    Examples:
+    - Single buy: media_buy_ids=["buy_123"]
+    - Multiple buys: media_buy_ids=["buy_123", "buy_456"]
+    - All active buys: status_filter="active" (or omit media_buy_ids)
+    - All buys: status_filter="all"
+    """
+    media_buy_ids: Optional[List[str]] = Field(
+        None,
+        description="Specific media buy IDs to fetch. If omitted, fetches based on status_filter."
+    )
+    status_filter: Optional[str] = Field(
+        "active",
+        description="Filter for which buys to fetch when media_buy_ids not provided: 'active', 'all', 'completed'"
+    )
+    today: date = Field(
+        ...,
+        description="Reference date for calculating delivery metrics"
+    )
 
-class GetMediaBuyDeliveryResponse(BaseModel):
+class MediaBuyDeliveryData(BaseModel):
+    """Delivery data for a single media buy."""
     media_buy_id: str
     status: str
     spend: float
@@ -484,14 +499,27 @@ class GetMediaBuyDeliveryResponse(BaseModel):
     days_elapsed: int
     total_days: int
 
+class GetMediaBuyDeliveryResponse(BaseModel):
+    """Response containing delivery data for requested media buys.
+    
+    For single buy requests, 'deliveries' will contain one item.
+    For multiple/all requests, it contains all matching buys.
+    """
+    deliveries: List[MediaBuyDeliveryData]
+    total_spend: float
+    total_impressions: int
+    active_count: int
+    summary_date: date
+
+# Deprecated - kept for backward compatibility
 class GetAllMediaBuyDeliveryRequest(BaseModel):
-    """Request delivery data for all active media buys owned by the principal."""
+    """DEPRECATED: Use GetMediaBuyDeliveryRequest with filter='all' instead."""
     today: date
-    media_buy_ids: Optional[List[str]] = None  # If provided, only fetch these specific buys
+    media_buy_ids: Optional[List[str]] = None
 
 class GetAllMediaBuyDeliveryResponse(BaseModel):
-    """Bulk response containing delivery data for multiple media buys."""
-    deliveries: List[GetMediaBuyDeliveryResponse]
+    """DEPRECATED: Use GetMediaBuyDeliveryResponse instead."""
+    deliveries: List[MediaBuyDeliveryData]
     total_spend: float
     total_impressions: int
     active_count: int

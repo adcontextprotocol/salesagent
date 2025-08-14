@@ -40,7 +40,7 @@ services:
         condition: service_healthy
     
     ports:
-      - "${ADCP_SALES_PORT:-8083}:8080"
+      - "${ADCP_SALES_PORT:-8012}:8080"
     
     volumes:
       # Optional: Mount audit logs
@@ -60,7 +60,7 @@ services:
     command: python admin_ui_prod.py
     environment:
       DATABASE_URL: postgresql://adcp_user:secure_password_change_me@postgres:5432/adcp?sslmode=disable
-      ADMIN_UI_PORT: ${ADMIN_UI_PORT:-8003}
+      ADMIN_UI_PORT: ${ADMIN_UI_PORT:-8011}
       FLASK_APP: admin_ui.py
       FLASK_ENV: production
       FLASK_DEBUG: ${FLASK_DEBUG:-0}
@@ -81,7 +81,7 @@ services:
         condition: service_healthy
     
     ports:
-      - "${ADMIN_UI_PORT:-8003}:${ADMIN_UI_PORT:-8003}"
+      - "${ADMIN_UI_PORT:-8011}:${ADMIN_UI_PORT:-8011}"
     
     volumes:
       # Mount OAuth credentials file

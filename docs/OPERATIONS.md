@@ -274,6 +274,11 @@ environment:
 - Rotate API tokens regularly
 - Monitor audit logs for anomalies
 - Keep dependencies updated
+- Input validation enforced on all API endpoints
+- ID formats validated to prevent injection attacks
+- Timezone strings validated against pytz database
+- Temporary files cleaned up with try/finally blocks
+- Database queries use parameterized statements only
 
 ### Performance
 - Use PostgreSQL for production

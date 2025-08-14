@@ -139,6 +139,71 @@ def test_gam_connection(tenant_id: str) -> dict:
         }
 
 
+def get_gam_network_info(tenant_id: str) -> dict:
+    """
+    Get GAM network information for a tenant including timezone and currency.
+    
+    Returns:
+        Dictionary with network information including timezone, currency, etc.
+    """
+    try:
+        client = get_ad_manager_client_for_tenant(tenant_id)
+        network_service = client.GetService('NetworkService')
+        network = network_service.getCurrentNetwork()
+        
+        # Extract network information
+        network_info = {
+            'network_code': network.networkCode,
+            'network_id': network.id,
+            'display_name': network.displayName,
+            'timezone': network.timeZone,
+            'currency_code': network.currencyCode,
+            'effective_root_ad_unit_id': network.effectiveRootAdUnitId if hasattr(network, 'effectiveRootAdUnitId') else None
+        }
+        
+        logger.info(f"Retrieved GAM network info for tenant {tenant_id}: {network_info}")
+        return network_info
+        
+    except Exception as e:
+        logger.error(f"Error getting GAM network info for tenant {tenant_id}: {e}")
+        # Return defaults
+        return {
+            'network_code': None,
+            'network_id': None,
+            'display_name': None,
+            'timezone': 'America/New_York',  # Default fallback
+            'currency_code': 'USD',
+            'effective_root_ad_unit_id': None
+        }
+
+
+def ensure_network_timezone(tenant_id: str) -> str:
+    """
+    Ensure we have the network timezone, fetching and caching it if necessary.
+    
+    Returns:
+        The network timezone string (fetched or cached)
+    """
+    import json
+    
+    # First try to get cached timezone from adapter config
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        
+        # TODO: Add proper caching once we have a config column in adapter_config table
+        # For now, always fetch from GAM
+        logger.info(f"Fetching network timezone from GAM for tenant {tenant_id}...")
+        try:
+            network_info = get_gam_network_info(tenant_id)
+            timezone = network_info.get('timezone', 'America/New_York')
+            logger.info(f"Got network timezone for tenant {tenant_id}: {timezone}")
+            return timezone
+        except Exception as e:
+            logger.error(f"Error fetching network timezone for tenant {tenant_id}: {str(e)}")
+            # Default to America/New_York if we can't get the timezone
+            return 'America/New_York'
+
+
 def get_gam_config_for_tenant(tenant_id: str) -> Optional[dict]:
     """
     Get the GAM configuration for a tenant.

@@ -205,6 +205,8 @@ deploy:
 | `404 Not Found` | Wrong endpoint | Check URL and method |
 | `500 Internal Error` | Server error | Check server logs |
 | `422 Validation Error` | Invalid request | Check request schema |
+| `400 Invalid ID format` | Malformed IDs | Ensure IDs match pattern: tenant/principal (alphanumeric+dash), numeric IDs (digits only) |
+| `400 Invalid timezone` | Unknown timezone | Use valid pytz timezone (e.g., 'America/New_York') |
 
 ## Debug Techniques
 
