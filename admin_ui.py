@@ -475,7 +475,7 @@ def google_callback():
                 next_url = session.pop('next_url', None)
                 if next_url:
                     return redirect(next_url)
-                return redirect(url_for('tenant_detail', tenant_id=oauth_tenant_id))
+                return redirect(url_for('tenant_dashboard', tenant_id=oauth_tenant_id))
             
             # If not in users table, check legacy tenant admin config
             if is_tenant_admin(email, oauth_tenant_id):
@@ -495,7 +495,7 @@ def google_callback():
                 next_url = session.pop('next_url', None)
                 if next_url:
                     return redirect(next_url)
-                return redirect(url_for('tenant_detail', tenant_id=oauth_tenant_id))
+                return redirect(url_for('tenant_dashboard', tenant_id=oauth_tenant_id))
             
             # Check if super admin trying to access tenant
             if is_super_admin(email):
@@ -517,7 +517,7 @@ def google_callback():
                 next_url = session.pop('next_url', None)
                 if next_url:
                     return redirect(next_url)
-                return redirect(url_for('tenant_detail', tenant_id=oauth_tenant_id))
+                return redirect(url_for('tenant_dashboard', tenant_id=oauth_tenant_id))
             
             # Fall back to checking tenant config
             config = get_tenant_config_from_db(conn, oauth_tenant_id)
@@ -550,7 +550,7 @@ def google_callback():
                     next_url = session.pop('next_url', None)
                     if next_url:
                         return redirect(next_url)
-                    return redirect(url_for('tenant_detail', tenant_id=oauth_tenant_id))
+                    return redirect(url_for('tenant_dashboard', tenant_id=oauth_tenant_id))
             
             # Not authorized for this tenant
             return render_template('login.html', 
@@ -586,7 +586,7 @@ def google_callback():
                 next_url = session.pop('next_url', None)
                 if next_url:
                     return redirect(next_url)
-                return redirect(url_for('tenant_detail', tenant_id=tenant_id))
+                return redirect(url_for('tenant_dashboard', tenant_id=tenant_id))
             elif isinstance(tenant_access, list) and len(tenant_access) > 1:
                 # Multiple tenant access - let them choose
                 session['pre_auth_email'] = email
@@ -636,7 +636,7 @@ def select_tenant():
     session['username'] = session.pop('pre_auth_name')
     session.pop('available_tenants', None)
     
-    return redirect(url_for('tenant_detail', tenant_id=selected_tenant[0]))
+    return redirect(url_for('tenant_dashboard', tenant_id=selected_tenant[0]))
 
 @app.route('/logout')
 def logout():
@@ -703,7 +703,7 @@ def test_auth():
     session['username'] = test_user['name']
     
     conn.close()
-    return redirect(url_for('tenant_detail', tenant_id=tenant_id))
+    return redirect(url_for('tenant_dashboard', tenant_id=tenant_id))
 
 @app.route('/test/login')
 def test_login_form():
@@ -769,12 +769,7 @@ def test_login_form():
     </html>
     '''
 
-@app.route('/tenant/<tenant_id>')
-def tenant_root(tenant_id):
-    """Redirect to tenant login if not authenticated."""
-    if session.get('authenticated'):
-        return redirect(url_for('tenant_detail', tenant_id=tenant_id))
-    return redirect(url_for('tenant_login', tenant_id=tenant_id))
+# Route removed - using tenant_dashboard as the main route now
 
 @app.route('/health')
 def health():
@@ -787,7 +782,7 @@ def index():
     """Dashboard showing all tenants (super admin) or redirect to tenant page (tenant admin)."""
     # Tenant admins should go directly to their tenant page
     if session.get('role') == 'tenant_admin':
-        return redirect(url_for('tenant_detail', tenant_id=session.get('tenant_id')))
+        return redirect(url_for('tenant_dashboard', tenant_id=session.get('tenant_id')))
     
     # Super admins see all tenants
     conn = get_db_connection()
@@ -874,9 +869,9 @@ def update_settings():
     
     return redirect(url_for('settings'))
 
-@app.route('/tenant/<tenant_id>/manage')
+@app.route('/tenant/<tenant_id>/manage_old')
 @require_auth()
-def tenant_detail(tenant_id):
+def tenant_detail_old(tenant_id):
     """Show tenant details and configuration."""
     # Check if tenant admin is trying to access another tenant
     if session.get('role') == 'tenant_admin' and session.get('tenant_id') != tenant_id:
@@ -1095,11 +1090,11 @@ def update_tenant(tenant_id):
         conn.connection.commit()
         flash('Configuration updated successfully', 'success')
         conn.close()
-        return redirect(url_for('tenant_detail', tenant_id=tenant_id))
+        return redirect(url_for('tenant_dashboard', tenant_id=tenant_id))
     except Exception as e:
         conn.close()
         flash(f"Error updating configuration: {str(e)}", 'error')
-        return redirect(url_for('tenant_detail', tenant_id=tenant_id))
+        return redirect(url_for('tenant_dashboard', tenant_id=tenant_id))
 
 @app.route('/tenant/<tenant_id>/update_slack', methods=['POST'])
 @require_auth()
@@ -1129,7 +1124,7 @@ def update_slack(tenant_id):
         if errors:
             for field, error in errors.items():
                 flash(f"{field}: {error}", 'error')
-            return redirect(url_for('tenant_detail', tenant_id=tenant_id))
+            return redirect(url_for('tenant_dashboard', tenant_id=tenant_id))
         
         conn = get_db_connection()
         
@@ -1151,7 +1146,7 @@ def update_slack(tenant_id):
         conn.close()
         
         flash('Slack configuration updated successfully', 'success')
-        return redirect(url_for('tenant_detail', tenant_id=tenant_id))
+        return redirect(url_for('tenant_dashboard', tenant_id=tenant_id))
     except Exception as e:
         if 'conn' in locals():
             conn.close()
@@ -1291,7 +1286,7 @@ def create_tenant():
             conn.close()
             
             flash(f'Tenant "{tenant_name}" created successfully! The publisher should log in and start with the Ad Server Setup tab to complete configuration.', 'success')
-            return redirect(url_for('tenant_detail', tenant_id=tenant_id))
+            return redirect(url_for('tenant_dashboard', tenant_id=tenant_id))
             
         except Exception as e:
             app.logger.error(f"Error creating tenant: {str(e)}")
@@ -1300,6 +1295,440 @@ def create_tenant():
             return render_template('create_tenant.html', error=str(e))
     
     return render_template('create_tenant.html')
+
+# New Dashboard Routes (v2)
+@app.route('/tenant/<tenant_id>')
+@require_auth()
+def tenant_dashboard(tenant_id):
+    """Show new operational dashboard for tenant."""
+    # Check access
+    if session.get('role') == 'tenant_admin' and session.get('tenant_id') != tenant_id:
+        return "Access denied. You can only view your own tenant.", 403
+    
+    conn = get_db_connection()
+    
+    # Get tenant basic info
+    cursor = conn.execute("""
+        SELECT tenant_id, name, subdomain, is_active, ad_server
+        FROM tenants WHERE tenant_id = ?
+    """, (tenant_id,))
+    row = cursor.fetchone()
+    if not row:
+        conn.close()
+        return "Tenant not found", 404
+    
+    tenant = {
+        'tenant_id': row[0],
+        'name': row[1],
+        'subdomain': row[2],
+        'is_active': row[3],
+        'ad_server': row[4]
+    }
+    
+    # Get metrics
+    metrics = {}
+    
+    # Total revenue (30 days) - using actual budget column
+    cursor = conn.execute("""
+        SELECT COALESCE(SUM(budget), 0) as total_revenue
+        FROM media_buys 
+        WHERE tenant_id = %s 
+        AND status IN ('active', 'completed')
+        AND created_at >= CURRENT_TIMESTAMP - INTERVAL '30 days'
+    """, (tenant_id,))
+    metrics['total_revenue'] = cursor.fetchone()[0] or 0
+    
+    # Revenue change vs previous period
+    cursor = conn.execute("""
+        SELECT COALESCE(SUM(budget), 0) as prev_revenue
+        FROM media_buys 
+        WHERE tenant_id = %s 
+        AND status IN ('active', 'completed')
+        AND created_at >= CURRENT_TIMESTAMP - INTERVAL '60 days'
+        AND created_at < CURRENT_TIMESTAMP - INTERVAL '30 days'
+    """, (tenant_id,))
+    prev_revenue = cursor.fetchone()[0] or 0
+    if prev_revenue > 0:
+        metrics['revenue_change'] = ((metrics['total_revenue'] - prev_revenue) / prev_revenue) * 100
+    else:
+        metrics['revenue_change'] = 0
+    
+    # Active media buys
+    cursor = conn.execute("""
+        SELECT COUNT(*) FROM media_buys 
+        WHERE tenant_id = %s AND status = 'active'
+    """, (tenant_id,))
+    metrics['active_buys'] = cursor.fetchone()[0]
+    
+    # Pending media buys
+    cursor = conn.execute("""
+        SELECT COUNT(*) FROM media_buys 
+        WHERE tenant_id = %s AND status = 'pending'
+    """, (tenant_id,))
+    metrics['pending_buys'] = cursor.fetchone()[0]
+    
+    # Open tasks (using human_tasks table)
+    cursor = conn.execute("""
+        SELECT COUNT(*) FROM human_tasks 
+        WHERE tenant_id = %s AND status IN ('pending', 'in_progress')
+    """, (tenant_id,))
+    metrics['open_tasks'] = cursor.fetchone()[0]
+    
+    # Overdue tasks (simplified - tasks older than 3 days)
+    cursor = conn.execute("""
+        SELECT COUNT(*) FROM human_tasks 
+        WHERE tenant_id = %s 
+        AND status IN ('pending', 'in_progress')
+        AND created_at < CURRENT_TIMESTAMP - INTERVAL '3 days'
+    """, (tenant_id,))
+    metrics['overdue_tasks'] = cursor.fetchone()[0]
+    
+    # Active advertisers (principals with activity in last 30 days)
+    cursor = conn.execute("""
+        SELECT COUNT(DISTINCT principal_id) 
+        FROM media_buys 
+        WHERE tenant_id = %s 
+        AND created_at >= CURRENT_TIMESTAMP - INTERVAL '30 days'
+    """, (tenant_id,))
+    metrics['active_advertisers'] = cursor.fetchone()[0]
+    
+    # Total advertisers
+    cursor = conn.execute("""
+        SELECT COUNT(*) FROM principals WHERE tenant_id = %s
+    """, (tenant_id,))
+    metrics['total_advertisers'] = cursor.fetchone()[0]
+    
+    # Get recent media buys
+    cursor = conn.execute("""
+        SELECT 
+            mb.media_buy_id,
+            mb.principal_id,
+            mb.advertiser_name,
+            mb.status,
+            mb.budget,
+            0 as spend,  -- TODO: Calculate actual spend
+            mb.created_at
+        FROM media_buys mb
+        WHERE mb.tenant_id = %s
+        ORDER BY mb.created_at DESC
+        LIMIT 10
+    """, (tenant_id,))
+    
+    recent_media_buys = []
+    for row in cursor.fetchall():
+        # Calculate relative time
+        created_at = datetime.fromisoformat(row[6].replace('Z', '+00:00')) if row[6] else datetime.now(timezone.utc)
+        now = datetime.now(timezone.utc)
+        delta = now - created_at
+        
+        if delta.days > 0:
+            relative_time = f"{delta.days}d ago"
+        elif delta.seconds > 3600:
+            relative_time = f"{delta.seconds // 3600}h ago"
+        else:
+            relative_time = f"{delta.seconds // 60}m ago"
+        
+        recent_media_buys.append({
+            'media_buy_id': row[0],
+            'principal_id': row[1],
+            'advertiser_name': row[2] or 'Unknown',
+            'status': row[3],
+            'budget': row[4],
+            'spend': row[5],
+            'created_at_relative': relative_time
+        })
+    
+    # Get product count
+    cursor = conn.execute("""
+        SELECT COUNT(*) FROM products WHERE tenant_id = %s
+    """, (tenant_id,))
+    product_count = cursor.fetchone()[0]
+    
+    # Get pending tasks (using human_tasks table)
+    cursor = conn.execute("""
+        SELECT task_type, 
+               CASE 
+                   WHEN details::text != '' AND details IS NOT NULL
+                   THEN (details::json->>'description')::text
+                   ELSE task_type
+               END as description
+        FROM human_tasks 
+        WHERE tenant_id = %s AND status = 'pending'
+        ORDER BY created_at DESC
+        LIMIT 5
+    """, (tenant_id,))
+    
+    pending_tasks = []
+    for row in cursor.fetchall():
+        pending_tasks.append({
+            'type': row[0],
+            'description': row[1]
+        })
+    
+    # Chart data for revenue by advertiser (last 7 days)
+    cursor = conn.execute("""
+        SELECT 
+            mb.advertiser_name,
+            SUM(mb.budget) as revenue
+        FROM media_buys mb
+        WHERE mb.tenant_id = %s
+        AND mb.created_at >= CURRENT_TIMESTAMP - INTERVAL '7 days'
+        AND mb.status IN ('active', 'completed')
+        GROUP BY mb.advertiser_name
+        ORDER BY revenue DESC
+        LIMIT 10
+    """, (tenant_id,))
+    
+    chart_labels = []
+    chart_data = []
+    for row in cursor.fetchall():
+        chart_labels.append(row[0] or 'Unknown')
+        chart_data.append(float(row[1]))
+    
+    conn.close()
+    
+    # Get admin port from environment
+    admin_port = os.environ.get('ADMIN_UI_PORT', '8001')
+    
+    return render_template('tenant_dashboard_v2.html',
+                         tenant=tenant,
+                         metrics=metrics,
+                         recent_media_buys=recent_media_buys,
+                         product_count=product_count,
+                         pending_tasks=pending_tasks,
+                         chart_labels=chart_labels,
+                         chart_data=chart_data,
+                         admin_port=admin_port)
+
+@app.route('/tenant/<tenant_id>/settings')
+@app.route('/tenant/<tenant_id>/settings/<section>')
+@require_auth()
+def tenant_settings(tenant_id, section=None):
+    """Show tenant settings page."""
+    # Check access
+    if session.get('role') == 'tenant_admin' and session.get('tenant_id') != tenant_id:
+        return "Access denied. You can only view your own tenant.", 403
+    
+    conn = get_db_connection()
+    
+    # Get full tenant info
+    cursor = conn.execute("""
+        SELECT * FROM tenants WHERE tenant_id = ?
+    """, (tenant_id,))
+    row = cursor.fetchone()
+    if not row:
+        conn.close()
+        return "Tenant not found", 404
+    
+    # Convert row to dict
+    tenant = dict(zip([col[0] for col in cursor.description], row))
+    
+    # Parse JSON fields
+    if tenant.get('authorized_emails'):
+        tenant['authorized_emails'] = json.loads(tenant['authorized_emails']) if isinstance(tenant['authorized_emails'], str) else tenant['authorized_emails']
+    if tenant.get('authorized_domains'):
+        tenant['authorized_domains'] = json.loads(tenant['authorized_domains']) if isinstance(tenant['authorized_domains'], str) else tenant['authorized_domains']
+    
+    # Get adapter config if exists
+    adapter_config = {}
+    if tenant.get('ad_server'):
+        # Parse adapter-specific config from tenant config
+        try:
+            config = json.loads(tenant.get('config', '{}')) if isinstance(tenant.get('config'), str) else tenant.get('config', {})
+            adapter_config = config.get('adapters', {}).get(tenant['ad_server'], {})
+        except:
+            adapter_config = {}
+    
+    # Get counts
+    cursor = conn.execute("SELECT COUNT(*) FROM products WHERE tenant_id = ?", (tenant_id,))
+    product_count = cursor.fetchone()[0]
+    
+    cursor = conn.execute("SELECT COUNT(*) FROM products WHERE tenant_id = ? AND is_active = 1", (tenant_id,))
+    active_products = cursor.fetchone()[0]
+    draft_products = product_count - active_products
+    
+    cursor = conn.execute("SELECT COUNT(*) FROM principals WHERE tenant_id = ?", (tenant_id,))
+    advertiser_count = cursor.fetchone()[0]
+    
+    cursor = conn.execute("""
+        SELECT COUNT(DISTINCT principal_id) 
+        FROM media_buys 
+        WHERE tenant_id = ? 
+        AND created_at >= datetime('now', '-30 days')
+    """, (tenant_id,))
+    active_advertisers = cursor.fetchone()[0]
+    
+    # Get creative formats
+    cursor = conn.execute("""
+        SELECT format_id, name, width, height,
+               CASE WHEN auto_approve = 1 THEN 1 ELSE 0 END as auto_approve
+        FROM creative_formats 
+        WHERE tenant_id = ? OR tenant_id IS NULL
+        ORDER BY name
+    """, (tenant_id,))
+    
+    creative_formats = []
+    for row in cursor.fetchall():
+        creative_formats.append({
+            'id': row[0],
+            'name': row[1],
+            'dimensions': f"{row[2]}x{row[3]}" if row[2] and row[3] else 'Variable',
+            'auto_approve': row[4]
+        })
+    
+    # Format config as JSON for advanced editing
+    try:
+        config = json.loads(tenant.get('config', '{}')) if isinstance(tenant.get('config'), str) else tenant.get('config', {})
+        tenant['config_json'] = json.dumps(config, indent=2)
+    except:
+        tenant['config_json'] = '{}'
+    
+    # Get last sync time if GAM
+    last_sync_time = None
+    if tenant.get('ad_server') == 'google_ad_manager':
+        cursor = conn.execute("""
+            SELECT MAX(sync_completed_at) 
+            FROM gam_inventory_sync 
+            WHERE tenant_id = ?
+        """, (tenant_id,))
+        sync_row = cursor.fetchone()
+        if sync_row and sync_row[0]:
+            last_sync = datetime.fromisoformat(sync_row[0].replace('Z', '+00:00'))
+            now = datetime.now(timezone.utc)
+            delta = now - last_sync
+            if delta.days > 0:
+                last_sync_time = f"{delta.days} days ago"
+            elif delta.seconds > 3600:
+                last_sync_time = f"{delta.seconds // 3600} hours ago"
+            else:
+                last_sync_time = f"{delta.seconds // 60} minutes ago"
+    
+    conn.close()
+    
+    # Get admin port from environment
+    admin_port = os.environ.get('ADMIN_UI_PORT', '8001')
+    
+    return render_template('tenant_settings.html',
+                         tenant=tenant,
+                         adapter_config=adapter_config,
+                         product_count=product_count,
+                         active_products=active_products,
+                         draft_products=draft_products,
+                         advertiser_count=advertiser_count,
+                         active_advertisers=active_advertisers,
+                         creative_formats=creative_formats,
+                         last_sync_time=last_sync_time,
+                         admin_port=admin_port,
+                         section=section)
+
+@app.route('/api/tenant/<tenant_id>/revenue-chart')
+@require_auth()
+def revenue_chart_api(tenant_id):
+    """API endpoint for revenue chart data."""
+    period = request.args.get('period', '7d')
+    
+    # Parse period
+    if period == '7d':
+        days = 7
+    elif period == '30d':
+        days = 30
+    elif period == '90d':
+        days = 90
+    else:
+        days = 7
+    
+    conn = get_db_connection()
+    
+    cursor = conn.execute("""
+        SELECT 
+            p.name,
+            SUM(
+                CASE 
+                    WHEN mb.config IS NOT NULL AND json_extract(mb.config, '$.budget') IS NOT NULL 
+                    THEN CAST(json_extract(mb.config, '$.budget') AS REAL)
+                    ELSE 0
+                END
+            ) as revenue
+        FROM media_buys mb
+        LEFT JOIN principals p ON mb.principal_id = p.principal_id AND mb.tenant_id = p.tenant_id
+        WHERE mb.tenant_id = ?
+        AND mb.created_at >= datetime('now', '-' || ? || ' days')
+        AND mb.status IN ('active', 'completed')
+        GROUP BY p.name
+        ORDER BY revenue DESC
+        LIMIT 10
+    """, (tenant_id, days))
+    
+    labels = []
+    values = []
+    for row in cursor.fetchall():
+        labels.append(row[0] or 'Unknown')
+        values.append(float(row[1]))
+    
+    conn.close()
+    
+    return jsonify({
+        'labels': labels,
+        'values': values
+    })
+
+# Settings form handlers
+@app.route('/tenant/<tenant_id>/settings/general', methods=['POST'])
+@require_auth()
+def update_general_settings(tenant_id):
+    """Update general tenant settings."""
+    if session.get('role') == 'viewer':
+        return "Access denied", 403
+    
+    conn = get_db_connection()
+    
+    # Update tenant
+    conn.execute("""
+        UPDATE tenants SET
+            name = ?,
+            max_daily_budget = ?,
+            enable_aee_signals = ?,
+            human_review_required = ?
+        WHERE tenant_id = ?
+    """, (
+        request.form.get('name'),
+        request.form.get('max_daily_budget', type=float),
+        'enable_aee_signals' in request.form,
+        'human_review_required' in request.form,
+        tenant_id
+    ))
+    
+    conn.commit()
+    conn.close()
+    
+    flash('General settings updated successfully', 'success')
+    return redirect(url_for('tenant_settings', tenant_id=tenant_id, section='general'))
+
+@app.route('/tenant/<tenant_id>/settings/slack', methods=['POST'])
+@require_auth()
+def update_slack_settings(tenant_id):
+    """Update Slack integration settings."""
+    if session.get('role') == 'viewer':
+        return "Access denied", 403
+    
+    conn = get_db_connection()
+    
+    conn.execute("""
+        UPDATE tenants SET
+            slack_webhook_url = ?,
+            slack_audit_webhook_url = ?
+        WHERE tenant_id = ?
+    """, (
+        request.form.get('slack_webhook_url'),
+        request.form.get('slack_audit_webhook_url'),
+        tenant_id
+    ))
+    
+    conn.commit()
+    conn.close()
+    
+    flash('Slack settings updated successfully', 'success')
+    return redirect(url_for('tenant_settings', tenant_id=tenant_id, section='integrations'))
 
 # Targeting Browser Route
 @app.route('/tenant/<tenant_id>/targeting')
@@ -2160,7 +2589,7 @@ def update_principal_mappings(tenant_id, principal_id):
         conn.connection.commit()
         conn.close()
         
-        return redirect(url_for('tenant_detail', tenant_id=tenant_id) + '#principals')
+        return redirect(url_for('tenant_dashboard', tenant_id=tenant_id) + '#principals')
     except Exception as e:
         conn.close()
         return f"Error: {e}", 400
@@ -2311,11 +2740,11 @@ def setup_adapter(tenant_id):
         conn.close()
         
         flash('Ad server configuration updated successfully!', 'success')
-        return redirect(url_for('tenant_detail', tenant_id=tenant_id) + '#adserver')
+        return redirect(url_for('tenant_dashboard', tenant_id=tenant_id) + '#adserver')
     except Exception as e:
         conn.close()
         flash(f'Error updating adapter configuration: {str(e)}', 'error')
-        return redirect(url_for('tenant_detail', tenant_id=tenant_id) + '#adserver')
+        return redirect(url_for('tenant_dashboard', tenant_id=tenant_id) + '#adserver')
 
 @app.route('/tenant/<tenant_id>/principals/create', methods=['GET', 'POST'])
 @require_auth()
@@ -2395,7 +2824,7 @@ def create_principal(tenant_id):
             conn.connection.commit()
             conn.close()
             
-            return redirect(url_for('tenant_detail', tenant_id=tenant_id) + '#principals')
+            return redirect(url_for('tenant_dashboard', tenant_id=tenant_id) + '#principals')
         except Exception as e:
             conn.close()
             return render_template('create_principal.html', 
