@@ -1,0 +1,860 @@
+{% extends "base.html" %}
+
+{% block title %}{{ tenant.name }} - Settings{% endblock %}
+
+{% block content %}
+<style>
+    .settings-layout {
+        display: grid;
+        grid-template-columns: 250px 1fr;
+        gap: 2rem;
+        min-height: 600px;
+    }
+    
+    .settings-nav {
+        background: white;
+        border-radius: 12px;
+        padding: 1rem;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+        height: fit-content;
+        position: sticky;
+        top: 1rem;
+    }
+    
+    .settings-nav-item {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+        padding: 0.75rem 1rem;
+        margin-bottom: 0.25rem;
+        border-radius: 8px;
+        cursor: pointer;
+        transition: all 0.2s;
+        font-size: 0.875rem;
+        color: #4b5563;
+        text-decoration: none;
+    }
+    
+    .settings-nav-item:hover {
+        background: #f3f4f6;
+        color: #111827;
+    }
+    
+    .settings-nav-item.active {
+        background: #eff6ff;
+        color: #2563eb;
+        font-weight: 600;
+    }
+    
+    .settings-nav-icon {
+        width: 20px;
+        text-align: center;
+    }
+    
+    .settings-nav-separator {
+        height: 1px;
+        background: #e5e7eb;
+        margin: 1rem 0;
+    }
+    
+    .settings-content {
+        background: white;
+        border-radius: 12px;
+        padding: 2rem;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+    }
+    
+    .settings-section {
+        display: none;
+    }
+    
+    .settings-section.active {
+        display: block;
+    }
+    
+    .settings-header {
+        margin-bottom: 2rem;
+        padding-bottom: 1rem;
+        border-bottom: 1px solid #e5e7eb;
+    }
+    
+    .settings-header h2 {
+        margin: 0 0 0.5rem 0;
+        font-size: 1.5rem;
+        font-weight: 700;
+        color: #111827;
+    }
+    
+    .settings-header p {
+        margin: 0;
+        color: #6b7280;
+        font-size: 0.875rem;
+    }
+    
+    .form-section {
+        margin-bottom: 2rem;
+    }
+    
+    .form-section h3 {
+        margin: 0 0 1rem 0;
+        font-size: 1.125rem;
+        font-weight: 600;
+        color: #111827;
+    }
+    
+    .form-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 1rem;
+    }
+    
+    .form-group {
+        margin-bottom: 1rem;
+    }
+    
+    .form-group label {
+        display: block;
+        margin-bottom: 0.375rem;
+        font-size: 0.875rem;
+        font-weight: 500;
+        color: #374151;
+    }
+    
+    .form-group input,
+    .form-group select,
+    .form-group textarea {
+        width: 100%;
+        padding: 0.5rem 0.75rem;
+        border: 1px solid #d1d5db;
+        border-radius: 6px;
+        font-size: 0.875rem;
+        transition: all 0.2s;
+    }
+    
+    .form-group input:focus,
+    .form-group select:focus,
+    .form-group textarea:focus {
+        outline: none;
+        border-color: #3b82f6;
+        box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+    }
+    
+    .form-group small {
+        display: block;
+        margin-top: 0.25rem;
+        font-size: 0.75rem;
+        color: #6b7280;
+    }
+    
+    .checkbox-group {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        margin-bottom: 1rem;
+    }
+    
+    .checkbox-group input[type="checkbox"] {
+        width: auto;
+        margin: 0;
+    }
+    
+    .checkbox-group label {
+        margin: 0;
+        font-size: 0.875rem;
+        color: #374151;
+    }
+    
+    .status-card {
+        background: #f9fafb;
+        border: 1px solid #e5e7eb;
+        border-radius: 8px;
+        padding: 1rem;
+        margin-bottom: 1rem;
+    }
+    
+    .status-card.success {
+        background: #f0fdf4;
+        border-color: #86efac;
+    }
+    
+    .status-card.warning {
+        background: #fffbeb;
+        border-color: #fde047;
+    }
+    
+    .status-card.error {
+        background: #fef2f2;
+        border-color: #fca5a5;
+    }
+    
+    .adapter-cards {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+        gap: 1rem;
+        margin-bottom: 2rem;
+    }
+    
+    .adapter-card {
+        border: 2px solid #e5e7eb;
+        border-radius: 8px;
+        padding: 1rem;
+        cursor: pointer;
+        transition: all 0.2s;
+        position: relative;
+    }
+    
+    .adapter-card:hover {
+        border-color: #3b82f6;
+        box-shadow: 0 4px 12px rgba(59, 130, 246, 0.1);
+    }
+    
+    .adapter-card.selected {
+        border-color: #3b82f6;
+        background: #eff6ff;
+    }
+    
+    .adapter-card.current {
+        border-color: #10b981;
+        background: #f0fdf4;
+    }
+    
+    .adapter-card h4 {
+        margin: 0 0 0.5rem 0;
+        font-size: 1rem;
+        font-weight: 600;
+    }
+    
+    .adapter-card p {
+        margin: 0;
+        font-size: 0.75rem;
+        color: #6b7280;
+    }
+    
+    .adapter-badge {
+        position: absolute;
+        top: 0.5rem;
+        right: 0.5rem;
+        padding: 0.125rem 0.5rem;
+        background: #10b981;
+        color: white;
+        font-size: 0.625rem;
+        font-weight: 600;
+        border-radius: 4px;
+        text-transform: uppercase;
+    }
+    
+    .button-group {
+        display: flex;
+        gap: 0.75rem;
+        margin-top: 2rem;
+        padding-top: 2rem;
+        border-top: 1px solid #e5e7eb;
+    }
+    
+    .config-code {
+        background: #1f2937;
+        color: #f3f4f6;
+        padding: 1rem;
+        border-radius: 8px;
+        font-family: 'Monaco', 'Courier New', monospace;
+        font-size: 0.75rem;
+        overflow-x: auto;
+        position: relative;
+    }
+    
+    .copy-button {
+        position: absolute;
+        top: 0.5rem;
+        right: 0.5rem;
+        padding: 0.25rem 0.5rem;
+        background: #374151;
+        color: white;
+        border: none;
+        border-radius: 4px;
+        font-size: 0.75rem;
+        cursor: pointer;
+    }
+    
+    .copy-button:hover {
+        background: #4b5563;
+    }
+    
+    @media (max-width: 768px) {
+        .settings-layout {
+            grid-template-columns: 1fr;
+        }
+        
+        .settings-nav {
+            position: static;
+        }
+        
+        .form-grid {
+            grid-template-columns: 1fr;
+        }
+    }
+</style>
+
+<!-- Header -->
+<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem;">
+    <div>
+        <h1 style="margin: 0; font-size: 1.875rem; font-weight: 700; color: #111827;">Settings</h1>
+        <p style="margin: 0.25rem 0 0 0; color: #6b7280; font-size: 0.875rem;">
+            Configure {{ tenant.name }}
+        </p>
+    </div>
+    <a href="/tenant/{{ tenant.tenant_id }}" class="btn btn-secondary">
+        <i class="fas fa-arrow-left"></i> Back to Dashboard
+    </a>
+</div>
+
+<div class="settings-layout">
+    <!-- Settings Navigation -->
+    <nav class="settings-nav">
+        <a class="settings-nav-item active" data-section="general">
+            <span class="settings-nav-icon">⚙️</span>
+            <span>General</span>
+        </a>
+        
+        <a class="settings-nav-item" data-section="adserver">
+            <span class="settings-nav-icon">🖥️</span>
+            <span>Ad Server</span>
+        </a>
+        
+        <a class="settings-nav-item" data-section="products">
+            <span class="settings-nav-icon">📦</span>
+            <span>Products</span>
+        </a>
+        
+        <a class="settings-nav-item" data-section="creatives">
+            <span class="settings-nav-icon">🎨</span>
+            <span>Creative Formats</span>
+        </a>
+        
+        <a class="settings-nav-item" data-section="advertisers">
+            <span class="settings-nav-icon">👥</span>
+            <span>Advertisers</span>
+        </a>
+        
+        <div class="settings-nav-separator"></div>
+        
+        <a class="settings-nav-item" data-section="integrations">
+            <span class="settings-nav-icon">🔗</span>
+            <span>Integrations</span>
+        </a>
+        
+        <a class="settings-nav-item" data-section="api">
+            <span class="settings-nav-icon">🔑</span>
+            <span>API & Tokens</span>
+        </a>
+        
+        <a class="settings-nav-item" data-section="users">
+            <span class="settings-nav-icon">👤</span>
+            <span>Users & Access</span>
+        </a>
+        
+        <div class="settings-nav-separator"></div>
+        
+        <a class="settings-nav-item" data-section="advanced">
+            <span class="settings-nav-icon">🔧</span>
+            <span>Advanced</span>
+        </a>
+    </nav>
+    
+    <!-- Settings Content -->
+    <div class="settings-content">
+        <!-- General Settings -->
+        <div id="general" class="settings-section active">
+            <div class="settings-header">
+                <h2>General Settings</h2>
+                <p>Basic configuration for your sales agent</p>
+            </div>
+            
+            <form method="POST" action="/tenant/{{ tenant.tenant_id }}/settings/general">
+                <div class="form-section">
+                    <h3>Organization Information</h3>
+                    <div class="form-grid">
+                        <div class="form-group">
+                            <label for="tenant_name">Organization Name</label>
+                            <input type="text" id="tenant_name" name="name" value="{{ tenant.name }}" required>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="subdomain">Subdomain</label>
+                            <input type="text" id="subdomain" name="subdomain" value="{{ tenant.subdomain }}" readonly>
+                            <small>Cannot be changed after creation</small>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="form-section">
+                    <h3>Budget & Limits</h3>
+                    <div class="form-grid">
+                        <div class="form-group">
+                            <label for="max_daily_budget">Maximum Daily Budget</label>
+                            <input type="number" id="max_daily_budget" name="max_daily_budget" 
+                                   value="{{ tenant.max_daily_budget }}" min="0" step="100">
+                            <small>Maximum daily spend limit across all campaigns</small>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="min_campaign_budget">Minimum Campaign Budget</label>
+                            <input type="number" id="min_campaign_budget" name="min_campaign_budget" 
+                                   value="{{ tenant.min_campaign_budget or 500 }}" min="0" step="100">
+                            <small>Minimum budget required for new campaigns</small>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="form-section">
+                    <h3>Features</h3>
+                    <div class="checkbox-group">
+                        <input type="checkbox" id="enable_aee_signals" name="enable_aee_signals" 
+                               {% if tenant.enable_aee_signals %}checked{% endif %}>
+                        <label for="enable_aee_signals">Enable AEE Signals</label>
+                    </div>
+                    
+                    <div class="checkbox-group">
+                        <input type="checkbox" id="human_review_required" name="human_review_required" 
+                               {% if tenant.human_review_required %}checked{% endif %}>
+                        <label for="human_review_required">Require Human Review for Creatives</label>
+                    </div>
+                    
+                    <div class="checkbox-group">
+                        <input type="checkbox" id="auto_approve_trusted" name="auto_approve_trusted" 
+                               {% if tenant.auto_approve_trusted %}checked{% endif %}>
+                        <label for="auto_approve_trusted">Auto-approve creatives from trusted advertisers</label>
+                    </div>
+                </div>
+                
+                <div class="button-group">
+                    <button type="submit" class="btn btn-primary">Save Changes</button>
+                    <button type="reset" class="btn btn-secondary">Reset</button>
+                </div>
+            </form>
+        </div>
+        
+        <!-- Ad Server Settings -->
+        <div id="adserver" class="settings-section">
+            <div class="settings-header">
+                <h2>Ad Server Configuration</h2>
+                <p>Connect and configure your ad serving platform</p>
+            </div>
+            
+            {% if tenant.active_adapter %}
+            <div class="status-card success">
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <div>
+                        <strong>✅ Connected to {{ tenant.active_adapter|title|replace('_', ' ') }}</strong>
+                        <p style="margin: 0.25rem 0 0 0; font-size: 0.75rem;">
+                            Last synced: {{ last_sync_time or 'Never' }}
+                        </p>
+                    </div>
+                    {% if tenant.active_adapter == 'google_ad_manager' %}
+                    <button onclick="syncInventory()" class="btn btn-small">Sync Now</button>
+                    {% endif %}
+                </div>
+            </div>
+            {% else %}
+            <div class="status-card warning">
+                <strong>⚠️ No Ad Server Connected</strong>
+                <p style="margin: 0.25rem 0 0 0; font-size: 0.75rem;">
+                    Select an ad server below to get started
+                </p>
+            </div>
+            {% endif %}
+            
+            <div class="form-section">
+                <h3>Available Ad Servers</h3>
+                <div class="adapter-cards">
+                    <div class="adapter-card {% if tenant.active_adapter == 'mock' %}current{% endif %}" 
+                         onclick="selectAdapter('mock')">
+                        {% if tenant.active_adapter == 'mock' %}
+                        <span class="adapter-badge">Current</span>
+                        {% endif %}
+                        <h4>Mock (Testing)</h4>
+                        <p>Perfect for development and testing. No external setup required.</p>
+                    </div>
+                    
+                    <div class="adapter-card {% if tenant.active_adapter == 'google_ad_manager' %}current{% endif %}" 
+                         onclick="selectAdapter('google_ad_manager')">
+                        {% if tenant.active_adapter == 'google_ad_manager' %}
+                        <span class="adapter-badge">Current</span>
+                        {% endif %}
+                        <h4>Google Ad Manager</h4>
+                        <p>Enterprise ad serving platform from Google</p>
+                    </div>
+                    
+                    <div class="adapter-card {% if tenant.active_adapter == 'kevel' %}current{% endif %}" 
+                         onclick="selectAdapter('kevel')">
+                        {% if tenant.active_adapter == 'kevel' %}
+                        <span class="adapter-badge">Current</span>
+                        {% endif %}
+                        <h4>Kevel</h4>
+                        <p>API-first ad serving for developers</p>
+                    </div>
+                    
+                    <div class="adapter-card {% if tenant.active_adapter == 'triton' %}current{% endif %}" 
+                         onclick="selectAdapter('triton')">
+                        {% if tenant.active_adapter == 'triton' %}
+                        <span class="adapter-badge">Current</span>
+                        {% endif %}
+                        <h4>Triton Digital</h4>
+                        <p>Audio and podcast advertising platform</p>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Adapter-specific configuration will be loaded here -->
+            <div id="adapter-config"></div>
+        </div>
+        
+        <!-- Products Settings -->
+        <div id="products" class="settings-section">
+            <div class="settings-header">
+                <h2>Product Management</h2>
+                <p>Define advertising products available for purchase</p>
+            </div>
+            
+            <div class="status-card">
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <div>
+                        <strong>{{ product_count }} Products Configured</strong>
+                        <p style="margin: 0.25rem 0 0 0; font-size: 0.75rem;">
+                            {{ active_products }} active, {{ draft_products }} draft
+                        </p>
+                    </div>
+                    <div style="display: flex; gap: 0.5rem;">
+                        <a href="/tenant/{{ tenant.tenant_id }}/products" class="btn btn-small">Manage</a>
+                        <a href="/tenant/{{ tenant.tenant_id }}/products/add" class="btn btn-primary btn-small">Add New</a>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="form-section">
+                <h3>Product Templates</h3>
+                <p style="margin-bottom: 1rem; color: #6b7280; font-size: 0.875rem;">
+                    Quick-start with industry-standard product templates
+                </p>
+                <div class="form-grid">
+                    <button onclick="loadTemplate('display')" class="btn btn-secondary">
+                        <i class="fas fa-desktop"></i> Display Advertising
+                    </button>
+                    <button onclick="loadTemplate('video')" class="btn btn-secondary">
+                        <i class="fas fa-video"></i> Video Advertising
+                    </button>
+                    <button onclick="loadTemplate('audio')" class="btn btn-secondary">
+                        <i class="fas fa-microphone"></i> Audio/Podcast
+                    </button>
+                    <button onclick="loadTemplate('native')" class="btn btn-secondary">
+                        <i class="fas fa-newspaper"></i> Native Content
+                    </button>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Creative Formats Settings -->
+        <div id="creatives" class="settings-section">
+            <div class="settings-header">
+                <h2>Creative Formats</h2>
+                <p>Manage accepted creative formats and auto-approval rules</p>
+            </div>
+            
+            <div class="form-section">
+                <h3>Auto-Approval Settings</h3>
+                <p style="margin-bottom: 1rem; color: #6b7280; font-size: 0.875rem;">
+                    Select formats that can be automatically approved without human review
+                </p>
+                
+                <div class="form-grid">
+                    {% for format in creative_formats %}
+                    <div class="checkbox-group">
+                        <input type="checkbox" id="format_{{ format.id }}" name="auto_approve_{{ format.id }}"
+                               {% if format.auto_approve %}checked{% endif %}>
+                        <label for="format_{{ format.id }}">{{ format.name }} ({{ format.dimensions }})</label>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+            
+            <div class="button-group">
+                <a href="/tenant/{{ tenant.tenant_id }}/creative-formats" class="btn btn-primary">
+                    Manage Creative Formats
+                </a>
+            </div>
+        </div>
+        
+        <!-- Advertisers Settings -->
+        <div id="advertisers" class="settings-section">
+            <div class="settings-header">
+                <h2>Advertiser Management</h2>
+                <p>Manage advertisers who can access your inventory</p>
+            </div>
+            
+            <div class="status-card">
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <div>
+                        <strong>{{ advertiser_count }} Advertisers Registered</strong>
+                        <p style="margin: 0.25rem 0 0 0; font-size: 0.75rem;">
+                            {{ active_advertisers }} active this month
+                        </p>
+                    </div>
+                    <a href="/tenant/{{ tenant.tenant_id }}/principals/create" class="btn btn-primary btn-small">
+                        Add Advertiser
+                    </a>
+                </div>
+            </div>
+            
+            <!-- List of advertisers would go here -->
+        </div>
+        
+        <!-- Integrations Settings -->
+        <div id="integrations" class="settings-section">
+            <div class="settings-header">
+                <h2>Integrations</h2>
+                <p>Connect external services and configure webhooks</p>
+            </div>
+            
+            <div class="form-section">
+                <h3>Slack Integration</h3>
+                <form method="POST" action="/tenant/{{ tenant.tenant_id }}/settings/slack">
+                    <div class="form-group">
+                        <label for="slack_webhook_url">Task Notifications Webhook URL</label>
+                        <input type="url" id="slack_webhook_url" name="slack_webhook_url" 
+                               value="{{ tenant.slack_webhook_url or '' }}"
+                               placeholder="https://hooks.slack.com/services/YOUR/WEBHOOK/URL">
+                        <small>Receives notifications for new tasks and creative approvals</small>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="slack_audit_webhook_url">Audit Log Webhook URL (Optional)</label>
+                        <input type="url" id="slack_audit_webhook_url" name="slack_audit_webhook_url" 
+                               value="{{ tenant.slack_audit_webhook_url or '' }}"
+                               placeholder="https://hooks.slack.com/services/YOUR/AUDIT/WEBHOOK">
+                        <small>Separate channel for audit logs and security alerts</small>
+                    </div>
+                    
+                    <div class="button-group">
+                        <button type="submit" class="btn btn-primary">Save Slack Settings</button>
+                        <button type="button" onclick="testSlack()" class="btn btn-secondary">Test Connection</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+        
+        <!-- API Settings -->
+        <div id="api" class="settings-section">
+            <div class="settings-header">
+                <h2>API & Tokens</h2>
+                <p>Manage API access and authentication tokens</p>
+            </div>
+            
+            <div class="form-section">
+                <h3>MCP Server Endpoint</h3>
+                <div class="config-code">
+                    <button class="copy-button" onclick="copyToClipboard(this)">Copy</button>
+                    <pre style="margin: 0;">{% if tenant.subdomain == 'localhost' %}http://localhost:8080/mcp/{% else %}http://{{ tenant.subdomain }}.localhost:8080/mcp/{% endif %}</pre>
+                </div>
+            </div>
+            
+            <div class="form-section">
+                <h3>Python Client Example</h3>
+                <div class="config-code">
+                    <button class="copy-button" onclick="copyToClipboard(this)">Copy</button>
+                    <pre style="margin: 0;">from fastmcp.client import Client
+from fastmcp.client.transports import StreamableHttpTransport
+
+headers = {"x-adcp-auth": "YOUR_ACCESS_TOKEN"}
+transport = StreamableHttpTransport(
+    url="{% if tenant.subdomain == 'localhost' %}http://localhost:8080/mcp/{% else %}http://{{ tenant.subdomain }}.localhost:8080/mcp/{% endif %}",
+    headers=headers
+)
+client = Client(transport=transport)
+
+# Discover products
+result = await client.tools.get_products(brief="video ads")</pre>
+                </div>
+            </div>
+            
+            <div class="form-section">
+                <h3>Active Tokens</h3>
+                <p style="margin-bottom: 1rem; color: #6b7280; font-size: 0.875rem;">
+                    Each advertiser has their own API token
+                </p>
+                <!-- Token list would go here -->
+            </div>
+        </div>
+        
+        <!-- Users Settings -->
+        <div id="users" class="settings-section">
+            <div class="settings-header">
+                <h2>Users & Access</h2>
+                <p>Manage who can access this tenant's admin interface</p>
+            </div>
+            
+            <div class="form-section">
+                <h3>Authorized Users</h3>
+                <form method="POST" action="/tenant/{{ tenant.tenant_id }}/settings/users">
+                    <div class="form-group">
+                        <label for="authorized_emails">Authorized Email Addresses</label>
+                        <textarea id="authorized_emails" name="authorized_emails" rows="5"
+                                  placeholder="user1@example.com&#10;user2@example.com">{{ '\n'.join(tenant.authorized_emails or []) }}</textarea>
+                        <small>One email address per line</small>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="authorized_domains">Authorized Email Domains</label>
+                        <textarea id="authorized_domains" name="authorized_domains" rows="3"
+                                  placeholder="example.com&#10;company.org">{{ '\n'.join(tenant.authorized_domains or []) }}</textarea>
+                        <small>Anyone with these email domains can access</small>
+                    </div>
+                    
+                    <div class="button-group">
+                        <button type="submit" class="btn btn-primary">Update Access</button>
+                    </div>
+                </form>
+            </div>
+            
+            <div class="form-section">
+                <h3>Tenant Login URL</h3>
+                <div class="config-code">
+                    <button class="copy-button" onclick="copyToClipboard(this)">Copy</button>
+                    <pre style="margin: 0;">http://localhost:{{ admin_port }}/tenant/{{ tenant.tenant_id }}/login</pre>
+                </div>
+                <p style="margin-top: 0.5rem; color: #6b7280; font-size: 0.875rem;">
+                    Share this URL with authorized users to access this tenant directly
+                </p>
+            </div>
+        </div>
+        
+        <!-- Advanced Settings -->
+        <div id="advanced" class="settings-section">
+            <div class="settings-header">
+                <h2>Advanced Settings</h2>
+                <p>Expert configuration and raw JSON editing</p>
+            </div>
+            
+            <div class="status-card warning">
+                <strong>⚠️ Warning</strong>
+                <p style="margin: 0.25rem 0 0 0; font-size: 0.75rem;">
+                    Modifying these settings incorrectly may break your configuration
+                </p>
+            </div>
+            
+            <div class="form-section">
+                <h3>Raw Configuration (JSON)</h3>
+                <form method="POST" action="/tenant/{{ tenant.tenant_id }}/settings/raw">
+                    <div class="form-group">
+                        <textarea id="raw_config" name="config" rows="20" 
+                                  style="font-family: monospace;">{{ tenant.config_json }}</textarea>
+                    </div>
+                    
+                    <div class="button-group">
+                        <button type="submit" class="btn btn-primary">Save Configuration</button>
+                        <button type="button" onclick="formatJSON()" class="btn btn-secondary">Format JSON</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+// Navigation
+document.querySelectorAll('.settings-nav-item').forEach(item => {
+    item.addEventListener('click', function(e) {
+        e.preventDefault();
+        
+        // Update active nav
+        document.querySelectorAll('.settings-nav-item').forEach(i => i.classList.remove('active'));
+        this.classList.add('active');
+        
+        // Show corresponding section
+        const sectionId = this.dataset.section;
+        document.querySelectorAll('.settings-section').forEach(s => s.classList.remove('active'));
+        document.getElementById(sectionId).classList.add('active');
+        
+        // Update URL without reload
+        history.pushState(null, '', `#${sectionId}`);
+    });
+});
+
+// Load section from URL hash
+window.addEventListener('load', function() {
+    const hash = window.location.hash.substring(1);
+    if (hash) {
+        const navItem = document.querySelector(`[data-section="${hash}"]`);
+        if (navItem) {
+            navItem.click();
+        }
+    }
+});
+
+// Copy to clipboard
+function copyToClipboard(button) {
+    const code = button.parentElement.querySelector('pre').textContent;
+    navigator.clipboard.writeText(code).then(() => {
+        const originalText = button.textContent;
+        button.textContent = 'Copied!';
+        setTimeout(() => {
+            button.textContent = originalText;
+        }, 2000);
+    });
+}
+
+// Format JSON
+function formatJSON() {
+    const textarea = document.getElementById('raw_config');
+    try {
+        const json = JSON.parse(textarea.value);
+        textarea.value = JSON.stringify(json, null, 2);
+    } catch (e) {
+        alert('Invalid JSON: ' + e.message);
+    }
+}
+
+// Test Slack
+function testSlack() {
+    const webhookUrl = document.getElementById('slack_webhook_url').value;
+    if (!webhookUrl) {
+        alert('Please enter a webhook URL first');
+        return;
+    }
+    
+    fetch('/tenant/{{ tenant.tenant_id }}/test_slack', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+            webhook_url: webhookUrl
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            alert('Test message sent successfully! Check your Slack channel.');
+        } else {
+            alert('Failed to send test message: ' + (data.error || 'Unknown error'));
+        }
+    });
+}
+
+// Select adapter
+function selectAdapter(adapterName) {
+    // Would load adapter-specific configuration form
+    console.log('Selected adapter:', adapterName);
+}
+
+// Load product template
+function loadTemplate(templateType) {
+    // Would load product template
+    console.log('Loading template:', templateType);
+}
+
+// Sync inventory
+function syncInventory() {
+    // Would trigger inventory sync
+    console.log('Syncing inventory...');
+}
+</script>
+{% endblock %}
