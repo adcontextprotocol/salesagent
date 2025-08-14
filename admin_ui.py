@@ -1704,16 +1704,37 @@ def media_buy_approval(tenant_id, media_buy_id):
             prod_row = prod_cursor.fetchone()
             if prod_row:
                 formats = prod_row[3]
-                if isinstance(formats, str):
-                    formats = json.loads(formats)
+                # Debug logging
+                app.logger.info(f"Product {product_id} formats value: {formats!r}, type: {type(formats)}")
+                
+                if formats and isinstance(formats, str) and formats.strip():
+                    try:
+                        formats = json.loads(formats)
+                    except json.JSONDecodeError as e:
+                        app.logger.error(f"Failed to parse formats for {product_id}: {e}")
+                        formats = []
+                elif not formats or (isinstance(formats, str) and not formats.strip()):
+                    formats = []
                 
                 targeting_template = prod_row[4]
-                if isinstance(targeting_template, str):
-                    targeting_template = json.loads(targeting_template)
+                if targeting_template and isinstance(targeting_template, str) and targeting_template.strip():
+                    try:
+                        targeting_template = json.loads(targeting_template)
+                    except json.JSONDecodeError as e:
+                        app.logger.error(f"Failed to parse targeting_template for {product_id}: {e}")
+                        targeting_template = {}
+                elif not targeting_template or (isinstance(targeting_template, str) and not targeting_template.strip()):
+                    targeting_template = {}
                 
                 implementation_config = prod_row[11] if len(prod_row) > 11 else None
-                if implementation_config and isinstance(implementation_config, str):
-                    implementation_config = json.loads(implementation_config)
+                if implementation_config and isinstance(implementation_config, str) and implementation_config.strip():
+                    try:
+                        implementation_config = json.loads(implementation_config)
+                    except json.JSONDecodeError as e:
+                        app.logger.error(f"Failed to parse implementation_config for {product_id}: {e}")
+                        implementation_config = {}
+                elif not implementation_config or (isinstance(implementation_config, str) and not implementation_config.strip()):
+                    implementation_config = {}
                 
                 products.append({
                     'product_id': prod_row[0],
