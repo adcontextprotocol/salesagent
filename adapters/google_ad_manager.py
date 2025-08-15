@@ -2,6 +2,7 @@ from datetime import datetime, timedelta
 import random
 import json
 import os
+import logging
 from typing import List, Dict, Any, Optional, Tuple
 from googleads import ad_manager
 import google.oauth2.service_account
@@ -18,6 +19,9 @@ from schemas import (
 )
 from adapters.constants import UPDATE_ACTIONS, REQUIRED_UPDATE_ACTIONS
 from adapters.gam_implementation_config_schema import GAMImplementationConfig
+
+# Set up logger
+logger = logging.getLogger(__name__)
 
 class GoogleAdManager(AdServerAdapter):
     """
@@ -1206,14 +1210,14 @@ class GoogleAdManager(AdServerAdapter):
                     }
                 
                 # Get custom targeting keys from database
-                print(f"DEBUG: Fetching inventory for tenant_id={self.tenant_id}")
+                logger.debug(f"Fetching inventory for tenant_id={self.tenant_id}")
                 custom_keys = session.query(GAMInventory).filter(
                     and_(
                         GAMInventory.tenant_id == self.tenant_id,
                         GAMInventory.inventory_type == 'custom_targeting_key'
                     )
                 ).all()
-                print(f"DEBUG: Found {len(custom_keys)} custom targeting keys")
+                logger.debug(f"Found {len(custom_keys)} custom targeting keys")
                 
                 # Get custom targeting values from database
                 custom_values = session.query(GAMInventory).filter(
@@ -1252,7 +1256,7 @@ class GoogleAdManager(AdServerAdapter):
                         'values': values_by_key.get(key.inventory_id, [])[:20]  # Limit to first 20 values
                     }
                     key_values.append(key_data)
-                print(f"DEBUG: Formatted {len(key_values)} key-value pairs for wizard")
+                logger.debug(f"Formatted {len(key_values)} key-value pairs for wizard")
                 
                 # Get ad units for placements
                 ad_units = session.query(GAMInventory).filter(

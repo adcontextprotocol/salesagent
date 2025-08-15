@@ -7,6 +7,7 @@ import json
 import os
 import uuid
 import logging
+import traceback
 from datetime import datetime, timezone
 from functools import wraps
 from authlib.integrations.flask_client import OAuth
@@ -1295,7 +1296,6 @@ def create_tenant():
             
         except Exception as e:
             app.logger.error(f"Error creating tenant: {str(e)}")
-            import traceback
             app.logger.error(traceback.format_exc())
             return render_template('create_tenant.html', error=str(e))
     
@@ -4310,9 +4310,9 @@ def check_inventory_sync(tenant_id):
         # Create database session
         engine = create_engine(DatabaseConfig.get_connection_string())
         Session = sessionmaker(bind=engine)
-        db_session = Session()
         
-        try:
+        # Use context manager for automatic cleanup
+        with Session() as db_session:
             # Check if any inventory exists for this tenant
             inventory_count = db_session.query(GAMInventory).filter(
                 GAMInventory.tenant_id == tenant_id
@@ -4334,9 +4334,6 @@ def check_inventory_sync(tenant_id):
                 "inventory_count": inventory_count,
                 "last_sync": last_sync
             })
-            
-        finally:
-            db_session.close()
             
     except Exception as e:
         app.logger.error(f"Error checking inventory sync: {e}")
@@ -4440,7 +4437,6 @@ def analyze_ad_server_inventory(tenant_id):
         return jsonify(response_data)
         
     except Exception as e:
-        import traceback
         error_detail = traceback.format_exc()
         logger.error(f"Error analyzing ad server: {e}\n{error_detail}")
         app.logger.error(f"Full error details: {error_detail}")
@@ -4942,7 +4938,6 @@ def get_gam_line_item(tenant_id, line_item_id):
         return jsonify(result)
         
     except Exception as e:
-        import traceback
         app.logger.error(f"Error fetching GAM line item: {str(e)}")
         app.logger.error(f"Traceback: {traceback.format_exc()}")
         return jsonify({'error': str(e)}), 500
@@ -5236,7 +5231,6 @@ def register_adapter_routes():
         print(f"Registered UI routes for adapters: {', '.join(registered_adapters)}")
         
     except Exception as e:
-        import traceback
         print(f"Warning: Failed to register adapter routes: {e}")
         traceback.print_exc()
 
