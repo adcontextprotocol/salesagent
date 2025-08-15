@@ -321,6 +321,8 @@ tests/
   - `test_human_tasks.py`: Human-in-the-loop tasks
   - `test_ai_products.py`: AI product features
   - `test_policy.py`: Policy compliance checks
+  - `test_gam_country_adunit.py`: GAM country and ad unit reporting functionality
+  - `test_gam_reporting.py`: GAM reporting service and API endpoints
 
 ### 3. End-to-End Tests (`tests/e2e/`)
 - **Purpose**: Test complete user workflows
@@ -795,6 +797,12 @@ docker-compose down
 docker-compose build
 docker-compose up -d
 ```
+
+**Note on Database Initialization**: The `entrypoint.sh` script runs `init_db()` which is **safe and non-destructive**:
+- All tables use `CREATE TABLE IF NOT EXISTS` - existing tables are never dropped
+- Default data is only created if tables are empty (checks tenant count first)
+- No existing data is ever modified or deleted
+- The function is idempotent and can be run multiple times safely
 
 ### Running Standalone (Development Only)
 ```bash
