@@ -17,12 +17,181 @@ class MockAdServer(AdServerAdapter):
     SUPPORTED_DEVICE_TYPES = {"mobile", "desktop", "tablet", "ctv", "dooh", "audio"}
     SUPPORTED_MEDIA_TYPES = {"video", "display", "native", "audio", "dooh"}
     
+    def __init__(self, config, principal, dry_run=False, creative_engine=None, tenant_id=None):
+        """Initialize mock adapter with GAM-like objects."""
+        super().__init__(config, principal, dry_run, creative_engine, tenant_id)
+        
+        # Initialize GAM-like object hierarchy if not already done
+        if not hasattr(self.__class__, '_mock_objects_initialized'):
+            self._initialize_mock_objects()
+            self.__class__._mock_objects_initialized = True
+    
+    def _initialize_mock_objects(self):
+        """Create realistic GAM-like objects for testing."""
+        # Ad unit hierarchy (like GAM's inventory structure)
+        self.ad_units = {
+            "root": {
+                "id": "1001",
+                "name": "Publisher Network",
+                "path": "/",
+                "children": ["homepage", "sports", "news", "entertainment"]
+            },
+            "homepage": {
+                "id": "2001",
+                "name": "Homepage",
+                "path": "/homepage",
+                "parent": "root",
+                "children": ["homepage_top", "homepage_sidebar", "homepage_footer"]
+            },
+            "homepage_top": {
+                "id": "2101",
+                "name": "Homepage - Top Banner",
+                "path": "/homepage/top",
+                "parent": "homepage",
+                "sizes": ["728x90", "970x250", "320x50"]
+            },
+            "homepage_sidebar": {
+                "id": "2102", 
+                "name": "Homepage - Sidebar",
+                "path": "/homepage/sidebar",
+                "parent": "homepage",
+                "sizes": ["300x250", "300x600"]
+            },
+            "sports": {
+                "id": "3001",
+                "name": "Sports Section",
+                "path": "/sports",
+                "parent": "root",
+                "children": ["sports_article", "sports_scores"]
+            },
+            "news": {
+                "id": "4001",
+                "name": "News Section",
+                "path": "/news",
+                "parent": "root",
+                "children": ["news_article", "news_breaking"]
+            }
+        }
+        
+        # Custom targeting keys (like GAM's key-value targeting)
+        self.targeting_keys = {
+            "content_category": {
+                "id": "key_1",
+                "name": "content_category",
+                "values": ["sports", "news", "entertainment", "business", "technology"]
+            },
+            "article_type": {
+                "id": "key_2",
+                "name": "article_type",
+                "values": ["breaking", "feature", "opinion", "analysis", "review"]
+            },
+            "user_segment": {
+                "id": "key_3",
+                "name": "user_segment",
+                "values": ["premium", "registered", "anonymous", "subscriber"]
+            },
+            "page_position": {
+                "id": "key_4",
+                "name": "page_position",
+                "values": ["above_fold", "below_fold", "sticky", "interstitial"]
+            },
+            "aee_audience": {
+                "id": "key_5",
+                "name": "aee_audience",
+                "values": ["auto_intenders", "luxury_travel", "sports_enthusiasts", "tech_buyers"]
+            }
+        }
+        
+        # Predefined line item templates (for common product types)
+        self.line_item_templates = {
+            "standard_display": {
+                "type": "STANDARD",
+                "priority": 8,
+                "creative_sizes": ["300x250", "728x90"],
+                "targeting": {
+                    "ad_units": ["homepage", "news", "sports"],
+                    "device_categories": ["DESKTOP", "TABLET"]
+                }
+            },
+            "mobile_app": {
+                "type": "STANDARD", 
+                "priority": 8,
+                "creative_sizes": ["320x50", "300x250"],
+                "targeting": {
+                    "device_categories": ["MOBILE"],
+                    "operating_systems": ["IOS", "ANDROID"]
+                }
+            },
+            "video_preroll": {
+                "type": "STANDARD",
+                "priority": 6,
+                "creative_sizes": ["VIDEO"],
+                "targeting": {
+                    "ad_units": ["video_player"],
+                    "content_category": ["sports", "entertainment"]
+                }
+            },
+            "programmatic_guaranteed": {
+                "type": "SPONSORSHIP",
+                "priority": 4,
+                "creative_sizes": ["300x250", "728x90", "970x250"],
+                "targeting": {
+                    "ad_units": ["homepage_top"],
+                    "user_segment": ["premium", "subscriber"]
+                }
+            }
+        }
+        
+        # Creative placeholders
+        self.creative_library = {
+            "300x250": {
+                "id": "creative_1",
+                "name": "Standard Medium Rectangle",
+                "size": "300x250",
+                "type": "IMAGE"
+            },
+            "728x90": {
+                "id": "creative_2",
+                "name": "Leaderboard",
+                "size": "728x90",
+                "type": "IMAGE"
+            },
+            "VIDEO": {
+                "id": "creative_3",
+                "name": "Video Creative",
+                "size": "VIDEO",
+                "type": "VIDEO",
+                "duration": 30
+            }
+        }
+        
+        self.log("Mock ad server initialized with GAM-like object hierarchy")
+        self.log(f"  - {len(self.ad_units)} ad units in hierarchy")
+        self.log(f"  - {len(self.targeting_keys)} custom targeting keys")
+        self.log(f"  - {len(self.line_item_templates)} line item templates")
+        self.log(f"  - {len(self.creative_library)} creative templates")
+    
     def _validate_targeting(self, targeting_overlay):
         """Mock adapter accepts all targeting."""
         return []  # No unsupported features
 
     def create_media_buy(self, request: CreateMediaBuyRequest, packages: List[MediaPackage], start_time: datetime, end_time: datetime) -> CreateMediaBuyResponse:
-        """Simulates the creation of a media buy."""
+        """Simulates the creation of a media buy using GAM-like templates."""
+        # Generate a unique media_buy_id
+        import uuid
+        media_buy_id = f"buy_{request.po_number}" if request.po_number else f"buy_{uuid.uuid4().hex[:8]}"
+        
+        # Select appropriate template based on packages
+        template_name = "standard_display"  # Default
+        if any(p.name and "video" in p.name.lower() for p in packages):
+            template_name = "video_preroll"
+        elif any(p.name and "mobile" in p.name.lower() for p in packages):
+            template_name = "mobile_app"
+        elif any(p.delivery_type == "guaranteed" for p in packages):
+            template_name = "programmatic_guaranteed"
+        
+        template = self.line_item_templates.get(template_name, self.line_item_templates["standard_display"])
+        
         # Log operation start
         self.audit_logger.log_operation(
             operation="create_media_buy",
@@ -31,13 +200,11 @@ class MockAdServer(AdServerAdapter):
             adapter_id=self.adapter_principal_id,
             success=True,
             details={
-                "media_buy_id": f"buy_{request.po_number}",
+                "media_buy_id": media_buy_id,
                 "po_number": request.po_number,
                 "flight_dates": f"{start_time.date()} to {end_time.date()}"
             }
         )
-        
-        media_buy_id = f"buy_{request.po_number}"
         
         # Calculate total budget from packages (CPM * impressions / 1000)
         total_budget = sum((p.cpm * p.impressions / 1000) for p in packages if p.delivery_type == 'guaranteed')
@@ -45,6 +212,7 @@ class MockAdServer(AdServerAdapter):
         total_budget = request.total_budget if request.total_budget else total_budget
         
         self.log(f"Creating media buy with ID: {media_buy_id}")
+        self.log(f"Using template: {template_name} (priority: {template['priority']})")
         self.log(f"Budget: ${total_budget:,.2f}")
         self.log(f"Flight dates: {start_time.date()} to {end_time.date()}")
         
@@ -89,6 +257,7 @@ class MockAdServer(AdServerAdapter):
         
         return CreateMediaBuyResponse(
             media_buy_id=media_buy_id,
+            context_id=f"ctx_{media_buy_id}",  # Add context_id for AdCP compliance
             status="pending_creative",
             detail="Media buy created successfully",
             creative_deadline=datetime.now() + timedelta(days=2)

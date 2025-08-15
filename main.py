@@ -287,6 +287,13 @@ context_mgr = ContextManager()
 SELECTED_ADAPTER = config.get('ad_server', {}).get('adapter', 'mock').lower()
 AVAILABLE_ADAPTERS = ["mock", "gam", "kevel", "triton", "triton_digital"]
 
+# --- In-Memory State ---
+media_buys: Dict[str, Tuple[CreateMediaBuyRequest, str]] = {}
+context_map: Dict[str, str] = {}  # Maps context_id to media_buy_id
+creative_assignments: Dict[str, Dict[str, List[str]]] = {}
+creative_statuses: Dict[str, CreativeStatus] = {}
+product_catalog: List[Product] = []
+
 # --- Dry Run Mode ---
 DRY_RUN_MODE = config.get('dry_run', False)
 if DRY_RUN_MODE:
@@ -793,6 +800,86 @@ def create_media_buy(req: CreateMediaBuyRequest, context: Context) -> CreateMedi
     response.message = f"Media buy {response.media_buy_id} has been created successfully. Your campaign will run from {req.flight_start_date} to {req.flight_end_date} with a budget of ${req.total_budget}."
     
     return response
+
+@mcp.tool
+def check_media_buy_status(req: CheckMediaBuyStatusRequest, context: Context) -> CheckMediaBuyStatusResponse:
+    """Check the status of a media buy using the context_id returned from create_media_buy."""
+    principal_id = _get_principal_id_from_context(context)
+    
+    # Get the media_buy_id from context_id
+    media_buy_id = None
+    if req.context_id in context_map:
+        media_buy_id = context_map[req.context_id]
+    
+    # If not in memory, check database
+    if not media_buy_id:
+        conn = get_db_connection()
+        try:
+            cursor = conn.execute(
+                "SELECT media_buy_id, status, budget, start_date, end_date FROM media_buys WHERE context_id = ?",
+                (req.context_id,)
+            )
+            row = cursor.fetchone()
+            if row:
+                media_buy_id = row[0]
+                status = row[1]
+                budget = row[2]
+            else:
+                # Context not found
+                return CheckMediaBuyStatusResponse(
+                    media_buy_id="",
+                    status="not_found",
+                    detail=f"No media buy found for context_id: {req.context_id}",
+                    creative_count=0,
+                    budget_spent=0.0,
+                    budget_remaining=0.0
+                )
+        finally:
+            conn.close()
+    
+    # Check if media buy exists in memory
+    if media_buy_id in media_buys:
+        buy_req, buy_principal = media_buys[media_buy_id]
+        
+        # Calculate basic info
+        creative_count = len(creative_assignments.get(media_buy_id, {}).get("all", []))
+        
+        # Check for any pending human tasks
+        conn = get_db_connection()
+        try:
+            cursor = conn.execute(
+                "SELECT status FROM human_tasks WHERE media_buy_id = ? AND status = 'pending'",
+                (media_buy_id,)
+            )
+            pending_task = cursor.fetchone()
+            
+            if pending_task:
+                status = "pending_manual"
+                detail = "Awaiting manual approval"
+            else:
+                status = "active" if creative_count > 0 else "pending_creative"
+                detail = "Media buy is active" if creative_count > 0 else "Awaiting creative assets"
+        finally:
+            conn.close()
+        
+        return CheckMediaBuyStatusResponse(
+            media_buy_id=media_buy_id,
+            status=status,
+            detail=detail,
+            creative_count=creative_count,
+            budget_spent=0.0,  # Would need adapter integration for real data
+            budget_remaining=buy_req.total_budget
+        )
+    else:
+        # Not found
+        return CheckMediaBuyStatusResponse(
+            media_buy_id=media_buy_id or "",
+            status="not_found",
+            detail="Media buy not found",
+            creative_count=0,
+            budget_spent=0.0,
+            budget_remaining=0.0
+        )
 
 @mcp.tool
 def add_creative_assets(req: AddCreativeAssetsRequest, context: Context) -> AddCreativeAssetsResponse:
