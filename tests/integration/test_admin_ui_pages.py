@@ -71,26 +71,15 @@ class TestAdminUIPages:
         tenant = TenantFactory.create()
         conn = get_db_connection()
         
-        # Insert tenant into database
-        try:
-            # Try new schema first
-            conn.execute("""
-                INSERT INTO tenants (tenant_id, name, subdomain, is_active, ad_server,
-                                    max_daily_budget, enable_aee_signals, human_review_required,
-                                    admin_token, created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
-            """, (tenant['tenant_id'], tenant['name'], tenant['subdomain'], 
-                  tenant.get('is_active', 1), tenant.get('ad_server', 'mock'),
-                  10000, 1, 0, 'test_token'))
-        except Exception:
-            # Fall back to old schema with config column
-            conn.execute("""
-                INSERT INTO tenants (tenant_id, name, subdomain, config, billing_plan, created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?, datetime('now'), datetime('now'))
-            """, (tenant['tenant_id'], tenant['name'], tenant['subdomain'], 
-                  tenant['config'], tenant.get('billing_plan', 'standard')))
+        # Insert tenant into database using base schema
+        conn.execute("""
+            INSERT OR IGNORE INTO tenants (tenant_id, name, subdomain, is_active, billing_plan, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, datetime('now'), datetime('now'))
+        """, (tenant['tenant_id'], tenant['name'], tenant['subdomain'], 
+              1, tenant.get('billing_plan', 'standard')))
         
-        conn.commit()
+        # Commit using the underlying connection object
+        conn.connection.commit()
         conn.close()
         
         # Set up authenticated session before making request
@@ -111,26 +100,15 @@ class TestAdminUIPages:
         tenant = TenantFactory.create()
         conn = get_db_connection()
         
-        # Insert tenant into database
-        try:
-            # Try new schema first
-            conn.execute("""
-                INSERT INTO tenants (tenant_id, name, subdomain, is_active, ad_server,
-                                    max_daily_budget, enable_aee_signals, human_review_required,
-                                    admin_token, created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
-            """, (tenant['tenant_id'], tenant['name'], tenant['subdomain'], 
-                  tenant.get('is_active', 1), tenant.get('ad_server', 'mock'),
-                  10000, 1, 0, 'test_token'))
-        except Exception:
-            # Fall back to old schema with config column
-            conn.execute("""
-                INSERT INTO tenants (tenant_id, name, subdomain, config, billing_plan, created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?, datetime('now'), datetime('now'))
-            """, (tenant['tenant_id'], tenant['name'], tenant['subdomain'], 
-                  tenant['config'], tenant.get('billing_plan', 'standard')))
+        # Insert tenant into database using base schema
+        conn.execute("""
+            INSERT OR IGNORE INTO tenants (tenant_id, name, subdomain, is_active, billing_plan, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, datetime('now'), datetime('now'))
+        """, (tenant['tenant_id'], tenant['name'], tenant['subdomain'], 
+              1, tenant.get('billing_plan', 'standard')))
         
-        conn.commit()
+        # Commit using the underlying connection object
+        conn.connection.commit()
         conn.close()
         
         # Set up authenticated session before making request
@@ -155,29 +133,16 @@ class TestAdminUIPages:
         tenant = TenantFactory.create()
         conn = get_db_connection()
         
-        # Insert tenant into database first
+        # Insert tenant into database using base schema
         try:
-            # Try new schema first
             conn.execute("""
-                INSERT INTO tenants (tenant_id, name, subdomain, is_active, ad_server,
-                                    max_daily_budget, enable_aee_signals, human_review_required,
-                                    admin_token, created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
+                INSERT OR IGNORE INTO tenants (tenant_id, name, subdomain, is_active, billing_plan, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, datetime('now'), datetime('now'))
             """, (tenant['tenant_id'], tenant['name'], tenant['subdomain'], 
-                  tenant.get('is_active', 1), tenant.get('ad_server', 'mock'),
-                  10000, 1, 0, 'test_token'))
-            conn.commit()
+                  1, tenant.get('billing_plan', 'standard')))
+            conn.connection.commit()
         except Exception:
-            # Fall back to old schema with config column
-            try:
-                conn.execute("""
-                    INSERT INTO tenants (tenant_id, name, subdomain, config, billing_plan, created_at, updated_at)
-                    VALUES (?, ?, ?, ?, ?, datetime('now'), datetime('now'))
-                """, (tenant['tenant_id'], tenant['name'], tenant['subdomain'], 
-                      tenant['config'], tenant.get('billing_plan', 'standard')))
-                conn.commit()
-            except Exception:
-                pass  # May already exist from fixture setup
+            pass  # May already exist from fixture setup
         
         # Now test that we're NOT using the old 'config' column
         
@@ -216,6 +181,7 @@ class TestAdminUIPages:
         
         # And the pages should work regardless of schema
         with client.session_transaction() as sess:
+            sess['authenticated'] = True
             sess['user'] = 'test@example.com'
             sess['role'] = 'super_admin'
             sess['name'] = 'Test User'
