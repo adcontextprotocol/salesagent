@@ -266,8 +266,12 @@ def flask_app():
         mock_db.execute.return_value = mock_cursor
         mock_conn.return_value = mock_db
         
-        # Mock inventory service
-        with patch('gam_inventory_service.get_db_connection', return_value=mock_db):
+        # Mock inventory service database session
+        with patch('gam_inventory_service.db_session') as mock_session:
+            mock_session.query.return_value.filter.return_value.all.return_value = []
+            mock_session.close = MagicMock()
+            mock_session.remove = MagicMock()
+            
             from admin_ui import app
             app.config['TESTING'] = True
             app.config['SECRET_KEY'] = 'test-secret-key'

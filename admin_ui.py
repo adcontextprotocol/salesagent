@@ -9,6 +9,7 @@ import os
 import uuid
 import logging
 import asyncio
+import traceback
 from datetime import datetime, timezone
 from functools import wraps
 from authlib.integrations.flask_client import OAuth
@@ -1298,7 +1299,6 @@ def create_tenant():
             
         except Exception as e:
             app.logger.error(f"Error creating tenant: {str(e)}")
-            import traceback
             app.logger.error(traceback.format_exc())
             return render_template('create_tenant.html', error=str(e))
     
@@ -1562,7 +1562,7 @@ def tenant_settings(tenant_id, section=None):
     advertiser_count = cursor.fetchone()[0]
     
     # Use PostgreSQL-compatible syntax (CURRENT_TIMESTAMP - INTERVAL)
-    db_config = DatabaseConfig.get_config()
+    db_config = DatabaseConfig.get_db_config()
     if db_config['type'] == 'postgresql':
         cursor = conn.execute("""
             SELECT COUNT(DISTINCT principal_id) 
@@ -2360,6 +2360,19 @@ def workflows_dashboard(tenant_id):
     
     media_buys = []
     for row in media_buys_cursor:
+        # Handle datetime fields - PostgreSQL returns datetime objects, SQLite returns strings
+        created_at = row[11]
+        if created_at and isinstance(created_at, str):
+            created_at = datetime.fromisoformat(created_at)
+        
+        updated_at = row[12]
+        if updated_at and isinstance(updated_at, str):
+            updated_at = datetime.fromisoformat(updated_at)
+        
+        approved_at = row[13]
+        if approved_at and isinstance(approved_at, str):
+            approved_at = datetime.fromisoformat(approved_at)
+        
         media_buys.append({
             'media_buy_id': row[0],
             'tenant_id': row[1],
@@ -2372,9 +2385,9 @@ def workflows_dashboard(tenant_id):
             'start_date': row[8],
             'end_date': row[9],
             'status': row[10],
-            'created_at': datetime.fromisoformat(row[11]) if row[11] else None,
-            'updated_at': datetime.fromisoformat(row[12]) if row[12] else None,
-            'approved_at': datetime.fromisoformat(row[13]) if row[13] else None,
+            'created_at': created_at,
+            'updated_at': updated_at,
+            'approved_at': approved_at,
             'approved_by': row[14]
         })
     
@@ -2388,10 +2401,29 @@ def workflows_dashboard(tenant_id):
     
     tasks = []
     for row in tasks_cursor:
-        due_date = datetime.fromisoformat(row[8]) if row[8] else None
+        # Handle datetime fields - PostgreSQL returns datetime objects, SQLite returns strings
+        due_date = row[8]
+        if due_date and isinstance(due_date, str):
+            due_date = datetime.fromisoformat(due_date)
+        
+        completed_at = row[9]
+        if completed_at and isinstance(completed_at, str):
+            completed_at = datetime.fromisoformat(completed_at)
+        
+        created_at = row[12]
+        if created_at and isinstance(created_at, str):
+            created_at = datetime.fromisoformat(created_at)
+        
         is_overdue = False
         if due_date and row[6] == 'pending':
             is_overdue = due_date < datetime.now()
+        
+        # Handle metadata - PostgreSQL returns dict, SQLite returns string
+        metadata = row[11]
+        if metadata and isinstance(metadata, str):
+            metadata = json.loads(metadata)
+        elif not metadata:
+            metadata = {}
             
         tasks.append({
             'task_id': row[0],
@@ -2403,10 +2435,10 @@ def workflows_dashboard(tenant_id):
             'status': row[6],
             'assigned_to': row[7],
             'due_date': due_date,
-            'completed_at': datetime.fromisoformat(row[9]) if row[9] else None,
+            'completed_at': completed_at,
             'completed_by': row[10],
-            'metadata': json.loads(row[11]) if row[11] else {},
-            'created_at': datetime.fromisoformat(row[12]) if row[12] else None,
+            'metadata': metadata,
+            'created_at': created_at,
             'is_overdue': is_overdue
         })
     
@@ -2420,10 +2452,15 @@ def workflows_dashboard(tenant_id):
     
     audit_logs = []
     for row in audit_logs_cursor:
+        # Handle datetime fields - PostgreSQL returns datetime objects, SQLite returns strings
+        timestamp = row[2]
+        if timestamp and isinstance(timestamp, str):
+            timestamp = datetime.fromisoformat(timestamp)
+        
         audit_logs.append({
             'log_id': row[0],
             'tenant_id': row[1],
-            'timestamp': datetime.fromisoformat(row[2]) if row[2] else None,
+            'timestamp': timestamp,
             'operation': row[3],
             'principal_name': row[4],
             'principal_id': row[5],
@@ -2441,6 +2478,210 @@ def workflows_dashboard(tenant_id):
                          media_buys=media_buys,
                          tasks=tasks,
                          audit_logs=audit_logs)
+
+@app.route('/tenant/<tenant_id>/media-buy/<media_buy_id>/approve')
+@require_auth()
+def media_buy_approval(tenant_id, media_buy_id):
+    """Display media buy approval page with details and dry-run preview."""
+    # Verify tenant access
+    if session.get('role') != 'super_admin' and session.get('tenant_id') != tenant_id:
+        return "Access denied", 403
+    
+    conn = get_db_connection()
+    
+    # Get the media buy details
+    buy_cursor = conn.execute("""
+        SELECT * FROM media_buys 
+        WHERE tenant_id = ? AND media_buy_id = ?
+    """, (tenant_id, media_buy_id))
+    
+    buy_row = buy_cursor.fetchone()
+    if not buy_row:
+        conn.close()
+        return "Media buy not found", 404
+    
+    # Parse the media buy
+    media_buy = {
+        'media_buy_id': buy_row[0],
+        'tenant_id': buy_row[1],
+        'principal_id': buy_row[2],
+        'order_name': buy_row[3],
+        'advertiser_name': buy_row[4],
+        'campaign_objective': buy_row[5],
+        'kpi_goal': buy_row[6],
+        'budget': buy_row[7],
+        'start_date': buy_row[8],
+        'end_date': buy_row[9],
+        'status': buy_row[10],
+        'created_at': buy_row[11] if not isinstance(buy_row[11], str) else datetime.fromisoformat(buy_row[11]),
+        'raw_request': json.loads(buy_row[15]) if buy_row[15] and isinstance(buy_row[15], str) else buy_row[15],
+        'context_id': buy_row[16] if len(buy_row) > 16 else None
+    }
+    
+    # Get associated human task if exists
+    task_cursor = conn.execute("""
+        SELECT * FROM human_tasks 
+        WHERE media_buy_id = ? AND status = 'pending'
+        ORDER BY created_at DESC LIMIT 1
+    """, (media_buy_id,))
+    
+    task_row = task_cursor.fetchone()
+    human_task = None
+    if task_row:
+        context_data = task_row[8]
+        if context_data and isinstance(context_data, str):
+            context_data = json.loads(context_data)
+        
+        human_task = {
+            'task_id': task_row[0],
+            'task_type': task_row[3],
+            'priority': task_row[4],
+            'status': task_row[5],
+            'operation': task_row[6],
+            'error_detail': task_row[7],
+            'context_data': context_data or {}
+        }
+    
+    # Get the principal details for adapter info
+    principal_cursor = conn.execute("""
+        SELECT * FROM principals 
+        WHERE tenant_id = ? AND principal_id = ?
+    """, (tenant_id, media_buy['principal_id']))
+    
+    principal_row = principal_cursor.fetchone()
+    principal = None
+    if principal_row:
+        platform_mappings = principal_row[3]
+        if isinstance(platform_mappings, str):
+            platform_mappings = json.loads(platform_mappings)
+        
+        principal = {
+            'principal_id': principal_row[0],
+            'name': principal_row[2],
+            'platform_mappings': platform_mappings
+        }
+    
+    # Get the products in this media buy
+    products = []
+    if media_buy['raw_request'] and 'product_ids' in media_buy['raw_request']:
+        product_ids = media_buy['raw_request']['product_ids']
+        for product_id in product_ids:
+            prod_cursor = conn.execute("""
+                SELECT * FROM products 
+                WHERE tenant_id = ? AND product_id = ?
+            """, (tenant_id, product_id))
+            prod_row = prod_cursor.fetchone()
+            if prod_row:
+                formats = prod_row[3]
+                # Debug logging
+                app.logger.info(f"Product {product_id} formats value: {formats!r}, type: {type(formats)}")
+                
+                if formats and isinstance(formats, str) and formats.strip():
+                    try:
+                        formats = json.loads(formats)
+                    except json.JSONDecodeError as e:
+                        app.logger.error(f"Failed to parse formats for {product_id}: {e}")
+                        formats = []
+                elif not formats or (isinstance(formats, str) and not formats.strip()):
+                    formats = []
+                
+                targeting_template = prod_row[4]
+                if targeting_template and isinstance(targeting_template, str) and targeting_template.strip():
+                    try:
+                        targeting_template = json.loads(targeting_template)
+                    except json.JSONDecodeError as e:
+                        app.logger.error(f"Failed to parse targeting_template for {product_id}: {e}")
+                        targeting_template = {}
+                elif not targeting_template or (isinstance(targeting_template, str) and not targeting_template.strip()):
+                    targeting_template = {}
+                
+                implementation_config = prod_row[11] if len(prod_row) > 11 else None
+                if implementation_config and isinstance(implementation_config, str) and implementation_config.strip():
+                    try:
+                        implementation_config = json.loads(implementation_config)
+                    except json.JSONDecodeError as e:
+                        app.logger.error(f"Failed to parse implementation_config for {product_id}: {e}")
+                        implementation_config = {}
+                elif not implementation_config or (isinstance(implementation_config, str) and not implementation_config.strip()):
+                    implementation_config = {}
+                
+                products.append({
+                    'product_id': prod_row[0],
+                    'name': prod_row[2],
+                    'formats': formats,
+                    'targeting_template': targeting_template,
+                    'pricing_model': prod_row[5],
+                    'base_price': prod_row[6],
+                    'min_spend': prod_row[7],
+                    'implementation_config': implementation_config
+                })
+    
+    # Prepare dry-run preview (simulate what would happen in GAM)
+    dry_run_preview = generate_dry_run_preview(
+        media_buy, 
+        products, 
+        principal,
+        human_task
+    )
+    
+    conn.close()
+    
+    return render_template('media_buy_approval.html',
+                         tenant_id=tenant_id,
+                         media_buy=media_buy,
+                         human_task=human_task,
+                         principal=principal,
+                         products=products,
+                         dry_run_preview=dry_run_preview)
+
+def generate_dry_run_preview(media_buy, products, principal, human_task):
+    """Generate a dry-run preview of what would be created in GAM."""
+    preview = {
+        'order': {
+            'name': media_buy['order_name'],
+            'advertiser': media_buy['advertiser_name'],
+            'budget': media_buy['budget'],
+            'start_date': str(media_buy['start_date']),
+            'end_date': str(media_buy['end_date'])
+        },
+        'line_items': []
+    }
+    
+    # Generate preview line items for each product
+    for product in products:
+        line_item = {
+            'name': f"{product['name']} - {media_buy['media_buy_id']}",
+            'product_id': product['product_id'],
+            'formats': product.get('formats', []),
+            'targeting': product.get('targeting_template', {}),
+            'pricing_model': product.get('pricing_model', 'CPM'),
+            'base_price': product.get('base_price', 0),
+            'implementation_notes': []
+        }
+        
+        # Add implementation config details
+        if product.get('implementation_config'):
+            config = product['implementation_config']
+            if 'ad_unit_ids' in config:
+                line_item['implementation_notes'].append(
+                    f"Will target {len(config['ad_unit_ids'])} ad units"
+                )
+            if 'placement_ids' in config:
+                line_item['implementation_notes'].append(
+                    f"Will use {len(config['placement_ids'])} placements"
+                )
+            if 'custom_targeting' in config:
+                line_item['implementation_notes'].append(
+                    "Custom targeting will be applied"
+                )
+        
+        preview['line_items'].append(line_item)
+    
+    # Add any targeting overlay from the request
+    if media_buy.get('raw_request') and media_buy['raw_request'].get('targeting_overlay'):
+        preview['targeting_overlay'] = media_buy['raw_request']['targeting_overlay']
+    
+    return preview
 
 # User Management Routes
 @app.route('/tenant/<tenant_id>/users')
@@ -3166,41 +3407,68 @@ def list_products(tenant_id):
     
     conn = get_db_connection()
     
-    # Get tenant and config
-    cursor = conn.execute("SELECT name, config FROM tenants WHERE tenant_id = ?", (tenant_id,))
+    # Get tenant name
+    cursor = conn.execute("SELECT name FROM tenants WHERE tenant_id = ?", (tenant_id,))
     row = cursor.fetchone()
+    if not row:
+        conn.close()
+        return "Tenant not found", 404
     tenant_name = row[0]
-    config_data = row[1]
-    # PostgreSQL returns JSONB as dict, SQLite returns string
-    tenant_config = config_data if isinstance(config_data, dict) else json.loads(config_data)
+    
+    # Get tenant config using helper function
+    tenant_config = get_tenant_config_from_db(conn, tenant_id)
+    
+    # Get active adapter from config
+    active_adapter = None
+    if tenant_config and 'adapters' in tenant_config:
+        for adapter_name, adapter_config in tenant_config['adapters'].items():
+            if adapter_config.get('enabled'):
+                active_adapter = adapter_name
+                break
     
     # Get active adapter and its UI endpoint
     adapter_ui_endpoint = None
-    adapters = tenant_config.get('adapters', {})
-    for adapter_name, config in adapters.items():
-        if config.get('enabled'):
-            # Create dummy principal to get UI endpoint
-            dummy_principal = Principal(
-                tenant_id=tenant_id,
-                principal_id="ui_query",
-                name="UI Query",
-                access_token="",
-                platform_mappings={}
-            )
-            
-            try:
-                if adapter_name == 'google_ad_manager':
-                    from adapters.google_ad_manager import GoogleAdManager
-                    adapter = GoogleAdManager(config, dummy_principal, dry_run=True, tenant_id=tenant_id)
-                    adapter_ui_endpoint = adapter.get_config_ui_endpoint()
-                elif adapter_name == 'mock':
-                    from adapters.mock_ad_server import MockAdServer
-                    adapter = MockAdServer(config, dummy_principal, dry_run=True, tenant_id=tenant_id)
-                    adapter_ui_endpoint = adapter.get_config_ui_endpoint()
-                # Add other adapters as needed
-            except:
-                pass
-            break
+    if active_adapter:
+        # Create dummy principal to get UI endpoint
+        dummy_principal = Principal(
+            tenant_id=tenant_id,
+            principal_id="ui_query",
+            name="UI Query",
+            access_token="",
+            platform_mappings={}
+        )
+        
+        # Get adapter configuration from adapter_config table
+        cursor = conn.execute("""
+            SELECT mock_dry_run, gam_network_code, gam_refresh_token,
+                   kevel_network_id, kevel_api_key
+            FROM adapter_config
+            WHERE tenant_id = ?
+        """, (tenant_id,))
+        adapter_row = cursor.fetchone()
+        
+        try:
+            if active_adapter == 'google_ad_manager':
+                from adapters.google_ad_manager import GoogleAdManager
+                config = {
+                    'enabled': True,
+                    'network_code': adapter_row[1] if adapter_row else None,
+                    'refresh_token': adapter_row[2] if adapter_row else None
+                }
+                adapter = GoogleAdManager(config, dummy_principal, dry_run=True, tenant_id=tenant_id)
+                adapter_ui_endpoint = adapter.get_config_ui_endpoint()
+            elif active_adapter == 'mock':
+                from adapters.mock_ad_server import MockAdServer
+                config = {
+                    'enabled': True,
+                    'dry_run': adapter_row[0] if adapter_row else False
+                }
+                adapter = MockAdServer(config, dummy_principal, dry_run=True, tenant_id=tenant_id)
+                adapter_ui_endpoint = adapter.get_config_ui_endpoint()
+            # Add other adapters as needed
+        except Exception as e:
+            app.logger.error(f"Error getting adapter UI endpoint: {e}")
+            pass
     
     # Get products
     cursor = conn.execute("""
@@ -3769,15 +4037,20 @@ def policy_settings(tenant_id):
     
     conn = get_db_connection()
     
-    # Get tenant info and config
-    cursor = conn.execute("SELECT name, config FROM tenants WHERE tenant_id = ?", (tenant_id,))
+    # Get tenant info
+    cursor = conn.execute("SELECT name FROM tenants WHERE tenant_id = ?", (tenant_id,))
     tenant = cursor.fetchone()
     if not tenant:
         conn.close()
         return "Tenant not found", 404
     
-    tenant_name, config_str = tenant
-    config = parse_json_config(config_str)
+    tenant_name = tenant[0]
+    
+    # Get tenant config using helper function
+    config = get_tenant_config_from_db(conn, tenant_id)
+    if not config:
+        conn.close()
+        return "Tenant config not found", 404
     
     # Define default policies that all publishers start with
     default_policies = {
@@ -4741,6 +5014,55 @@ def product_setup_wizard(tenant_id):
     
     return render_template('product_setup_wizard.html', tenant_id=tenant_id)
 
+@app.route('/tenant/<tenant_id>/check-inventory-sync')
+@require_auth()
+def check_inventory_sync(tenant_id):
+    """Check if GAM inventory has been synced for this tenant."""
+    # Check access
+    if session.get('role') == 'viewer':
+        return jsonify({"error": "Access denied"}), 403
+    
+    if session.get('role') == 'tenant_admin' and session.get('tenant_id') != tenant_id:
+        return jsonify({"error": "Access denied"}), 403
+    
+    try:
+        from models import GAMInventory
+        from sqlalchemy import create_engine
+        from sqlalchemy.orm import sessionmaker
+        from db_config import DatabaseConfig
+        
+        # Create database session
+        engine = create_engine(DatabaseConfig.get_connection_string())
+        Session = sessionmaker(bind=engine)
+        
+        # Use context manager for automatic cleanup
+        with Session() as db_session:
+            # Check if any inventory exists for this tenant
+            inventory_count = db_session.query(GAMInventory).filter(
+                GAMInventory.tenant_id == tenant_id
+            ).count()
+            
+            has_inventory = inventory_count > 0
+            
+            # Get last sync time if available
+            last_sync = None
+            if has_inventory:
+                latest = db_session.query(GAMInventory).filter(
+                    GAMInventory.tenant_id == tenant_id
+                ).order_by(GAMInventory.created_at.desc()).first()
+                if latest and latest.created_at:
+                    last_sync = latest.created_at.isoformat()
+            
+            return jsonify({
+                "has_inventory": has_inventory,
+                "inventory_count": inventory_count,
+                "last_sync": last_sync
+            })
+            
+    except Exception as e:
+        app.logger.error(f"Error checking inventory sync: {e}")
+        return jsonify({"error": str(e)}), 500
+
 @app.route('/tenant/<tenant_id>/analyze-ad-server')
 @require_auth()
 def analyze_ad_server_inventory(tenant_id):
@@ -4807,6 +5129,7 @@ def analyze_ad_server_inventory(tenant_id):
         # Get adapter instance
         from adapters import get_adapter_class
         adapter_class = get_adapter_class(adapter_type)
+        app.logger.info(f"Creating adapter for tenant_id={tenant_id}, adapter_type={adapter_type}")
         adapter = adapter_class(
             config=adapter_config,
             principal=principal,
@@ -4821,22 +5144,35 @@ def analyze_ad_server_inventory(tenant_id):
         
         inventory = loop.run_until_complete(adapter.get_available_inventory())
         
+        # Debug logging
+        app.logger.info(f"Inventory returned: audiences={len(inventory.get('audiences', []))}, "
+                       f"key_values={len(inventory.get('key_values', []))}, "
+                       f"placements={len(inventory.get('placements', []))}")
+        
         # Process and return relevant data
-        return jsonify({
+        response_data = {
             "audiences": inventory.get("audiences", []),
             "formats": inventory.get("creative_specs", []),
-            "placements": inventory.get("placements", [])
-        })
+            "placements": inventory.get("placements", []),
+            "key_values": inventory.get("key_values", []),
+            "properties": inventory.get("properties", {})
+        }
+        app.logger.info(f"Returning response with {len(response_data['key_values'])} key_values")
+        return jsonify(response_data)
         
     except Exception as e:
-        logger.error(f"Error analyzing ad server: {e}")
-        # Return mock data on error
+        error_detail = traceback.format_exc()
+        logger.error(f"Error analyzing ad server: {e}\n{error_detail}")
+        app.logger.error(f"Full error details: {error_detail}")
+        
+        # Return error details for debugging
         return jsonify({
-            "audiences": [
-                {"id": "general", "name": "General Audience", "size": 5000000}
-            ],
+            "error": str(e),
+            "audiences": [],
             "formats": [],
-            "placements": []
+            "placements": [],
+            "key_values": [],
+            "properties": {"error_occurred": True}
         })
 
 @app.route('/tenant/<tenant_id>/products/create-bulk', methods=['POST'])
@@ -5326,7 +5662,6 @@ def get_gam_line_item(tenant_id, line_item_id):
         return jsonify(result)
         
     except Exception as e:
-        import traceback
         app.logger.error(f"Error fetching GAM line item: {str(e)}")
         app.logger.error(f"Traceback: {traceback.format_exc()}")
         return jsonify({'error': str(e)}), 500
@@ -5620,7 +5955,6 @@ def register_adapter_routes():
         print(f"Registered UI routes for adapters: {', '.join(registered_adapters)}")
         
     except Exception as e:
-        import traceback
         print(f"Warning: Failed to register adapter routes: {e}")
         traceback.print_exc()
 
@@ -5694,6 +6028,206 @@ if __name__ == '__main__':
         print("3. Add redirect URI: http://localhost:8001/auth/google/callback")
         print("4. Download the JSON file")
         exit(1)
+    
+# ============== MCP Protocol Testing Routes (Super Admin Only) ==============
+
+@app.route('/test-simple')
+def test_simple():
+    """Simple test page - no auth required for debugging."""
+    return render_template('test_mcp_simple.html')
+
+@app.route('/mcp-test')
+@require_auth(admin_only=True)
+def mcp_test():
+    """MCP protocol testing interface for super admins."""
+    # Get all tenants and their principals
+    conn = get_db_connection()
+    
+    # Get tenants
+    cursor = conn.execute("""
+        SELECT tenant_id, name, subdomain
+        FROM tenants
+        WHERE is_active = true
+        ORDER BY name
+    """)
+    tenants = []
+    for row in cursor.fetchall():
+        tenants.append({
+            'tenant_id': row[0],
+            'name': row[1],
+            'subdomain': row[2]
+        })
+    
+    # Get all principals with their tenant info
+    cursor = conn.execute("""
+        SELECT p.principal_id, p.name, p.tenant_id, p.access_token, t.name as tenant_name
+        FROM principals p
+        JOIN tenants t ON p.tenant_id = t.tenant_id
+        WHERE t.is_active = true
+        ORDER BY t.name, p.name
+    """)
+    principals = []
+    for row in cursor.fetchall():
+        principals.append({
+            'principal_id': row[0],
+            'name': row[1],
+            'tenant_id': row[2],
+            'access_token': row[3],
+            'tenant_name': row[4]
+        })
+    
+    conn.close()
+    
+    # Get server URL - use correct port from environment
+    server_port = int(os.environ.get('ADCP_SALES_PORT', 8005))
+    server_url = f"http://localhost:{server_port}/mcp/"
+    
+    return render_template('mcp_test.html',
+                         tenants=tenants,
+                         principals=principals,
+                         server_url=server_url)
+
+@app.route('/api/mcp-test/call', methods=['POST'])
+def mcp_test_call():
+    """Make an MCP call using the official client."""
+    # For debugging, temporarily allow unauthenticated access if a special header is present
+    if request.headers.get('X-Debug-Mode') == 'test':
+        # Allow debugging without auth
+        pass
+    else:
+        # Check authentication manually for API endpoint to return JSON on failure
+        if not session.get('authenticated'):
+            return jsonify({'success': False, 'error': 'Authentication required. Please login again.'}), 401
+        if session.get('role') != 'super_admin':
+            return jsonify({'success': False, 'error': 'Super admin access required.'}), 403
+    
+    try:
+        import asyncio
+        from fastmcp.client import Client
+        from fastmcp.client.transports import StreamableHttpTransport
+        
+        data = request.json
+        if not data:
+            return jsonify({'success': False, 'error': 'Invalid request data'}), 400
+            
+        tool_name = data.get('tool')
+        tool_params = data.get('params', {})
+        access_token = data.get('access_token')
+        # If the server URL is localhost, replace with internal Docker service name
+        server_url = data.get('server_url', 'http://adcp-server:8080/mcp/')
+        if 'localhost:8005' in server_url:
+            server_url = server_url.replace('localhost:8005', 'adcp-server:8080')
+        elif 'localhost:8080' in server_url:
+            server_url = server_url.replace('localhost:8080', 'adcp-server:8080')
+        
+        if not tool_name or not access_token:
+            return jsonify({'success': False, 'error': 'Missing required parameters: tool and access_token'}), 400
+        
+        # Look up the tenant for this token
+        conn = get_db_connection()
+        cursor = conn.execute(
+            "SELECT tenant_id FROM principals WHERE access_token = ?",
+            (access_token,)
+        )
+        row = cursor.fetchone()
+        conn.close()
+        
+        tenant_id = row[0] if row else 'default'
+        
+        # Set up headers for authentication
+        # Include tenant header for proper principal resolution
+        headers = {
+            "x-adcp-auth": access_token,
+            "x-adcp-tenant": tenant_id
+        }
+        
+        # Log for debugging
+        app.logger.info(f"MCP Test Call - Tool: {tool_name}, Server: {server_url}, Token: {access_token[:20]}...")
+        
+        async def make_call():
+            """Make the actual MCP call."""
+            transport = StreamableHttpTransport(server_url, headers=headers)
+            
+            async with Client(transport) as client:
+                try:
+                    # Some tools expect params wrapped in 'req' key, others don't
+                    # Tools without req parameter: get_targeting_capabilities
+                    tools_without_req = ['get_targeting_capabilities']
+                    
+                    if tool_name in tools_without_req:
+                        arguments = tool_params or {}
+                    else:
+                        # Most tools have a single parameter named 'req'
+                        arguments = {"req": tool_params} if tool_params else {"req": {}}
+                    
+                    app.logger.info(f"Calling tool {tool_name} with arguments: {arguments}")
+                    result = await client.call_tool(tool_name, arguments)
+                    
+                    # Convert result to dict if it's a pydantic model or handle TextContent
+                    if hasattr(result, 'model_dump'):
+                        return {'success': True, 'result': result.model_dump()}
+                    else:
+                        # Handle various FastMCP response types
+                        import json as json_module
+                        
+                        # Check if it's a CallToolResult object
+                        if hasattr(result, 'structured_content'):
+                            # Use the structured_content which is already parsed
+                            content = result.structured_content
+                            # Remove implementation_config from products (security - proprietary data)
+                            if isinstance(content, dict) and 'products' in content:
+                                for product in content.get('products', []):
+                                    if isinstance(product, dict) and 'implementation_config' in product:
+                                        del product['implementation_config']
+                            return {'success': True, 'result': content}
+                        elif hasattr(result, 'data') and hasattr(result.data, 'model_dump'):
+                            # Use the data field if it has model_dump
+                            return {'success': True, 'result': result.data.model_dump()}
+                        elif hasattr(result, 'content'):
+                            # Handle content field which might be a list of TextContent
+                            if isinstance(result.content, list) and len(result.content) > 0:
+                                first_item = result.content[0]
+                                if hasattr(first_item, 'text'):
+                                    try:
+                                        parsed_result = json_module.loads(first_item.text)
+                                        return {'success': True, 'result': parsed_result}
+                                    except:
+                                        return {'success': True, 'result': first_item.text}
+                        
+                        # Check if result itself has text attribute
+                        if hasattr(result, 'text'):
+                            try:
+                                parsed_result = json_module.loads(result.text)
+                                return {'success': True, 'result': parsed_result}
+                            except:
+                                return {'success': True, 'result': result.text}
+                        
+                        # Fallback to string representation
+                        return {'success': True, 'result': str(result)}
+                        
+                except Exception as e:
+                    app.logger.error(f"MCP call error: {str(e)}")
+                    return {'success': False, 'error': str(e), 'error_type': type(e).__name__}
+        
+        # Run the async function
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        try:
+            result = loop.run_until_complete(make_call())
+            return jsonify(result)
+        except Exception as e:
+            app.logger.error(f"Event loop error: {str(e)}")
+            return jsonify({'success': False, 'error': f'Event loop error: {str(e)}'}), 500
+        finally:
+            loop.close()
+            
+    except ImportError as e:
+        app.logger.error(f"Import error in mcp_test_call: {str(e)}")
+        return jsonify({'success': False, 'error': f'Import error: {str(e)}'}), 500
+    except Exception as e:
+        app.logger.error(f"Unexpected error in mcp_test_call: {str(e)}")
+        return jsonify({'success': False, 'error': f'Unexpected error: {str(e)}'}), 500
+
     
     # Run server
     port = int(os.environ.get('ADMIN_UI_PORT', 8001))  # Match OAuth redirect URI

@@ -4,14 +4,17 @@
 
 ### IMPORTANT: Keep Documentation Simple
 
-The documentation has been consolidated into 5 core files in the `docs/` directory:
+The documentation has been consolidated into 9 organized files in the `docs/` directory:
 
-1. **README.md** - Quick start and overview
-2. **SETUP.md** - Installation, configuration, deployment
-3. **DEVELOPMENT.md** - Adapter development, testing, extending the system  
-4. **OPERATIONS.md** - Admin UI, tenant management, monitoring
-5. **ARCHITECTURE.md** - System design, database schema, technical details
-6. **TROUBLESHOOTING.md** - Common issues and solutions
+1. **index.md** - Documentation index and navigation hub
+2. **SETUP.md** - Installation and initial configuration
+3. **DEVELOPMENT.md** - Local development, Conductor, code standards
+4. **api.md** - Complete MCP and REST API reference
+5. **testing.md** - Comprehensive testing guide
+6. **deployment.md** - Docker, Fly.io, and production deployment
+7. **OPERATIONS.md** - Admin UI, tenant management, monitoring
+8. **ARCHITECTURE.md** - System design, database schema, technical details
+9. **TROUBLESHOOTING.md** - Common issues and solutions
 
 **Documentation Rules:**
 - **DO NOT** create new documentation files unless absolutely necessary
@@ -19,8 +22,11 @@ The documentation has been consolidated into 5 core files in the `docs/` directo
 - **DO** keep documentation concise and practical
 - **DO NOT** duplicate information across files
 - **DO** use the appropriate file based on the topic:
-  - Setup/config changes → SETUP.md
-  - Code/adapter changes → DEVELOPMENT.md
+  - Installation/config → SETUP.md
+  - Local development → DEVELOPMENT.md
+  - API documentation → api.md
+  - Testing → testing.md
+  - Production deployment → deployment.md
   - Admin/operations → OPERATIONS.md
   - Design decisions → ARCHITECTURE.md
   - Error fixes → TROUBLESHOOTING.md
@@ -31,6 +37,45 @@ When documenting:
 3. Keep examples practical and tested
 4. Remove outdated information
 5. Avoid creating new files
+
+## Current Project Structure
+
+```
+salesagent/
+├── README.md              # Main project readme (concise quick start)
+├── CLAUDE.md             # This file - AI assistant instructions
+├── docs/                 # All documentation
+│   ├── index.md         # Documentation navigation
+│   ├── SETUP.md         # Installation guide
+│   ├── DEVELOPMENT.md   # Developer guide
+│   ├── api.md           # API reference
+│   ├── testing.md       # Testing guide
+│   ├── deployment.md    # Deployment guide
+│   ├── OPERATIONS.md    # Operations guide
+│   ├── ARCHITECTURE.md  # System design
+│   └── TROUBLESHOOTING.md # Common issues
+├── adapters/            # Ad server integrations
+├── alembic/            # Database migrations
+├── data/               # Data files and examples
+│   ├── foundational_creative_formats.json
+│   └── examples/
+├── scripts/            # Utility scripts
+├── templates/          # UI templates  
+├── tests/              # Test suite
+│   ├── unit/
+│   ├── integration/
+│   ├── e2e/
+│   └── ui/
+├── tools/              # Demo and simulation tools
+│   ├── demos/
+│   └── simulations/
+├── main.py             # MCP server
+├── admin_ui.py         # Admin interface
+├── models.py           # Database models
+└── schemas.py          # API schemas
+```
+
+**Note**: The root directory currently has ~68 Python files that should eventually be reorganized into a `src/` structure, but this requires careful planning to update all imports.
 
 ## Project Overview
 
@@ -321,6 +366,8 @@ tests/
   - `test_human_tasks.py`: Human-in-the-loop tasks
   - `test_ai_products.py`: AI product features
   - `test_policy.py`: Policy compliance checks
+  - `test_gam_country_adunit.py`: GAM country and ad unit reporting functionality
+  - `test_gam_reporting.py`: GAM reporting service and API endpoints
 
 ### 3. End-to-End Tests (`tests/e2e/`)
 - **Purpose**: Test complete user workflows
@@ -795,6 +842,12 @@ docker-compose down
 docker-compose build
 docker-compose up -d
 ```
+
+**Note on Database Initialization**: The `entrypoint.sh` script runs `init_db()` which is **safe and non-destructive**:
+- All tables use `CREATE TABLE IF NOT EXISTS` - existing tables are never dropped
+- Default data is only created if tables are empty (checks tenant count first)
+- No existing data is ever modified or deleted
+- The function is idempotent and can be run multiple times safely
 
 ### Running Standalone (Development Only)
 ```bash

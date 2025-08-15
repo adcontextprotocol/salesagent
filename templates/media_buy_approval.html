@@ -1,0 +1,229 @@
+{% extends "base.html" %}
+
+{% block title %}Review & Approve Media Buy - {{ media_buy.media_buy_id }}{% endblock %}
+
+{% block content %}
+<div class="container">
+    <h1>Media Buy Approval</h1>
+    <p style="color: #666;">Review the details and approve or reject this media buy request</p>
+    
+    <!-- Alert for pending status -->
+    {% if media_buy.status == 'pending_manual' %}
+    <div class="alert alert-warning">
+        <strong>⚠️ Manual Approval Required</strong><br>
+        {% if human_task and human_task.error_detail %}
+        <p>{{ human_task.error_detail }}</p>
+        {% endif %}
+    </div>
+    {% endif %}
+    
+    <!-- Media Buy Details -->
+    <div class="card">
+        <h3>Media Buy Details</h3>
+        <table style="width: 100%;">
+            <tr>
+                <td style="width: 30%;"><strong>Media Buy ID:</strong></td>
+                <td><code>{{ media_buy.media_buy_id }}</code></td>
+            </tr>
+            <tr>
+                <td><strong>Context ID:</strong></td>
+                <td><code>{{ media_buy.context_id or 'N/A' }}</code></td>
+            </tr>
+            <tr>
+                <td><strong>Status:</strong></td>
+                <td>
+                    <span class="status status-pending">{{ media_buy.status }}</span>
+                </td>
+            </tr>
+            <tr>
+                <td><strong>Principal/Advertiser:</strong></td>
+                <td>{{ principal.name if principal else media_buy.advertiser_name }}</td>
+            </tr>
+            <tr>
+                <td><strong>Budget:</strong></td>
+                <td>${{ "{:,.2f}".format(media_buy.budget) }}</td>
+            </tr>
+            <tr>
+                <td><strong>Flight Dates:</strong></td>
+                <td>{{ media_buy.start_date }} to {{ media_buy.end_date }}</td>
+            </tr>
+            <tr>
+                <td><strong>Created:</strong></td>
+                <td>{{ media_buy.created_at.strftime('%Y-%m-%d %H:%M:%S') if media_buy.created_at else 'N/A' }}</td>
+            </tr>
+        </table>
+    </div>
+    
+    <!-- Original Request -->
+    <div class="card">
+        <h3>Original Request</h3>
+        {% if media_buy.raw_request %}
+        <pre style="background: #f5f5f5; padding: 1rem; border-radius: 4px; overflow-x: auto;">{{ media_buy.raw_request | tojson(indent=2) }}</pre>
+        {% else %}
+        <p>No request data available</p>
+        {% endif %}
+    </div>
+    
+    <!-- Products Configuration -->
+    <div class="card">
+        <h3>Products & Implementation Config</h3>
+        {% for product in products %}
+        <div style="border: 1px solid #ddd; padding: 1rem; margin-bottom: 1rem; border-radius: 4px;">
+            <h4>{{ product.name }} <small style="color: #666;">({{ product.product_id }})</small></h4>
+            
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+                <div>
+                    <h5>Product Settings</h5>
+                    <ul style="margin: 0;">
+                        <li><strong>Pricing:</strong> {{ product.pricing_model }} - ${{ product.base_price }}</li>
+                        <li><strong>Min Spend:</strong> ${{ product.min_spend }}</li>
+                        <li><strong>Formats:</strong> {{ product.formats | join(', ') if product.formats else 'None specified' }}</li>
+                    </ul>
+                </div>
+                
+                <div>
+                    <h5>Targeting Template</h5>
+                    {% if product.targeting_template %}
+                    <pre style="background: #f9f9f9; padding: 0.5rem; font-size: 0.85rem; max-height: 150px; overflow-y: auto;">{{ product.targeting_template | tojson(indent=2) }}</pre>
+                    {% else %}
+                    <p style="color: #666;">No targeting template</p>
+                    {% endif %}
+                </div>
+            </div>
+            
+            {% if product.implementation_config %}
+            <h5>Implementation Configuration</h5>
+            <pre style="background: #f9f9f9; padding: 0.5rem; font-size: 0.85rem;">{{ product.implementation_config | tojson(indent=2) }}</pre>
+            {% endif %}
+        </div>
+        {% endfor %}
+    </div>
+    
+    <!-- Dry-Run Preview -->
+    <div class="card">
+        <h3>🔍 Dry-Run Preview</h3>
+        <p style="color: #666;">This shows what would be created in Google Ad Manager if approved:</p>
+        
+        <div style="background: #f0f8ff; padding: 1rem; border-radius: 4px; margin-bottom: 1rem;">
+            <h4>Order to be created:</h4>
+            <ul>
+                <li><strong>Name:</strong> {{ dry_run_preview.order.name }}</li>
+                <li><strong>Advertiser:</strong> {{ dry_run_preview.order.advertiser }}</li>
+                <li><strong>Total Budget:</strong> ${{ "{:,.2f}".format(dry_run_preview.order.budget) }}</li>
+                <li><strong>Flight:</strong> {{ dry_run_preview.order.start_date }} to {{ dry_run_preview.order.end_date }}</li>
+            </ul>
+        </div>
+        
+        <h4>Line Items to be created ({{ dry_run_preview.line_items | length }} total):</h4>
+        {% for line_item in dry_run_preview.line_items %}
+        <div style="background: #fff; border: 1px solid #ddd; padding: 1rem; margin-bottom: 0.5rem; border-radius: 4px;">
+            <strong>{{ line_item.name }}</strong>
+            <ul style="margin: 0.5rem 0 0 0;">
+                <li>Product: {{ line_item.product_id }}</li>
+                <li>Pricing: {{ line_item.pricing_model }} at ${{ line_item.base_price }}</li>
+                <li>Formats: {{ line_item.formats | join(', ') if line_item.formats else 'Standard' }}</li>
+                {% if line_item.implementation_notes %}
+                <li>Implementation:
+                    <ul>
+                        {% for note in line_item.implementation_notes %}
+                        <li>{{ note }}</li>
+                        {% endfor %}
+                    </ul>
+                </li>
+                {% endif %}
+            </ul>
+        </div>
+        {% endfor %}
+        
+        {% if dry_run_preview.targeting_overlay %}
+        <div style="background: #fffbf0; padding: 1rem; border-radius: 4px; margin-top: 1rem;">
+            <h4>Additional Targeting Overlay:</h4>
+            <pre style="background: #fff; padding: 0.5rem;">{{ dry_run_preview.targeting_overlay | tojson(indent=2) }}</pre>
+        </div>
+        {% endif %}
+    </div>
+    
+    <!-- Approval Actions -->
+    {% if media_buy.status == 'pending_manual' %}
+    <div class="card" style="background: #f0f8ff;">
+        <h3>Approval Actions</h3>
+        <div style="display: flex; gap: 1rem;">
+            <form method="POST" action="/tenant/{{ tenant_id }}/media-buy/{{ media_buy.media_buy_id }}/approve" style="display: inline;">
+                <input type="hidden" name="action" value="approve">
+                {% if human_task %}
+                <input type="hidden" name="task_id" value="{{ human_task.task_id }}">
+                {% endif %}
+                <button type="submit" class="btn btn-primary" onclick="return confirm('Are you sure you want to approve this media buy? This will create the order and line items in Google Ad Manager.')">
+                    ✅ Approve & Execute
+                </button>
+            </form>
+            
+            <form method="POST" action="/tenant/{{ tenant_id }}/media-buy/{{ media_buy.media_buy_id }}/approve" style="display: inline;">
+                <input type="hidden" name="action" value="reject">
+                {% if human_task %}
+                <input type="hidden" name="task_id" value="{{ human_task.task_id }}">
+                {% endif %}
+                <button type="submit" class="btn btn-danger" onclick="return confirm('Are you sure you want to reject this media buy?')">
+                    ❌ Reject
+                </button>
+            </form>
+            
+            <a href="/tenant/{{ tenant_id }}/operations" class="btn btn-secondary">
+                Cancel
+            </a>
+        </div>
+    </div>
+    {% else %}
+    <div class="card">
+        <p>This media buy has already been processed. Status: <strong>{{ media_buy.status }}</strong></p>
+        <a href="/tenant/{{ tenant_id }}/operations" class="btn btn-secondary">
+            Back to Operations
+        </a>
+    </div>
+    {% endif %}
+</div>
+
+<style>
+.status {
+    padding: 2px 8px;
+    border-radius: 3px;
+    font-size: 0.85em;
+    font-weight: 500;
+}
+
+.status-pending {
+    background-color: #fff3cd;
+    color: #856404;
+}
+
+.status-active {
+    background-color: #d4edda;
+    color: #155724;
+}
+
+.btn-primary {
+    background-color: #28a745;
+    border-color: #28a745;
+}
+
+.btn-primary:hover {
+    background-color: #218838;
+    border-color: #1e7e34;
+}
+
+.btn-danger {
+    background-color: #dc3545;
+    border-color: #dc3545;
+}
+
+.btn-danger:hover {
+    background-color: #c82333;
+    border-color: #bd2130;
+}
+
+pre {
+    white-space: pre-wrap;
+    word-wrap: break-word;
+}
+</style>
+{% endblock %}
