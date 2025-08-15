@@ -86,7 +86,7 @@ class FoundationalFormatsManager:
         
         # Load foundational formats
         if formats_file is None:
-            formats_file = Path(__file__).parent / "foundational_creative_formats.json"
+            formats_file = Path(__file__).parent / "data" / "foundational_creative_formats.json"
         
         self.load_foundational_formats(formats_file)
     
