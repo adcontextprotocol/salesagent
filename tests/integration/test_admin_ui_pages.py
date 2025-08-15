@@ -54,6 +54,7 @@ def client(setup_test_db):
 def authenticated_session(client):
     """Create an authenticated session for testing."""
     with client.session_transaction() as sess:
+        sess['authenticated'] = True
         sess['user'] = 'test@example.com'
         sess['role'] = 'super_admin'
         sess['name'] = 'Test User'
@@ -66,15 +67,35 @@ class TestAdminUIPages:
     
     def test_list_products_page_renders(self, client, authenticated_session):
         """Test that the products list page renders without errors."""
-        # Create test tenant
+        # Create test tenant and insert into database
         tenant = TenantFactory.create()
+        conn = get_db_connection()
         
-        # Create some test products
-        ProductFactory.create(tenant_id=tenant['tenant_id'])
-        ProductFactory.create(tenant_id=tenant['tenant_id'])
+        # Insert tenant into database
+        try:
+            # Try new schema first
+            conn.execute("""
+                INSERT INTO tenants (tenant_id, name, subdomain, is_active, ad_server,
+                                    max_daily_budget, enable_aee_signals, human_review_required,
+                                    admin_token, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
+            """, (tenant['tenant_id'], tenant['name'], tenant['subdomain'], 
+                  tenant.get('is_active', 1), tenant.get('ad_server', 'mock'),
+                  10000, 1, 0, 'test_token'))
+        except Exception:
+            # Fall back to old schema with config column
+            conn.execute("""
+                INSERT INTO tenants (tenant_id, name, subdomain, config, billing_plan, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, datetime('now'), datetime('now'))
+            """, (tenant['tenant_id'], tenant['name'], tenant['subdomain'], 
+                  tenant['config'], tenant.get('billing_plan', 'standard')))
+        
+        conn.commit()
+        conn.close()
         
         # Set up authenticated session before making request
         with client.session_transaction() as sess:
+            sess['authenticated'] = True
             sess['user'] = 'test@example.com'
             sess['role'] = 'super_admin'
             sess['name'] = 'Test User'
@@ -86,11 +107,35 @@ class TestAdminUIPages:
     
     def test_policy_settings_page_renders(self, client, authenticated_session):
         """Test that the policy settings page renders without errors."""
-        # Create test tenant
+        # Create test tenant and insert into database
         tenant = TenantFactory.create()
+        conn = get_db_connection()
+        
+        # Insert tenant into database
+        try:
+            # Try new schema first
+            conn.execute("""
+                INSERT INTO tenants (tenant_id, name, subdomain, is_active, ad_server,
+                                    max_daily_budget, enable_aee_signals, human_review_required,
+                                    admin_token, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
+            """, (tenant['tenant_id'], tenant['name'], tenant['subdomain'], 
+                  tenant.get('is_active', 1), tenant.get('ad_server', 'mock'),
+                  10000, 1, 0, 'test_token'))
+        except Exception:
+            # Fall back to old schema with config column
+            conn.execute("""
+                INSERT INTO tenants (tenant_id, name, subdomain, config, billing_plan, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, datetime('now'), datetime('now'))
+            """, (tenant['tenant_id'], tenant['name'], tenant['subdomain'], 
+                  tenant['config'], tenant.get('billing_plan', 'standard')))
+        
+        conn.commit()
+        conn.close()
         
         # Set up authenticated session before making request
         with client.session_transaction() as sess:
+            sess['authenticated'] = True
             sess['user'] = 'test@example.com'
             sess['role'] = 'super_admin'
             sess['name'] = 'Test User'
@@ -106,11 +151,35 @@ class TestAdminUIPages:
         This test verifies that after the migration from a single 'config' column
         to individual columns, the admin UI pages correctly use the new schema.
         """
-        # Create test tenant
+        # Create test tenant and insert into database
         tenant = TenantFactory.create()
-        
-        # Test that we're NOT using the old 'config' column
         conn = get_db_connection()
+        
+        # Insert tenant into database first
+        try:
+            # Try new schema first
+            conn.execute("""
+                INSERT INTO tenants (tenant_id, name, subdomain, is_active, ad_server,
+                                    max_daily_budget, enable_aee_signals, human_review_required,
+                                    admin_token, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
+            """, (tenant['tenant_id'], tenant['name'], tenant['subdomain'], 
+                  tenant.get('is_active', 1), tenant.get('ad_server', 'mock'),
+                  10000, 1, 0, 'test_token'))
+            conn.commit()
+        except Exception:
+            # Fall back to old schema with config column
+            try:
+                conn.execute("""
+                    INSERT INTO tenants (tenant_id, name, subdomain, config, billing_plan, created_at, updated_at)
+                    VALUES (?, ?, ?, ?, ?, datetime('now'), datetime('now'))
+                """, (tenant['tenant_id'], tenant['name'], tenant['subdomain'], 
+                      tenant['config'], tenant.get('billing_plan', 'standard')))
+                conn.commit()
+            except Exception:
+                pass  # May already exist from fixture setup
+        
+        # Now test that we're NOT using the old 'config' column
         
         # Check which schema we have - old or new
         # This is needed because SQLite migration may fail in test environment
@@ -170,7 +239,7 @@ class TestAdminUIPages:
         mock_user = MagicMock()
         mock_user.is_authenticated = True
         
-        with patch('admin_ui.session', {'user': 'test@example.com', 'role': 'super_admin', 
+        with patch('admin_ui.session', {'authenticated': True, 'user': 'test@example.com', 'role': 'super_admin', 
                                         'name': 'Test User', 'picture': 'http://example.com/picture.jpg',
                                         'tenant_id': tenant['tenant_id']}):
             # Test the product setup wizard page - this should trigger template rendering
