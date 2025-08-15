@@ -69,7 +69,7 @@ def validate_json_structure():
     """Validate the JSON structure matches expected format."""
     print("\nValidating foundational_creative_formats.json structure...")
     
-    json_path = Path(__file__).parent / "foundational_creative_formats.json"
+    json_path = Path(__file__).parent / "data" / "foundational_creative_formats.json"
     with open(json_path, 'r') as f:
         data = json.load(f)
     
