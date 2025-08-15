@@ -1206,12 +1206,14 @@ class GoogleAdManager(AdServerAdapter):
                     }
                 
                 # Get custom targeting keys from database
+                print(f"DEBUG: Fetching inventory for tenant_id={self.tenant_id}")
                 custom_keys = session.query(GAMInventory).filter(
                     and_(
                         GAMInventory.tenant_id == self.tenant_id,
                         GAMInventory.inventory_type == 'custom_targeting_key'
                     )
                 ).all()
+                print(f"DEBUG: Found {len(custom_keys)} custom targeting keys")
                 
                 # Get custom targeting values from database
                 custom_values = session.query(GAMInventory).filter(
@@ -1237,14 +1239,20 @@ class GoogleAdManager(AdServerAdapter):
                 # Format key-values for the wizard
                 key_values = []
                 for key in custom_keys[:20]:  # Limit to first 20 keys for UI
+                    # Get display name from path or fallback to name
+                    display_name = key.name
+                    if key.path and len(key.path) > 0 and key.path[0]:
+                        display_name = key.path[0]
+                    
                     key_data = {
                         'id': key.inventory_id,
                         'name': key.name,
-                        'display_name': key.path[0] if key.path else key.name,
+                        'display_name': display_name,
                         'type': key.inventory_metadata.get('type', 'CUSTOM') if key.inventory_metadata else 'CUSTOM',
                         'values': values_by_key.get(key.inventory_id, [])[:20]  # Limit to first 20 values
                     }
                     key_values.append(key_data)
+                print(f"DEBUG: Formatted {len(key_values)} key-value pairs for wizard")
                 
                 # Get ad units for placements
                 ad_units = session.query(GAMInventory).filter(
