@@ -257,6 +257,7 @@ class MockAdServer(AdServerAdapter):
         
         return CreateMediaBuyResponse(
             media_buy_id=media_buy_id,
+            context_id=f"ctx_{media_buy_id}",  # Add context_id for AdCP compliance
             status="pending_creative",
             detail="Media buy created successfully",
             creative_deadline=datetime.now() + timedelta(days=2)
