@@ -8,6 +8,7 @@
         <h2>Tenants</h2>
         <div>
             {% if session.role == 'super_admin' %}
+            <a href="/mcp-test" class="btn btn-secondary">MCP Protocol Test</a>
             <a href="/settings" class="btn btn-secondary">Settings</a>
             {% endif %}
             <a href="/tenant/wizard" class="btn">Create New Tenant</a>
