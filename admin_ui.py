@@ -2,15 +2,17 @@
 """Admin UI with Google OAuth2 authentication."""
 
 from flask import Flask, render_template, request, jsonify, redirect, url_for, session, flash, send_from_directory, g
+from flask_socketio import SocketIO, emit, join_room, leave_room
 import secrets
 import json
 import os
 import uuid
 import logging
+import asyncio
 from datetime import datetime, timezone
 from functools import wraps
 from authlib.integrations.flask_client import OAuth
-from db_config import get_db_connection
+from db_config import get_db_connection, DatabaseConfig
 from validation import FormValidator, validate_form_data, sanitize_form_data
 
 # Configure logging
@@ -19,6 +21,9 @@ logging.basicConfig(level=logging.INFO)
 app = Flask(__name__)
 app.secret_key = os.environ.get('FLASK_SECRET_KEY', secrets.token_hex(32))
 app.logger.setLevel(logging.INFO)
+
+# Initialize SocketIO with Flask app
+socketio = SocketIO(app, cors_allowed_origins="*", async_mode='threading')
 
 # Import schemas after Flask app is created
 from schemas import Principal
@@ -37,6 +42,9 @@ app.register_blueprint(gam_reporting_api)
 
 # Import GAM inventory service for targeting browser
 from gam_inventory_service import GAMInventoryService, create_inventory_endpoints as register_inventory_endpoints, SessionLocal, db_session
+
+# Import activity feed for WebSocket support
+from activity_feed import activity_feed
 
 # Configure for being mounted at different paths and proxy headers
 class ProxyFix:
@@ -1353,6 +1361,9 @@ def tenant_dashboard(tenant_id):
     else:
         metrics['revenue_change'] = 0
     
+    # Add absolute value for display
+    metrics['revenue_change_abs'] = abs(metrics['revenue_change'])
+    
     # Active media buys
     cursor = conn.execute("""
         SELECT COUNT(*) FROM media_buys 
@@ -1448,8 +1459,8 @@ def tenant_dashboard(tenant_id):
     cursor = conn.execute("""
         SELECT task_type, 
                CASE 
-                   WHEN details::text != '' AND details IS NOT NULL
-                   THEN (details::json->>'description')::text
+                   WHEN context_data::text != '' AND context_data IS NOT NULL
+                   THEN (context_data::json->>'description')::text
                    ELSE task_type
                END as description
         FROM human_tasks 
@@ -1543,29 +1554,48 @@ def tenant_settings(tenant_id, section=None):
     cursor = conn.execute("SELECT COUNT(*) FROM products WHERE tenant_id = ?", (tenant_id,))
     product_count = cursor.fetchone()[0]
     
-    cursor = conn.execute("SELECT COUNT(*) FROM products WHERE tenant_id = ? AND is_active = 1", (tenant_id,))
-    active_products = cursor.fetchone()[0]
-    draft_products = product_count - active_products
+    # Products don't have is_active column - all products are considered active
+    active_products = product_count
+    draft_products = 0
     
     cursor = conn.execute("SELECT COUNT(*) FROM principals WHERE tenant_id = ?", (tenant_id,))
     advertiser_count = cursor.fetchone()[0]
     
-    cursor = conn.execute("""
-        SELECT COUNT(DISTINCT principal_id) 
-        FROM media_buys 
-        WHERE tenant_id = ? 
-        AND created_at >= datetime('now', '-30 days')
-    """, (tenant_id,))
+    # Use PostgreSQL-compatible syntax (CURRENT_TIMESTAMP - INTERVAL)
+    db_config = DatabaseConfig.get_config()
+    if db_config['type'] == 'postgresql':
+        cursor = conn.execute("""
+            SELECT COUNT(DISTINCT principal_id) 
+            FROM media_buys 
+            WHERE tenant_id = %s 
+            AND created_at >= CURRENT_TIMESTAMP - INTERVAL '30 days'
+        """, (tenant_id,))
+    else:
+        cursor = conn.execute("""
+            SELECT COUNT(DISTINCT principal_id) 
+            FROM media_buys 
+            WHERE tenant_id = ? 
+            AND created_at >= datetime('now', '-30 days')
+        """, (tenant_id,))
     active_advertisers = cursor.fetchone()[0]
     
-    # Get creative formats
-    cursor = conn.execute("""
-        SELECT format_id, name, width, height,
-               CASE WHEN auto_approve = 1 THEN 1 ELSE 0 END as auto_approve
-        FROM creative_formats 
-        WHERE tenant_id = ? OR tenant_id IS NULL
-        ORDER BY name
-    """, (tenant_id,))
+    # Get creative formats (handle boolean properly for PostgreSQL)
+    if db_config['type'] == 'postgresql':
+        cursor = conn.execute("""
+            SELECT format_id, name, width, height,
+                   CASE WHEN auto_approve = true THEN 1 ELSE 0 END as auto_approve
+            FROM creative_formats 
+            WHERE tenant_id = %s OR tenant_id IS NULL
+            ORDER BY name
+        """, (tenant_id,))
+    else:
+        cursor = conn.execute("""
+            SELECT format_id, name, width, height,
+                   CASE WHEN auto_approve = 1 THEN 1 ELSE 0 END as auto_approve
+            FROM creative_formats 
+            WHERE tenant_id = ? OR tenant_id IS NULL
+            ORDER BY name
+        """, (tenant_id,))
     
     creative_formats = []
     for row in cursor.fetchall():
@@ -5600,6 +5630,54 @@ register_adapter_routes()
 # Register GAM inventory endpoints at module level
 register_inventory_endpoints(app)
 
+# WebSocket event handlers for activity feed
+@socketio.on('connect')
+def handle_connect():
+    """Handle WebSocket connection."""
+    tenant_id = request.args.get('tenant_id')
+    if not tenant_id:
+        return False  # Reject connection
+    
+    # Join the room for this tenant
+    join_room(f'tenant_{tenant_id}')
+    app.logger.info(f"WebSocket connected for tenant {tenant_id}")
+    
+    # Send recent activities from activity_feed
+    if tenant_id in activity_feed.recent_activities:
+        for activity in activity_feed.recent_activities[tenant_id]:
+            emit('activity', activity)
+
+@socketio.on('disconnect')
+def handle_disconnect():
+    """Handle WebSocket disconnection."""
+    tenant_id = request.args.get('tenant_id')
+    if tenant_id:
+        leave_room(f'tenant_{tenant_id}')
+        app.logger.info(f"WebSocket disconnected for tenant {tenant_id}")
+
+@socketio.on('subscribe')
+def handle_subscribe(data):
+    """Handle subscription to a tenant's activity feed."""
+    tenant_id = data.get('tenant_id')
+    if tenant_id:
+        join_room(f'tenant_{tenant_id}')
+        emit('subscribed', {'tenant_id': tenant_id})
+        
+        # Send recent activities
+        if tenant_id in activity_feed.recent_activities:
+            for activity in activity_feed.recent_activities[tenant_id]:
+                emit('activity', activity)
+
+# Function to broadcast activities from activity_feed to WebSocket clients
+def broadcast_activity_to_websocket(tenant_id: str, activity: dict):
+    """Broadcast activity to WebSocket clients in a tenant room."""
+    socketio.emit('activity', activity, room=f'tenant_{tenant_id}')
+
+# Register a callback with activity_feed to broadcast to WebSocket
+# Note: This is a simplified integration since activity_feed uses asyncio
+# In production, you might want to use a message queue or event system
+activity_feed.broadcast_to_websocket = broadcast_activity_to_websocket
+
 if __name__ == '__main__':
     # Create templates directory
     os.makedirs('templates', exist_ok=True)
@@ -5623,7 +5701,7 @@ if __name__ == '__main__':
     debug = os.environ.get('FLASK_DEBUG', '0') == '1'
     
     print(f"DEBUG: FLASK_DEBUG={os.environ.get('FLASK_DEBUG')}, debug={debug}")
-    print(f"Starting Admin UI with Google OAuth on port {port}")
+    print(f"Starting Admin UI with Google OAuth and WebSocket support on port {port}")
     print(f"Redirect URI should be: http://localhost:{port}/auth/google/callback")
     
     if not SUPER_ADMIN_EMAILS and not SUPER_ADMIN_DOMAINS:
@@ -5631,4 +5709,5 @@ if __name__ == '__main__':
         print("Set SUPER_ADMIN_EMAILS='email1@example.com,email2@example.com' or")
         print("Set SUPER_ADMIN_DOMAINS='example.com,company.com' in environment variables")
     
-    app.run(host='0.0.0.0', port=port, debug=debug)
+    # Use socketio.run instead of app.run to enable WebSocket support
+    socketio.run(app, host='0.0.0.0', port=port, debug=debug)

@@ -389,7 +389,7 @@
             {% else %}
                 <i class="fas fa-minus"></i>
             {% endif %}
-            {{ "{:.1f}".format(abs(metrics.revenue_change)) }}% vs last period
+            {{ "{:.1f}".format(metrics.revenue_change_abs) }}% vs last period
         </div>
     </div>
     
@@ -437,47 +437,6 @@
         
         <div class="activity-list" id="activity-list">
             <!-- Activities will be added here via WebSocket -->
-            <div class="activity-item api-call">
-                <div class="activity-time">Just now</div>
-                <div class="activity-content">
-                    <div>
-                        <div class="activity-principal">SportsBrand Inc.</div>
-                        <div class="activity-action">Called get_products</div>
-                    </div>
-                    <div class="activity-details">
-                        <div>200 OK</div>
-                        <div>125ms</div>
-                    </div>
-                </div>
-            </div>
-            
-            <div class="activity-item media-buy">
-                <div class="activity-time">2 minutes ago</div>
-                <div class="activity-content">
-                    <div>
-                        <div class="activity-principal">TechCorp</div>
-                        <div class="activity-action">Created media buy MB_12345</div>
-                    </div>
-                    <div class="activity-details">
-                        <div>$5,000</div>
-                        <div>30 days</div>
-                    </div>
-                </div>
-            </div>
-            
-            <div class="activity-item creative">
-                <div class="activity-time">5 minutes ago</div>
-                <div class="activity-content">
-                    <div>
-                        <div class="activity-principal">FashionBrand</div>
-                        <div class="activity-action">Uploaded creative CR_98765</div>
-                    </div>
-                    <div class="activity-details">
-                        <div>300x250</div>
-                        <div>Auto-approved</div>
-                    </div>
-                </div>
-            </div>
         </div>
     </div>
     
@@ -595,52 +554,52 @@
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
 <script>
 // WebSocket connection for real-time activity feed
-let ws = null;
-let reconnectTimer = null;
+let socket = null;
 let activityBuffer = [];
 const MAX_ACTIVITIES = 50;
 
 function connectWebSocket() {
-    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const wsUrl = `${protocol}//${window.location.host}/ws/activity/{{ tenant.tenant_id }}`;
+    // Connect to Socket.IO with tenant_id as query parameter
+    socket = io(window.location.origin, {
+        query: {
+            tenant_id: '{{ tenant.tenant_id }}'
+        },
+        reconnection: true,
+        reconnectionDelay: 5000
+    });
     
-    ws = new WebSocket(wsUrl);
-    
-    ws.onopen = function() {
-        console.log('WebSocket connected');
+    socket.on('connect', function() {
+        console.log('Socket.IO connected');
         document.getElementById('connection-status').textContent = 'Connected';
         document.querySelector('.status-dot').classList.remove('idle');
         document.querySelector('.status-dot').classList.add('active');
         
-        // Clear reconnect timer
-        if (reconnectTimer) {
-            clearTimeout(reconnectTimer);
-            reconnectTimer = null;
-        }
-    };
+        // Subscribe to this tenant's activities
+        socket.emit('subscribe', { tenant_id: '{{ tenant.tenant_id }}' });
+    });
     
-    ws.onmessage = function(event) {
-        const activity = JSON.parse(event.data);
+    socket.on('activity', function(activity) {
+        console.log('Received activity:', activity);
         addActivity(activity);
-    };
+    });
     
-    ws.onerror = function(error) {
-        console.error('WebSocket error:', error);
-    };
-    
-    ws.onclose = function() {
-        console.log('WebSocket disconnected');
+    socket.on('disconnect', function() {
+        console.log('Socket.IO disconnected');
         document.getElementById('connection-status').textContent = 'Disconnected';
         document.querySelector('.status-dot').classList.remove('active');
         document.querySelector('.status-dot').classList.add('idle');
-        
-        // Attempt to reconnect after 5 seconds
-        if (!reconnectTimer) {
-            reconnectTimer = setTimeout(connectWebSocket, 5000);
-        }
-    };
+    });
+    
+    socket.on('connect_error', function(error) {
+        console.error('Socket.IO connection error:', error);
+    });
+    
+    socket.on('subscribed', function(data) {
+        console.log('Subscribed to tenant:', data.tenant_id);
+    });
 }
 
 function addActivity(activity) {
