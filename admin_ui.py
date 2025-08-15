@@ -1827,7 +1827,7 @@ def workflows_dashboard(tenant_id):
     # Get tenant
     conn = get_db_connection()
     tenant_cursor = conn.execute(
-        "SELECT * FROM tenants WHERE tenant_id = %s", 
+        "SELECT * FROM tenants WHERE tenant_id = ?", 
         (tenant_id,)
     )
     tenant_row = tenant_cursor.fetchone()
@@ -1858,29 +1858,29 @@ def workflows_dashboard(tenant_id):
     # Active media buys count
     active_buys_cursor = conn.execute("""
         SELECT COUNT(*) FROM media_buys 
-        WHERE tenant_id = %s AND status = 'active'
+        WHERE tenant_id = ? AND status = 'active'
     """, (tenant_id,))
     active_buys = active_buys_cursor.fetchone()[0]
     
     # Pending tasks count
     pending_tasks_cursor = conn.execute("""
         SELECT COUNT(*) FROM tasks 
-        WHERE tenant_id = %s AND status = 'pending'
+        WHERE tenant_id = ? AND status = 'pending'
     """, (tenant_id,))
     pending_tasks = pending_tasks_cursor.fetchone()[0]
     
     # Completed today count
     completed_today_cursor = conn.execute("""
         SELECT COUNT(*) FROM tasks 
-        WHERE tenant_id = %s AND status = 'completed' 
-        AND DATE(completed_at) = DATE(%s)
+        WHERE tenant_id = ? AND status = 'completed' 
+        AND DATE(completed_at) = DATE(?)
     """, (tenant_id, today.isoformat()))
     completed_today = completed_today_cursor.fetchone()[0]
     
     # Total active spend
     total_spend_cursor = conn.execute("""
         SELECT SUM(budget) FROM media_buys 
-        WHERE tenant_id = %s AND status = 'active'
+        WHERE tenant_id = ? AND status = 'active'
     """, (tenant_id,))
     total_spend = total_spend_cursor.fetchone()[0] or 0
     
@@ -1894,7 +1894,7 @@ def workflows_dashboard(tenant_id):
     # Get media buys
     media_buys_cursor = conn.execute("""
         SELECT * FROM media_buys 
-        WHERE tenant_id = %s 
+        WHERE tenant_id = ? 
         ORDER BY created_at DESC 
         LIMIT 100
     """, (tenant_id,))
@@ -1935,7 +1935,7 @@ def workflows_dashboard(tenant_id):
     # Get tasks
     tasks_cursor = conn.execute("""
         SELECT * FROM tasks 
-        WHERE tenant_id = %s 
+        WHERE tenant_id = ? 
         ORDER BY created_at DESC 
         LIMIT 100
     """, (tenant_id,))
@@ -1986,7 +1986,7 @@ def workflows_dashboard(tenant_id):
     # Get audit logs
     audit_logs_cursor = conn.execute("""
         SELECT * FROM audit_logs 
-        WHERE tenant_id = %s 
+        WHERE tenant_id = ? 
         ORDER BY timestamp DESC 
         LIMIT 100
     """, (tenant_id,))
@@ -2033,7 +2033,7 @@ def media_buy_approval(tenant_id, media_buy_id):
     # Get the media buy details
     buy_cursor = conn.execute("""
         SELECT * FROM media_buys 
-        WHERE tenant_id = %s AND media_buy_id = %s
+        WHERE tenant_id = ? AND media_buy_id = ?
     """, (tenant_id, media_buy_id))
     
     buy_row = buy_cursor.fetchone()
@@ -2062,7 +2062,7 @@ def media_buy_approval(tenant_id, media_buy_id):
     # Get associated human task if exists
     task_cursor = conn.execute("""
         SELECT * FROM human_tasks 
-        WHERE media_buy_id = %s AND status = 'pending'
+        WHERE media_buy_id = ? AND status = 'pending'
         ORDER BY created_at DESC LIMIT 1
     """, (media_buy_id,))
     
@@ -2086,7 +2086,7 @@ def media_buy_approval(tenant_id, media_buy_id):
     # Get the principal details for adapter info
     principal_cursor = conn.execute("""
         SELECT * FROM principals 
-        WHERE tenant_id = %s AND principal_id = %s
+        WHERE tenant_id = ? AND principal_id = ?
     """, (tenant_id, media_buy['principal_id']))
     
     principal_row = principal_cursor.fetchone()
@@ -2109,7 +2109,7 @@ def media_buy_approval(tenant_id, media_buy_id):
         for product_id in product_ids:
             prod_cursor = conn.execute("""
                 SELECT * FROM products 
-                WHERE tenant_id = %s AND product_id = %s
+                WHERE tenant_id = ? AND product_id = ?
             """, (tenant_id, product_id))
             prod_row = prod_cursor.fetchone()
             if prod_row:
@@ -2984,7 +2984,7 @@ def list_products(tenant_id):
             SELECT mock_dry_run, gam_network_code, gam_refresh_token,
                    kevel_network_id, kevel_api_key
             FROM adapter_config
-            WHERE tenant_id = %s
+            WHERE tenant_id = ?
         """, (tenant_id,))
         adapter_row = cursor.fetchone()
         
@@ -3016,7 +3016,7 @@ def list_products(tenant_id):
         SELECT product_id, name, description, formats, delivery_type, 
                is_fixed_price, cpm, price_guidance, is_custom, expires_at, countries
         FROM products
-        WHERE tenant_id = %s
+        WHERE tenant_id = ?
         ORDER BY product_id
     """, (tenant_id,))
     
@@ -5619,7 +5619,7 @@ def mcp_test_call():
         # Look up the tenant for this token
         conn = get_db_connection()
         cursor = conn.execute(
-            "SELECT tenant_id FROM principals WHERE access_token = %s",
+            "SELECT tenant_id FROM principals WHERE access_token = ?",
             (access_token,)
         )
         row = cursor.fetchone()
