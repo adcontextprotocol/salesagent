@@ -1,5 +1,151 @@
 # Development Guide
 
+## Local Development Setup
+
+### Prerequisites
+
+- Python 3.12+
+- Docker and Docker Compose
+- Git
+- uv (Python package manager): `pip install uv`
+
+### Initial Setup
+
+1. **Clone the repository:**
+   ```bash
+   git clone https://github.com/adcontextprotocol/salesagent.git
+   cd salesagent
+   ```
+
+2. **Install dependencies:**
+   ```bash
+   uv sync
+   ```
+
+3. **Set up environment variables:**
+   ```bash
+   cp .env.example .env
+   # Edit .env with your configuration
+   ```
+
+4. **Start services:**
+   ```bash
+   docker-compose up -d
+   ```
+
+5. **Initialize database:**
+   ```bash
+   uv run python migrate.py
+   uv run python init_database.py
+   ```
+
+### Running the Services
+
+```bash
+# Start all services
+docker-compose up
+
+# Start in background
+docker-compose up -d
+
+# View logs
+docker-compose logs -f
+
+# Stop services
+docker-compose down
+```
+
+Access points:
+- MCP Server: http://localhost:8080/mcp/
+- Admin UI: http://localhost:8001
+- PostgreSQL: localhost:5432
+
+## Conductor Development Environment
+
+Conductor is a Mac app for running multiple development workspaces in parallel. Each workspace gets its own git worktree and isolated Docker environment.
+
+### Conductor Prerequisites
+
+Set these environment variables in your shell (add to `~/.bashrc` or `~/.zshrc`):
+
+```bash
+# Required for Admin UI access
+export SUPER_ADMIN_EMAILS='your-email@example.com'
+export SUPER_ADMIN_DOMAINS='example.com'  # Optional
+
+# Required for AI features
+export GEMINI_API_KEY='your-gemini-api-key'
+
+# Required for Google OAuth
+export GOOGLE_CLIENT_ID='your-client-id.apps.googleusercontent.com'
+export GOOGLE_CLIENT_SECRET='your-client-secret'
+```
+
+### Conductor Port Management
+
+The system uses a predefined pool of ports to avoid OAuth redirect URI updates:
+
+1. **Configure Google OAuth redirect URLs:**
+   ```bash
+   python manage_conductor_ports.py oauth-urls
+   ```
+   
+   Add these URLs to your Google OAuth app:
+   - http://localhost:8002/auth/google/callback
+   - http://localhost:8003/auth/google/callback
+   - ... through port 8011
+
+2. **Reserve a port for your workspace:**
+   ```bash
+   python manage_conductor_ports.py reserve --workspace my-feature
+   ```
+
+3. **Release port when done:**
+   ```bash
+   python manage_conductor_ports.py release --workspace my-feature
+   ```
+
+### Setting Up a Conductor Workspace
+
+Run the automated setup script from within your Conductor workspace:
+
+```bash
+./setup_conductor_workspace.sh
+```
+
+This script:
+- Detects the Conductor workspace automatically
+- Assigns unique ports based on workspace name
+- Creates `.env` with proper configuration
+- Creates `docker-compose.override.yml` for hot-reloading
+- Installs Git hooks for the workspace
+
+### Conductor Workspace Structure
+
+```
+.conductor/
+├── workspace-name/           # Git worktree
+│   ├── .env                 # Auto-generated config
+│   ├── docker-compose.override.yml  # Dev overrides
+│   └── (project files)
+├── another-workspace/
+│   └── ...
+```
+
+### Managing Multiple Workspaces
+
+```bash
+# List all workspaces and their ports
+python manage_conductor_ports.py status
+
+# Clean up a workspace
+./cleanup_conductor_workspace.sh workspace-name
+
+# View workspace logs
+cd .conductor/workspace-name
+docker-compose logs -f
+```
+
 ## Creating Ad Server Adapters
 
 ### Base Adapter Structure
@@ -256,12 +402,164 @@ logger.log(
 
 ## Development Workflow
 
-1. **Make changes** in feature branch
-2. **Run tests** locally with pytest
-3. **Test in Docker** with docker-compose
-4. **Check migrations** if schema changed
-5. **Update documentation** if adding features
-6. **Create PR** with description
+### Git Workflow
+
+1. **Create a feature branch:**
+   ```bash
+   git checkout -b feature/my-feature
+   ```
+
+2. **Make changes and test:**
+   ```bash
+   # Run tests
+   uv run pytest
+   
+   # Check formatting
+   black --check .
+   ruff check .
+   ```
+
+3. **Commit with descriptive message:**
+   ```bash
+   git add .
+   git commit -m "feat: add new targeting dimension"
+   ```
+
+4. **Push and create PR:**
+   ```bash
+   git push origin feature/my-feature
+   ```
+
+### Commit Message Format
+
+```
+type(scope): description
+
+Detailed explanation if needed
+
+Fixes #123
+```
+
+Types:
+- `feat`: New feature
+- `fix`: Bug fix
+- `docs`: Documentation
+- `style`: Formatting
+- `refactor`: Code restructuring
+- `test`: Test changes
+- `chore`: Maintenance
+
+### Pre-commit Hooks
+
+Install Git hooks for code quality:
+
+```bash
+./setup_hooks.sh
+```
+
+Hooks run:
+- Black (code formatting)
+- Ruff (linting)
+- Unit tests
+- Type checking (mypy)
+
+## Code Style and Standards
+
+### Python Style Guide
+
+- Follow PEP 8
+- Use type hints for all functions
+- Maximum line length: 100 characters
+- Use descriptive variable names
+- Document all public methods
+
+### Code Organization
+
+```python
+# Imports order
+import standard_library
+import third_party
+
+from local_app import modules
+
+# Class structure
+class MyClass:
+    """Class description."""
+    
+    def __init__(self):
+        """Initialize."""
+        pass
+    
+    def public_method(self) -> str:
+        """Public method description."""
+        return self._private_method()
+    
+    def _private_method(self) -> str:
+        """Private method description."""
+        return "result"
+```
+
+## Debugging
+
+### Docker Debugging
+
+```bash
+# View container logs
+docker-compose logs -f adcp-server
+
+# Execute commands in container
+docker exec -it adcp-buy-server-adcp-server-1 bash
+
+# Check container health
+docker ps
+
+# Rebuild containers
+docker-compose build --no-cache
+docker-compose up -d
+```
+
+### Python Debugging
+
+```python
+# Add breakpoint
+import pdb; pdb.set_trace()
+
+# Or use IPython
+import IPython; IPython.embed()
+
+# Run with debugger
+python -m pdb script.py
+```
+
+### MCP Server Debugging
+
+```bash
+# Use MCP Inspector
+npm install -g @modelcontextprotocol/inspector
+npx inspector http://localhost:8080/mcp/
+
+# View server logs
+docker-compose logs -f adcp-server
+
+# Test with curl
+curl -H "x-adcp-auth: your_token" \
+     http://localhost:8080/mcp/tools/get_products
+```
+
+### Database Debugging
+
+```bash
+# Connect to PostgreSQL
+docker exec -it adcp-buy-server-postgres-1 psql -U adcp_user -d adcp
+
+# Common queries
+SELECT * FROM tenants;
+SELECT * FROM principals WHERE tenant_id = 'tenant_123';
+SELECT * FROM media_buys ORDER BY created_at DESC LIMIT 10;
+
+# Check migrations
+SELECT * FROM alembic_version;
+```
 
 ## Common Patterns
 
