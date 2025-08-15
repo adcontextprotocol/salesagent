@@ -375,6 +375,187 @@ def get_principal_reporting(tenant_id: str, principal_id: str):
         logger.error(f"Error getting principal reporting data: {str(e)}")
         return jsonify({'error': f'Failed to get reporting data: {str(e)}'}), 500
 
+@gam_reporting_api.route('/api/tenant/<tenant_id>/gam/reporting/countries', methods=['GET'])
+@require_auth
+def get_country_breakdown(tenant_id: str):
+    """
+    Get GAM reporting data broken down by country
+    
+    Query parameters:
+    - date_range: "lifetime", "this_month", or "today" (required)
+    - advertiser_id: Filter by advertiser ID (optional)
+    - order_id: Filter by order ID (optional)
+    - line_item_id: Filter by line item ID (optional)
+    - timezone: Requested timezone (default: America/New_York)
+    """
+    # Validate tenant_id
+    if not validate_tenant_id(tenant_id):
+        return jsonify({'error': 'Invalid tenant ID format'}), 400
+    
+    # Check access
+    if not get_tenant_access(tenant_id):
+        return jsonify({'error': 'Access denied to this tenant'}), 403
+    
+    # Check if tenant is using GAM
+    conn = get_db_connection()
+    tenant_cursor = conn.execute(
+        "SELECT ad_server FROM tenants WHERE tenant_id = ?",
+        (tenant_id,)
+    )
+    tenant = tenant_cursor.fetchone()
+    conn.close()
+    
+    if not tenant or tenant.get('ad_server') != 'google_ad_manager':
+        return jsonify({'error': 'GAM reporting is only available for tenants using Google Ad Manager'}), 400
+    
+    # Get query parameters
+    date_range = request.args.get('date_range')
+    if not date_range or date_range not in ['lifetime', 'this_month', 'today']:
+        return jsonify({'error': 'Invalid or missing date_range. Must be one of: lifetime, this_month, today'}), 400
+    
+    # Validate optional numeric IDs
+    advertiser_id = request.args.get('advertiser_id')
+    if advertiser_id and not validate_numeric_id(advertiser_id):
+        return jsonify({'error': 'Invalid advertiser_id format'}), 400
+    
+    order_id = request.args.get('order_id')
+    if order_id and not validate_numeric_id(order_id):
+        return jsonify({'error': 'Invalid order_id format'}), 400
+    
+    line_item_id = request.args.get('line_item_id')
+    if line_item_id and not validate_numeric_id(line_item_id):
+        return jsonify({'error': 'Invalid line_item_id format'}), 400
+    
+    # Validate timezone
+    timezone = request.args.get('timezone', 'America/New_York')
+    if not validate_timezone(timezone):
+        return jsonify({'error': 'Invalid timezone'}), 400
+    
+    try:
+        # Get the GAM client for this tenant
+        gam_client = get_ad_manager_client_for_tenant(tenant_id)
+        
+        if not gam_client:
+            return jsonify({'error': 'GAM client not configured for this tenant'}), 500
+        
+        # Get the network timezone
+        from gam_helper import ensure_network_timezone
+        network_timezone = ensure_network_timezone(tenant_id)
+        
+        # Create reporting service
+        reporting_service = GAMReportingService(gam_client, network_timezone)
+        
+        # Get the country breakdown
+        country_data = reporting_service.get_country_breakdown(
+            date_range=date_range,
+            advertiser_id=advertiser_id,
+            order_id=order_id,
+            line_item_id=line_item_id,
+            requested_timezone=timezone
+        )
+        
+        return jsonify({
+            'success': True,
+            'data': country_data
+        })
+        
+    except Exception as e:
+        logger.error(f"Error getting country breakdown: {str(e)}", exc_info=True)
+        return jsonify({'error': f'Failed to get country breakdown: {str(e)}'}), 500
+
+@gam_reporting_api.route('/api/tenant/<tenant_id>/gam/reporting/ad-units', methods=['GET'])
+@require_auth
+def get_ad_unit_breakdown(tenant_id: str):
+    """
+    Get GAM reporting data broken down by ad unit
+    
+    Query parameters:
+    - date_range: "lifetime", "this_month", or "today" (required)
+    - advertiser_id: Filter by advertiser ID (optional)
+    - order_id: Filter by order ID (optional)
+    - line_item_id: Filter by line item ID (optional)
+    - country: Filter by country name (optional)
+    - timezone: Requested timezone (default: America/New_York)
+    """
+    # Validate tenant_id
+    if not validate_tenant_id(tenant_id):
+        return jsonify({'error': 'Invalid tenant ID format'}), 400
+    
+    # Check access
+    if not get_tenant_access(tenant_id):
+        return jsonify({'error': 'Access denied to this tenant'}), 403
+    
+    # Check if tenant is using GAM
+    conn = get_db_connection()
+    tenant_cursor = conn.execute(
+        "SELECT ad_server FROM tenants WHERE tenant_id = ?",
+        (tenant_id,)
+    )
+    tenant = tenant_cursor.fetchone()
+    conn.close()
+    
+    if not tenant or tenant.get('ad_server') != 'google_ad_manager':
+        return jsonify({'error': 'GAM reporting is only available for tenants using Google Ad Manager'}), 400
+    
+    # Get query parameters
+    date_range = request.args.get('date_range')
+    if not date_range or date_range not in ['lifetime', 'this_month', 'today']:
+        return jsonify({'error': 'Invalid or missing date_range. Must be one of: lifetime, this_month, today'}), 400
+    
+    # Validate optional numeric IDs
+    advertiser_id = request.args.get('advertiser_id')
+    if advertiser_id and not validate_numeric_id(advertiser_id):
+        return jsonify({'error': 'Invalid advertiser_id format'}), 400
+    
+    order_id = request.args.get('order_id')
+    if order_id and not validate_numeric_id(order_id):
+        return jsonify({'error': 'Invalid order_id format'}), 400
+    
+    line_item_id = request.args.get('line_item_id')
+    if line_item_id and not validate_numeric_id(line_item_id):
+        return jsonify({'error': 'Invalid line_item_id format'}), 400
+    
+    # Get country filter (string, not numeric)
+    country = request.args.get('country')
+    
+    # Validate timezone
+    timezone = request.args.get('timezone', 'America/New_York')
+    if not validate_timezone(timezone):
+        return jsonify({'error': 'Invalid timezone'}), 400
+    
+    try:
+        # Get the GAM client for this tenant
+        gam_client = get_ad_manager_client_for_tenant(tenant_id)
+        
+        if not gam_client:
+            return jsonify({'error': 'GAM client not configured for this tenant'}), 500
+        
+        # Get the network timezone
+        from gam_helper import ensure_network_timezone
+        network_timezone = ensure_network_timezone(tenant_id)
+        
+        # Create reporting service
+        reporting_service = GAMReportingService(gam_client, network_timezone)
+        
+        # Get the ad unit breakdown
+        ad_unit_data = reporting_service.get_ad_unit_breakdown(
+            date_range=date_range,
+            advertiser_id=advertiser_id,
+            order_id=order_id,
+            line_item_id=line_item_id,
+            country=country,
+            requested_timezone=timezone
+        )
+        
+        return jsonify({
+            'success': True,
+            'data': ad_unit_data
+        })
+        
+    except Exception as e:
+        logger.error(f"Error getting ad unit breakdown: {str(e)}", exc_info=True)
+        return jsonify({'error': f'Failed to get ad unit breakdown: {str(e)}'}), 500
+
 @gam_reporting_api.route('/api/tenant/<tenant_id>/principals/<principal_id>/gam/reporting/summary', methods=['GET'])
 @require_auth
 def get_principal_summary(tenant_id: str, principal_id: str):
