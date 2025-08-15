@@ -13,7 +13,7 @@ def test_formats_json():
     """Test that the foundational formats JSON has the new asset structure."""
     
     # Look for the file in the project root (two levels up from tests/unit/)
-    json_path = Path(__file__).parent.parent.parent / "foundational_creative_formats.json"
+    json_path = Path(__file__).parent.parent.parent / "data" / "foundational_creative_formats.json"
     
     with open(json_path, 'r') as f:
         data = json.load(f)
