@@ -4290,6 +4290,58 @@ def product_setup_wizard(tenant_id):
     
     return render_template('product_setup_wizard.html', tenant_id=tenant_id)
 
+@app.route('/tenant/<tenant_id>/check-inventory-sync')
+@require_auth()
+def check_inventory_sync(tenant_id):
+    """Check if GAM inventory has been synced for this tenant."""
+    # Check access
+    if session.get('role') == 'viewer':
+        return jsonify({"error": "Access denied"}), 403
+    
+    if session.get('role') == 'tenant_admin' and session.get('tenant_id') != tenant_id:
+        return jsonify({"error": "Access denied"}), 403
+    
+    try:
+        from models import GAMInventory
+        from sqlalchemy import create_engine
+        from sqlalchemy.orm import sessionmaker
+        from db_config import DatabaseConfig
+        
+        # Create database session
+        engine = create_engine(DatabaseConfig.get_connection_string())
+        Session = sessionmaker(bind=engine)
+        db_session = Session()
+        
+        try:
+            # Check if any inventory exists for this tenant
+            inventory_count = db_session.query(GAMInventory).filter(
+                GAMInventory.tenant_id == tenant_id
+            ).count()
+            
+            has_inventory = inventory_count > 0
+            
+            # Get last sync time if available
+            last_sync = None
+            if has_inventory:
+                latest = db_session.query(GAMInventory).filter(
+                    GAMInventory.tenant_id == tenant_id
+                ).order_by(GAMInventory.created_at.desc()).first()
+                if latest and latest.created_at:
+                    last_sync = latest.created_at.isoformat()
+            
+            return jsonify({
+                "has_inventory": has_inventory,
+                "inventory_count": inventory_count,
+                "last_sync": last_sync
+            })
+            
+        finally:
+            db_session.close()
+            
+    except Exception as e:
+        app.logger.error(f"Error checking inventory sync: {e}")
+        return jsonify({"error": str(e)}), 500
+
 @app.route('/tenant/<tenant_id>/analyze-ad-server')
 @require_auth()
 def analyze_ad_server_inventory(tenant_id):
@@ -4356,6 +4408,7 @@ def analyze_ad_server_inventory(tenant_id):
         # Get adapter instance
         from adapters import get_adapter_class
         adapter_class = get_adapter_class(adapter_type)
+        app.logger.info(f"Creating adapter for tenant_id={tenant_id}, adapter_type={adapter_type}")
         adapter = adapter_class(
             config=adapter_config,
             principal=principal,
@@ -4370,24 +4423,36 @@ def analyze_ad_server_inventory(tenant_id):
         
         inventory = loop.run_until_complete(adapter.get_available_inventory())
         
+        # Debug logging
+        app.logger.info(f"Inventory returned: audiences={len(inventory.get('audiences', []))}, "
+                       f"key_values={len(inventory.get('key_values', []))}, "
+                       f"placements={len(inventory.get('placements', []))}")
+        
         # Process and return relevant data
-        return jsonify({
+        response_data = {
             "audiences": inventory.get("audiences", []),
             "formats": inventory.get("creative_specs", []),
             "placements": inventory.get("placements", []),
             "key_values": inventory.get("key_values", []),
             "properties": inventory.get("properties", {})
-        })
+        }
+        app.logger.info(f"Returning response with {len(response_data['key_values'])} key_values")
+        return jsonify(response_data)
         
     except Exception as e:
-        logger.error(f"Error analyzing ad server: {e}")
-        # Return mock data on error
+        import traceback
+        error_detail = traceback.format_exc()
+        logger.error(f"Error analyzing ad server: {e}\n{error_detail}")
+        app.logger.error(f"Full error details: {error_detail}")
+        
+        # Return error details for debugging
         return jsonify({
-            "audiences": [
-                {"id": "general", "name": "General Audience", "size": 5000000}
-            ],
+            "error": str(e),
+            "audiences": [],
             "formats": [],
-            "placements": []
+            "placements": [],
+            "key_values": [],
+            "properties": {"error_occurred": True}
         })
 
 @app.route('/tenant/<tenant_id>/products/create-bulk', methods=['POST'])

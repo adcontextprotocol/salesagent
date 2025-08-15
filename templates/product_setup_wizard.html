@@ -6,6 +6,22 @@
 <div class="wizard-container">
     <h2>Product Setup Wizard</h2>
     
+    <!-- Inventory Sync Check -->
+    <div id="inventory-check" style="display: none;">
+        <div class="alert alert-warning">
+            <h4>📊 Inventory Sync Required</h4>
+            <p>Before you can use the Product Setup Wizard, you need to sync your ad server inventory.</p>
+            <p>This allows the wizard to discover your available ad units, targeting options, and creative formats.</p>
+            <div style="margin: 20px 0;">
+                <a href="{{ url_for('inventory_browser', tenant_id=tenant_id) }}" class="btn btn-primary">
+                    Go to Inventory Manager →
+                </a>
+            </div>
+            <p class="text-muted">After syncing your inventory, return here to set up your products.</p>
+        </div>
+    </div>
+    
+    <div id="wizard-content">
     <div class="wizard-progress">
         <div class="step active" data-step="1">
             <span class="step-number">1</span>
@@ -173,6 +189,7 @@
             </div>
         </div>
     </div>
+    </div> <!-- End wizard-content -->
 </div>
 
 <style>
@@ -664,6 +681,7 @@ async function analyzeAdServer() {
     try {
         const response = await fetch(`{{ url_for('analyze_ad_server_inventory', tenant_id=tenant_id) }}`);
         adServerData = await response.json();
+        console.log('Ad server data received:', adServerData);
         
         // Check if inventory sync is needed
         if (adServerData.error && adServerData.properties && adServerData.properties.needs_sync) {
@@ -674,7 +692,7 @@ async function analyzeAdServer() {
                     <p>${adServerData.error}</p>
                     <p>Please run the GAM inventory sync before using the Product Wizard:</p>
                     <ol>
-                        <li>Go to the <a href="{{ url_for('gam_inventory_dashboard', tenant_id=tenant_id) }}">GAM Inventory</a> page</li>
+                        <li>Go to the <a href="{{ url_for('inventory_browser', tenant_id=tenant_id) }}">GAM Inventory</a> page</li>
                         <li>Click "Sync Inventory" to fetch the latest data from GAM</li>
                         <li>Return here after the sync completes</li>
                     </ol>
@@ -1014,8 +1032,29 @@ function togglePricingInputs(index) {
     }
 }
 
-// Initialize country dropdown on page load
-document.addEventListener('DOMContentLoaded', function() {
+// Initialize page and check inventory sync status
+document.addEventListener('DOMContentLoaded', async function() {
+    // First, check if inventory has been synced
+    try {
+        const response = await fetch(`{{ url_for('check_inventory_sync', tenant_id=tenant_id) }}`);
+        const data = await response.json();
+        
+        if (!data.has_inventory) {
+            // No inventory synced - show warning and hide wizard
+            document.getElementById('inventory-check').style.display = 'block';
+            document.getElementById('wizard-content').style.display = 'none';
+            return; // Don't proceed with wizard initialization
+        }
+        
+        // Inventory exists - proceed with wizard
+        console.log(`Inventory synced: ${data.inventory_count} items, last sync: ${data.last_sync}`);
+        
+    } catch (error) {
+        console.error('Error checking inventory sync status:', error);
+        // Continue anyway in case of error
+    }
+    
+    // Initialize country dropdown
     const select = document.getElementById('country-select');
     const alreadyShownCodes = ['US', 'CA', 'GB', 'AU', 'DE', 'FR', 'JP', 'BR'];
     
