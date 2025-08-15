@@ -7,6 +7,7 @@ import json
 import os
 import uuid
 import logging
+import traceback
 from datetime import datetime, timezone
 from functools import wraps
 from authlib.integrations.flask_client import OAuth
@@ -1295,7 +1296,6 @@ def create_tenant():
             
         except Exception as e:
             app.logger.error(f"Error creating tenant: {str(e)}")
-            import traceback
             app.logger.error(traceback.format_exc())
             return render_template('create_tenant.html', error=str(e))
     
@@ -2707,13 +2707,16 @@ def list_products(tenant_id):
     
     conn = get_db_connection()
     
-    # Get tenant and config
-    cursor = conn.execute("SELECT name, config FROM tenants WHERE tenant_id = ?", (tenant_id,))
+    # Get tenant name
+    cursor = conn.execute("SELECT name FROM tenants WHERE tenant_id = ?", (tenant_id,))
     row = cursor.fetchone()
+    if not row:
+        conn.close()
+        return "Tenant not found", 404
     tenant_name = row[0]
-    config_data = row[1]
-    # PostgreSQL returns JSONB as dict, SQLite returns string
-    tenant_config = config_data if isinstance(config_data, dict) else json.loads(config_data)
+    
+    # Get tenant config using helper function
+    tenant_config = get_tenant_config_from_db(conn, tenant_id)
     
     # Get active adapter and its UI endpoint
     adapter_ui_endpoint = None
@@ -3310,15 +3313,20 @@ def policy_settings(tenant_id):
     
     conn = get_db_connection()
     
-    # Get tenant info and config
-    cursor = conn.execute("SELECT name, config FROM tenants WHERE tenant_id = ?", (tenant_id,))
+    # Get tenant info
+    cursor = conn.execute("SELECT name FROM tenants WHERE tenant_id = ?", (tenant_id,))
     tenant = cursor.fetchone()
     if not tenant:
         conn.close()
         return "Tenant not found", 404
     
-    tenant_name, config_str = tenant
-    config = parse_json_config(config_str)
+    tenant_name = tenant[0]
+    
+    # Get tenant config using helper function
+    config = get_tenant_config_from_db(conn, tenant_id)
+    if not config:
+        conn.close()
+        return "Tenant config not found", 404
     
     # Define default policies that all publishers start with
     default_policies = {
@@ -4282,6 +4290,55 @@ def product_setup_wizard(tenant_id):
     
     return render_template('product_setup_wizard.html', tenant_id=tenant_id)
 
+@app.route('/tenant/<tenant_id>/check-inventory-sync')
+@require_auth()
+def check_inventory_sync(tenant_id):
+    """Check if GAM inventory has been synced for this tenant."""
+    # Check access
+    if session.get('role') == 'viewer':
+        return jsonify({"error": "Access denied"}), 403
+    
+    if session.get('role') == 'tenant_admin' and session.get('tenant_id') != tenant_id:
+        return jsonify({"error": "Access denied"}), 403
+    
+    try:
+        from models import GAMInventory
+        from sqlalchemy import create_engine
+        from sqlalchemy.orm import sessionmaker
+        from db_config import DatabaseConfig
+        
+        # Create database session
+        engine = create_engine(DatabaseConfig.get_connection_string())
+        Session = sessionmaker(bind=engine)
+        
+        # Use context manager for automatic cleanup
+        with Session() as db_session:
+            # Check if any inventory exists for this tenant
+            inventory_count = db_session.query(GAMInventory).filter(
+                GAMInventory.tenant_id == tenant_id
+            ).count()
+            
+            has_inventory = inventory_count > 0
+            
+            # Get last sync time if available
+            last_sync = None
+            if has_inventory:
+                latest = db_session.query(GAMInventory).filter(
+                    GAMInventory.tenant_id == tenant_id
+                ).order_by(GAMInventory.created_at.desc()).first()
+                if latest and latest.created_at:
+                    last_sync = latest.created_at.isoformat()
+            
+            return jsonify({
+                "has_inventory": has_inventory,
+                "inventory_count": inventory_count,
+                "last_sync": last_sync
+            })
+            
+    except Exception as e:
+        app.logger.error(f"Error checking inventory sync: {e}")
+        return jsonify({"error": str(e)}), 500
+
 @app.route('/tenant/<tenant_id>/analyze-ad-server')
 @require_auth()
 def analyze_ad_server_inventory(tenant_id):
@@ -4348,6 +4405,7 @@ def analyze_ad_server_inventory(tenant_id):
         # Get adapter instance
         from adapters import get_adapter_class
         adapter_class = get_adapter_class(adapter_type)
+        app.logger.info(f"Creating adapter for tenant_id={tenant_id}, adapter_type={adapter_type}")
         adapter = adapter_class(
             config=adapter_config,
             principal=principal,
@@ -4362,22 +4420,35 @@ def analyze_ad_server_inventory(tenant_id):
         
         inventory = loop.run_until_complete(adapter.get_available_inventory())
         
+        # Debug logging
+        app.logger.info(f"Inventory returned: audiences={len(inventory.get('audiences', []))}, "
+                       f"key_values={len(inventory.get('key_values', []))}, "
+                       f"placements={len(inventory.get('placements', []))}")
+        
         # Process and return relevant data
-        return jsonify({
+        response_data = {
             "audiences": inventory.get("audiences", []),
             "formats": inventory.get("creative_specs", []),
-            "placements": inventory.get("placements", [])
-        })
+            "placements": inventory.get("placements", []),
+            "key_values": inventory.get("key_values", []),
+            "properties": inventory.get("properties", {})
+        }
+        app.logger.info(f"Returning response with {len(response_data['key_values'])} key_values")
+        return jsonify(response_data)
         
     except Exception as e:
-        logger.error(f"Error analyzing ad server: {e}")
-        # Return mock data on error
+        error_detail = traceback.format_exc()
+        logger.error(f"Error analyzing ad server: {e}\n{error_detail}")
+        app.logger.error(f"Full error details: {error_detail}")
+        
+        # Return error details for debugging
         return jsonify({
-            "audiences": [
-                {"id": "general", "name": "General Audience", "size": 5000000}
-            ],
+            "error": str(e),
+            "audiences": [],
             "formats": [],
-            "placements": []
+            "placements": [],
+            "key_values": [],
+            "properties": {"error_occurred": True}
         })
 
 @app.route('/tenant/<tenant_id>/products/create-bulk', methods=['POST'])
@@ -4867,7 +4938,6 @@ def get_gam_line_item(tenant_id, line_item_id):
         return jsonify(result)
         
     except Exception as e:
-        import traceback
         app.logger.error(f"Error fetching GAM line item: {str(e)}")
         app.logger.error(f"Traceback: {traceback.format_exc()}")
         return jsonify({'error': str(e)}), 500
@@ -5161,7 +5231,6 @@ def register_adapter_routes():
         print(f"Registered UI routes for adapters: {', '.join(registered_adapters)}")
         
     except Exception as e:
-        import traceback
         print(f"Warning: Failed to register adapter routes: {e}")
         traceback.print_exc()
 
