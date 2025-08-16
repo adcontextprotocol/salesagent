@@ -1,0 +1,311 @@
+{% extends "base.html" %}
+
+{% block title %}MCP Protocol Test - AdCP Admin{% endblock %}
+
+{% block content %}
+<style>
+    .test-section {
+        background: white;
+        border-radius: 8px;
+        padding: 1.5rem;
+        margin-bottom: 2rem;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+    }
+    
+    .form-group {
+        margin-bottom: 1rem;
+    }
+    
+    .form-group label {
+        display: block;
+        margin-bottom: 0.25rem;
+        font-weight: 500;
+        color: #374151;
+    }
+    
+    .form-group input,
+    .form-group select,
+    .form-group textarea {
+        width: 100%;
+        padding: 0.5rem;
+        border: 1px solid #d1d5db;
+        border-radius: 4px;
+        font-size: 0.875rem;
+    }
+    
+    .form-group textarea {
+        min-height: 100px;
+        font-family: 'Monaco', 'Courier New', monospace;
+        font-size: 0.75rem;
+    }
+    
+    .button-group {
+        display: flex;
+        gap: 0.5rem;
+        margin-top: 1rem;
+    }
+    
+    .results-section {
+        background: #f3f4f6;
+        border-radius: 8px;
+        padding: 1rem;
+        margin-top: 1rem;
+    }
+    
+    .results-section h3 {
+        margin-top: 0;
+        margin-bottom: 0.5rem;
+        font-size: 1rem;
+        color: #111827;
+    }
+    
+    .result-content {
+        background: white;
+        border: 1px solid #e5e7eb;
+        border-radius: 4px;
+        padding: 1rem;
+        font-family: 'Monaco', 'Courier New', monospace;
+        font-size: 0.75rem;
+        white-space: pre-wrap;
+        word-break: break-all;
+        max-height: 400px;
+        overflow-y: auto;
+    }
+    
+    .success {
+        color: #059669;
+    }
+    
+    .error {
+        color: #dc2626;
+    }
+    
+    .method-select {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 0.5rem;
+        margin-bottom: 1rem;
+    }
+    
+    .method-option {
+        padding: 0.5rem;
+        border: 1px solid #d1d5db;
+        border-radius: 4px;
+        cursor: pointer;
+        transition: all 0.2s;
+    }
+    
+    .method-option:hover {
+        background: #f3f4f6;
+        border-color: #3b82f6;
+    }
+    
+    .method-option.selected {
+        background: #dbeafe;
+        border-color: #3b82f6;
+        color: #1e40af;
+    }
+</style>
+
+<div class="test-section">
+    <h2>MCP Protocol Test</h2>
+    <p style="color: #6b7280; margin-bottom: 1.5rem;">
+        Test MCP server endpoints using the official FastMCP client library.
+    </p>
+    
+    <div class="form-group">
+        <label for="server_url">Server URL</label>
+        <input type="text" id="server_url" value="{{ server_url }}" placeholder="http://localhost:8080/mcp/">
+    </div>
+    
+    <div class="form-group">
+        <label for="principal_select">Principal (Auth Token)</label>
+        <select id="principal_select" onchange="updateAuthToken()">
+            <option value="">-- Select a Principal --</option>
+            {% for principal in principals %}
+            <option value="{{ principal.access_token }}" data-tenant="{{ principal.tenant_id }}">
+                {{ principal.tenant_name }} / {{ principal.name }} ({{ principal.principal_id }})
+            </option>
+            {% endfor %}
+        </select>
+    </div>
+    
+    <div class="form-group">
+        <label for="auth_token">Auth Token</label>
+        <input type="text" id="auth_token" placeholder="Enter token or select principal above">
+    </div>
+    
+    <div class="form-group">
+        <label>Method</label>
+        <div class="method-select">
+            <div class="method-option" onclick="selectMethod('get_products')" data-method="get_products">
+                get_products
+            </div>
+            <div class="method-option" onclick="selectMethod('get_signals')" data-method="get_signals">
+                get_signals
+            </div>
+            <div class="method-option" onclick="selectMethod('create_media_buy')" data-method="create_media_buy">
+                create_media_buy
+            </div>
+            <div class="method-option" onclick="selectMethod('activate_media_buy')" data-method="activate_media_buy">
+                activate_media_buy
+            </div>
+            <div class="method-option" onclick="selectMethod('get_media_buy_status')" data-method="get_media_buy_status">
+                get_media_buy_status
+            </div>
+            <div class="method-option" onclick="selectMethod('update_media_buy')" data-method="update_media_buy">
+                update_media_buy
+            </div>
+            <div class="method-option" onclick="selectMethod('pause_media_buy')" data-method="pause_media_buy">
+                pause_media_buy
+            </div>
+            <div class="method-option" onclick="selectMethod('submit_creatives')" data-method="submit_creatives">
+                submit_creatives
+            </div>
+        </div>
+    </div>
+    
+    <div class="form-group">
+        <label for="method">Selected Method</label>
+        <input type="text" id="method" value="get_products" readonly style="background: #f9fafb;">
+    </div>
+    
+    <div class="form-group">
+        <label for="params">Parameters (JSON)</label>
+        <textarea id="params" placeholder='{"key": "value"}'>{}</textarea>
+    </div>
+    
+    <div class="button-group">
+        <button class="btn btn-primary" onclick="testMCPCall()">Send Request</button>
+        <button class="btn" onclick="clearResults()">Clear</button>
+    </div>
+</div>
+
+<div id="results_container" style="display: none;">
+    <div class="results-section">
+        <h3>Request</h3>
+        <div class="result-content" id="request_details"></div>
+    </div>
+    
+    <div class="results-section">
+        <h3>Response</h3>
+        <div class="result-content" id="response_details"></div>
+    </div>
+</div>
+
+<script>
+function updateAuthToken() {
+    const select = document.getElementById('principal_select');
+    const tokenInput = document.getElementById('auth_token');
+    tokenInput.value = select.value;
+}
+
+function selectMethod(method) {
+    // Update visual selection
+    document.querySelectorAll('.method-option').forEach(el => {
+        el.classList.remove('selected');
+    });
+    document.querySelector(`[data-method="${method}"]`).classList.add('selected');
+    
+    // Update method input
+    document.getElementById('method').value = method;
+    
+    // Set sample parameters based on method
+    const paramsField = document.getElementById('params');
+    const sampleParams = {
+        'get_products': '{}',
+        'get_signals': '{"query": "sports", "type": "contextual"}',
+        'create_media_buy': JSON.stringify({
+            product_ids: ["product_1"],
+            total_budget: 1000.0,
+            flight_start_date: new Date().toISOString().split('T')[0],
+            flight_end_date: new Date(Date.now() + 30*24*60*60*1000).toISOString().split('T')[0]
+        }, null, 2),
+        'activate_media_buy': '{"media_buy_id": "mb_123"}',
+        'get_media_buy_status': '{"media_buy_id": "mb_123"}',
+        'update_media_buy': '{"media_buy_id": "mb_123", "total_budget": 2000.0}',
+        'pause_media_buy': '{"media_buy_id": "mb_123"}',
+        'submit_creatives': JSON.stringify({
+            creatives: [{
+                creative_id: "creative_1",
+                format: "display_300x250",
+                content: {
+                    type: "url",
+                    url: "https://example.com/creative.jpg"
+                }
+            }]
+        }, null, 2)
+    };
+    
+    paramsField.value = sampleParams[method] || '{}';
+}
+
+function testMCPCall() {
+    const serverUrl = document.getElementById('server_url').value;
+    const authToken = document.getElementById('auth_token').value;
+    const method = document.getElementById('method').value;
+    const paramsText = document.getElementById('params').value;
+    
+    if (!serverUrl || !authToken || !method) {
+        alert('Please fill in all required fields');
+        return;
+    }
+    
+    let params;
+    try {
+        params = JSON.parse(paramsText);
+    } catch (e) {
+        alert('Invalid JSON in parameters: ' + e.message);
+        return;
+    }
+    
+    // Show request details
+    const requestDetails = {
+        server_url: serverUrl,
+        auth_token: authToken,
+        method: method,
+        params: params
+    };
+    
+    document.getElementById('request_details').textContent = JSON.stringify(requestDetails, null, 2);
+    document.getElementById('results_container').style.display = 'block';
+    document.getElementById('response_details').innerHTML = '<span style="color: #6b7280;">Sending request...</span>';
+    
+    // Make the API call
+    fetch('/api/mcp-test/call', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(requestDetails)
+    })
+    .then(response => response.json())
+    .then(data => {
+        const responseEl = document.getElementById('response_details');
+        if (data.success) {
+            responseEl.innerHTML = '<span class="success">✓ Success</span>\n\n' + JSON.stringify(data.result, null, 2);
+        } else {
+            responseEl.innerHTML = '<span class="error">✗ Error</span>\n\n' + (data.error || 'Unknown error');
+            if (data.details) {
+                responseEl.innerHTML += '\n\nDetails:\n' + JSON.stringify(data.details, null, 2);
+            }
+        }
+    })
+    .catch(error => {
+        document.getElementById('response_details').innerHTML = 
+            '<span class="error">✗ Request Failed</span>\n\n' + error.message;
+    });
+}
+
+function clearResults() {
+    document.getElementById('results_container').style.display = 'none';
+    document.getElementById('request_details').textContent = '';
+    document.getElementById('response_details').textContent = '';
+}
+
+// Select get_products by default
+window.addEventListener('DOMContentLoaded', function() {
+    selectMethod('get_products');
+});
+</script>
+{% endblock %}
