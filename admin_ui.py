@@ -1538,6 +1538,9 @@ def tenant_settings(tenant_id, section=None):
     # Convert row to dict
     tenant = dict(zip([col[0] for col in cursor.description], row))
     
+    # Add active_adapter as alias for ad_server for template compatibility
+    tenant['active_adapter'] = tenant.get('ad_server')
+    
     # Parse JSON fields
     if tenant.get('authorized_emails'):
         tenant['authorized_emails'] = json.loads(tenant['authorized_emails']) if isinstance(tenant['authorized_emails'], str) else tenant['authorized_emails']
@@ -1618,22 +1621,26 @@ def tenant_settings(tenant_id, section=None):
     # Get last sync time if GAM
     last_sync_time = None
     if tenant.get('ad_server') == 'google_ad_manager':
-        cursor = conn.execute("""
-            SELECT MAX(sync_completed_at) 
-            FROM gam_inventory_sync 
-            WHERE tenant_id = ?
-        """, (tenant_id,))
-        sync_row = cursor.fetchone()
-        if sync_row and sync_row[0]:
-            last_sync = datetime.fromisoformat(sync_row[0].replace('Z', '+00:00'))
-            now = datetime.now(timezone.utc)
-            delta = now - last_sync
-            if delta.days > 0:
-                last_sync_time = f"{delta.days} days ago"
-            elif delta.seconds > 3600:
-                last_sync_time = f"{delta.seconds // 3600} hours ago"
-            else:
-                last_sync_time = f"{delta.seconds // 60} minutes ago"
+        try:
+            cursor = conn.execute("""
+                SELECT MAX(sync_completed_at) 
+                FROM gam_inventory_sync 
+                WHERE tenant_id = ?
+            """, (tenant_id,))
+            sync_row = cursor.fetchone()
+            if sync_row and sync_row[0]:
+                last_sync = datetime.fromisoformat(sync_row[0].replace('Z', '+00:00'))
+                now = datetime.now(timezone.utc)
+                delta = now - last_sync
+                if delta.days > 0:
+                    last_sync_time = f"{delta.days} days ago"
+                elif delta.seconds > 3600:
+                    last_sync_time = f"{delta.seconds // 3600} hours ago"
+                else:
+                    last_sync_time = f"{delta.seconds // 60} minutes ago"
+        except:
+            # Table might not exist yet
+            last_sync_time = None
     
     conn.close()
     
@@ -1735,6 +1742,45 @@ def update_general_settings(tenant_id):
     
     flash('General settings updated successfully', 'success')
     return redirect(url_for('tenant_settings', tenant_id=tenant_id, section='general'))
+
+@app.route('/tenant/<tenant_id>/settings/adapter', methods=['POST'])
+@require_auth()
+def update_adapter_settings(tenant_id):
+    """Update the active adapter for a tenant."""
+    if session.get('role') == 'viewer':
+        return "Access denied", 403
+    
+    # Check tenant access
+    if session.get('role') == 'tenant_admin' and session.get('tenant_id') != tenant_id:
+        return "Access denied. You can only modify your own tenant.", 403
+    
+    try:
+        data = request.get_json()
+        new_adapter = data.get('adapter')
+        
+        # Validate adapter choice
+        valid_adapters = ['mock', 'google_ad_manager', 'kevel', 'triton', 'xandr']
+        if new_adapter not in valid_adapters:
+            return f"Invalid adapter: {new_adapter}", 400
+        
+        conn = get_db_connection()
+        
+        # Update the tenant's active adapter
+        conn.execute("""
+            UPDATE tenants 
+            SET ad_server = ?
+            WHERE tenant_id = ?
+        """, (new_adapter, tenant_id))
+        
+        conn.commit()
+        conn.close()
+        
+        app.logger.info(f"Tenant {tenant_id} switched adapter to {new_adapter}")
+        return "Adapter updated successfully", 200
+        
+    except Exception as e:
+        app.logger.error(f"Error updating adapter for tenant {tenant_id}: {e}")
+        return f"Error updating adapter: {str(e)}", 500
 
 @app.route('/tenant/<tenant_id>/settings/slack', methods=['POST'])
 @require_auth()

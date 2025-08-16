@@ -977,10 +977,37 @@ function testSlack() {
 
 // Select adapter
 function selectAdapter(adapterName) {
-    // Would load adapter-specific configuration form
-    console.log('Selected adapter:', adapterName);
-    // TODO: Implement adapter switching
-    alert('Adapter switching will be implemented soon. Please use the current adapter for now.');
+    console.log('Switching to adapter:', adapterName);
+    
+    // Show confirmation dialog
+    if (!confirm(`Are you sure you want to switch to ${adapterName}? This will change how ads are served.`)) {
+        return;
+    }
+    
+    // Send request to update adapter
+    fetch(`/tenant/{{ tenant.tenant_id }}/settings/adapter`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+            adapter: adapterName
+        })
+    })
+    .then(response => {
+        if (response.ok) {
+            // Reload the page to show new adapter configuration
+            window.location.reload();
+        } else {
+            return response.text().then(text => {
+                throw new Error(text || 'Failed to switch adapter');
+            });
+        }
+    })
+    .catch(error => {
+        console.error('Error switching adapter:', error);
+        alert('Failed to switch adapter: ' + error.message);
+    });
 }
 
 // Save GAM configuration
