@@ -998,12 +998,16 @@ def tenant_detail_old(tenant_id):
     """, (tenant_id,))
     total_active_spend = cursor.fetchone()[0] or 0
     
-    # Get pending tasks count
-    cursor = conn.execute("""
-        SELECT COUNT(*) FROM tasks 
-        WHERE tenant_id = ? AND status = 'pending'
-    """, (tenant_id,))
-    pending_tasks = cursor.fetchone()[0]
+    # Get pending workflow steps count (tasks table was replaced by workflow system)
+    try:
+        cursor = conn.execute("""
+            SELECT COUNT(*) FROM workflow_steps 
+            WHERE tenant_id = ? AND status = 'pending'
+        """, (tenant_id,))
+        pending_tasks = cursor.fetchone()[0]
+    except:
+        # Workflow steps might not have data yet
+        pending_tasks = 0
     
     # Get user count
     cursor = conn.execute("""
@@ -2319,20 +2323,26 @@ def workflows_dashboard(tenant_id):
     """, (tenant_id,))
     active_buys = active_buys_cursor.fetchone()[0]
     
-    # Pending tasks count
-    pending_tasks_cursor = conn.execute("""
-        SELECT COUNT(*) FROM tasks 
-        WHERE tenant_id = ? AND status = 'pending'
-    """, (tenant_id,))
-    pending_tasks = pending_tasks_cursor.fetchone()[0]
+    # Pending workflow steps count (tasks table was replaced by workflow system)
+    try:
+        pending_tasks_cursor = conn.execute("""
+            SELECT COUNT(*) FROM workflow_steps 
+            WHERE tenant_id = ? AND status = 'pending'
+        """, (tenant_id,))
+        pending_tasks = pending_tasks_cursor.fetchone()[0]
+    except:
+        pending_tasks = 0
     
     # Completed today count
-    completed_today_cursor = conn.execute("""
-        SELECT COUNT(*) FROM tasks 
-        WHERE tenant_id = ? AND status = 'completed' 
-        AND DATE(completed_at) = DATE(?)
-    """, (tenant_id, today.isoformat()))
-    completed_today = completed_today_cursor.fetchone()[0]
+    try:
+        completed_today_cursor = conn.execute("""
+            SELECT COUNT(*) FROM workflow_steps 
+            WHERE tenant_id = ? AND status = 'completed' 
+            AND DATE(completed_at) = DATE(?)
+        """, (tenant_id, today.isoformat()))
+        completed_today = completed_today_cursor.fetchone()[0]
+    except:
+        completed_today = 0
     
     # Total active spend
     total_spend_cursor = conn.execute("""
@@ -2389,13 +2399,16 @@ def workflows_dashboard(tenant_id):
             'approved_by': row[14]
         })
     
-    # Get tasks
-    tasks_cursor = conn.execute("""
-        SELECT * FROM tasks 
-        WHERE tenant_id = ? 
-        ORDER BY created_at DESC 
-        LIMIT 100
-    """, (tenant_id,))
+    # Get workflow steps (tasks table was replaced by workflow system)
+    try:
+        tasks_cursor = conn.execute("""
+            SELECT * FROM workflow_steps 
+            WHERE tenant_id = ? 
+            ORDER BY created_at DESC 
+            LIMIT 100
+        """, (tenant_id,))
+    except:
+        tasks_cursor = []
     
     tasks = []
     for row in tasks_cursor:
@@ -4101,22 +4114,27 @@ def policy_settings(tenant_id):
         })
     
     # Get pending policy review tasks
-    cursor = conn.execute("""
-        SELECT task_id, created_at, details
-        FROM tasks
-        WHERE tenant_id = ? AND task_type = 'policy_review' AND status = 'pending'
-        ORDER BY created_at DESC
-    """, (tenant_id,))
+    # Query workflow steps instead of tasks (tasks table was removed)
+    try:
+        cursor = conn.execute("""
+            SELECT step_id, created_at, data
+            FROM workflow_steps
+            WHERE tenant_id = ? AND step_type = 'policy_review' AND status = 'pending'
+            ORDER BY created_at DESC
+        """, (tenant_id,))
+    except:
+        cursor = None
     
     pending_reviews = []
-    for row in cursor.fetchall():
-        details = json.loads(row[2]) if row[2] else {}
-        pending_reviews.append({
-            'task_id': row[0],
-            'created_at': row[1],
-            'brief': details.get('brief', ''),
-            'advertiser': details.get('promoted_offering', '')
-        })
+    if cursor:
+        for row in cursor.fetchall():
+            details = json.loads(row[2]) if row[2] else {}
+            pending_reviews.append({
+                'task_id': row[0],
+                'created_at': row[1],
+                'brief': details.get('brief', ''),
+                'advertiser': details.get('promoted_offering', '')
+            })
     
     conn.close()
     
@@ -4224,11 +4242,14 @@ def review_policy_task(tenant_id, task_id):
             # Update task status
             new_status = 'approved' if action == 'approve' else 'rejected'
             
-            # Get task details
-            cursor = conn.execute("""
-                SELECT details FROM tasks
-                WHERE tenant_id = ? AND task_id = ?
-            """, (tenant_id, task_id))
+            # Get workflow step details (tasks table was replaced by workflow system)
+            try:
+                cursor = conn.execute("""
+                    SELECT data FROM workflow_steps
+                    WHERE tenant_id = ? AND step_id = ?
+                """, (tenant_id, task_id))
+            except:
+                cursor = None
             
             row = cursor.fetchone()
             if not row:
@@ -4240,10 +4261,11 @@ def review_policy_task(tenant_id, task_id):
             details['reviewed_by'] = session.get('email', 'unknown')
             details['reviewed_at'] = datetime.utcnow().isoformat()
             
+            # Update workflow step instead of task
             conn.execute("""
-                UPDATE tasks
-                SET status = ?, details = ?, completed_at = CURRENT_TIMESTAMP
-                WHERE tenant_id = ? AND task_id = ?
+                UPDATE workflow_steps
+                SET status = ?, data = ?, completed_at = CURRENT_TIMESTAMP
+                WHERE tenant_id = ? AND step_id = ?
             """, (new_status, json.dumps(details), tenant_id, task_id))
             
             # Log the review
@@ -4270,14 +4292,18 @@ def review_policy_task(tenant_id, task_id):
             return f"Error: {e}", 400
     
     # GET: Show review form
-    cursor = conn.execute("""
-        SELECT t.created_at, t.details, tn.name
-        FROM tasks t
-        JOIN tenants tn ON t.tenant_id = tn.tenant_id
-        WHERE t.tenant_id = ? AND t.task_id = ? AND t.task_type = 'policy_review'
-    """, (tenant_id, task_id))
+    # Query workflow steps instead of tasks
+    try:
+        cursor = conn.execute("""
+            SELECT w.created_at, w.data, tn.name
+            FROM workflow_steps w
+            JOIN tenants tn ON w.tenant_id = tn.tenant_id
+            WHERE w.tenant_id = ? AND w.step_id = ? AND w.step_type = 'policy_review'
+        """, (tenant_id, task_id))
+    except:
+        cursor = None
     
-    row = cursor.fetchone()
+    row = cursor.fetchone() if cursor else None
     if not row:
         conn.close()
         return "Task not found", 404
