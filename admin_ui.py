@@ -1579,19 +1579,17 @@ def tenant_settings(tenant_id, section=None):
         """, (tenant_id,))
     active_advertisers = cursor.fetchone()[0]
     
-    # Get creative formats (handle boolean properly for PostgreSQL)
+    # Get creative formats (auto_approve column doesn't exist, default to 0)
     if db_config['type'] == 'postgresql':
         cursor = conn.execute("""
-            SELECT format_id, name, width, height,
-                   CASE WHEN auto_approve = true THEN 1 ELSE 0 END as auto_approve
+            SELECT format_id, name, width, height, 0 as auto_approve
             FROM creative_formats 
             WHERE tenant_id = %s OR tenant_id IS NULL
             ORDER BY name
         """, (tenant_id,))
     else:
         cursor = conn.execute("""
-            SELECT format_id, name, width, height,
-                   CASE WHEN auto_approve = 1 THEN 1 ELSE 0 END as auto_approve
+            SELECT format_id, name, width, height, 0 as auto_approve
             FROM creative_formats 
             WHERE tenant_id = ? OR tenant_id IS NULL
             ORDER BY name
