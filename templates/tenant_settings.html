@@ -279,6 +279,55 @@
         background: #4b5563;
     }
     
+    .btn {
+        padding: 0.5rem 1rem;
+        border-radius: 6px;
+        font-size: 0.875rem;
+        font-weight: 500;
+        cursor: pointer;
+        transition: all 0.2s;
+        border: none;
+        display: inline-flex;
+        align-items: center;
+        gap: 0.5rem;
+    }
+    
+    .btn-primary {
+        background: #3b82f6;
+        color: white;
+    }
+    
+    .btn-primary:hover {
+        background: #2563eb;
+    }
+    
+    .btn-secondary {
+        background: #6b7280;
+        color: white;
+    }
+    
+    .btn-secondary:hover {
+        background: #4b5563;
+    }
+    
+    .btn-success {
+        background: #10b981;
+        color: white;
+    }
+    
+    .btn-success:hover {
+        background: #059669;
+    }
+    
+    .btn-danger {
+        background: #ef4444;
+        color: white;
+    }
+    
+    .btn-danger:hover {
+        background: #dc2626;
+    }
+    
     @media (max-width: 768px) {
         .settings-layout {
             grid-template-columns: 1fr;
@@ -505,7 +554,73 @@
             </div>
             
             <!-- Adapter-specific configuration will be loaded here -->
-            <div id="adapter-config"></div>
+            <div id="adapter-config">
+                {% if tenant.active_adapter == 'google_ad_manager' %}
+                <div class="form-section" style="margin-top: 2rem;">
+                    <h3>Google Ad Manager Configuration</h3>
+                    
+                    {% if adapter_config %}
+                    <div class="status-card" style="background: #f0f9ff; border-left: 4px solid #0066cc;">
+                        <h4>Current Configuration</h4>
+                        <ul style="list-style: none; padding: 0; margin: 0.5rem 0;">
+                            {% if adapter_config.get('network_code') %}
+                            <li>✅ Network Code: {{ adapter_config.get('network_code') }}</li>
+                            {% else %}
+                            <li>❌ Network Code: Not configured</li>
+                            {% endif %}
+                            
+                            {% if adapter_config.get('refresh_token') %}
+                            <li>✅ OAuth Refresh Token: Configured</li>
+                            {% else %}
+                            <li>❌ OAuth Refresh Token: Not configured</li>
+                            {% endif %}
+                            
+                            {% if adapter_config.get('application_name') %}
+                            <li>✅ Application Name: {{ adapter_config.get('application_name') }}</li>
+                            {% else %}
+                            <li>ℹ️ Application Name: Using default</li>
+                            {% endif %}
+                        </ul>
+                    </div>
+                    {% else %}
+                    <div class="alert alert-warning">
+                        <strong>Not Configured</strong>
+                        <p>Google Ad Manager adapter needs configuration. Please set up your GAM credentials below.</p>
+                    </div>
+                    {% endif %}
+                    
+                    <div class="form-group" style="margin-top: 1rem;">
+                        <label for="gam_network_code">Network Code</label>
+                        <input type="text" id="gam_network_code" class="form-control" 
+                               value="{{ adapter_config.get('network_code', '') if adapter_config else '' }}"
+                               placeholder="Your GAM network code">
+                        <small class="form-text text-muted">Found in GAM under Admin → Global Settings</small>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="gam_refresh_token">OAuth Refresh Token</label>
+                        <input type="text" id="gam_refresh_token" class="form-control"
+                               value="{{ adapter_config.get('refresh_token', '') if adapter_config else '' }}"
+                               placeholder="Your OAuth refresh token">
+                        <small class="form-text text-muted">Required for API access</small>
+                    </div>
+                    
+                    <div class="form-group">
+                        <button onclick="saveGAMConfig()" class="btn btn-primary">Save GAM Configuration</button>
+                        {% if adapter_config and adapter_config.get('refresh_token') %}
+                        <button onclick="testGAMConnection()" class="btn btn-secondary" style="margin-left: 0.5rem;">Test Connection</button>
+                        {% endif %}
+                    </div>
+                </div>
+                {% elif tenant.active_adapter == 'mock' %}
+                <div class="form-section" style="margin-top: 2rem;">
+                    <div class="alert alert-info">
+                        <strong>Mock Adapter Active</strong>
+                        <p>The mock adapter is configured and ready for testing. No additional setup required.</p>
+                    </div>
+                </div>
+                {% endif %}
+            </div>
         </div>
         
         <!-- Products Settings -->
@@ -514,6 +629,24 @@
                 <h2>Product Management</h2>
                 <p>Define advertising products available for purchase</p>
             </div>
+            
+            {% if product_count == 0 %}
+            <!-- Show wizard prominently for new tenants -->
+            <div class="alert alert-info" style="margin-bottom: 1.5rem;">
+                <div style="display: flex; align-items: center; gap: 1rem;">
+                    <i class="fas fa-info-circle" style="font-size: 1.5rem;"></i>
+                    <div style="flex: 1;">
+                        <strong>No Products Configured Yet</strong>
+                        <p style="margin: 0.25rem 0 0 0; font-size: 0.875rem;">
+                            Get started quickly with our Product Setup Wizard to create your first advertising products.
+                        </p>
+                    </div>
+                    <a href="/tenant/{{ tenant.tenant_id }}/products/setup-wizard" class="btn btn-success">
+                        <i class="fas fa-magic"></i> Launch Setup Wizard
+                    </a>
+                </div>
+            </div>
+            {% endif %}
             
             <div class="status-card">
                 <div style="display: flex; justify-content: space-between; align-items: center;">
@@ -525,6 +658,9 @@
                     </div>
                     <div style="display: flex; gap: 0.5rem;">
                         <a href="/tenant/{{ tenant.tenant_id }}/products" class="btn btn-small">Manage</a>
+                        <a href="/tenant/{{ tenant.tenant_id }}/products/setup-wizard" class="btn btn-success btn-small">
+                            <i class="fas fa-magic"></i> Setup Wizard
+                        </a>
                         <a href="/tenant/{{ tenant.tenant_id }}/products/add" class="btn btn-primary btn-small">Add New</a>
                     </div>
                 </div>
@@ -843,6 +979,53 @@ function testSlack() {
 function selectAdapter(adapterName) {
     // Would load adapter-specific configuration form
     console.log('Selected adapter:', adapterName);
+    // TODO: Implement adapter switching
+    alert('Adapter switching will be implemented soon. Please use the current adapter for now.');
+}
+
+// Save GAM configuration
+function saveGAMConfig() {
+    const networkCode = document.getElementById('gam_network_code').value;
+    const refreshToken = document.getElementById('gam_refresh_token').value;
+    
+    if (!networkCode || !refreshToken) {
+        alert('Please provide both Network Code and Refresh Token');
+        return;
+    }
+    
+    // TODO: Implement save functionality
+    alert('GAM configuration saving will be implemented soon.');
+}
+
+// Test GAM connection
+function testGAMConnection() {
+    const refreshToken = document.getElementById('gam_refresh_token').value;
+    
+    if (!refreshToken) {
+        alert('Please provide a refresh token first');
+        return;
+    }
+    
+    fetch('/api/gam/test-connection', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ 
+            refresh_token: refreshToken 
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            alert('✅ GAM connection successful!\nNetwork: ' + data.network_name);
+        } else {
+            alert('❌ GAM connection failed:\n' + (data.error || 'Unknown error'));
+        }
+    })
+    .catch(error => {
+        alert('Error testing connection: ' + error.message);
+    });
 }
 
 // Load product template
