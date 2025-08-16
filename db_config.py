@@ -147,6 +147,11 @@ class DatabaseConnection:
         """Get a database cursor."""
         return self.connection.cursor()
     
+    def commit(self):
+        """Commit the current transaction."""
+        if self.connection:
+            self.connection.commit()
+    
     def close(self):
         """Close database connection."""
         if self.connection:
