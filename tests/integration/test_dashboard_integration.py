@@ -4,7 +4,7 @@ import pytest
 from datetime import datetime, timedelta, timezone
 import json
 from db_config import get_db_connection, DatabaseConfig
-from init_database import init_db
+from database import init_db
 
 def get_placeholder():
     """Get the appropriate SQL placeholder for the current database type."""
@@ -121,16 +121,16 @@ def test_db():
     
     # Insert test products
     conn.execute(f"""
-        INSERT INTO products (product_id, tenant_id, name, is_active)
-        VALUES ({ph}, {ph}, {ph}, {ph})
+        INSERT INTO products (product_id, tenant_id, name)
+        VALUES ({ph}, {ph}, {ph})
         ON CONFLICT (product_id) DO NOTHING
-    """, ('prod_001', 'test_dashboard', 'Test Product 1', True))
+    """, ('prod_001', 'test_dashboard', 'Test Product 1'))
     
     conn.execute(f"""
-        INSERT INTO products (product_id, tenant_id, name, is_active)
-        VALUES ({ph}, {ph}, {ph}, {ph})
+        INSERT INTO products (product_id, tenant_id, name)
+        VALUES ({ph}, {ph}, {ph})
         ON CONFLICT (product_id) DO NOTHING
-    """, ('prod_002', 'test_dashboard', 'Test Product 2', True))
+    """, ('prod_002', 'test_dashboard', 'Test Product 2'))
     
     conn.commit()
     
