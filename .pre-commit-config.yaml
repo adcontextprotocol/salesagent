@@ -1,6 +1,15 @@
 repos:
   - repo: local
     hooks:
+      # CRITICAL: Prevent modification of existing migration files
+      - id: check-migration-modifications
+        name: Check migration modifications
+        entry: python scripts/check_migration_modifications.py
+        language: system
+        pass_filenames: false
+        always_run: true
+        stages: [commit]
+        
       # Check for removed columns still referenced in code
       - id: check-schema-references
         name: Check schema references
