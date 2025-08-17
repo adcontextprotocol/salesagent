@@ -258,11 +258,29 @@ fi
 
 # Set up Git hooks for this workspace
 echo "Setting up Git hooks..."
-if [ -f setup_hooks.sh ]; then
-    ./setup_hooks.sh
+
+# Install pre-commit if available
+if command -v pre-commit &> /dev/null && [ -f .pre-commit-config.yaml ]; then
+    echo "Installing pre-commit hooks..."
+    pre-commit install >/dev/null 2>&1
+    if [ $? -eq 0 ]; then
+        echo "✓ Pre-commit hooks installed"
+    else
+        echo "✗ Warning: Failed to install pre-commit hooks"
+        echo "  To install manually, run: pre-commit install"
+    fi
 else
-    echo "✗ Warning: setup_hooks.sh not found. Git hooks not installed."
-    echo "  To install hooks later, run: ./setup_hooks.sh"
+    echo "✗ Warning: pre-commit not found or config missing"
+    echo "  To install pre-commit: pip install pre-commit"
+    echo "  Then run: pre-commit install"
+fi
+
+# Check for test runner script
+if [ -f run_all_tests.sh ]; then
+    echo "✓ Test runner script found (./run_all_tests.sh)"
+else
+    echo "✗ Warning: run_all_tests.sh not found"
+    echo "  Tests won't run automatically before push"
 fi
 
 # Install UI test dependencies if pyproject.toml has ui-tests extra
