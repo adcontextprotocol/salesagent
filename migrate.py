@@ -7,8 +7,12 @@ from pathlib import Path
 from alembic.config import Config
 from alembic import command
 
-def run_migrations():
-    """Run all pending database migrations."""
+def run_migrations(exit_on_error=True):
+    """Run all pending database migrations.
+    
+    Args:
+        exit_on_error: If True, exit the process on error. If False, raise exception.
+    """
     # Get the directory containing this script
     script_dir = Path(__file__).parent
     
@@ -25,7 +29,10 @@ def run_migrations():
         print("✅ Database migrations completed successfully!")
     except Exception as e:
         print(f"❌ Error running migrations: {e}")
-        sys.exit(1)
+        if exit_on_error:
+            sys.exit(1)
+        else:
+            raise
 
 def check_migration_status():
     """Check current migration status."""

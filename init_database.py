@@ -5,11 +5,16 @@ from datetime import datetime
 from db_config import get_db_connection
 from migrate import run_migrations
 
-def init_db():
-    """Initialize database with migrations and populate default data."""
+def init_db(exit_on_error=False):
+    """Initialize database with migrations and populate default data.
+    
+    Args:
+        exit_on_error: If True, exit process on migration error. If False, raise exception.
+                      Default False for test compatibility.
+    """
     # Run migrations first
     print("Applying database migrations...")
-    run_migrations()
+    run_migrations(exit_on_error=exit_on_error)
     
     # Now populate default data if needed
     conn = get_db_connection()
@@ -262,4 +267,4 @@ def init_db():
     conn.close()
 
 if __name__ == "__main__":
-    init_db()
+    init_db(exit_on_error=True)

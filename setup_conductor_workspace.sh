@@ -258,11 +258,104 @@ fi
 
 # Set up Git hooks for this workspace
 echo "Setting up Git hooks..."
-if [ -f setup_hooks.sh ]; then
-    ./setup_hooks.sh
+
+# Configure git to use worktree-specific hooks
+echo "Configuring worktree-specific hooks..."
+
+# Enable worktree config
+git config extensions.worktreeconfig true
+
+# Get the worktree's git directory
+WORKTREE_GIT_DIR=$(git rev-parse --git-dir)
+WORKTREE_HOOKS_DIR="$WORKTREE_GIT_DIR/hooks"
+MAIN_HOOKS_DIR="$(git rev-parse --git-common-dir)/hooks"
+
+# Create hooks directory if it doesn't exist
+mkdir -p "$WORKTREE_HOOKS_DIR"
+
+# Configure this worktree to use its own hooks directory
+git config --worktree core.hooksPath "$WORKTREE_HOOKS_DIR"
+echo "✓ Configured worktree to use hooks at: $WORKTREE_HOOKS_DIR"
+
+# Install pre-commit if available
+if command -v pre-commit &> /dev/null && [ -f .pre-commit-config.yaml ]; then
+    echo "Installing pre-commit hooks..."
+    
+    # Pre-commit doesn't like custom hooks paths, so temporarily unset it
+    git config --worktree --unset core.hooksPath 2>/dev/null
+    pre-commit install >/dev/null 2>&1
+    PRECOMMIT_RESULT=$?
+    
+    # Copy the pre-commit hook to our worktree hooks directory
+    if [ $PRECOMMIT_RESULT -eq 0 ] && [ -f "$MAIN_HOOKS_DIR/pre-commit" ]; then
+        cp "$MAIN_HOOKS_DIR/pre-commit" "$WORKTREE_HOOKS_DIR/pre-commit"
+        echo "✓ Pre-commit hooks installed in worktree"
+    else
+        echo "✗ Warning: Failed to install pre-commit hooks"
+        echo "  To install manually, run: pre-commit install"
+    fi
+    
+    # Restore the worktree hooks path
+    git config --worktree core.hooksPath "$WORKTREE_HOOKS_DIR"
 else
-    echo "✗ Warning: setup_hooks.sh not found. Git hooks not installed."
-    echo "  To install hooks later, run: ./setup_hooks.sh"
+    echo "✗ Warning: pre-commit not found or config missing"
+    echo "  To install pre-commit: pip install pre-commit"
+    echo "  Then run: pre-commit install"
+fi
+
+# Set up pre-push hook
+if [ -f run_all_tests.sh ]; then
+    echo "✓ Test runner script found (./run_all_tests.sh)"
+    
+    # Create/update pre-push hook
+    cat > "$WORKTREE_HOOKS_DIR/pre-push" << 'EOF'
+#!/bin/bash
+# Pre-push hook that works correctly with git worktrees
+# This hook runs tests before allowing a push to remote
+
+echo "Running tests before push..."
+
+# Get the actual working directory (handles both regular repos and worktrees)
+WORK_DIR="$(git rev-parse --show-toplevel)"
+cd "$WORK_DIR"
+
+echo "Working directory: $WORK_DIR"
+
+# Check if test runner exists in the worktree
+if [ -f "./run_all_tests.sh" ]; then
+    # Run quick tests
+    ./run_all_tests.sh quick
+    TEST_RESULT=$?
+    
+    if [ $TEST_RESULT -ne 0 ]; then
+        echo ""
+        echo "❌ Tests failed! Push aborted."
+        echo ""
+        echo "To run full test suite:"
+        echo "  ./run_all_tests.sh"
+        echo ""
+        echo "To push anyway (not recommended):"
+        echo "  git push --no-verify"
+        echo ""
+        exit 1
+    else
+        echo "✅ All tests passed! Proceeding with push..."
+    fi
+else
+    echo "⚠️  Test runner not found at: $WORK_DIR/run_all_tests.sh"
+    echo "   Tests cannot be run automatically."
+    echo "   Consider running tests manually before pushing."
+    # Don't block the push if test runner is missing
+    exit 0
+fi
+
+exit 0
+EOF
+    chmod +x "$WORKTREE_HOOKS_DIR/pre-push"
+    echo "✓ Pre-push hook installed in worktree"
+else
+    echo "✗ Warning: run_all_tests.sh not found"
+    echo "  Tests won't run automatically before push"
 fi
 
 # Install UI test dependencies if pyproject.toml has ui-tests extra

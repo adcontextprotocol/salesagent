@@ -2,17 +2,59 @@
 """Admin UI with Google OAuth2 authentication."""
 
 from flask import Flask, render_template, request, jsonify, redirect, url_for, session, flash, send_from_directory, g
+from flask_socketio import SocketIO, emit, join_room, leave_room
 import secrets
 import json
 import os
 import uuid
 import logging
+import asyncio
 import traceback
 from datetime import datetime, timezone
 from functools import wraps
 from authlib.integrations.flask_client import OAuth
-from db_config import get_db_connection
-from validation import FormValidator, validate_form_data, sanitize_form_data
+from db_config import get_db_connection, DatabaseConfig
+from validation import FormValidator, validate_form_data, sanitize_form_data, validate_gam_config
+
+def validate_gam_network_response(network):
+    """Validate GAM network API response structure."""
+    if not network:
+        return False, "Network response is empty"
+    
+    # Check required fields
+    required_fields = ['networkCode', 'displayName', 'id']
+    for field in required_fields:
+        if field not in network:
+            return False, f"Missing required field: {field}"
+    
+    # Validate field types
+    try:
+        int(network['networkCode'])
+        int(network['id'])
+    except (ValueError, TypeError):
+        return False, "Network code and ID must be numeric"
+    
+    if not isinstance(network['displayName'], str):
+        return False, "Display name must be a string"
+    
+    return True, None
+
+def validate_gam_user_response(user):
+    """Validate GAM user API response structure."""
+    if not user:
+        return False, "User response is empty"
+    
+    # Check required fields
+    if 'id' not in user:
+        return False, "Missing user ID"
+    
+    # Validate ID is numeric
+    try:
+        int(user['id'])
+    except (ValueError, TypeError):
+        return False, "User ID must be numeric"
+    
+    return True, None
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -20,6 +62,9 @@ logging.basicConfig(level=logging.INFO)
 app = Flask(__name__)
 app.secret_key = os.environ.get('FLASK_SECRET_KEY', secrets.token_hex(32))
 app.logger.setLevel(logging.INFO)
+
+# Initialize SocketIO with Flask app
+socketio = SocketIO(app, cors_allowed_origins="*", async_mode='threading')
 
 # Import schemas after Flask app is created
 from schemas import Principal
@@ -38,6 +83,9 @@ app.register_blueprint(gam_reporting_api)
 
 # Import GAM inventory service for targeting browser
 from gam_inventory_service import GAMInventoryService, create_inventory_endpoints as register_inventory_endpoints, SessionLocal, db_session
+
+# Import activity feed for WebSocket support
+from activity_feed import activity_feed
 
 # Configure for being mounted at different paths and proxy headers
 class ProxyFix:
@@ -69,10 +117,8 @@ app.wsgi_app = ProxyFix(app.wsgi_app)
 GOOGLE_CLIENT_ID = None
 GOOGLE_CLIENT_SECRET = None
 
-print(f"DEBUG: Environment variables at startup:")
-print(f"DEBUG: GOOGLE_CLIENT_ID={os.environ.get('GOOGLE_CLIENT_ID')}")
-print(f"DEBUG: GOOGLE_CLIENT_SECRET exists={bool(os.environ.get('GOOGLE_CLIENT_SECRET'))}")
-print(f"DEBUG: GOOGLE_OAUTH_CREDENTIALS_FILE={os.environ.get('GOOGLE_OAUTH_CREDENTIALS_FILE')}")
+# OAuth configuration logging (use app.logger instead of print for production)
+app.logger.debug("Checking OAuth configuration environment variables")
 
 # Load Google OAuth credentials
 # First check environment variable, then look for any client_secret*.json file
@@ -84,8 +130,6 @@ if not oauth_creds_file:
     creds_files = [f for f in glob.glob('client_secret*.json') if os.path.isfile(f)]
     if creds_files:
         oauth_creds_file = creds_files[0]
-        
-print(f"DEBUG: After file search, oauth_creds_file={repr(oauth_creds_file)}")
 
 if oauth_creds_file and os.path.exists(oauth_creds_file):
     with open(oauth_creds_file) as f:
@@ -96,9 +140,7 @@ else:
     # Try environment variables as fallback
     GOOGLE_CLIENT_ID = os.environ.get('GOOGLE_CLIENT_ID')
     GOOGLE_CLIENT_SECRET = os.environ.get('GOOGLE_CLIENT_SECRET')
-    print(f"DEBUG: oauth_creds_file={oauth_creds_file}")
-    print(f"DEBUG: GOOGLE_CLIENT_ID from env={GOOGLE_CLIENT_ID}")
-    print(f"DEBUG: GOOGLE_CLIENT_SECRET exists={bool(GOOGLE_CLIENT_SECRET)}")
+    app.logger.debug(f"OAuth configured: client_id={'set' if GOOGLE_CLIENT_ID else 'not set'}")
 
 # Test mode configuration - ONLY FOR AUTOMATED TESTING
 TEST_MODE_ENABLED = os.environ.get('ADCP_AUTH_TEST_MODE', '').lower() == 'true'
@@ -257,61 +299,59 @@ def is_super_admin(email):
 def is_tenant_admin(email, tenant_id=None):
     """Check if email is authorized for a specific tenant."""
     conn = get_db_connection()
-    
-    if tenant_id:
-        # Check specific tenant
-        cursor = conn.execute("""
-            SELECT authorized_emails, authorized_domains
-            FROM tenants
-            WHERE tenant_id = ? AND is_active = ?
-        """, (tenant_id, True))
+    try:
+        if tenant_id:
+            # Check specific tenant
+            cursor = conn.execute("""
+                SELECT authorized_emails, authorized_domains
+                FROM tenants
+                WHERE tenant_id = ? AND is_active = ?
+            """, (tenant_id, True))
+            
+            tenant = cursor.fetchone()
+            if tenant:
+                # Parse JSON arrays
+                authorized_emails = json.loads(tenant[0]) if tenant[0] else []
+                authorized_domains = json.loads(tenant[1]) if tenant[1] else []
+                
+                # Check authorized emails
+                if email in authorized_emails:
+                    return True
+                
+                # Check authorized domains
+                domain = email.split('@')[1] if '@' in email else ''
+                if domain and domain in authorized_domains:
+                    return True
+        else:
+            # Check all tenants to find which one(s) this email can access
+            cursor = conn.execute("""
+                SELECT tenant_id, name, authorized_emails, authorized_domains
+                FROM tenants
+                WHERE is_active = ?
+            """, (True,))
+            
+            authorized_tenants = []
+            for row in cursor.fetchall():
+                tenant_id = row[0]
+                tenant_name = row[1]
+                authorized_emails = json.loads(row[2]) if row[2] else []
+                authorized_domains = json.loads(row[3]) if row[3] else []
+                
+                # Check authorized emails
+                if email in authorized_emails:
+                    authorized_tenants.append((tenant_id, tenant_name))
+                    continue
+                
+                # Check authorized domains
+                domain = email.split('@')[1] if '@' in email else ''
+                if domain and domain in authorized_domains:
+                    authorized_tenants.append((tenant_id, tenant_name))
+            
+            return authorized_tenants
         
-        tenant = cursor.fetchone()
-        if tenant:
-            # Parse JSON arrays
-            authorized_emails = json.loads(tenant[0]) if tenant[0] else []
-            authorized_domains = json.loads(tenant[1]) if tenant[1] else []
-            
-            # Check authorized emails
-            if email in authorized_emails:
-                conn.close()
-                return True
-            
-            # Check authorized domains
-            domain = email.split('@')[1] if '@' in email else ''
-            if domain and domain in authorized_domains:
-                conn.close()
-                return True
-    else:
-        # Check all tenants to find which one(s) this email can access
-        cursor = conn.execute("""
-            SELECT tenant_id, name, authorized_emails, authorized_domains
-            FROM tenants
-            WHERE is_active = ?
-        """, (True,))
-        
-        authorized_tenants = []
-        for row in cursor.fetchall():
-            tenant_id = row[0]
-            tenant_name = row[1]
-            authorized_emails = json.loads(row[2]) if row[2] else []
-            authorized_domains = json.loads(row[3]) if row[3] else []
-            
-            # Check authorized emails
-            if email in authorized_emails:
-                authorized_tenants.append((tenant_id, tenant_name))
-                continue
-            
-            # Check authorized domains
-            domain = email.split('@')[1] if '@' in email else ''
-            if domain and domain in authorized_domains:
-                authorized_tenants.append((tenant_id, tenant_name))
-        
+        return False
+    finally:
         conn.close()
-        return authorized_tenants
-    
-    conn.close()
-    return False
 
 def require_auth(admin_only=False):
     """Decorator for authentication."""
@@ -476,7 +516,7 @@ def google_callback():
                 next_url = session.pop('next_url', None)
                 if next_url:
                     return redirect(next_url)
-                return redirect(url_for('tenant_detail', tenant_id=oauth_tenant_id))
+                return redirect(url_for('tenant_dashboard', tenant_id=oauth_tenant_id))
             
             # If not in users table, check legacy tenant admin config
             if is_tenant_admin(email, oauth_tenant_id):
@@ -496,7 +536,7 @@ def google_callback():
                 next_url = session.pop('next_url', None)
                 if next_url:
                     return redirect(next_url)
-                return redirect(url_for('tenant_detail', tenant_id=oauth_tenant_id))
+                return redirect(url_for('tenant_dashboard', tenant_id=oauth_tenant_id))
             
             # Check if super admin trying to access tenant
             if is_super_admin(email):
@@ -518,7 +558,7 @@ def google_callback():
                 next_url = session.pop('next_url', None)
                 if next_url:
                     return redirect(next_url)
-                return redirect(url_for('tenant_detail', tenant_id=oauth_tenant_id))
+                return redirect(url_for('tenant_dashboard', tenant_id=oauth_tenant_id))
             
             # Fall back to checking tenant config
             config = get_tenant_config_from_db(conn, oauth_tenant_id)
@@ -551,7 +591,7 @@ def google_callback():
                     next_url = session.pop('next_url', None)
                     if next_url:
                         return redirect(next_url)
-                    return redirect(url_for('tenant_detail', tenant_id=oauth_tenant_id))
+                    return redirect(url_for('tenant_dashboard', tenant_id=oauth_tenant_id))
             
             # Not authorized for this tenant
             return render_template('login.html', 
@@ -587,7 +627,7 @@ def google_callback():
                 next_url = session.pop('next_url', None)
                 if next_url:
                     return redirect(next_url)
-                return redirect(url_for('tenant_detail', tenant_id=tenant_id))
+                return redirect(url_for('tenant_dashboard', tenant_id=tenant_id))
             elif isinstance(tenant_access, list) and len(tenant_access) > 1:
                 # Multiple tenant access - let them choose
                 session['pre_auth_email'] = email
@@ -637,7 +677,7 @@ def select_tenant():
     session['username'] = session.pop('pre_auth_name')
     session.pop('available_tenants', None)
     
-    return redirect(url_for('tenant_detail', tenant_id=selected_tenant[0]))
+    return redirect(url_for('tenant_dashboard', tenant_id=selected_tenant[0]))
 
 @app.route('/logout')
 def logout():
@@ -704,7 +744,7 @@ def test_auth():
     session['username'] = test_user['name']
     
     conn.close()
-    return redirect(url_for('tenant_detail', tenant_id=tenant_id))
+    return redirect(url_for('tenant_dashboard', tenant_id=tenant_id))
 
 @app.route('/test/login')
 def test_login_form():
@@ -770,12 +810,7 @@ def test_login_form():
     </html>
     '''
 
-@app.route('/tenant/<tenant_id>')
-def tenant_root(tenant_id):
-    """Redirect to tenant login if not authenticated."""
-    if session.get('authenticated'):
-        return redirect(url_for('tenant_detail', tenant_id=tenant_id))
-    return redirect(url_for('tenant_login', tenant_id=tenant_id))
+# Route removed - using tenant_dashboard as the main route now
 
 @app.route('/health')
 def health():
@@ -788,7 +823,7 @@ def index():
     """Dashboard showing all tenants (super admin) or redirect to tenant page (tenant admin)."""
     # Tenant admins should go directly to their tenant page
     if session.get('role') == 'tenant_admin':
-        return redirect(url_for('tenant_detail', tenant_id=session.get('tenant_id')))
+        return redirect(url_for('tenant_dashboard', tenant_id=session.get('tenant_id')))
     
     # Super admins see all tenants
     conn = get_db_connection()
@@ -875,193 +910,6 @@ def update_settings():
     
     return redirect(url_for('settings'))
 
-@app.route('/tenant/<tenant_id>/manage')
-@require_auth()
-def tenant_detail(tenant_id):
-    """Show tenant details and configuration."""
-    # Check if tenant admin is trying to access another tenant
-    if session.get('role') == 'tenant_admin' and session.get('tenant_id') != tenant_id:
-        return "Access denied. You can only view your own tenant.", 403
-    
-    conn = get_db_connection()
-    
-    # Get tenant with all fields
-    cursor = conn.execute("""
-        SELECT tenant_id, name, subdomain, is_active, created_at,
-               ad_server, max_daily_budget, enable_aee_signals,
-               authorized_emails, authorized_domains, slack_webhook_url,
-               admin_token, auto_approve_formats, human_review_required,
-               slack_audit_webhook_url, hitl_webhook_url, policy_settings
-        FROM tenants WHERE tenant_id = ?
-    """, (tenant_id,))
-    row = cursor.fetchone()
-    if not row:
-        conn.close()
-        return "Tenant not found", 404
-    
-    tenant = {
-        'tenant_id': row[0],
-        'name': row[1],
-        'subdomain': row[2],
-        'is_active': row[3],
-        'created_at': row[4],
-        'ad_server': row[5],
-        'max_daily_budget': row[6],
-        'enable_aee_signals': row[7],
-        'authorized_emails': json.loads(row[8]) if row[8] else [],
-        'authorized_domains': json.loads(row[9]) if row[9] else [],
-        'slack_webhook_url': row[10],
-        'admin_token': row[11],
-        'auto_approve_formats': json.loads(row[12]) if row[12] else [],
-        'human_review_required': row[13],
-        'slack_audit_webhook_url': row[14],
-        'hitl_webhook_url': row[15],
-        'policy_settings': json.loads(row[16]) if row[16] else None
-    }
-    
-    # Get principals with platform mappings
-    cursor = conn.execute("""
-        SELECT principal_id, name, access_token, created_at, platform_mappings
-        FROM principals WHERE tenant_id = ?
-        ORDER BY created_at DESC
-    """, (tenant_id,))
-    principals = []
-    for row in cursor.fetchall():
-        # Parse platform_mappings JSON
-        platform_mappings = row[4]
-        if isinstance(platform_mappings, str):
-            platform_mappings = json.loads(platform_mappings)
-        
-        principals.append({
-            'principal_id': row[0],
-            'name': row[1],
-            'access_token': row[2],
-            'created_at': row[3],
-            'platform_mappings': platform_mappings or {}
-        })
-    
-    # Get products
-    cursor = conn.execute("""
-        SELECT product_id, name, delivery_type, cpm
-        FROM products WHERE tenant_id = ?
-    """, (tenant_id,))
-    products = []
-    for row in cursor.fetchall():
-        products.append({
-            'product_id': row[0],
-            'name': row[1],
-            'delivery_type': row[2],
-            'cpm': row[3]
-        })
-    
-    # Get operational stats
-    active_adapter = tenant['ad_server']  # Now we have a dedicated column for this
-    
-    # Get adapter configuration if exists
-    adapter_config = None
-    if active_adapter:
-        cursor = conn.execute("""
-            SELECT * FROM adapter_config 
-            WHERE tenant_id = ? AND adapter_type = ?
-        """, (tenant_id, active_adapter))
-        adapter_row = cursor.fetchone()
-        if adapter_row:
-            # Convert row to dict based on adapter type
-            if active_adapter == 'google_ad_manager':
-                adapter_config = {
-                    'network_code': adapter_row[3],  # gam_network_code (after mock_dry_run)
-                    'refresh_token': adapter_row[4],  # gam_refresh_token
-                    'company_id': adapter_row[5],     # gam_company_id
-                    'trafficker_id': adapter_row[6],  # gam_trafficker_id
-                    'manual_approval_required': adapter_row[7]  # gam_manual_approval_required
-                }
-            elif active_adapter == 'mock':
-                adapter_config = {
-                    'dry_run': adapter_row[2]  # mock_dry_run (position 2)
-                }
-            # Add other adapters as needed
-    
-    # Get active media buys count
-    cursor = conn.execute("""
-        SELECT COUNT(*) FROM media_buys 
-        WHERE tenant_id = ? AND status = 'active'
-    """, (tenant_id,))
-    active_media_buys = cursor.fetchone()[0]
-    
-    # Get total spend
-    cursor = conn.execute("""
-        SELECT SUM(budget) FROM media_buys 
-        WHERE tenant_id = ? AND status = 'active'
-    """, (tenant_id,))
-    total_active_spend = cursor.fetchone()[0] or 0
-    
-    # Get pending tasks count
-    cursor = conn.execute("""
-        SELECT COUNT(*) FROM tasks 
-        WHERE tenant_id = ? AND status = 'pending'
-    """, (tenant_id,))
-    pending_tasks = cursor.fetchone()[0]
-    
-    # Get user count
-    cursor = conn.execute("""
-        SELECT COUNT(*) FROM users 
-        WHERE tenant_id = ? AND is_active = TRUE
-    """, (tenant_id,))
-    active_users = cursor.fetchone()[0]
-    
-    conn.close()
-    
-    # Add operational stats to tenant
-    tenant['active_adapter'] = active_adapter
-    tenant['active_media_buys'] = active_media_buys
-    tenant['total_active_spend'] = total_active_spend
-    tenant['pending_tasks'] = pending_tasks
-    tenant['active_users'] = active_users
-    
-    
-    # Get the current port from environment
-    admin_port = int(os.environ.get('ADMIN_UI_PORT', 8001))
-    
-    # Calculate tab completion status
-    tab_status = {
-        'adserver': bool(active_adapter),
-        'principals': len(principals) > 0,
-        'products': len(products) > 0,
-        'formats': False,  # Will check below
-        'integrations': True,  # Integrations are optional
-        'users': active_users > 0,
-        'authorization': True,  # Authorization tab is always complete (set during creation)
-        'config': True,  # Config tab is always available
-        'tokens': True  # API tokens tab shows principals which we already track
-    }
-    
-    # Check if any creative formats exist
-    conn = get_db_connection()
-    cursor = conn.execute("""
-        SELECT COUNT(*) FROM creative_formats 
-        WHERE tenant_id = ?
-    """, (tenant_id,))
-    format_count = cursor.fetchone()[0]
-    tab_status['formats'] = format_count > 0
-    conn.close()
-    
-    # Check overall setup completion
-    setup_complete = (
-        tab_status['adserver'] and 
-        tab_status['principals'] and 
-        tab_status['products'] and 
-        tab_status['formats']
-    )
-    
-    return render_template('tenant_detail.html', 
-                         tenant=tenant, 
-                         principals=principals,
-                         products=products,
-                         adapter_config=adapter_config,
-                         admin_port=admin_port,
-                         tab_status=tab_status,
-                         setup_complete=setup_complete)
-
 @app.route('/tenant/<tenant_id>/update', methods=['POST'])
 @require_auth()
 def update_tenant(tenant_id):
@@ -1096,11 +944,11 @@ def update_tenant(tenant_id):
         conn.connection.commit()
         flash('Configuration updated successfully', 'success')
         conn.close()
-        return redirect(url_for('tenant_detail', tenant_id=tenant_id))
+        return redirect(url_for('tenant_dashboard', tenant_id=tenant_id))
     except Exception as e:
         conn.close()
         flash(f"Error updating configuration: {str(e)}", 'error')
-        return redirect(url_for('tenant_detail', tenant_id=tenant_id))
+        return redirect(url_for('tenant_dashboard', tenant_id=tenant_id))
 
 @app.route('/tenant/<tenant_id>/update_slack', methods=['POST'])
 @require_auth()
@@ -1130,7 +978,7 @@ def update_slack(tenant_id):
         if errors:
             for field, error in errors.items():
                 flash(f"{field}: {error}", 'error')
-            return redirect(url_for('tenant_detail', tenant_id=tenant_id))
+            return redirect(url_for('tenant_dashboard', tenant_id=tenant_id))
         
         conn = get_db_connection()
         
@@ -1152,7 +1000,7 @@ def update_slack(tenant_id):
         conn.close()
         
         flash('Slack configuration updated successfully', 'success')
-        return redirect(url_for('tenant_detail', tenant_id=tenant_id))
+        return redirect(url_for('tenant_dashboard', tenant_id=tenant_id))
     except Exception as e:
         if 'conn' in locals():
             conn.close()
@@ -1292,7 +1140,7 @@ def create_tenant():
             conn.close()
             
             flash(f'Tenant "{tenant_name}" created successfully! The publisher should log in and start with the Ad Server Setup tab to complete configuration.', 'success')
-            return redirect(url_for('tenant_detail', tenant_id=tenant_id))
+            return redirect(url_for('tenant_dashboard', tenant_id=tenant_id))
             
         except Exception as e:
             app.logger.error(f"Error creating tenant: {str(e)}")
@@ -1300,6 +1148,808 @@ def create_tenant():
             return render_template('create_tenant.html', error=str(e))
     
     return render_template('create_tenant.html')
+
+# New Dashboard Routes (v2)
+@app.route('/tenant/<tenant_id>')
+@require_auth()
+def tenant_dashboard(tenant_id):
+    """Show new operational dashboard for tenant."""
+    # Check access
+    if session.get('role') == 'tenant_admin' and session.get('tenant_id') != tenant_id:
+        return "Access denied. You can only view your own tenant.", 403
+    
+    conn = get_db_connection()
+    
+    # Get tenant basic info
+    cursor = conn.execute("""
+        SELECT tenant_id, name, subdomain, is_active, ad_server
+        FROM tenants WHERE tenant_id = ?
+    """, (tenant_id,))
+    row = cursor.fetchone()
+    if not row:
+        conn.close()
+        return "Tenant not found", 404
+    
+    tenant = {
+        'tenant_id': row[0],
+        'name': row[1],
+        'subdomain': row[2],
+        'is_active': row[3],
+        'ad_server': row[4]
+    }
+    
+    # Get metrics
+    metrics = {}
+    
+    # Determine database type for SQL syntax
+    from db_config import DatabaseConfig
+    db_config = DatabaseConfig.get_db_config()
+    is_sqlite = db_config["type"] == "sqlite"
+    ph = "?" if is_sqlite else "%s"
+    
+    # Date calculations based on database type
+    if is_sqlite:
+        interval_30_days = "datetime('now', '-30 days')"
+        interval_60_days = "datetime('now', '-60 days')"
+        interval_3_days = "datetime('now', '-3 days')"
+        interval_7_days = "datetime('now', '-7 days')"
+    else:
+        interval_30_days = "CURRENT_TIMESTAMP - INTERVAL '30 days'"
+        interval_60_days = "CURRENT_TIMESTAMP - INTERVAL '60 days'"
+        interval_3_days = "CURRENT_TIMESTAMP - INTERVAL '3 days'"
+        interval_7_days = "CURRENT_TIMESTAMP - INTERVAL '7 days'"
+    
+    # Total revenue (30 days) - using actual budget column
+    cursor = conn.execute(f"""
+        SELECT COALESCE(SUM(budget), 0) as total_revenue
+        FROM media_buys 
+        WHERE tenant_id = {ph} 
+        AND status IN ('active', 'completed')
+        AND created_at >= {interval_30_days}
+    """, (tenant_id,))
+    result = cursor.fetchone()
+    metrics['total_revenue'] = (result[0] if result else 0) or 0
+    
+    # Revenue change vs previous period
+    cursor = conn.execute(f"""
+        SELECT COALESCE(SUM(budget), 0) as prev_revenue
+        FROM media_buys 
+        WHERE tenant_id = {ph} 
+        AND status IN ('active', 'completed')
+        AND created_at >= {interval_60_days}
+        AND created_at < {interval_30_days}
+    """, (tenant_id,))
+    prev_revenue_result = cursor.fetchone()[0]
+    prev_revenue = float(prev_revenue_result) if prev_revenue_result else 0.0
+    if prev_revenue > 0:
+        metrics['revenue_change'] = ((metrics['total_revenue'] - prev_revenue) / prev_revenue) * 100
+    else:
+        metrics['revenue_change'] = 0
+    
+    # Add absolute value for display
+    metrics['revenue_change_abs'] = abs(metrics['revenue_change'])
+    
+    # Active media buys
+    cursor = conn.execute(f"""
+        SELECT COUNT(*) FROM media_buys 
+        WHERE tenant_id = {ph} AND status = 'active'
+    """, (tenant_id,))
+    result = cursor.fetchone()
+    metrics['active_buys'] = result[0] if result else 0
+    
+    # Pending media buys
+    cursor = conn.execute(f"""
+        SELECT COUNT(*) FROM media_buys 
+        WHERE tenant_id = {ph} AND status = 'pending'
+    """, (tenant_id,))
+    result = cursor.fetchone()
+    metrics['pending_buys'] = result[0] if result else 0
+    
+    # Open tasks - workflow_steps doesn't have tenant_id, so just set to 0
+    metrics['open_tasks'] = 0
+    
+    # Overdue tasks - workflow_steps doesn't have tenant_id, so just set to 0
+    metrics['overdue_tasks'] = 0
+    
+    # Active advertisers (principals with activity in last 30 days)
+    cursor = conn.execute(f"""
+        SELECT COUNT(DISTINCT principal_id) 
+        FROM media_buys 
+        WHERE tenant_id = {ph} 
+        AND created_at >= {interval_30_days}
+    """, (tenant_id,))
+    result = cursor.fetchone()
+    metrics['active_advertisers'] = result[0] if result else 0
+    
+    # Total advertisers
+    cursor = conn.execute(f"""
+        SELECT COUNT(*) FROM principals WHERE tenant_id = {ph}
+    """, (tenant_id,))
+    result = cursor.fetchone()
+    metrics['total_advertisers'] = result[0] if result else 0
+    
+    # Get recent media buys
+    cursor = conn.execute(f"""
+        SELECT 
+            mb.media_buy_id,
+            mb.principal_id,
+            mb.advertiser_name,
+            mb.status,
+            mb.budget,
+            0 as spend,  -- TODO: Calculate actual spend
+            mb.created_at
+        FROM media_buys mb
+        WHERE mb.tenant_id = {ph}
+        ORDER BY mb.created_at DESC
+        LIMIT 10
+    """, (tenant_id,))
+    
+    recent_media_buys = []
+    for row in cursor.fetchall():
+        # Calculate relative time
+        created_at = datetime.fromisoformat(row[6].replace('Z', '+00:00')) if row[6] else datetime.now(timezone.utc)
+        now = datetime.now(timezone.utc)
+        delta = now - created_at
+        
+        if delta.days > 0:
+            relative_time = f"{delta.days}d ago"
+        elif delta.seconds > 3600:
+            relative_time = f"{delta.seconds // 3600}h ago"
+        else:
+            relative_time = f"{delta.seconds // 60}m ago"
+        
+        recent_media_buys.append({
+            'media_buy_id': row[0],
+            'principal_id': row[1],
+            'advertiser_name': row[2] or 'Unknown',
+            'status': row[3],
+            'budget': row[4],
+            'spend': row[5],
+            'created_at_relative': relative_time
+        })
+    
+    # Get product count
+    cursor = conn.execute(f"""
+        SELECT COUNT(*) FROM products WHERE tenant_id = {ph}
+    """, (tenant_id,))
+    result = cursor.fetchone()
+    product_count = result[0] if result else 0
+    
+    # Get pending tasks - workflow_steps doesn't have tenant_id, so return empty list
+    pending_tasks = []
+    
+    # Chart data for revenue by advertiser (last 7 days)
+    cursor = conn.execute(f"""
+        SELECT 
+            mb.advertiser_name,
+            SUM(mb.budget) as revenue
+        FROM media_buys mb
+        WHERE mb.tenant_id = {ph}
+        AND mb.created_at >= {interval_7_days}
+        AND mb.status IN ('active', 'completed')
+        GROUP BY mb.advertiser_name
+        ORDER BY revenue DESC
+        LIMIT 10
+    """, (tenant_id,))
+    
+    chart_labels = []
+    chart_data = []
+    for row in cursor.fetchall():
+        chart_labels.append(row[0] or 'Unknown')
+        chart_data.append(float(row[1]))
+    
+    conn.close()
+    
+    # Get admin port from environment
+    admin_port = os.environ.get('ADMIN_UI_PORT', '8001')
+    
+    return render_template('tenant_dashboard.html',
+                         tenant=tenant,
+                         metrics=metrics,
+                         recent_media_buys=recent_media_buys,
+                         product_count=product_count,
+                         pending_tasks=pending_tasks,
+                         chart_labels=chart_labels,
+                         chart_data=chart_data,
+                         admin_port=admin_port)
+
+@app.route('/tenant/<tenant_id>/settings')
+@app.route('/tenant/<tenant_id>/settings/<section>')
+@require_auth()
+def tenant_settings(tenant_id, section=None):
+    """Show tenant settings page."""
+    # Check access
+    if session.get('role') == 'tenant_admin' and session.get('tenant_id') != tenant_id:
+        return "Access denied. You can only view your own tenant.", 403
+    
+    conn = get_db_connection()
+    
+    # Get full tenant info
+    cursor = conn.execute("""
+        SELECT * FROM tenants WHERE tenant_id = ?
+    """, (tenant_id,))
+    row = cursor.fetchone()
+    if not row:
+        conn.close()
+        return "Tenant not found", 404
+    
+    # Convert row to dict
+    tenant = dict(zip([col[0] for col in cursor.description], row))
+    
+    # Add active_adapter as alias for ad_server for template compatibility
+    tenant['active_adapter'] = tenant.get('ad_server')
+    
+    # Parse JSON fields
+    if tenant.get('authorized_emails'):
+        tenant['authorized_emails'] = json.loads(tenant['authorized_emails']) if isinstance(tenant['authorized_emails'], str) else tenant['authorized_emails']
+    if tenant.get('authorized_domains'):
+        tenant['authorized_domains'] = json.loads(tenant['authorized_domains']) if isinstance(tenant['authorized_domains'], str) else tenant['authorized_domains']
+    
+    # Get adapter config from adapter_config table
+    adapter_config = {}
+    if tenant.get('ad_server'):
+        cursor = conn.execute("""
+            SELECT * FROM adapter_config 
+            WHERE tenant_id = ? AND adapter_type = ?
+        """, (tenant_id, tenant['ad_server']))
+        adapter_row = cursor.fetchone()
+        if adapter_row:
+            # Convert row to dict based on adapter type
+            if tenant['ad_server'] == 'google_ad_manager':
+                adapter_config = {
+                    'network_code': adapter_row[3],  # gam_network_code
+                    'refresh_token': adapter_row[4],  # gam_refresh_token
+                    'company_id': adapter_row[5],     # gam_company_id
+                    'trafficker_id': adapter_row[6],  # gam_trafficker_id
+                    'manual_approval_required': adapter_row[7]  # gam_manual_approval_required
+                }
+            elif tenant['ad_server'] == 'mock':
+                adapter_config = {
+                    'dry_run': adapter_row[2]  # mock_dry_run
+                }
+            # Add other adapters as needed
+    
+    # Get counts
+    cursor = conn.execute("SELECT COUNT(*) FROM products WHERE tenant_id = ?", (tenant_id,))
+    result = cursor.fetchone()
+    product_count = result[0] if result else 0
+    
+    # Products don't have is_active column - all products are considered active
+    active_products = product_count
+    draft_products = 0
+    
+    cursor = conn.execute("SELECT COUNT(*) FROM principals WHERE tenant_id = ?", (tenant_id,))
+    result = cursor.fetchone()
+    advertiser_count = result[0] if result else 0
+    
+    # Use PostgreSQL-compatible syntax (CURRENT_TIMESTAMP - INTERVAL)
+    db_config = DatabaseConfig.get_db_config()
+    if db_config['type'] == 'postgresql':
+        cursor = conn.execute("""
+            SELECT COUNT(DISTINCT principal_id) 
+            FROM media_buys 
+            WHERE tenant_id = %s 
+            AND created_at >= CURRENT_TIMESTAMP - INTERVAL '30 days'
+        """, (tenant_id,))
+    else:
+        cursor = conn.execute("""
+            SELECT COUNT(DISTINCT principal_id) 
+            FROM media_buys 
+            WHERE tenant_id = ? 
+            AND created_at >= datetime('now', '-30 days')
+        """, (tenant_id,))
+    result = cursor.fetchone()
+    active_advertisers = result[0] if result else 0
+    
+    # Get creative formats (auto_approve column doesn't exist, default to 0)
+    if db_config['type'] == 'postgresql':
+        cursor = conn.execute("""
+            SELECT format_id, name, width, height, 0 as auto_approve
+            FROM creative_formats 
+            WHERE tenant_id = %s OR tenant_id IS NULL
+            ORDER BY name
+        """, (tenant_id,))
+    else:
+        cursor = conn.execute("""
+            SELECT format_id, name, width, height, 0 as auto_approve
+            FROM creative_formats 
+            WHERE tenant_id = ? OR tenant_id IS NULL
+            ORDER BY name
+        """, (tenant_id,))
+    
+    creative_formats = []
+    for row in cursor.fetchall():
+        creative_formats.append({
+            'id': row[0],
+            'name': row[1],
+            'dimensions': f"{row[2]}x{row[3]}" if row[2] and row[3] else 'Variable',
+            'auto_approve': row[4]
+        })
+    
+    # Format config as JSON for advanced editing
+    try:
+        config = json.loads(tenant.get('config', '{}')) if isinstance(tenant.get('config'), str) else tenant.get('config', {})
+        tenant['config_json'] = json.dumps(config, indent=2)
+    except:
+        tenant['config_json'] = '{}'
+    
+    # Get last sync time if GAM
+    last_sync_time = None
+    if tenant.get('ad_server') == 'google_ad_manager':
+        try:
+            cursor = conn.execute("""
+                SELECT MAX(sync_completed_at) 
+                FROM gam_inventory_sync 
+                WHERE tenant_id = ?
+            """, (tenant_id,))
+            sync_row = cursor.fetchone()
+            if sync_row and sync_row[0]:
+                last_sync = datetime.fromisoformat(sync_row[0].replace('Z', '+00:00'))
+                now = datetime.now(timezone.utc)
+                delta = now - last_sync
+                if delta.days > 0:
+                    last_sync_time = f"{delta.days} days ago"
+                elif delta.seconds > 3600:
+                    last_sync_time = f"{delta.seconds // 3600} hours ago"
+                else:
+                    last_sync_time = f"{delta.seconds // 60} minutes ago"
+        except:
+            # Table might not exist yet
+            last_sync_time = None
+    
+    conn.close()
+    
+    # Get admin port from environment
+    admin_port = os.environ.get('ADMIN_UI_PORT', '8001')
+    
+    return render_template('tenant_settings.html',
+                         tenant=tenant,
+                         adapter_config=adapter_config,
+                         product_count=product_count,
+                         active_products=active_products,
+                         draft_products=draft_products,
+                         advertiser_count=advertiser_count,
+                         active_advertisers=active_advertisers,
+                         creative_formats=creative_formats,
+                         last_sync_time=last_sync_time,
+                         admin_port=admin_port,
+                         section=section)
+
+@app.route('/api/tenant/<tenant_id>/revenue-chart')
+@require_auth()
+def revenue_chart_api(tenant_id):
+    """API endpoint for revenue chart data."""
+    period = request.args.get('period', '7d')
+    
+    # Parse period
+    if period == '7d':
+        days = 7
+    elif period == '30d':
+        days = 30
+    elif period == '90d':
+        days = 90
+    else:
+        days = 7
+    
+    conn = get_db_connection()
+    
+    cursor = conn.execute("""
+        SELECT 
+            p.name,
+            SUM(
+                CASE 
+                    WHEN mb.config IS NOT NULL AND json_extract(mb.config, '$.budget') IS NOT NULL 
+                    THEN CAST(json_extract(mb.config, '$.budget') AS REAL)
+                    ELSE 0
+                END
+            ) as revenue
+        FROM media_buys mb
+        LEFT JOIN principals p ON mb.principal_id = p.principal_id AND mb.tenant_id = p.tenant_id
+        WHERE mb.tenant_id = ?
+        AND mb.created_at >= datetime('now', '-' || ? || ' days')
+        AND mb.status IN ('active', 'completed')
+        GROUP BY p.name
+        ORDER BY revenue DESC
+        LIMIT 10
+    """, (tenant_id, days))
+    
+    labels = []
+    values = []
+    for row in cursor.fetchall():
+        labels.append(row[0] or 'Unknown')
+        values.append(float(row[1]))
+    
+    conn.close()
+    
+    return jsonify({
+        'labels': labels,
+        'values': values
+    })
+
+# Settings form handlers
+@app.route('/tenant/<tenant_id>/settings/general', methods=['POST'])
+@require_auth()
+def update_general_settings(tenant_id):
+    """Update general tenant settings."""
+    if session.get('role') == 'viewer':
+        return "Access denied", 403
+    
+    conn = get_db_connection()
+    
+    # Update tenant
+    conn.execute("""
+        UPDATE tenants SET
+            name = ?,
+            max_daily_budget = ?,
+            enable_aee_signals = ?,
+            human_review_required = ?
+        WHERE tenant_id = ?
+    """, (
+        request.form.get('name'),
+        request.form.get('max_daily_budget', type=float),
+        'enable_aee_signals' in request.form,
+        'human_review_required' in request.form,
+        tenant_id
+    ))
+    
+    conn.commit()
+    conn.close()
+    
+    flash('General settings updated successfully', 'success')
+    return redirect(url_for('tenant_settings', tenant_id=tenant_id, section='general'))
+
+@app.route('/tenant/<tenant_id>/settings/adapter', methods=['POST'])
+@require_auth()
+def update_adapter_settings(tenant_id):
+    """Update the active adapter for a tenant."""
+    if session.get('role') == 'viewer':
+        return "Access denied", 403
+    
+    # Check tenant access
+    if session.get('role') == 'tenant_admin' and session.get('tenant_id') != tenant_id:
+        return "Access denied. You can only modify your own tenant.", 403
+    
+    try:
+        data = request.get_json()
+        new_adapter = data.get('adapter')
+        
+        # Validate adapter choice
+        valid_adapters = ['mock', 'google_ad_manager', 'kevel', 'triton', 'xandr']
+        if new_adapter not in valid_adapters:
+            return f"Invalid adapter: {new_adapter}", 400
+        
+        conn = get_db_connection()
+        
+        # Update the tenant's active adapter
+        conn.execute("""
+            UPDATE tenants 
+            SET ad_server = ?
+            WHERE tenant_id = ?
+        """, (new_adapter, tenant_id))
+        
+        conn.commit()
+        conn.close()
+        
+        app.logger.info(f"Tenant {tenant_id} switched adapter to {new_adapter}")
+        return "Adapter updated successfully", 200
+        
+    except Exception as e:
+        app.logger.error(f"Error updating adapter for tenant {tenant_id}: {e}")
+        return f"Error updating adapter: {str(e)}", 500
+
+@app.route('/api/oauth/status', methods=['GET'])
+@require_auth()
+def oauth_status():
+    """Check if OAuth credentials are properly configured for GAM."""
+    try:
+        # Check for GAM OAuth credentials in superadmin_config table (as per original implementation)
+        conn = get_db_connection()
+        
+        cursor = conn.execute(
+            "SELECT config_value FROM superadmin_config WHERE config_key = 'gam_oauth_client_id'"
+        )
+        client_id_row = cursor.fetchone()
+        
+        cursor = conn.execute(
+            "SELECT config_value FROM superadmin_config WHERE config_key = 'gam_oauth_client_secret'"
+        )
+        client_secret_row = cursor.fetchone()
+        
+        conn.close()
+        
+        if client_id_row and client_id_row[0] and client_secret_row and client_secret_row[0]:
+            # Credentials exist in database
+            client_id = client_id_row[0]
+            return jsonify({
+                'configured': True,
+                'client_id_prefix': client_id[:20] if len(client_id) > 20 else client_id,
+                'has_secret': True,
+                'source': 'database'
+            })
+        else:
+            # No credentials found in database
+            return jsonify({
+                'configured': False,
+                'error': 'GAM OAuth credentials not configured in superadmin settings.',
+                'help': 'Super admins can configure GAM OAuth credentials in the superadmin settings page.'
+            })
+            
+    except Exception as e:
+        app.logger.error(f"Error checking OAuth status: {e}")
+        return jsonify({
+            'configured': False,
+            'error': f'Error checking OAuth configuration: {str(e)}'
+        }), 500
+
+@app.route('/tenant/<tenant_id>/gam/detect-network', methods=['POST'])
+@require_auth()
+def detect_gam_network(tenant_id):
+    """Auto-detect GAM network code from refresh token."""
+    if session.get('role') == 'viewer':
+        return jsonify({'success': False, 'error': 'Access denied'}), 403
+    
+    # Check tenant access
+    if session.get('role') == 'tenant_admin' and session.get('tenant_id') != tenant_id:
+        return jsonify({'success': False, 'error': 'Access denied'}), 403
+    
+    try:
+        data = request.get_json()
+        refresh_token = data.get('refresh_token')
+        
+        if not refresh_token:
+            return jsonify({'success': False, 'error': 'Refresh token required'}), 400
+        
+        # Create a temporary GAM client with just the refresh token
+        from googleads import oauth2, ad_manager
+        
+        # Get OAuth credentials from superadmin_config table (as per original implementation)
+        conn = get_db_connection()
+        
+        # Get GAM OAuth client credentials from superadmin config
+        cursor = conn.execute(
+            "SELECT config_value FROM superadmin_config WHERE config_key = 'gam_oauth_client_id'"
+        )
+        client_id_row = cursor.fetchone()
+        
+        cursor = conn.execute(
+            "SELECT config_value FROM superadmin_config WHERE config_key = 'gam_oauth_client_secret'"
+        )
+        client_secret_row = cursor.fetchone()
+        
+        conn.close()
+        
+        if not client_id_row or not client_id_row[0]:
+            return jsonify({
+                'success': False,
+                'error': 'GAM OAuth Client ID not configured. Please configure it in superadmin settings.'
+            }), 500
+        
+        if not client_secret_row or not client_secret_row[0]:
+            return jsonify({
+                'success': False,
+                'error': 'GAM OAuth Client Secret not configured. Please configure it in superadmin settings.'
+            }), 500
+        
+        client_id = client_id_row[0]
+        client_secret = client_secret_row[0]
+        
+        # Create OAuth2 client with refresh token
+        oauth2_client = oauth2.GoogleRefreshTokenClient(
+            client_id=client_id,
+            client_secret=client_secret,
+            refresh_token=refresh_token
+        )
+        
+        # Test if credentials are valid
+        try:
+            oauth2_client.Refresh()
+        except Exception as e:
+            return jsonify({
+                'success': False,
+                'error': f'Invalid refresh token: {str(e)}'
+            }), 400
+        
+        # Create GAM client
+        client = ad_manager.AdManagerClient(
+            oauth2_client,
+            "AdCP-Sales-Agent"
+        )
+        
+        # Get network service and retrieve network info
+        network_service = client.GetService('NetworkService', version='v202408')
+        
+        try:
+            # Try getAllNetworks first (doesn't require network_code)
+            try:
+                all_networks = network_service.getAllNetworks()
+                if all_networks and len(all_networks) > 0:
+                    # Use the first network (most users have access to only one)
+                    network = all_networks[0]
+                    
+                    # Validate network response structure
+                    is_valid, error_msg = validate_gam_network_response(network)
+                    if not is_valid:
+                        app.logger.error(f"Invalid GAM network response: {error_msg}")
+                        return jsonify({
+                            'success': False,
+                            'error': f'Invalid network response from GAM: {error_msg}'
+                        }), 500
+                    
+                    # Also get the current user ID to use as trafficker_id
+                    trafficker_id = None
+                    try:
+                        # Set the network code in the client so we can get user info
+                        client.network_code = str(network['networkCode'])
+                        user_service = client.GetService('UserService', version='v202408')
+                        current_user = user_service.getCurrentUser()
+                        
+                        if current_user:
+                            # Validate user response
+                            is_valid, error_msg = validate_gam_user_response(current_user)
+                            if is_valid:
+                                trafficker_id = str(current_user['id'])
+                                app.logger.info(f"Detected current user ID: {trafficker_id}")
+                            else:
+                                app.logger.warning(f"Invalid user response: {error_msg}")
+                    except Exception as e:
+                        app.logger.warning(f"Could not get current user: {e}")
+                    
+                    return jsonify({
+                        'success': True,
+                        'network_code': str(network['networkCode']),
+                        'network_name': network['displayName'],
+                        'network_id': str(network['id']),
+                        'network_count': len(all_networks),
+                        'trafficker_id': trafficker_id
+                    })
+            except AttributeError:
+                # getAllNetworks might not be available in this GAM version
+                pass
+            
+            # If getAllNetworks didn't work, we can't get the network without a network_code
+            return jsonify({
+                'success': False,
+                'error': 'Unable to retrieve network information. The getAllNetworks() API is not available and getCurrentNetwork() requires a network code.'
+            }), 400
+            
+        except Exception as e:
+            app.logger.error(f"Failed to get network info: {e}")
+            return jsonify({
+                'success': False,
+                'error': f'Failed to retrieve network information: {str(e)}'
+            }), 500
+            
+    except Exception as e:
+        app.logger.error(f"Error detecting GAM network for tenant {tenant_id}: {e}")
+        return jsonify({
+            'success': False,
+            'error': f'Error detecting network: {str(e)}'
+        }), 500
+
+@app.route('/tenant/<tenant_id>/gam/configure', methods=['POST'])
+@require_auth()
+def configure_gam(tenant_id):
+    """Save GAM configuration for a tenant."""
+    if session.get('role') == 'viewer':
+        return jsonify({'success': False, 'error': 'Access denied'}), 403
+    
+    # Check tenant access
+    if session.get('role') == 'tenant_admin' and session.get('tenant_id') != tenant_id:
+        return jsonify({'success': False, 'error': 'Access denied'}), 403
+    
+    try:
+        data = request.get_json()
+        
+        # Validate GAM configuration data
+        validation_errors = validate_gam_config(data)
+        if validation_errors:
+            return jsonify({'success': False, 'errors': validation_errors}), 400
+        
+        # Sanitize input data
+        network_code = str(data.get('network_code', '')).strip() if data.get('network_code') else None
+        refresh_token = data.get('refresh_token', '').strip()
+        trafficker_id = str(data.get('trafficker_id', '')).strip() if data.get('trafficker_id') else None
+        
+        # Log what we received (without exposing sensitive token)
+        app.logger.info(f"GAM config save - network_code: {network_code}, trafficker_id: {trafficker_id}, token_length: {len(refresh_token)}")
+        
+        # If network code or trafficker_id not provided, try to auto-detect them
+        # But for now, let's just log a warning
+        if not trafficker_id:
+            app.logger.warning(f"No trafficker_id provided for tenant {tenant_id}")
+        
+        conn = get_db_connection()
+        try:
+            # Check if ANY adapter config exists for this tenant
+            cursor = conn.execute("""
+                SELECT adapter_type FROM adapter_config 
+                WHERE tenant_id = ?
+            """, (tenant_id,))
+            
+            existing_config = cursor.fetchone()
+            
+            if existing_config:
+                # Check if it's already GAM config
+                if existing_config[0] == 'google_ad_manager':
+                    # Update existing GAM config
+                    conn.execute("""
+                        UPDATE adapter_config 
+                        SET gam_network_code = ?, gam_refresh_token = ?, gam_trafficker_id = ?, updated_at = CURRENT_TIMESTAMP
+                        WHERE tenant_id = ?
+                    """, (network_code, refresh_token, trafficker_id, tenant_id))
+                else:
+                    # Different adapter type exists, need to replace it
+                    # First delete the old config
+                    conn.execute("DELETE FROM adapter_config WHERE tenant_id = ?", (tenant_id,))
+                    # Then insert new GAM config
+                    conn.execute("""
+                        INSERT INTO adapter_config (
+                            tenant_id, adapter_type, gam_network_code, gam_refresh_token, gam_trafficker_id,
+                            created_at, updated_at
+                        ) VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                    """, (tenant_id, 'google_ad_manager', network_code, refresh_token, trafficker_id))
+            else:
+                # No existing config, insert new one
+                conn.execute("""
+                    INSERT INTO adapter_config (
+                        tenant_id, adapter_type, gam_network_code, gam_refresh_token, gam_trafficker_id,
+                        created_at, updated_at
+                    ) VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                """, (tenant_id, 'google_ad_manager', network_code, refresh_token, trafficker_id))
+            
+            # Always update the tenant's active adapter to GAM when configuring GAM
+            conn.execute("""
+                UPDATE tenants 
+                SET ad_server = 'google_ad_manager'
+                WHERE tenant_id = ?
+            """, (tenant_id,))
+            
+            conn.commit()
+        except Exception as e:
+            conn.rollback()
+            raise
+        finally:
+            conn.close()
+        
+        app.logger.info(f"GAM configuration saved for tenant {tenant_id}")
+        return jsonify({
+            'success': True,
+            'message': 'GAM configuration saved successfully',
+            'network_code': network_code
+        })
+        
+    except Exception as e:
+        app.logger.error(f"Error saving GAM config for tenant {tenant_id}: {e}")
+        return jsonify({
+            'success': False,
+            'error': f'Error saving configuration: {str(e)}'
+        }), 500
+
+@app.route('/tenant/<tenant_id>/settings/slack', methods=['POST'])
+@require_auth()
+def update_slack_settings(tenant_id):
+    """Update Slack integration settings."""
+    if session.get('role') == 'viewer':
+        return "Access denied", 403
+    
+    conn = get_db_connection()
+    
+    conn.execute("""
+        UPDATE tenants SET
+            slack_webhook_url = ?,
+            slack_audit_webhook_url = ?
+        WHERE tenant_id = ?
+    """, (
+        request.form.get('slack_webhook_url'),
+        request.form.get('slack_audit_webhook_url'),
+        tenant_id
+    ))
+    
+    conn.commit()
+    conn.close()
+    
+    flash('Slack settings updated successfully', 'success')
+    return redirect(url_for('tenant_settings', tenant_id=tenant_id, section='integrations'))
 
 # Targeting Browser Route
 @app.route('/tenant/<tenant_id>/targeting')
@@ -1860,29 +2510,39 @@ def workflows_dashboard(tenant_id):
         SELECT COUNT(*) FROM media_buys 
         WHERE tenant_id = ? AND status = 'active'
     """, (tenant_id,))
-    active_buys = active_buys_cursor.fetchone()[0]
+    result = active_buys_cursor.fetchone()
+    active_buys = result[0] if result else 0
     
-    # Pending tasks count
-    pending_tasks_cursor = conn.execute("""
-        SELECT COUNT(*) FROM tasks 
-        WHERE tenant_id = ? AND status = 'pending'
-    """, (tenant_id,))
-    pending_tasks = pending_tasks_cursor.fetchone()[0]
+    # Pending workflow steps count (tasks table was replaced by workflow system)
+    try:
+        pending_tasks_cursor = conn.execute("""
+            SELECT COUNT(*) FROM workflow_steps 
+            WHERE tenant_id = ? AND status = 'pending'
+        """, (tenant_id,))
+        result = pending_tasks_cursor.fetchone()
+        pending_tasks = result[0] if result else 0
+    except:
+        pending_tasks = 0
     
     # Completed today count
-    completed_today_cursor = conn.execute("""
-        SELECT COUNT(*) FROM tasks 
-        WHERE tenant_id = ? AND status = 'completed' 
-        AND DATE(completed_at) = DATE(?)
-    """, (tenant_id, today.isoformat()))
-    completed_today = completed_today_cursor.fetchone()[0]
+    try:
+        completed_today_cursor = conn.execute("""
+            SELECT COUNT(*) FROM workflow_steps 
+            WHERE tenant_id = ? AND status = 'completed' 
+            AND DATE(completed_at) = DATE(?)
+        """, (tenant_id, today.isoformat()))
+        result = completed_today_cursor.fetchone()
+        completed_today = result[0] if result else 0
+    except:
+        completed_today = 0
     
     # Total active spend
     total_spend_cursor = conn.execute("""
         SELECT SUM(budget) FROM media_buys 
         WHERE tenant_id = ? AND status = 'active'
     """, (tenant_id,))
-    total_spend = total_spend_cursor.fetchone()[0] or 0
+    result = total_spend_cursor.fetchone()
+    total_spend = (result[0] if result else 0) or 0
     
     summary = {
         'active_buys': active_buys,
@@ -1932,13 +2592,16 @@ def workflows_dashboard(tenant_id):
             'approved_by': row[14]
         })
     
-    # Get tasks
-    tasks_cursor = conn.execute("""
-        SELECT * FROM tasks 
-        WHERE tenant_id = ? 
-        ORDER BY created_at DESC 
-        LIMIT 100
-    """, (tenant_id,))
+    # Get workflow steps (tasks table was replaced by workflow system)
+    try:
+        tasks_cursor = conn.execute("""
+            SELECT * FROM workflow_steps 
+            WHERE tenant_id = ? 
+            ORDER BY created_at DESC 
+            LIMIT 100
+        """, (tenant_id,))
+    except:
+        tasks_cursor = []
     
     tasks = []
     for row in tasks_cursor:
@@ -2255,7 +2918,8 @@ def list_users(tenant_id):
     
     # Get tenant name
     cursor = conn.execute("SELECT name FROM tenants WHERE tenant_id = ?", (tenant_id,))
-    tenant_name = cursor.fetchone()[0]
+    result = cursor.fetchone()
+    tenant_name = result[0] if result else 'Unknown Tenant'
     
     conn.close()
     return render_template('users.html', users=users, tenant_id=tenant_id, tenant_name=tenant_name)
@@ -2401,7 +3065,7 @@ def update_principal_mappings(tenant_id, principal_id):
         conn.connection.commit()
         conn.close()
         
-        return redirect(url_for('tenant_detail', tenant_id=tenant_id) + '#principals')
+        return redirect(url_for('tenant_dashboard', tenant_id=tenant_id) + '#principals')
     except Exception as e:
         conn.close()
         return f"Error: {e}", 400
@@ -2552,11 +3216,11 @@ def setup_adapter(tenant_id):
         conn.close()
         
         flash('Ad server configuration updated successfully!', 'success')
-        return redirect(url_for('tenant_detail', tenant_id=tenant_id) + '#adserver')
+        return redirect(url_for('tenant_dashboard', tenant_id=tenant_id) + '#adserver')
     except Exception as e:
         conn.close()
         flash(f'Error updating adapter configuration: {str(e)}', 'error')
-        return redirect(url_for('tenant_detail', tenant_id=tenant_id) + '#adserver')
+        return redirect(url_for('tenant_dashboard', tenant_id=tenant_id) + '#adserver')
 
 @app.route('/tenant/<tenant_id>/principals/create', methods=['GET', 'POST'])
 @require_auth()
@@ -2636,7 +3300,7 @@ def create_principal(tenant_id):
             conn.connection.commit()
             conn.close()
             
-            return redirect(url_for('tenant_detail', tenant_id=tenant_id) + '#principals')
+            return redirect(url_for('tenant_dashboard', tenant_id=tenant_id) + '#principals')
         except Exception as e:
             conn.close()
             return render_template('create_principal.html', 
@@ -3644,22 +4308,27 @@ def policy_settings(tenant_id):
         })
     
     # Get pending policy review tasks
-    cursor = conn.execute("""
-        SELECT task_id, created_at, details
-        FROM tasks
-        WHERE tenant_id = ? AND task_type = 'policy_review' AND status = 'pending'
-        ORDER BY created_at DESC
-    """, (tenant_id,))
+    # Query workflow steps instead of tasks (tasks table was removed)
+    try:
+        cursor = conn.execute("""
+            SELECT step_id, created_at, data
+            FROM workflow_steps
+            WHERE tenant_id = ? AND step_type = 'policy_review' AND status = 'pending'
+            ORDER BY created_at DESC
+        """, (tenant_id,))
+    except:
+        cursor = None
     
     pending_reviews = []
-    for row in cursor.fetchall():
-        details = json.loads(row[2]) if row[2] else {}
-        pending_reviews.append({
-            'task_id': row[0],
-            'created_at': row[1],
-            'brief': details.get('brief', ''),
-            'advertiser': details.get('promoted_offering', '')
-        })
+    if cursor:
+        for row in cursor.fetchall():
+            details = json.loads(row[2]) if row[2] else {}
+            pending_reviews.append({
+                'task_id': row[0],
+                'created_at': row[1],
+                'brief': details.get('brief', ''),
+                'advertiser': details.get('promoted_offering', '')
+            })
     
     conn.close()
     
@@ -3767,11 +4436,14 @@ def review_policy_task(tenant_id, task_id):
             # Update task status
             new_status = 'approved' if action == 'approve' else 'rejected'
             
-            # Get task details
-            cursor = conn.execute("""
-                SELECT details FROM tasks
-                WHERE tenant_id = ? AND task_id = ?
-            """, (tenant_id, task_id))
+            # Get workflow step details (tasks table was replaced by workflow system)
+            try:
+                cursor = conn.execute("""
+                    SELECT data FROM workflow_steps
+                    WHERE tenant_id = ? AND step_id = ?
+                """, (tenant_id, task_id))
+            except:
+                cursor = None
             
             row = cursor.fetchone()
             if not row:
@@ -3783,10 +4455,11 @@ def review_policy_task(tenant_id, task_id):
             details['reviewed_by'] = session.get('email', 'unknown')
             details['reviewed_at'] = datetime.utcnow().isoformat()
             
+            # Update workflow step instead of task
             conn.execute("""
-                UPDATE tasks
-                SET status = ?, details = ?, completed_at = CURRENT_TIMESTAMP
-                WHERE tenant_id = ? AND task_id = ?
+                UPDATE workflow_steps
+                SET status = ?, data = ?, completed_at = CURRENT_TIMESTAMP
+                WHERE tenant_id = ? AND step_id = ?
             """, (new_status, json.dumps(details), tenant_id, task_id))
             
             # Log the review
@@ -3813,14 +4486,18 @@ def review_policy_task(tenant_id, task_id):
             return f"Error: {e}", 400
     
     # GET: Show review form
-    cursor = conn.execute("""
-        SELECT t.created_at, t.details, tn.name
-        FROM tasks t
-        JOIN tenants tn ON t.tenant_id = tn.tenant_id
-        WHERE t.tenant_id = ? AND t.task_id = ? AND t.task_type = 'policy_review'
-    """, (tenant_id, task_id))
+    # Query workflow steps instead of tasks
+    try:
+        cursor = conn.execute("""
+            SELECT w.created_at, w.data, tn.name
+            FROM workflow_steps w
+            JOIN tenants tn ON w.tenant_id = tn.tenant_id
+            WHERE w.tenant_id = ? AND w.step_id = ? AND w.step_type = 'policy_review'
+        """, (tenant_id, task_id))
+    except:
+        cursor = None
     
-    row = cursor.fetchone()
+    row = cursor.fetchone() if cursor else None
     if not row:
         conn.close()
         return "Task not found", 404
@@ -5505,6 +6182,54 @@ register_adapter_routes()
 # Register GAM inventory endpoints at module level
 register_inventory_endpoints(app)
 
+# WebSocket event handlers for activity feed
+@socketio.on('connect')
+def handle_connect():
+    """Handle WebSocket connection."""
+    tenant_id = request.args.get('tenant_id')
+    if not tenant_id:
+        return False  # Reject connection
+    
+    # Join the room for this tenant
+    join_room(f'tenant_{tenant_id}')
+    app.logger.info(f"WebSocket connected for tenant {tenant_id}")
+    
+    # Send recent activities from activity_feed
+    if tenant_id in activity_feed.recent_activities:
+        for activity in activity_feed.recent_activities[tenant_id]:
+            emit('activity', activity)
+
+@socketio.on('disconnect')
+def handle_disconnect():
+    """Handle WebSocket disconnection."""
+    tenant_id = request.args.get('tenant_id')
+    if tenant_id:
+        leave_room(f'tenant_{tenant_id}')
+        app.logger.info(f"WebSocket disconnected for tenant {tenant_id}")
+
+@socketio.on('subscribe')
+def handle_subscribe(data):
+    """Handle subscription to a tenant's activity feed."""
+    tenant_id = data.get('tenant_id')
+    if tenant_id:
+        join_room(f'tenant_{tenant_id}')
+        emit('subscribed', {'tenant_id': tenant_id})
+        
+        # Send recent activities
+        if tenant_id in activity_feed.recent_activities:
+            for activity in activity_feed.recent_activities[tenant_id]:
+                emit('activity', activity)
+
+# Function to broadcast activities from activity_feed to WebSocket clients
+def broadcast_activity_to_websocket(tenant_id: str, activity: dict):
+    """Broadcast activity to WebSocket clients in a tenant room."""
+    socketio.emit('activity', activity, room=f'tenant_{tenant_id}')
+
+# Register a callback with activity_feed to broadcast to WebSocket
+# Note: This is a simplified integration since activity_feed uses asyncio
+# In production, you might want to use a message queue or event system
+activity_feed.broadcast_to_websocket = broadcast_activity_to_websocket
+
 if __name__ == '__main__':
     # Create templates directory
     os.makedirs('templates', exist_ok=True)
@@ -5723,7 +6448,7 @@ def mcp_test_call():
     debug = os.environ.get('FLASK_DEBUG', '0') == '1'
     
     print(f"DEBUG: FLASK_DEBUG={os.environ.get('FLASK_DEBUG')}, debug={debug}")
-    print(f"Starting Admin UI with Google OAuth on port {port}")
+    print(f"Starting Admin UI with Google OAuth and WebSocket support on port {port}")
     print(f"Redirect URI should be: http://localhost:{port}/auth/google/callback")
     
     if not SUPER_ADMIN_EMAILS and not SUPER_ADMIN_DOMAINS:
@@ -5731,4 +6456,5 @@ def mcp_test_call():
         print("Set SUPER_ADMIN_EMAILS='email1@example.com,email2@example.com' or")
         print("Set SUPER_ADMIN_DOMAINS='example.com,company.com' in environment variables")
     
-    app.run(host='0.0.0.0', port=port, debug=debug)
+    # Use socketio.run instead of app.run to enable WebSocket support
+    socketio.run(app, host='0.0.0.0', port=port, debug=debug)

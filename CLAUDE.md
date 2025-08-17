@@ -825,6 +825,86 @@ The current setup runs all services on a single machine. For production scaling:
    fly ssh console -C "curl http://localhost:8001/health"
    ```
 
+## Database Migration Best Practices
+
+### CRITICAL: Never Modify Existing Migration Files
+
+**⚠️ ABSOLUTE RULE: NEVER modify a migration file that has been committed and may have run in production!**
+
+Once a migration file is created and committed, it becomes immutable. Modifying it can cause:
+- Database inconsistencies between environments
+- Failed deployments
+- Data corruption
+- Inability to roll back changes
+
+#### ✅ CORRECT: Create New Migrations
+```python
+# If migration 014 has an issue, create 015 to fix it
+# alembic/versions/015_fix_migration_issue.py
+def upgrade():
+    # Fix the issue here
+    if not column_exists('table', 'column'):
+        op.add_column('table', sa.Column('column', sa.String(100)))
+```
+
+#### ❌ WRONG: Modify Existing Migration
+```python
+# NEVER DO THIS to alembic/versions/014_original.py after it's committed!
+def upgrade():
+    # Adding "if exists" checks after the fact
+    if not table_exists('my_table'):  # DON'T ADD THIS LATER!
+        op.create_table('my_table', ...)
+```
+
+#### Migration Rules:
+1. **Test locally first**: Run migrations on a test database before committing
+2. **One-way only**: Migrations should work going forward, not be edited retroactively  
+3. **Create fix migrations**: If a migration fails, create a NEW migration to fix it
+4. **Check production state**: Always verify what migrations have run in production
+5. **Use safe operations**: In fix migrations, use conditional checks (see 015_handle_partial_schemas.py)
+
+#### Checking Migration Status:
+```bash
+# See which migrations have run
+sqlite3 adcp_local.db "SELECT * FROM alembic_version;"
+
+# PostgreSQL
+psql $DATABASE_URL -c "SELECT * FROM alembic_version;"
+```
+
+## Database Access Patterns
+
+### IMPORTANT: Standardized Database Access
+
+The codebase is transitioning to standardized database patterns. **Always use context managers**:
+
+#### ✅ CORRECT Pattern (Use This)
+```python
+from database_session import get_db_session
+from models import Tenant
+
+# For ORM operations (PREFERRED)
+with get_db_session() as session:
+    tenant = session.query(Tenant).filter_by(tenant_id=tenant_id).first()
+    if tenant:
+        tenant.name = "New Name"
+        session.commit()  # Explicit commit required
+```
+
+#### ❌ WRONG Pattern (Avoid)
+```python
+# DO NOT USE - Prone to connection leaks
+conn = get_db_connection()
+cursor = conn.execute(...)
+conn.close()  # May not be called on error
+```
+
+**Key Rules**:
+1. Always use `with get_db_session()` for new code
+2. Explicit commits required (`session.commit()`)
+3. Context manager handles cleanup automatically
+4. See `docs/database-patterns.md` for complete guide
+
 ## Common Operations
 
 ### Running the Server (Docker - Recommended)

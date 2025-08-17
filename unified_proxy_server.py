@@ -23,7 +23,7 @@ from admin_ui import app as flask_admin_app
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Initialize database on startup."""
-    init_db()
+    init_db(exit_on_error=True)  # Exit on error in production
     yield
 
 # Create unified FastAPI app
