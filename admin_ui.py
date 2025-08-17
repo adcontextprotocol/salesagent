@@ -14,7 +14,47 @@ from datetime import datetime, timezone
 from functools import wraps
 from authlib.integrations.flask_client import OAuth
 from db_config import get_db_connection, DatabaseConfig
-from validation import FormValidator, validate_form_data, sanitize_form_data
+from validation import FormValidator, validate_form_data, sanitize_form_data, validate_gam_config
+
+def validate_gam_network_response(network):
+    """Validate GAM network API response structure."""
+    if not network:
+        return False, "Network response is empty"
+    
+    # Check required fields
+    required_fields = ['networkCode', 'displayName', 'id']
+    for field in required_fields:
+        if field not in network:
+            return False, f"Missing required field: {field}"
+    
+    # Validate field types
+    try:
+        int(network['networkCode'])
+        int(network['id'])
+    except (ValueError, TypeError):
+        return False, "Network code and ID must be numeric"
+    
+    if not isinstance(network['displayName'], str):
+        return False, "Display name must be a string"
+    
+    return True, None
+
+def validate_gam_user_response(user):
+    """Validate GAM user API response structure."""
+    if not user:
+        return False, "User response is empty"
+    
+    # Check required fields
+    if 'id' not in user:
+        return False, "Missing user ID"
+    
+    # Validate ID is numeric
+    try:
+        int(user['id'])
+    except (ValueError, TypeError):
+        return False, "User ID must be numeric"
+    
+    return True, None
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -1925,6 +1965,15 @@ def detect_gam_network(tenant_id):
                     # Use the first network (most users have access to only one)
                     network = all_networks[0]
                     
+                    # Validate network response structure
+                    is_valid, error_msg = validate_gam_network_response(network)
+                    if not is_valid:
+                        app.logger.error(f"Invalid GAM network response: {error_msg}")
+                        return jsonify({
+                            'success': False,
+                            'error': f'Invalid network response from GAM: {error_msg}'
+                        }), 500
+                    
                     # Also get the current user ID to use as trafficker_id
                     trafficker_id = None
                     try:
@@ -1932,9 +1981,15 @@ def detect_gam_network(tenant_id):
                         client.network_code = str(network['networkCode'])
                         user_service = client.GetService('UserService', version='v202408')
                         current_user = user_service.getCurrentUser()
+                        
                         if current_user:
-                            trafficker_id = str(current_user['id'])
-                            app.logger.info(f"Detected current user ID: {trafficker_id}")
+                            # Validate user response
+                            is_valid, error_msg = validate_gam_user_response(current_user)
+                            if is_valid:
+                                trafficker_id = str(current_user['id'])
+                                app.logger.info(f"Detected current user ID: {trafficker_id}")
+                            else:
+                                app.logger.warning(f"Invalid user response: {error_msg}")
                     except Exception as e:
                         app.logger.warning(f"Could not get current user: {e}")
                     
@@ -1983,15 +2038,19 @@ def configure_gam(tenant_id):
     
     try:
         data = request.get_json()
-        network_code = data.get('network_code')
-        refresh_token = data.get('refresh_token')
-        trafficker_id = data.get('trafficker_id')
         
-        if not refresh_token:
-            return jsonify({'success': False, 'error': 'Refresh token required'}), 400
+        # Validate GAM configuration data
+        validation_errors = validate_gam_config(data)
+        if validation_errors:
+            return jsonify({'success': False, 'errors': validation_errors}), 400
         
-        # Log what we received
-        app.logger.info(f"GAM config save - network_code: {network_code}, trafficker_id: {trafficker_id}")
+        # Sanitize input data
+        network_code = str(data.get('network_code', '')).strip() if data.get('network_code') else None
+        refresh_token = data.get('refresh_token', '').strip()
+        trafficker_id = str(data.get('trafficker_id', '')).strip() if data.get('trafficker_id') else None
+        
+        # Log what we received (without exposing sensitive token)
+        app.logger.info(f"GAM config save - network_code: {network_code}, trafficker_id: {trafficker_id}, token_length: {len(refresh_token)}")
         
         # If network code or trafficker_id not provided, try to auto-detect them
         # But for now, let's just log a warning
@@ -1999,53 +2058,57 @@ def configure_gam(tenant_id):
             app.logger.warning(f"No trafficker_id provided for tenant {tenant_id}")
         
         conn = get_db_connection()
-        
-        # Check if ANY adapter config exists for this tenant
-        cursor = conn.execute("""
-            SELECT adapter_type FROM adapter_config 
-            WHERE tenant_id = ?
-        """, (tenant_id,))
-        
-        existing_config = cursor.fetchone()
-        
-        if existing_config:
-            # Check if it's already GAM config
-            if existing_config[0] == 'google_ad_manager':
-                # Update existing GAM config
-                conn.execute("""
-                    UPDATE adapter_config 
-                    SET gam_network_code = ?, gam_refresh_token = ?, gam_trafficker_id = ?, updated_at = CURRENT_TIMESTAMP
-                    WHERE tenant_id = ?
-                """, (network_code, refresh_token, trafficker_id, tenant_id))
+        try:
+            # Check if ANY adapter config exists for this tenant
+            cursor = conn.execute("""
+                SELECT adapter_type FROM adapter_config 
+                WHERE tenant_id = ?
+            """, (tenant_id,))
+            
+            existing_config = cursor.fetchone()
+            
+            if existing_config:
+                # Check if it's already GAM config
+                if existing_config[0] == 'google_ad_manager':
+                    # Update existing GAM config
+                    conn.execute("""
+                        UPDATE adapter_config 
+                        SET gam_network_code = ?, gam_refresh_token = ?, gam_trafficker_id = ?, updated_at = CURRENT_TIMESTAMP
+                        WHERE tenant_id = ?
+                    """, (network_code, refresh_token, trafficker_id, tenant_id))
+                else:
+                    # Different adapter type exists, need to replace it
+                    # First delete the old config
+                    conn.execute("DELETE FROM adapter_config WHERE tenant_id = ?", (tenant_id,))
+                    # Then insert new GAM config
+                    conn.execute("""
+                        INSERT INTO adapter_config (
+                            tenant_id, adapter_type, gam_network_code, gam_refresh_token, gam_trafficker_id,
+                            created_at, updated_at
+                        ) VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                    """, (tenant_id, 'google_ad_manager', network_code, refresh_token, trafficker_id))
             else:
-                # Different adapter type exists, need to replace it
-                # First delete the old config
-                conn.execute("DELETE FROM adapter_config WHERE tenant_id = ?", (tenant_id,))
-                # Then insert new GAM config
+                # No existing config, insert new one
                 conn.execute("""
                     INSERT INTO adapter_config (
                         tenant_id, adapter_type, gam_network_code, gam_refresh_token, gam_trafficker_id,
                         created_at, updated_at
                     ) VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
                 """, (tenant_id, 'google_ad_manager', network_code, refresh_token, trafficker_id))
-        else:
-            # No existing config, insert new one
+            
+            # Always update the tenant's active adapter to GAM when configuring GAM
             conn.execute("""
-                INSERT INTO adapter_config (
-                    tenant_id, adapter_type, gam_network_code, gam_refresh_token, gam_trafficker_id,
-                    created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-            """, (tenant_id, 'google_ad_manager', network_code, refresh_token, trafficker_id))
-        
-        # Always update the tenant's active adapter to GAM when configuring GAM
-        conn.execute("""
-            UPDATE tenants 
-            SET ad_server = 'google_ad_manager'
-            WHERE tenant_id = ?
-        """, (tenant_id,))
-        
-        conn.commit()
-        conn.close()
+                UPDATE tenants 
+                SET ad_server = 'google_ad_manager'
+                WHERE tenant_id = ?
+            """, (tenant_id,))
+            
+            conn.commit()
+        except Exception as e:
+            conn.rollback()
+            raise
+        finally:
+            conn.close()
         
         app.logger.info(f"GAM configuration saved for tenant {tenant_id}")
         return jsonify({
