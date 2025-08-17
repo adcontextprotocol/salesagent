@@ -1060,7 +1060,7 @@ def tenant_detail_old(tenant_id):
         tab_status['formats']
     )
     
-    return render_template('tenant_detail.html', 
+    return render_template('tenant_dashboard.html', 
                          tenant=tenant, 
                          principals=principals,
                          products=products,
@@ -1505,7 +1505,7 @@ def tenant_dashboard(tenant_id):
     # Get admin port from environment
     admin_port = os.environ.get('ADMIN_UI_PORT', '8001')
     
-    return render_template('tenant_dashboard_v2.html',
+    return render_template('tenant_dashboard.html',
                          tenant=tenant,
                          metrics=metrics,
                          recent_media_buys=recent_media_buys,
@@ -1547,15 +1547,29 @@ def tenant_settings(tenant_id, section=None):
     if tenant.get('authorized_domains'):
         tenant['authorized_domains'] = json.loads(tenant['authorized_domains']) if isinstance(tenant['authorized_domains'], str) else tenant['authorized_domains']
     
-    # Get adapter config if exists
+    # Get adapter config from adapter_config table
     adapter_config = {}
     if tenant.get('ad_server'):
-        # Parse adapter-specific config from tenant config
-        try:
-            config = json.loads(tenant.get('config', '{}')) if isinstance(tenant.get('config'), str) else tenant.get('config', {})
-            adapter_config = config.get('adapters', {}).get(tenant['ad_server'], {})
-        except:
-            adapter_config = {}
+        cursor = conn.execute("""
+            SELECT * FROM adapter_config 
+            WHERE tenant_id = ? AND adapter_type = ?
+        """, (tenant_id, tenant['ad_server']))
+        adapter_row = cursor.fetchone()
+        if adapter_row:
+            # Convert row to dict based on adapter type
+            if tenant['ad_server'] == 'google_ad_manager':
+                adapter_config = {
+                    'network_code': adapter_row[3],  # gam_network_code
+                    'refresh_token': adapter_row[4],  # gam_refresh_token
+                    'company_id': adapter_row[5],     # gam_company_id
+                    'trafficker_id': adapter_row[6],  # gam_trafficker_id
+                    'manual_approval_required': adapter_row[7]  # gam_manual_approval_required
+                }
+            elif tenant['ad_server'] == 'mock':
+                adapter_config = {
+                    'dry_run': adapter_row[2]  # mock_dry_run
+                }
+            # Add other adapters as needed
     
     # Get counts
     cursor = conn.execute("SELECT COUNT(*) FROM products WHERE tenant_id = ?", (tenant_id,))
@@ -1781,6 +1795,271 @@ def update_adapter_settings(tenant_id):
     except Exception as e:
         app.logger.error(f"Error updating adapter for tenant {tenant_id}: {e}")
         return f"Error updating adapter: {str(e)}", 500
+
+@app.route('/api/oauth/status', methods=['GET'])
+@require_auth()
+def oauth_status():
+    """Check if OAuth credentials are properly configured for GAM."""
+    try:
+        # Check for GAM OAuth credentials in superadmin_config table (as per original implementation)
+        conn = get_db_connection()
+        
+        cursor = conn.execute(
+            "SELECT config_value FROM superadmin_config WHERE config_key = 'gam_oauth_client_id'"
+        )
+        client_id_row = cursor.fetchone()
+        
+        cursor = conn.execute(
+            "SELECT config_value FROM superadmin_config WHERE config_key = 'gam_oauth_client_secret'"
+        )
+        client_secret_row = cursor.fetchone()
+        
+        conn.close()
+        
+        if client_id_row and client_id_row[0] and client_secret_row and client_secret_row[0]:
+            # Credentials exist in database
+            client_id = client_id_row[0]
+            return jsonify({
+                'configured': True,
+                'client_id_prefix': client_id[:20] if len(client_id) > 20 else client_id,
+                'has_secret': True,
+                'source': 'database'
+            })
+        else:
+            # No credentials found in database
+            return jsonify({
+                'configured': False,
+                'error': 'GAM OAuth credentials not configured in superadmin settings.',
+                'help': 'Super admins can configure GAM OAuth credentials in the superadmin settings page.'
+            })
+            
+    except Exception as e:
+        app.logger.error(f"Error checking OAuth status: {e}")
+        return jsonify({
+            'configured': False,
+            'error': f'Error checking OAuth configuration: {str(e)}'
+        }), 500
+
+@app.route('/tenant/<tenant_id>/gam/detect-network', methods=['POST'])
+@require_auth()
+def detect_gam_network(tenant_id):
+    """Auto-detect GAM network code from refresh token."""
+    if session.get('role') == 'viewer':
+        return jsonify({'success': False, 'error': 'Access denied'}), 403
+    
+    # Check tenant access
+    if session.get('role') == 'tenant_admin' and session.get('tenant_id') != tenant_id:
+        return jsonify({'success': False, 'error': 'Access denied'}), 403
+    
+    try:
+        data = request.get_json()
+        refresh_token = data.get('refresh_token')
+        
+        if not refresh_token:
+            return jsonify({'success': False, 'error': 'Refresh token required'}), 400
+        
+        # Create a temporary GAM client with just the refresh token
+        from googleads import oauth2, ad_manager
+        
+        # Get OAuth credentials from superadmin_config table (as per original implementation)
+        conn = get_db_connection()
+        
+        # Get GAM OAuth client credentials from superadmin config
+        cursor = conn.execute(
+            "SELECT config_value FROM superadmin_config WHERE config_key = 'gam_oauth_client_id'"
+        )
+        client_id_row = cursor.fetchone()
+        
+        cursor = conn.execute(
+            "SELECT config_value FROM superadmin_config WHERE config_key = 'gam_oauth_client_secret'"
+        )
+        client_secret_row = cursor.fetchone()
+        
+        conn.close()
+        
+        if not client_id_row or not client_id_row[0]:
+            return jsonify({
+                'success': False,
+                'error': 'GAM OAuth Client ID not configured. Please configure it in superadmin settings.'
+            }), 500
+        
+        if not client_secret_row or not client_secret_row[0]:
+            return jsonify({
+                'success': False,
+                'error': 'GAM OAuth Client Secret not configured. Please configure it in superadmin settings.'
+            }), 500
+        
+        client_id = client_id_row[0]
+        client_secret = client_secret_row[0]
+        
+        # Create OAuth2 client with refresh token
+        oauth2_client = oauth2.GoogleRefreshTokenClient(
+            client_id=client_id,
+            client_secret=client_secret,
+            refresh_token=refresh_token
+        )
+        
+        # Test if credentials are valid
+        try:
+            oauth2_client.Refresh()
+        except Exception as e:
+            return jsonify({
+                'success': False,
+                'error': f'Invalid refresh token: {str(e)}'
+            }), 400
+        
+        # Create GAM client
+        client = ad_manager.AdManagerClient(
+            oauth2_client,
+            "AdCP-Sales-Agent"
+        )
+        
+        # Get network service and retrieve network info
+        network_service = client.GetService('NetworkService', version='v202408')
+        
+        try:
+            # Try getAllNetworks first (doesn't require network_code)
+            try:
+                all_networks = network_service.getAllNetworks()
+                if all_networks and len(all_networks) > 0:
+                    # Use the first network (most users have access to only one)
+                    network = all_networks[0]
+                    
+                    # Also get the current user ID to use as trafficker_id
+                    trafficker_id = None
+                    try:
+                        # Set the network code in the client so we can get user info
+                        client.network_code = str(network['networkCode'])
+                        user_service = client.GetService('UserService', version='v202408')
+                        current_user = user_service.getCurrentUser()
+                        if current_user:
+                            trafficker_id = str(current_user['id'])
+                            app.logger.info(f"Detected current user ID: {trafficker_id}")
+                    except Exception as e:
+                        app.logger.warning(f"Could not get current user: {e}")
+                    
+                    return jsonify({
+                        'success': True,
+                        'network_code': str(network['networkCode']),
+                        'network_name': network['displayName'],
+                        'network_id': str(network['id']),
+                        'network_count': len(all_networks),
+                        'trafficker_id': trafficker_id
+                    })
+            except AttributeError:
+                # getAllNetworks might not be available in this GAM version
+                pass
+            
+            # If getAllNetworks didn't work, we can't get the network without a network_code
+            return jsonify({
+                'success': False,
+                'error': 'Unable to retrieve network information. The getAllNetworks() API is not available and getCurrentNetwork() requires a network code.'
+            }), 400
+            
+        except Exception as e:
+            app.logger.error(f"Failed to get network info: {e}")
+            return jsonify({
+                'success': False,
+                'error': f'Failed to retrieve network information: {str(e)}'
+            }), 500
+            
+    except Exception as e:
+        app.logger.error(f"Error detecting GAM network for tenant {tenant_id}: {e}")
+        return jsonify({
+            'success': False,
+            'error': f'Error detecting network: {str(e)}'
+        }), 500
+
+@app.route('/tenant/<tenant_id>/gam/configure', methods=['POST'])
+@require_auth()
+def configure_gam(tenant_id):
+    """Save GAM configuration for a tenant."""
+    if session.get('role') == 'viewer':
+        return jsonify({'success': False, 'error': 'Access denied'}), 403
+    
+    # Check tenant access
+    if session.get('role') == 'tenant_admin' and session.get('tenant_id') != tenant_id:
+        return jsonify({'success': False, 'error': 'Access denied'}), 403
+    
+    try:
+        data = request.get_json()
+        network_code = data.get('network_code')
+        refresh_token = data.get('refresh_token')
+        trafficker_id = data.get('trafficker_id')
+        
+        if not refresh_token:
+            return jsonify({'success': False, 'error': 'Refresh token required'}), 400
+        
+        # Log what we received
+        app.logger.info(f"GAM config save - network_code: {network_code}, trafficker_id: {trafficker_id}")
+        
+        # If network code or trafficker_id not provided, try to auto-detect them
+        # But for now, let's just log a warning
+        if not trafficker_id:
+            app.logger.warning(f"No trafficker_id provided for tenant {tenant_id}")
+        
+        conn = get_db_connection()
+        
+        # Check if ANY adapter config exists for this tenant
+        cursor = conn.execute("""
+            SELECT adapter_type FROM adapter_config 
+            WHERE tenant_id = ?
+        """, (tenant_id,))
+        
+        existing_config = cursor.fetchone()
+        
+        if existing_config:
+            # Check if it's already GAM config
+            if existing_config[0] == 'google_ad_manager':
+                # Update existing GAM config
+                conn.execute("""
+                    UPDATE adapter_config 
+                    SET gam_network_code = ?, gam_refresh_token = ?, gam_trafficker_id = ?, updated_at = CURRENT_TIMESTAMP
+                    WHERE tenant_id = ?
+                """, (network_code, refresh_token, trafficker_id, tenant_id))
+            else:
+                # Different adapter type exists, need to replace it
+                # First delete the old config
+                conn.execute("DELETE FROM adapter_config WHERE tenant_id = ?", (tenant_id,))
+                # Then insert new GAM config
+                conn.execute("""
+                    INSERT INTO adapter_config (
+                        tenant_id, adapter_type, gam_network_code, gam_refresh_token, gam_trafficker_id,
+                        created_at, updated_at
+                    ) VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                """, (tenant_id, 'google_ad_manager', network_code, refresh_token, trafficker_id))
+        else:
+            # No existing config, insert new one
+            conn.execute("""
+                INSERT INTO adapter_config (
+                    tenant_id, adapter_type, gam_network_code, gam_refresh_token, gam_trafficker_id,
+                    created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+            """, (tenant_id, 'google_ad_manager', network_code, refresh_token, trafficker_id))
+        
+        # Always update the tenant's active adapter to GAM when configuring GAM
+        conn.execute("""
+            UPDATE tenants 
+            SET ad_server = 'google_ad_manager'
+            WHERE tenant_id = ?
+        """, (tenant_id,))
+        
+        conn.commit()
+        conn.close()
+        
+        app.logger.info(f"GAM configuration saved for tenant {tenant_id}")
+        return jsonify({
+            'success': True,
+            'message': 'GAM configuration saved successfully',
+            'network_code': network_code
+        })
+        
+    except Exception as e:
+        app.logger.error(f"Error saving GAM config for tenant {tenant_id}: {e}")
+        return jsonify({
+            'success': False,
+            'error': f'Error saving configuration: {str(e)}'
+        }), 500
 
 @app.route('/tenant/<tenant_id>/settings/slack', methods=['POST'])
 @require_auth()
