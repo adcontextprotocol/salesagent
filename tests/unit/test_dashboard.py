@@ -235,12 +235,13 @@ class TestDashboardErrorHandling:
         
         # The dashboard should handle this gracefully
         # In real implementation, this would return an error page
-        with pytest.raises(AttributeError) as exc_info:
-            # Skip this test - admin_ui_dashboard_fixed was removed
+        # Skip this test - admin_ui_dashboard_fixed was removed
         pytest.skip("admin_ui_dashboard_fixed module was removed during cleanup")
-            tenant_dashboard_fixed('test_tenant', None)
         
-        assert "'NoneType' object has no attribute 'execute'" in str(exc_info.value)
+        # Original test code (now skipped):
+        # with pytest.raises(AttributeError) as exc_info:
+        #     tenant_dashboard_fixed('test_tenant', None)
+        # assert "'NoneType' object has no attribute 'execute'" in str(exc_info.value)
     
     def test_missing_required_fields(self):
         """Test handling of missing database fields."""

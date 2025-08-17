@@ -31,23 +31,23 @@ def test_db():
     ph = get_placeholder()
     
     conn.execute(f"""
-        INSERT INTO tenants (tenant_id, name, subdomain, is_active, ad_server)
-        VALUES ({ph}, {ph}, {ph}, {ph}, {ph})
+        INSERT INTO tenants (tenant_id, name, subdomain, is_active, ad_server, created_at, updated_at)
+        VALUES ({ph}, {ph}, {ph}, {ph}, {ph}, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
         ON CONFLICT (tenant_id) DO NOTHING
     """, ('test_dashboard', 'Test Dashboard Tenant', 'test-dashboard', True, 'mock'))
     
     # Insert test principals
     conn.execute(f"""
-        INSERT INTO principals (tenant_id, principal_id, name, access_token)
-        VALUES ({ph}, {ph}, {ph}, {ph})
+        INSERT INTO principals (tenant_id, principal_id, name, access_token, platform_mappings)
+        VALUES ({ph}, {ph}, {ph}, {ph}, {ph})
         ON CONFLICT (tenant_id, principal_id) DO NOTHING
-    """, ('test_dashboard', 'principal_1', 'Test Advertiser 1', 'token_1'))
+    """, ('test_dashboard', 'principal_1', 'Test Advertiser 1', 'token_1', '{}'))
     
     conn.execute(f"""
-        INSERT INTO principals (tenant_id, principal_id, name, access_token)
-        VALUES ({ph}, {ph}, {ph}, {ph})
+        INSERT INTO principals (tenant_id, principal_id, name, access_token, platform_mappings)
+        VALUES ({ph}, {ph}, {ph}, {ph}, {ph})
         ON CONFLICT (tenant_id, principal_id) DO NOTHING
-    """, ('test_dashboard', 'principal_2', 'Test Advertiser 2', 'token_2'))
+    """, ('test_dashboard', 'principal_2', 'Test Advertiser 2', 'token_2', '{}'))
     
     # Insert test media buys with different statuses and dates
     now = datetime.now(timezone.utc)
@@ -91,30 +91,30 @@ def test_db():
         'completed', now - timedelta(days=45), json.dumps({})
     ))
     
-    # Insert test human tasks
+    # Insert test tasks
     conn.execute(f"""
-        INSERT INTO human_tasks (
-            task_id, tenant_id, principal_id, media_buy_id, task_type,
-            status, details, created_at
+        INSERT INTO tasks (
+            task_id, tenant_id, media_buy_id, task_type,
+            title, status, metadata, created_at
         ) VALUES ({ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph})
         ON CONFLICT (task_id) DO NOTHING
     """, (
-        'task_001', 'test_dashboard', 'principal_1', 'mb_test_001',
-        'approve_creative', 'pending',
+        'task_001', 'test_dashboard', 'mb_test_001',
+        'approve_creative', 'Approve creative for campaign', 'pending',
         json.dumps({'description': 'Approve creative for campaign'}),
         now - timedelta(hours=2)
     ))
     
     # Overdue task (older than 3 days)
     conn.execute(f"""
-        INSERT INTO human_tasks (
-            task_id, tenant_id, principal_id, media_buy_id, task_type,
-            status, details, created_at
+        INSERT INTO tasks (
+            task_id, tenant_id, media_buy_id, task_type,
+            title, status, metadata, created_at
         ) VALUES ({ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph})
         ON CONFLICT (task_id) DO NOTHING
     """, (
-        'task_002', 'test_dashboard', 'principal_2', 'mb_test_002',
-        'review_budget', 'pending',
+        'task_002', 'test_dashboard', 'mb_test_002',
+        'review_budget', 'Review budget allocation', 'pending',
         json.dumps({'description': 'Review budget allocation'}),
         now - timedelta(days=5)
     ))
