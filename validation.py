@@ -240,3 +240,68 @@ def sanitize_form_data(data: Dict[str, Any]) -> Dict[str, Any]:
         sanitized[key] = value
         
     return sanitized
+
+# GAM-specific validation functions
+def validate_gam_network_code(network_code: str) -> Optional[str]:
+    """Validate GAM network code format."""
+    if not network_code:
+        return None  # Optional field
+    
+    # Network codes should be numeric and reasonable length
+    if not re.match(r'^\d{1,20}$', network_code):
+        return "Network code must be numeric and up to 20 digits"
+    
+    return None
+
+def validate_gam_trafficker_id(trafficker_id: str) -> Optional[str]:
+    """Validate GAM trafficker ID format."""
+    if not trafficker_id:
+        return None  # Optional field
+    
+    # Trafficker IDs should be numeric and reasonable length
+    if not re.match(r'^\d{1,20}$', trafficker_id):
+        return "Trafficker ID must be numeric and up to 20 digits"
+    
+    return None
+
+def validate_gam_refresh_token(refresh_token: str) -> Optional[str]:
+    """Validate GAM refresh token format and length."""
+    if not refresh_token:
+        return "Refresh token is required"
+    
+    # Basic length validation (refresh tokens are typically long)
+    if len(refresh_token) < 20:
+        return "Refresh token appears to be invalid (too short)"
+    
+    if len(refresh_token) > 1000:
+        return "Refresh token is too long (max 1000 characters)"
+    
+    # Check for common invalid patterns
+    if refresh_token.startswith('Bearer '):
+        return "Do not include 'Bearer ' prefix in refresh token"
+    
+    return None
+
+def validate_gam_config(data: Dict[str, Any]) -> Dict[str, Optional[str]]:
+    """Validate all GAM configuration fields."""
+    errors = {}
+    
+    # Validate network code
+    if 'network_code' in data:
+        error = validate_gam_network_code(str(data['network_code']))
+        if error:
+            errors['network_code'] = error
+    
+    # Validate trafficker ID
+    if 'trafficker_id' in data:
+        error = validate_gam_trafficker_id(str(data['trafficker_id']))
+        if error:
+            errors['trafficker_id'] = error
+    
+    # Validate refresh token
+    if 'refresh_token' in data:
+        error = validate_gam_refresh_token(data['refresh_token'])
+        if error:
+            errors['refresh_token'] = error
+    
+    return errors

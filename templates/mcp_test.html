@@ -123,7 +123,8 @@
         <select id="principal_select" onchange="updateAuthToken()">
             <option value="">-- Select a Principal --</option>
             {% for principal in principals %}
-            <option value="{{ principal.access_token }}" data-tenant="{{ principal.tenant_id }}">
+            <option value="{{ principal.access_token }}" data-tenant="{{ principal.tenant_id }}" 
+                    title="Token: {{ principal.access_token[:10] }}...{{ principal.access_token[-4:] if principal.access_token|length > 14 else principal.access_token }}">
                 {{ principal.tenant_name }} / {{ principal.name }} ({{ principal.principal_id }})
             </option>
             {% endfor %}
@@ -132,7 +133,8 @@
     
     <div class="form-group">
         <label for="auth_token">Auth Token</label>
-        <input type="text" id="auth_token" placeholder="Enter token or select principal above">
+        <input type="password" id="auth_token" placeholder="Enter token or select principal above">
+        <small style="color: #6b7280;">Token will be masked for security</small>
     </div>
     
     <div class="form-group">
@@ -199,10 +201,18 @@
 </div>
 
 <script>
+function maskToken(token) {
+    // Mask token for display (show first 10 and last 4 characters)
+    if (!token || token.length < 20) return token;
+    return token.substring(0, 10) + '...' + token.substring(token.length - 4);
+}
+
 function updateAuthToken() {
     const select = document.getElementById('principal_select');
     const tokenInput = document.getElementById('auth_token');
     tokenInput.value = select.value;
+    // Store the actual token in a data attribute
+    tokenInput.setAttribute('data-actual-token', select.value);
 }
 
 function selectMethod(method) {

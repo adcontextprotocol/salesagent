@@ -29,6 +29,42 @@ from policy_check_service import PolicyCheckService, PolicyStatus
 from context_manager import get_context_manager
 from activity_feed import activity_feed
 import time
+from audit_logger import get_audit_logger, logger
+
+# Initialize Rich console
+console = Console()
+
+def safe_parse_json_field(field_value, field_name="field", default=None):
+    """
+    Safely parse a database field that might be JSON string (SQLite) or dict (PostgreSQL JSONB).
+    
+    Args:
+        field_value: The field value from database (could be str, dict, None, etc.)
+        field_name: Name of the field for logging purposes
+        default: Default value to return on parse failure (default: None)
+    
+    Returns:
+        Parsed dict/list or default value
+    """
+    if not field_value:
+        return default if default is not None else {}
+    
+    if isinstance(field_value, str):
+        try:
+            parsed = json.loads(field_value)
+            # Validate the parsed result is the expected type
+            if default is not None and not isinstance(parsed, type(default)):
+                logger.warning(f"Parsed {field_name} has unexpected type: {type(parsed)}, expected {type(default)}")
+                return default
+            return parsed
+        except (json.JSONDecodeError, TypeError) as e:
+            logger.warning(f"Invalid JSON in {field_name}: {e}")
+            return default if default is not None else {}
+    elif isinstance(field_value, (dict, list)):
+        return field_value
+    else:
+        logger.warning(f"Unexpected type for {field_name}: {type(field_value)}")
+        return default if default is not None else {}
 
 # --- Authentication ---
 
@@ -253,7 +289,6 @@ except RuntimeError as e:
         raise
 
 mcp = FastMCP(name="AdCPSalesAgent")
-console = Console()
 
 # Initialize creative engine with minimal config (will be tenant-specific later)
 creative_engine_config = {}
@@ -392,17 +427,17 @@ async def get_products(req: GetProductsRequest, context: Context) -> GetProducts
     
     # Check policy compliance first
     policy_service = PolicyCheckService()
-    # Handle policy_settings that might already be a dict (PostgreSQL JSONB) or string (SQLite)
-    policy_settings_raw = tenant.get('policy_settings')
-    if isinstance(policy_settings_raw, str):
-        tenant_policies = json.loads(policy_settings_raw) if policy_settings_raw else None
-    else:
-        tenant_policies = policy_settings_raw
+    # Safely parse policy_settings that might be JSON string (SQLite) or dict (PostgreSQL JSONB)
+    tenant_policies = safe_parse_json_field(
+        tenant.get('policy_settings'), 
+        field_name="policy_settings",
+        default={}
+    )
     
     policy_result = await policy_service.check_brief_compliance(
         brief=req.brief,
         promoted_offering=req.promoted_offering,
-        tenant_policies=tenant_policies
+        tenant_policies=tenant_policies if tenant_policies else None
     )
     
     # Log the policy check
@@ -424,7 +459,7 @@ async def get_products(req: GetProductsRequest, context: Context) -> GetProducts
     
     # Handle policy result based on settings
     # Use the already parsed policy_settings from above
-    policy_settings = tenant_policies if tenant_policies else {}
+    policy_settings = tenant_policies
     
     if policy_result.status == PolicyStatus.BLOCKED:
         # Always block if policy says blocked
