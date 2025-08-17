@@ -29,38 +29,47 @@ def init_db(exit_on_error=False):
         admin_token = secrets.token_urlsafe(32)
         secrets.token_urlsafe(32)
 
-        default_config = {
-            "adapters": {"mock": {"enabled": True, "dry_run": False}},
-            "creative_engine": {
-                "auto_approve_formats": [
-                    "display_300x250",
-                    "display_728x90",
-                    "video_30s",
-                ],
-                "human_review_required": False,
-            },
-            "features": {"max_daily_budget": 10000, "enable_aee_signals": True},
-            "admin_token": admin_token,
-        }
-
-        # Create default tenant
+        # Create default tenant with proper columns (no config column after migration 007)
         conn.execute(
             """
             INSERT INTO tenants (
-                tenant_id, name, subdomain, config,
-                created_at, updated_at, is_active, billing_plan
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                tenant_id, name, subdomain,
+                created_at, updated_at, is_active, billing_plan,
+                ad_server, max_daily_budget, enable_aee_signals,
+                auto_approve_formats, human_review_required, admin_token
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
             (
                 "default",
                 "Default Publisher",
                 "localhost",  # Works with localhost:8080
-                json.dumps(default_config),
                 datetime.now().isoformat(),
                 datetime.now().isoformat(),
                 True,  # Boolean works for both SQLite and PostgreSQL
                 "standard",
+                "mock",
+                10000,
+                True,
+                json.dumps(
+                    [
+                        "display_300x250",
+                        "display_728x90",
+                        "video_30s",
+                    ]
+                ),
+                False,
+                admin_token,
             ),
+        )
+
+        # Create adapter_config for mock adapter
+        conn.execute(
+            """
+            INSERT INTO adapter_config (
+                tenant_id, adapter_type, mock_dry_run
+            ) VALUES (?, ?, ?)
+        """,
+            ("default", "mock", False),
         )
 
         # Don't create any principals by default - tenants should create them after setting up their ad server
