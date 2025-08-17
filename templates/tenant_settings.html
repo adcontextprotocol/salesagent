@@ -559,6 +559,12 @@
                 <div class="form-section" style="margin-top: 2rem;">
                     <h3>Google Ad Manager Configuration</h3>
                     
+                    <!-- OAuth Prerequisites Check -->
+                    <div id="oauth-status" class="status-card" style="background: #f5f5f5; border-left: 4px solid #666; margin-bottom: 1rem;">
+                        <h4>OAuth Setup Status</h4>
+                        <p>Checking OAuth configuration...</p>
+                    </div>
+                    
                     {% if adapter_config %}
                     <div class="status-card" style="background: #f0f9ff; border-left: 4px solid #0066cc;">
                         <h4>Current Configuration</h4>
@@ -590,19 +596,31 @@
                     {% endif %}
                     
                     <div class="form-group" style="margin-top: 1rem;">
-                        <label for="gam_network_code">Network Code</label>
-                        <input type="text" id="gam_network_code" class="form-control" 
-                               value="{{ adapter_config.get('network_code', '') if adapter_config else '' }}"
-                               placeholder="Your GAM network code">
-                        <small class="form-text text-muted">Found in GAM under Admin → Global Settings</small>
-                    </div>
-                    
-                    <div class="form-group">
                         <label for="gam_refresh_token">OAuth Refresh Token</label>
                         <input type="text" id="gam_refresh_token" class="form-control"
                                value="{{ adapter_config.get('refresh_token', '') if adapter_config else '' }}"
                                placeholder="Your OAuth refresh token">
-                        <small class="form-text text-muted">Required for API access</small>
+                        <small class="form-text text-muted">Required for API access. Enter token and click "Auto-detect Network" to retrieve network code.</small>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="gam_network_code">Network Code</label>
+                        <div style="display: flex; gap: 0.5rem;">
+                            <input type="text" id="gam_network_code" class="form-control" 
+                                   value="{{ adapter_config.get('network_code', '') if adapter_config else '' }}"
+                                   placeholder="Will be auto-detected" readonly>
+                            <button onclick="detectGAMNetwork()" class="btn btn-secondary" 
+                                    id="detect-network-btn">Auto-detect Network</button>
+                        </div>
+                        <small class="form-text text-muted">Automatically retrieved from your GAM account</small>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="gam_trafficker_id">Trafficker User ID</label>
+                        <input type="text" id="gam_trafficker_id" class="form-control" 
+                               value="{{ adapter_config.get('trafficker_id', '') if adapter_config else '' }}"
+                               placeholder="Your GAM user ID (will be auto-detected)">
+                        <small class="form-text text-muted">The GAM user ID who will create line items. Auto-detected when you click "Auto-detect Network" above.</small>
                     </div>
                     
                     <div class="form-group">
@@ -1010,18 +1028,190 @@ function selectAdapter(adapterName) {
     });
 }
 
+// Check OAuth configuration on page load
+window.addEventListener('DOMContentLoaded', function() {
+    if (document.getElementById('oauth-status')) {
+        checkOAuthConfig();
+    }
+});
+
+// Check if OAuth is properly configured
+function checkOAuthConfig() {
+    fetch('/api/oauth/status')
+        .then(response => response.json())
+        .then(data => {
+            const statusDiv = document.getElementById('oauth-status');
+            if (data.configured) {
+                statusDiv.style.background = '#f0f9ff';
+                statusDiv.style.borderLeftColor = '#0066cc';
+                statusDiv.innerHTML = `
+                    <h4>✅ OAuth Setup Complete</h4>
+                    <p>OAuth credentials are configured. You can proceed with GAM setup.</p>
+                    <small>Client ID: ${data.client_id_prefix}...</small>
+                `;
+            } else {
+                statusDiv.style.background = '#fff3cd';
+                statusDiv.style.borderLeftColor = '#ffc107';
+                statusDiv.innerHTML = `
+                    <h4>⚠️ OAuth Setup Required</h4>
+                    <p><strong>Before configuring GAM, you need to set up OAuth credentials:</strong></p>
+                    <ol style="margin: 0.5rem 0; padding-left: 1.5rem;">
+                        <li>Set <code>GOOGLE_CLIENT_ID</code> and <code>GOOGLE_CLIENT_SECRET</code> environment variables</li>
+                        <li>Ensure the OAuth app has Google Ad Manager API access enabled</li>
+                        <li>The OAuth app must be authorized for your Google Workspace domain</li>
+                    </ol>
+                    <p><strong>Error:</strong> ${data.error || 'OAuth credentials not found'}</p>
+                `;
+                // Disable GAM configuration if OAuth not set up
+                const gamFields = document.querySelectorAll('#gam_refresh_token, #detect-network-btn, button[onclick="saveGAMConfig()"]');
+                gamFields.forEach(field => field.disabled = true);
+            }
+        })
+        .catch(error => {
+            console.error('Error checking OAuth config:', error);
+            const statusDiv = document.getElementById('oauth-status');
+            statusDiv.style.background = '#f8d7da';
+            statusDiv.style.borderLeftColor = '#dc3545';
+            statusDiv.innerHTML = `
+                <h4>❌ Error Checking OAuth Status</h4>
+                <p>Could not verify OAuth configuration: ${error.message}</p>
+            `;
+        });
+}
+
+// Auto-detect GAM network code from refresh token
+function detectGAMNetwork() {
+    const refreshToken = document.getElementById('gam_refresh_token').value;
+    
+    if (!refreshToken) {
+        alert('Please enter a refresh token first');
+        return;
+    }
+    
+    const detectBtn = document.getElementById('detect-network-btn');
+    detectBtn.disabled = true;
+    detectBtn.textContent = 'Detecting...';
+    
+    fetch('/tenant/{{ tenant.tenant_id }}/gam/detect-network', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ refresh_token: refreshToken })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            // Update the network code field
+            document.getElementById('gam_network_code').value = data.network_code;
+            document.getElementById('gam_network_code').removeAttribute('readonly');
+            
+            // Update trafficker_id field if detected
+            if (data.trafficker_id) {
+                document.getElementById('gam_trafficker_id').value = data.trafficker_id;
+            }
+            
+            // Show success message inline instead of alert
+            const networkField = document.getElementById('gam_network_code').parentElement.parentElement;
+            
+            // Remove any existing alerts
+            const existingAlert = networkField.querySelector('.alert-success');
+            if (existingAlert) existingAlert.remove();
+            
+            // Create success message
+            const networkInfo = document.createElement('div');
+            networkInfo.className = 'alert alert-success';
+            networkInfo.style.marginTop = '1rem';
+            networkInfo.innerHTML = `
+                <strong>✅ Network Detected Successfully!</strong><br>
+                <strong>Network:</strong> ${data.network_name}<br>
+                <strong>Code:</strong> ${data.network_code}
+                ${data.trafficker_id ? `<br><strong>User ID:</strong> ${data.trafficker_id}` : ''}
+                ${data.network_count > 1 ? `<br><small>Note: You have access to ${data.network_count} networks. Using the primary one.</small>` : ''}
+            `;
+            networkField.appendChild(networkInfo);
+        } else {
+            // Show error inline instead of alert
+            const networkField = document.getElementById('gam_network_code').parentElement.parentElement;
+            
+            // Remove any existing alerts
+            const existingAlert = networkField.querySelector('.alert-danger');
+            if (existingAlert) existingAlert.remove();
+            
+            // Create error message
+            const errorInfo = document.createElement('div');
+            errorInfo.className = 'alert alert-danger';
+            errorInfo.style.marginTop = '1rem';
+            errorInfo.innerHTML = `
+                <strong>❌ Failed to detect network</strong><br>
+                ${data.error || 'Unknown error'}
+            `;
+            networkField.appendChild(errorInfo);
+        }
+    })
+    .catch(error => {
+        console.error('Error detecting network:', error);
+        alert('Failed to detect network: ' + error.message);
+    })
+    .finally(() => {
+        detectBtn.disabled = false;
+        detectBtn.textContent = 'Auto-detect Network';
+    });
+}
+
 // Save GAM configuration
 function saveGAMConfig() {
     const networkCode = document.getElementById('gam_network_code').value;
     const refreshToken = document.getElementById('gam_refresh_token').value;
+    const traffickerId = document.getElementById('gam_trafficker_id').value;
     
-    if (!networkCode || !refreshToken) {
-        alert('Please provide both Network Code and Refresh Token');
+    if (!refreshToken) {
+        alert('Please provide a Refresh Token');
         return;
     }
     
-    // TODO: Implement save functionality
-    alert('GAM configuration saving will be implemented soon.');
+    // Network code is optional - can be auto-detected
+    if (!networkCode && !confirm('Network code not set. Would you like to auto-detect it first?')) {
+        detectGAMNetwork();
+        return;
+    }
+    
+    // Trafficker ID is required for creating line items
+    if (!traffickerId) {
+        if (confirm('Trafficker ID is not set. This is required for creating line items. Would you like to auto-detect it?')) {
+            detectGAMNetwork();
+        }
+        return;
+    }
+    
+    fetch('/tenant/{{ tenant.tenant_id }}/gam/configure', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ 
+            network_code: networkCode,
+            refresh_token: refreshToken,
+            trafficker_id: traffickerId 
+        })
+    })
+    .then(response => {
+        if (response.ok) {
+            return response.json();
+        } else {
+            return response.text().then(text => {
+                throw new Error(text || 'Failed to save configuration');
+            });
+        }
+    })
+    .then(data => {
+        alert('GAM configuration saved successfully!');
+        window.location.reload();
+    })
+    .catch(error => {
+        console.error('Error saving GAM config:', error);
+        alert('Failed to save configuration: ' + error.message);
+    });
 }
 
 // Test GAM connection
@@ -1045,7 +1235,15 @@ function testGAMConnection() {
     .then(response => response.json())
     .then(data => {
         if (data.success) {
-            alert('✅ GAM connection successful!\nNetwork: ' + data.network_name);
+            let message = '✅ GAM connection successful!';
+            if (data.networks && data.networks.length > 0) {
+                message += '\nNetwork: ' + data.networks[0].displayName;
+                message += '\nCode: ' + data.networks[0].networkCode;
+                if (data.networks.length > 1) {
+                    message += '\n(You have access to ' + data.networks.length + ' networks)';
+                }
+            }
+            alert(message);
         } else {
             alert('❌ GAM connection failed:\n' + (data.error || 'Unknown error'));
         }
