@@ -615,8 +615,34 @@ class TestOAuthErrorHandling:
         assert response.status_code == 200
         assert b'not authorized' in response.data
     
-    def test_tenant_root_authenticated_redirect(self, client):
-        """Test tenant root redirects authenticated users to manage page."""
+    @patch('admin_ui.get_db_connection')
+    def test_tenant_root_authenticated_redirect(self, mock_db, client):
+        """Test tenant root shows dashboard for authenticated users."""
+        # Mock database connection
+        mock_conn = MagicMock()
+        mock_cursor = MagicMock()
+        mock_conn.execute.return_value = mock_cursor
+        mock_db.return_value = mock_conn
+        
+        # Create a function that returns appropriate values
+        def mock_fetchone():
+            # Return tenant info first, then numeric values for everything else
+            if not hasattr(mock_fetchone, 'call_count'):
+                mock_fetchone.call_count = 0
+            mock_fetchone.call_count += 1
+            
+            if mock_fetchone.call_count == 1:
+                # Tenant query
+                return ('test-tenant', 'Test Tenant', 'test', True, 'mock')
+            else:
+                # All metric queries return a numeric value
+                return (0,)
+        
+        mock_cursor.fetchone.side_effect = mock_fetchone
+        
+        # Also need fetchall for some queries
+        mock_cursor.fetchall.return_value = []
+        
         # Set up authenticated session
         with client.session_transaction() as sess:
             sess['authenticated'] = True
@@ -624,8 +650,8 @@ class TestOAuthErrorHandling:
             sess['tenant_id'] = 'test-tenant'
         
         response = client.get('/tenant/test-tenant')
-        assert response.status_code == 302
-        assert '/tenant/test-tenant/manage' in response.location
+        # Dashboard should load successfully
+        assert response.status_code == 200
     
     def test_cross_tenant_access_denied(self, client):
         """Test tenant admin cannot access another tenant's data."""
@@ -642,8 +668,8 @@ class TestOAuthErrorHandling:
             cursor.fetchone.return_value = ('Tenant 2',)
             mock_conn.return_value.execute.return_value = cursor
             
-            # Try to access tenant-2
-            response = client.get('/tenant/tenant-2/manage')
+            # Try to access tenant-2's dashboard
+            response = client.get('/tenant/tenant-2')
             assert response.status_code == 403
             assert b'can only view your own tenant' in response.data
     

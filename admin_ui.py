@@ -1189,7 +1189,8 @@ def tenant_dashboard(tenant_id):
         AND status IN ('active', 'completed')
         AND created_at >= CURRENT_TIMESTAMP - INTERVAL '30 days'
     """, (tenant_id,))
-    metrics['total_revenue'] = cursor.fetchone()[0] or 0
+    result = cursor.fetchone()
+    metrics['total_revenue'] = (result[0] if result else 0) or 0
     
     # Revenue change vs previous period
     cursor = conn.execute("""
@@ -1200,7 +1201,8 @@ def tenant_dashboard(tenant_id):
         AND created_at >= CURRENT_TIMESTAMP - INTERVAL '60 days'
         AND created_at < CURRENT_TIMESTAMP - INTERVAL '30 days'
     """, (tenant_id,))
-    prev_revenue = cursor.fetchone()[0] or 0
+    prev_revenue_result = cursor.fetchone()[0]
+    prev_revenue = float(prev_revenue_result) if prev_revenue_result else 0.0
     if prev_revenue > 0:
         metrics['revenue_change'] = ((metrics['total_revenue'] - prev_revenue) / prev_revenue) * 100
     else:
@@ -1214,21 +1216,24 @@ def tenant_dashboard(tenant_id):
         SELECT COUNT(*) FROM media_buys 
         WHERE tenant_id = %s AND status = 'active'
     """, (tenant_id,))
-    metrics['active_buys'] = cursor.fetchone()[0]
+    result = cursor.fetchone()
+    metrics['active_buys'] = result[0] if result else 0
     
     # Pending media buys
     cursor = conn.execute("""
         SELECT COUNT(*) FROM media_buys 
         WHERE tenant_id = %s AND status = 'pending'
     """, (tenant_id,))
-    metrics['pending_buys'] = cursor.fetchone()[0]
+    result = cursor.fetchone()
+    metrics['pending_buys'] = result[0] if result else 0
     
     # Open tasks (using human_tasks table)
     cursor = conn.execute("""
         SELECT COUNT(*) FROM human_tasks 
         WHERE tenant_id = %s AND status IN ('pending', 'in_progress')
     """, (tenant_id,))
-    metrics['open_tasks'] = cursor.fetchone()[0]
+    result = cursor.fetchone()
+    metrics['open_tasks'] = result[0] if result else 0
     
     # Overdue tasks (simplified - tasks older than 3 days)
     cursor = conn.execute("""
@@ -1237,7 +1242,8 @@ def tenant_dashboard(tenant_id):
         AND status IN ('pending', 'in_progress')
         AND created_at < CURRENT_TIMESTAMP - INTERVAL '3 days'
     """, (tenant_id,))
-    metrics['overdue_tasks'] = cursor.fetchone()[0]
+    result = cursor.fetchone()
+    metrics['overdue_tasks'] = result[0] if result else 0
     
     # Active advertisers (principals with activity in last 30 days)
     cursor = conn.execute("""
@@ -1246,13 +1252,15 @@ def tenant_dashboard(tenant_id):
         WHERE tenant_id = %s 
         AND created_at >= CURRENT_TIMESTAMP - INTERVAL '30 days'
     """, (tenant_id,))
-    metrics['active_advertisers'] = cursor.fetchone()[0]
+    result = cursor.fetchone()
+    metrics['active_advertisers'] = result[0] if result else 0
     
     # Total advertisers
     cursor = conn.execute("""
         SELECT COUNT(*) FROM principals WHERE tenant_id = %s
     """, (tenant_id,))
-    metrics['total_advertisers'] = cursor.fetchone()[0]
+    result = cursor.fetchone()
+    metrics['total_advertisers'] = result[0] if result else 0
     
     # Get recent media buys
     cursor = conn.execute("""
@@ -1298,7 +1306,8 @@ def tenant_dashboard(tenant_id):
     cursor = conn.execute("""
         SELECT COUNT(*) FROM products WHERE tenant_id = %s
     """, (tenant_id,))
-    product_count = cursor.fetchone()[0]
+    result = cursor.fetchone()
+    product_count = result[0] if result else 0
     
     # Get pending tasks (using human_tasks table)
     cursor = conn.execute("""
@@ -1414,14 +1423,16 @@ def tenant_settings(tenant_id, section=None):
     
     # Get counts
     cursor = conn.execute("SELECT COUNT(*) FROM products WHERE tenant_id = ?", (tenant_id,))
-    product_count = cursor.fetchone()[0]
+    result = cursor.fetchone()
+    product_count = result[0] if result else 0
     
     # Products don't have is_active column - all products are considered active
     active_products = product_count
     draft_products = 0
     
     cursor = conn.execute("SELECT COUNT(*) FROM principals WHERE tenant_id = ?", (tenant_id,))
-    advertiser_count = cursor.fetchone()[0]
+    result = cursor.fetchone()
+    advertiser_count = result[0] if result else 0
     
     # Use PostgreSQL-compatible syntax (CURRENT_TIMESTAMP - INTERVAL)
     db_config = DatabaseConfig.get_db_config()
@@ -1439,7 +1450,8 @@ def tenant_settings(tenant_id, section=None):
             WHERE tenant_id = ? 
             AND created_at >= datetime('now', '-30 days')
         """, (tenant_id,))
-    active_advertisers = cursor.fetchone()[0]
+    result = cursor.fetchone()
+    active_advertisers = result[0] if result else 0
     
     # Get creative formats (auto_approve column doesn't exist, default to 0)
     if db_config['type'] == 'postgresql':
@@ -2510,7 +2522,8 @@ def workflows_dashboard(tenant_id):
         SELECT COUNT(*) FROM media_buys 
         WHERE tenant_id = ? AND status = 'active'
     """, (tenant_id,))
-    active_buys = active_buys_cursor.fetchone()[0]
+    result = active_buys_cursor.fetchone()
+    active_buys = result[0] if result else 0
     
     # Pending workflow steps count (tasks table was replaced by workflow system)
     try:
@@ -2518,7 +2531,8 @@ def workflows_dashboard(tenant_id):
             SELECT COUNT(*) FROM workflow_steps 
             WHERE tenant_id = ? AND status = 'pending'
         """, (tenant_id,))
-        pending_tasks = pending_tasks_cursor.fetchone()[0]
+        result = pending_tasks_cursor.fetchone()
+        pending_tasks = result[0] if result else 0
     except:
         pending_tasks = 0
     
@@ -2529,7 +2543,8 @@ def workflows_dashboard(tenant_id):
             WHERE tenant_id = ? AND status = 'completed' 
             AND DATE(completed_at) = DATE(?)
         """, (tenant_id, today.isoformat()))
-        completed_today = completed_today_cursor.fetchone()[0]
+        result = completed_today_cursor.fetchone()
+        completed_today = result[0] if result else 0
     except:
         completed_today = 0
     
@@ -2538,7 +2553,8 @@ def workflows_dashboard(tenant_id):
         SELECT SUM(budget) FROM media_buys 
         WHERE tenant_id = ? AND status = 'active'
     """, (tenant_id,))
-    total_spend = total_spend_cursor.fetchone()[0] or 0
+    result = total_spend_cursor.fetchone()
+    total_spend = (result[0] if result else 0) or 0
     
     summary = {
         'active_buys': active_buys,
@@ -2914,7 +2930,8 @@ def list_users(tenant_id):
     
     # Get tenant name
     cursor = conn.execute("SELECT name FROM tenants WHERE tenant_id = ?", (tenant_id,))
-    tenant_name = cursor.fetchone()[0]
+    result = cursor.fetchone()
+    tenant_name = result[0] if result else 'Unknown Tenant'
     
     conn.close()
     return render_template('users.html', users=users, tenant_id=tenant_id, tenant_name=tenant_name)
