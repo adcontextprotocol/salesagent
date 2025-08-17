@@ -369,20 +369,37 @@ function displayResults(result) {
     
     resultsDiv.style.display = 'block';
     
+    // Clear content safely
+    contentDiv.innerHTML = '';
+    
     if (result.error) {
-        contentDiv.innerHTML = `<div class="alert alert-error">Error: ${result.error}</div>`;
+        const errorDiv = document.createElement('div');
+        errorDiv.className = 'alert alert-error';
+        errorDiv.textContent = 'Error: ' + result.error;
+        contentDiv.appendChild(errorDiv);
     } else {
-        let html = `<div class="alert alert-success">Successfully created ${result.created} products</div>`;
+        const successDiv = document.createElement('div');
+        successDiv.className = 'alert alert-success';
+        successDiv.textContent = `Successfully created ${result.created} products`;
+        contentDiv.appendChild(successDiv);
         
         if (result.errors && result.errors.length > 0) {
-            html += '<div class="alert alert-error"><strong>Errors:</strong><ul>';
+            const errorDiv = document.createElement('div');
+            errorDiv.className = 'alert alert-error';
+            
+            const strong = document.createElement('strong');
+            strong.textContent = 'Errors:';
+            errorDiv.appendChild(strong);
+            
+            const ul = document.createElement('ul');
             result.errors.forEach(error => {
-                html += `<li>${error}</li>`;
+                const li = document.createElement('li');
+                li.textContent = error;
+                ul.appendChild(li);
             });
-            html += '</ul></div>';
+            errorDiv.appendChild(ul);
+            contentDiv.appendChild(errorDiv);
         }
-        
-        contentDiv.innerHTML = html;
         
         // Redirect to products list after 3 seconds
         if (result.created > 0) {
