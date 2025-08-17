@@ -5524,6 +5524,11 @@ if __name__ == '__main__':
     
 # ============== MCP Protocol Testing Routes (Super Admin Only) ==============
 
+@app.route('/test-simple')
+def test_simple():
+    """Simple test page - no auth required for debugging."""
+    return render_template('test_mcp_simple.html')
+
 @app.route('/mcp-test')
 @require_auth(admin_only=True)
 def mcp_test():
