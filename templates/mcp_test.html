@@ -332,21 +332,39 @@ function testMCPCall() {
         const responseEl = document.getElementById('response_details');
         if (data.success) {
             lastResponse = data.result;
-            responseEl.innerHTML = '<span class="success">✓ Success</span>\n\n' + JSON.stringify(data.result, null, 2);
+            // Clear and safely add success content
+            responseEl.innerHTML = '';
+            const successSpan = document.createElement('span');
+            successSpan.className = 'success';
+            successSpan.textContent = '✓ Success';
+            responseEl.appendChild(successSpan);
+            responseEl.appendChild(document.createTextNode('\n\n' + JSON.stringify(data.result, null, 2)));
             
             // Parse and show useful data for next call
             parseResponseForNextCall(method, data.result);
         } else {
             lastResponse = null;
-            responseEl.innerHTML = '<span class="error">✗ Error</span>\n\n' + (data.error || 'Unknown error');
+            // Clear and safely add error content
+            responseEl.innerHTML = '';
+            const errorSpan = document.createElement('span');
+            errorSpan.className = 'error';
+            errorSpan.textContent = '✗ Error';
+            responseEl.appendChild(errorSpan);
+            responseEl.appendChild(document.createTextNode('\n\n' + (data.error || 'Unknown error')));
+            
             if (data.details) {
-                responseEl.innerHTML += '\n\nDetails:\n' + JSON.stringify(data.details, null, 2);
+                responseEl.appendChild(document.createTextNode('\n\nDetails:\n' + JSON.stringify(data.details, null, 2)));
             }
         }
     })
     .catch(error => {
-        document.getElementById('response_details').innerHTML = 
-            '<span class="error">✗ Request Failed</span>\n\n' + error.message;
+        const responseEl = document.getElementById('response_details');
+        responseEl.innerHTML = '';
+        const errorSpan = document.createElement('span');
+        errorSpan.className = 'error';
+        errorSpan.textContent = '✗ Request Failed';
+        responseEl.appendChild(errorSpan);
+        responseEl.appendChild(document.createTextNode('\n\n' + error.message));
     });
 }
 

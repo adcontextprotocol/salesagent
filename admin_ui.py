@@ -117,10 +117,8 @@ app.wsgi_app = ProxyFix(app.wsgi_app)
 GOOGLE_CLIENT_ID = None
 GOOGLE_CLIENT_SECRET = None
 
-print(f"DEBUG: Environment variables at startup:")
-print(f"DEBUG: GOOGLE_CLIENT_ID={os.environ.get('GOOGLE_CLIENT_ID')}")
-print(f"DEBUG: GOOGLE_CLIENT_SECRET exists={bool(os.environ.get('GOOGLE_CLIENT_SECRET'))}")
-print(f"DEBUG: GOOGLE_OAUTH_CREDENTIALS_FILE={os.environ.get('GOOGLE_OAUTH_CREDENTIALS_FILE')}")
+# OAuth configuration logging (use app.logger instead of print for production)
+app.logger.debug("Checking OAuth configuration environment variables")
 
 # Load Google OAuth credentials
 # First check environment variable, then look for any client_secret*.json file
@@ -132,8 +130,6 @@ if not oauth_creds_file:
     creds_files = [f for f in glob.glob('client_secret*.json') if os.path.isfile(f)]
     if creds_files:
         oauth_creds_file = creds_files[0]
-        
-print(f"DEBUG: After file search, oauth_creds_file={repr(oauth_creds_file)}")
 
 if oauth_creds_file and os.path.exists(oauth_creds_file):
     with open(oauth_creds_file) as f:
@@ -144,9 +140,7 @@ else:
     # Try environment variables as fallback
     GOOGLE_CLIENT_ID = os.environ.get('GOOGLE_CLIENT_ID')
     GOOGLE_CLIENT_SECRET = os.environ.get('GOOGLE_CLIENT_SECRET')
-    print(f"DEBUG: oauth_creds_file={oauth_creds_file}")
-    print(f"DEBUG: GOOGLE_CLIENT_ID from env={GOOGLE_CLIENT_ID}")
-    print(f"DEBUG: GOOGLE_CLIENT_SECRET exists={bool(GOOGLE_CLIENT_SECRET)}")
+    app.logger.debug(f"OAuth configured: client_id={'set' if GOOGLE_CLIENT_ID else 'not set'}")
 
 # Test mode configuration - ONLY FOR AUTOMATED TESTING
 TEST_MODE_ENABLED = os.environ.get('ADCP_AUTH_TEST_MODE', '').lower() == 'true'
@@ -305,61 +299,59 @@ def is_super_admin(email):
 def is_tenant_admin(email, tenant_id=None):
     """Check if email is authorized for a specific tenant."""
     conn = get_db_connection()
-    
-    if tenant_id:
-        # Check specific tenant
-        cursor = conn.execute("""
-            SELECT authorized_emails, authorized_domains
-            FROM tenants
-            WHERE tenant_id = ? AND is_active = ?
-        """, (tenant_id, True))
+    try:
+        if tenant_id:
+            # Check specific tenant
+            cursor = conn.execute("""
+                SELECT authorized_emails, authorized_domains
+                FROM tenants
+                WHERE tenant_id = ? AND is_active = ?
+            """, (tenant_id, True))
+            
+            tenant = cursor.fetchone()
+            if tenant:
+                # Parse JSON arrays
+                authorized_emails = json.loads(tenant[0]) if tenant[0] else []
+                authorized_domains = json.loads(tenant[1]) if tenant[1] else []
+                
+                # Check authorized emails
+                if email in authorized_emails:
+                    return True
+                
+                # Check authorized domains
+                domain = email.split('@')[1] if '@' in email else ''
+                if domain and domain in authorized_domains:
+                    return True
+        else:
+            # Check all tenants to find which one(s) this email can access
+            cursor = conn.execute("""
+                SELECT tenant_id, name, authorized_emails, authorized_domains
+                FROM tenants
+                WHERE is_active = ?
+            """, (True,))
+            
+            authorized_tenants = []
+            for row in cursor.fetchall():
+                tenant_id = row[0]
+                tenant_name = row[1]
+                authorized_emails = json.loads(row[2]) if row[2] else []
+                authorized_domains = json.loads(row[3]) if row[3] else []
+                
+                # Check authorized emails
+                if email in authorized_emails:
+                    authorized_tenants.append((tenant_id, tenant_name))
+                    continue
+                
+                # Check authorized domains
+                domain = email.split('@')[1] if '@' in email else ''
+                if domain and domain in authorized_domains:
+                    authorized_tenants.append((tenant_id, tenant_name))
+            
+            return authorized_tenants
         
-        tenant = cursor.fetchone()
-        if tenant:
-            # Parse JSON arrays
-            authorized_emails = json.loads(tenant[0]) if tenant[0] else []
-            authorized_domains = json.loads(tenant[1]) if tenant[1] else []
-            
-            # Check authorized emails
-            if email in authorized_emails:
-                conn.close()
-                return True
-            
-            # Check authorized domains
-            domain = email.split('@')[1] if '@' in email else ''
-            if domain and domain in authorized_domains:
-                conn.close()
-                return True
-    else:
-        # Check all tenants to find which one(s) this email can access
-        cursor = conn.execute("""
-            SELECT tenant_id, name, authorized_emails, authorized_domains
-            FROM tenants
-            WHERE is_active = ?
-        """, (True,))
-        
-        authorized_tenants = []
-        for row in cursor.fetchall():
-            tenant_id = row[0]
-            tenant_name = row[1]
-            authorized_emails = json.loads(row[2]) if row[2] else []
-            authorized_domains = json.loads(row[3]) if row[3] else []
-            
-            # Check authorized emails
-            if email in authorized_emails:
-                authorized_tenants.append((tenant_id, tenant_name))
-                continue
-            
-            # Check authorized domains
-            domain = email.split('@')[1] if '@' in email else ''
-            if domain and domain in authorized_domains:
-                authorized_tenants.append((tenant_id, tenant_name))
-        
+        return False
+    finally:
         conn.close()
-        return authorized_tenants
-    
-    conn.close()
-    return False
 
 def require_auth(admin_only=False):
     """Decorator for authentication."""
