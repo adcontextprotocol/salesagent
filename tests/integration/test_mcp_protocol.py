@@ -28,19 +28,27 @@ class TestMCPProtocol:
         """Test get_products with all required fields."""
         async with mcp_client as client:
             # Test with both required fields
-            result = await client.tools.get_products(
-                brief="Looking for display ads on news sites",
-                promoted_offering="AI analytics platform for businesses",
+            result = await client.call_tool(
+                "get_products",
+                {
+                    "req": {
+                        "brief": "Looking for display ads on news sites",
+                        "promoted_offering": "AI analytics platform for businesses",
+                    }
+                },
             )
 
             assert result is not None
-            assert hasattr(result, "products") or "products" in result
 
-            # If result is a dict-like object
-            if isinstance(result, dict):
-                products = result.get("products", [])
-            else:
-                products = result.products if hasattr(result, "products") else []
+            # FastMCP call_tool returns structured_content
+            content = (
+                result.structured_content
+                if hasattr(result, "structured_content")
+                else result
+            )
+            assert "products" in content
+
+            products = content.get("products", [])
 
             assert isinstance(products, list)
 
@@ -56,9 +64,14 @@ class TestMCPProtocol:
         """Test that get_products fails without promoted_offering."""
         async with mcp_client as client:
             with pytest.raises(Exception) as exc_info:
-                await client.tools.get_products(
-                    brief="Looking for display ads"
-                    # Missing promoted_offering
+                await client.call_tool(
+                    "get_products",
+                    {
+                        "req": {
+                            "brief": "Looking for display ads"
+                            # Missing promoted_offering
+                        }
+                    },
                 )
 
             # Should get validation error
@@ -72,20 +85,23 @@ class TestMCPProtocol:
         """Test the complete lifecycle of creating and managing a media buy."""
         async with mcp_client as client:
             # Step 1: Get available products
-            products_result = await client.tools.get_products(
-                brief="video ads for sports content",
-                promoted_offering="Sports betting app targeting NFL fans",
+            products_result = await client.call_tool(
+                "get_products",
+                {
+                    "req": {
+                        "brief": "video ads for sports content",
+                        "promoted_offering": "Sports betting app targeting NFL fans",
+                    }
+                },
             )
 
-            # Extract product IDs
-            if isinstance(products_result, dict):
-                products = products_result.get("products", [])
-            else:
-                products = (
-                    products_result.products
-                    if hasattr(products_result, "products")
-                    else []
-                )
+            # Extract product IDs from FastMCP response
+            content = (
+                products_result.structured_content
+                if hasattr(products_result, "structured_content")
+                else products_result
+            )
+            products = content.get("products", [])
 
             assert len(products) > 0, "Should have at least one product available"
 
@@ -100,14 +116,19 @@ class TestMCPProtocol:
             start_date = date.today() + timedelta(days=1)
             end_date = start_date + timedelta(days=30)
 
-            create_result = await client.tools.create_media_buy(
-                product_ids=product_ids[:1],  # Use first product
-                total_budget=5000.0,
-                flight_start_date=start_date.isoformat(),
-                flight_end_date=end_date.isoformat(),
-                targeting_overlay={
-                    "geo_country_any_of": ["US", "CA"],
-                    "device_type_any_of": ["mobile", "desktop"],
+            create_result = await client.call_tool(
+                "create_media_buy",
+                {
+                    "req": {
+                        "product_ids": product_ids[:1],  # Use first product
+                        "total_budget": 5000.0,
+                        "flight_start_date": start_date.isoformat(),
+                        "flight_end_date": end_date.isoformat(),
+                        "targeting_overlay": {
+                            "geo_country_any_of": ["US", "CA"],
+                            "device_type_any_of": ["mobile", "desktop"],
+                        },
+                    }
                 },
             )
 
@@ -131,8 +152,8 @@ class TestMCPProtocol:
             assert context_id is not None, "Should return a context_id"
 
             # Step 3: Check status using context_id
-            status_result = await client.tools.check_media_buy_status(
-                context_id=context_id
+            status_result = await client.call_tool(
+                "check_media_buy_status", {"req": {"context_id": context_id}}
             )
 
             if isinstance(status_result, dict):
@@ -149,37 +170,51 @@ class TestMCPProtocol:
             ], f"Unexpected status: {status}"
 
             # Step 4: Add creative assets
-            creative_result = await client.tools.add_creative_assets(
-                media_buy_id=media_buy_id,
-                creatives=[
-                    {
-                        "creative_id": "test_creative_001",
-                        "format": "display_300x250",
-                        "content": {
-                            "type": "url",
-                            "url": "https://example.com/creative.jpg",
-                        },
+            creative_result = await client.call_tool(
+                "add_creative_assets",
+                {
+                    "req": {
+                        "media_buy_id": media_buy_id,
+                        "creatives": [
+                            {
+                                "creative_id": "test_creative_001",
+                                "format": "display_300x250",
+                                "content": {
+                                    "type": "url",
+                                    "url": "https://example.com/creative.jpg",
+                                },
+                            }
+                        ],
                     }
-                ],
+                },
             )
 
             assert creative_result is not None
 
             # Step 5: Update media buy with new targeting
-            update_result = await client.tools.update_media_buy(
-                media_buy_id=media_buy_id,
-                total_budget=7500.0,  # Increase budget
-                targeting_overlay={
-                    "geo_country_any_of": ["US", "CA", "GB"],  # Add GB
-                    "device_type_any_of": ["mobile", "desktop", "tablet"],  # Add tablet
+            update_result = await client.call_tool(
+                "update_media_buy",
+                {
+                    "req": {
+                        "media_buy_id": media_buy_id,
+                        "total_budget": 7500.0,  # Increase budget
+                        "targeting_overlay": {
+                            "geo_country_any_of": ["US", "CA", "GB"],  # Add GB
+                            "device_type_any_of": [
+                                "mobile",
+                                "desktop",
+                                "tablet",
+                            ],  # Add tablet
+                        },
+                    }
                 },
             )
 
             assert update_result is not None
 
             # Step 6: Get delivery stats
-            delivery_result = await client.tools.get_media_buy_delivery(
-                media_buy_id=media_buy_id
+            delivery_result = await client.call_tool(
+                "get_media_buy_delivery", {"req": {"media_buy_id": media_buy_id}}
             )
 
             assert delivery_result is not None
@@ -190,15 +225,17 @@ class TestMCPProtocol:
         async with mcp_client as client:
             try:
                 # get_signals is optional per spec
-                result = await client.tools.get_signals(
-                    query="sports", type="contextual"
+                result = await client.call_tool(
+                    "get_signals", {"req": {"query": "sports", "type": "contextual"}}
                 )
 
                 # If it exists, verify structure
-                if isinstance(result, dict):
-                    signals = result.get("signals", [])
-                else:
-                    signals = result.signals if hasattr(result, "signals") else []
+                content = (
+                    result.structured_content
+                    if hasattr(result, "structured_content")
+                    else result
+                )
+                signals = content.get("signals", [])
 
                 assert isinstance(signals, list)
 
@@ -215,7 +252,10 @@ class TestMCPProtocol:
 
         async with client:
             with pytest.raises(Exception) as exc_info:
-                await client.tools.get_products(brief="test", promoted_offering="test")
+                await client.call_tool(
+                    "get_products",
+                    {"req": {"brief": "test", "promoted_offering": "test"}},
+                )
 
             # Should get auth error
             assert (
@@ -228,18 +268,17 @@ class TestMCPProtocol:
         """Test that country codes are validated properly."""
         async with mcp_client as client:
             # Get a product first
-            products_result = await client.tools.get_products(
-                brief="display ads", promoted_offering="test product"
+            products_result = await client.call_tool(
+                "get_products",
+                {"req": {"brief": "display ads", "promoted_offering": "test product"}},
             )
 
-            if isinstance(products_result, dict):
-                products = products_result.get("products", [])
-            else:
-                products = (
-                    products_result.products
-                    if hasattr(products_result, "products")
-                    else []
-                )
+            content = (
+                products_result.structured_content
+                if hasattr(products_result, "structured_content")
+                else products_result
+            )
+            products = content.get("products", [])
 
             assert len(products) > 0
 
@@ -253,26 +292,39 @@ class TestMCPProtocol:
             start_date = date.today() + timedelta(days=1)
             end_date = start_date + timedelta(days=30)
 
-            result = await client.tools.create_media_buy(
-                product_ids=[product_id],
-                total_budget=1000.0,
-                flight_start_date=start_date.isoformat(),
-                flight_end_date=end_date.isoformat(),
-                targeting_overlay={
-                    "geo_country_any_of": ["US", "GB", "FR", "DE", "JP"]
+            result = await client.call_tool(
+                "create_media_buy",
+                {
+                    "req": {
+                        "product_ids": [product_id],
+                        "total_budget": 1000.0,
+                        "flight_start_date": start_date.isoformat(),
+                        "flight_end_date": end_date.isoformat(),
+                        "targeting_overlay": {
+                            "geo_country_any_of": ["US", "GB", "FR", "DE", "JP"]
+                        },
+                    }
                 },
             )
 
             assert result is not None
 
             # Test with invalid country codes should still work (adapter validates)
-            result2 = await client.tools.create_media_buy(
-                product_ids=[product_id],
-                total_budget=1000.0,
-                flight_start_date=start_date.isoformat(),
-                flight_end_date=end_date.isoformat(),
-                targeting_overlay={
-                    "geo_country_any_of": ["USA", "United Kingdom"]  # Non-ISO codes
+            result2 = await client.call_tool(
+                "create_media_buy",
+                {
+                    "req": {
+                        "product_ids": [product_id],
+                        "total_budget": 1000.0,
+                        "flight_start_date": start_date.isoformat(),
+                        "flight_end_date": end_date.isoformat(),
+                        "targeting_overlay": {
+                            "geo_country_any_of": [
+                                "USA",
+                                "United Kingdom",
+                            ]  # Non-ISO codes
+                        },
+                    }
                 },
             )
 
