@@ -73,14 +73,31 @@ class TestDashboardRoutes:
         mock_conn.execute.return_value = mock_cursor
         mock_db.return_value = mock_conn
         
-        # Mock tenant query
-        mock_cursor.fetchone.return_value = (
-            mock_tenant['tenant_id'],
-            mock_tenant['name'],
-            mock_tenant['subdomain'],
-            mock_tenant['is_active'],
-            mock_tenant['ad_server']
-        )
+        # Mock different query results based on call count
+        # First call is for tenant info, subsequent calls are for metrics
+        mock_cursor.fetchone.side_effect = [
+            # Tenant query
+            (mock_tenant['tenant_id'], mock_tenant['name'], mock_tenant['subdomain'], 
+             mock_tenant['is_active'], mock_tenant['ad_server']),
+            # Revenue query
+            (5000.0,),
+            # Previous revenue query  
+            (4000.0,),
+            # Active buys query
+            (10,),
+            # Pending buys query
+            (5,),
+            # Open tasks query
+            (8,),
+            # Overdue tasks query
+            (2,),
+            # Active advertisers query
+            (15,),
+            # Total advertisers query
+            (20,),
+            # Default for any additional queries
+            (0,)
+        ]
         
         with flask_client.session_transaction() as sess:
             sess['authenticated'] = True
@@ -91,8 +108,18 @@ class TestDashboardRoutes:
         # Should not error
         assert response.status_code != 500
         
-    def test_dashboard_invalid_tenant(self, flask_client):
+    @patch('admin_ui.get_db_connection')
+    def test_dashboard_invalid_tenant(self, mock_db, flask_client):
         """Test dashboard with non-existent tenant."""
+        # Mock database connection
+        mock_conn = MagicMock()
+        mock_cursor = MagicMock()
+        mock_conn.execute.return_value = mock_cursor
+        mock_db.return_value = mock_conn
+        
+        # Mock tenant query returning None (tenant not found)
+        mock_cursor.fetchone.return_value = None
+        
         with flask_client.session_transaction() as sess:
             sess['authenticated'] = True
             sess['role'] = 'super_admin'
@@ -271,13 +298,19 @@ class TestSettingsPage:
         mock_conn.execute.return_value = mock_cursor
         mock_db.return_value = mock_conn
         
-        # Mock tenant data
-        mock_cursor.fetchone.return_value = {
-            'tenant_id': 'test',
-            'name': 'Test Tenant',
-            'config': json.dumps({'features': {}}),
-            'ad_server': 'mock'
-        }
+        # Mock query results in order they're called
+        mock_cursor.fetchone.side_effect = [
+            # Tenant query
+            ('test', 'Test Tenant', 'test', True, 'mock'),
+            # Product count
+            (5,),
+            # Advertiser count
+            (3,),
+            # Active advertisers
+            (2,),
+            # Default for additional queries
+            (0,)
+        ]
         
         with flask_client.session_transaction() as sess:
             sess['authenticated'] = True
