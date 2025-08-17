@@ -329,13 +329,6 @@ class TestDashboardMetricsIntegration:
         assert pending == 1
 
     @pytest.mark.requires_db
-    def test_task_metrics(self, test_db):
-        """Test task counting and overdue detection."""
-        # Skip test - tasks table was removed in migration 015 and replaced with workflow_steps
-        # workflow_steps doesn't have tenant_id, so we can't test tenant-specific tasks
-        pytest.skip("tasks table replaced by workflow_steps in migration 015")
-
-    @pytest.mark.requires_db
     def test_advertiser_metrics(self, test_db):
         """Test advertiser counting."""
         ph = get_placeholder()
@@ -396,13 +389,6 @@ class TestDashboardDataRetrieval:
         assert most_recent[0] == "mb_test_002"
         assert most_recent[3] == "pending"
         assert most_recent[4] == 3000.0
-
-    @pytest.mark.requires_db
-    def test_pending_tasks_retrieval(self, test_db):
-        """Test fetching pending tasks with descriptions."""
-        # Skip test - tasks table was removed in migration 015 and replaced with workflow_steps
-        # workflow_steps doesn't have tenant_id, so we can't test tenant-specific tasks
-        pytest.skip("tasks table replaced by workflow_steps in migration 015")
 
     @pytest.mark.requires_db
     def test_revenue_by_advertiser_chart(self, test_db):

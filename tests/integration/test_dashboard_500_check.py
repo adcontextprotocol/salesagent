@@ -64,7 +64,7 @@ def test_dashboard_no_500_when_authenticated(client):
     if response.status_code == 200:
         assert b"UndefinedColumn" not in response.data
         assert b"UndefinedTable" not in response.data
-        assert b"details" not in response.data  # Old column name
+        # Note: Can't check for "details" as it's a common word in HTML
 
 
 def test_settings_no_500_when_authenticated(client):
