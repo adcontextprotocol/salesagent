@@ -21,8 +21,8 @@ from config_loader import (
     load_config, get_current_tenant, set_current_tenant,
     get_tenant_config, current_tenant
 )
-from db_config import get_db_connection
-from database_session import get_db_session, DatabaseManager
+from database_session import get_db_session
+from models import Tenant, Principal, Product, MediaBuy, Task, AuditLog, AdapterConfig
 from slack_notifier import get_slack_notifier
 from product_catalog_providers.factory import get_product_catalog_provider
 from policy_check_service import PolicyCheckService, PolicyStatus
@@ -115,42 +115,34 @@ def get_principal_from_context(context: Optional[Context]) -> Optional[str]:
             tenant_id = 'default'
         
         # Load tenant by ID with all new fields
-        conn = get_db_connection()
-        cursor = conn.execute(
-            """SELECT tenant_id, name, subdomain, ad_server, max_daily_budget, 
-                      enable_aee_signals, authorized_emails, authorized_domains, 
-                      slack_webhook_url, admin_token, auto_approve_formats, 
-                      human_review_required, slack_audit_webhook_url, hitl_webhook_url,
-                      policy_settings
-               FROM tenants 
-               WHERE tenant_id = ? AND is_active = ?""",
-            (tenant_id, True)
-        )
-        row = cursor.fetchone()
-        conn.close()
-        
-        if not row:
-            print(f"No active tenant found for ID: {tenant_id}")
-            return None
+        with get_db_session() as session:
+            tenant = session.query(Tenant).filter_by(
+                tenant_id=tenant_id,
+                is_active=True
+            ).first()
             
-        # Set tenant context with new fields
-        tenant_dict = {
-            'tenant_id': row[0],
-            'name': row[1],
-            'subdomain': row[2],
-            'ad_server': row[3],
-            'max_daily_budget': row[4],
-            'enable_aee_signals': row[5],
-            'authorized_emails': json.loads(row[6]) if row[6] else [],
-            'authorized_domains': json.loads(row[7]) if row[7] else [],
-            'slack_webhook_url': row[8],
-            'admin_token': row[9],
-            'auto_approve_formats': json.loads(row[10]) if row[10] else [],
-            'human_review_required': row[11],
-            'slack_audit_webhook_url': row[12],
-            'hitl_webhook_url': row[13],
-            'policy_settings': json.loads(row[14]) if row[14] else None
-        }
+            if not tenant:
+                print(f"No active tenant found for ID: {tenant_id}")
+                return None
+            
+            # Set tenant context with new fields
+            tenant_dict = {
+                'tenant_id': tenant.tenant_id,
+                'name': tenant.name,
+                'subdomain': tenant.subdomain,
+                'ad_server': tenant.ad_server,
+                'max_daily_budget': tenant.max_daily_budget,
+                'enable_aee_signals': tenant.enable_aee_signals,
+                'authorized_emails': tenant.authorized_emails or [],
+                'authorized_domains': tenant.authorized_domains or [],
+                'slack_webhook_url': tenant.slack_webhook_url,
+                'admin_token': tenant.admin_token,
+                'auto_approve_formats': tenant.auto_approve_formats or [],
+                'human_review_required': tenant.human_review_required,
+                'slack_audit_webhook_url': tenant.slack_audit_webhook_url,
+                'hitl_webhook_url': tenant.hitl_webhook_url,
+                'policy_settings': tenant.policy_settings
+            }
         set_current_tenant(tenant_dict)
         
         # Get the x-adcp-auth header
@@ -167,31 +159,27 @@ def get_principal_from_context(context: Optional[Context]) -> Optional[str]:
 def get_principal_adapter_mapping(principal_id: str) -> Dict[str, Any]:
     """Get the platform mappings for a principal."""
     tenant = get_current_tenant()
-    conn = get_db_connection()
-    cursor = conn.execute(
-        "SELECT platform_mappings FROM principals WHERE principal_id = ? AND tenant_id = ?", 
-        (principal_id, tenant['tenant_id'])
-    )
-    result = cursor.fetchone()
-    conn.close()
-    return json.loads(result[0]) if result else {}
+    with get_db_session() as session:
+        principal = session.query(Principal).filter_by(
+            principal_id=principal_id,
+            tenant_id=tenant['tenant_id']
+        ).first()
+        return principal.platform_mappings if principal else {}
 
-def get_principal_object(principal_id: str) -> Optional[Principal]:
+def get_principal_object(principal_id: str) -> Optional[schemas.Principal]:
     """Get a Principal object for the given principal_id."""
     tenant = get_current_tenant()
-    conn = get_db_connection()
-    cursor = conn.execute(
-        "SELECT principal_id, name, platform_mappings FROM principals WHERE principal_id = ? AND tenant_id = ?", 
-        (principal_id, tenant['tenant_id'])
-    )
-    result = cursor.fetchone()
-    conn.close()
-    
-    if result:
-        return Principal(
-            principal_id=result[0],
-            name=result[1],
-            platform_mappings=json.loads(result[2])
+    with get_db_session() as session:
+        principal = session.query(Principal).filter_by(
+            principal_id=principal_id,
+            tenant_id=tenant['tenant_id']
+        ).first()
+        
+        if principal:
+            return schemas.Principal(
+                principal_id=principal.principal_id,
+                name=principal.name,
+                platform_mappings=principal.platform_mappings
         )
     return None
 
@@ -219,37 +207,29 @@ def get_adapter(principal: Principal, dry_run: bool = False):
     selected_adapter = tenant.get('ad_server', 'mock')
     
     # Get adapter config from adapter_config table
-    conn = get_db_connection()
-    cursor = conn.execute(
-        """SELECT adapter_type, mock_dry_run, gam_network_code, gam_refresh_token,
-                  gam_company_id, gam_trafficker_id, gam_manual_approval_required,
-                  kevel_network_id, kevel_api_key, kevel_manual_approval_required,
-                  triton_station_id, triton_api_key
-           FROM adapter_config 
-           WHERE tenant_id = ?""",
-        (tenant['tenant_id'],)
-    )
-    row = cursor.fetchone()
-    conn.close()
-    
-    adapter_config = {'enabled': True}
-    if row:
-        adapter_type = row[0]
-        if adapter_type == 'mock':
-            adapter_config['dry_run'] = row[1]
-        elif adapter_type == 'google_ad_manager':
-            adapter_config['network_code'] = row[2]
-            adapter_config['refresh_token'] = row[3]
-            adapter_config['company_id'] = row[4]
-            adapter_config['trafficker_id'] = row[5]
-            adapter_config['manual_approval_required'] = row[6]
-        elif adapter_type == 'kevel':
-            adapter_config['network_id'] = row[7]
-            adapter_config['api_key'] = row[8]
-            adapter_config['manual_approval_required'] = row[9]
-        elif adapter_type == 'triton':
-            adapter_config['station_id'] = row[10]
-            adapter_config['api_key'] = row[11]
+    with get_db_session() as session:
+        config_row = session.query(AdapterConfig).filter_by(
+            tenant_id=tenant['tenant_id']
+        ).first()
+        
+        adapter_config = {'enabled': True}
+        if config_row:
+            adapter_type = config_row.adapter_type
+            if adapter_type == 'mock':
+                adapter_config['dry_run'] = config_row.mock_dry_run
+            elif adapter_type == 'google_ad_manager':
+                adapter_config['network_code'] = config_row.gam_network_code
+                adapter_config['refresh_token'] = config_row.gam_refresh_token
+                adapter_config['company_id'] = config_row.gam_company_id
+                adapter_config['trafficker_id'] = config_row.gam_trafficker_id
+                adapter_config['manual_approval_required'] = config_row.gam_manual_approval_required
+            elif adapter_type == 'kevel':
+                adapter_config['network_id'] = config_row.kevel_network_id
+                adapter_config['api_key'] = config_row.kevel_api_key
+                adapter_config['manual_approval_required'] = config_row.kevel_manual_approval_required
+            elif adapter_type == 'triton':
+                adapter_config['station_id'] = config_row.triton_station_id
+                adapter_config['api_key'] = config_row.triton_api_key
     
     if not selected_adapter:
         # Default to mock if no adapter specified
@@ -471,35 +451,29 @@ async def get_products(req: GetProductsRequest, context: Context) -> GetProducts
         policy_settings.get('require_manual_review', False)):
         
         # Create a manual review task
-        conn = get_db_connection()
-        task_id = f"policy_review_{tenant['tenant_id']}_{int(datetime.utcnow().timestamp())}"
-        
-        task_details = {
-            "brief": req.brief,
-            "promoted_offering": req.promoted_offering,
-            "principal_id": principal_id,
-            "policy_status": policy_result.status,
-            "restrictions": policy_result.restrictions,
-            "reason": policy_result.reason
-        }
-        
-        conn.execute("""
-            INSERT INTO tasks (
-                tenant_id, task_id, media_buy_id, task_type, 
-                status, details, created_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?)
-        """, (
-            tenant['tenant_id'],
-            task_id,
-            None,  # No media buy associated
-            'policy_review',
-            'pending',
-            json.dumps(task_details),
-            datetime.utcnow()
-        ))
-        
-        conn.connection.commit()
-        conn.close()
+        with get_db_session() as session:
+            task_id = f"policy_review_{tenant['tenant_id']}_{int(datetime.utcnow().timestamp())}"
+            
+            task_details = {
+                "brief": req.brief,
+                "promoted_offering": req.promoted_offering,
+                "principal_id": principal_id,
+                "policy_status": policy_result.status,
+                "restrictions": policy_result.restrictions,
+                "reason": policy_result.reason
+            }
+            
+            new_task = Task(
+                tenant_id=tenant['tenant_id'],
+                task_id=task_id,
+                media_buy_id=None,  # No media buy associated
+                task_type='policy_review',
+                status='pending',
+                details=task_details,
+                created_at=datetime.utcnow()
+            )
+            session.add(new_task)
+            session.commit()
         
         logger.info(f"Created policy review task {task_id} for restricted brief")
         
@@ -838,32 +812,24 @@ def create_media_buy(req: CreateMediaBuyRequest, context: Context) -> CreateMedi
     
     # Store the media buy in database (context_id is NULL for synchronous operations)
     tenant = get_current_tenant()
-    conn = get_db_connection()
-    try:
-        conn.execute("""
-            INSERT INTO media_buys (
-                media_buy_id, tenant_id, principal_id, order_name,
-                advertiser_name, campaign_objective, kpi_goal, budget,
-                start_date, end_date, status, raw_request, context_id
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """, (
-            response.media_buy_id,
-            tenant['tenant_id'],
-            principal_id,
-            req.po_number or f"Order-{response.media_buy_id}",
-            principal.name,
-            getattr(req, 'campaign_objective', ''),  # Optional field
-            getattr(req, 'kpi_goal', ''),  # Optional field
-            req.total_budget,
-            req.flight_start_date.isoformat(),
-            req.flight_end_date.isoformat(),
-            response.status or 'active',
-            json.dumps(req.model_dump(mode='json')),
-            None  # No context for synchronous operations
-        ))
-        conn.connection.commit()
-    finally:
-        conn.close()
+    with get_db_session() as session:
+        new_media_buy = MediaBuy(
+            media_buy_id=response.media_buy_id,
+            tenant_id=tenant['tenant_id'],
+            principal_id=principal_id,
+            order_name=req.po_number or f"Order-{response.media_buy_id}",
+            advertiser_name=principal.name,
+            campaign_objective=getattr(req, 'campaign_objective', ''),  # Optional field
+            kpi_goal=getattr(req, 'kpi_goal', ''),  # Optional field
+            budget=req.total_budget,
+            start_date=req.flight_start_date.isoformat(),
+            end_date=req.flight_end_date.isoformat(),
+            status=response.status or 'active',
+            raw_request=req.model_dump(mode='json'),
+            context_id=None  # No context for synchronous operations
+        )
+        session.add(new_media_buy)
+        session.commit()
     
     # Handle creatives if provided
     if req.creatives:
@@ -934,17 +900,15 @@ def check_media_buy_status(req: CheckMediaBuyStatusRequest, context: Context) ->
     
     # If not in memory, check database
     if not media_buy_id:
-        conn = get_db_connection()
-        try:
-            cursor = conn.execute(
-                "SELECT media_buy_id, status, budget, start_date, end_date FROM media_buys WHERE context_id = ?",
-                (req.context_id,)
-            )
-            row = cursor.fetchone()
-            if row:
-                media_buy_id = row[0]
-                status = row[1]
-                budget = row[2]
+        with get_db_session() as session:
+            media_buy = session.query(MediaBuy).filter_by(
+                context_id=req.context_id
+            ).first()
+            
+            if media_buy:
+                media_buy_id = media_buy.media_buy_id
+                status = media_buy.status
+                budget = media_buy.budget
             else:
                 # Context not found
                 return CheckMediaBuyStatusResponse(
@@ -955,8 +919,6 @@ def check_media_buy_status(req: CheckMediaBuyStatusRequest, context: Context) ->
                     budget_spent=0.0,
                     budget_remaining=0.0
                 )
-        finally:
-            conn.close()
     
     # Check if media buy exists in memory
     if media_buy_id in media_buys:
@@ -966,13 +928,12 @@ def check_media_buy_status(req: CheckMediaBuyStatusRequest, context: Context) ->
         creative_count = len(creative_assignments.get(media_buy_id, {}).get("all", []))
         
         # Check for any pending human tasks
-        conn = get_db_connection()
-        try:
-            cursor = conn.execute(
-                "SELECT status FROM human_tasks WHERE media_buy_id = ? AND status = 'pending'",
-                (media_buy_id,)
-            )
-            pending_task = cursor.fetchone()
+        with get_db_session() as session:
+            from models import HumanTask
+            pending_task = session.query(HumanTask).filter_by(
+                media_buy_id=media_buy_id,
+                status='pending'
+            ).first()
             
             if pending_task:
                 status = "pending_manual"
@@ -980,8 +941,6 @@ def check_media_buy_status(req: CheckMediaBuyStatusRequest, context: Context) ->
             else:
                 status = "active" if creative_count > 0 else "pending_creative"
                 detail = "Media buy is active" if creative_count > 0 else "Awaiting creative assets"
-        finally:
-            conn.close()
         
         return CheckMediaBuyStatusResponse(
             media_buy_id=media_buy_id,
@@ -2300,27 +2259,22 @@ def complete_task(req: CompleteTaskRequest, context: Context) -> Dict[str, str]:
     
     # Update task in database
     tenant = get_current_tenant()
-    conn = get_db_connection()
-    try:
-        conn.execute("""
-            UPDATE tasks 
-            SET status = ?, completed_at = ?, completed_by = ?, metadata = ?
-            WHERE task_id = ? AND tenant_id = ?
-        """, (
-            task.status,
-            task.completed_at.isoformat() if task.completed_at else None,
-            task.resolved_by,
-            json.dumps({
+    with get_db_session() as session:
+        db_task = session.query(Task).filter_by(
+            task_id=req.task_id,
+            tenant_id=tenant['tenant_id']
+        ).first()
+        
+        if db_task:
+            db_task.status = task.status
+            db_task.completed_at = task.completed_at.isoformat() if task.completed_at else None
+            db_task.completed_by = task.resolved_by
+            db_task.metadata = {
                 "resolution": task.resolution,
                 "resolution_detail": task.resolution_detail,
                 "original_metadata": json.loads(human_tasks[req.task_id].metadata) if hasattr(human_tasks[req.task_id], 'metadata') else {}
-            }),
-            req.task_id,
-            tenant['tenant_id']
-        ))
-        conn.connection.commit()
-    finally:
-        conn.close()
+            }
+            session.commit()
     
     audit_logger = get_audit_logger("AdCP", tenant['tenant_id'])
     audit_logger.log_operation(
@@ -2406,32 +2360,24 @@ def complete_task(req: CompleteTaskRequest, context: Context) -> Dict[str, str]:
                     
                     # Store the media buy in database
                     tenant = get_current_tenant()
-                    conn = get_db_connection()
-                    try:
+                    with get_db_session() as session:
                         principal = get_principal_object(task.principal_id)
-                        conn.execute("""
-                            INSERT INTO media_buys (
-                                media_buy_id, tenant_id, principal_id, order_name,
-                                advertiser_name, campaign_objective, kpi_goal, budget,
-                                start_date, end_date, status, raw_request
-                            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                        """, (
-                            response.media_buy_id,
-                            tenant['tenant_id'],
-                            task.principal_id,
-                            original_req.po_number or f"Order-{response.media_buy_id}",
-                            principal.name if principal else "Unknown",
-                            getattr(original_req, 'campaign_objective', ''),  # Optional field
-                            getattr(original_req, 'kpi_goal', ''),  # Optional field
-                            original_req.total_budget,
-                            original_req.flight_start_date.isoformat(),
-                            original_req.flight_end_date.isoformat(),
-                            response.status or 'active',
-                            json.dumps(original_req.model_dump(mode='json'))
-                        ))
-                        conn.connection.commit()
-                    finally:
-                        conn.close()
+                        new_media_buy = MediaBuy(
+                            media_buy_id=response.media_buy_id,
+                            tenant_id=tenant['tenant_id'],
+                            principal_id=task.principal_id,
+                            order_name=original_req.po_number or f"Order-{response.media_buy_id}",
+                            advertiser_name=principal.name if principal else "Unknown",
+                            campaign_objective=getattr(original_req, 'campaign_objective', ''),  # Optional field
+                            kpi_goal=getattr(original_req, 'kpi_goal', ''),  # Optional field
+                            budget=original_req.total_budget,
+                            start_date=original_req.flight_start_date.isoformat(),
+                            end_date=original_req.flight_end_date.isoformat(),
+                            status=response.status or 'active',
+                            raw_request=original_req.model_dump(mode='json')
+                        )
+                        session.add(new_media_buy)
+                        session.commit()
                     console.print(f"[green]Media buy {response.media_buy_id} created after manual approval[/green]")
                     
                 elif task.operation == "update_media_buy":
@@ -2583,27 +2529,22 @@ def mark_task_complete(req: MarkTaskCompleteRequest, context: Context) -> Dict[s
     
     # Update task in database
     tenant = get_current_tenant()
-    conn = get_db_connection()
-    try:
-        conn.execute("""
-            UPDATE tasks 
-            SET status = ?, completed_at = ?, completed_by = ?, metadata = ?
-            WHERE task_id = ? AND tenant_id = ?
-        """, (
-            task.status,
-            task.completed_at.isoformat(),
-            task.resolved_by,
-            json.dumps({
+    with get_db_session() as session:
+        db_task = session.query(Task).filter_by(
+            task_id=req.task_id,
+            tenant_id=tenant['tenant_id']
+        ).first()
+        
+        if db_task:
+            db_task.status = task.status
+            db_task.completed_at = task.completed_at.isoformat()
+            db_task.completed_by = task.resolved_by
+            db_task.metadata = {
                 "resolution": task.resolution,
                 "resolution_detail": task.resolution_detail,
                 "verification": verification.model_dump()
-            }),
-            req.task_id,
-            tenant['tenant_id']
-        ))
-        conn.connection.commit()
-    finally:
-        conn.close()
+            }
+            session.commit()
     
     audit_logger = get_audit_logger("AdCP", tenant['tenant_id'])
     audit_logger.log_operation(
@@ -2635,48 +2576,32 @@ def mark_task_complete(req: MarkTaskCompleteRequest, context: Context) -> Dict[s
 
 # Dry run logs are now handled by the adapters themselves
 
-def get_product_catalog() -> List[Product]:
+def get_product_catalog() -> List[schemas.Product]:
     """Get products for the current tenant."""
     tenant = get_current_tenant()
     
-    conn = get_db_connection()
-    cursor = conn.execute(
-        "SELECT * FROM products WHERE tenant_id = ?",
-        (tenant['tenant_id'],)
-    )
-    rows = cursor.fetchall()
-    
-    # Get column names for PostgreSQL compatibility
-    column_names = [desc[0] for desc in cursor.description]
-    conn.close()
-    
-    loaded_products = []
-    for row in rows:
-        # Handle both SQLite Row objects and PostgreSQL tuples
-        if hasattr(row, 'keys'):
-            # SQLite Row object
-            product_data = dict(row)
-        else:
-            # PostgreSQL tuple - create dict from column names
-            product_data = dict(zip(column_names, row))
-        # Remove tenant_id as it's not in the Product schema
-        product_data.pop('tenant_id', None)
+    with get_db_session() as session:
+        products = session.query(Product).filter_by(
+            tenant_id=tenant['tenant_id']
+        ).all()
         
-        # Handle JSONB fields - PostgreSQL returns them as Python objects, SQLite as strings
-        if isinstance(product_data['formats'], str):
-            product_data['formats'] = json.loads(product_data['formats'])
-            
-        # Remove targeting_template - it's internal and shouldn't be exposed
-        product_data.pop('targeting_template', None)
-        
-        if product_data.get('price_guidance'):
-            if isinstance(product_data['price_guidance'], str):
-                product_data['price_guidance'] = json.loads(product_data['price_guidance'])
-                
-        if product_data.get('implementation_config'):
-            if isinstance(product_data['implementation_config'], str):
-                product_data['implementation_config'] = json.loads(product_data['implementation_config'])
-        loaded_products.append(Product(**product_data))
+        loaded_products = []
+        for product in products:
+            # Convert ORM model to Pydantic schema
+            product_data = {
+                'product_id': product.product_id,
+                'name': product.name,
+                'description': product.description,
+                'formats': product.formats,
+                'delivery_type': product.delivery_type,
+                'is_fixed_price': product.is_fixed_price,
+                'cpm': float(product.cpm) if product.cpm else None,
+                'price_guidance': product.price_guidance,
+                'is_custom': product.is_custom,
+                'countries': product.countries,
+                'implementation_config': product.implementation_config
+            }
+            loaded_products.append(schemas.Product(**product_data))
     
     return loaded_products
 
