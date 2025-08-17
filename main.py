@@ -392,10 +392,17 @@ async def get_products(req: GetProductsRequest, context: Context) -> GetProducts
     
     # Check policy compliance first
     policy_service = PolicyCheckService()
+    # Handle policy_settings that might already be a dict (PostgreSQL JSONB) or string (SQLite)
+    policy_settings_raw = tenant.get('policy_settings')
+    if isinstance(policy_settings_raw, str):
+        tenant_policies = json.loads(policy_settings_raw) if policy_settings_raw else None
+    else:
+        tenant_policies = policy_settings_raw
+    
     policy_result = await policy_service.check_brief_compliance(
         brief=req.brief,
         promoted_offering=req.promoted_offering,
-        tenant_policies=json.loads(tenant.get('policy_settings') or '{}') if tenant.get('policy_settings') else None
+        tenant_policies=tenant_policies
     )
     
     # Log the policy check
@@ -416,7 +423,8 @@ async def get_products(req: GetProductsRequest, context: Context) -> GetProducts
     )
     
     # Handle policy result based on settings
-    policy_settings = json.loads(tenant.get('policy_settings') or '{}') if tenant.get('policy_settings') else {}
+    # Use the already parsed policy_settings from above
+    policy_settings = tenant_policies if tenant_policies else {}
     
     if policy_result.status == PolicyStatus.BLOCKED:
         # Always block if policy says blocked
