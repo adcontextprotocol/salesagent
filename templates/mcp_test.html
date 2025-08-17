@@ -109,9 +109,19 @@
 
 <div class="test-section">
     <h2>MCP Protocol Test</h2>
-    <p style="color: #6b7280; margin-bottom: 1.5rem;">
+    <p style="color: #6b7280; margin-bottom: 1rem;">
         Test MCP server endpoints using the official FastMCP client library.
     </p>
+    <div style="background: #f0f9ff; border: 1px solid #0284c7; border-radius: 4px; padding: 1rem; margin-bottom: 1.5rem;">
+        <strong style="color: #0369a1;">AdCP Workflow:</strong>
+        <ol style="margin: 0.5rem 0 0 1.5rem; color: #075985;">
+            <li><code>get_products</code> → Find available inventory</li>
+            <li><code>create_media_buy</code> → Returns context_id & media_buy_id</li>
+            <li><code>check_media_buy_status</code> → Use context_id to check status</li>
+            <li><code>add_creative_assets</code> → Attach creatives to media buy</li>
+            <li><code>get_media_buy_delivery</code> → Pull reporting data</li>
+        </ol>
+    </div>
     
     <div class="form-group">
         <label for="server_url">Server URL</label>
@@ -147,11 +157,11 @@
             <div class="method-option" onclick="selectMethod('create_media_buy')" data-method="create_media_buy">
                 create_media_buy
             </div>
-            <div class="method-option" onclick="selectMethod('activate_media_buy')" data-method="activate_media_buy">
-                activate_media_buy
+            <div class="method-option" onclick="selectMethod('check_media_buy_status')" data-method="check_media_buy_status">
+                check_media_buy_status
             </div>
-            <div class="method-option" onclick="selectMethod('get_media_buy_status')" data-method="get_media_buy_status">
-                get_media_buy_status
+            <div class="method-option" onclick="selectMethod('add_creative_assets')" data-method="add_creative_assets">
+                add_creative_assets
             </div>
             <div class="method-option" onclick="selectMethod('update_media_buy')" data-method="update_media_buy">
                 update_media_buy
@@ -159,8 +169,8 @@
             <div class="method-option" onclick="selectMethod('pause_media_buy')" data-method="pause_media_buy">
                 pause_media_buy
             </div>
-            <div class="method-option" onclick="selectMethod('submit_creatives')" data-method="submit_creatives">
-                submit_creatives
+            <div class="method-option" onclick="selectMethod('get_media_buy_delivery')" data-method="get_media_buy_delivery">
+                get_media_buy_delivery
             </div>
         </div>
     </div>
@@ -213,19 +223,20 @@ function selectMethod(method) {
     // Set sample parameters based on method
     const paramsField = document.getElementById('params');
     const sampleParams = {
-        'get_products': '{}',
+        'get_products': '{"brief": "all available products"}',
         'get_signals': '{"query": "sports", "type": "contextual"}',
         'create_media_buy': JSON.stringify({
             product_ids: ["product_1"],
             total_budget: 1000.0,
             flight_start_date: new Date().toISOString().split('T')[0],
-            flight_end_date: new Date(Date.now() + 30*24*60*60*1000).toISOString().split('T')[0]
+            flight_end_date: new Date(Date.now() + 30*24*60*60*1000).toISOString().split('T')[0],
+            targeting_overlay: {
+                geo_country_any_of: ["US"]
+            }
         }, null, 2),
-        'activate_media_buy': '{"media_buy_id": "mb_123"}',
-        'get_media_buy_status': '{"media_buy_id": "mb_123"}',
-        'update_media_buy': '{"media_buy_id": "mb_123", "total_budget": 2000.0}',
-        'pause_media_buy': '{"media_buy_id": "mb_123"}',
-        'submit_creatives': JSON.stringify({
+        'check_media_buy_status': '{"context_id": "ctx_123"}',
+        'add_creative_assets': JSON.stringify({
+            media_buy_id: "mb_123",
             creatives: [{
                 creative_id: "creative_1",
                 format: "display_300x250",
@@ -234,7 +245,10 @@ function selectMethod(method) {
                     url: "https://example.com/creative.jpg"
                 }
             }]
-        }, null, 2)
+        }, null, 2),
+        'update_media_buy': '{"media_buy_id": "mb_123", "total_budget": 2000.0}',
+        'pause_media_buy': '{"media_buy_id": "mb_123"}',
+        'get_media_buy_delivery': '{"media_buy_ids": ["mb_123"], "status_filter": "active"}'
     };
     
     paramsField.value = sampleParams[method] || '{}';
