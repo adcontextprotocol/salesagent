@@ -3,8 +3,21 @@
 import pytest
 from datetime import datetime, timedelta, timezone
 import json
-from db_config import get_db_connection
+from db_config import get_db_connection, DatabaseConfig
 from init_database import init_db
+
+def get_placeholder():
+    """Get the appropriate SQL placeholder for the current database type."""
+    db_config = DatabaseConfig.get_db_config()
+    return '?' if db_config['type'] == 'sqlite' else '%s'
+
+def get_interval_syntax(days):
+    """Get the appropriate interval syntax for the current database type."""
+    db_config = DatabaseConfig.get_db_config()
+    if db_config['type'] == 'sqlite':
+        return f"datetime('now', '-{days} days')"
+    else:
+        return f"CURRENT_TIMESTAMP - INTERVAL '{days} days'"
 
 @pytest.fixture
 def test_db():
@@ -14,23 +27,25 @@ def test_db():
     
     conn = get_db_connection()
     
-    # Insert test tenant
-    conn.execute("""
+    # Get placeholder for SQL queries
+    ph = get_placeholder()
+    
+    conn.execute(f"""
         INSERT INTO tenants (tenant_id, name, subdomain, is_active, ad_server)
-        VALUES (%s, %s, %s, %s, %s)
+        VALUES ({ph}, {ph}, {ph}, {ph}, {ph})
         ON CONFLICT (tenant_id) DO NOTHING
     """, ('test_dashboard', 'Test Dashboard Tenant', 'test-dashboard', True, 'mock'))
     
     # Insert test principals
-    conn.execute("""
+    conn.execute(f"""
         INSERT INTO principals (tenant_id, principal_id, name, access_token)
-        VALUES (%s, %s, %s, %s)
+        VALUES ({ph}, {ph}, {ph}, {ph})
         ON CONFLICT (tenant_id, principal_id) DO NOTHING
     """, ('test_dashboard', 'principal_1', 'Test Advertiser 1', 'token_1'))
     
-    conn.execute("""
+    conn.execute(f"""
         INSERT INTO principals (tenant_id, principal_id, name, access_token)
-        VALUES (%s, %s, %s, %s)
+        VALUES ({ph}, {ph}, {ph}, {ph})
         ON CONFLICT (tenant_id, principal_id) DO NOTHING
     """, ('test_dashboard', 'principal_2', 'Test Advertiser 2', 'token_2'))
     
@@ -38,11 +53,11 @@ def test_db():
     now = datetime.now(timezone.utc)
     
     # Active buy from 5 days ago
-    conn.execute("""
+    conn.execute(f"""
         INSERT INTO media_buys (
             media_buy_id, tenant_id, principal_id, order_name, advertiser_name,
             budget, start_date, end_date, status, created_at, raw_request
-        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+        ) VALUES ({ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph})
         ON CONFLICT (media_buy_id) DO NOTHING
     """, (
         'mb_test_001', 'test_dashboard', 'principal_1', 'Test Order 1', 'Test Advertiser 1',
@@ -51,11 +66,11 @@ def test_db():
     ))
     
     # Pending buy from today
-    conn.execute("""
+    conn.execute(f"""
         INSERT INTO media_buys (
             media_buy_id, tenant_id, principal_id, order_name, advertiser_name,
             budget, start_date, end_date, status, created_at, raw_request
-        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+        ) VALUES ({ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph})
         ON CONFLICT (media_buy_id) DO NOTHING
     """, (
         'mb_test_002', 'test_dashboard', 'principal_2', 'Test Order 2', 'Test Advertiser 2',
@@ -64,11 +79,11 @@ def test_db():
     ))
     
     # Completed buy from 45 days ago (for revenue change calculation)
-    conn.execute("""
+    conn.execute(f"""
         INSERT INTO media_buys (
             media_buy_id, tenant_id, principal_id, order_name, advertiser_name,
             budget, start_date, end_date, status, created_at, raw_request
-        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+        ) VALUES ({ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph})
         ON CONFLICT (media_buy_id) DO NOTHING
     """, (
         'mb_test_003', 'test_dashboard', 'principal_1', 'Test Order 3', 'Test Advertiser 1',
@@ -77,11 +92,11 @@ def test_db():
     ))
     
     # Insert test human tasks
-    conn.execute("""
+    conn.execute(f"""
         INSERT INTO human_tasks (
             task_id, tenant_id, principal_id, media_buy_id, task_type,
             status, details, created_at
-        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+        ) VALUES ({ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph})
         ON CONFLICT (task_id) DO NOTHING
     """, (
         'task_001', 'test_dashboard', 'principal_1', 'mb_test_001',
@@ -91,11 +106,11 @@ def test_db():
     ))
     
     # Overdue task (older than 3 days)
-    conn.execute("""
+    conn.execute(f"""
         INSERT INTO human_tasks (
             task_id, tenant_id, principal_id, media_buy_id, task_type,
             status, details, created_at
-        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+        ) VALUES ({ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph})
         ON CONFLICT (task_id) DO NOTHING
     """, (
         'task_002', 'test_dashboard', 'principal_2', 'mb_test_002',
@@ -105,15 +120,15 @@ def test_db():
     ))
     
     # Insert test products
-    conn.execute("""
+    conn.execute(f"""
         INSERT INTO products (product_id, tenant_id, name, is_active)
-        VALUES (%s, %s, %s, %s)
+        VALUES ({ph}, {ph}, {ph}, {ph})
         ON CONFLICT (product_id) DO NOTHING
     """, ('prod_001', 'test_dashboard', 'Test Product 1', True))
     
-    conn.execute("""
+    conn.execute(f"""
         INSERT INTO products (product_id, tenant_id, name, is_active)
-        VALUES (%s, %s, %s, %s)
+        VALUES ({ph}, {ph}, {ph}, {ph})
         ON CONFLICT (product_id) DO NOTHING
     """, ('prod_002', 'test_dashboard', 'Test Product 2', True))
     
@@ -136,13 +151,15 @@ class TestDashboardMetricsIntegration:
     @pytest.mark.requires_db
     def test_revenue_metrics(self, test_db):
         """Test revenue calculation from database."""
+        ph = get_placeholder()
+        interval_30 = get_interval_syntax(30)
         # Query for 30-day revenue
-        cursor = test_db.execute("""
+        cursor = test_db.execute(f"""
             SELECT COALESCE(SUM(budget), 0) as total_revenue
             FROM media_buys 
-            WHERE tenant_id = %s 
+            WHERE tenant_id = {ph} 
             AND status IN ('active', 'completed')
-            AND created_at >= CURRENT_TIMESTAMP - INTERVAL '30 days'
+            AND created_at >= {interval_30}
         """, ('test_dashboard',))
         
         total_revenue = cursor.fetchone()[0]

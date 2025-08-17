@@ -4,9 +4,19 @@ import secrets
 from datetime import datetime
 from db_config import get_db_connection, DatabaseConfig
 from database_schema import get_schema
+from migrate import run_migrations
 
-def init_db():
-    """Initialize database with multi-tenant support."""
+def init_db(exit_on_error=False):
+    """Initialize database with multi-tenant support.
+    
+    Args:
+        exit_on_error: If True, exit process on migration error. If False, raise exception.
+                      Default False for test compatibility.
+    """
+    # Run migrations first
+    print("Applying database migrations...")
+    run_migrations(exit_on_error=exit_on_error)
+    
     db_config = DatabaseConfig.get_db_config()
     conn = get_db_connection()
     
@@ -259,4 +269,4 @@ def init_db():
     conn.close()
 
 if __name__ == "__main__":
-    init_db()
+    init_db(exit_on_error=True)

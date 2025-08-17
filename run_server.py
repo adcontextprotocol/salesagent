@@ -6,8 +6,8 @@ import sys
 import uvicorn
 from database import init_db
 
-# Initialize database first
-init_db()
+# Initialize database first (exit on error since this is the main process)
+init_db(exit_on_error=True)
 
 # Import after DB init to avoid circular imports
 from main import mcp
