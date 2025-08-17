@@ -10,6 +10,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../..'))
 from admin_ui import translate_custom_targeting, get_custom_targeting_mappings
 
 
+@pytest.mark.unit
 class TestCustomTargetingTranslation:
     """Test suite for custom targeting translation functions."""
     

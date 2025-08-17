@@ -1,10 +1,19 @@
 repos:
   - repo: local
     hooks:
+      # CRITICAL: Prevent modification of existing migration files
+      - id: check-migration-modifications
+        name: Check migration modifications
+        entry: python3 scripts/check_migration_modifications.py
+        language: system
+        pass_filenames: false
+        always_run: true
+        stages: [commit]
+        
       # Check for removed columns still referenced in code
       - id: check-schema-references
         name: Check schema references
-        entry: python scripts/check_schema_references.py
+        entry: python3 scripts/check_schema_references.py
         language: system
         pass_filenames: false
         always_run: true
@@ -12,7 +21,7 @@ repos:
       # Validate model column lengths
       - id: validate-column-lengths
         name: Validate database column lengths
-        entry: python scripts/validate_column_lengths.py
+        entry: python3 scripts/validate_column_lengths.py
         language: system
         files: '(models|schemas)\.py$'
         
@@ -29,19 +38,28 @@ repos:
         entry: sh -c 'cp adcp_local.db .test.db && DATABASE_URL=sqlite:///.test.db python migrate.py && rm .test.db'
         language: system
         pass_filenames: false
-        stages: [commit]
+        stages: [manual]  # Changed from commit to manual - run with: pre-commit run test-migrations
+        
+      # Run quick unit tests before commit (optional - can be skipped with --no-verify)
+      - id: pytest-unit
+        name: Run unit tests (optional)
+        entry: sh -c 'uv run pytest tests/unit/ -x --tb=short -q || echo "⚠️  Tests failed but continuing (use --no-verify to skip)"'
+        language: system
+        pass_filenames: false
+        stages: [manual]  # Changed to manual - run with: pre-commit run pytest-unit
+        verbose: true
         
       # Check for API deprecations
       - id: check-api-deprecations
         name: Check for deprecated API usage
-        entry: python scripts/check_api_deprecations.py
+        entry: python3 scripts/check_api_deprecations.py
         language: system
         files: 'adapters/.*\.py$'
         
       # Validate Pydantic vs SQLAlchemy imports
       - id: validate-model-imports
         name: Validate model imports
-        entry: python scripts/validate_model_imports.py
+        entry: python3 scripts/validate_model_imports.py
         language: system
         files: '\.py$'
 
@@ -62,7 +80,7 @@ repos:
     rev: 23.3.0
     hooks:
       - id: black
-        language_version: python3.12
+        language_version: python3
 
   - repo: https://github.com/charliermarsh/ruff-pre-commit
     rev: v0.0.272

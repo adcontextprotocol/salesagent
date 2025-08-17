@@ -123,7 +123,8 @@
         <select id="principal_select" onchange="updateAuthToken()">
             <option value="">-- Select a Principal --</option>
             {% for principal in principals %}
-            <option value="{{ principal.access_token }}" data-tenant="{{ principal.tenant_id }}">
+            <option value="{{ principal.access_token }}" data-tenant="{{ principal.tenant_id }}" 
+                    title="Token: {{ principal.access_token[:10] }}...{{ principal.access_token[-4:] if principal.access_token|length > 14 else principal.access_token }}">
                 {{ principal.tenant_name }} / {{ principal.name }} ({{ principal.principal_id }})
             </option>
             {% endfor %}
@@ -132,11 +133,12 @@
     
     <div class="form-group">
         <label for="auth_token">Auth Token</label>
-        <input type="text" id="auth_token" placeholder="Enter token or select principal above">
+        <input type="password" id="auth_token" placeholder="Enter token or select principal above">
+        <small style="color: #6b7280;">Token will be masked for security</small>
     </div>
     
     <div class="form-group">
-        <label>Method</label>
+        <label>Tool</label>
         <div class="method-select">
             <div class="method-option" onclick="selectMethod('get_products')" data-method="get_products">
                 get_products
@@ -147,27 +149,32 @@
             <div class="method-option" onclick="selectMethod('create_media_buy')" data-method="create_media_buy">
                 create_media_buy
             </div>
-            <div class="method-option" onclick="selectMethod('activate_media_buy')" data-method="activate_media_buy">
-                activate_media_buy
-            </div>
-            <div class="method-option" onclick="selectMethod('get_media_buy_status')" data-method="get_media_buy_status">
-                get_media_buy_status
+            <div class="method-option" onclick="selectMethod('check_media_buy_status')" data-method="check_media_buy_status">
+                check_media_buy_status
             </div>
             <div class="method-option" onclick="selectMethod('update_media_buy')" data-method="update_media_buy">
                 update_media_buy
             </div>
-            <div class="method-option" onclick="selectMethod('pause_media_buy')" data-method="pause_media_buy">
-                pause_media_buy
+            <div class="method-option" onclick="selectMethod('add_creative_assets')" data-method="add_creative_assets">
+                add_creative_assets
             </div>
-            <div class="method-option" onclick="selectMethod('submit_creatives')" data-method="submit_creatives">
-                submit_creatives
+            <div class="method-option" onclick="selectMethod('check_creative_status')" data-method="check_creative_status">
+                check_creative_status
+            </div>
+            <div class="method-option" onclick="selectMethod('get_media_buy_delivery')" data-method="get_media_buy_delivery">
+                get_media_buy_delivery
             </div>
         </div>
     </div>
     
     <div class="form-group">
-        <label for="method">Selected Method</label>
+        <label for="method">Selected Tool</label>
         <input type="text" id="method" value="get_products" readonly style="background: #f9fafb;">
+    </div>
+    
+    <div class="form-group" id="parsed_data_group" style="display: none;">
+        <label for="parsed_data">Parsed Data from Previous Response</label>
+        <textarea id="parsed_data" readonly style="background: #f9fafb; color: #059669;"></textarea>
     </div>
     
     <div class="form-group">
@@ -194,10 +201,18 @@
 </div>
 
 <script>
+function maskToken(token) {
+    // Mask token for display (show first 10 and last 4 characters)
+    if (!token || token.length < 20) return token;
+    return token.substring(0, 10) + '...' + token.substring(token.length - 4);
+}
+
 function updateAuthToken() {
     const select = document.getElementById('principal_select');
     const tokenInput = document.getElementById('auth_token');
     tokenInput.value = select.value;
+    // Store the actual token in a data attribute
+    tokenInput.setAttribute('data-actual-token', select.value);
 }
 
 function selectMethod(method) {
@@ -213,19 +228,36 @@ function selectMethod(method) {
     // Set sample parameters based on method
     const paramsField = document.getElementById('params');
     const sampleParams = {
-        'get_products': '{}',
-        'get_signals': '{"query": "sports", "type": "contextual"}',
+        'get_products': JSON.stringify({
+            brief: "display ads for news content",
+            promoted_offering: "Tech startup promoting new AI-powered analytics platform"
+        }, null, 2),
+        'get_signals': JSON.stringify({
+            query: "sports",
+            type: "contextual"
+        }, null, 2),
         'create_media_buy': JSON.stringify({
             product_ids: ["product_1"],
             total_budget: 1000.0,
             flight_start_date: new Date().toISOString().split('T')[0],
-            flight_end_date: new Date(Date.now() + 30*24*60*60*1000).toISOString().split('T')[0]
+            flight_end_date: new Date(Date.now() + 30*24*60*60*1000).toISOString().split('T')[0],
+            targeting_overlay: {
+                geo_country_any_of: ["US", "CA"],
+                device_type_any_of: ["desktop", "mobile"]
+            }
         }, null, 2),
-        'activate_media_buy': '{"media_buy_id": "mb_123"}',
-        'get_media_buy_status': '{"media_buy_id": "mb_123"}',
-        'update_media_buy': '{"media_buy_id": "mb_123", "total_budget": 2000.0}',
-        'pause_media_buy': '{"media_buy_id": "mb_123"}',
-        'submit_creatives': JSON.stringify({
+        'check_media_buy_status': JSON.stringify({
+            media_buy_id: "mb_123"
+        }, null, 2),
+        'update_media_buy': JSON.stringify({
+            media_buy_id: "mb_123",
+            total_budget: 2000.0,
+            targeting_overlay: {
+                geo_country_any_of: ["US", "GB"]
+            }
+        }, null, 2),
+        'add_creative_assets': JSON.stringify({
+            media_buy_id: "mb_123",
             creatives: [{
                 creative_id: "creative_1",
                 format: "display_300x250",
@@ -234,11 +266,20 @@ function selectMethod(method) {
                     url: "https://example.com/creative.jpg"
                 }
             }]
+        }, null, 2),
+        'check_creative_status': JSON.stringify({
+            creative_ids: ["creative_1"]
+        }, null, 2),
+        'get_media_buy_delivery': JSON.stringify({
+            media_buy_id: "mb_123"
         }, null, 2)
     };
     
     paramsField.value = sampleParams[method] || '{}';
 }
+
+// Store last response for chaining calls
+let lastResponse = null;
 
 function testMCPCall() {
     const serverUrl = document.getElementById('server_url').value;
@@ -259,15 +300,22 @@ function testMCPCall() {
         return;
     }
     
-    // Show request details
+    // Show request details (but don't include auth token in the display)
     const requestDetails = {
         server_url: serverUrl,
-        auth_token: authToken,
-        method: method,
-        params: params
+        tool: method,  // Changed from 'method' to 'tool'
+        params: params,
+        access_token: authToken  // This will be used in header, not shown
     };
     
-    document.getElementById('request_details').textContent = JSON.stringify(requestDetails, null, 2);
+    const displayDetails = {
+        server_url: serverUrl,
+        tool: method,
+        params: params,
+        auth_header: 'x-adcp-auth: [REDACTED]'
+    };
+    
+    document.getElementById('request_details').textContent = JSON.stringify(displayDetails, null, 2);
     document.getElementById('results_container').style.display = 'block';
     document.getElementById('response_details').innerHTML = '<span style="color: #6b7280;">Sending request...</span>';
     
@@ -283,17 +331,40 @@ function testMCPCall() {
     .then(data => {
         const responseEl = document.getElementById('response_details');
         if (data.success) {
-            responseEl.innerHTML = '<span class="success">✓ Success</span>\n\n' + JSON.stringify(data.result, null, 2);
+            lastResponse = data.result;
+            // Clear and safely add success content
+            responseEl.innerHTML = '';
+            const successSpan = document.createElement('span');
+            successSpan.className = 'success';
+            successSpan.textContent = '✓ Success';
+            responseEl.appendChild(successSpan);
+            responseEl.appendChild(document.createTextNode('\n\n' + JSON.stringify(data.result, null, 2)));
+            
+            // Parse and show useful data for next call
+            parseResponseForNextCall(method, data.result);
         } else {
-            responseEl.innerHTML = '<span class="error">✗ Error</span>\n\n' + (data.error || 'Unknown error');
+            lastResponse = null;
+            // Clear and safely add error content
+            responseEl.innerHTML = '';
+            const errorSpan = document.createElement('span');
+            errorSpan.className = 'error';
+            errorSpan.textContent = '✗ Error';
+            responseEl.appendChild(errorSpan);
+            responseEl.appendChild(document.createTextNode('\n\n' + (data.error || 'Unknown error')));
+            
             if (data.details) {
-                responseEl.innerHTML += '\n\nDetails:\n' + JSON.stringify(data.details, null, 2);
+                responseEl.appendChild(document.createTextNode('\n\nDetails:\n' + JSON.stringify(data.details, null, 2)));
             }
         }
     })
     .catch(error => {
-        document.getElementById('response_details').innerHTML = 
-            '<span class="error">✗ Request Failed</span>\n\n' + error.message;
+        const responseEl = document.getElementById('response_details');
+        responseEl.innerHTML = '';
+        const errorSpan = document.createElement('span');
+        errorSpan.className = 'error';
+        errorSpan.textContent = '✗ Request Failed';
+        responseEl.appendChild(errorSpan);
+        responseEl.appendChild(document.createTextNode('\n\n' + error.message));
     });
 }
 
@@ -301,6 +372,75 @@ function clearResults() {
     document.getElementById('results_container').style.display = 'none';
     document.getElementById('request_details').textContent = '';
     document.getElementById('response_details').textContent = '';
+}
+
+// Parse response to extract useful data for next call
+function parseResponseForNextCall(method, response) {
+    const parsedDataGroup = document.getElementById('parsed_data_group');
+    const parsedDataField = document.getElementById('parsed_data');
+    let parsedData = {};
+    
+    switch(method) {
+        case 'get_products':
+            if (response.products && response.products.length > 0) {
+                parsedData.product_ids = response.products.map(p => p.product_id);
+                parsedData.sample_product = response.products[0];
+            }
+            break;
+            
+        case 'create_media_buy':
+            if (response.media_buy_id) {
+                parsedData.media_buy_id = response.media_buy_id;
+                parsedData.status = response.status;
+            }
+            break;
+            
+        case 'check_media_buy_status':
+            if (response.media_buy_id) {
+                parsedData.media_buy_id = response.media_buy_id;
+                parsedData.status = response.status;
+                if (response.packages) {
+                    parsedData.package_ids = response.packages.map(p => p.package_id);
+                }
+            }
+            break;
+            
+        case 'add_creative_assets':
+            if (response.creative_ids) {
+                parsedData.creative_ids = response.creative_ids;
+                parsedData.status = response.status;
+            }
+            break;
+    }
+    
+    if (Object.keys(parsedData).length > 0) {
+        parsedDataGroup.style.display = 'block';
+        parsedDataField.value = JSON.stringify(parsedData, null, 2);
+        
+        // Add button to use parsed data
+        const useButton = document.createElement('button');
+        useButton.className = 'btn btn-secondary';
+        useButton.style.marginTop = '0.5rem';
+        useButton.textContent = 'Use in Next Call';
+        useButton.onclick = () => useParsedData(parsedData);
+        
+        // Remove old button if exists
+        const oldButton = parsedDataGroup.querySelector('button');
+        if (oldButton) oldButton.remove();
+        parsedDataGroup.appendChild(useButton);
+    } else {
+        parsedDataGroup.style.display = 'none';
+    }
+}
+
+// Use parsed data in parameter field
+function useParsedData(parsedData) {
+    const paramsField = document.getElementById('params');
+    const currentParams = JSON.parse(paramsField.value || '{}');
+    
+    // Merge parsed data into current params
+    Object.assign(currentParams, parsedData);
+    paramsField.value = JSON.stringify(currentParams, null, 2);
 }
 
 // Select get_products by default

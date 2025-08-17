@@ -27,6 +27,44 @@ from slack_notifier import get_slack_notifier
 from product_catalog_providers.factory import get_product_catalog_provider
 from policy_check_service import PolicyCheckService, PolicyStatus
 from context_manager import get_context_manager
+from activity_feed import activity_feed
+import time
+from audit_logger import get_audit_logger, logger
+
+# Initialize Rich console
+console = Console()
+
+def safe_parse_json_field(field_value, field_name="field", default=None):
+    """
+    Safely parse a database field that might be JSON string (SQLite) or dict (PostgreSQL JSONB).
+    
+    Args:
+        field_value: The field value from database (could be str, dict, None, etc.)
+        field_name: Name of the field for logging purposes
+        default: Default value to return on parse failure (default: None)
+    
+    Returns:
+        Parsed dict/list or default value
+    """
+    if not field_value:
+        return default if default is not None else {}
+    
+    if isinstance(field_value, str):
+        try:
+            parsed = json.loads(field_value)
+            # Validate the parsed result is the expected type
+            if default is not None and not isinstance(parsed, type(default)):
+                logger.warning(f"Parsed {field_name} has unexpected type: {type(parsed)}, expected {type(default)}")
+                return default
+            return parsed
+        except (json.JSONDecodeError, TypeError) as e:
+            logger.warning(f"Invalid JSON in {field_name}: {e}")
+            return default if default is not None else {}
+    elif isinstance(field_value, (dict, list)):
+        return field_value
+    else:
+        logger.warning(f"Unexpected type for {field_name}: {type(field_value)}")
+        return default if default is not None else {}
 
 # --- Authentication ---
 
@@ -233,7 +271,7 @@ def get_adapter(principal: Principal, dry_run: bool = False):
         return MockAdServerAdapter(adapter_config, principal, dry_run, tenant_id=tenant_id)
 
 # --- Initialization ---
-init_db()
+init_db()  # Tests will call with exit_on_error=False
 
 # Try to load config, but use defaults if no tenant context available
 try:
@@ -251,7 +289,6 @@ except RuntimeError as e:
         raise
 
 mcp = FastMCP(name="AdCPSalesAgent")
-console = Console()
 
 # Initialize creative engine with minimal config (will be tenant-specific later)
 creative_engine_config = {}
@@ -332,10 +369,51 @@ def _verify_principal(media_buy_id: str, context: Context):
         )
         raise PermissionError(f"Principal '{principal_id}' does not own media buy '{media_buy_id}'.")
 
+# --- Activity Feed Helper ---
+
+def log_tool_activity(context: Context, tool_name: str, start_time: float = None):
+    """Log tool activity to the activity feed."""
+    try:
+        tenant = get_current_tenant()
+        if not tenant:
+            return
+            
+        # Get principal name
+        principal_id = get_principal_from_context(context)
+        principal_name = "Unknown"
+        
+        if principal_id:
+            with get_db_session() as session:
+                from models import Principal
+                principal = session.query(Principal).filter_by(
+                    principal_id=principal_id,
+                    tenant_id=tenant['tenant_id']
+                ).first()
+                if principal:
+                    principal_name = principal.name
+        
+        # Calculate response time if start_time provided
+        response_time_ms = None
+        if start_time:
+            response_time_ms = int((time.time() - start_time) * 1000)
+        
+        # Log to activity feed
+        activity_feed.log_api_call(
+            tenant_id=tenant['tenant_id'],
+            principal_name=principal_name,
+            method=tool_name,
+            status_code=200,
+            response_time_ms=response_time_ms
+        )
+    except Exception as e:
+        # Don't let activity logging break the main flow
+        console.print(f"[yellow]Activity logging error: {e}[/yellow]")
+
 # --- MCP Tools (Full Implementation) ---
 
 @mcp.tool
 async def get_products(req: GetProductsRequest, context: Context) -> GetProductsResponse:
+    start_time = time.time()
     principal_id = _get_principal_id_from_context(context) # Authenticate
     
     # Get tenant information
@@ -349,10 +427,17 @@ async def get_products(req: GetProductsRequest, context: Context) -> GetProducts
     
     # Check policy compliance first
     policy_service = PolicyCheckService()
+    # Safely parse policy_settings that might be JSON string (SQLite) or dict (PostgreSQL JSONB)
+    tenant_policies = safe_parse_json_field(
+        tenant.get('policy_settings'), 
+        field_name="policy_settings",
+        default={}
+    )
+    
     policy_result = await policy_service.check_brief_compliance(
         brief=req.brief,
         promoted_offering=req.promoted_offering,
-        tenant_policies=json.loads(tenant.get('policy_settings') or '{}') if tenant.get('policy_settings') else None
+        tenant_policies=tenant_policies if tenant_policies else None
     )
     
     # Log the policy check
@@ -373,7 +458,8 @@ async def get_products(req: GetProductsRequest, context: Context) -> GetProducts
     )
     
     # Handle policy result based on settings
-    policy_settings = json.loads(tenant.get('policy_settings') or '{}') if tenant.get('policy_settings') else {}
+    # Use the already parsed policy_settings from above
+    policy_settings = tenant_policies
     
     if policy_result.status == PolicyStatus.BLOCKED:
         # Always block if policy says blocked
@@ -452,6 +538,9 @@ async def get_products(req: GetProductsRequest, context: Context) -> GetProducts
             eligible_products.append(product)
         else:
             logger.info(f"Product {product.product_id} excluded: {reason}")
+    
+    # Log activity
+    log_tool_activity(context, 'get_products', start_time)
     
     return GetProductsResponse(products=eligible_products)
 
@@ -555,6 +644,7 @@ async def get_signals(req: GetSignalsRequest, context: Context) -> GetSignalsRes
 
 @mcp.tool
 def create_media_buy(req: CreateMediaBuyRequest, context: Context) -> CreateMediaBuyResponse:
+    start_time = time.time()
     principal_id = _get_principal_id_from_context(context)
     tenant = get_current_tenant()
     
@@ -798,6 +888,37 @@ def create_media_buy(req: CreateMediaBuyRequest, context: Context) -> CreateMedi
     
     # Add message to response (no context_id for synchronous operations)
     response.message = f"Media buy {response.media_buy_id} has been created successfully. Your campaign will run from {req.flight_start_date} to {req.flight_end_date} with a budget of ${req.total_budget}."
+    
+    # Log activity
+    log_tool_activity(context, 'create_media_buy', start_time)
+    
+    # Also log specific media buy activity
+    try:
+        principal_name = "Unknown"
+        with get_db_session() as session:
+            from models import Principal
+            principal = session.query(Principal).filter_by(
+                principal_id=principal_id,
+                tenant_id=tenant['tenant_id']
+            ).first()
+            if principal:
+                principal_name = principal.name
+        
+        # Calculate duration
+        start_date = datetime.strptime(req.flight_start_date, "%Y-%m-%d")
+        end_date = datetime.strptime(req.flight_end_date, "%Y-%m-%d")
+        duration_days = (end_date - start_date).days + 1
+        
+        activity_feed.log_media_buy(
+            tenant_id=tenant['tenant_id'],
+            principal_name=principal_name,
+            media_buy_id=response.media_buy_id,
+            budget=req.total_budget,
+            duration_days=duration_days,
+            action="created"
+        )
+    except:
+        pass
     
     return response
 
@@ -2648,7 +2769,7 @@ def check_aee_requirements(req: CheckAEERequirementsRequest, context: Context) -
 # Ad servers like GAM can inject this string into creatives.
 
 if __name__ == "__main__":
-    init_db()
+    init_db(exit_on_error=True)  # Exit on error when run as main
     # Server is now run via run_server.py script
 
 # Add admin UI routes when running unified

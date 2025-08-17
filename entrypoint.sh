@@ -33,7 +33,7 @@ fi
 # Initialize database (safe - only creates data if tables are empty)
 echo "📦 Initializing database schema and default data..."
 echo "ℹ️  Note: init_db() is safe - it only creates tables (IF NOT EXISTS) and default tenant (if no tenants exist)"
-if ! python -c "from database import init_db; init_db()"; then
+if ! python -c "from database import init_db; init_db(exit_on_error=True)"; then
     echo "❌ Database initialization failed"
     exit 1
 fi

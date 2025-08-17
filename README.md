@@ -127,6 +127,23 @@ We welcome contributions! Please see our [Development Guide](docs/DEVELOPMENT.md
 - Code style guidelines
 - Creating pull requests
 
+### Important: Database Access Patterns
+
+When contributing, please follow our standardized database patterns:
+```python
+# ✅ CORRECT - Use context manager
+from database_session import get_db_session
+with get_db_session() as session:
+    # Your database operations
+    session.commit()
+
+# ❌ WRONG - Manual management
+conn = get_db_connection()
+# operations
+conn.close()  # Prone to leaks
+```
+See [Database Patterns Guide](docs/database-patterns.md) for details.
+
 ## Support
 
 - **Issues**: [GitHub Issues](https://github.com/adcontextprotocol/salesagent/issues)
