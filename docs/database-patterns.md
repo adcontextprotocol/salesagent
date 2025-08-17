@@ -174,7 +174,7 @@ def test_with_real_db():
         tenant = Tenant(tenant_id='test', name='Test')
         session.add(tenant)
         session.commit()
-        
+
         # Cleanup
         session.delete(tenant)
         session.commit()
