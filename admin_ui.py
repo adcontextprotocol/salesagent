@@ -16,7 +16,7 @@ from authlib.integrations.flask_client import OAuth
 from db_config import DatabaseConfig
 from database_session import get_db_session
 from models import (
-    Tenant, Principal, Product, MediaBuy, Task, HumanTask, AuditLog, 
+    Tenant, Principal, Product, MediaBuy, Task, HumanTask, AuditLog,
     SuperadminConfig, AdapterConfig, GAMInventory, ProductInventoryMapping,
     GAMOrder, GAMLineItem, SyncJob, Context, WorkflowStep, ObjectWorkflowMapping,
     CreativeFormat, User
@@ -27,40 +27,40 @@ def validate_gam_network_response(network):
     """Validate GAM network API response structure."""
     if not network:
         return False, "Network response is empty"
-    
+
     # Check required fields
     required_fields = ['networkCode', 'displayName', 'id']
     for field in required_fields:
         if field not in network:
             return False, f"Missing required field: {field}"
-    
+
     # Validate field types
     try:
         int(network['networkCode'])
         int(network['id'])
     except (ValueError, TypeError):
         return False, "Network code and ID must be numeric"
-    
+
     if not isinstance(network['displayName'], str):
         return False, "Display name must be a string"
-    
+
     return True, None
 
 def validate_gam_user_response(user):
     """Validate GAM user API response structure."""
     if not user:
         return False, "User response is empty"
-    
+
     # Check required fields
     if 'id' not in user:
         return False, "Missing user ID"
-    
+
     # Validate ID is numeric
     try:
         int(user['id'])
     except (ValueError, TypeError):
         return False, "User ID must be numeric"
-    
+
     return True, None
 
 # Configure logging
@@ -98,7 +98,7 @@ from activity_feed import activity_feed
 class ProxyFix:
     def __init__(self, app):
         self.app = app
-    
+
     def __call__(self, environ, start_response):
         # Handle being mounted under /admin
         script_name = environ.get('HTTP_X_SCRIPT_NAME', '')
@@ -107,7 +107,7 @@ class ProxyFix:
             path_info = environ['PATH_INFO']
             if path_info.startswith(script_name):
                 environ['PATH_INFO'] = path_info[len(script_name):]
-        
+
         # Handle proxy headers for correct URL generation
         if environ.get('HTTP_X_FORWARDED_HOST'):
             environ['HTTP_HOST'] = environ['HTTP_X_FORWARDED_HOST']
@@ -115,7 +115,7 @@ class ProxyFix:
             environ['wsgi.url_scheme'] = environ['HTTP_X_FORWARDED_PROTO']
         if environ.get('HTTP_X_FORWARDED_PORT'):
             environ['SERVER_PORT'] = environ['HTTP_X_FORWARDED_PORT']
-            
+
         return self.app(environ, start_response)
 
 app.wsgi_app = ProxyFix(app.wsgi_app)
@@ -177,17 +177,17 @@ if TEST_MODE_ENABLED:
             'password': os.environ.get('TEST_SUPER_ADMIN_PASSWORD', 'test123')
         },
         os.environ.get('TEST_TENANT_ADMIN_EMAIL', 'test_tenant_admin@example.com'): {
-            'name': 'Test Tenant Admin', 
+            'name': 'Test Tenant Admin',
             'role': 'tenant_admin',
             'password': os.environ.get('TEST_TENANT_ADMIN_PASSWORD', 'test123')
         },
         os.environ.get('TEST_TENANT_USER_EMAIL', 'test_tenant_user@example.com'): {
             'name': 'Test Tenant User',
-            'role': 'tenant_user', 
+            'role': 'tenant_user',
             'password': os.environ.get('TEST_TENANT_USER_PASSWORD', 'test123')
         }
     }
-    
+
     # Log test mode configuration (without passwords)
     print("Test mode users configured:")
     for email in TEST_USERS:
@@ -225,7 +225,7 @@ def get_tenant_config_from_db(tenant_id):
         tenant = session.query(Tenant).filter_by(tenant_id=tenant_id).first()
         if not tenant:
             return None
-        
+
         # Build config object from tenant attributes
         config = {
             'adapters': {},
@@ -237,22 +237,22 @@ def get_tenant_config_from_db(tenant_id):
                 'human_review_required': bool(tenant.human_review_required)
             }
         }
-        
+
         # Add adapter configuration
         if tenant.ad_server:
             # Get adapter-specific config from adapter_config table
             adapter_config_obj = session.query(AdapterConfig).filter_by(
-                tenant_id=tenant_id, 
+                tenant_id=tenant_id,
                 adapter_type=tenant.ad_server
             ).first()
-            
+
             adapter_config = {'enabled': True}
             if adapter_config_obj:
                 # TODO: Map adapter-specific fields based on adapter type
                 pass
-            
+
             config['adapters'][tenant.ad_server] = adapter_config
-        
+
         # Add optional fields
         if tenant.authorized_emails:
             config['authorized_emails'] = tenant.authorized_emails
@@ -270,7 +270,7 @@ def get_tenant_config_from_db(tenant_id):
             config['creative_engine']['auto_approve_formats'] = tenant.auto_approve_formats
         if tenant.policy_settings:
             config['policy_settings'] = tenant.policy_settings
-        
+
         return config
 
 def is_super_admin(email):
@@ -279,19 +279,19 @@ def is_super_admin(email):
     app.logger.info(f"Checking super admin for email: {email}")
     app.logger.info(f"SUPER_ADMIN_EMAILS: {SUPER_ADMIN_EMAILS}")
     app.logger.info(f"SUPER_ADMIN_DOMAINS: {SUPER_ADMIN_DOMAINS}")
-    
+
     # Check explicit email list
     if email in SUPER_ADMIN_EMAILS:
         app.logger.info(f"Email {email} found in SUPER_ADMIN_EMAILS")
         return True
-    
+
     # Check domain
     domain = email.split('@')[1] if '@' in email else ''
     app.logger.info(f"Email domain: {domain}")
     if domain and domain in SUPER_ADMIN_DOMAINS:
         app.logger.info(f"Domain {domain} found in SUPER_ADMIN_DOMAINS")
         return True
-    
+
     app.logger.info(f"Email {email} is not a super admin")
     return False
 
@@ -301,19 +301,19 @@ def is_tenant_admin(email, tenant_id=None):
         if tenant_id:
             # Check specific tenant
             tenant = session.query(Tenant).filter_by(
-                tenant_id=tenant_id, 
+                tenant_id=tenant_id,
                 is_active=True
             ).first()
-            
+
             if tenant:
                 # Parse JSON arrays
                 authorized_emails = tenant.authorized_emails or []
                 authorized_domains = tenant.authorized_domains or []
-                
+
                 # Check authorized emails
                 if email in authorized_emails:
                     return True
-                
+
                 # Check authorized domains
                 domain = email.split('@')[1] if '@' in email else ''
                 if domain and domain in authorized_domains:
@@ -321,24 +321,24 @@ def is_tenant_admin(email, tenant_id=None):
         else:
             # Check all tenants to find which one(s) this email can access
             tenants = session.query(Tenant).filter_by(is_active=True).all()
-            
+
             authorized_tenants = []
             for tenant in tenants:
                 authorized_emails = tenant.authorized_emails or []
                 authorized_domains = tenant.authorized_domains or []
-                
+
                 # Check authorized emails
                 if email in authorized_emails:
                     authorized_tenants.append((tenant.tenant_id, tenant.name))
                     continue
-                
+
                 # Check authorized domains
                 domain = email.split('@')[1] if '@' in email else ''
                 if domain and domain in authorized_domains:
                     authorized_tenants.append((tenant.tenant_id, tenant.name))
-            
+
             return authorized_tenants
-        
+
         return False
 
 def require_auth(admin_only=False):
@@ -354,18 +354,18 @@ def require_auth(admin_only=False):
                 if tenant_id and not admin_only:
                     return redirect(url_for('tenant_login', tenant_id=tenant_id))
                 return redirect(url_for('login'))
-            
+
             # Check if super admin is required but user is tenant admin
             if admin_only and session.get('role') != 'super_admin':
                 return "Access denied. Super admin required.", 403
-                
+
             return f(*args, **kwargs)
         return decorated_function
     return decorator
 
 def require_tenant_access(api_mode=False):
     """Decorator that checks both authentication and tenant access.
-    
+
     Args:
         api_mode: If True, returns JSON errors instead of HTML responses
     """
@@ -381,21 +381,21 @@ def require_tenant_access(api_mode=False):
                 if tenant_id:
                     return redirect(url_for('tenant_login', tenant_id=tenant_id))
                 return redirect(url_for('login'))
-            
+
             # Get tenant_id from route
             tenant_id = kwargs.get('tenant_id')
             if not tenant_id:
                 if api_mode:
                     return jsonify({'error': 'Tenant ID required'}), 400
                 return "Tenant ID required", 400
-            
+
             # Check tenant access
             if session.get('role') != 'super_admin':
                 if session.get('tenant_id') != tenant_id:
                     if api_mode:
                         return jsonify({'error': 'Access denied'}), 403
                     return "Access denied", 403
-            
+
             return f(*args, **kwargs)
         return decorated_function
     return decorator
@@ -411,13 +411,13 @@ def tenant_login(tenant_id):
     # Verify tenant exists
     with get_db_session() as session:
         tenant = session.query(Tenant).filter_by(
-            tenant_id=tenant_id, 
+            tenant_id=tenant_id,
             is_active=True
         ).first()
-        
+
         if not tenant:
             return "Tenant not found", 404
-            
+
         return render_template('login.html', tenant_id=tenant_id, tenant_name=tenant.name, test_mode=TEST_MODE_ENABLED)
 
 @app.route('/auth/google')
@@ -441,26 +441,26 @@ def google_callback():
     try:
         token = google.authorize_access_token()
         user_info = token.get('userinfo')
-        
+
         if not user_info:
             # Check if this was a tenant-specific login attempt
             oauth_tenant_id = session.pop('oauth_tenant_id', None)
             if oauth_tenant_id:
                 return redirect(url_for('tenant_login', tenant_id=oauth_tenant_id))
             return redirect(url_for('login'))
-        
+
         email = user_info.get('email')
         if not email:
             oauth_tenant_id = session.pop('oauth_tenant_id', None)
-            return render_template('login.html', 
-                                 error='No email address provided by Google', 
+            return render_template('login.html',
+                                 error='No email address provided by Google',
                                  tenant_id=oauth_tenant_id)
-        
+
         app.logger.info(f"OAuth callback received email: {email}")
-        
+
         # Check if this is a tenant-specific login attempt
         oauth_tenant_id = session.pop('oauth_tenant_id', None)
-        
+
         if oauth_tenant_id:
             # Tenant-specific authentication flow
             with get_db_session() as db_session:
@@ -469,22 +469,22 @@ def google_callback():
                     User.email == email,
                     User.tenant_id == oauth_tenant_id
                 ).first()
-                
+
                 # Update last login if user exists
                 if user:
                     if not user.is_active:
-                        return render_template('login.html', 
+                        return render_template('login.html',
                                              error='Your account has been disabled',
                                              tenant_id=oauth_tenant_id)
-                    
+
                     # Update last login and Google ID
                     user.last_login = datetime.now().isoformat()
                     user.google_id = user_info.get('sub')
                     db_session.commit()
-                    
-                    # Get tenant info 
+
+                    # Get tenant info
                     tenant = db_session.query(Tenant).filter_by(tenant_id=oauth_tenant_id).first()
-                    
+
                     session['authenticated'] = True
                     session['role'] = user.role  # Use actual user role from DB
                     session['user_id'] = user.user_id
@@ -492,88 +492,88 @@ def google_callback():
                     session['tenant_name'] = tenant.name if tenant else oauth_tenant_id
                     session['email'] = email
                     session['username'] = user.name or user_info.get('name', email)
-                    
+
                     # Redirect to originally requested URL if stored
                     next_url = session.pop('next_url', None)
                     if next_url:
                         return redirect(next_url)
                     return redirect(url_for('tenant_dashboard', tenant_id=oauth_tenant_id))
-            
+
             # If not in users table, check legacy tenant admin config
             if is_tenant_admin(email, oauth_tenant_id):
                 # Get tenant name for session
                 with get_db_session() as db_session:
                     tenant = db_session.query(Tenant).filter_by(tenant_id=oauth_tenant_id).first()
-                    
+
                     session['authenticated'] = True
                     session['role'] = 'tenant_admin'  # Legacy role
                     session['tenant_id'] = oauth_tenant_id
                     session['tenant_name'] = tenant.name if tenant else oauth_tenant_id
                     session['email'] = email
                     session['username'] = user_info.get('name', email)
-                    
+
                     # Redirect to originally requested URL if stored
                     next_url = session.pop('next_url', None)
                     if next_url:
                         return redirect(next_url)
                     return redirect(url_for('tenant_dashboard', tenant_id=oauth_tenant_id))
-            
+
             # Check if super admin trying to access tenant
             if is_super_admin(email):
                 # Get tenant name for session
                 with get_db_session() as db_session:
                     tenant = db_session.query(Tenant).filter_by(tenant_id=oauth_tenant_id).first()
-                    
+
                     session['authenticated'] = True
                     session['role'] = 'super_admin'
                     session['email'] = email
                     session['username'] = user_info.get('name', email)
-                    
+
                     if tenant:
                         session['tenant_name'] = tenant.name
-                    
+
                     # Super admin can access any tenant
                     # Redirect to originally requested URL if stored
                     next_url = session.pop('next_url', None)
                     if next_url:
                         return redirect(next_url)
                     return redirect(url_for('tenant_dashboard', tenant_id=oauth_tenant_id))
-            
+
             # Fall back to checking tenant config
             config = get_tenant_config_from_db(oauth_tenant_id)
-            
+
             if config:
                 # Check if user is authorized for this tenant
                 authorized_emails = config.get('authorized_emails', [])
                 authorized_domains = config.get('authorized_domains', [])
-                
+
                 domain = email.split('@')[1] if '@' in email else None
-                
+
                 if email in authorized_emails or (domain and domain in authorized_domains):
                     session['authenticated'] = True
                     session['role'] = 'tenant_user'
                     session['tenant_id'] = oauth_tenant_id
                     session['email'] = email
                     session['username'] = user_info.get('name', email)
-                    
+
                     # Get tenant name
                     with get_db_session() as db_session:
                         tenant = db_session.query(Tenant).filter_by(tenant_id=oauth_tenant_id).first()
-                        
+
                         if tenant:
                             session['tenant_name'] = tenant.name
-                    
+
                     # Redirect to originally requested URL if stored
                     next_url = session.pop('next_url', None)
                     if next_url:
                         return redirect(next_url)
                     return redirect(url_for('tenant_dashboard', tenant_id=oauth_tenant_id))
-            
+
             # Not authorized for this tenant
-            return render_template('login.html', 
+            return render_template('login.html',
                                  error=f'Email {email} is not authorized for this tenant',
                                  tenant_id=oauth_tenant_id)
-        
+
         # Standard super admin flow (no tenant_id in session)
         # Check if super admin
         if is_super_admin(email):
@@ -586,7 +586,7 @@ def google_callback():
             if next_url:
                 return redirect(next_url)
             return redirect(url_for('index'))
-        
+
         # Check if tenant admin
         tenant_access = is_tenant_admin(email)
         if tenant_access:
@@ -610,17 +610,17 @@ def google_callback():
                 session['pre_auth_name'] = user_info.get('name', email)
                 session['available_tenants'] = tenant_access
                 return render_template('choose_tenant.html', tenants=tenant_access)
-        
+
         # Not authorized
-        return render_template('login.html', 
+        return render_template('login.html',
                              error=f'Email {email} is not authorized to access this system',
                              tenant_id=None)
-        
+
     except Exception as e:
         app.logger.error(f"OAuth callback error: {e}")
         oauth_tenant_id = session.pop('oauth_tenant_id', None)
-        return render_template('login.html', 
-                             error='Authentication failed', 
+        return render_template('login.html',
+                             error='Authentication failed',
                              tenant_id=oauth_tenant_id)
 
 # Removed tenant-specific callback - now handled by the centralized callback
@@ -630,20 +630,20 @@ def select_tenant():
     """Handle tenant selection for users with multiple tenant access."""
     if not session.get('pre_auth_email'):
         return redirect(url_for('login'))
-    
+
     tenant_id = request.form.get('tenant_id')
     available_tenants = session.get('available_tenants', [])
-    
+
     # Verify the selected tenant is in the available list
     selected_tenant = None
     for tid, tname in available_tenants:
         if tid == tenant_id:
             selected_tenant = (tid, tname)
             break
-    
+
     if not selected_tenant:
         return "Invalid tenant selection", 400
-    
+
     # Set up session
     session['authenticated'] = True
     session['role'] = 'tenant_admin'
@@ -652,7 +652,7 @@ def select_tenant():
     session['email'] = session.pop('pre_auth_email')
     session['username'] = session.pop('pre_auth_name')
     session.pop('available_tenants', None)
-    
+
     return redirect(url_for('tenant_dashboard', tenant_id=selected_tenant[0]))
 
 @app.route('/logout')
@@ -661,9 +661,9 @@ def logout():
     # Save tenant_id before clearing session
     tenant_id = session.get('tenant_id')
     is_super_admin = session.get('role') == 'super_admin'
-    
+
     session.clear()
-    
+
     # Redirect to appropriate login page
     if is_super_admin or not tenant_id:
         return redirect(url_for('login'))
@@ -676,19 +676,19 @@ def test_auth():
     """Test authentication endpoint - bypasses OAuth for automated testing."""
     if not TEST_MODE_ENABLED:
         return "Test mode is not enabled", 404
-    
+
     email = request.form.get('email')
     password = request.form.get('password')
     tenant_id = request.form.get('tenant_id')  # Optional for tenant-specific login
-    
+
     # Check test user credentials
     if email not in TEST_USERS or TEST_USERS[email]['password'] != password:
         if tenant_id:
             return redirect(url_for('tenant_login', tenant_id=tenant_id) + '?error=Invalid+test+credentials')
         return redirect(url_for('login') + '?error=Invalid+test+credentials')
-    
+
     test_user = TEST_USERS[email]
-    
+
     # For super admin test user
     if test_user['role'] == 'super_admin':
         session['authenticated'] = True
@@ -696,21 +696,21 @@ def test_auth():
         session['email'] = email
         session['username'] = test_user['name']
         return redirect(url_for('index'))
-    
+
     # For tenant users, we need a tenant_id
     if not tenant_id:
         return redirect(url_for('login') + '?error=Tenant+ID+required+for+non-super-admin+test+users')
-    
+
     # Verify tenant exists
     with get_db_session() as db_session:
         tenant = db_session.query(Tenant).filter_by(
-            tenant_id=tenant_id, 
+            tenant_id=tenant_id,
             is_active=True
         ).first()
-        
+
         if not tenant:
             return redirect(url_for('login') + '?error=Invalid+tenant+ID')
-        
+
         # Set up session for tenant user
         session['authenticated'] = True
         session['role'] = test_user['role']
@@ -719,7 +719,7 @@ def test_auth():
         session['tenant_name'] = tenant.name
         session['email'] = email
         session['username'] = test_user['name']
-        
+
         return redirect(url_for('tenant_dashboard', tenant_id=tenant_id))
 
 @app.route('/test/login')
@@ -727,7 +727,7 @@ def test_login_form():
     """Show test login form for automated testing."""
     if not TEST_MODE_ENABLED:
         return "Test mode is not enabled", 404
-    
+
     return '''
     <!DOCTYPE html>
     <html>
@@ -800,11 +800,11 @@ def index():
     # Tenant admins should go directly to their tenant page
     if session.get('role') == 'tenant_admin':
         return redirect(url_for('tenant_dashboard', tenant_id=session.get('tenant_id')))
-    
+
     # Super admins see all tenants
     with get_db_session() as db_session:
         tenant_objects = db_session.query(Tenant).order_by(Tenant.created_at.desc()).all()
-        
+
         tenants = []
         for tenant in tenant_objects:
             # Convert datetime if it's a string
@@ -814,7 +814,7 @@ def index():
                     created_at = datetime.fromisoformat(created_at.replace('T', ' '))
                 except:
                     pass
-            
+
             tenants.append({
                 'tenant_id': tenant.tenant_id,
                 'name': tenant.name,
@@ -822,7 +822,7 @@ def index():
                 'is_active': tenant.is_active,
                 'created_at': created_at
             })
-        
+
         return render_template('index.html', tenants=tenants)
 
 @app.route('/settings')
@@ -832,14 +832,14 @@ def settings():
     with get_db_session() as db_session:
         # Get all superadmin config values
         config_objects = db_session.query(SuperadminConfig).order_by(SuperadminConfig.config_key).all()
-        
+
         config_items = {}
         for config in config_objects:
             config_items[config.config_key] = {
                 'value': config.config_value if config.config_value else '',
                 'description': config.description if config.description else ''
             }
-        
+
         return render_template('settings.html', config_items=config_items)
 
 @app.route('/settings/update', methods=['POST'])
@@ -851,7 +851,7 @@ def update_settings():
             # Update GAM OAuth settings
             gam_client_id = request.form.get('gam_oauth_client_id', '').strip()
             gam_client_secret = request.form.get('gam_oauth_client_secret', '').strip()
-            
+
             # Update GAM client ID
             client_id_config = db_session.query(SuperadminConfig).filter_by(
                 config_key='gam_oauth_client_id'
@@ -860,7 +860,7 @@ def update_settings():
                 client_id_config.config_value = gam_client_id
                 client_id_config.updated_at = datetime.now()
                 client_id_config.updated_by = session.get('email')
-            
+
             # Update GAM client secret
             client_secret_config = db_session.query(SuperadminConfig).filter_by(
                 config_key='gam_oauth_client_secret'
@@ -869,13 +869,13 @@ def update_settings():
                 client_secret_config.config_value = gam_client_secret
                 client_secret_config.updated_at = datetime.now()
                 client_secret_config.updated_by = session.get('email')
-            
+
             db_session.commit()
             flash('Settings updated successfully', 'success')
-            
+
         except Exception as e:
             flash(f'Error updating settings: {str(e)}', 'error')
-    
+
     return redirect(url_for('settings'))
 
 @app.route('/tenant/<tenant_id>/update', methods=['POST'])
@@ -885,18 +885,18 @@ def update_tenant(tenant_id):
     # Check access based on role
     if session.get('role') == 'viewer':
         return "Access denied. Viewers cannot update configuration.", 403
-        
+
     # Check if user is trying to update another tenant
     if session.get('role') in ['admin', 'manager', 'tenant_admin'] and session.get('tenant_id') != tenant_id:
         return "Access denied. You can only update your own tenant.", 403
-    
+
     with get_db_session() as db_session:
         try:
             # Get form data for individual fields
             max_daily_budget = request.form.get('max_daily_budget', type=int)
             enable_aee_signals = request.form.get('enable_aee_signals') == 'true'
             human_review_required = request.form.get('human_review_required') == 'true'
-            
+
             # Find and update tenant
             tenant = db_session.query(Tenant).filter_by(tenant_id=tenant_id).first()
             if tenant:
@@ -904,12 +904,12 @@ def update_tenant(tenant_id):
                 tenant.enable_aee_signals = enable_aee_signals
                 tenant.human_review_required = human_review_required
                 tenant.updated_at = datetime.now().isoformat()
-                
+
                 db_session.commit()
                 flash('Configuration updated successfully', 'success')
             else:
                 flash('Tenant not found', 'error')
-                
+
             return redirect(url_for('tenant_dashboard', tenant_id=tenant_id))
         except Exception as e:
             flash(f"Error updating configuration: {str(e)}", 'error')
@@ -922,33 +922,33 @@ def update_slack(tenant_id):
     # Check if tenant admin is trying to update another tenant
     if session.get('role') == 'tenant_admin' and session.get('tenant_id') != tenant_id:
         return "Access denied", 403
-    
+
     try:
         # Validate webhook URLs
         form_data = {
             'slack_webhook_url': request.form.get('slack_webhook_url', '').strip(),
             'slack_audit_webhook_url': request.form.get('slack_audit_webhook_url', '').strip()
         }
-        
+
         # Sanitize form data
         form_data = sanitize_form_data(form_data)
-        
+
         # Validate
         validators = {
             'slack_webhook_url': [FormValidator.validate_webhook_url],
             'slack_audit_webhook_url': [FormValidator.validate_webhook_url]
         }
-        
+
         errors = validate_form_data(form_data, validators)
         if errors:
             for field, error in errors.items():
                 flash(f"{field}: {error}", 'error')
             return redirect(url_for('tenant_dashboard', tenant_id=tenant_id))
-        
+
         with get_db_session() as db_session:
             slack_webhook = form_data['slack_webhook_url']
             audit_webhook = form_data['slack_audit_webhook_url']
-            
+
             # Find and update tenant
             tenant = db_session.query(Tenant).filter_by(tenant_id=tenant_id).first()
             if tenant:
@@ -956,7 +956,7 @@ def update_slack(tenant_id):
                 tenant.slack_audit_webhook_url = audit_webhook if audit_webhook else None
                 tenant.updated_at = datetime.now().isoformat()
                 db_session.commit()
-        
+
         flash('Slack configuration updated successfully', 'success')
         return redirect(url_for('tenant_dashboard', tenant_id=tenant_id))
     except Exception as e:
@@ -970,18 +970,18 @@ def test_slack(tenant_id):
     # Check if tenant admin is trying to test another tenant
     if session.get('role') == 'tenant_admin' and session.get('tenant_id') != tenant_id:
         return jsonify({"success": False, "error": "Access denied"}), 403
-    
+
     try:
         data = request.get_json()
         webhook_url = data.get('webhook_url')
-        
+
         if not webhook_url:
             return jsonify({"success": False, "error": "No webhook URL provided"})
-        
+
         # Send test message
         import requests
         from datetime import datetime
-        
+
         test_message = {
             "text": f"🎉 Test message from AdCP Sales Agent",
             "blocks": [
@@ -1010,14 +1010,14 @@ def test_slack(tenant_id):
                 }
             ]
         }
-        
+
         response = requests.post(webhook_url, json=test_message, timeout=10)
-        
+
         if response.status_code == 200:
             return jsonify({"success": True})
         else:
             return jsonify({"success": False, "error": f"Slack returned status {response.status_code}"})
-            
+
     except requests.exceptions.Timeout:
         return jsonify({"success": False, "error": "Request timed out"})
     except requests.exceptions.RequestException as e:
@@ -1035,20 +1035,20 @@ def create_tenant():
             tenant_name = request.form.get('name')
             tenant_id = request.form.get('tenant_id') or tenant_name.lower().replace(' ', '_')
             subdomain = request.form.get('subdomain') or tenant_id
-            
+
             app.logger.info(f"Creating tenant: name={tenant_name}, id={tenant_id}, subdomain={subdomain}")
-            
+
             # Parse authorization lists
             authorized_emails = [email.strip() for email in request.form.get('authorized_emails', '').split(',') if email.strip()]
             authorized_domains = [domain.strip() for domain in request.form.get('authorized_domains', '').split(',') if domain.strip()]
-            
+
             # Build minimal config for unmigrated fields
             config = {
                 "setup_complete": False  # Flag to track if tenant has completed setup
             }
-            
+
             conn = get_db_connection()
-            
+
             # Create tenant with new fields (config column removed)
             conn.execute("""
                 INSERT INTO tenants (
@@ -1075,9 +1075,9 @@ def create_tenant():
                 True,  # human_review_required
                 config.get('admin_token', f'admin_{tenant_id}_{secrets.token_hex(16)}')  # admin_token
             ))
-            
+
             app.logger.info(f"Tenant {tenant_id} inserted successfully")
-            
+
             # Create admin principal with access token
             admin_token = secrets.token_urlsafe(32)
             conn.execute("""
@@ -1092,18 +1092,18 @@ def create_tenant():
                 json.dumps({}),
                 admin_token
             ))
-            
+
             conn.commit()
             # Context manager handles cleanup
-            
+
             flash(f'Tenant "{tenant_name}" created successfully! The publisher should log in and start with the Ad Server Setup tab to complete configuration.', 'success')
             return redirect(url_for('tenant_dashboard', tenant_id=tenant_id))
-            
+
         except Exception as e:
             app.logger.error(f"Error creating tenant: {str(e)}")
             app.logger.error(traceback.format_exc())
             return render_template('create_tenant.html', error=str(e))
-    
+
     return render_template('create_tenant.html')
 
 # New Dashboard Routes (v2)
@@ -1114,9 +1114,9 @@ def tenant_dashboard(tenant_id):
     # Check access
     if session.get('role') == 'tenant_admin' and session.get('tenant_id') != tenant_id:
         return "Access denied. You can only view your own tenant.", 403
-    
+
     conn = get_db_connection()
-    
+
     # Get tenant basic info
     cursor = conn.execute("""
         SELECT tenant_id, name, subdomain, is_active, ad_server
@@ -1126,7 +1126,7 @@ def tenant_dashboard(tenant_id):
     if not row:
         # Context manager handles cleanup
         return "Tenant not found", 404
-    
+
     tenant = {
         'tenant_id': row[0],
         'name': row[1],
@@ -1134,16 +1134,16 @@ def tenant_dashboard(tenant_id):
         'is_active': row[3],
         'ad_server': row[4]
     }
-    
+
     # Get metrics
     metrics = {}
-    
+
     # Determine database type for SQL syntax
     from db_config import DatabaseConfig
     db_config = DatabaseConfig.get_db_config()
     is_sqlite = db_config["type"] == "sqlite"
     ph = "?" if is_sqlite else "%s"
-    
+
     # Date calculations based on database type
     if is_sqlite:
         interval_30_days = "datetime('now', '-30 days')"
@@ -1155,23 +1155,23 @@ def tenant_dashboard(tenant_id):
         interval_60_days = "CURRENT_TIMESTAMP - INTERVAL '60 days'"
         interval_3_days = "CURRENT_TIMESTAMP - INTERVAL '3 days'"
         interval_7_days = "CURRENT_TIMESTAMP - INTERVAL '7 days'"
-    
+
     # Total revenue (30 days) - using actual budget column
     cursor = conn.execute(f"""
         SELECT COALESCE(SUM(budget), 0) as total_revenue
-        FROM media_buys 
-        WHERE tenant_id = {ph} 
+        FROM media_buys
+        WHERE tenant_id = {ph}
         AND status IN ('active', 'completed')
         AND created_at >= {interval_30_days}
     """, (tenant_id,))
     result = cursor.fetchone()
     metrics['total_revenue'] = (result[0] if result else 0) or 0
-    
+
     # Revenue change vs previous period
     cursor = conn.execute(f"""
         SELECT COALESCE(SUM(budget), 0) as prev_revenue
-        FROM media_buys 
-        WHERE tenant_id = {ph} 
+        FROM media_buys
+        WHERE tenant_id = {ph}
         AND status IN ('active', 'completed')
         AND created_at >= {interval_60_days}
         AND created_at < {interval_30_days}
@@ -1182,52 +1182,52 @@ def tenant_dashboard(tenant_id):
         metrics['revenue_change'] = ((metrics['total_revenue'] - prev_revenue) / prev_revenue) * 100
     else:
         metrics['revenue_change'] = 0
-    
+
     # Add absolute value for display
     metrics['revenue_change_abs'] = abs(metrics['revenue_change'])
-    
+
     # Active media buys
     cursor = conn.execute(f"""
-        SELECT COUNT(*) FROM media_buys 
+        SELECT COUNT(*) FROM media_buys
         WHERE tenant_id = {ph} AND status = 'active'
     """, (tenant_id,))
     result = cursor.fetchone()
     metrics['active_buys'] = result[0] if result else 0
-    
+
     # Pending media buys
     cursor = conn.execute(f"""
-        SELECT COUNT(*) FROM media_buys 
+        SELECT COUNT(*) FROM media_buys
         WHERE tenant_id = {ph} AND status = 'pending'
     """, (tenant_id,))
     result = cursor.fetchone()
     metrics['pending_buys'] = result[0] if result else 0
-    
+
     # Open tasks - workflow_steps doesn't have tenant_id, so just set to 0
     metrics['open_tasks'] = 0
-    
+
     # Overdue tasks - workflow_steps doesn't have tenant_id, so just set to 0
     metrics['overdue_tasks'] = 0
-    
+
     # Active advertisers (principals with activity in last 30 days)
     cursor = conn.execute(f"""
-        SELECT COUNT(DISTINCT principal_id) 
-        FROM media_buys 
-        WHERE tenant_id = {ph} 
+        SELECT COUNT(DISTINCT principal_id)
+        FROM media_buys
+        WHERE tenant_id = {ph}
         AND created_at >= {interval_30_days}
     """, (tenant_id,))
     result = cursor.fetchone()
     metrics['active_advertisers'] = result[0] if result else 0
-    
+
     # Total advertisers
     cursor = conn.execute(f"""
         SELECT COUNT(*) FROM principals WHERE tenant_id = {ph}
     """, (tenant_id,))
     result = cursor.fetchone()
     metrics['total_advertisers'] = result[0] if result else 0
-    
+
     # Get recent media buys
     cursor = conn.execute(f"""
-        SELECT 
+        SELECT
             mb.media_buy_id,
             mb.principal_id,
             mb.advertiser_name,
@@ -1240,21 +1240,21 @@ def tenant_dashboard(tenant_id):
         ORDER BY mb.created_at DESC
         LIMIT 10
     """, (tenant_id,))
-    
+
     recent_media_buys = []
     for row in cursor.fetchall():
         # Calculate relative time
         created_at = datetime.fromisoformat(row[6].replace('Z', '+00:00')) if row[6] else datetime.now(timezone.utc)
         now = datetime.now(timezone.utc)
         delta = now - created_at
-        
+
         if delta.days > 0:
             relative_time = f"{delta.days}d ago"
         elif delta.seconds > 3600:
             relative_time = f"{delta.seconds // 3600}h ago"
         else:
             relative_time = f"{delta.seconds // 60}m ago"
-        
+
         recent_media_buys.append({
             'media_buy_id': row[0],
             'principal_id': row[1],
@@ -1264,20 +1264,20 @@ def tenant_dashboard(tenant_id):
             'spend': row[5],
             'created_at_relative': relative_time
         })
-    
+
     # Get product count
     cursor = conn.execute(f"""
         SELECT COUNT(*) FROM products WHERE tenant_id = {ph}
     """, (tenant_id,))
     result = cursor.fetchone()
     product_count = result[0] if result else 0
-    
+
     # Get pending tasks - workflow_steps doesn't have tenant_id, so return empty list
     pending_tasks = []
-    
+
     # Chart data for revenue by advertiser (last 7 days)
     cursor = conn.execute(f"""
-        SELECT 
+        SELECT
             mb.advertiser_name,
             SUM(mb.budget) as revenue
         FROM media_buys mb
@@ -1288,18 +1288,18 @@ def tenant_dashboard(tenant_id):
         ORDER BY revenue DESC
         LIMIT 10
     """, (tenant_id,))
-    
+
     chart_labels = []
     chart_data = []
     for row in cursor.fetchall():
         chart_labels.append(row[0] or 'Unknown')
         chart_data.append(float(row[1]))
-    
+
     # Context manager handles cleanup
-    
+
     # Get admin port from environment
     admin_port = os.environ.get('ADMIN_UI_PORT', '8001')
-    
+
     return render_template('tenant_dashboard.html',
                          tenant=tenant,
                          metrics=metrics,
@@ -1318,9 +1318,9 @@ def tenant_settings(tenant_id, section=None):
     # Check access
     if session.get('role') == 'tenant_admin' and session.get('tenant_id') != tenant_id:
         return "Access denied. You can only view your own tenant.", 403
-    
+
     conn = get_db_connection()
-    
+
     # Get full tenant info
     cursor = conn.execute("""
         SELECT * FROM tenants WHERE tenant_id = ?
@@ -1329,24 +1329,24 @@ def tenant_settings(tenant_id, section=None):
     if not row:
         # Context manager handles cleanup
         return "Tenant not found", 404
-    
+
     # Convert row to dict
     tenant = dict(zip([col[0] for col in cursor.description], row))
-    
+
     # Add active_adapter as alias for ad_server for template compatibility
     tenant['active_adapter'] = tenant.get('ad_server')
-    
+
     # Parse JSON fields
     if tenant.get('authorized_emails'):
         tenant['authorized_emails'] = json.loads(tenant['authorized_emails']) if isinstance(tenant['authorized_emails'], str) else tenant['authorized_emails']
     if tenant.get('authorized_domains'):
         tenant['authorized_domains'] = json.loads(tenant['authorized_domains']) if isinstance(tenant['authorized_domains'], str) else tenant['authorized_domains']
-    
+
     # Get adapter config from adapter_config table
     adapter_config = {}
     if tenant.get('ad_server'):
         cursor = conn.execute("""
-            SELECT * FROM adapter_config 
+            SELECT * FROM adapter_config
             WHERE tenant_id = ? AND adapter_type = ?
         """, (tenant_id, tenant['ad_server']))
         adapter_row = cursor.fetchone()
@@ -1365,55 +1365,55 @@ def tenant_settings(tenant_id, section=None):
                     'dry_run': adapter_row[2]  # mock_dry_run
                 }
             # Add other adapters as needed
-    
+
     # Get counts
     cursor = conn.execute("SELECT COUNT(*) FROM products WHERE tenant_id = ?", (tenant_id,))
     result = cursor.fetchone()
     product_count = result[0] if result else 0
-    
+
     # Products don't have is_active column - all products are considered active
     active_products = product_count
     draft_products = 0
-    
+
     cursor = conn.execute("SELECT COUNT(*) FROM principals WHERE tenant_id = ?", (tenant_id,))
     result = cursor.fetchone()
     advertiser_count = result[0] if result else 0
-    
+
     # Use PostgreSQL-compatible syntax (CURRENT_TIMESTAMP - INTERVAL)
     db_config = DatabaseConfig.get_db_config()
     if db_config['type'] == 'postgresql':
         cursor = conn.execute("""
-            SELECT COUNT(DISTINCT principal_id) 
-            FROM media_buys 
-            WHERE tenant_id = %s 
+            SELECT COUNT(DISTINCT principal_id)
+            FROM media_buys
+            WHERE tenant_id = %s
             AND created_at >= CURRENT_TIMESTAMP - INTERVAL '30 days'
         """, (tenant_id,))
     else:
         cursor = conn.execute("""
-            SELECT COUNT(DISTINCT principal_id) 
-            FROM media_buys 
-            WHERE tenant_id = ? 
+            SELECT COUNT(DISTINCT principal_id)
+            FROM media_buys
+            WHERE tenant_id = ?
             AND created_at >= datetime('now', '-30 days')
         """, (tenant_id,))
     result = cursor.fetchone()
     active_advertisers = result[0] if result else 0
-    
+
     # Get creative formats (auto_approve column doesn't exist, default to 0)
     if db_config['type'] == 'postgresql':
         cursor = conn.execute("""
             SELECT format_id, name, width, height, 0 as auto_approve
-            FROM creative_formats 
+            FROM creative_formats
             WHERE tenant_id = %s OR tenant_id IS NULL
             ORDER BY name
         """, (tenant_id,))
     else:
         cursor = conn.execute("""
             SELECT format_id, name, width, height, 0 as auto_approve
-            FROM creative_formats 
+            FROM creative_formats
             WHERE tenant_id = ? OR tenant_id IS NULL
             ORDER BY name
         """, (tenant_id,))
-    
+
     creative_formats = []
     for row in cursor.fetchall():
         creative_formats.append({
@@ -1422,21 +1422,21 @@ def tenant_settings(tenant_id, section=None):
             'dimensions': f"{row[2]}x{row[3]}" if row[2] and row[3] else 'Variable',
             'auto_approve': row[4]
         })
-    
+
     # Format config as JSON for advanced editing
     try:
         config = json.loads(tenant.get('config', '{}')) if isinstance(tenant.get('config'), str) else tenant.get('config', {})
         tenant['config_json'] = json.dumps(config, indent=2)
     except:
         tenant['config_json'] = '{}'
-    
+
     # Get last sync time if GAM
     last_sync_time = None
     if tenant.get('ad_server') == 'google_ad_manager':
         try:
             cursor = conn.execute("""
-                SELECT MAX(sync_completed_at) 
-                FROM gam_inventory_sync 
+                SELECT MAX(sync_completed_at)
+                FROM gam_inventory_sync
                 WHERE tenant_id = ?
             """, (tenant_id,))
             sync_row = cursor.fetchone()
@@ -1453,12 +1453,12 @@ def tenant_settings(tenant_id, section=None):
         except:
             # Table might not exist yet
             last_sync_time = None
-    
+
     # Context manager handles cleanup
-    
+
     # Get admin port from environment
     admin_port = os.environ.get('ADMIN_UI_PORT', '8001')
-    
+
     return render_template('tenant_settings.html',
                          tenant=tenant,
                          adapter_config=adapter_config,
@@ -1477,7 +1477,7 @@ def tenant_settings(tenant_id, section=None):
 def revenue_chart_api(tenant_id):
     """API endpoint for revenue chart data."""
     period = request.args.get('period', '7d')
-    
+
     # Parse period
     if period == '7d':
         days = 7
@@ -1487,15 +1487,15 @@ def revenue_chart_api(tenant_id):
         days = 90
     else:
         days = 7
-    
+
     conn = get_db_connection()
-    
+
     cursor = conn.execute("""
-        SELECT 
+        SELECT
             p.name,
             SUM(
-                CASE 
-                    WHEN mb.config IS NOT NULL AND json_extract(mb.config, '$.budget') IS NOT NULL 
+                CASE
+                    WHEN mb.config IS NOT NULL AND json_extract(mb.config, '$.budget') IS NOT NULL
                     THEN CAST(json_extract(mb.config, '$.budget') AS REAL)
                     ELSE 0
                 END
@@ -1509,15 +1509,15 @@ def revenue_chart_api(tenant_id):
         ORDER BY revenue DESC
         LIMIT 10
     """, (tenant_id, days))
-    
+
     labels = []
     values = []
     for row in cursor.fetchall():
         labels.append(row[0] or 'Unknown')
         values.append(float(row[1]))
-    
+
     # Context manager handles cleanup
-    
+
     return jsonify({
         'labels': labels,
         'values': values
@@ -1530,9 +1530,9 @@ def update_general_settings(tenant_id):
     """Update general tenant settings."""
     if session.get('role') == 'viewer':
         return "Access denied", 403
-    
+
     conn = get_db_connection()
-    
+
     # Update tenant
     conn.execute("""
         UPDATE tenants SET
@@ -1548,10 +1548,10 @@ def update_general_settings(tenant_id):
         'human_review_required' in request.form,
         tenant_id
     ))
-    
+
     conn.commit()
     # Context manager handles cleanup
-    
+
     flash('General settings updated successfully', 'success')
     return redirect(url_for('tenant_settings', tenant_id=tenant_id, section='general'))
 
@@ -1561,35 +1561,35 @@ def update_adapter_settings(tenant_id):
     """Update the active adapter for a tenant."""
     if session.get('role') == 'viewer':
         return "Access denied", 403
-    
+
     # Check tenant access
     if session.get('role') == 'tenant_admin' and session.get('tenant_id') != tenant_id:
         return "Access denied. You can only modify your own tenant.", 403
-    
+
     try:
         data = request.get_json()
         new_adapter = data.get('adapter')
-        
+
         # Validate adapter choice
         valid_adapters = ['mock', 'google_ad_manager', 'kevel', 'triton', 'xandr']
         if new_adapter not in valid_adapters:
             return f"Invalid adapter: {new_adapter}", 400
-        
+
         conn = get_db_connection()
-        
+
         # Update the tenant's active adapter
         conn.execute("""
-            UPDATE tenants 
+            UPDATE tenants
             SET ad_server = ?
             WHERE tenant_id = ?
         """, (new_adapter, tenant_id))
-        
+
         conn.commit()
         # Context manager handles cleanup
-        
+
         app.logger.info(f"Tenant {tenant_id} switched adapter to {new_adapter}")
         return "Adapter updated successfully", 200
-        
+
     except Exception as e:
         app.logger.error(f"Error updating adapter for tenant {tenant_id}: {e}")
         return f"Error updating adapter: {str(e)}", 500
@@ -1601,19 +1601,19 @@ def oauth_status():
     try:
         # Check for GAM OAuth credentials in superadmin_config table (as per original implementation)
         conn = get_db_connection()
-        
+
         cursor = conn.execute(
             "SELECT config_value FROM superadmin_config WHERE config_key = 'gam_oauth_client_id'"
         )
         client_id_row = cursor.fetchone()
-        
+
         cursor = conn.execute(
             "SELECT config_value FROM superadmin_config WHERE config_key = 'gam_oauth_client_secret'"
         )
         client_secret_row = cursor.fetchone()
-        
+
         # Context manager handles cleanup
-        
+
         if client_id_row and client_id_row[0] and client_secret_row and client_secret_row[0]:
             # Credentials exist in database
             client_id = client_id_row[0]
@@ -1630,7 +1630,7 @@ def oauth_status():
                 'error': 'GAM OAuth credentials not configured in superadmin settings.',
                 'help': 'Super admins can configure GAM OAuth credentials in the superadmin settings page.'
             })
-            
+
     except Exception as e:
         app.logger.error(f"Error checking OAuth status: {e}")
         return jsonify({
@@ -1644,59 +1644,59 @@ def detect_gam_network(tenant_id):
     """Auto-detect GAM network code from refresh token."""
     if session.get('role') == 'viewer':
         return jsonify({'success': False, 'error': 'Access denied'}), 403
-    
+
     # Check tenant access
     if session.get('role') == 'tenant_admin' and session.get('tenant_id') != tenant_id:
         return jsonify({'success': False, 'error': 'Access denied'}), 403
-    
+
     try:
         data = request.get_json()
         refresh_token = data.get('refresh_token')
-        
+
         if not refresh_token:
             return jsonify({'success': False, 'error': 'Refresh token required'}), 400
-        
+
         # Create a temporary GAM client with just the refresh token
         from googleads import oauth2, ad_manager
-        
+
         # Get OAuth credentials from superadmin_config table (as per original implementation)
         conn = get_db_connection()
-        
+
         # Get GAM OAuth client credentials from superadmin config
         cursor = conn.execute(
             "SELECT config_value FROM superadmin_config WHERE config_key = 'gam_oauth_client_id'"
         )
         client_id_row = cursor.fetchone()
-        
+
         cursor = conn.execute(
             "SELECT config_value FROM superadmin_config WHERE config_key = 'gam_oauth_client_secret'"
         )
         client_secret_row = cursor.fetchone()
-        
+
         # Context manager handles cleanup
-        
+
         if not client_id_row or not client_id_row[0]:
             return jsonify({
                 'success': False,
                 'error': 'GAM OAuth Client ID not configured. Please configure it in superadmin settings.'
             }), 500
-        
+
         if not client_secret_row or not client_secret_row[0]:
             return jsonify({
                 'success': False,
                 'error': 'GAM OAuth Client Secret not configured. Please configure it in superadmin settings.'
             }), 500
-        
+
         client_id = client_id_row[0]
         client_secret = client_secret_row[0]
-        
+
         # Create OAuth2 client with refresh token
         oauth2_client = oauth2.GoogleRefreshTokenClient(
             client_id=client_id,
             client_secret=client_secret,
             refresh_token=refresh_token
         )
-        
+
         # Test if credentials are valid
         try:
             oauth2_client.Refresh()
@@ -1705,16 +1705,16 @@ def detect_gam_network(tenant_id):
                 'success': False,
                 'error': f'Invalid refresh token: {str(e)}'
             }), 400
-        
+
         # Create GAM client
         client = ad_manager.AdManagerClient(
             oauth2_client,
             "AdCP-Sales-Agent"
         )
-        
+
         # Get network service and retrieve network info
         network_service = client.GetService('NetworkService', version='v202408')
-        
+
         try:
             # Try getAllNetworks first (doesn't require network_code)
             try:
@@ -1722,7 +1722,7 @@ def detect_gam_network(tenant_id):
                 if all_networks and len(all_networks) > 0:
                     # Use the first network (most users have access to only one)
                     network = all_networks[0]
-                    
+
                     # Validate network response structure
                     is_valid, error_msg = validate_gam_network_response(network)
                     if not is_valid:
@@ -1731,7 +1731,7 @@ def detect_gam_network(tenant_id):
                             'success': False,
                             'error': f'Invalid network response from GAM: {error_msg}'
                         }), 500
-                    
+
                     # Also get the current user ID to use as trafficker_id
                     trafficker_id = None
                     try:
@@ -1739,7 +1739,7 @@ def detect_gam_network(tenant_id):
                         client.network_code = str(network['networkCode'])
                         user_service = client.GetService('UserService', version='v202408')
                         current_user = user_service.getCurrentUser()
-                        
+
                         if current_user:
                             # Validate user response
                             is_valid, error_msg = validate_gam_user_response(current_user)
@@ -1750,7 +1750,7 @@ def detect_gam_network(tenant_id):
                                 app.logger.warning(f"Invalid user response: {error_msg}")
                     except Exception as e:
                         app.logger.warning(f"Could not get current user: {e}")
-                    
+
                     return jsonify({
                         'success': True,
                         'network_code': str(network['networkCode']),
@@ -1762,20 +1762,20 @@ def detect_gam_network(tenant_id):
             except AttributeError:
                 # getAllNetworks might not be available in this GAM version
                 pass
-            
+
             # If getAllNetworks didn't work, we can't get the network without a network_code
             return jsonify({
                 'success': False,
                 'error': 'Unable to retrieve network information. The getAllNetworks() API is not available and getCurrentNetwork() requires a network code.'
             }), 400
-            
+
         except Exception as e:
             app.logger.error(f"Failed to get network info: {e}")
             return jsonify({
                 'success': False,
                 'error': f'Failed to retrieve network information: {str(e)}'
             }), 500
-            
+
     except Exception as e:
         app.logger.error(f"Error detecting GAM network for tenant {tenant_id}: {e}")
         return jsonify({
@@ -1789,48 +1789,48 @@ def configure_gam(tenant_id):
     """Save GAM configuration for a tenant."""
     if session.get('role') == 'viewer':
         return jsonify({'success': False, 'error': 'Access denied'}), 403
-    
+
     # Check tenant access
     if session.get('role') == 'tenant_admin' and session.get('tenant_id') != tenant_id:
         return jsonify({'success': False, 'error': 'Access denied'}), 403
-    
+
     try:
         data = request.get_json()
-        
+
         # Validate GAM configuration data
         validation_errors = validate_gam_config(data)
         if validation_errors:
             return jsonify({'success': False, 'errors': validation_errors}), 400
-        
+
         # Sanitize input data
         network_code = str(data.get('network_code', '')).strip() if data.get('network_code') else None
         refresh_token = data.get('refresh_token', '').strip()
         trafficker_id = str(data.get('trafficker_id', '')).strip() if data.get('trafficker_id') else None
-        
+
         # Log what we received (without exposing sensitive token)
         app.logger.info(f"GAM config save - network_code: {network_code}, trafficker_id: {trafficker_id}, token_length: {len(refresh_token)}")
-        
+
         # If network code or trafficker_id not provided, try to auto-detect them
         # But for now, let's just log a warning
         if not trafficker_id:
             app.logger.warning(f"No trafficker_id provided for tenant {tenant_id}")
-        
+
         conn = get_db_connection()
         try:
             # Check if ANY adapter config exists for this tenant
             cursor = conn.execute("""
-                SELECT adapter_type FROM adapter_config 
+                SELECT adapter_type FROM adapter_config
                 WHERE tenant_id = ?
             """, (tenant_id,))
-            
+
             existing_config = cursor.fetchone()
-            
+
             if existing_config:
                 # Check if it's already GAM config
                 if existing_config[0] == 'google_ad_manager':
                     # Update existing GAM config
                     conn.execute("""
-                        UPDATE adapter_config 
+                        UPDATE adapter_config
                         SET gam_network_code = ?, gam_refresh_token = ?, gam_trafficker_id = ?, updated_at = CURRENT_TIMESTAMP
                         WHERE tenant_id = ?
                     """, (network_code, refresh_token, trafficker_id, tenant_id))
@@ -1853,28 +1853,29 @@ def configure_gam(tenant_id):
                         created_at, updated_at
                     ) VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
                 """, (tenant_id, 'google_ad_manager', network_code, refresh_token, trafficker_id))
-            
+
             # Always update the tenant's active adapter to GAM when configuring GAM
             conn.execute("""
-                UPDATE tenants 
+                UPDATE tenants
                 SET ad_server = 'google_ad_manager'
                 WHERE tenant_id = ?
             """, (tenant_id,))
-            
+
             conn.commit()
         except Exception as e:
             conn.rollback()
             raise
         finally:
             # Context manager handles cleanup
-        
+            pass
+
         app.logger.info(f"GAM configuration saved for tenant {tenant_id}")
         return jsonify({
             'success': True,
             'message': 'GAM configuration saved successfully',
             'network_code': network_code
         })
-        
+
     except Exception as e:
         app.logger.error(f"Error saving GAM config for tenant {tenant_id}: {e}")
         return jsonify({
@@ -1888,9 +1889,9 @@ def update_slack_settings(tenant_id):
     """Update Slack integration settings."""
     if session.get('role') == 'viewer':
         return "Access denied", 403
-    
+
     conn = get_db_connection()
-    
+
     conn.execute("""
         UPDATE tenants SET
             slack_webhook_url = ?,
@@ -1901,10 +1902,10 @@ def update_slack_settings(tenant_id):
         request.form.get('slack_audit_webhook_url'),
         tenant_id
     ))
-    
+
     conn.commit()
     # Context manager handles cleanup
-    
+
     flash('Slack settings updated successfully', 'success')
     return redirect(url_for('tenant_settings', tenant_id=tenant_id, section='integrations'))
 
@@ -1916,22 +1917,22 @@ def targeting_browser(tenant_id):
     # Check access
     if session.get('role') != 'super_admin' and session.get('tenant_id') != tenant_id:
         return "Access denied", 403
-    
+
     with get_db_session() as db_session:
         tenant = db_session.query(Tenant).filter_by(tenant_id=tenant_id).first()
         row = (tenant.tenant_id, tenant.name) if tenant else None
         if not row:
         return "Tenant not found", 404
-    
+
     tenant = {
         'tenant_id': row[0],
         'name': row[1]
     }
     # Context manager handles cleanup
-    
-    return render_template('targeting_browser_simple.html', 
+
+    return render_template('targeting_browser_simple.html',
                          tenant=tenant,
-                         tenant_id=tenant_id, 
+                         tenant_id=tenant_id,
                          tenant_name=row[1])
 
 # Inventory Browser Route
@@ -1942,26 +1943,26 @@ def inventory_browser(tenant_id):
     # Check access
     if session.get('role') != 'super_admin' and session.get('tenant_id') != tenant_id:
         return "Access denied", 403
-    
+
     with get_db_session() as db_session:
         tenant = db_session.query(Tenant).filter_by(tenant_id=tenant_id).first()
         row = (tenant.tenant_id, tenant.name) if tenant else None
         if not row:
         return "Tenant not found", 404
-    
+
     tenant = {
         'tenant_id': row[0],
         'name': row[1]
     }
-    
+
     # Get inventory type from query param
     inventory_type = request.args.get('type', 'all')
-    
+
     # Context manager handles cleanup
-    
-    return render_template('inventory_browser.html', 
+
+    return render_template('inventory_browser.html',
                          tenant=tenant,
-                         tenant_id=tenant_id, 
+                         tenant_id=tenant_id,
                          tenant_name=row[1],
                          inventory_type=inventory_type)
 
@@ -1973,27 +1974,27 @@ def orders_browser(tenant_id):
     # Check access
     if session.get('role') != 'super_admin' and session.get('tenant_id') != tenant_id:
         return "Access denied", 403
-    
+
     conn = get_db_connection()
     cursor = conn.execute("SELECT name FROM tenants WHERE tenant_id = ?", (tenant_id,))
     row = cursor.fetchone()
     if not row:
         # Context manager handles cleanup
         return "Tenant not found", 404
-    
+
     tenant_name = row[0]
-    
+
     # Get API key for API calls
     cursor = conn.execute(
         "SELECT config_value FROM superadmin_config WHERE config_key = 'api_key'"
     )
     api_key_row = cursor.fetchone()
     api_key = api_key_row[0] if api_key_row else ''
-    
+
     # Context manager handles cleanup
-    
-    return render_template('orders_browser.html', 
-                         tenant_id=tenant_id, 
+
+    return render_template('orders_browser.html',
+                         tenant_id=tenant_id,
                          tenant_name=tenant_name,
                          api_key=api_key)
 
@@ -2004,7 +2005,7 @@ def sync_orders_endpoint(tenant_id):
     # Check access
     if session.get('role') != 'super_admin' and session.get('tenant_id') != tenant_id:
         return jsonify({'error': 'Access denied'}), 403
-    
+
     try:
         # Get tenant and check if GAM is configured
         conn = get_db_connection()
@@ -2014,36 +2015,36 @@ def sync_orders_endpoint(tenant_id):
         )
         tenant = cursor.fetchone()
         # Context manager handles cleanup
-        
+
         if not tenant:
             return jsonify({'error': 'Tenant not found'}), 404
-        
+
         if tenant['ad_server'] != 'google_ad_manager':
             return jsonify({'error': 'Only Google Ad Manager sync is supported'}), 400
-        
+
         # Get GAM client
         from gam_helper import get_ad_manager_client_for_tenant
         gam_client = get_ad_manager_client_for_tenant(tenant_id)
-        
+
         # Import and use the orders service
         from gam_orders_service import GAMOrdersService, db_session
-        
+
         # Clean up any existing session
         db_session.remove()
-        
+
         # Create service and perform sync
         service = GAMOrdersService(db_session)
         sync_summary = service.sync_tenant_orders(tenant_id, gam_client)
-        
+
         # Commit changes
         db_session.commit()
-        
+
         return jsonify({
             'status': 'completed',
             'summary': sync_summary,
             'message': f"Successfully synced {sync_summary.get('orders', {}).get('total', 0)} orders"
         })
-        
+
     except Exception as e:
         logger.error(f"Error syncing orders for tenant {tenant_id}: {str(e)}")
         db_session.rollback()
@@ -2059,7 +2060,7 @@ def gam_reporting_dashboard(tenant_id):
     # Verify tenant access
     if session.get('role') != 'super_admin' and session.get('tenant_id') != tenant_id:
         return "Access denied", 403
-    
+
     # Get tenant and check if it's using GAM
     conn = get_db_connection()
     tenant_cursor = conn.execute(
@@ -2067,20 +2068,20 @@ def gam_reporting_dashboard(tenant_id):
         (tenant_id,)
     )
     tenant = tenant_cursor.fetchone()
-    
+
     if not tenant:
         # Context manager handles cleanup
         return "Tenant not found", 404
-    
+
     # Check if tenant is using Google Ad Manager
     if tenant.get('ad_server') != 'google_ad_manager':
         # Context manager handles cleanup
-        return render_template('error.html', 
+        return render_template('error.html',
             error_title="GAM Reporting Not Available",
             error_message=f"This tenant is currently using {tenant.get('ad_server', 'no ad server')}. GAM Reporting is only available for tenants using Google Ad Manager.",
             back_url=f"/tenant/{tenant_id}"
         ), 400
-    
+
     # Context manager handles cleanup
     return render_template('gam_reporting.html', tenant=tenant)
 
@@ -2092,66 +2093,66 @@ def get_tenant_sync_status(tenant_id):
     # Verify tenant access
     if session.get('role') != 'super_admin' and session.get('tenant_id') != tenant_id:
         return jsonify({'error': 'Access denied'}), 403
-    
+
     conn = get_db_connection()
-    
+
     # Check if tenant exists and uses GAM
     tenant_cursor = conn.execute(
         "SELECT ad_server FROM tenants WHERE tenant_id = ?",
         (tenant_id,)
     )
     tenant = tenant_cursor.fetchone()
-    
+
     if not tenant:
         # Context manager handles cleanup
         return jsonify({'error': 'Tenant not found'}), 404
-    
+
     if tenant.get('ad_server') != 'google_ad_manager':
         # Context manager handles cleanup
         return jsonify({'error': 'Sync only available for GAM tenants'}), 400
-    
+
     # Get latest sync job
     sync_cursor = conn.execute("""
-        SELECT started_at, status, summary 
-        FROM sync_jobs 
-        WHERE tenant_id = ? 
-        ORDER BY started_at DESC 
+        SELECT started_at, status, summary
+        FROM sync_jobs
+        WHERE tenant_id = ?
+        ORDER BY started_at DESC
         LIMIT 1
     """, (tenant_id,))
     sync_job = sync_cursor.fetchone()
-    
+
     # Get inventory counts
     inventory_cursor = conn.execute("""
-        SELECT 
+        SELECT
             COUNT(CASE WHEN inventory_type = 'ad_unit' THEN 1 END) as ad_units,
             COUNT(CASE WHEN inventory_type = 'custom_targeting_key' THEN 1 END) as custom_targeting_keys,
             COUNT(CASE WHEN inventory_type = 'custom_targeting_value' THEN 1 END) as custom_targeting_values,
             COUNT(*) as total
-        FROM gam_inventory 
+        FROM gam_inventory
         WHERE tenant_id = ?
     """, (tenant_id,))
     counts = inventory_cursor.fetchone()
-    
+
     # Context manager handles cleanup
-    
+
     response = {
         'last_sync': None,
         'sync_running': False,
         'item_count': counts['total'] if counts else 0,
         'breakdown': None
     }
-    
+
     if sync_job:
         response['last_sync'] = sync_job['started_at']
         response['sync_running'] = sync_job['status'] == 'running'
-        
+
         if counts and counts['total'] > 0:
             response['breakdown'] = {
                 'ad_units': counts['ad_units'],
                 'custom_targeting_keys': counts['custom_targeting_keys'],
                 'custom_targeting_values': counts['custom_targeting_values']
             }
-    
+
     return jsonify(response)
 
 # Trigger Sync API for Admin UI
@@ -2159,49 +2160,49 @@ def get_tenant_sync_status(tenant_id):
 @require_auth()
 def trigger_tenant_sync(tenant_id):
     """Trigger a sync for a GAM tenant."""
-    # Verify tenant access  
+    # Verify tenant access
     if session.get('role') != 'super_admin':
         return jsonify({'error': 'Only super admins can trigger sync'}), 403
-    
+
     conn = get_db_connection()
-    
+
     # Check if tenant exists and uses GAM
     tenant_cursor = conn.execute(
         "SELECT ad_server FROM tenants WHERE tenant_id = ?",
         (tenant_id,)
     )
     tenant = tenant_cursor.fetchone()
-    
+
     if not tenant:
         # Context manager handles cleanup
         return jsonify({'error': 'Tenant not found'}), 404
-    
+
     if tenant.get('ad_server') != 'google_ad_manager':
         # Context manager handles cleanup
         return jsonify({'error': 'Sync only available for GAM tenants'}), 400
-    
+
     try:
         # Create a new sync job
         import uuid
         from datetime import datetime
-        
+
         sync_id = str(uuid.uuid4())
         conn.execute("""
             INSERT INTO sync_jobs (sync_id, tenant_id, adapter_type, sync_type, status, started_at, triggered_by)
             VALUES (?, ?, 'google_ad_manager', 'manual', 'pending', ?, 'admin_ui')
         """, (sync_id, tenant_id, datetime.utcnow()))
         conn.commit()
-        
+
         # Note: In a real implementation, this would trigger an async job
         # For now, we'll just mark it as pending and let the background worker handle it
-        
+
         # Context manager handles cleanup
         return jsonify({
             'success': True,
             'sync_id': sync_id,
             'message': 'Sync job queued successfully'
         })
-        
+
     except Exception as e:
         # Context manager handles cleanup
         logger.error(f"Error triggering sync for tenant {tenant_id}: {str(e)}")
@@ -2214,39 +2215,39 @@ def get_tenant_orders_session(tenant_id):
     # Check access
     if session.get('role') != 'super_admin' and session.get('tenant_id') != tenant_id:
         return jsonify({'error': 'Access denied'}), 403
-    
+
     try:
         from gam_orders_service import GAMOrdersService, db_session
         from models import GAMOrder, GAMLineItem
         from sqlalchemy import func
-        
+
         # Remove any existing session to start fresh
         try:
             db_session.remove()
         except Exception:
             pass  # Session might not exist yet
-        
+
         # Get query parameters
         search = request.args.get('search')
         status = request.args.get('status')
         advertiser_id = request.args.get('advertiser_id')
         has_line_items = request.args.get('has_line_items')
-        
+
         # Query orders from database
         query = db_session.query(GAMOrder).filter(GAMOrder.tenant_id == tenant_id)
-        
+
         if search:
             query = query.filter(
                 (GAMOrder.name.ilike(f'%{search}%')) |
                 (GAMOrder.order_id.ilike(f'%{search}%'))
             )
-        
+
         if status:
             query = query.filter(GAMOrder.status == status)
-        
+
         if advertiser_id:
             query = query.filter(GAMOrder.advertiser_id == advertiser_id)
-        
+
         # Filter by has_line_items using exists subquery
         if has_line_items == 'true':
             query = query.filter(
@@ -2262,12 +2263,12 @@ def get_tenant_orders_session(tenant_id):
                     GAMLineItem.order_id == GAMOrder.order_id
                 ).exists()
             )
-        
+
         # Order by last modified
         query = query.order_by(GAMOrder.last_modified_date.desc())
-        
+
         orders = query.all()
-        
+
         # Get line item counts and stats for all orders in one query
         line_item_stats = db_session.query(
             GAMLineItem.order_id,
@@ -2278,7 +2279,7 @@ def get_tenant_orders_session(tenant_id):
             GAMLineItem.tenant_id == tenant_id,
             GAMLineItem.order_id.in_([o.order_id for o in orders]) if orders else []
         ).group_by(GAMLineItem.order_id).all()
-        
+
         # Convert to dict for easy lookup
         stats_dict = {
             row.order_id: {
@@ -2288,7 +2289,7 @@ def get_tenant_orders_session(tenant_id):
             }
             for row in line_item_stats
         }
-        
+
         # Convert to dict
         result = {
             'orders': [
@@ -2309,9 +2310,9 @@ def get_tenant_orders_session(tenant_id):
             ],
             'total': len(orders)
         }
-        
+
         return jsonify(result)
-        
+
     except Exception as e:
         app.logger.error(f"Error fetching orders: {str(e)}")
         try:
@@ -2332,33 +2333,33 @@ def get_order_details_session(tenant_id, order_id):
     # Check access
     if session.get('role') != 'super_admin' and session.get('tenant_id') != tenant_id:
         return jsonify({'error': 'Access denied'}), 403
-    
+
     try:
         from gam_orders_service import GAMOrdersService, db_session
         from models import GAMOrder, GAMLineItem
-        
+
         db_session.remove()
-        
+
         # Get order
         order = db_session.query(GAMOrder).filter(
             GAMOrder.tenant_id == tenant_id,
             GAMOrder.order_id == order_id
         ).first()
-        
+
         if not order:
             return jsonify({'error': 'Order not found'}), 404
-        
+
         # Get line items
         line_items = db_session.query(GAMLineItem).filter(
             GAMLineItem.tenant_id == tenant_id,
             GAMLineItem.order_id == order_id
         ).all()
-        
+
         # Calculate delivery metrics
         total_impressions_delivered = sum(li.stats_impressions or 0 for li in line_items)
         total_impressions_goal = sum(li.primary_goal_units or 0 for li in line_items if li.primary_goal_type == 'IMPRESSIONS')
         total_clicks_goal = sum(li.primary_goal_units or 0 for li in line_items if li.primary_goal_type == 'CLICKS')
-        
+
         result = {
             'order': {
                 'order_id': order.order_id,
@@ -2411,9 +2412,9 @@ def get_order_details_session(tenant_id, order_id):
                 for li in line_items
             ]
         }
-        
+
         return jsonify(result)
-        
+
     except Exception as e:
         app.logger.error(f"Error fetching order details: {str(e)}")
         return jsonify({'error': str(e)}), 500
@@ -2428,24 +2429,24 @@ def workflows_dashboard(tenant_id):
     # Verify tenant access
     if session.get('role') != 'super_admin' and session.get('tenant_id') != tenant_id:
         return "Access denied", 403
-    
+
     # Get tenant
     conn = get_db_connection()
     tenant_cursor = conn.execute(
-        "SELECT * FROM tenants WHERE tenant_id = ?", 
+        "SELECT * FROM tenants WHERE tenant_id = ?",
         (tenant_id,)
     )
     tenant_row = tenant_cursor.fetchone()
-    
+
     if not tenant_row:
         # Context manager handles cleanup
         return "Tenant not found", 404
-    
+
     # PostgreSQL returns JSONB as dict, SQLite as string
     config = tenant_row[3]
     if isinstance(config, str):
         config = json.loads(config)
-    
+
     tenant = {
         'tenant_id': tenant_row[0],
         'name': tenant_row[1],
@@ -2455,80 +2456,80 @@ def workflows_dashboard(tenant_id):
         'updated_at': tenant_row[5],
         'is_active': tenant_row[6]
     }
-    
+
     # Get summary statistics
     from datetime import datetime, timedelta
     today = datetime.now().date()
-    
+
     # Active media buys count
     active_buys_cursor = conn.execute("""
-        SELECT COUNT(*) FROM media_buys 
+        SELECT COUNT(*) FROM media_buys
         WHERE tenant_id = ? AND status = 'active'
     """, (tenant_id,))
     result = active_buys_cursor.fetchone()
     active_buys = result[0] if result else 0
-    
+
     # Pending workflow steps count (tasks table was replaced by workflow system)
     try:
         pending_tasks_cursor = conn.execute("""
-            SELECT COUNT(*) FROM workflow_steps 
+            SELECT COUNT(*) FROM workflow_steps
             WHERE tenant_id = ? AND status = 'pending'
         """, (tenant_id,))
         result = pending_tasks_cursor.fetchone()
         pending_tasks = result[0] if result else 0
     except:
         pending_tasks = 0
-    
+
     # Completed today count
     try:
         completed_today_cursor = conn.execute("""
-            SELECT COUNT(*) FROM workflow_steps 
-            WHERE tenant_id = ? AND status = 'completed' 
+            SELECT COUNT(*) FROM workflow_steps
+            WHERE tenant_id = ? AND status = 'completed'
             AND DATE(completed_at) = DATE(?)
         """, (tenant_id, today.isoformat()))
         result = completed_today_cursor.fetchone()
         completed_today = result[0] if result else 0
     except:
         completed_today = 0
-    
+
     # Total active spend
     total_spend_cursor = conn.execute("""
-        SELECT SUM(budget) FROM media_buys 
+        SELECT SUM(budget) FROM media_buys
         WHERE tenant_id = ? AND status = 'active'
     """, (tenant_id,))
     result = total_spend_cursor.fetchone()
     total_spend = (result[0] if result else 0) or 0
-    
+
     summary = {
         'active_buys': active_buys,
         'pending_tasks': pending_tasks,
         'completed_today': completed_today,
         'total_spend': total_spend
     }
-    
+
     # Get media buys
     media_buys_cursor = conn.execute("""
-        SELECT * FROM media_buys 
-        WHERE tenant_id = ? 
-        ORDER BY created_at DESC 
+        SELECT * FROM media_buys
+        WHERE tenant_id = ?
+        ORDER BY created_at DESC
         LIMIT 100
     """, (tenant_id,))
-    
+
     media_buys = []
     for row in media_buys_cursor:
         # Handle datetime fields - PostgreSQL returns datetime objects, SQLite returns strings
         created_at = row[11]
         if created_at and isinstance(created_at, str):
             created_at = datetime.fromisoformat(created_at)
-        
+
         updated_at = row[12]
         if updated_at and isinstance(updated_at, str):
             updated_at = datetime.fromisoformat(updated_at)
-        
+
         approved_at = row[13]
         if approved_at and isinstance(approved_at, str):
             approved_at = datetime.fromisoformat(approved_at)
-        
+
         media_buys.append({
             'media_buy_id': row[0],
             'tenant_id': row[1],
@@ -2546,44 +2547,44 @@ def workflows_dashboard(tenant_id):
             'approved_at': approved_at,
             'approved_by': row[14]
         })
-    
+
     # Get workflow steps (tasks table was replaced by workflow system)
     try:
         tasks_cursor = conn.execute("""
-            SELECT * FROM workflow_steps 
-            WHERE tenant_id = ? 
-            ORDER BY created_at DESC 
+            SELECT * FROM workflow_steps
+            WHERE tenant_id = ?
+            ORDER BY created_at DESC
             LIMIT 100
         """, (tenant_id,))
     except:
         tasks_cursor = []
-    
+
     tasks = []
     for row in tasks_cursor:
         # Handle datetime fields - PostgreSQL returns datetime objects, SQLite returns strings
         due_date = row[8]
         if due_date and isinstance(due_date, str):
             due_date = datetime.fromisoformat(due_date)
-        
+
         completed_at = row[9]
         if completed_at and isinstance(completed_at, str):
             completed_at = datetime.fromisoformat(completed_at)
-        
+
         created_at = row[12]
         if created_at and isinstance(created_at, str):
             created_at = datetime.fromisoformat(created_at)
-        
+
         is_overdue = False
         if due_date and row[6] == 'pending':
             is_overdue = due_date < datetime.now()
-        
+
         # Handle metadata - PostgreSQL returns dict, SQLite returns string
         metadata = row[11]
         if metadata and isinstance(metadata, str):
             metadata = json.loads(metadata)
         elif not metadata:
             metadata = {}
-            
+
         tasks.append({
             'task_id': row[0],
             'tenant_id': row[1],
@@ -2600,22 +2601,22 @@ def workflows_dashboard(tenant_id):
             'created_at': created_at,
             'is_overdue': is_overdue
         })
-    
+
     # Get audit logs
     audit_logs_cursor = conn.execute("""
-        SELECT * FROM audit_logs 
-        WHERE tenant_id = ? 
-        ORDER BY timestamp DESC 
+        SELECT * FROM audit_logs
+        WHERE tenant_id = ?
+        ORDER BY timestamp DESC
         LIMIT 100
     """, (tenant_id,))
-    
+
     audit_logs = []
     for row in audit_logs_cursor:
         # Handle datetime fields - PostgreSQL returns datetime objects, SQLite returns strings
         timestamp = row[2]
         if timestamp and isinstance(timestamp, str):
             timestamp = datetime.fromisoformat(timestamp)
-        
+
         audit_logs.append({
             'log_id': row[0],
             'tenant_id': row[1],
@@ -2628,10 +2629,10 @@ def workflows_dashboard(tenant_id):
             'error_message': row[8],
             'details': row[9]
         })
-    
+
     # Context manager handles cleanup
-    
-    return render_template('workflows.html', 
+
+    return render_template('workflows.html',
                          tenant=tenant,
                          summary=summary,
                          media_buys=media_buys,
@@ -2645,20 +2646,20 @@ def media_buy_approval(tenant_id, media_buy_id):
     # Verify tenant access
     if session.get('role') != 'super_admin' and session.get('tenant_id') != tenant_id:
         return "Access denied", 403
-    
+
     conn = get_db_connection()
-    
+
     # Get the media buy details
     buy_cursor = conn.execute("""
-        SELECT * FROM media_buys 
+        SELECT * FROM media_buys
         WHERE tenant_id = ? AND media_buy_id = ?
     """, (tenant_id, media_buy_id))
-    
+
     buy_row = buy_cursor.fetchone()
     if not buy_row:
         # Context manager handles cleanup
         return "Media buy not found", 404
-    
+
     # Parse the media buy
     media_buy = {
         'media_buy_id': buy_row[0],
@@ -2676,21 +2677,21 @@ def media_buy_approval(tenant_id, media_buy_id):
         'raw_request': json.loads(buy_row[15]) if buy_row[15] and isinstance(buy_row[15], str) else buy_row[15],
         'context_id': buy_row[16] if len(buy_row) > 16 else None
     }
-    
+
     # Get associated human task if exists
     task_cursor = conn.execute("""
-        SELECT * FROM human_tasks 
+        SELECT * FROM human_tasks
         WHERE media_buy_id = ? AND status = 'pending'
         ORDER BY created_at DESC LIMIT 1
     """, (media_buy_id,))
-    
+
     task_row = task_cursor.fetchone()
     human_task = None
     if task_row:
         context_data = task_row[8]
         if context_data and isinstance(context_data, str):
             context_data = json.loads(context_data)
-        
+
         human_task = {
             'task_id': task_row[0],
             'task_type': task_row[3],
@@ -2700,33 +2701,33 @@ def media_buy_approval(tenant_id, media_buy_id):
             'error_detail': task_row[7],
             'context_data': context_data or {}
         }
-    
+
     # Get the principal details for adapter info
     principal_cursor = conn.execute("""
-        SELECT * FROM principals 
+        SELECT * FROM principals
         WHERE tenant_id = ? AND principal_id = ?
     """, (tenant_id, media_buy['principal_id']))
-    
+
     principal_row = principal_cursor.fetchone()
     principal = None
     if principal_row:
         platform_mappings = principal_row[3]
         if isinstance(platform_mappings, str):
             platform_mappings = json.loads(platform_mappings)
-        
+
         principal = {
             'principal_id': principal_row[0],
             'name': principal_row[2],
             'platform_mappings': platform_mappings
         }
-    
+
     # Get the products in this media buy
     products = []
     if media_buy['raw_request'] and 'product_ids' in media_buy['raw_request']:
         product_ids = media_buy['raw_request']['product_ids']
         for product_id in product_ids:
             prod_cursor = conn.execute("""
-                SELECT * FROM products 
+                SELECT * FROM products
                 WHERE tenant_id = ? AND product_id = ?
             """, (tenant_id, product_id))
             prod_row = prod_cursor.fetchone()
@@ -2734,7 +2735,7 @@ def media_buy_approval(tenant_id, media_buy_id):
                 formats = prod_row[3]
                 # Debug logging
                 app.logger.info(f"Product {product_id} formats value: {formats!r}, type: {type(formats)}")
-                
+
                 if formats and isinstance(formats, str) and formats.strip():
                     try:
                         formats = json.loads(formats)
@@ -2743,7 +2744,7 @@ def media_buy_approval(tenant_id, media_buy_id):
                         formats = []
                 elif not formats or (isinstance(formats, str) and not formats.strip()):
                     formats = []
-                
+
                 targeting_template = prod_row[4]
                 if targeting_template and isinstance(targeting_template, str) and targeting_template.strip():
                     try:
@@ -2753,7 +2754,7 @@ def media_buy_approval(tenant_id, media_buy_id):
                         targeting_template = {}
                 elif not targeting_template or (isinstance(targeting_template, str) and not targeting_template.strip()):
                     targeting_template = {}
-                
+
                 implementation_config = prod_row[11] if len(prod_row) > 11 else None
                 if implementation_config and isinstance(implementation_config, str) and implementation_config.strip():
                     try:
@@ -2763,7 +2764,7 @@ def media_buy_approval(tenant_id, media_buy_id):
                         implementation_config = {}
                 elif not implementation_config or (isinstance(implementation_config, str) and not implementation_config.strip()):
                     implementation_config = {}
-                
+
                 products.append({
                     'product_id': prod_row[0],
                     'name': prod_row[2],
@@ -2774,17 +2775,17 @@ def media_buy_approval(tenant_id, media_buy_id):
                     'min_spend': prod_row[7],
                     'implementation_config': implementation_config
                 })
-    
+
     # Prepare dry-run preview (simulate what would happen in GAM)
     dry_run_preview = generate_dry_run_preview(
-        media_buy, 
-        products, 
+        media_buy,
+        products,
         principal,
         human_task
     )
-    
+
     # Context manager handles cleanup
-    
+
     return render_template('media_buy_approval.html',
                          tenant_id=tenant_id,
                          media_buy=media_buy,
@@ -2805,7 +2806,7 @@ def generate_dry_run_preview(media_buy, products, principal, human_task):
         },
         'line_items': []
     }
-    
+
     # Generate preview line items for each product
     for product in products:
         line_item = {
@@ -2817,7 +2818,7 @@ def generate_dry_run_preview(media_buy, products, principal, human_task):
             'base_price': product.get('base_price', 0),
             'implementation_notes': []
         }
-        
+
         # Add implementation config details
         if product.get('implementation_config'):
             config = product['implementation_config']
@@ -2833,13 +2834,13 @@ def generate_dry_run_preview(media_buy, products, principal, human_task):
                 line_item['implementation_notes'].append(
                     "Custom targeting will be applied"
                 )
-        
+
         preview['line_items'].append(line_item)
-    
+
     # Add any targeting overlay from the request
     if media_buy.get('raw_request') and media_buy['raw_request'].get('targeting_overlay'):
         preview['targeting_overlay'] = media_buy['raw_request']['targeting_overlay']
-    
+
     return preview
 
 # User Management Routes
@@ -2850,7 +2851,7 @@ def list_users(tenant_id):
     # Check access
     if session.get('role') == 'tenant_admin' and session.get('tenant_id') != tenant_id:
         return "Access denied", 403
-    
+
     conn = get_db_connection()
     cursor = conn.execute("""
         SELECT u.user_id, u.email, u.name, u.role, u.created_at, u.last_login, u.is_active
@@ -2858,7 +2859,7 @@ def list_users(tenant_id):
         WHERE u.tenant_id = ?
         ORDER BY u.created_at DESC
     """, (tenant_id,))
-    
+
     users = []
     for row in cursor.fetchall():
         users.append({
@@ -2870,12 +2871,12 @@ def list_users(tenant_id):
             'last_login': row[5],
             'is_active': row[6]
         })
-    
+
     # Get tenant name
     cursor = conn.execute("SELECT name FROM tenants WHERE tenant_id = ?", (tenant_id,))
     result = cursor.fetchone()
     tenant_name = result[0] if result else 'Unknown Tenant'
-    
+
     # Context manager handles cleanup
     return render_template('users.html', users=users, tenant_id=tenant_id, tenant_name=tenant_name)
 
@@ -2886,35 +2887,35 @@ def add_user(tenant_id):
     # Check access - only admins can add users
     if session.get('role') == 'viewer':
         return "Access denied", 403
-    
+
     if session.get('role') == 'tenant_admin' and session.get('tenant_id') != tenant_id:
         return "Access denied", 403
-    
+
     conn = get_db_connection()
     try:
         user_id = f"user_{uuid.uuid4().hex[:8]}"
         email = request.form.get('email')
         name = request.form.get('name')
         role = request.form.get('role', 'viewer')
-        
+
         # Validate role
         if role not in ['admin', 'manager', 'viewer']:
             return "Invalid role", 400
-        
+
         # Check if email already exists
         cursor = conn.execute("SELECT user_id FROM users WHERE email = ?", (email,))
         if cursor.fetchone():
             return "User with this email already exists", 400
-        
+
         # Use proper boolean value for PostgreSQL
         conn.execute("""
             INSERT INTO users (user_id, tenant_id, email, name, role, created_at, is_active)
             VALUES (?, ?, ?, ?, ?, ?, ?)
         """, (user_id, tenant_id, email, name, role, datetime.now().isoformat(), True))
-        
+
         db_session.commit()
         # Context manager handles cleanup
-        
+
         return redirect(url_for('list_users', tenant_id=tenant_id))
     except Exception as e:
         # Context manager handles cleanup
@@ -2928,19 +2929,19 @@ def toggle_user(tenant_id, user_id):
     if session.get('role') != 'super_admin':
         if session.get('role') != 'tenant_admin' or session.get('tenant_id') != tenant_id:
             return "Access denied", 403
-    
+
     conn = get_db_connection()
     try:
         # Toggle the is_active status
         conn.execute("""
-            UPDATE users 
+            UPDATE users
             SET is_active = NOT is_active
             WHERE user_id = ? AND tenant_id = ?
         """, (user_id, tenant_id))
-        
+
         db_session.commit()
         # Context manager handles cleanup
-        
+
         return redirect(url_for('list_users', tenant_id=tenant_id))
     except Exception as e:
         # Context manager handles cleanup
@@ -2954,24 +2955,24 @@ def update_user_role(tenant_id, user_id):
     if session.get('role') != 'super_admin':
         if session.get('role') != 'tenant_admin' or session.get('tenant_id') != tenant_id:
             return "Access denied", 403
-    
+
     conn = get_db_connection()
     try:
         new_role = request.form.get('role')
-        
+
         # Validate role
         if new_role not in ['admin', 'manager', 'viewer']:
             return "Invalid role", 400
-        
+
         conn.execute("""
-            UPDATE users 
+            UPDATE users
             SET role = ?
             WHERE user_id = ? AND tenant_id = ?
         """, (new_role, user_id, tenant_id))
-        
+
         db_session.commit()
         # Context manager handles cleanup
-        
+
         return redirect(url_for('list_users', tenant_id=tenant_id))
     except Exception as e:
         # Context manager handles cleanup
@@ -2984,42 +2985,42 @@ def update_principal_mappings(tenant_id, principal_id):
     # Check access - only admins and managers can update mappings
     if session.get('role') == 'viewer':
         return "Access denied", 403
-        
+
     if session.get('role') in ['admin', 'manager', 'tenant_admin'] and session.get('tenant_id') != tenant_id:
         return "Access denied", 403
-    
+
     conn = get_db_connection()
     try:
         # Get the form data for platform mappings
         mappings = {}
-        
+
         # Check for common ad server mappings
         if request.form.get('gam_advertiser_id'):
             mappings['gam'] = {
                 'advertiser_id': request.form.get('gam_advertiser_id'),
                 'network_id': request.form.get('gam_network_id', '')
             }
-        
+
         if request.form.get('kevel_advertiser_id'):
             mappings['kevel'] = {
                 'advertiser_id': request.form.get('kevel_advertiser_id')
             }
-            
+
         if request.form.get('triton_advertiser_id'):
             mappings['triton'] = {
                 'advertiser_id': request.form.get('triton_advertiser_id')
             }
-        
+
         # Update the principal
         conn.execute("""
-            UPDATE principals 
+            UPDATE principals
             SET platform_mappings = ?
             WHERE tenant_id = ? AND principal_id = ?
         """, (json.dumps(mappings), tenant_id, principal_id))
-        
+
         db_session.commit()
         # Context manager handles cleanup
-        
+
         return redirect(url_for('tenant_dashboard', tenant_id=tenant_id) + '#principals')
     except Exception as e:
         # Context manager handles cleanup
@@ -3032,7 +3033,7 @@ def get_adapter_inventory_schema(tenant_id, adapter_name):
     # Check access
     if session.get('role') != 'super_admin' and session.get('tenant_id') != tenant_id:
         return jsonify({"error": "Access denied"}), 403
-    
+
     try:
         # Get tenant config to instantiate adapter
         conn = get_db_connection()
@@ -3042,10 +3043,10 @@ def get_adapter_inventory_schema(tenant_id, adapter_name):
         # PostgreSQL returns JSONB as dict, SQLite returns string
         tenant_config = config_data if isinstance(config_data, dict) else json.loads(config_data)
         adapter_config = tenant_config.get('adapters', {}).get(adapter_name, {})
-        
+
         if not adapter_config.get('enabled'):
             return jsonify({"error": f"Adapter {adapter_name} is not enabled"}), 400
-        
+
         # Create a dummy principal for schema retrieval
         dummy_principal = Principal(
             tenant_id=tenant_id,
@@ -3054,7 +3055,7 @@ def get_adapter_inventory_schema(tenant_id, adapter_name):
             access_token="",
             platform_mappings={}
         )
-        
+
         # Import the adapter dynamically
         if adapter_name == 'google_ad_manager':
             from adapters.google_ad_manager import GoogleAdManager
@@ -3070,13 +3071,13 @@ def get_adapter_inventory_schema(tenant_id, adapter_name):
             adapter = TritonDigitalAdapter(adapter_config, dummy_principal, dry_run=True, tenant_id=tenant_id)
         else:
             return jsonify({"error": f"Unknown adapter: {adapter_name}"}), 400
-        
+
         # Get the inventory schema
         schema = adapter.get_inventory_config_schema()
-        
+
         # Context manager handles cleanup
         return jsonify(schema)
-        
+
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
@@ -3087,10 +3088,10 @@ def setup_adapter(tenant_id):
     # Check access - only admins can setup adapters
     if session.get('role') in ['viewer', 'manager']:
         return "Access denied. Admin privileges required.", 403
-        
+
     if session.get('role') in ['admin', 'tenant_admin'] and session.get('tenant_id') != tenant_id:
         return "Access denied.", 403
-    
+
     conn = get_db_connection()
     try:
         # Get adapter type
@@ -3098,57 +3099,57 @@ def setup_adapter(tenant_id):
         adapter_type_map = {
             'mock': 'mock',
             'gam': 'google_ad_manager',
-            'kevel': 'kevel', 
+            'kevel': 'kevel',
             'triton': 'triton'
         }
-        
+
         if adapter_type not in adapter_type_map:
             return "Invalid adapter type", 400
-        
+
         mapped_adapter = adapter_type_map[adapter_type]
-        
+
         # Update tenant's ad_server field
         conn.execute("""
-            UPDATE tenants 
+            UPDATE tenants
             SET ad_server = ?, updated_at = ?
             WHERE tenant_id = ?
         """, (mapped_adapter, datetime.now().isoformat(), tenant_id))
-        
+
         # Delete any existing adapter config
         conn.execute("""
             DELETE FROM adapter_config WHERE tenant_id = ?
         """, (tenant_id,))
-        
+
         # Insert new adapter configuration
         if adapter_type == 'mock':
             conn.execute("""
                 INSERT INTO adapter_config (tenant_id, adapter_type, mock_dry_run)
                 VALUES (?, ?, ?)
             """, (tenant_id, mapped_adapter, False))
-        
+
         elif adapter_type == 'gam':
             # Log the form data for debugging
             app.logger.info(f"GAM setup for tenant {tenant_id}")
             app.logger.info(f"Form data: network_code={request.form.get('network_code')}, "
                           f"trafficker_id={request.form.get('trafficker_id')}")
-            
+
             conn.execute("""
                 INSERT INTO adapter_config (
                     tenant_id, adapter_type, gam_network_code, gam_refresh_token,
                     gam_company_id, gam_trafficker_id, gam_manual_approval_required
                 )
                 VALUES (?, ?, ?, ?, ?, ?, ?)
-            """, (tenant_id, mapped_adapter, 
+            """, (tenant_id, mapped_adapter,
                   request.form.get('network_code'),
                   request.form.get('refresh_token'),
                   None,  # company_id is now per-principal, not per-tenant
                   request.form.get('trafficker_id'),
                   False))
-        
+
         elif adapter_type == 'kevel':
             conn.execute("""
                 INSERT INTO adapter_config (
-                    tenant_id, adapter_type, kevel_network_id, kevel_api_key, 
+                    tenant_id, adapter_type, kevel_network_id, kevel_api_key,
                     kevel_manual_approval_required
                 )
                 VALUES (?, ?, ?, ?, ?)
@@ -3156,7 +3157,7 @@ def setup_adapter(tenant_id):
                   request.form.get('network_id'),
                   request.form.get('api_key'),
                   False))
-        
+
         elif adapter_type == 'triton':
             conn.execute("""
                 INSERT INTO adapter_config (
@@ -3166,10 +3167,10 @@ def setup_adapter(tenant_id):
             """, (tenant_id, mapped_adapter,
                   request.form.get('station_id'),
                   request.form.get('api_key')))
-        
+
         db_session.commit()
         # Context manager handles cleanup
-        
+
         flash('Ad server configuration updated successfully!', 'success')
         return redirect(url_for('tenant_dashboard', tenant_id=tenant_id) + '#adserver')
     except Exception as e:
@@ -3184,21 +3185,21 @@ def create_principal(tenant_id):
     # Check access - only admins can create principals
     if session.get('role') in ['viewer']:
         return "Access denied. Admin or manager privileges required.", 403
-        
+
     if session.get('role') in ['admin', 'manager', 'tenant_admin'] and session.get('tenant_id') != tenant_id:
         return "Access denied.", 403
-    
+
     # Check if tenant has GAM configured
     conn = get_db_connection()
     cursor = conn.execute("""
-        SELECT adapter_type 
-        FROM adapter_config 
+        SELECT adapter_type
+        FROM adapter_config
         WHERE tenant_id = ?
     """, (tenant_id,))
     adapter_row = cursor.fetchone()
     has_gam = adapter_row and adapter_row[0] == 'google_ad_manager'
     # Context manager handles cleanup
-    
+
     if request.method == 'POST':
         # Validate form data
         form_data = {
@@ -3206,10 +3207,10 @@ def create_principal(tenant_id):
             'name': request.form.get('name', '').strip(),
             'gam_advertiser_id': request.form.get('gam_advertiser_id', '').strip() if has_gam else None
         }
-        
+
         # Sanitize
         form_data = sanitize_form_data(form_data)
-        
+
         # Validate
         validators = {
             'principal_id': [FormValidator.validate_principal_id],
@@ -3218,51 +3219,51 @@ def create_principal(tenant_id):
                 lambda v: FormValidator.validate_length(v, min_length=3, max_length=100, field_name="Principal name")
             ]
         }
-        
+
         # If GAM is configured, advertiser ID is required
         if has_gam:
             validators['gam_advertiser_id'] = [
                 lambda v: FormValidator.validate_required(v, "GAM Advertiser")
             ]
-        
+
         errors = validate_form_data(form_data, validators)
         if errors:
-            return render_template('create_principal.html', 
+            return render_template('create_principal.html',
                                  tenant_id=tenant_id,
                                  errors=errors,
                                  form_data=form_data,
                                  has_gam=has_gam)
-        
+
         conn = get_db_connection()
         try:
             principal_id = form_data['principal_id']
             name = form_data['name']
-            
+
             # Generate a secure access token
             access_token = secrets.token_urlsafe(32)
-            
+
             # Build platform mappings
             platform_mappings = {}
             if has_gam and form_data.get('gam_advertiser_id'):
                 platform_mappings['gam_advertiser_id'] = form_data['gam_advertiser_id']
-            
+
             # Create the principal
             conn.execute("""
                 INSERT INTO principals (tenant_id, principal_id, name, platform_mappings, access_token)
                 VALUES (?, ?, ?, ?, ?)
             """, (tenant_id, principal_id, name, json.dumps(platform_mappings), access_token))
-            
+
             db_session.commit()
             # Context manager handles cleanup
-            
+
             return redirect(url_for('tenant_dashboard', tenant_id=tenant_id) + '#principals')
         except Exception as e:
             # Context manager handles cleanup
-            return render_template('create_principal.html', 
+            return render_template('create_principal.html',
                                  tenant_id=tenant_id,
                                  error=str(e),
                                  has_gam=has_gam)
-    
+
     return render_template('create_principal.html', tenant_id=tenant_id, has_gam=has_gam)
 
 @app.route('/api/health')
@@ -3283,11 +3284,11 @@ def test_gam_connection():
         refresh_token = request.json.get('refresh_token')
         if not refresh_token:
             return jsonify({"error": "Refresh token is required"}), 400
-        
+
         # Get OAuth credentials from superadmin config
         conn = get_db_connection()
         cursor = conn.execute("""
-            SELECT config_key, config_value FROM superadmin_config 
+            SELECT config_key, config_value FROM superadmin_config
             WHERE config_key IN ('gam_oauth_client_id', 'gam_oauth_client_secret')
         """)
         oauth_config = {}
@@ -3297,48 +3298,48 @@ def test_gam_connection():
             elif row[0] == 'gam_oauth_client_secret':
                 oauth_config['client_secret'] = row[1]
         # Context manager handles cleanup
-        
+
         if not oauth_config.get('client_id') or not oauth_config.get('client_secret'):
             return jsonify({"error": "GAM OAuth credentials not configured in Settings"}), 400
-        
+
         # Test connection using the helper
         from gam_helper import get_ad_manager_client_for_tenant
-        
+
         # Create a temporary tenant-like object with just the refresh token
         class TempConfig:
             def __init__(self, refresh_token):
                 self.gam_refresh_token = refresh_token
                 self.gam_network_code = "temp"  # Temporary value
-        
+
         temp_config = TempConfig(refresh_token)
-        
+
         # Test by creating credentials and making a simple API call
         from googleads import oauth2, ad_manager
-        
+
         # Create GoogleAds OAuth2 client with refresh token
         oauth2_client = oauth2.GoogleRefreshTokenClient(
             client_id=oauth_config['client_id'],
             client_secret=oauth_config['client_secret'],
             refresh_token=refresh_token
         )
-        
+
         # Test if credentials are valid by trying to refresh
         try:
             # This will attempt to refresh the token
             oauth2_client.Refresh()
         except Exception as e:
             return jsonify({"error": f"Invalid refresh token: {str(e)}"}), 400
-        
+
         # Initialize GAM client to get network info
         # Note: We don't need to specify network_code for getAllNetworks call
         client = ad_manager.AdManagerClient(
             oauth2_client,
             "AdCP-Sales-Agent-Setup"
         )
-        
+
         # Get network service
         network_service = client.GetService('NetworkService', version='v202408')
-        
+
         # Get all networks user has access to
         try:
             # Try to get all networks first
@@ -3375,43 +3376,43 @@ def test_gam_connection():
             app.logger.error(f"Failed to get networks: {e}")
             app.logger.exception("Full exception details:")
             networks = []
-        
+
         result = {
             "success": True,
             "message": "Successfully connected to Google Ad Manager",
             "networks": networks
         }
-        
+
         # If we got a network, fetch companies and users
         if networks:
             try:
                 # Reinitialize client with network code for subsequent calls
                 network_code = networks[0]['networkCode']
                 app.logger.info(f"Reinitializing client with network code: {network_code}")
-                
+
                 client = ad_manager.AdManagerClient(
                     oauth2_client,
                     "AdCP-Sales-Agent-Setup",
                     network_code=network_code
                 )
-                
+
                 # Get company service for advertisers
                 company_service = client.GetService('CompanyService', version='v202408')
-                
+
                 # Build a statement to get advertisers
                 from googleads import ad_manager as gam_utils
                 statement_builder = gam_utils.StatementBuilder()
                 statement_builder.Where('type = :type')
                 statement_builder.WithBindVariable('type', 'ADVERTISER')
                 statement_builder.Limit(100)
-                
+
                 # Get companies
                 app.logger.info("Calling getCompaniesByStatement for ADVERTISER companies")
                 response = company_service.getCompaniesByStatement(
                     statement_builder.ToStatement()
                 )
                 app.logger.info(f"getCompaniesByStatement response: {response}")
-                
+
                 companies = []
                 if response and hasattr(response, 'results'):
                     app.logger.info(f"Found {len(response.results)} companies")
@@ -3424,9 +3425,9 @@ def test_gam_connection():
                         })
                 else:
                     app.logger.info("No companies found in response")
-                
+
                 result['companies'] = companies
-                
+
                 # Get current user info
                 user_service = client.GetService('UserService', version='v202408')
                 current_user = user_service.getCurrentUser()
@@ -3435,13 +3436,13 @@ def test_gam_connection():
                     "name": current_user.name,
                     "email": current_user.email
                 }
-                
+
             except Exception as e:
                 # It's okay if we can't fetch companies/users
                 result['warning'] = f"Connected but couldn't fetch all resources: {str(e)}"
-        
+
         return jsonify(result)
-        
+
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
@@ -3453,11 +3454,11 @@ def get_gam_advertisers():
         tenant_id = request.json.get('tenant_id')
         if not tenant_id:
             return jsonify({"error": "tenant_id is required"}), 400
-        
+
         # Check access - explicit role and tenant validation
         user_role = session.get('role')
         user_tenant_id = session.get('tenant_id')
-        
+
         if user_role == 'super_admin':
             # Super admin can access any tenant
             pass
@@ -3467,7 +3468,7 @@ def get_gam_advertisers():
         else:
             app.logger.warning(f"Unauthorized GAM advertisers access attempt: role={user_role}, user_tenant={user_tenant_id}, requested_tenant={tenant_id}")
             return jsonify({"error": "Access denied"}), 403
-        
+
         # Get adapter configuration for the tenant
         conn = get_db_connection()
         cursor = conn.execute("""
@@ -3475,18 +3476,18 @@ def get_gam_advertisers():
             FROM adapter_config
             WHERE tenant_id = ? AND adapter_type = 'google_ad_manager'
         """, (tenant_id,))
-        
+
         adapter_row = cursor.fetchone()
         if not adapter_row:
             # Context manager handles cleanup
             return jsonify({"error": "GAM not configured for this tenant"}), 400
-        
+
         refresh_token = adapter_row[0]
         network_code = adapter_row[1]
-        
+
         # Get OAuth credentials from superadmin config
         cursor = conn.execute("""
-            SELECT config_key, config_value FROM superadmin_config 
+            SELECT config_key, config_value FROM superadmin_config
             WHERE config_key IN ('gam_oauth_client_id', 'gam_oauth_client_secret')
         """)
         oauth_config = {}
@@ -3496,41 +3497,41 @@ def get_gam_advertisers():
             elif row[0] == 'gam_oauth_client_secret':
                 oauth_config['client_secret'] = row[1]
         # Context manager handles cleanup
-        
+
         if not oauth_config.get('client_id') or not oauth_config.get('client_secret'):
             return jsonify({"error": "GAM OAuth credentials not configured"}), 400
-        
+
         from googleads import oauth2, ad_manager
-        
+
         # Create OAuth2 client
         oauth2_client = oauth2.GoogleRefreshTokenClient(
             client_id=oauth_config['client_id'],
             client_secret=oauth_config['client_secret'],
             refresh_token=refresh_token
         )
-        
+
         # Initialize GAM client
         client = ad_manager.AdManagerClient(
             oauth2_client,
             "AdCP-Sales-Agent",
             network_code=network_code
         )
-        
+
         # Get company service to fetch advertisers
         company_service = client.GetService('CompanyService', version='v202408')
-        
+
         # Create a statement to get ADVERTISER type companies
         from googleads import ad_manager as gam
         statement_builder = gam.StatementBuilder(version='v202408')
         statement_builder.Where('type = :type')
         statement_builder.WithBindVariable('type', 'ADVERTISER')
-        
+
         advertisers = []
         while True:
             response = company_service.getCompaniesByStatement(
                 statement_builder.ToStatement()
             )
-            
+
             if 'results' in response and len(response['results']):
                 for company in response['results']:
                     advertisers.append({
@@ -3542,9 +3543,9 @@ def get_gam_advertisers():
                 statement_builder.offset += statement_builder.limit
             else:
                 break
-        
+
         return jsonify({"advertisers": advertisers})
-        
+
     except Exception as e:
         # Log detailed error for debugging but return generic message
         app.logger.error(f"GAM advertisers fetch error for tenant {tenant_id}: {str(e)}")
@@ -3563,9 +3564,9 @@ def list_products(tenant_id):
     # Check access
     if session.get('role') != 'super_admin' and session.get('tenant_id') != tenant_id:
         return "Access denied", 403
-    
+
     conn = get_db_connection()
-    
+
     # Get tenant name
     cursor = conn.execute("SELECT name FROM tenants WHERE tenant_id = ?", (tenant_id,))
     row = cursor.fetchone()
@@ -3573,10 +3574,10 @@ def list_products(tenant_id):
         # Context manager handles cleanup
         return "Tenant not found", 404
     tenant_name = row[0]
-    
+
     # Get tenant config using helper function
     tenant_config = get_tenant_config_from_db(conn, tenant_id)
-    
+
     # Get active adapter from config
     active_adapter = None
     if tenant_config and 'adapters' in tenant_config:
@@ -3584,7 +3585,7 @@ def list_products(tenant_id):
             if adapter_config.get('enabled'):
                 active_adapter = adapter_name
                 break
-    
+
     # Get active adapter and its UI endpoint
     adapter_ui_endpoint = None
     if active_adapter:
@@ -3596,7 +3597,7 @@ def list_products(tenant_id):
             access_token="",
             platform_mappings={}
         )
-        
+
         # Get adapter configuration from adapter_config table
         cursor = conn.execute("""
             SELECT mock_dry_run, gam_network_code, gam_refresh_token,
@@ -3605,7 +3606,7 @@ def list_products(tenant_id):
             WHERE tenant_id = ?
         """, (tenant_id,))
         adapter_row = cursor.fetchone()
-        
+
         try:
             if active_adapter == 'google_ad_manager':
                 from adapters.google_ad_manager import GoogleAdManager
@@ -3628,23 +3629,23 @@ def list_products(tenant_id):
         except Exception as e:
             app.logger.error(f"Error getting adapter UI endpoint: {e}")
             pass
-    
+
     # Get products
     cursor = conn.execute("""
-        SELECT product_id, name, description, formats, delivery_type, 
+        SELECT product_id, name, description, formats, delivery_type,
                is_fixed_price, cpm, price_guidance, is_custom, expires_at, countries
         FROM products
         WHERE tenant_id = ?
         ORDER BY product_id
     """, (tenant_id,))
-    
+
     products = []
     for row in cursor.fetchall():
         # Handle PostgreSQL (returns objects) vs SQLite (returns JSON strings)
         formats = row[3] if isinstance(row[3], list) else (json.loads(row[3]) if row[3] else [])
         price_guidance = row[7] if isinstance(row[7], dict) else (json.loads(row[7]) if row[7] else None)
         countries = row[10] if isinstance(row[10], list) else (json.loads(row[10]) if row[10] else None)
-        
+
         products.append({
             'product_id': row[0],
             'name': row[1],
@@ -3658,10 +3659,10 @@ def list_products(tenant_id):
             'expires_at': row[9],
             'countries': countries
         })
-    
+
     # Context manager handles cleanup
-    return render_template('products.html', 
-                         tenant_id=tenant_id, 
+    return render_template('products.html',
+                         tenant_id=tenant_id,
                          tenant_name=tenant_name,
                          products=products,
                          adapter_ui_endpoint=adapter_ui_endpoint)
@@ -3673,14 +3674,14 @@ def edit_product_basic(tenant_id, product_id):
     # Check access
     if session.get('role') != 'super_admin' and session.get('tenant_id') != tenant_id:
         return "Access denied", 403
-    
+
     conn = get_db_connection()
-    
+
     if request.method == 'POST':
         try:
             # Update product basic details
             conn.execute("""
-                UPDATE products 
+                UPDATE products
                 SET name = ?, description = ?, delivery_type = ?, is_fixed_price = ?, cpm = ?, price_guidance = ?
                 WHERE tenant_id = ? AND product_id = ?
             """, (
@@ -3696,37 +3697,37 @@ def edit_product_basic(tenant_id, product_id):
                 tenant_id,
                 product_id
             ))
-            
+
             db_session.commit()
             # Context manager handles cleanup
-            
+
             return redirect(url_for('list_products', tenant_id=tenant_id))
-            
+
         except Exception as e:
             # Context manager handles cleanup
-            return render_template('edit_product.html', 
+            return render_template('edit_product.html',
                                  tenant_id=tenant_id,
                                  product=None,
                                  error=str(e))
-    
+
     # GET request - load product
     cursor = conn.execute(
-        """SELECT product_id, name, description, formats, delivery_type, 
+        """SELECT product_id, name, description, formats, delivery_type,
                is_fixed_price, cpm, price_guidance
-        FROM products 
+        FROM products
         WHERE tenant_id = ? AND product_id = ?""",
         (tenant_id, product_id)
     )
     product_row = cursor.fetchone()
-    
+
     if not product_row:
         # Context manager handles cleanup
         return "Product not found", 404
-    
+
     # Handle PostgreSQL (returns objects) vs SQLite (returns JSON strings)
     formats = product_row[3] if isinstance(product_row[3], list) else json.loads(product_row[3] or '[]')
     price_guidance = product_row[7] if isinstance(product_row[7], dict) else json.loads(product_row[7] or '{}')
-    
+
     product = {
         'product_id': product_row[0],
         'name': product_row[1],
@@ -3737,9 +3738,9 @@ def edit_product_basic(tenant_id, product_id):
         'cpm': product_row[6],
         'price_guidance': price_guidance
     }
-    
+
     # Context manager handles cleanup
-    return render_template('edit_product.html', 
+    return render_template('edit_product.html',
                          tenant_id=tenant_id,
                          product=product)
 
@@ -3750,9 +3751,9 @@ def add_product(tenant_id):
     # Check access
     if session.get('role') != 'super_admin' and session.get('tenant_id') != tenant_id:
         return "Access denied", 403
-    
+
     conn = get_db_connection()
-    
+
     if request.method == 'POST':
         try:
             # Check if this is from AI form
@@ -3768,7 +3769,7 @@ def add_product(tenant_id):
                 countries = config.get('countries')
                 targeting_template = config.get('targeting_template', {})
                 implementation_config = config.get('implementation_config', {})
-                
+
                 # Get name and description from form
                 name = request.form.get('name')
                 description = request.form.get('description')
@@ -3780,12 +3781,12 @@ def add_product(tenant_id):
                 description = request.form.get('description')
                 targeting_template = {}
                 implementation_config = {}
-            
+
             # Build implementation config based on adapter
             tenant_config = get_tenant_config_from_db(conn, tenant_id)
             if not tenant_config:
                 return jsonify({"error": "Tenant not found"}), 404
-            
+
             # Handle regular form submission fields if not from AI
             if not ai_config:
                 # Get selected countries
@@ -3793,15 +3794,15 @@ def add_product(tenant_id):
                 # If "ALL" is selected or no countries selected, set to None (all countries)
                 if 'ALL' in countries or not countries:
                     countries = None
-                
+
                 # Determine pricing based on delivery type
                 delivery_type = request.form.get('delivery_type', 'guaranteed')
                 is_fixed_price = delivery_type == 'guaranteed'
-                
+
                 # Handle CPM and price guidance
                 cpm = None
                 price_guidance = None
-                
+
                 if is_fixed_price:
                     cpm = float(request.form.get('cpm', 5.0))
                 else:
@@ -3816,7 +3817,7 @@ def add_product(tenant_id):
             else:
                 # AI config already has these values
                 is_fixed_price = delivery_type == 'guaranteed'
-            
+
             # Insert product
             conn.execute("""
                 INSERT INTO products (
@@ -3838,25 +3839,25 @@ def add_product(tenant_id):
                 json.dumps(countries),
                 json.dumps(implementation_config)
             ))
-            
+
             db_session.commit()
             # Context manager handles cleanup
-            
+
             return redirect(url_for('list_products', tenant_id=tenant_id))
-            
+
         except Exception as e:
             # Context manager handles cleanup
             # Get available formats
             formats = get_creative_formats()
-            return render_template('add_product.html', 
+            return render_template('add_product.html',
                                  tenant_id=tenant_id,
                                  error=str(e),
                                  formats=formats)
-    
+
     # GET request - show form
     # Context manager handles cleanup
     formats = get_creative_formats()
-    return render_template('add_product.html', 
+    return render_template('add_product.html',
                          tenant_id=tenant_id,
                          formats=formats)
 
@@ -3867,7 +3868,7 @@ def add_product_ai_form(tenant_id):
     # Check access
     if session.get('role') != 'super_admin' and session.get('tenant_id') != tenant_id:
         return "Access denied", 403
-    
+
     return render_template('add_product_ai.html', tenant_id=tenant_id)
 
 @app.route('/tenant/<tenant_id>/products/analyze_ai', methods=['POST'])
@@ -3877,26 +3878,26 @@ def analyze_product_ai(tenant_id):
     # Check access
     if session.get('role') != 'super_admin' and session.get('tenant_id') != tenant_id:
         return jsonify({"error": "Access denied"}), 403
-    
+
     try:
         import asyncio
         from ai_product_service import analyze_product_description
-        
+
         data = request.get_json()
-        
+
         # Run the async function
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
-        
+
         config = loop.run_until_complete(analyze_product_description(
             tenant_id=tenant_id,
             name=data['name'],
             external_description=data['external_description'],
             internal_details=data.get('internal_details')
         ))
-        
+
         return jsonify({"success": True, "config": config})
-        
+
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
@@ -3907,15 +3908,15 @@ def bulk_product_upload_form(tenant_id):
     # Check access
     if session.get('role') == 'viewer':
         return "Access denied", 403
-    
+
     if session.get('role') == 'tenant_admin' and session.get('tenant_id') != tenant_id:
         return "Access denied", 403
-    
+
     # Get available templates
     from default_products import get_default_products
     templates = get_default_products()
-    
-    return render_template('bulk_product_upload.html', 
+
+    return render_template('bulk_product_upload.html',
                          tenant_id=tenant_id,
                          templates=templates)
 
@@ -3926,14 +3927,14 @@ def bulk_product_upload(tenant_id):
     # Check access
     if session.get('role') == 'viewer':
         return jsonify({"error": "Access denied"}), 403
-    
+
     if session.get('role') == 'tenant_admin' and session.get('tenant_id') != tenant_id:
         return jsonify({"error": "Access denied"}), 403
-    
+
     try:
         import csv
         import io
-        
+
         # Check if it's a file upload or JSON data
         if 'file' in request.files:
             file = request.files['file']
@@ -3948,43 +3949,43 @@ def bulk_product_upload(tenant_id):
         else:
             # Direct JSON submission
             products = request.get_json().get('products', [])
-        
+
         conn = get_db_connection()
         created_count = 0
         errors = []
-        
+
         for idx, product_data in enumerate(products):
             try:
                 # Validate required fields
                 if not product_data.get('name'):
                     errors.append(f"Row {idx+1}: Missing product name")
                     continue
-                
+
                 # Generate product ID if not provided
                 product_id = product_data.get('product_id', product_data['name'].lower().replace(' ', '_'))
-                
+
                 # Parse formats (handle comma-separated string or list)
                 formats = product_data.get('formats', [])
                 if isinstance(formats, str):
                     formats = [f.strip() for f in formats.split(',')]
-                
+
                 # Parse countries
                 countries = product_data.get('countries')
                 if isinstance(countries, str) and countries:
                     countries = [c.strip() for c in countries.split(',')]
                 elif not countries:
                     countries = None
-                
+
                 # Determine delivery type and pricing
                 delivery_type = product_data.get('delivery_type', 'guaranteed')
                 cpm = float(product_data.get('cpm', 0)) if product_data.get('cpm') else None
-                
+
                 price_guidance_min = None
                 price_guidance_max = None
                 if delivery_type == 'non_guaranteed' and not cpm:
                     price_guidance_min = float(product_data.get('price_guidance_min', 2.0))
                     price_guidance_max = float(product_data.get('price_guidance_max', 10.0))
-                
+
                 # Build targeting template
                 targeting_template = {}
                 if product_data.get('device_types'):
@@ -3992,10 +3993,10 @@ def bulk_product_upload(tenant_id):
                     if isinstance(device_types, str):
                         device_types = [d.strip() for d in device_types.split(',')]
                     targeting_template['device_targets'] = {'device_types': device_types}
-                
+
                 if countries:
                     targeting_template['geo_targets'] = {'countries': countries}
-                
+
                 # Insert product
                 conn.execute("""
                     INSERT INTO products (
@@ -4021,21 +4022,21 @@ def bulk_product_upload(tenant_id):
                     datetime.now().isoformat(),
                     datetime.now().isoformat()
                 ))
-                
+
                 created_count += 1
-                
+
             except Exception as e:
                 errors.append(f"Row {idx+1}: {str(e)}")
-        
+
         db_session.commit()
         # Context manager handles cleanup
-        
+
         return jsonify({
             "success": True,
             "created": created_count,
             "errors": errors
         })
-        
+
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
@@ -4045,22 +4046,22 @@ def get_product_templates(tenant_id):
     """Get product templates for the tenant's industry."""
     try:
         from default_products import get_industry_specific_products
-        
+
         # Get tenant's industry from config
         conn = get_db_connection()
         config = get_tenant_config_from_db(conn, tenant_id)
         # Context manager handles cleanup
-        
+
         if not config:
             return jsonify({"error": "Tenant not found"}), 404
-        
+
         config = config_row[0] if isinstance(config_row[0], dict) else json.loads(config_row[0])
         industry = config.get('industry', 'general')
-        
+
         templates = get_industry_specific_products(industry)
-        
+
         return jsonify({"templates": templates})
-        
+
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
@@ -4071,15 +4072,15 @@ def browse_product_templates(tenant_id):
     # Check access
     if session.get('role') == 'viewer':
         return "Access denied", 403
-    
+
     if session.get('role') == 'tenant_admin' and session.get('tenant_id') != tenant_id:
         return "Access denied", 403
-    
+
     from default_products import get_default_products, get_industry_specific_products
-    
+
     # Get all available templates
     standard_templates = get_default_products()
-    
+
     # Get industry templates for different industries
     industry_templates = {
         'news': get_industry_specific_products('news'),
@@ -4087,18 +4088,18 @@ def browse_product_templates(tenant_id):
         'entertainment': get_industry_specific_products('entertainment'),
         'ecommerce': get_industry_specific_products('ecommerce')
     }
-    
+
     # Filter out standard templates from industry lists
     standard_ids = {t['product_id'] for t in standard_templates}
     for industry in industry_templates:
         industry_templates[industry] = [
-            t for t in industry_templates[industry] 
+            t for t in industry_templates[industry]
             if t['product_id'] not in standard_ids
         ]
-    
+
     # Get creative formats for display
     formats = get_creative_formats()
-    
+
     return render_template('product_templates.html',
                          tenant_id=tenant_id,
                          standard_templates=standard_templates,
@@ -4112,29 +4113,29 @@ def create_from_template(tenant_id):
     # Check access
     if session.get('role') == 'viewer':
         return jsonify({"error": "Access denied"}), 403
-    
+
     if session.get('role') == 'tenant_admin' and session.get('tenant_id') != tenant_id:
         return jsonify({"error": "Access denied"}), 403
-    
+
     try:
         data = request.get_json()
         template = data.get('template')
         customizations = data.get('customizations', {})
-        
+
         # Apply customizations to template
         product = template.copy()
         product.update(customizations)
-        
+
         # Ensure unique product ID
         if 'product_id' in customizations:
             product['product_id'] = customizations['product_id']
         else:
             # Generate unique ID
             product['product_id'] = f"{template['product_id']}_{uuid.uuid4().hex[:6]}"
-        
+
         # Insert product
         conn = get_db_connection()
-        
+
         # Check if product ID already exists
         cursor = conn.execute(
             "SELECT product_id FROM products WHERE tenant_id = ? AND product_id = ?",
@@ -4143,7 +4144,7 @@ def create_from_template(tenant_id):
         if cursor.fetchone():
             # Context manager handles cleanup
             return jsonify({"error": "Product ID already exists"}), 400
-        
+
         # Insert the product
         conn.execute("""
             INSERT INTO products (
@@ -4169,16 +4170,16 @@ def create_from_template(tenant_id):
             datetime.now().isoformat(),
             datetime.now().isoformat()
         ))
-        
+
         db_session.commit()
         # Context manager handles cleanup
-        
+
         return jsonify({
             "success": True,
             "product_id": product['product_id'],
             "redirect_url": url_for('list_products', tenant_id=tenant_id)
         })
-        
+
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
@@ -4190,34 +4191,34 @@ def policy_settings(tenant_id):
     # Check access
     if session.get('role') == 'viewer':
         return "Access denied", 403
-    
+
     if session.get('role') == 'tenant_admin' and session.get('tenant_id') != tenant_id:
         return "Access denied", 403
-    
+
     conn = get_db_connection()
-    
+
     # Get tenant info
     cursor = conn.execute("SELECT name FROM tenants WHERE tenant_id = ?", (tenant_id,))
     tenant = cursor.fetchone()
     if not tenant:
         # Context manager handles cleanup
         return "Tenant not found", 404
-    
+
     tenant_name = tenant[0]
-    
+
     # Get tenant config using helper function
     config = get_tenant_config_from_db(conn, tenant_id)
     if not config:
         # Context manager handles cleanup
         return "Tenant config not found", 404
-    
+
     # Define default policies that all publishers start with
     default_policies = {
         'enabled': True,
         'require_manual_review': False,
         'default_prohibited_categories': [
             'illegal_content',
-            'hate_speech', 
+            'hate_speech',
             'violence',
             'adult_content',
             'misleading_health_claims',
@@ -4234,21 +4235,21 @@ def policy_settings(tenant_id):
         'prohibited_categories': [],
         'prohibited_tactics': []
     }
-    
+
     # Get tenant policy settings, using defaults where not specified
     tenant_policies = config.get('policy_settings', {})
     policy_settings = default_policies.copy()
     policy_settings.update(tenant_policies)
-    
+
     # Get recent policy checks from audit log
     cursor = conn.execute("""
         SELECT timestamp, principal_id, success, details
-        FROM audit_logs 
+        FROM audit_logs
         WHERE tenant_id = ? AND operation = 'policy_check'
         ORDER BY timestamp DESC
         LIMIT 20
     """, (tenant_id,))
-    
+
     recent_checks = []
     for row in cursor.fetchall():
         details = json.loads(row[3]) if row[3] else {}
@@ -4260,7 +4261,7 @@ def policy_settings(tenant_id):
             'brief': details.get('brief', ''),
             'reason': details.get('reason', '')
         })
-    
+
     # Get pending policy review tasks
     # Query workflow steps instead of tasks (tasks table was removed)
     try:
@@ -4272,7 +4273,7 @@ def policy_settings(tenant_id):
         """, (tenant_id,))
     except:
         cursor = None
-    
+
     pending_reviews = []
     if cursor:
         for row in cursor.fetchall():
@@ -4283,9 +4284,9 @@ def policy_settings(tenant_id):
                 'brief': details.get('brief', ''),
                 'advertiser': details.get('promoted_offering', '')
             })
-    
+
     # Context manager handles cleanup
-    
+
     return render_template('policy_settings_comprehensive.html',
                          tenant_id=tenant_id,
                          tenant_name=tenant_name,
@@ -4300,24 +4301,24 @@ def update_policy_settings(tenant_id):
     # Check access - only admins can update policy
     if session.get('role') not in ['super_admin', 'tenant_admin']:
         return "Access denied", 403
-    
+
     if session.get('role') == 'tenant_admin' and session.get('tenant_id') != tenant_id:
         return "Access denied", 403
-    
+
     try:
         conn = get_db_connection()
-        
+
         # Get current config
         config = get_tenant_config_from_db(conn, tenant_id)
         if not config:
             return jsonify({"error": "Tenant not found"}), 404
-        
+
         # Parse the form data for lists
         def parse_textarea_lines(field_name):
             """Parse textarea input into list of non-empty lines."""
             text = request.form.get(field_name, '')
             return [line.strip() for line in text.strip().split('\n') if line.strip()]
-        
+
         # Update policy settings
         policy_settings = {
             'enabled': request.form.get('enabled') == 'on',
@@ -4328,7 +4329,7 @@ def update_policy_settings(tenant_id):
             # Keep default policies (they don't change from form)
             'default_prohibited_categories': config.get('policy_settings', {}).get('default_prohibited_categories', [
                 'illegal_content',
-                'hate_speech', 
+                'hate_speech',
                 'violence',
                 'adult_content',
                 'misleading_health_claims',
@@ -4342,21 +4343,21 @@ def update_policy_settings(tenant_id):
                 'privacy_violations'
             ])
         }
-        
+
         config['policy_settings'] = policy_settings
-        
+
         # Update database
         conn.execute("""
-            UPDATE tenants 
+            UPDATE tenants
             SET config = ?
             WHERE tenant_id = ?
         """, (json.dumps(config), tenant_id))
-        
+
         db_session.commit()
         # Context manager handles cleanup
-        
+
         return redirect(url_for('policy_settings', tenant_id=tenant_id))
-        
+
     except Exception as e:
         return f"Error: {e}", 400
 
@@ -4373,23 +4374,23 @@ def review_policy_task(tenant_id, task_id):
     # Check access
     if session.get('role') == 'viewer':
         return "Access denied", 403
-    
+
     if session.get('role') == 'tenant_admin' and session.get('tenant_id') != tenant_id:
         return "Access denied", 403
-    
+
     conn = get_db_connection()
-    
+
     if request.method == 'POST':
         try:
             action = request.form.get('action')
             review_notes = request.form.get('review_notes', '')
-            
+
             if action not in ['approve', 'reject']:
                 return "Invalid action", 400
-            
+
             # Update task status
             new_status = 'approved' if action == 'approve' else 'rejected'
-            
+
             # Get workflow step details (tasks table was replaced by workflow system)
             try:
                 cursor = conn.execute("""
@@ -4398,24 +4399,24 @@ def review_policy_task(tenant_id, task_id):
                 """, (tenant_id, task_id))
             except:
                 cursor = None
-            
+
             row = cursor.fetchone()
             if not row:
                 # Context manager handles cleanup
                 return "Task not found", 404
-            
+
             details = json.loads(row[0]) if row[0] else {}
             details['review_notes'] = review_notes
             details['reviewed_by'] = session.get('email', 'unknown')
             details['reviewed_at'] = datetime.utcnow().isoformat()
-            
+
             # Update workflow step instead of task
             conn.execute("""
                 UPDATE workflow_steps
                 SET status = ?, data = ?, completed_at = CURRENT_TIMESTAMP
                 WHERE tenant_id = ? AND step_id = ?
             """, (new_status, json.dumps(details), tenant_id, task_id))
-            
+
             # Log the review
             audit_logger = AuditLogger(conn)
             audit_logger.log(
@@ -4429,16 +4430,16 @@ def review_policy_task(tenant_id, task_id):
                     'reviewer': session.get('email', 'unknown')
                 }
             )
-            
+
             db_session.commit()
             # Context manager handles cleanup
-            
+
             return redirect(url_for('policy_settings', tenant_id=tenant_id))
-            
+
         except Exception as e:
             # Context manager handles cleanup
             return f"Error: {e}", 400
-    
+
     # GET: Show review form
     # Query workflow steps instead of tasks
     try:
@@ -4450,17 +4451,17 @@ def review_policy_task(tenant_id, task_id):
         """, (tenant_id, task_id))
     except:
         cursor = None
-    
+
     row = cursor.fetchone() if cursor else None
     if not row:
         # Context manager handles cleanup
         return "Task not found", 404
-    
+
     created_at, details_str, tenant_name = row
     details = json.loads(details_str) if details_str else {}
-    
+
     # Context manager handles cleanup
-    
+
     return render_template('policy_review.html',
                          tenant_id=tenant_id,
                          tenant_name=tenant_name,
@@ -4477,7 +4478,7 @@ def get_creative_formats():
         WHERE is_standard = true
         ORDER BY type, name
     """)
-    
+
     formats = []
     for row in cursor.fetchall():
         format_info = {
@@ -4491,7 +4492,7 @@ def get_creative_formats():
         elif row[6]:  # duration for video
             format_info['duration'] = f"{row[6]}s"
         formats.append(format_info)
-    
+
     # Context manager handles cleanup
     return formats
 
@@ -4503,27 +4504,27 @@ def list_creative_formats(tenant_id):
     # Check access
     if session.get('role') != 'super_admin' and session.get('tenant_id') != tenant_id:
         return "Access denied", 403
-    
+
     conn = get_db_connection()
-    
+
     # Get tenant name
     cursor = conn.execute("SELECT name FROM tenants WHERE tenant_id = ?", (tenant_id,))
     tenant_row = cursor.fetchone()
     if not tenant_row:
         # Context manager handles cleanup
         return "Tenant not found", 404
-    
+
     tenant_name = tenant_row[0]
-    
+
     # Get all formats (standard + custom for this tenant)
     cursor = conn.execute("""
-        SELECT format_id, name, type, description, width, height, 
+        SELECT format_id, name, type, description, width, height,
                duration_seconds, is_standard, source_url, created_at
         FROM creative_formats
         WHERE tenant_id IS NULL OR tenant_id = ?
         ORDER BY is_standard DESC, type, name
     """, (tenant_id,))
-    
+
     formats = []
     for row in cursor.fetchall():
         format_info = {
@@ -4535,17 +4536,17 @@ def list_creative_formats(tenant_id):
             'source_url': row[8],
             'created_at': row[9]
         }
-        
+
         # Add dimensions or duration
         if row[4] and row[5]:  # width and height
             format_info['dimensions'] = f"{row[4]}x{row[5]}"
         elif row[6]:  # duration
             format_info['duration'] = f"{row[6]}s"
-            
+
         formats.append(format_info)
-    
+
     # Context manager handles cleanup
-    
+
     return render_template('creative_formats.html',
                          tenant_id=tenant_id,
                          tenant_name=tenant_name,
@@ -4558,7 +4559,7 @@ def add_creative_format_ai(tenant_id):
     # Check access
     if session.get('role') != 'super_admin' and session.get('tenant_id') != tenant_id:
         return "Access denied", 403
-    
+
     return render_template('add_creative_format_ai.html', tenant_id=tenant_id)
 
 @app.route('/tenant/<tenant_id>/creative-formats/analyze', methods=['POST'])
@@ -4568,17 +4569,17 @@ def analyze_creative_format(tenant_id):
     # Check access
     if session.get('role') != 'super_admin' and session.get('tenant_id') != tenant_id:
         return jsonify({"error": "Access denied"}), 403
-    
+
     try:
         import asyncio
         from ai_creative_format_service import discover_creative_format
-        
+
         data = request.get_json()
-        
+
         # Run the async function
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
-        
+
         format_data = loop.run_until_complete(discover_creative_format(
             tenant_id=tenant_id,
             name=data['name'],
@@ -4586,9 +4587,9 @@ def analyze_creative_format(tenant_id):
             url=data.get('url'),
             type_hint=data.get('type_hint')
         ))
-        
+
         return jsonify({"success": True, "format": format_data})
-        
+
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
@@ -4599,19 +4600,19 @@ def save_creative_format(tenant_id):
     # Check access
     if session.get('role') != 'super_admin' and session.get('tenant_id') != tenant_id:
         return jsonify({"error": "Access denied"}), 403
-    
+
     try:
         data = request.get_json()
         format_data = data['format']
-        
+
         conn = get_db_connection()
-        
+
         # Check if format ID already exists
         cursor = conn.execute(
             "SELECT format_id FROM creative_formats WHERE format_id = ?",
             (format_data['format_id'],)
         )
-        
+
         if cursor.fetchone():
             # Update existing
             conn.execute("""
@@ -4654,12 +4655,12 @@ def save_creative_format(tenant_id):
                 format_data.get('is_standard', False),
                 format_data.get('source_url')
             ))
-        
+
         db_session.commit()
         # Context manager handles cleanup
-        
+
         return jsonify({"success": True})
-        
+
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
@@ -4670,18 +4671,18 @@ def sync_standard_formats(tenant_id):
     # Super admin only
     if session.get('role') != 'super_admin':
         return jsonify({"error": "Access denied"}), 403
-    
+
     try:
         import asyncio
         from ai_creative_format_service import sync_standard_formats as sync_formats
-        
+
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
-        
+
         count = loop.run_until_complete(sync_formats())
-        
+
         return jsonify({"success": True, "count": count})
-        
+
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
@@ -4692,23 +4693,23 @@ def discover_formats_from_url(tenant_id):
     # Check access
     if session.get('role') != 'super_admin' and session.get('tenant_id') != tenant_id:
         return jsonify({"error": "Access denied"}), 403
-    
+
     try:
         data = request.get_json()
         url = data.get('url')
-        
+
         if not url:
             return jsonify({"error": "URL is required"}), 400
-        
+
         import asyncio
         from ai_creative_format_service import AICreativeFormatService
-        
+
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
-        
+
         service = AICreativeFormatService()
         formats = loop.run_until_complete(service.discover_format_from_url(url))
-        
+
         # Convert FormatSpecification objects to dicts for JSON response
         format_data = []
         for fmt in formats:
@@ -4725,9 +4726,9 @@ def discover_formats_from_url(tenant_id):
                 "extends": fmt.extends,  # Include the extends field
                 "source_url": fmt.source_url
             })
-        
+
         return jsonify({"success": True, "formats": format_data})
-        
+
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
@@ -4738,23 +4739,23 @@ def save_discovered_formats(tenant_id):
     # Check access
     if session.get('role') != 'super_admin' and session.get('tenant_id') != tenant_id:
         return jsonify({"error": "Access denied"}), 403
-    
+
     try:
         data = request.get_json()
         formats = data.get('formats', [])
-        
+
         if not formats:
             return jsonify({"error": "No formats provided"}), 400
-        
+
         conn = get_db_connection()
         saved_count = 0
-        
+
         for format_data in formats:
             # Generate a unique format_id if needed
             base_format_id = format_data.get('format_id', f"{format_data['type']}_{format_data['name'].lower().replace(' ', '_')}")
             format_id = base_format_id
             counter = 1
-            
+
             # Ensure format_id is unique
             while True:
                 cursor = conn.execute(
@@ -4765,7 +4766,7 @@ def save_discovered_formats(tenant_id):
                     break
                 format_id = f"{base_format_id}_{counter}"
                 counter += 1
-            
+
             # Insert new format
             conn.execute("""
                 INSERT INTO creative_formats (
@@ -4789,12 +4790,12 @@ def save_discovered_formats(tenant_id):
                 format_data.get('extends')  # Include the extends field
             ))
             saved_count += 1
-        
+
         db_session.commit()
         # Context manager handles cleanup
-        
+
         return jsonify({"success": True, "saved_count": saved_count})
-        
+
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
@@ -4805,7 +4806,7 @@ def get_creative_format(tenant_id, format_id):
     # Check access
     if session.get('role') != 'super_admin' and session.get('tenant_id') != tenant_id:
         abort(403)
-    
+
     conn = get_db_connection()
     cursor = conn.execute("""
         SELECT format_id, name, type, description, width, height,
@@ -4813,18 +4814,18 @@ def get_creative_format(tenant_id, format_id):
         FROM creative_formats
         WHERE format_id = ? AND (tenant_id = ? OR is_standard = TRUE)
     """, (format_id, tenant_id))
-    
+
     format_data = cursor.fetchone()
     # Context manager handles cleanup
-    
+
     if not format_data:
         abort(404)
-    
+
     # Convert to dict
     format_dict = dict(format_data)
     if format_dict['specs']:
         format_dict['specs'] = json.loads(format_dict['specs']) if isinstance(format_dict['specs'], str) else format_dict['specs']
-    
+
     return jsonify(format_dict)
 
 @app.route('/tenant/<tenant_id>/creative-formats/<format_id>/edit', methods=['GET'])
@@ -4834,15 +4835,15 @@ def edit_creative_format_page(tenant_id, format_id):
     # Check access
     if session.get('role') != 'super_admin' and session.get('tenant_id') != tenant_id:
         abort(403)
-    
+
     # Get tenant info
     conn = get_db_connection()
     cursor = conn.execute("SELECT name FROM tenants WHERE tenant_id = ?", (tenant_id,))
     tenant = cursor.fetchone()
-    
+
     if not tenant:
         abort(404)
-    
+
     # Get creative format
     cursor = conn.execute("""
         SELECT format_id, name, type, description, width, height,
@@ -4850,23 +4851,23 @@ def edit_creative_format_page(tenant_id, format_id):
         FROM creative_formats
         WHERE format_id = ? AND (tenant_id = ? OR is_standard = TRUE)
     """, (format_id, tenant_id))
-    
+
     format_data = cursor.fetchone()
     # Context manager handles cleanup
-    
+
     if not format_data:
         abort(404)
-    
+
     # Don't allow editing standard formats
     if format_data['is_standard']:
         flash('Standard formats cannot be edited', 'error')
         return redirect(url_for('creative_formats', tenant_id=tenant_id))
-    
+
     # Convert to dict and parse specs
     format_dict = dict(format_data)
     if format_dict['specs']:
         format_dict['specs'] = json.loads(format_dict['specs']) if isinstance(format_dict['specs'], str) else format_dict['specs']
-    
+
     return render_template('edit_creative_format.html',
                          tenant_id=tenant_id,
                          tenant_name=tenant['name'],
@@ -4879,32 +4880,32 @@ def update_creative_format(tenant_id, format_id):
     # Check access
     if session.get('role') != 'super_admin' and session.get('tenant_id') != tenant_id:
         return jsonify({"error": "Access denied"}), 403
-    
+
     try:
         data = request.get_json()
-        
+
         # Validate required fields
         if not data.get('name'):
             return jsonify({"error": "Name is required"}), 400
-        
+
         conn = get_db_connection()
-        
+
         # Check if format exists and is editable
         cursor = conn.execute("""
             SELECT is_standard FROM creative_formats
             WHERE format_id = ? AND tenant_id = ?
         """, (format_id, tenant_id))
-        
+
         format_info = cursor.fetchone()
         if not format_info:
             return jsonify({"error": "Format not found"}), 404
-        
+
         if format_info['is_standard']:
             return jsonify({"error": "Cannot edit standard formats"}), 400
-        
+
         # Update the format
         specs = json.dumps(data.get('specs', {})) if data.get('specs') else None
-        
+
         conn.execute("""
             UPDATE creative_formats
             SET name = ?, description = ?, width = ?, height = ?,
@@ -4923,12 +4924,12 @@ def update_creative_format(tenant_id, format_id):
             format_id,
             tenant_id
         ))
-        
+
         db_session.commit()
         # Context manager handles cleanup
-        
+
         return jsonify({"success": True})
-        
+
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
@@ -4939,44 +4940,44 @@ def delete_creative_format(tenant_id, format_id):
     # Check access
     if session.get('role') != 'super_admin' and session.get('tenant_id') != tenant_id:
         return jsonify({"error": "Access denied"}), 403
-    
+
     try:
         conn = get_db_connection()
-        
+
         # Check if format exists and is editable
         cursor = conn.execute("""
             SELECT is_standard FROM creative_formats
             WHERE format_id = ? AND tenant_id = ?
         """, (format_id, tenant_id))
-        
+
         format_info = cursor.fetchone()
         if not format_info:
             return jsonify({"error": "Format not found"}), 404
-        
+
         if format_info['is_standard']:
             return jsonify({"error": "Cannot delete standard formats"}), 400
-        
+
         # Check if format is used in any products
         cursor = conn.execute("""
             SELECT COUNT(*) as count FROM products
             WHERE tenant_id = ? AND formats LIKE ?
         """, (tenant_id, f'%{format_id}%'))
-        
+
         result = cursor.fetchone()
         if result['count'] > 0:
             return jsonify({"error": f"Cannot delete format - it is used by {result['count']} product(s)"}), 400
-        
+
         # Delete the format
         conn.execute("""
             DELETE FROM creative_formats
             WHERE format_id = ? AND tenant_id = ?
         """, (format_id, tenant_id))
-        
+
         db_session.commit()
         # Context manager handles cleanup
-        
+
         return jsonify({"success": True})
-        
+
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
@@ -4986,17 +4987,17 @@ def get_product_suggestions(tenant_id):
     """API endpoint to get product suggestions based on industry and criteria."""
     try:
         from default_products import get_industry_specific_products, get_default_products
-        
+
         # Get query parameters
         industry = request.args.get('industry')
         include_standard = request.args.get('include_standard', 'true').lower() == 'true'
         delivery_type = request.args.get('delivery_type')  # 'guaranteed', 'non_guaranteed', or None for all
         max_cpm = request.args.get('max_cpm', type=float)
         formats = request.args.getlist('formats')  # Can specify multiple format IDs
-        
+
         # Get suggestions
         suggestions = []
-        
+
         # Get industry-specific products if industry specified
         if industry:
             industry_products = get_industry_specific_products(industry)
@@ -5004,14 +5005,14 @@ def get_product_suggestions(tenant_id):
         elif include_standard:
             # If no industry specified but standard requested, get default products
             suggestions.extend(get_default_products())
-        
+
         # Filter suggestions based on criteria
         filtered_suggestions = []
         for product in suggestions:
             # Filter by delivery type
             if delivery_type and product.get('delivery_type') != delivery_type:
                 continue
-            
+
             # Filter by max CPM
             if max_cpm:
                 if product.get('cpm') and product['cpm'] > max_cpm:
@@ -5019,16 +5020,16 @@ def get_product_suggestions(tenant_id):
                 elif product.get('price_guidance'):
                     if product['price_guidance']['min'] > max_cpm:
                         continue
-            
+
             # Filter by formats
             if formats:
                 product_formats = set(product.get('formats', []))
                 requested_formats = set(formats)
                 if not product_formats.intersection(requested_formats):
                     continue
-            
+
             filtered_suggestions.append(product)
-        
+
         # Sort suggestions by relevance
         # Prioritize: 1) Industry-specific, 2) Lower CPM, 3) More formats
         def sort_key(product):
@@ -5036,9 +5037,9 @@ def get_product_suggestions(tenant_id):
             avg_cpm = product.get('cpm', 0) or (product.get('price_guidance', {}).get('min', 0) + product.get('price_guidance', {}).get('max', 0)) / 2
             format_count = len(product.get('formats', []))
             return (-int(is_industry_specific), avg_cpm, -format_count)
-        
+
         filtered_suggestions.sort(key=sort_key)
-        
+
         # Check existing products to mark which are already created
         conn = get_db_connection()
         cursor = conn.execute(
@@ -5047,12 +5048,12 @@ def get_product_suggestions(tenant_id):
         )
         existing_ids = {row[0] for row in cursor.fetchall()}
         # Context manager handles cleanup
-        
+
         # Add metadata to suggestions
         for suggestion in filtered_suggestions:
             suggestion['already_exists'] = suggestion['product_id'] in existing_ids
             suggestion['is_industry_specific'] = suggestion['product_id'] not in [p['product_id'] for p in get_default_products()]
-            
+
             # Calculate match score (0-100)
             score = 100
             if delivery_type and suggestion.get('delivery_type') == delivery_type:
@@ -5062,9 +5063,9 @@ def get_product_suggestions(tenant_id):
                 score += matching_formats * 10
             if industry and suggestion['is_industry_specific']:
                 score += 30
-            
+
             suggestion['match_score'] = min(score, 100)
-        
+
         return jsonify({
             "suggestions": filtered_suggestions,
             "total_count": len(filtered_suggestions),
@@ -5075,7 +5076,7 @@ def get_product_suggestions(tenant_id):
                 "formats": formats
             }
         })
-        
+
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
@@ -5086,39 +5087,39 @@ def quick_create_products(tenant_id):
     # Check access
     if session.get('role') == 'viewer':
         return jsonify({"error": "Access denied"}), 403
-    
+
     if session.get('role') == 'tenant_admin' and session.get('tenant_id') != tenant_id:
         return jsonify({"error": "Access denied"}), 403
-    
+
     try:
         data = request.get_json()
         product_ids = data.get('product_ids', [])
-        
+
         if not product_ids:
             return jsonify({"error": "No product IDs provided"}), 400
-        
+
         from default_products import get_industry_specific_products, get_default_products
-        
+
         # Get all available templates
         all_templates = get_default_products()
         # Add industry templates
         for industry in ['news', 'sports', 'entertainment', 'ecommerce']:
             all_templates.extend(get_industry_specific_products(industry))
-        
+
         # Create a map for quick lookup
         template_map = {t['product_id']: t for t in all_templates}
-        
+
         conn = get_db_connection()
         created = []
         errors = []
-        
+
         for product_id in product_ids:
             if product_id not in template_map:
                 errors.append(f"Template not found: {product_id}")
                 continue
-            
+
             template = template_map[product_id]
-            
+
             try:
                 # Check if already exists
                 cursor = conn.execute(
@@ -5128,7 +5129,7 @@ def quick_create_products(tenant_id):
                 if cursor.fetchone():
                     errors.append(f"Product already exists: {product_id}")
                     continue
-                
+
                 # Insert product
                 conn.execute("""
                     INSERT INTO products (
@@ -5154,22 +5155,22 @@ def quick_create_products(tenant_id):
                     datetime.now().isoformat(),
                     datetime.now().isoformat()
                 ))
-                
+
                 created.append(product_id)
-                
+
             except Exception as e:
                 errors.append(f"Failed to create {product_id}: {str(e)}")
-        
+
         db_session.commit()
         # Context manager handles cleanup
-        
+
         return jsonify({
             "success": True,
             "created": created,
             "errors": errors,
             "created_count": len(created)
         })
-        
+
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
@@ -5180,10 +5181,10 @@ def product_setup_wizard(tenant_id):
     # Check access
     if session.get('role') == 'viewer':
         return "Access denied", 403
-    
+
     if session.get('role') == 'tenant_admin' and session.get('tenant_id') != tenant_id:
         return "Access denied", 403
-    
+
     return render_template('product_setup_wizard.html', tenant_id=tenant_id)
 
 @app.route('/tenant/<tenant_id>/check-inventory-sync')
@@ -5193,29 +5194,29 @@ def check_inventory_sync(tenant_id):
     # Check access
     if session.get('role') == 'viewer':
         return jsonify({"error": "Access denied"}), 403
-    
+
     if session.get('role') == 'tenant_admin' and session.get('tenant_id') != tenant_id:
         return jsonify({"error": "Access denied"}), 403
-    
+
     try:
         from models import GAMInventory
         from sqlalchemy import create_engine
         from sqlalchemy.orm import sessionmaker
         from db_config import DatabaseConfig
-        
+
         # Create database session
         engine = create_engine(DatabaseConfig.get_connection_string())
         Session = sessionmaker(bind=engine)
-        
+
         # Use context manager for automatic cleanup
         with Session() as db_session:
             # Check if any inventory exists for this tenant
             inventory_count = db_session.query(GAMInventory).filter(
                 GAMInventory.tenant_id == tenant_id
             ).count()
-            
+
             has_inventory = inventory_count > 0
-            
+
             # Get last sync time if available
             last_sync = None
             if has_inventory:
@@ -5224,13 +5225,13 @@ def check_inventory_sync(tenant_id):
                 ).order_by(GAMInventory.created_at.desc()).first()
                 if latest and latest.created_at:
                     last_sync = latest.created_at.isoformat()
-            
+
             return jsonify({
                 "has_inventory": has_inventory,
                 "inventory_count": inventory_count,
                 "last_sync": last_sync
             })
-            
+
     except Exception as e:
         app.logger.error(f"Error checking inventory sync: {e}")
         return jsonify({"error": str(e)}), 500
@@ -5242,18 +5243,18 @@ def analyze_ad_server_inventory(tenant_id):
     # Check access
     if session.get('role') == 'viewer':
         return jsonify({"error": "Access denied"}), 403
-    
+
     if session.get('role') == 'tenant_admin' and session.get('tenant_id') != tenant_id:
         return jsonify({"error": "Access denied"}), 403
-    
+
     try:
         conn = get_db_connection()
-        
+
         # Get tenant config to determine adapter
         config = get_tenant_config_from_db(conn, tenant_id)
         if not config:
             return jsonify({"error": "Tenant not found"}), 404
-        
+
         # Find enabled adapter
         adapter_type = None
         adapter_config = None
@@ -5262,7 +5263,7 @@ def analyze_ad_server_inventory(tenant_id):
                 adapter_type = adapter
                 adapter_config = cfg
                 break
-        
+
         if not adapter_type:
             # Return mock data if no adapter configured
             return jsonify({
@@ -5275,7 +5276,7 @@ def analyze_ad_server_inventory(tenant_id):
                     {"id": "homepage_hero", "name": "Homepage Hero", "sizes": ["970x250", "728x90"]}
                 ]
             })
-        
+
         # Get a principal for API calls
         cursor = conn.execute(
             "SELECT principal_id, name, access_token, platform_mappings FROM principals WHERE tenant_id = ? LIMIT 1",
@@ -5283,10 +5284,10 @@ def analyze_ad_server_inventory(tenant_id):
         )
         principal_row = cursor.fetchone()
         # Context manager handles cleanup
-        
+
         if not principal_row:
             return jsonify({"error": "No principal found for tenant"}), 404
-        
+
         # Create principal object
         from schemas import Principal
         mappings = principal_row[3] if isinstance(principal_row[3], dict) else json.loads(principal_row[3])
@@ -5297,7 +5298,7 @@ def analyze_ad_server_inventory(tenant_id):
             access_token=principal_row[2],
             platform_mappings=mappings
         )
-        
+
         # Get adapter instance
         from adapters import get_adapter_class
         adapter_class = get_adapter_class(adapter_type)
@@ -5308,19 +5309,19 @@ def analyze_ad_server_inventory(tenant_id):
             dry_run=True,
             tenant_id=tenant_id
         )
-        
+
         # Query ad server inventory
         import asyncio
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
-        
+
         inventory = loop.run_until_complete(adapter.get_available_inventory())
-        
+
         # Debug logging
         app.logger.info(f"Inventory returned: audiences={len(inventory.get('audiences', []))}, "
                        f"key_values={len(inventory.get('key_values', []))}, "
                        f"placements={len(inventory.get('placements', []))}")
-        
+
         # Process and return relevant data
         response_data = {
             "audiences": inventory.get("audiences", []),
@@ -5331,12 +5332,12 @@ def analyze_ad_server_inventory(tenant_id):
         }
         app.logger.info(f"Returning response with {len(response_data['key_values'])} key_values")
         return jsonify(response_data)
-        
+
     except Exception as e:
         error_detail = traceback.format_exc()
         logger.error(f"Error analyzing ad server: {e}\n{error_detail}")
         app.logger.error(f"Full error details: {error_detail}")
-        
+
         # Return error details for debugging
         return jsonify({
             "error": str(e),
@@ -5354,24 +5355,24 @@ def create_products_bulk(tenant_id):
     # Check access
     if session.get('role') == 'viewer':
         return jsonify({"error": "Access denied"}), 403
-    
+
     if session.get('role') == 'tenant_admin' and session.get('tenant_id') != tenant_id:
         return jsonify({"error": "Access denied"}), 403
-    
+
     try:
         data = request.get_json()
         products = data.get('products', [])
-        
+
         print(f"Received request to create {len(products)} products")
         print(f"Products data: {json.dumps(products, indent=2)}")
-        
+
         if not products:
             return jsonify({"error": "No products provided"}), 400
-        
+
         conn = get_db_connection()
         created_count = 0
         errors = []
-        
+
         for product in products:
             try:
                 # Generate unique product ID if needed
@@ -5379,17 +5380,17 @@ def create_products_bulk(tenant_id):
                 if not product_id:
                     product_id = product['name'].lower().replace(' ', '_').replace('-', '_')
                     product_id = f"{product_id}_{uuid.uuid4().hex[:6]}"
-                
+
                 print(f"Creating product: {product_id} - {product.get('name')}")
-                
+
                 # Build price guidance
                 price_guidance = None
                 if product.get('price_guidance'):
                     price_guidance = json.dumps(product['price_guidance'])
-                
+
                 # Determine if fixed price based on whether CPM is provided
                 is_fixed_price = product.get('cpm') is not None
-                
+
                 # Insert product
                 conn.execute("""
                     INSERT INTO products (
@@ -5412,23 +5413,23 @@ def create_products_bulk(tenant_id):
                     json.dumps(product.get('targeting_template', {})),
                     json.dumps(product.get('implementation_config', {}))
                 ))
-                
+
                 created_count += 1
                 print(f"Successfully created product {product_id}, total count: {created_count}")
-                
+
             except Exception as e:
                 print(f"Error creating product: {e}")
                 errors.append(f"Failed to create {product.get('name', 'product')}: {str(e)}")
-        
+
         db_session.commit()
         # Context manager handles cleanup
-        
+
         return jsonify({
             "success": True,
             "created_count": created_count,
             "errors": errors
         })
-        
+
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
@@ -5438,21 +5439,21 @@ def create_products_bulk(tenant_id):
 
 def get_custom_targeting_mappings(tenant_id=None):
     """Get custom targeting mappings for a tenant.
-    
+
     In production, this would fetch from GAM CustomTargetingService.
     For now, returns mock data that can be configured per tenant.
     """
     # TODO: Store these in database or fetch from GAM API
     # Could be cached in Redis/memory for performance
-    
+
     # Default mappings for header bidding (common across many publishers)
     default_key_mappings = {
         "13748922": "hb_pb",
-        "14095946": "hb_source", 
+        "14095946": "hb_source",
         "14094596": "hb_format",
         # Add more common keys as needed
     }
-    
+
     default_value_mappings = {
         "448589710493": "0.01",
         "448946107548": "freestar",
@@ -5460,27 +5461,27 @@ def get_custom_targeting_mappings(tenant_id=None):
         "448946353802": "video",
         # Add more common values as needed
     }
-    
+
     # In production, could override with tenant-specific mappings
     # tenant_mappings = get_tenant_custom_mappings(tenant_id)
     # if tenant_mappings:
     #     key_mappings.update(tenant_mappings['keys'])
     #     value_mappings.update(tenant_mappings['values'])
-    
+
     return default_key_mappings, default_value_mappings
 
 def translate_custom_targeting(custom_targeting_node, tenant_id=None):
     """Translate GAM custom targeting structure to readable format."""
     if not custom_targeting_node:
         return None
-    
+
     # Get mappings (could be tenant-specific in future)
     key_mappings, value_mappings = get_custom_targeting_mappings(tenant_id)
-    
+
     def translate_node(node):
         if not node:
             return None
-            
+
         if 'logicalOperator' in node:
             # This is a group node with AND/OR logic
             operator = node['logicalOperator'].lower()
@@ -5490,36 +5491,36 @@ def translate_custom_targeting(custom_targeting_node, tenant_id=None):
                     translated_child = translate_node(child)
                     if translated_child:
                         children.append(translated_child)
-            
+
             if len(children) == 1:
                 return children[0]
             elif len(children) > 1:
                 return {operator: children}
             return None
-            
+
         elif 'keyId' in node:
             # This is a key-value targeting node
             key_id = str(node['keyId'])
             key_name = key_mappings.get(key_id, f"key_{key_id}")
-            
+
             operator = node.get('operator', 'IS')
             value_ids = node.get('valueIds', [])
-            
+
             # Translate value IDs to names
             values = []
             for value_id in value_ids:
                 value_name = value_mappings.get(str(value_id), str(value_id))
                 values.append(value_name)
-            
+
             if operator == 'IS':
                 return {"key": key_name, "in": values}
             elif operator == 'IS_NOT':
                 return {"key": key_name, "not_in": values}
             else:
                 return {"key": key_name, "operator": operator, "values": values}
-                
+
         return None
-    
+
     return translate_node(custom_targeting_node)
 
 @app.route('/api/tenant/<tenant_id>/gam/custom-targeting-keys')
@@ -5529,7 +5530,7 @@ def get_custom_targeting_keys(tenant_id):
     try:
         # Get the mappings using the centralized function
         key_mappings, value_mappings = get_custom_targeting_mappings(tenant_id)
-        
+
         # Transform to the expected API format
         formatted_keys = {}
         for key_id, key_name in key_mappings.items():
@@ -5539,7 +5540,7 @@ def get_custom_targeting_keys(tenant_id):
                 "name": key_name,
                 "displayName": display_name
             }
-        
+
         formatted_values = {}
         for value_id, value_name in value_mappings.items():
             # Format display names for values
@@ -5548,12 +5549,12 @@ def get_custom_targeting_keys(tenant_id):
                 display_name = f"${value_name}"  # Format as currency if numeric
             else:
                 display_name = value_name.title()  # Capitalize for names
-            
+
             formatted_values[value_id] = {
                 "name": value_name,
                 "displayName": display_name
             }
-        
+
         return jsonify({
             "keys": formatted_keys,
             "values": formatted_values
@@ -5569,11 +5570,11 @@ def get_gam_line_item(tenant_id, line_item_id):
         # Validate tenant_id format
         if not tenant_id or not isinstance(tenant_id, str):
             return jsonify({'error': 'Invalid tenant ID'}), 400
-            
+
         # Validate line_item_id is numeric and follows GAM ID format
         if not line_item_id or not str(line_item_id).isdigit():
             return jsonify({'error': 'Line item ID must be a numeric value'}), 400
-            
+
         try:
             line_item_id_int = int(line_item_id)
             if line_item_id_int <= 0:
@@ -5584,49 +5585,49 @@ def get_gam_line_item(tenant_id, line_item_id):
         except (ValueError, TypeError) as e:
             app.logger.error(f"Invalid line item ID format: {line_item_id} - {str(e)}")
             return jsonify({'error': 'Line item ID must be a valid number'}), 400
-        
+
         # Get the tenant's GAM configuration
         conn = get_db_connection()
         cursor = conn.execute("SELECT * FROM tenants WHERE tenant_id = ?", (tenant_id,))
         tenant = cursor.fetchone()
-        
+
         if not tenant:
             # Context manager handles cleanup
             return jsonify({'error': 'Tenant not found'}), 404
-        
+
         tenant_config = get_tenant_config_from_db(conn, tenant_id)
         # Context manager handles cleanup
         gam_config = tenant_config.get('adapters', {}).get('google_ad_manager', {})
-        
+
         if not gam_config.get('enabled'):
             return jsonify({'error': 'GAM not enabled for this tenant'}), 400
-        
+
         # Check if we're in dry-run mode (no refresh token means dry-run)
         is_dry_run = not gam_config.get('refresh_token')
-        
+
         if is_dry_run:
             # Fetch from database in dry-run mode
             from models import GAMLineItem, GAMOrder
             from gam_orders_service import db_session
-            
+
             db_session.remove()
-            
+
             # Get line item from database
             line_item = db_session.query(GAMLineItem).filter(
                 GAMLineItem.tenant_id == tenant_id,
                 GAMLineItem.line_item_id == line_item_id
             ).first()
-            
+
             if not line_item:
                 db_session.remove()
                 return jsonify({'error': 'Line item not found in database'}), 404
-            
+
             # Get the associated order
             order = db_session.query(GAMOrder).filter(
                 GAMOrder.tenant_id == tenant_id,
                 GAMOrder.order_id == line_item.order_id
             ).first()
-            
+
             # Build response from database data
             line_item_data = {
                 'id': line_item.line_item_id,
@@ -5660,7 +5661,7 @@ def get_gam_line_item(tenant_id, line_item_id):
                 'deliveryIndicator': {'type': line_item.delivery_indicator_type} if line_item.delivery_indicator_type else None,
                 'lastModifiedDateTime': line_item.last_modified_date.isoformat() if line_item.last_modified_date else None
             }
-            
+
             order_data = {
                 'id': order.order_id,
                 'name': order.name,
@@ -5676,7 +5677,7 @@ def get_gam_line_item(tenant_id, line_item_id):
                 'poNumber': order.po_number,
                 'notes': order.notes
             } if order else None
-            
+
             result = {
                 'line_item': line_item_data,
                 'order': order_data,
@@ -5685,37 +5686,37 @@ def get_gam_line_item(tenant_id, line_item_id):
                 'inventory_details': {},
                 'media_product_json': convert_line_item_to_product_json(line_item_data, [])
             }
-            
+
             db_session.remove()
             return jsonify(result)
-        
+
         # Original code for non-dry-run mode
         # Get GAM client using the helper
         from gam_helper import get_ad_manager_client_for_tenant
         from googleads import ad_manager
         from zeep.helpers import serialize_object
-        
+
         try:
             client = get_ad_manager_client_for_tenant(tenant_id)
         except Exception as e:
             return jsonify({'error': f'Failed to connect to GAM: {str(e)}'}), 500
-        
+
         # Fetch the line item
         line_item_service = client.GetService('LineItemService')
         statement = (ad_manager.StatementBuilder(version='v202411')
                     .Where('id = :lineItemId')
                     .WithBindVariable('lineItemId', line_item_id_int)
                     .Limit(1))
-        
+
         response = line_item_service.getLineItemsByStatement(statement.ToStatement())
-        
+
         # Check if response has results (SOAP object, not dict)
         if not hasattr(response, 'results') or not response.results or len(response.results) == 0:
             return jsonify({'error': 'Line item not found'}), 404
-        
+
         # Serialize the SOAP object to dict
         line_item = serialize_object(response.results[0])
-        
+
         # Fetch the associated order
         order_service = client.GetService('OrderService')
         order_statement = (ad_manager.StatementBuilder(version='v202411')
@@ -5724,7 +5725,7 @@ def get_gam_line_item(tenant_id, line_item_id):
                           .Limit(1))
         order_response = order_service.getOrdersByStatement(order_statement.ToStatement())
         order = serialize_object(order_response.results[0]) if hasattr(order_response, 'results') and order_response.results else None
-        
+
         # Fetch associated creatives
         lica_service = client.GetService('LineItemCreativeAssociationService')
         lica_statement = (ad_manager.StatementBuilder(version='v202411')
@@ -5732,7 +5733,7 @@ def get_gam_line_item(tenant_id, line_item_id):
                          .WithBindVariable('lineItemId', line_item_id_int))
         lica_response = lica_service.getLineItemCreativeAssociationsByStatement(lica_statement.ToStatement())
         creative_associations = serialize_object(lica_response.results) if hasattr(lica_response, 'results') and lica_response.results else []
-        
+
         # Fetch creative details if any associations exist
         creatives = []
         if creative_associations:
@@ -5743,24 +5744,24 @@ def get_gam_line_item(tenant_id, line_item_id):
                                  .WithBindVariable('creativeIds', creative_ids))
             creative_response = creative_service.getCreativesByStatement(creative_statement.ToStatement())
             creatives = serialize_object(creative_response.results) if hasattr(creative_response, 'results') and creative_response.results else []
-        
+
         # Fetch targeted inventory details (ad units and placements)
         inventory_details = {}
-        
+
         # Fetch ad unit details if targeted
         if (line_item.get('targeting', {}).get('inventoryTargeting', {}).get('targetedAdUnits')):
             try:
                 ad_unit_service = client.GetService('InventoryService')
                 targeted_units = line_item['targeting']['inventoryTargeting']['targetedAdUnits']
                 ad_unit_ids = [unit['adUnitId'] for unit in targeted_units]
-                
+
                 # Batch fetch ad units
                 if ad_unit_ids:
                     ad_unit_statement = (ad_manager.StatementBuilder(version='v202411')
                                        .Where('id IN (:adUnitIds)')
                                        .WithBindVariable('adUnitIds', ad_unit_ids))
                     ad_unit_response = ad_unit_service.getAdUnitsByStatement(ad_unit_statement.ToStatement())
-                    
+
                     if hasattr(ad_unit_response, 'results') and ad_unit_response.results:
                         ad_units_data = serialize_object(ad_unit_response.results)
                         # Create a mapping of ad unit ID to details including hierarchy
@@ -5772,7 +5773,7 @@ def get_gam_line_item(tenant_id, line_item_id):
                                 for path_unit in ad_unit['parentPath']:
                                     path_names.append(path_unit.get('name', 'Unknown'))
                             path_names.append(ad_unit.get('name', 'Unknown'))
-                            
+
                             inventory_details['ad_units'][ad_unit['id']] = {
                                 'id': ad_unit['id'],
                                 'name': ad_unit.get('name', 'Unknown'),
@@ -5784,19 +5785,19 @@ def get_gam_line_item(tenant_id, line_item_id):
             except Exception as e:
                 app.logger.warning(f"Failed to fetch ad unit details: {str(e)}")
                 inventory_details['ad_units'] = {}
-        
+
         # Fetch placement details if targeted
         if (line_item.get('targeting', {}).get('inventoryTargeting', {}).get('targetedPlacementIds')):
             try:
                 placement_service = client.GetService('PlacementService')
                 placement_ids = line_item['targeting']['inventoryTargeting']['targetedPlacementIds']
-                
+
                 if placement_ids:
                     placement_statement = (ad_manager.StatementBuilder(version='v202411')
                                          .Where('id IN (:placementIds)')
                                          .WithBindVariable('placementIds', placement_ids))
                     placement_response = placement_service.getPlacementsByStatement(placement_statement.ToStatement())
-                    
+
                     if hasattr(placement_response, 'results') and placement_response.results:
                         placements_data = serialize_object(placement_response.results)
                         inventory_details['placements'] = {}
@@ -5814,12 +5815,12 @@ def get_gam_line_item(tenant_id, line_item_id):
             except Exception as e:
                 app.logger.warning(f"Failed to fetch placement details: {str(e)}")
                 inventory_details['placements'] = {}
-        
+
         # Data is already serialized above, just assign
         line_item_data = line_item
         order_data = order
         creatives_data = creatives
-        
+
         # Build the comprehensive response
         result = {
             'line_item': line_item_data,
@@ -5830,9 +5831,9 @@ def get_gam_line_item(tenant_id, line_item_id):
             # Convert to our internal media product JSON format
             'media_product_json': convert_line_item_to_product_json(line_item_data, creatives_data)
         }
-        
+
         return jsonify(result)
-        
+
     except Exception as e:
         app.logger.error(f"Error fetching GAM line item: {str(e)}")
         app.logger.error(f"Traceback: {traceback.format_exc()}")
@@ -5846,11 +5847,11 @@ def view_gam_line_item(tenant_id, line_item_id):
     cursor = conn.execute("SELECT * FROM tenants WHERE tenant_id = ?", (tenant_id,))
     tenant = cursor.fetchone()
     # Context manager handles cleanup
-    
+
     if not tenant:
         flash('Tenant not found', 'danger')
         return redirect(url_for('index'))
-    
+
     return render_template('gam_line_item_viewer.html',
                           tenant=tenant,
                           tenant_id=tenant_id,
@@ -5860,7 +5861,7 @@ def view_gam_line_item(tenant_id, line_item_id):
 def extract_targeting_overlay(targeting):
     """Extract targeting overlay from GAM targeting object."""
     targeting_overlay = {}
-    
+
     # Geographic targeting
     if targeting.get('geoTargeting'):
         geo = targeting['geoTargeting']
@@ -5880,14 +5881,14 @@ def extract_targeting_overlay(targeting):
                         countries.append(display_name or str(loc.get('id')))
             if countries:
                 targeting_overlay['geo_country_any_of'] = countries
-        
+
         if geo.get('excludedLocations'):
-            excluded_countries = [loc.get('displayName', loc.get('id')) 
-                                for loc in geo['excludedLocations'] 
+            excluded_countries = [loc.get('displayName', loc.get('id'))
+                                for loc in geo['excludedLocations']
                                 if loc.get('type', '').upper() == 'COUNTRY']
             if excluded_countries:
                 targeting_overlay['geo_country_none_of'] = excluded_countries
-    
+
     # Device targeting
     if targeting.get('technologyTargeting'):
         tech = targeting['technologyTargeting']
@@ -5904,21 +5905,21 @@ def extract_targeting_overlay(targeting):
                     device_types.append('mobile')
             if device_types:
                 targeting_overlay['device_type_any_of'] = device_types
-    
+
     # Custom targeting (key-value pairs)
     if targeting.get('customTargeting'):
         custom = targeting['customTargeting']
         key_value_pairs = {}
         # TODO: Parse custom targeting tree structure if needed
         targeting_overlay['key_value_pairs'] = key_value_pairs
-    
+
     return targeting_overlay
 
 def extract_frequency_caps(line_item):
     """Extract frequency caps and convert to suppress_minutes."""
     if not line_item.get('frequencyCaps'):
         return None
-    
+
     # Convert frequency caps to suppress_minutes
     for cap in line_item['frequencyCaps']:
         if cap.get('timeUnit') == 'MINUTE' and cap.get('numTimeUnits'):
@@ -5933,7 +5934,7 @@ def extract_creative_formats(line_item, creatives):
     """Extract creative formats from line item and creatives."""
     formats = []
     seen_formats = set()
-    
+
     # Extract from creative placeholders
     if line_item.get('creativePlaceholders'):
         for placeholder in line_item['creativePlaceholders']:
@@ -5951,13 +5952,13 @@ def extract_creative_formats(line_item, creatives):
                         'height': height
                     })
                     seen_formats.add(format_id)
-    
+
     # Also check actual creatives
     for creative in creatives:
         if creative.get('size'):
             width = creative['size'].get('width', 0)
             height = creative['size'].get('height', 0)
-            
+
             # Determine format type based on creative type
             format_type = 'display'
             if 'VideoCreative' in creative.get('Creative.Type', ''):
@@ -5968,7 +5969,7 @@ def extract_creative_formats(line_item, creatives):
                 format_id = f"audio"
             else:
                 format_id = f"display_{width}x{height}"
-            
+
             if format_id not in seen_formats:
                 formats.append({
                     'id': format_id,
@@ -5978,7 +5979,7 @@ def extract_creative_formats(line_item, creatives):
                     'height': height
                 })
                 seen_formats.add(format_id)
-    
+
     return formats
 
 def convert_line_item_to_product_json(line_item, creatives):
@@ -5986,7 +5987,7 @@ def convert_line_item_to_product_json(line_item, creatives):
     # Extract targeting information
     targeting = line_item.get('targeting', {})
     targeting_overlay = extract_targeting_overlay(targeting)
-    
+
     # Add dayparting if present
     if targeting.get('dayPartTargeting'):
         daypart = targeting['dayPartTargeting']
@@ -5999,13 +6000,13 @@ def convert_line_item_to_product_json(line_item, creatives):
                     'end_hour': dp.get('endTime', {}).get('hour', 23)
                 }
                 schedules.append(schedule)
-            
+
             if schedules:
                 targeting_overlay['dayparting'] = {
                     'timezone': daypart.get('timeZone', 'America/New_York'),
                     'schedules': schedules
                 }
-    
+
     # Add frequency cap if present
     suppress_minutes = extract_frequency_caps(line_item)
     if suppress_minutes:
@@ -6013,15 +6014,15 @@ def convert_line_item_to_product_json(line_item, creatives):
             'suppress_minutes': suppress_minutes,
             'scope': 'media_buy'
         }
-    
+
     # Extract creative formats
     formats = extract_creative_formats(line_item, creatives)
-    
+
     # Translate custom targeting to human-readable format
     key_value_targeting = None
     if targeting.get('customTargeting'):
         key_value_targeting = translate_custom_targeting(targeting['customTargeting'])
-    
+
     # Build the product JSON
     product_json = {
         'product_id': f'gam_line_item_{line_item.get("id")}',
@@ -6057,13 +6058,13 @@ def convert_line_item_to_product_json(line_item, creatives):
                 ],
                 # Add ad units if present
                 'ad_units': [
-                    au.get('adUnitId') 
+                    au.get('adUnitId')
                     for au in targeting.get('inventoryTargeting', {}).get('targetedAdUnits', [])
                 ] if targeting.get('inventoryTargeting', {}).get('targetedAdUnits') else []
             }
         }
     }
-    
+
     return product_json
 
 # Function to register adapter routes
@@ -6074,19 +6075,19 @@ def register_adapter_routes():
         # Get all enabled adapters across all tenants
         conn = get_db_connection()
         cursor = conn.execute("SELECT tenant_id, ad_server FROM tenants WHERE ad_server IS NOT NULL")
-        
+
         registered_adapters = set()
         for row in cursor.fetchall():
             tenant_id = row[0]
             ad_server = row[1]
             print(f"Processing tenant {tenant_id} with adapter {ad_server}")
-            
+
             tenant_config = get_tenant_config_from_db(conn, tenant_id)
             if not tenant_config:
                 continue
-                
+
             adapters_config = tenant_config.get('adapters', {})
-            
+
             for adapter_name, adapter_config in adapters_config.items():
                 if adapter_config.get('enabled') and adapter_name not in registered_adapters:
                     # Create a dummy principal for route registration
@@ -6097,7 +6098,7 @@ def register_adapter_routes():
                         access_token="",
                         platform_mappings={}
                     )
-                    
+
                     # Import and register adapter routes
                     try:
                         if adapter_name == 'google_ad_manager':
@@ -6122,10 +6123,10 @@ def register_adapter_routes():
                         # Add other adapters as they implement UI routes
                     except Exception as e:
                         print(f"Warning: Failed to register routes for {adapter_name}: {e}")
-        
+
         # Context manager handles cleanup
         print(f"Registered UI routes for adapters: {', '.join(registered_adapters)}")
-        
+
     except Exception as e:
         print(f"Warning: Failed to register adapter routes: {e}")
         traceback.print_exc()
@@ -6143,11 +6144,11 @@ def handle_connect():
     tenant_id = request.args.get('tenant_id')
     if not tenant_id:
         return False  # Reject connection
-    
+
     # Join the room for this tenant
     join_room(f'tenant_{tenant_id}')
     app.logger.info(f"WebSocket connected for tenant {tenant_id}")
-    
+
     # Send recent activities from activity_feed
     if tenant_id in activity_feed.recent_activities:
         for activity in activity_feed.recent_activities[tenant_id]:
@@ -6168,7 +6169,7 @@ def handle_subscribe(data):
     if tenant_id:
         join_room(f'tenant_{tenant_id}')
         emit('subscribed', {'tenant_id': tenant_id})
-        
+
         # Send recent activities
         if tenant_id in activity_feed.recent_activities:
             for activity in activity_feed.recent_activities[tenant_id]:
@@ -6187,7 +6188,7 @@ activity_feed.broadcast_to_websocket = broadcast_activity_to_websocket
 if __name__ == '__main__':
     # Create templates directory
     os.makedirs('templates', exist_ok=True)
-    
+
     if not GOOGLE_CLIENT_ID or not GOOGLE_CLIENT_SECRET:
         print("ERROR: Google OAuth credentials not found!")
         print("\nPlease provide OAuth credentials using one of these methods:")
@@ -6200,7 +6201,7 @@ if __name__ == '__main__':
         print("3. Add redirect URI: http://localhost:8001/auth/google/callback")
         print("4. Download the JSON file")
         exit(1)
-    
+
 # ============== MCP Protocol Testing Routes (Super Admin Only) ==============
 
 @app.route('/mcp-test')
@@ -6209,7 +6210,7 @@ def mcp_test():
     """MCP protocol testing interface for super admins."""
     # Get all tenants and their principals
     conn = get_db_connection()
-    
+
     # Get tenants
     cursor = conn.execute("""
         SELECT tenant_id, name, subdomain
@@ -6224,7 +6225,7 @@ def mcp_test():
             'name': row[1],
             'subdomain': row[2]
         })
-    
+
     # Get all principals with their tenant info
     cursor = conn.execute("""
         SELECT p.principal_id, p.name, p.tenant_id, p.access_token, t.name as tenant_name
@@ -6242,13 +6243,13 @@ def mcp_test():
             'access_token': row[3],
             'tenant_name': row[4]
         })
-    
+
     # Context manager handles cleanup
-    
+
     # Get server URL - use correct port from environment
     server_port = int(os.environ.get('ADCP_SALES_PORT', 8005))
     server_url = f"http://localhost:{server_port}/mcp/"
-    
+
     return render_template('mcp_test.html',
                          tenants=tenants,
                          principals=principals,
@@ -6267,16 +6268,16 @@ def mcp_test_call():
             return jsonify({'success': False, 'error': 'Authentication required. Please login again.'}), 401
         if session.get('role') != 'super_admin':
             return jsonify({'success': False, 'error': 'Super admin access required.'}), 403
-    
+
     try:
         import asyncio
         from fastmcp.client import Client
         from fastmcp.client.transports import StreamableHttpTransport
-        
+
         data = request.json
         if not data:
             return jsonify({'success': False, 'error': 'Invalid request data'}), 400
-            
+
         tool_name = data.get('tool')
         tool_params = data.get('params', {})
         access_token = data.get('access_token')
@@ -6286,10 +6287,10 @@ def mcp_test_call():
             server_url = server_url.replace('localhost:8005', 'adcp-server:8080')
         elif 'localhost:8080' in server_url:
             server_url = server_url.replace('localhost:8080', 'adcp-server:8080')
-        
+
         if not tool_name or not access_token:
             return jsonify({'success': False, 'error': 'Missing required parameters: tool and access_token'}), 400
-        
+
         # Look up the tenant for this token
         conn = get_db_connection()
         cursor = conn.execute(
@@ -6298,45 +6299,45 @@ def mcp_test_call():
         )
         row = cursor.fetchone()
         # Context manager handles cleanup
-        
+
         tenant_id = row[0] if row else 'default'
-        
+
         # Set up headers for authentication
         # Include tenant header for proper principal resolution
         headers = {
             "x-adcp-auth": access_token,
             "x-adcp-tenant": tenant_id
         }
-        
+
         # Log for debugging
         app.logger.info(f"MCP Test Call - Tool: {tool_name}, Server: {server_url}, Token: {access_token[:20]}...")
-        
+
         async def make_call():
             """Make the actual MCP call."""
             transport = StreamableHttpTransport(server_url, headers=headers)
-            
+
             async with Client(transport) as client:
                 try:
                     # Some tools expect params wrapped in 'req' key, others don't
                     # Tools without req parameter: get_targeting_capabilities
                     tools_without_req = ['get_targeting_capabilities']
-                    
+
                     if tool_name in tools_without_req:
                         arguments = tool_params or {}
                     else:
                         # Most tools have a single parameter named 'req'
                         arguments = {"req": tool_params} if tool_params else {"req": {}}
-                    
+
                     app.logger.info(f"Calling tool {tool_name} with arguments: {arguments}")
                     result = await client.call_tool(tool_name, arguments)
-                    
+
                     # Convert result to dict if it's a pydantic model or handle TextContent
                     if hasattr(result, 'model_dump'):
                         return {'success': True, 'result': result.model_dump()}
                     else:
                         # Handle various FastMCP response types
                         import json as json_module
-                        
+
                         # Check if it's a CallToolResult object
                         if hasattr(result, 'structured_content'):
                             # Use the structured_content which is already parsed
@@ -6360,7 +6361,7 @@ def mcp_test_call():
                                         return {'success': True, 'result': parsed_result}
                                     except:
                                         return {'success': True, 'result': first_item.text}
-                        
+
                         # Check if result itself has text attribute
                         if hasattr(result, 'text'):
                             try:
@@ -6368,14 +6369,14 @@ def mcp_test_call():
                                 return {'success': True, 'result': parsed_result}
                             except:
                                 return {'success': True, 'result': result.text}
-                        
+
                         # Fallback to string representation
                         return {'success': True, 'result': str(result)}
-                        
+
                 except Exception as e:
                     app.logger.error(f"MCP call error: {str(e)}")
                     return {'success': False, 'error': str(e), 'error_type': type(e).__name__}
-        
+
         # Run the async function
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
@@ -6387,7 +6388,7 @@ def mcp_test_call():
             return jsonify({'success': False, 'error': f'Event loop error: {str(e)}'}), 500
         finally:
             loop.close()
-            
+
     except ImportError as e:
         app.logger.error(f"Import error in mcp_test_call: {str(e)}")
         return jsonify({'success': False, 'error': f'Import error: {str(e)}'}), 500
@@ -6395,20 +6396,20 @@ def mcp_test_call():
         app.logger.error(f"Unexpected error in mcp_test_call: {str(e)}")
         return jsonify({'success': False, 'error': f'Unexpected error: {str(e)}'}), 500
 
-    
+
     # Run server
     port = int(os.environ.get('ADMIN_UI_PORT', 8001))  # Match OAuth redirect URI
     # Debug mode off for production
     debug = os.environ.get('FLASK_DEBUG', '0') == '1'
-    
+
     print(f"DEBUG: FLASK_DEBUG={os.environ.get('FLASK_DEBUG')}, debug={debug}")
     print(f"Starting Admin UI with Google OAuth and WebSocket support on port {port}")
     print(f"Redirect URI should be: http://localhost:{port}/auth/google/callback")
-    
+
     if not SUPER_ADMIN_EMAILS and not SUPER_ADMIN_DOMAINS:
         print("\nWARNING: No super admin emails or domains configured!")
         print("Set SUPER_ADMIN_EMAILS='email1@example.com,email2@example.com' or")
         print("Set SUPER_ADMIN_DOMAINS='example.com,company.com' in environment variables")
-    
+
     # Use socketio.run instead of app.run to enable WebSocket support
     socketio.run(app, host='0.0.0.0', port=port, debug=debug)
