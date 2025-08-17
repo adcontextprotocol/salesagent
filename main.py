@@ -271,7 +271,7 @@ def get_adapter(principal: Principal, dry_run: bool = False):
         return MockAdServerAdapter(adapter_config, principal, dry_run, tenant_id=tenant_id)
 
 # --- Initialization ---
-init_db()
+init_db()  # Tests will call with exit_on_error=False
 
 # Try to load config, but use defaults if no tenant context available
 try:
@@ -2769,7 +2769,7 @@ def check_aee_requirements(req: CheckAEERequirementsRequest, context: Context) -
 # Ad servers like GAM can inject this string into creatives.
 
 if __name__ == "__main__":
-    init_db()
+    init_db(exit_on_error=True)  # Exit on error when run as main
     # Server is now run via run_server.py script
 
 # Add admin UI routes when running unified

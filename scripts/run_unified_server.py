@@ -14,7 +14,7 @@ from admin_ui import app as flask_admin_app
 
 # Import and setup database
 from database import init_db
-init_db()
+init_db(exit_on_error=True)  # Exit on error when run as main script
 
 # Import MCP server
 from main import mcp
