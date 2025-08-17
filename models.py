@@ -170,8 +170,7 @@ class MediaBuy(Base):
     approved_at = Column(DateTime)
     approved_by = Column(String(255))
     raw_request = Column(JSON, nullable=False)  # JSONB in PostgreSQL
-    
-    # Context removed - using ObjectWorkflowMapping for lifecycle tracking
+    context_id = Column(String(100), nullable=True)  # Link to context if created through A2A protocol
     
     # Relationships
     tenant = relationship("Tenant", back_populates="media_buys")
@@ -185,7 +184,37 @@ class MediaBuy(Base):
         Index('idx_media_buys_status', 'status'),
     )
 
-# Task table removed - replaced by WorkflowStep and ObjectWorkflowMapping
+# Task table - still used for backward compatibility
+class Task(Base):
+    __tablename__ = 'tasks'
+    
+    task_id = Column(String(100), primary_key=True)
+    tenant_id = Column(String(50), ForeignKey('tenants.tenant_id', ondelete='CASCADE'), nullable=False)
+    media_buy_id = Column(String(100), ForeignKey('media_buys.media_buy_id', ondelete='CASCADE'), nullable=True)
+    task_type = Column(String(50), nullable=False)
+    title = Column(String(255), nullable=False, default='')
+    description = Column(Text)
+    status = Column(String(50), nullable=False, default='pending')
+    assigned_to = Column(String(255))
+    due_date = Column(DateTime)
+    completed_at = Column(DateTime)
+    completed_by = Column(String(255))
+    metadata = Column(JSON)  # JSONB in PostgreSQL
+    details = Column(JSON)  # JSONB in PostgreSQL (for backward compatibility)
+    created_at = Column(DateTime, server_default=func.now())
+    
+    __table_args__ = (
+        Index('idx_tasks_tenant', 'tenant_id'),
+        Index('idx_tasks_status', 'status'),
+    )
+
+class HumanTask(Base):
+    __tablename__ = 'human_tasks'
+    
+    task_id = Column(String(100), primary_key=True)
+    media_buy_id = Column(String(100))
+    status = Column(String(50), nullable=False, default='pending')
+    metadata = Column(Text)
 
 class AuditLog(Base):
     __tablename__ = 'audit_logs'

@@ -2,7 +2,13 @@
 
 ## Overview
 
-The AdCP Sales Agent uses **SQLAlchemy ORM** for database operations but has legacy code using raw connections. This guide defines the standardized patterns to use.
+The AdCP Sales Agent uses **SQLAlchemy ORM** for database operations. As of Issue #74, we are migrating all database access to use context managers with SQLAlchemy ORM, eliminating manual connection management and raw SQL queries.
+
+## Migration Status
+
+- ✅ **main.py**: Fully migrated (all MCP tools now use context managers)
+- 🔄 **admin_ui.py**: Partially migrated (54 operations remaining)
+- ⏳ **Other files**: 34 files still need migration
 
 ## ✅ RECOMMENDED: Use Context Manager Pattern
 
@@ -188,9 +194,83 @@ def test_with_real_db():
 **Cause**: Long-running transactions
 **Solution**: Keep transactions short, use WAL mode
 
+## Migration Examples from Issue #74
+
+### Example 1: Simple SELECT Query Migration
+**Before:**
+```python
+conn = get_db_connection()
+cursor = conn.execute(
+    "SELECT * FROM tenants WHERE tenant_id = ? AND is_active = ?",
+    (tenant_id, True)
+)
+row = cursor.fetchone()
+conn.close()
+```
+
+**After:**
+```python
+with get_db_session() as session:
+    tenant = session.query(Tenant).filter_by(
+        tenant_id=tenant_id,
+        is_active=True
+    ).first()
+```
+
+### Example 2: INSERT Operation Migration
+**Before:**
+```python
+conn = get_db_connection()
+conn.execute("""
+    INSERT INTO tasks (tenant_id, task_id, task_type, status, details)
+    VALUES (?, ?, ?, ?, ?)
+""", (tenant_id, task_id, 'policy_review', 'pending', json.dumps(details)))
+conn.connection.commit()
+conn.close()
+```
+
+**After:**
+```python
+with get_db_session() as session:
+    new_task = Task(
+        tenant_id=tenant_id,
+        task_id=task_id,
+        task_type='policy_review',
+        status='pending',
+        details=details  # ORM handles JSON serialization
+    )
+    session.add(new_task)
+    session.commit()
+```
+
+### Example 3: UPDATE Operation Migration
+**Before:**
+```python
+conn = get_db_connection()
+conn.execute("""
+    UPDATE tasks SET status = ?, completed_at = ?
+    WHERE task_id = ? AND tenant_id = ?
+""", (status, datetime.now(), task_id, tenant_id))
+conn.connection.commit()
+conn.close()
+```
+
+**After:**
+```python
+with get_db_session() as session:
+    task = session.query(Task).filter_by(
+        task_id=task_id,
+        tenant_id=tenant_id
+    ).first()
+    if task:
+        task.status = status
+        task.completed_at = datetime.now()
+        session.commit()
+```
+
 ## Gradual Migration Strategy
 
-### Phase 1: Fix Critical Paths (CURRENT)
+### Phase 1: Critical Path Endpoints (COMPLETED)
 - Add context managers to high-traffic endpoints
 - Fix connection leaks in error paths
 
