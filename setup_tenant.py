@@ -190,7 +190,7 @@ def main():
                        default='mock', help='Primary ad server adapter')
     
     # Adapter-specific options
-    parser.add_argument('--gam-network-code', help='Google Ad Manager network code')
+    parser.add_argument('--gam-network-code', help='Google Ad Manager network code (optional - will be auto-detected from refresh token)')
     parser.add_argument('--gam-refresh-token', help='Google Ad Manager OAuth refresh token (advertisers are now selected per principal)')
     parser.add_argument('--kevel-network-id', help='Kevel network ID')
     parser.add_argument('--kevel-api-key', help='Kevel API key')
@@ -208,10 +208,10 @@ def main():
     
     # Validate adapter-specific requirements
     if args.adapter == 'google_ad_manager':
-        if not args.gam_network_code:
-            parser.error("--gam-network-code required for Google Ad Manager")
+        # Network code is optional - can be auto-detected from refresh token
         if not args.gam_refresh_token:
-            parser.error("--gam-refresh-token required for Google Ad Manager (OAuth refresh token)")
+            print("Warning: No refresh token provided for Google Ad Manager.")
+            print("You'll need to configure GAM credentials through the Admin UI.")
     if args.adapter == 'kevel' and not args.kevel_network_id:
         parser.error("--kevel-network-id required for Kevel")
     

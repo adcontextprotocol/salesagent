@@ -5,6 +5,7 @@ This test connects to the real database and performs actual queries
 to ensure SQL compatibility and schema correctness.
 """
 
+import pytest
 import requests
 import psycopg2
 from psycopg2.extras import DictCursor
@@ -20,6 +21,8 @@ TEST_PASSWORD = "test123"
 DB_URL = os.environ.get('DATABASE_URL', 
     'postgresql://adcp_user:secure_password_change_me@localhost:5436/adcp')
 
+@pytest.mark.integration
+@pytest.mark.requires_db
 def test_database_queries():
     """Test the actual database queries used by the settings page"""
     print("\n🔍 Testing database queries...")
@@ -97,6 +100,8 @@ def test_database_queries():
         print(f"\n❌ Database error: {e}")
         return False
 
+@pytest.mark.integration
+@pytest.mark.requires_server
 def test_settings_page():
     """Test the settings page through HTTP"""
     print("\n🌐 Testing settings page HTTP access...")

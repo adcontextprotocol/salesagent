@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Test with REAL database connection to catch SQL errors our mocked tests miss."""
 
+import pytest
 import os
 import sys
 import psycopg2
@@ -9,6 +10,8 @@ from psycopg2.extras import DictCursor
 # Get database URL from environment
 DATABASE_URL = os.environ.get('DATABASE_URL', 'postgresql://adcp_user:secure_password_change_me@localhost:5479/adcp')
 
+@pytest.mark.integration
+@pytest.mark.requires_db
 def test_settings_queries():
     """Test the actual SQL queries used in the settings page."""
     

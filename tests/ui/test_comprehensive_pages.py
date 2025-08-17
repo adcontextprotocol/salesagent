@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Comprehensive test of all Admin UI pages and submodules."""
 
+import pytest
 import requests
 import sys
 import json
@@ -84,7 +85,9 @@ def test_page(session, path, description):
         results["errors"].append(f"{description}: {str(e)}")
         return False
 
-def main():
+@pytest.mark.slow
+@pytest.mark.requires_server
+def test_all_admin_pages():
     """Test all pages systematically."""
     
     print(f"\n{'='*70}")
