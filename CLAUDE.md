@@ -825,6 +825,39 @@ The current setup runs all services on a single machine. For production scaling:
    fly ssh console -C "curl http://localhost:8001/health"
    ```
 
+## Database Access Patterns
+
+### IMPORTANT: Standardized Database Access
+
+The codebase is transitioning to standardized database patterns. **Always use context managers**:
+
+#### ✅ CORRECT Pattern (Use This)
+```python
+from database_session import get_db_session
+from models import Tenant
+
+# For ORM operations (PREFERRED)
+with get_db_session() as session:
+    tenant = session.query(Tenant).filter_by(tenant_id=tenant_id).first()
+    if tenant:
+        tenant.name = "New Name"
+        session.commit()  # Explicit commit required
+```
+
+#### ❌ WRONG Pattern (Avoid)
+```python
+# DO NOT USE - Prone to connection leaks
+conn = get_db_connection()
+cursor = conn.execute(...)
+conn.close()  # May not be called on error
+```
+
+**Key Rules**:
+1. Always use `with get_db_session()` for new code
+2. Explicit commits required (`session.commit()`)
+3. Context manager handles cleanup automatically
+4. See `docs/database-patterns.md` for complete guide
+
 ## Common Operations
 
 ### Running the Server (Docker - Recommended)
