@@ -14,8 +14,8 @@ from sqlalchemy import inspect
 
 
 # revision identifiers, used by Alembic
-revision = '015_handle_partial_schemas'
-down_revision = '014_add_context_persistence'
+revision = '017_handle_partial_schemas'
+down_revision = '016_add_json_validation'
 branch_labels = None
 depends_on = None
 
