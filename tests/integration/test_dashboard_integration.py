@@ -25,8 +25,13 @@ def get_interval_syntax(days):
 @pytest.fixture
 def test_db():
     """Create a test database with sample data."""
-    # Initialize test database
-    init_db()
+    # Initialize test database - handle if tables already exist
+    try:
+        init_db()
+    except Exception as e:
+        # If tables already exist from another test, that's OK
+        if "already exists" not in str(e):
+            raise
 
     conn = get_db_connection()
 
@@ -35,7 +40,7 @@ def test_db():
 
     # First, clean up any existing test data
     try:
-        conn.execute("DELETE FROM tasks WHERE tenant_id = 'test_dashboard'")
+        # Tasks table removed - no need to delete
         conn.execute("DELETE FROM media_buys WHERE tenant_id = 'test_dashboard'")
         conn.execute("DELETE FROM products WHERE tenant_id = 'test_dashboard'")
         conn.execute("DELETE FROM principals WHERE tenant_id = 'test_dashboard'")
@@ -174,45 +179,10 @@ def test_db():
         ),
     )
 
-    # Insert test tasks
-    conn.execute(
-        f"""
-        INSERT INTO tasks (
-            task_id, tenant_id, media_buy_id, task_type,
-            title, status, metadata, created_at
-        ) VALUES ({ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph})
-    """,
-        (
-            "task_001",
-            "test_dashboard",
-            "mb_test_001",
-            "approve_creative",
-            "Approve creative for campaign",
-            "pending",
-            json.dumps({"description": "Approve creative for campaign"}),
-            now - timedelta(hours=2),
-        ),
-    )
+    # Skip inserting tasks - table removed in favor of workflow_steps
+    # The dashboard doesn't use tasks anymore
 
-    # Overdue task (older than 3 days)
-    conn.execute(
-        f"""
-        INSERT INTO tasks (
-            task_id, tenant_id, media_buy_id, task_type,
-            title, status, metadata, created_at
-        ) VALUES ({ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph})
-    """,
-        (
-            "task_002",
-            "test_dashboard",
-            "mb_test_002",
-            "review_budget",
-            "Review budget allocation",
-            "pending",
-            json.dumps({"description": "Review budget allocation"}),
-            now - timedelta(days=5),
-        ),
-    )
+    # Skip second task insert - tasks table removed
 
     # Insert test products with required fields
     conn.execute(
@@ -253,7 +223,7 @@ def test_db():
 
     # Cleanup
     try:
-        conn.execute("DELETE FROM tasks WHERE tenant_id = 'test_dashboard'")
+        # Tasks table removed - no need to delete
         conn.execute("DELETE FROM media_buys WHERE tenant_id = 'test_dashboard'")
         conn.execute("DELETE FROM products WHERE tenant_id = 'test_dashboard'")
         conn.execute("DELETE FROM principals WHERE tenant_id = 'test_dashboard'")

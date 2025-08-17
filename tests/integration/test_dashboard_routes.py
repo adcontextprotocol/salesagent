@@ -13,6 +13,11 @@ os.environ["ADCP_AUTH_TEST_MODE"] = "true"
 @pytest.fixture
 def app():
     """Create and configure a test Flask application."""
+    # Reload admin_ui to pick up the test mode environment variable
+    import importlib
+    import admin_ui
+
+    importlib.reload(admin_ui)
     from admin_ui import app as flask_app
 
     flask_app.config["TESTING"] = True
