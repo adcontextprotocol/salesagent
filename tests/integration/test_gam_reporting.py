@@ -49,11 +49,11 @@ def tenant_session(client):
 @pytest.fixture
 def mock_db_connection():
     """Mock database connection."""
-    # Patch both locations where get_db_connection might be imported
+    # Patch database session for ORM access
     with (
-        patch("adapters.gam_reporting_api.get_db_connection") as mock_api_conn,
-        patch("admin_ui.get_db_session") as mock_ui_conn,
-        patch("database_session.get_db_session") as mock_db_config_conn,
+        patch("adapters.gam_reporting_api.get_db_session") as mock_api_session,
+        patch("admin_ui.get_db_session") as mock_ui_session,
+        patch("database_session.get_db_session") as mock_db_config_session,
     ):
 
         # Create a mock cursor that returns the tenant with ad_server field
@@ -65,15 +65,20 @@ def mock_db_connection():
         # Mock fetchone to return dict with get method
         mock_cursor.fetchone.return_value = tenant_data
 
-        # Setup all mock connections to return the same cursor
-        for mock_conn in [mock_api_conn, mock_ui_conn, mock_db_config_conn]:
-            mock_conn_instance = Mock()
-            mock_conn_instance.execute.return_value = mock_cursor
-            mock_conn_instance.cursor.return_value = mock_cursor
-            mock_conn_instance.close = Mock()
-            mock_conn.return_value = mock_conn_instance
+        # Setup all mock sessions to work as context managers
+        for mock_session in [mock_api_session, mock_ui_session, mock_db_config_session]:
+            mock_session_instance = Mock()
+            mock_session_instance.execute.return_value = mock_cursor
+            mock_session_instance.cursor.return_value = mock_cursor
+            mock_session_instance.close = Mock()
+            mock_session_instance.commit = Mock()
+            mock_session_instance.rollback = Mock()
+            # Make it work as a context manager
+            mock_session_instance.__enter__ = Mock(return_value=mock_session_instance)
+            mock_session_instance.__exit__ = Mock(return_value=None)
+            mock_session.return_value = mock_session_instance
 
-        yield mock_api_conn
+        yield mock_api_session
 
 
 @pytest.fixture

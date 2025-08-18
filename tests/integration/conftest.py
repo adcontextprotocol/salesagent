@@ -14,22 +14,27 @@ import pytest
 @pytest.fixture(scope="module")
 def integration_db():
     """Provide a shared database for integration tests."""
-    import tempfile
 
-    # Create temporary database
-    db_fd, db_path = tempfile.mkstemp(suffix=".db")
-    os.environ["DATABASE_URL"] = f"sqlite:///{db_path}"
+    # Use in-memory SQLite for testing (temporary until full PostgreSQL migration)
+    # This creates tables using SQLAlchemy ORM
+    os.environ["DATABASE_URL"] = "sqlite:///:memory:"
+    os.environ["DB_TYPE"] = "sqlite"  # Explicitly set DB type
 
-    # Initialize database
+    # Initialize database tables using SQLAlchemy
+    from database_session import engine
+    from models import Base
+
+    # Create all tables
+    Base.metadata.create_all(bind=engine)
+
+    # Initialize with default data
     from database import init_db
 
     init_db()
 
-    yield db_path
+    yield "memory"
 
-    # Cleanup
-    os.close(db_fd)
-    os.unlink(db_path)
+    # Cleanup is automatic with in-memory database
 
 
 @pytest.fixture
