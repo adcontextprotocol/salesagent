@@ -95,7 +95,7 @@ class GoogleAdManager(AdServerAdapter):
                 oauth2_credentials = self._get_oauth_credentials()
             else:
                 # Use service account (legacy)
-                oauth2_credentials = google.oauth2.service_account.Credentials.from_service_account_file(
+                _ = google.oauth2.service_account.Credentials.from_service_account_file(
                     self.key_file, scopes=["https://www.googleapis.com/auth/dfp"]
                 )
 
@@ -172,7 +172,7 @@ class GoogleAdManager(AdServerAdapter):
         """Look up region ID across all countries."""
         # First check if we have country context (not implemented yet)
         # For now, search across all countries
-        for country, regions in self.GEO_REGION_MAP.items():
+        for _country, regions in self.GEO_REGION_MAP.items():
             if region_code in regions:
                 return regions[region_code]
         return None
@@ -845,9 +845,7 @@ class GoogleAdManager(AdServerAdapter):
             if report_service.getReportJobStatus(report_job_id) != "COMPLETED":
                 raise Exception("GAM report failed to complete.")
 
-            report_data = report_downloader.DownloadReportToFile(
-                report_job_id, "CSV_DUMP", open("/tmp/gam_report.csv.gz", "wb")
-            )
+            _ = report_downloader.DownloadReportToFile(report_job_id, "CSV_DUMP", open("/tmp/gam_report.csv.gz", "wb"))
 
             import csv
             import gzip
