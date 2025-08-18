@@ -3389,20 +3389,17 @@ def test_gam_connection():
             return jsonify({"error": "Refresh token is required"}), 400
 
         # Get OAuth credentials from superadmin config
-        conn = get_db_connection()
-        cursor = conn.execute(
-            """
-            SELECT config_key, config_value FROM superadmin_config
-            WHERE config_key IN ('gam_oauth_client_id', 'gam_oauth_client_secret')
-        """
-        )
-        oauth_config = {}
-        for row in cursor.fetchall():
-            if row[0] == "gam_oauth_client_id":
-                oauth_config["client_id"] = row[1]
-            elif row[0] == "gam_oauth_client_secret":
-                oauth_config["client_secret"] = row[1]
-        # Context manager handles cleanup
+        with get_db_session() as db_session:
+            configs = db_session.query(SuperadminConfig).filter(
+                SuperadminConfig.config_key.in_(['gam_oauth_client_id', 'gam_oauth_client_secret'])
+            ).all()
+            
+            oauth_config = {}
+            for config in configs:
+                if config.config_key == "gam_oauth_client_id":
+                    oauth_config["client_id"] = config.config_value
+                elif config.config_key == "gam_oauth_client_secret":
+                    oauth_config["client_secret"] = config.config_value
 
         if not oauth_config.get("client_id") or not oauth_config.get("client_secret"):
             return (
@@ -3582,38 +3579,29 @@ def get_gam_advertisers():
             return jsonify({"error": "Access denied"}), 403
 
         # Get adapter configuration for the tenant
-        conn = get_db_connection()
-        cursor = conn.execute(
-            """
-            SELECT gam_refresh_token, gam_network_code
-            FROM adapter_config
-            WHERE tenant_id = ? AND adapter_type = 'google_ad_manager'
-        """,
-            (tenant_id,),
-        )
+        with get_db_session() as db_session:
+            adapter = db_session.query(AdapterConfig).filter_by(
+                tenant_id=tenant_id,
+                adapter_type='google_ad_manager'
+            ).first()
+            
+            if not adapter:
+                return jsonify({"error": "GAM not configured for this tenant"}), 400
 
-        adapter_row = cursor.fetchone()
-        if not adapter_row:
-            # Context manager handles cleanup
-            return jsonify({"error": "GAM not configured for this tenant"}), 400
+            refresh_token = adapter.gam_refresh_token
+            network_code = adapter.gam_network_code
 
-        refresh_token = adapter_row[0]
-        network_code = adapter_row[1]
-
-        # Get OAuth credentials from superadmin config
-        cursor = conn.execute(
-            """
-            SELECT config_key, config_value FROM superadmin_config
-            WHERE config_key IN ('gam_oauth_client_id', 'gam_oauth_client_secret')
-        """
-        )
-        oauth_config = {}
-        for row in cursor.fetchall():
-            if row[0] == "gam_oauth_client_id":
-                oauth_config["client_id"] = row[1]
-            elif row[0] == "gam_oauth_client_secret":
-                oauth_config["client_secret"] = row[1]
-        # Context manager handles cleanup
+            # Get OAuth credentials from superadmin config
+            configs = db_session.query(SuperadminConfig).filter(
+                SuperadminConfig.config_key.in_(['gam_oauth_client_id', 'gam_oauth_client_secret'])
+            ).all()
+            
+            oauth_config = {}
+            for config in configs:
+                if config.config_key == "gam_oauth_client_id":
+                    oauth_config["client_id"] = config.config_value
+                elif config.config_key == "gam_oauth_client_secret":
+                    oauth_config["client_secret"] = config.config_value
 
         if not oauth_config.get("client_id") or not oauth_config.get("client_secret"):
             return jsonify({"error": "GAM OAuth credentials not configured"}), 400
@@ -3780,24 +3768,22 @@ def edit_product_basic(tenant_id, product_id):
     if session.get("role") != "super_admin" and session.get("tenant_id") != tenant_id:
         return "Access denied", 403
 
-    conn = get_db_connection()
-
-    if request.method == "POST":
-        try:
-            # Update product basic details
-            conn.execute(
-                """
-                UPDATE products
-                SET name = ?, description = ?, delivery_type = ?, is_fixed_price = ?, cpm = ?, price_guidance = ?
-                WHERE tenant_id = ? AND product_id = ?
-            """,
-                (
-                    request.form["name"],
-                    request.form.get("description", ""),
-                    request.form.get("delivery_type", "guaranteed"),
-                    request.form.get("delivery_type") == "guaranteed",
-                    float(request.form.get("cpm", 0)) if request.form.get("delivery_type") == "guaranteed" else None,
-                    (
+    with get_db_session() as db_session:
+        if request.method == "POST":
+            try:
+                # Update product basic details
+                product = db_session.query(Product).filter_by(
+                    tenant_id=tenant_id,
+                    product_id=product_id
+                ).first()
+                
+                if product:
+                    product.name = request.form["name"]
+                    product.description = request.form.get("description", "")
+                    product.delivery_type = request.form.get("delivery_type", "guaranteed")
+                    product.is_fixed_price = request.form.get("delivery_type") == "guaranteed"
+                    product.cpm = float(request.form.get("cpm", 0)) if request.form.get("delivery_type") == "guaranteed" else None
+                    product.price_guidance = (
                         json.dumps(
                             {
                                 "min_cpm": float(request.form.get("price_guidance_min", 0)),
@@ -3806,52 +3792,42 @@ def edit_product_basic(tenant_id, product_id):
                         )
                         if request.form.get("delivery_type") != "guaranteed"
                         else None
-                    ),
-                    tenant_id,
-                    product_id,
-                ),
-            )
+                    )
+                    
+                    db_session.commit()
+                    return redirect(url_for("list_products", tenant_id=tenant_id))
+                else:
+                    return render_template("edit_product.html", tenant_id=tenant_id, product=None, error="Product not found")
 
-            db_session.commit()
-            # Context manager handles cleanup
+            except Exception as e:
+                db_session.rollback()
+                return render_template("edit_product.html", tenant_id=tenant_id, product=None, error=str(e))
 
-            return redirect(url_for("list_products", tenant_id=tenant_id))
+        # GET request - load product
+        product_data = db_session.query(Product).filter_by(
+            tenant_id=tenant_id,
+            product_id=product_id
+        ).first()
 
-        except Exception as e:
-            # Context manager handles cleanup
-            return render_template("edit_product.html", tenant_id=tenant_id, product=None, error=str(e))
+        if not product_data:
+            return "Product not found", 404
 
-    # GET request - load product
-    cursor = conn.execute(
-        """SELECT product_id, name, description, formats, delivery_type,
-               is_fixed_price, cpm, price_guidance
-        FROM products
-        WHERE tenant_id = ? AND product_id = ?""",
-        (tenant_id, product_id),
-    )
-    product_row = cursor.fetchone()
+        # Handle PostgreSQL (returns objects) vs SQLite (returns JSON strings)
+        formats = product_data.formats if isinstance(product_data.formats, list) else json.loads(product_data.formats or "[]")
+        price_guidance = product_data.price_guidance if isinstance(product_data.price_guidance, dict) else json.loads(product_data.price_guidance or "{}")
 
-    if not product_row:
-        # Context manager handles cleanup
-        return "Product not found", 404
+        product = {
+            "product_id": product_data.product_id,
+            "name": product_data.name,
+            "description": product_data.description,
+            "formats": formats,
+            "delivery_type": product_data.delivery_type,
+            "is_fixed_price": product_data.is_fixed_price,
+            "cpm": product_data.cpm,
+            "price_guidance": price_guidance,
+        }
 
-    # Handle PostgreSQL (returns objects) vs SQLite (returns JSON strings)
-    formats = product_row[3] if isinstance(product_row[3], list) else json.loads(product_row[3] or "[]")
-    price_guidance = product_row[7] if isinstance(product_row[7], dict) else json.loads(product_row[7] or "{}")
-
-    product = {
-        "product_id": product_row[0],
-        "name": product_row[1],
-        "description": product_row[2],
-        "formats": formats,
-        "delivery_type": product_row[4],
-        "is_fixed_price": product_row[5],
-        "cpm": product_row[6],
-        "price_guidance": price_guidance,
-    }
-
-    # Context manager handles cleanup
-    return render_template("edit_product.html", tenant_id=tenant_id, product=product)
+        return render_template("edit_product.html", tenant_id=tenant_id, product=product)
 
 
 @app.route("/tenant/<tenant_id>/products/add", methods=["GET", "POST"])
@@ -3862,112 +3838,100 @@ def add_product(tenant_id):
     if session.get("role") != "super_admin" and session.get("tenant_id") != tenant_id:
         return "Access denied", 403
 
-    conn = get_db_connection()
+    with get_db_session() as db_session:
+        if request.method == "POST":
+            try:
+                # Check if this is from AI form
+                ai_config = request.form.get("ai_config")
+                    if ai_config:
+                    # Parse AI-generated configuration
+                    config = json.loads(ai_config)
+                    product_id = request.form.get("product_id") or config.get("product_id")
+                    formats = config.get("formats", [])
+                    delivery_type = config.get("delivery_type", "guaranteed")
+                    cpm = config.get("cpm")
+                    price_guidance = config.get("price_guidance")
+                    countries = config.get("countries")
+                    targeting_template = config.get("targeting_template", {})
+                    implementation_config = config.get("implementation_config", {})
 
-    if request.method == "POST":
-        try:
-            # Check if this is from AI form
-            ai_config = request.form.get("ai_config")
-            if ai_config:
-                # Parse AI-generated configuration
-                config = json.loads(ai_config)
-                product_id = request.form.get("product_id") or config.get("product_id")
-                formats = config.get("formats", [])
-                delivery_type = config.get("delivery_type", "guaranteed")
-                cpm = config.get("cpm")
-                price_guidance = config.get("price_guidance")
-                countries = config.get("countries")
-                targeting_template = config.get("targeting_template", {})
-                implementation_config = config.get("implementation_config", {})
-
-                # Get name and description from form
-                name = request.form.get("name")
-                description = request.form.get("description")
-            else:
-                # Regular form submission
-                product_id = request.form.get("product_id") or request.form["name"].lower().replace(" ", "_")
-                formats = request.form.getlist("formats")
-                name = request.form.get("name")
-                description = request.form.get("description")
-                targeting_template = {}
-                implementation_config = {}
-
-            # Build implementation config based on adapter
-            tenant_config = get_tenant_config_from_db(tenant_id)
-            if not tenant_config:
-                return jsonify({"error": "Tenant not found"}), 404
-
-            # Handle regular form submission fields if not from AI
-            if not ai_config:
-                # Get selected countries
-                countries = request.form.getlist("countries")
-                # If "ALL" is selected or no countries selected, set to None (all countries)
-                if "ALL" in countries or not countries:
-                    countries = None
-
-                # Determine pricing based on delivery type
-                delivery_type = request.form.get("delivery_type", "guaranteed")
-                is_fixed_price = delivery_type == "guaranteed"
-
-                # Handle CPM and price guidance
-                cpm = None
-                price_guidance = None
-
-                if is_fixed_price:
-                    cpm = float(request.form.get("cpm", 5.0))
+                    # Get name and description from form
+                    name = request.form.get("name")
+                    description = request.form.get("description")
                 else:
-                    # Non-guaranteed: use price guidance
-                    min_cpm = request.form.get("price_guidance_min")
-                    max_cpm = request.form.get("price_guidance_max")
-                    if min_cpm and max_cpm:
-                        price_guidance = {
-                            "min_cpm": float(min_cpm),
-                            "max_cpm": float(max_cpm),
-                        }
-            else:
-                # AI config already has these values
-                is_fixed_price = delivery_type == "guaranteed"
+                    # Regular form submission
+                    product_id = request.form.get("product_id") or request.form["name"].lower().replace(" ", "_")
+                    formats = request.form.getlist("formats")
+                    name = request.form.get("name")
+                    description = request.form.get("description")
+                    targeting_template = {}
+                    implementation_config = {}
 
-            # Insert product
-            conn.execute(
-                """
-                INSERT INTO products (
-                    tenant_id, product_id, name, description,
-                    formats, targeting_template, delivery_type,
-                    is_fixed_price, cpm, price_guidance, countries, implementation_config
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-                (
-                    tenant_id,
-                    product_id,
-                    name,
-                    description,
-                    json.dumps(formats),
-                    json.dumps(targeting_template),
-                    delivery_type,
-                    is_fixed_price,
-                    cpm,
-                    json.dumps(price_guidance),
-                    json.dumps(countries),
-                    json.dumps(implementation_config),
-                ),
-            )
+                # Build implementation config based on adapter
+                tenant_config = get_tenant_config_from_db(tenant_id)
+                if not tenant_config:
+                    return jsonify({"error": "Tenant not found"}), 404
 
-            db_session.commit()
-            # Context manager handles cleanup
+                # Handle regular form submission fields if not from AI
+                if not ai_config:
+                    # Get selected countries
+                    countries = request.form.getlist("countries")
+                    # If "ALL" is selected or no countries selected, set to None (all countries)
+                    if "ALL" in countries or not countries:
+                        countries = None
 
-            return redirect(url_for("list_products", tenant_id=tenant_id))
+                    # Determine pricing based on delivery type
+                    delivery_type = request.form.get("delivery_type", "guaranteed")
+                    is_fixed_price = delivery_type == "guaranteed"
 
-        except Exception as e:
-            # Context manager handles cleanup
-            # Get available formats
-            formats = get_creative_formats()
-            return render_template("add_product.html", tenant_id=tenant_id, error=str(e), formats=formats)
+                    # Handle CPM and price guidance
+                    cpm = None
+                    price_guidance = None
 
-    # GET request - show form
-    # Context manager handles cleanup
-    formats = get_creative_formats()
-    return render_template("add_product.html", tenant_id=tenant_id, formats=formats)
+                    if is_fixed_price:
+                        cpm = float(request.form.get("cpm", 5.0))
+                    else:
+                        # Non-guaranteed: use price guidance
+                        min_cpm = request.form.get("price_guidance_min")
+                        max_cpm = request.form.get("price_guidance_max")
+                        if min_cpm and max_cpm:
+                            price_guidance = {
+                                "min_cpm": float(min_cpm),
+                                "max_cpm": float(max_cpm),
+                            }
+                else:
+                    # AI config already has these values
+                    is_fixed_price = delivery_type == "guaranteed"
+
+                # Insert product
+                new_product = Product(
+                    tenant_id=tenant_id,
+                    product_id=product_id,
+                    name=name,
+                    description=description,
+                    formats=json.dumps(formats),
+                    targeting_template=json.dumps(targeting_template),
+                    delivery_type=delivery_type,
+                    is_fixed_price=is_fixed_price,
+                    cpm=cpm,
+                    price_guidance=json.dumps(price_guidance),
+                    countries=json.dumps(countries),
+                    implementation_config=json.dumps(implementation_config)
+                )
+                db_session.add(new_product)
+                db_session.commit()
+
+                return redirect(url_for("list_products", tenant_id=tenant_id))
+
+            except Exception as e:
+                db_session.rollback()
+                # Get available formats
+                formats = get_creative_formats()
+                return render_template("add_product.html", tenant_id=tenant_id, error=str(e), formats=formats)
+
+        # GET request - show form
+        formats = get_creative_formats()
+        return render_template("add_product.html", tenant_id=tenant_id, formats=formats)
 
 
 @app.route("/tenant/<tenant_id>/products/add/ai", methods=["GET"])
