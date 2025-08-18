@@ -34,8 +34,6 @@ from models import (
     SuperadminConfig,
     AdapterConfig,
     User,
-    CreativeFormat,
-    GamInventorySync,
 )
 from validation import (
     FormValidator,
@@ -3685,18 +3683,11 @@ def create_principal(tenant_id):
         return "Access denied.", 403
 
     # Check if tenant has GAM configured
-    conn = get_db_connection()
-    cursor = conn.execute(
-        """
-        SELECT adapter_type
-        FROM adapter_config
-        WHERE tenant_id = ?
-    """,
-        (tenant_id,),
-    )
-    adapter_row = cursor.fetchone()
-    has_gam = adapter_row and adapter_row[0] == "google_ad_manager"
-    # Context manager handles cleanup
+    with get_db_session() as db_session:
+        adapter_config = db_session.query(AdapterConfig).filter_by(
+            tenant_id=tenant_id
+        ).first()
+        has_gam = adapter_config and adapter_config.adapter_type == "google_ad_manager"
 
     if request.method == "POST":
         # Validate form data
@@ -3738,48 +3729,41 @@ def create_principal(tenant_id):
                 has_gam=has_gam,
             )
 
-        conn = get_db_connection()
-        try:
-            principal_id = form_data["principal_id"]
-            name = form_data["name"]
+        with get_db_session() as db_session:
+            try:
+                principal_id = form_data["principal_id"]
+                name = form_data["name"]
 
-            # Generate a secure access token
-            access_token = secrets.token_urlsafe(32)
+                # Generate a secure access token
+                access_token = secrets.token_urlsafe(32)
 
-            # Build platform mappings
-            platform_mappings = {}
-            if has_gam and form_data.get("gam_advertiser_id"):
-                platform_mappings["gam_advertiser_id"] = form_data["gam_advertiser_id"]
+                # Build platform mappings
+                platform_mappings = {}
+                if has_gam and form_data.get("gam_advertiser_id"):
+                    platform_mappings["gam_advertiser_id"] = form_data["gam_advertiser_id"]
 
-            # Create the principal
-            conn.execute(
-                """
-                INSERT INTO principals (tenant_id, principal_id, name, platform_mappings, access_token)
-                VALUES (?, ?, ?, ?, ?)
-            """,
-                (
-                    tenant_id,
-                    principal_id,
-                    name,
-                    json.dumps(platform_mappings),
-                    access_token,
-                ),
-            )
+                # Create the principal
+                new_principal = Principal(
+                    tenant_id=tenant_id,
+                    principal_id=principal_id,
+                    name=name,
+                    platform_mappings=platform_mappings,
+                    access_token=access_token
+                )
+                db_session.add(new_principal)
+                db_session.commit()
 
-            db_session.commit()
-            # Context manager handles cleanup
-
-            return redirect(
-                url_for("tenant_dashboard", tenant_id=tenant_id) + "#principals"
-            )
-        except Exception as e:
-            # Context manager handles cleanup
-            return render_template(
-                "create_principal.html",
-                tenant_id=tenant_id,
-                error=str(e),
-                has_gam=has_gam,
-            )
+                return redirect(
+                    url_for("tenant_dashboard", tenant_id=tenant_id) + "#principals"
+                )
+            except Exception as e:
+                db_session.rollback()
+                return render_template(
+                    "create_principal.html",
+                    tenant_id=tenant_id,
+                    error=str(e),
+                    has_gam=has_gam,
+                )
 
     return render_template(
         "create_principal.html", tenant_id=tenant_id, has_gam=has_gam
@@ -4122,18 +4106,15 @@ def list_products(tenant_id):
     if session.get("role") != "super_admin" and session.get("tenant_id") != tenant_id:
         return "Access denied", 403
 
-    conn = get_db_connection()
+    with get_db_session() as db_session:
+        # Get tenant
+        tenant = db_session.query(Tenant).filter_by(tenant_id=tenant_id).first()
+        if not tenant:
+            return "Tenant not found", 404
+        tenant_name = tenant.name
 
-    # Get tenant name
-    cursor = conn.execute("SELECT name FROM tenants WHERE tenant_id = ?", (tenant_id,))
-    row = cursor.fetchone()
-    if not row:
-        # Context manager handles cleanup
-        return "Tenant not found", 404
-    tenant_name = row[0]
-
-    # Get tenant config using helper function
-    tenant_config = get_tenant_config_from_db(conn, tenant_id)
+        # Get tenant config
+        tenant_config = get_tenant_config_from_db(tenant_id)
 
     # Get active adapter from config
     active_adapter = None
@@ -4156,16 +4137,9 @@ def list_products(tenant_id):
         )
 
         # Get adapter configuration from adapter_config table
-        cursor = conn.execute(
-            """
-            SELECT mock_dry_run, gam_network_code, gam_refresh_token,
-                   kevel_network_id, kevel_api_key
-            FROM adapter_config
-            WHERE tenant_id = ?
-        """,
-            (tenant_id,),
-        )
-        adapter_row = cursor.fetchone()
+        adapter_config = db_session.query(AdapterConfig).filter_by(
+            tenant_id=tenant_id
+        ).first()
 
         try:
             if active_adapter == "google_ad_manager":
@@ -4173,8 +4147,8 @@ def list_products(tenant_id):
 
                 config = {
                     "enabled": True,
-                    "network_code": adapter_row[1] if adapter_row else None,
-                    "refresh_token": adapter_row[2] if adapter_row else None,
+                    "network_code": adapter_config.gam_network_code if adapter_config else None,
+                    "refresh_token": adapter_config.gam_refresh_token if adapter_config else None,
                 }
                 adapter = GoogleAdManager(
                     config, dummy_principal, dry_run=True, tenant_id=tenant_id
@@ -4185,7 +4159,7 @@ def list_products(tenant_id):
 
                 config = {
                     "enabled": True,
-                    "dry_run": adapter_row[0] if adapter_row else False,
+                    "dry_run": adapter_config.mock_dry_run if adapter_config else False,
                 }
                 adapter = MockAdServer(
                     config, dummy_principal, dry_run=True, tenant_id=tenant_id
@@ -4196,61 +4170,36 @@ def list_products(tenant_id):
             app.logger.error(f"Error getting adapter UI endpoint: {e}")
             pass
 
-    # Get products
-    cursor = conn.execute(
-        """
-        SELECT product_id, name, description, formats, delivery_type,
-               is_fixed_price, cpm, price_guidance, is_custom, expires_at, countries
-        FROM products
-        WHERE tenant_id = ?
-        ORDER BY product_id
-    """,
-        (tenant_id,),
-    )
+        # Get products
+        product_objs = db_session.query(Product).filter_by(
+            tenant_id=tenant_id
+        ).order_by(Product.product_id).all()
 
-    products = []
-    for row in cursor.fetchall():
-        # Handle PostgreSQL (returns objects) vs SQLite (returns JSON strings)
-        formats = (
-            row[3]
-            if isinstance(row[3], list)
-            else (json.loads(row[3]) if row[3] else [])
-        )
-        price_guidance = (
-            row[7]
-            if isinstance(row[7], dict)
-            else (json.loads(row[7]) if row[7] else None)
-        )
-        countries = (
-            row[10]
-            if isinstance(row[10], list)
-            else (json.loads(row[10]) if row[10] else None)
-        )
+        products = []
+        for prod in product_objs:
+            products.append(
+                {
+                    "product_id": prod.product_id,
+                    "name": prod.name,
+                    "description": prod.description,
+                    "formats": prod.formats if prod.formats else [],
+                    "delivery_type": prod.delivery_type,
+                    "is_fixed_price": prod.is_fixed_price,
+                    "cpm": prod.cpm,
+                    "price_guidance": prod.price_guidance,
+                    "is_custom": prod.is_custom,
+                    "expires_at": prod.expires_at,
+                    "countries": prod.countries,
+                }
+            )
 
-        products.append(
-            {
-                "product_id": row[0],
-                "name": row[1],
-                "description": row[2],
-                "formats": formats,
-                "delivery_type": row[4],
-                "is_fixed_price": row[5],
-                "cpm": row[6],
-                "price_guidance": price_guidance,
-                "is_custom": row[8],
-                "expires_at": row[9],
-                "countries": countries,
-            }
+        return render_template(
+            "products.html",
+            tenant_id=tenant_id,
+            tenant_name=tenant_name,
+            products=products,
+            adapter_ui_endpoint=adapter_ui_endpoint,
         )
-
-    # Context manager handles cleanup
-    return render_template(
-        "products.html",
-        tenant_id=tenant_id,
-        tenant_name=tenant_name,
-        products=products,
-        adapter_ui_endpoint=adapter_ui_endpoint,
-    )
 
 
 @app.route("/tenant/<tenant_id>/products/<product_id>/edit", methods=["GET", "POST"])
