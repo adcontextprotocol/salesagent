@@ -1729,20 +1729,14 @@ def update_adapter_settings(tenant_id):
         if new_adapter not in valid_adapters:
             return f"Invalid adapter: {new_adapter}", 400
 
-        conn = get_db_connection()
-
-        # Update the tenant's active adapter
-        conn.execute(
-            """
-            UPDATE tenants
-            SET ad_server = ?
-            WHERE tenant_id = ?
-        """,
-            (new_adapter, tenant_id),
-        )
-
-        conn.commit()
-        # Context manager handles cleanup
+        with get_db_session() as db_session:
+            # Update the tenant's active adapter
+            tenant = db_session.query(Tenant).filter_by(tenant_id=tenant_id).first()
+            if tenant:
+                tenant.ad_server = new_adapter
+                db_session.commit()
+            else:
+                return f"Tenant {tenant_id} not found", 404
 
         app.logger.info(f"Tenant {tenant_id} switched adapter to {new_adapter}")
         return "Adapter updated successfully", 200
@@ -1758,19 +1752,18 @@ def oauth_status():
     """Check if OAuth credentials are properly configured for GAM."""
     try:
         # Check for GAM OAuth credentials in superadmin_config table (as per original implementation)
-        conn = get_db_connection()
+        with get_db_session() as db_session:
+            client_id_row = (
+                db_session.query(SuperadminConfig.config_value)
+                .filter_by(config_key="gam_oauth_client_id")
+                .first()
+            )
 
-        cursor = conn.execute(
-            "SELECT config_value FROM superadmin_config WHERE config_key = 'gam_oauth_client_id'"
-        )
-        client_id_row = cursor.fetchone()
-
-        cursor = conn.execute(
-            "SELECT config_value FROM superadmin_config WHERE config_key = 'gam_oauth_client_secret'"
-        )
-        client_secret_row = cursor.fetchone()
-
-        # Context manager handles cleanup
+            client_secret_row = (
+                db_session.query(SuperadminConfig.config_value)
+                .filter_by(config_key="gam_oauth_client_secret")
+                .first()
+            )
 
         if (
             client_id_row
@@ -1835,45 +1828,44 @@ def detect_gam_network(tenant_id):
         from googleads import oauth2, ad_manager
 
         # Get OAuth credentials from superadmin_config table (as per original implementation)
-        conn = get_db_connection()
-
-        # Get GAM OAuth client credentials from superadmin config
-        cursor = conn.execute(
-            "SELECT config_value FROM superadmin_config WHERE config_key = 'gam_oauth_client_id'"
-        )
-        client_id_row = cursor.fetchone()
-
-        cursor = conn.execute(
-            "SELECT config_value FROM superadmin_config WHERE config_key = 'gam_oauth_client_secret'"
-        )
-        client_secret_row = cursor.fetchone()
-
-        # Context manager handles cleanup
-
-        if not client_id_row or not client_id_row[0]:
-            return (
-                jsonify(
-                    {
-                        "success": False,
-                        "error": "GAM OAuth Client ID not configured. Please configure it in superadmin settings.",
-                    }
-                ),
-                500,
+        with get_db_session() as db_session:
+            # Get GAM OAuth client credentials from superadmin config
+            client_id_row = (
+                db_session.query(SuperadminConfig.config_value)
+                .filter_by(config_key="gam_oauth_client_id")
+                .first()
             )
 
-        if not client_secret_row or not client_secret_row[0]:
-            return (
-                jsonify(
-                    {
-                        "success": False,
-                        "error": "GAM OAuth Client Secret not configured. Please configure it in superadmin settings.",
-                    }
-                ),
-                500,
+            client_secret_row = (
+                db_session.query(SuperadminConfig.config_value)
+                .filter_by(config_key="gam_oauth_client_secret")
+                .first()
             )
 
-        client_id = client_id_row[0]
-        client_secret = client_secret_row[0]
+            if not client_id_row or not client_id_row[0]:
+                return (
+                    jsonify(
+                        {
+                            "success": False,
+                            "error": "GAM OAuth Client ID not configured. Please configure it in superadmin settings.",
+                        }
+                    ),
+                    500,
+                )
+
+            if not client_secret_row or not client_secret_row[0]:
+                return (
+                    jsonify(
+                        {
+                            "success": False,
+                            "error": "GAM OAuth Client Secret not configured. Please configure it in superadmin settings.",
+                        }
+                    ),
+                    500,
+                )
+
+            client_id = client_id_row[0]
+            client_secret = client_secret_row[0]
 
         # Create OAuth2 client with refresh token
         oauth2_client = oauth2.GoogleRefreshTokenClient(
@@ -2035,88 +2027,60 @@ def configure_gam(tenant_id):
         if not trafficker_id:
             app.logger.warning(f"No trafficker_id provided for tenant {tenant_id}")
 
-        conn = get_db_connection()
-        try:
-            # Check if ANY adapter config exists for this tenant
-            cursor = conn.execute(
-                """
-                SELECT adapter_type FROM adapter_config
-                WHERE tenant_id = ?
-            """,
-                (tenant_id,),
-            )
-
-            existing_config = cursor.fetchone()
-
-            if existing_config:
-                # Check if it's already GAM config
-                if existing_config[0] == "google_ad_manager":
-                    # Update existing GAM config
-                    conn.execute(
-                        """
-                        UPDATE adapter_config
-                        SET gam_network_code = ?, gam_refresh_token = ?, gam_trafficker_id = ?, updated_at = CURRENT_TIMESTAMP
-                        WHERE tenant_id = ?
-                    """,
-                        (network_code, refresh_token, trafficker_id, tenant_id),
-                    )
-                else:
-                    # Different adapter type exists, need to replace it
-                    # First delete the old config
-                    conn.execute(
-                        "DELETE FROM adapter_config WHERE tenant_id = ?", (tenant_id,)
-                    )
-                    # Then insert new GAM config
-                    conn.execute(
-                        """
-                        INSERT INTO adapter_config (
-                            tenant_id, adapter_type, gam_network_code, gam_refresh_token, gam_trafficker_id,
-                            created_at, updated_at
-                        ) VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-                    """,
-                        (
-                            tenant_id,
-                            "google_ad_manager",
-                            network_code,
-                            refresh_token,
-                            trafficker_id,
-                        ),
-                    )
-            else:
-                # No existing config, insert new one
-                conn.execute(
-                    """
-                    INSERT INTO adapter_config (
-                        tenant_id, adapter_type, gam_network_code, gam_refresh_token, gam_trafficker_id,
-                        created_at, updated_at
-                    ) VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-                """,
-                    (
-                        tenant_id,
-                        "google_ad_manager",
-                        network_code,
-                        refresh_token,
-                        trafficker_id,
-                    ),
+        with get_db_session() as db_session:
+            try:
+                # Check if ANY adapter config exists for this tenant
+                existing_config = (
+                    db_session.query(AdapterConfig)
+                    .filter_by(tenant_id=tenant_id)
+                    .first()
                 )
 
-            # Always update the tenant's active adapter to GAM when configuring GAM
-            conn.execute(
-                """
-                UPDATE tenants
-                SET ad_server = 'google_ad_manager'
-                WHERE tenant_id = ?
-            """,
-                (tenant_id,),
-            )
+                if existing_config:
+                    # Check if it's already GAM config
+                    if existing_config.adapter_type == "google_ad_manager":
+                        # Update existing GAM config
+                        existing_config.gam_network_code = network_code
+                        existing_config.gam_refresh_token = refresh_token
+                        existing_config.gam_trafficker_id = trafficker_id
+                        existing_config.updated_at = datetime.utcnow()
+                    else:
+                        # Different adapter type exists, need to replace it
+                        # First delete the old config
+                        db_session.delete(existing_config)
+                        # Then insert new GAM config
+                        new_config = AdapterConfig(
+                            tenant_id=tenant_id,
+                            adapter_type="google_ad_manager",
+                            gam_network_code=network_code,
+                            gam_refresh_token=refresh_token,
+                            gam_trafficker_id=trafficker_id,
+                            created_at=datetime.utcnow(),
+                            updated_at=datetime.utcnow(),
+                        )
+                        db_session.add(new_config)
+                else:
+                    # No existing config, insert new one
+                    new_config = AdapterConfig(
+                        tenant_id=tenant_id,
+                        adapter_type="google_ad_manager",
+                        gam_network_code=network_code,
+                        gam_refresh_token=refresh_token,
+                        gam_trafficker_id=trafficker_id,
+                        created_at=datetime.utcnow(),
+                        updated_at=datetime.utcnow(),
+                    )
+                    db_session.add(new_config)
 
-            conn.commit()
-        except Exception:
-            conn.rollback()
-            raise
-        finally:
-            # Context manager handles cleanup
-            pass
+                # Always update the tenant's active adapter to GAM when configuring GAM
+                tenant = db_session.query(Tenant).filter_by(tenant_id=tenant_id).first()
+                if tenant:
+                    tenant.ad_server = "google_ad_manager"
+
+                db_session.commit()
+            except Exception:
+                db_session.rollback()
+                raise
 
         app.logger.info(f"GAM configuration saved for tenant {tenant_id}")
         return jsonify(
@@ -2144,24 +2108,12 @@ def update_slack_settings(tenant_id):
     if session.get("role") == "viewer":
         return "Access denied", 403
 
-    conn = get_db_connection()
-
-    conn.execute(
-        """
-        UPDATE tenants SET
-            slack_webhook_url = ?,
-            slack_audit_webhook_url = ?
-        WHERE tenant_id = ?
-    """,
-        (
-            request.form.get("slack_webhook_url"),
-            request.form.get("slack_audit_webhook_url"),
-            tenant_id,
-        ),
-    )
-
-    conn.commit()
-    # Context manager handles cleanup
+    with get_db_session() as db_session:
+        tenant = db_session.query(Tenant).filter_by(tenant_id=tenant_id).first()
+        if tenant:
+            tenant.slack_webhook_url = request.form.get("slack_webhook_url")
+            tenant.slack_audit_webhook_url = request.form.get("slack_audit_webhook_url")
+            db_session.commit()
 
     flash("Slack settings updated successfully", "success")
     return redirect(
@@ -2235,30 +2187,27 @@ def orders_browser(tenant_id):
     if session.get("role") != "super_admin" and session.get("tenant_id") != tenant_id:
         return "Access denied", 403
 
-    conn = get_db_connection()
-    cursor = conn.execute("SELECT name FROM tenants WHERE tenant_id = ?", (tenant_id,))
-    row = cursor.fetchone()
-    if not row:
-        # Context manager handles cleanup
-        return "Tenant not found", 404
+    with get_db_session() as db_session:
+        tenant = db_session.query(Tenant).filter_by(tenant_id=tenant_id).first()
+        if not tenant:
+            return "Tenant not found", 404
 
-    tenant_name = row[0]
+        tenant_name = tenant.name
 
-    # Get API key for API calls
-    cursor = conn.execute(
-        "SELECT config_value FROM superadmin_config WHERE config_key = 'api_key'"
-    )
-    api_key_row = cursor.fetchone()
-    api_key = api_key_row[0] if api_key_row else ""
+        # Get API key for API calls
+        api_key_row = (
+            db_session.query(SuperadminConfig.config_value)
+            .filter_by(config_key="api_key")
+            .first()
+        )
+        api_key = api_key_row[0] if api_key_row else ""
 
-    # Context manager handles cleanup
-
-    return render_template(
-        "orders_browser.html",
-        tenant_id=tenant_id,
-        tenant_name=tenant_name,
-        api_key=api_key,
-    )
+        return render_template(
+            "orders_browser.html",
+            tenant_id=tenant_id,
+            tenant_name=tenant_name,
+            api_key=api_key,
+        )
 
 
 @app.route("/api/tenant/<tenant_id>/sync/orders", methods=["POST"])
@@ -2328,31 +2277,34 @@ def gam_reporting_dashboard(tenant_id):
         return "Access denied", 403
 
     # Get tenant and check if it's using GAM
-    conn = get_db_connection()
-    tenant_cursor = conn.execute(
-        "SELECT * FROM tenants WHERE tenant_id = ?", (tenant_id,)
-    )
-    tenant = tenant_cursor.fetchone()
+    with get_db_session() as db_session:
+        tenant_obj = db_session.query(Tenant).filter_by(tenant_id=tenant_id).first()
 
-    if not tenant:
-        # Context manager handles cleanup
-        return "Tenant not found", 404
+        if not tenant_obj:
+            return "Tenant not found", 404
 
-    # Check if tenant is using Google Ad Manager
-    if tenant.get("ad_server") != "google_ad_manager":
-        # Context manager handles cleanup
-        return (
-            render_template(
-                "error.html",
-                error_title="GAM Reporting Not Available",
-                error_message=f"This tenant is currently using {tenant.get('ad_server', 'no ad server')}. GAM Reporting is only available for tenants using Google Ad Manager.",
-                back_url=f"/tenant/{tenant_id}",
-            ),
-            400,
-        )
+        # Convert to dict for template compatibility
+        tenant = {
+            "tenant_id": tenant_obj.tenant_id,
+            "name": tenant_obj.name,
+            "ad_server": tenant_obj.ad_server,
+            "subdomain": tenant_obj.subdomain,
+            "is_active": tenant_obj.is_active,
+        }
 
-    # Context manager handles cleanup
-    return render_template("gam_reporting.html", tenant=tenant)
+        # Check if tenant is using Google Ad Manager
+        if tenant_obj.ad_server != "google_ad_manager":
+            return (
+                render_template(
+                    "error.html",
+                    error_title="GAM Reporting Not Available",
+                    error_message=f"This tenant is currently using {tenant_obj.ad_server or 'no ad server'}. GAM Reporting is only available for tenants using Google Ad Manager.",
+                    back_url=f"/tenant/{tenant_id}",
+                ),
+                400,
+            )
+
+        return render_template("gam_reporting.html", tenant=tenant)
 
 
 # Sync Status API for Admin UI
@@ -2364,68 +2316,63 @@ def get_tenant_sync_status(tenant_id):
     if session.get("role") != "super_admin" and session.get("tenant_id") != tenant_id:
         return jsonify({"error": "Access denied"}), 403
 
-    conn = get_db_connection()
+    with get_db_session() as db_session:
+        # Check if tenant exists and uses GAM
+        tenant = db_session.query(Tenant).filter_by(tenant_id=tenant_id).first()
 
-    # Check if tenant exists and uses GAM
-    tenant_cursor = conn.execute(
-        "SELECT ad_server FROM tenants WHERE tenant_id = ?", (tenant_id,)
-    )
-    tenant = tenant_cursor.fetchone()
+        if not tenant:
+            return jsonify({"error": "Tenant not found"}), 404
 
-    if not tenant:
-        # Context manager handles cleanup
-        return jsonify({"error": "Tenant not found"}), 404
+        if tenant.ad_server != "google_ad_manager":
+            return jsonify({"error": "Sync only available for GAM tenants"}), 400
 
-    if tenant.get("ad_server") != "google_ad_manager":
-        # Context manager handles cleanup
-        return jsonify({"error": "Sync only available for GAM tenants"}), 400
+        # Get latest sync job
+        from models import SyncJob, GamInventory
+        from sqlalchemy import func, case
 
-    # Get latest sync job
-    sync_cursor = conn.execute(
-        """
-        SELECT started_at, status, summary
-        FROM sync_jobs
-        WHERE tenant_id = ?
-        ORDER BY started_at DESC
-        LIMIT 1
-    """,
-        (tenant_id,),
-    )
-    sync_job = sync_cursor.fetchone()
+        sync_job = (
+            db_session.query(SyncJob.started_at, SyncJob.status, SyncJob.summary)
+            .filter_by(tenant_id=tenant_id)
+            .order_by(SyncJob.started_at.desc())
+            .first()
+        )
 
-    # Get inventory counts
-    inventory_cursor = conn.execute(
-        """
-        SELECT
-            COUNT(CASE WHEN inventory_type = 'ad_unit' THEN 1 END) as ad_units,
-            COUNT(CASE WHEN inventory_type = 'custom_targeting_key' THEN 1 END) as custom_targeting_keys,
-            COUNT(CASE WHEN inventory_type = 'custom_targeting_value' THEN 1 END) as custom_targeting_values,
-            COUNT(*) as total
-        FROM gam_inventory
-        WHERE tenant_id = ?
-    """,
-        (tenant_id,),
-    )
-    counts = inventory_cursor.fetchone()
+        # Get inventory counts
+        counts_query = (
+            db_session.query(
+                func.count(case((GamInventory.inventory_type == "ad_unit", 1))).label(
+                    "ad_units"
+                ),
+                func.count(
+                    case((GamInventory.inventory_type == "custom_targeting_key", 1))
+                ).label("custom_targeting_keys"),
+                func.count(
+                    case((GamInventory.inventory_type == "custom_targeting_value", 1))
+                ).label("custom_targeting_values"),
+                func.count(GamInventory.id).label("total"),
+            )
+            .filter_by(tenant_id=tenant_id)
+            .first()
+        )
 
-    # Context manager handles cleanup
+        counts = counts_query if counts_query else None
 
     response = {
         "last_sync": None,
         "sync_running": False,
-        "item_count": counts["total"] if counts else 0,
+        "item_count": counts.total if counts else 0,
         "breakdown": None,
     }
 
     if sync_job:
-        response["last_sync"] = sync_job["started_at"]
-        response["sync_running"] = sync_job["status"] == "running"
+        response["last_sync"] = sync_job.started_at
+        response["sync_running"] = sync_job.status == "running"
 
-        if counts and counts["total"] > 0:
+        if counts and counts.total > 0:
             response["breakdown"] = {
-                "ad_units": counts["ad_units"],
-                "custom_targeting_keys": counts["custom_targeting_keys"],
-                "custom_targeting_values": counts["custom_targeting_values"],
+                "ad_units": counts.ad_units,
+                "custom_targeting_keys": counts.custom_targeting_keys,
+                "custom_targeting_values": counts.custom_targeting_values,
             }
 
     return jsonify(response)
@@ -2440,53 +2387,50 @@ def trigger_tenant_sync(tenant_id):
     if session.get("role") != "super_admin":
         return jsonify({"error": "Only super admins can trigger sync"}), 403
 
-    conn = get_db_connection()
+    with get_db_session() as db_session:
+        # Check if tenant exists and uses GAM
+        tenant = db_session.query(Tenant).filter_by(tenant_id=tenant_id).first()
 
-    # Check if tenant exists and uses GAM
-    tenant_cursor = conn.execute(
-        "SELECT ad_server FROM tenants WHERE tenant_id = ?", (tenant_id,)
-    )
-    tenant = tenant_cursor.fetchone()
+        if not tenant:
+            return jsonify({"error": "Tenant not found"}), 404
 
-    if not tenant:
-        # Context manager handles cleanup
-        return jsonify({"error": "Tenant not found"}), 404
+        if tenant.ad_server != "google_ad_manager":
+            return jsonify({"error": "Sync only available for GAM tenants"}), 400
 
-    if tenant.get("ad_server") != "google_ad_manager":
-        # Context manager handles cleanup
-        return jsonify({"error": "Sync only available for GAM tenants"}), 400
+        try:
+            # Create a new sync job
+            import uuid
+            from datetime import datetime
+            from models import SyncJob
 
-    try:
-        # Create a new sync job
-        import uuid
-        from datetime import datetime
+            sync_id = str(uuid.uuid4())
+            new_sync_job = SyncJob(
+                sync_id=sync_id,
+                tenant_id=tenant_id,
+                adapter_type="google_ad_manager",
+                sync_type="manual",
+                status="pending",
+                started_at=datetime.utcnow(),
+                triggered_by="admin_ui",
+            )
+            db_session.add(new_sync_job)
+            db_session.commit()
 
-        sync_id = str(uuid.uuid4())
-        conn.execute(
-            """
-            INSERT INTO sync_jobs (sync_id, tenant_id, adapter_type, sync_type, status, started_at, triggered_by)
-            VALUES (?, ?, 'google_ad_manager', 'manual', 'pending', ?, 'admin_ui')
-        """,
-            (sync_id, tenant_id, datetime.utcnow()),
-        )
-        conn.commit()
+            # Note: In a real implementation, this would trigger an async job
+            # For now, we'll just mark it as pending and let the background worker handle it
 
-        # Note: In a real implementation, this would trigger an async job
-        # For now, we'll just mark it as pending and let the background worker handle it
+            return jsonify(
+                {
+                    "success": True,
+                    "sync_id": sync_id,
+                    "message": "Sync job queued successfully",
+                }
+            )
 
-        # Context manager handles cleanup
-        return jsonify(
-            {
-                "success": True,
-                "sync_id": sync_id,
-                "message": "Sync job queued successfully",
-            }
-        )
-
-    except Exception as e:
-        # Context manager handles cleanup
-        app.logger.error(f"Error triggering sync for tenant {tenant_id}: {str(e)}")
-        return jsonify({"error": "Failed to trigger sync", "details": str(e)}), 500
+        except Exception as e:
+            db_session.rollback()
+            app.logger.error(f"Error triggering sync for tenant {tenant_id}: {str(e)}")
+            return jsonify({"error": "Failed to trigger sync", "details": str(e)}), 500
 
 
 @app.route("/api/tenant/<tenant_id>/orders", methods=["GET"])
@@ -3684,9 +3628,9 @@ def create_principal(tenant_id):
 
     # Check if tenant has GAM configured
     with get_db_session() as db_session:
-        adapter_config = db_session.query(AdapterConfig).filter_by(
-            tenant_id=tenant_id
-        ).first()
+        adapter_config = (
+            db_session.query(AdapterConfig).filter_by(tenant_id=tenant_id).first()
+        )
         has_gam = adapter_config and adapter_config.adapter_type == "google_ad_manager"
 
     if request.method == "POST":
@@ -3740,7 +3684,9 @@ def create_principal(tenant_id):
                 # Build platform mappings
                 platform_mappings = {}
                 if has_gam and form_data.get("gam_advertiser_id"):
-                    platform_mappings["gam_advertiser_id"] = form_data["gam_advertiser_id"]
+                    platform_mappings["gam_advertiser_id"] = form_data[
+                        "gam_advertiser_id"
+                    ]
 
                 # Create the principal
                 new_principal = Principal(
@@ -3748,7 +3694,7 @@ def create_principal(tenant_id):
                     principal_id=principal_id,
                     name=name,
                     platform_mappings=platform_mappings,
-                    access_token=access_token
+                    access_token=access_token,
                 )
                 db_session.add(new_principal)
                 db_session.commit()
@@ -4137,9 +4083,9 @@ def list_products(tenant_id):
         )
 
         # Get adapter configuration from adapter_config table
-        adapter_config = db_session.query(AdapterConfig).filter_by(
-            tenant_id=tenant_id
-        ).first()
+        adapter_config = (
+            db_session.query(AdapterConfig).filter_by(tenant_id=tenant_id).first()
+        )
 
         try:
             if active_adapter == "google_ad_manager":
@@ -4147,8 +4093,12 @@ def list_products(tenant_id):
 
                 config = {
                     "enabled": True,
-                    "network_code": adapter_config.gam_network_code if adapter_config else None,
-                    "refresh_token": adapter_config.gam_refresh_token if adapter_config else None,
+                    "network_code": adapter_config.gam_network_code
+                    if adapter_config
+                    else None,
+                    "refresh_token": adapter_config.gam_refresh_token
+                    if adapter_config
+                    else None,
                 }
                 adapter = GoogleAdManager(
                     config, dummy_principal, dry_run=True, tenant_id=tenant_id
@@ -4171,9 +4121,12 @@ def list_products(tenant_id):
             pass
 
         # Get products
-        product_objs = db_session.query(Product).filter_by(
-            tenant_id=tenant_id
-        ).order_by(Product.product_id).all()
+        product_objs = (
+            db_session.query(Product)
+            .filter_by(tenant_id=tenant_id)
+            .order_by(Product.product_id)
+            .all()
+        )
 
         products = []
         for prod in product_objs:
