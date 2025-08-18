@@ -2,12 +2,13 @@
 Unit tests for the Super Admin API endpoints.
 """
 
-import json
-import pytest
-import secrets
 import logging
-from unittest.mock import MagicMock, patch, Mock
+import secrets
+from unittest.mock import MagicMock, patch
+
+import pytest
 from flask import Flask
+
 from superadmin_api import superadmin_api
 
 pytestmark = pytest.mark.unit
@@ -51,13 +52,16 @@ def mock_session():
 class TestSuperAdminHealthAPI:
     """Test health check endpoints."""
 
-    def test_health_check_with_invalid_api_key(self, client, mock_session):
+    def test_health_check_with_invalid_api_key(self, client, mock_session, api_key):
         """Test health check fails with invalid API key."""
-        # Mock returns None for invalid key
-        mock_session.query.return_value.filter_by.return_value.first.return_value = None
-        
-        response = client.get("/api/v1/superadmin/health", 
-                            headers={"X-Superadmin-API-Key": "sk-invalid-key"})
+        # Mock returns a config with a different key (so auth fails with 401, not 503)
+        mock_config = MagicMock()
+        mock_config.config_value = api_key  # Correct key
+        mock_session.query.return_value.filter_by.return_value.first.return_value = mock_config
+
+        response = client.get(
+            "/api/v1/superadmin/health", headers={"X-Superadmin-API-Key": "sk-invalid-key"}
+        )  # Wrong key
         assert response.status_code == 401
         assert response.json["error"] == "Invalid API key"
 
@@ -68,8 +72,7 @@ class TestSuperAdminHealthAPI:
         mock_config.config_value = api_key
         mock_session.query.return_value.filter_by.return_value.first.return_value = mock_config
 
-        response = client.get("/api/v1/superadmin/health", 
-                            headers={"X-Superadmin-API-Key": api_key})
+        response = client.get("/api/v1/superadmin/health", headers={"X-Superadmin-API-Key": api_key})
         assert response.status_code == 200
         assert response.json["status"] == "healthy"
         assert "timestamp" in response.json
@@ -80,48 +83,55 @@ class TestSuperAdminTenantAPI:
 
     def test_list_tenants(self, client, mock_session, api_key):
         """Test listing tenants."""
-        # Set up separate query chains
-        auth_query_chain = MagicMock()
+        # Set up auth config first
         mock_config = MagicMock()
         mock_config.config_value = api_key
-        auth_query_chain.filter_by.return_value.first.return_value = mock_config
-        
-        # Mock tenants
-        mock_tenant1 = MagicMock()
-        mock_tenant1.tenant_id = "tenant_123"
-        mock_tenant1.name = "Test Publisher"
-        mock_tenant1.subdomain = "test"
-        mock_tenant1.is_active = True
-        mock_tenant1.billing_plan = "standard"
-        mock_tenant1.created_at = "2025-01-06T12:00:00"
-        mock_tenant1.policy_enabled = True
-        
-        mock_adapter1 = MagicMock()
-        mock_adapter1.ad_server = "google_ad_manager"
-        
-        mock_tenant2 = MagicMock()
-        mock_tenant2.tenant_id = "tenant_456"
-        mock_tenant2.name = "Another Publisher"
-        mock_tenant2.subdomain = "another"
-        mock_tenant2.is_active = True
-        mock_tenant2.billing_plan = "premium"
-        mock_tenant2.created_at = "2025-01-07T12:00:00"
-        mock_tenant2.policy_enabled = False
-        
-        mock_adapter2 = MagicMock()
-        mock_adapter2.ad_server = "mock"
-        
-        tenant_query_chain = MagicMock()
-        tenant_query_chain.outerjoin.return_value.all.return_value = [
-            (mock_tenant1, mock_adapter1),
-            (mock_tenant2, mock_adapter2)
-        ]
-        
-        # Configure query() to return different chains based on call count
-        mock_session.query.side_effect = [auth_query_chain, tenant_query_chain]
 
-        response = client.get("/api/v1/superadmin/tenants", 
-                            headers={"X-Superadmin-API-Key": api_key})
+        # Mock tenant query results with has_adapter count
+        from datetime import datetime
+
+        mock_row1 = MagicMock()
+        mock_row1.tenant_id = "tenant_123"
+        mock_row1.name = "Test Publisher"
+        mock_row1.subdomain = "test"
+        mock_row1.is_active = True
+        mock_row1.billing_plan = "standard"
+        mock_row1.ad_server = "google_ad_manager"
+        mock_row1.created_at = datetime.fromisoformat("2025-01-06T12:00:00")
+        mock_row1.has_adapter = 1
+
+        mock_row2 = MagicMock()
+        mock_row2.tenant_id = "tenant_456"
+        mock_row2.name = "Another Publisher"
+        mock_row2.subdomain = "another"
+        mock_row2.is_active = True
+        mock_row2.billing_plan = "premium"
+        mock_row2.ad_server = "mock"
+        mock_row2.created_at = datetime.fromisoformat("2025-01-07T12:00:00")
+        mock_row2.has_adapter = 0
+
+        # Set up the query chain
+        tenant_query = MagicMock()
+        tenant_query.outerjoin.return_value.group_by.return_value.order_by.return_value = [mock_row1, mock_row2]
+
+        # Configure mock_session.query to return auth config first, then tenant query
+        query_call_count = 0
+
+        def query_side_effect(*args, **kwargs):
+            nonlocal query_call_count
+            query_call_count += 1
+            if query_call_count == 1:
+                # First call is for auth
+                auth_query = MagicMock()
+                auth_query.filter_by.return_value.first.return_value = mock_config
+                return auth_query
+            else:
+                # Second call is for tenants
+                return tenant_query
+
+        mock_session.query.side_effect = query_side_effect
+
+        response = client.get("/api/v1/superadmin/tenants", headers={"X-Superadmin-API-Key": api_key})
 
         assert response.status_code == 200
         data = response.json
@@ -139,9 +149,7 @@ class TestSuperAdminTenantAPI:
         mock_session.query.return_value.filter_by.return_value.first.return_value = mock_config
 
         response = client.post(
-            "/api/v1/superadmin/tenants", 
-            headers={"X-Superadmin-API-Key": api_key}, 
-            json={"name": "Test"}
+            "/api/v1/superadmin/tenants", headers={"X-Superadmin-API-Key": api_key}, json={"name": "Test"}
         )
 
         assert response.status_code == 400
@@ -149,22 +157,11 @@ class TestSuperAdminTenantAPI:
 
     def test_create_tenant_success(self, client, mock_session, api_key):
         """Test successful tenant creation."""
-        # Set up auth query
-        auth_query = MagicMock()
+        # Mock auth config
         mock_config = MagicMock()
         mock_config.config_value = api_key
-        auth_query.filter_by.return_value.first.return_value = mock_config
-        
-        # Set up duplicate check queries (both return None - no duplicates)
-        duplicate_query1 = MagicMock()
-        duplicate_query1.filter_by.return_value.first.return_value = None
-        
-        duplicate_query2 = MagicMock()
-        duplicate_query2.filter_by.return_value.first.return_value = None
-        
-        # Configure query() to return different chains
-        mock_session.query.side_effect = [auth_query, duplicate_query1, duplicate_query2]
-        
+        mock_session.query.return_value.filter_by.return_value.first.return_value = mock_config
+
         # Mock add and commit
         mock_session.add = MagicMock()
         mock_session.commit = MagicMock()
@@ -178,9 +175,7 @@ class TestSuperAdminTenantAPI:
             "refresh_token": "test_token",
         }
 
-        response = client.post("/api/v1/superadmin/tenants", 
-                             headers={"X-Superadmin-API-Key": api_key}, 
-                             json=payload)
+        response = client.post("/api/v1/superadmin/tenants", headers={"X-Superadmin-API-Key": api_key}, json=payload)
 
         assert response.status_code == 201
         assert "tenant_id" in response.json
@@ -194,15 +189,14 @@ class TestSuperAdminTenantAPI:
         mock_config = MagicMock()
         mock_config.config_value = api_key
         auth_query.filter_by.return_value.first.return_value = mock_config
-        
+
         # Mock tenant query - not found
         tenant_query = MagicMock()
         tenant_query.filter_by.return_value.first.return_value = None
-        
+
         mock_session.query.side_effect = [auth_query, tenant_query]
 
-        response = client.get("/api/v1/superadmin/tenants/nonexistent", 
-                            headers={"X-Superadmin-API-Key": api_key})
+        response = client.get("/api/v1/superadmin/tenants/nonexistent", headers={"X-Superadmin-API-Key": api_key})
 
         assert response.status_code == 404
         assert response.json["error"] == "Tenant not found"
@@ -214,7 +208,7 @@ class TestSuperAdminTenantAPI:
         mock_config = MagicMock()
         mock_config.config_value = api_key
         auth_query.filter_by.return_value.first.return_value = mock_config
-        
+
         # Mock tenant lookup
         tenant_query = MagicMock()
         mock_tenant = MagicMock()
@@ -225,16 +219,14 @@ class TestSuperAdminTenantAPI:
         mock_tenant.billing_plan = "standard"
         mock_tenant.updated_at = "2025-01-06T13:00:00"
         tenant_query.filter_by.return_value.first.return_value = mock_tenant
-        
+
         mock_session.query.side_effect = [auth_query, tenant_query]
         mock_session.commit = MagicMock()
 
         payload = {"name": "Updated Publisher", "billing_plan": "premium"}
 
         response = client.put(
-            "/api/v1/superadmin/tenants/tenant_123", 
-            headers={"X-Superadmin-API-Key": api_key}, 
-            json=payload
+            "/api/v1/superadmin/tenants/tenant_123", headers={"X-Superadmin-API-Key": api_key}, json=payload
         )
 
         assert response.status_code == 200
@@ -243,27 +235,33 @@ class TestSuperAdminTenantAPI:
 
     def test_delete_tenant_soft(self, client, mock_session, api_key):
         """Test soft deleting a tenant."""
-        # Mock auth
-        auth_query = MagicMock()
+        # Mock auth config and tenant in same query chain
         mock_config = MagicMock()
         mock_config.config_value = api_key
-        auth_query.filter_by.return_value.first.return_value = mock_config
-        
-        # Mock tenant lookup
-        tenant_query = MagicMock()
+
         mock_tenant = MagicMock()
         mock_tenant.tenant_id = "tenant_123"
         mock_tenant.name = "Test Publisher"
         mock_tenant.is_active = True
-        tenant_query.filter_by.return_value.first.return_value = mock_tenant
-        
-        mock_session.query.side_effect = [auth_query, tenant_query]
+
+        # Set up query to return config first, then tenant
+        call_count = 0
+
+        def first_side_effect():
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                return mock_config
+            else:
+                return mock_tenant
+
+        mock_session.query.return_value.filter_by.return_value.first.side_effect = first_side_effect
         mock_session.commit = MagicMock()
 
         response = client.delete(
-            "/api/v1/superadmin/tenants/tenant_123", 
-            headers={"X-Superadmin-API-Key": api_key}, 
-            json={"hard_delete": False}
+            "/api/v1/superadmin/tenants/tenant_123",
+            headers={"X-Superadmin-API-Key": api_key},
+            json={"hard_delete": False},
         )
 
         assert response.status_code == 200
@@ -273,39 +271,34 @@ class TestSuperAdminTenantAPI:
 
     def test_delete_tenant_hard(self, client, mock_session, api_key):
         """Test hard deleting a tenant."""
-        # Mock auth
-        auth_query = MagicMock()
+        # Mock auth config
         mock_config = MagicMock()
         mock_config.config_value = api_key
-        auth_query.filter_by.return_value.first.return_value = mock_config
-        
-        # Mock tenant lookup
-        tenant_query = MagicMock()
+
         mock_tenant = MagicMock()
         mock_tenant.tenant_id = "tenant_123"
-        tenant_query.filter_by.return_value.first.return_value = mock_tenant
-        
-        # Mock related data queries for cascade delete
-        for _ in range(8):  # Number of related tables
-            related_query = MagicMock()
-            related_query.filter_by.return_value.delete.return_value = None
-            mock_session.query.side_effect = [related_query]
-        
-        # Reset side_effect for main queries
-        mock_session.query.side_effect = [auth_query, tenant_query]
-        
-        # Mock the filter_by().delete() chain for related tables
-        delete_chain = MagicMock()
-        delete_chain.delete.return_value = 0
-        mock_session.query.return_value.filter_by.return_value = delete_chain
-        
+
+        # Set up query to return config first, then tenant
+        call_count = 0
+
+        def first_side_effect():
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                return mock_config
+            else:
+                return mock_tenant
+
+        # Mock the delete operations for related tables
+        mock_session.query.return_value.filter_by.return_value.first.side_effect = first_side_effect
+        mock_session.query.return_value.filter_by.return_value.delete.return_value = 0
         mock_session.delete = MagicMock()
         mock_session.commit = MagicMock()
 
         response = client.delete(
-            "/api/v1/superadmin/tenants/tenant_123", 
-            headers={"X-Superadmin-API-Key": api_key}, 
-            json={"hard_delete": True}
+            "/api/v1/superadmin/tenants/tenant_123",
+            headers={"X-Superadmin-API-Key": api_key},
+            json={"hard_delete": True},
         )
 
         assert response.status_code == 200
@@ -323,6 +316,8 @@ class TestSuperAdminTenantAPI:
         assert response.status_code == 200
         assert "api_key" in response.json
         assert response.json["api_key"].startswith("sk-")
+        # Verify add was called
+        assert mock_session.add.called
 
     def test_init_api_key_already_exists(self, client, mock_session):
         """Test initializing API key when it already exists."""
@@ -335,3 +330,12 @@ class TestSuperAdminTenantAPI:
 
         assert response.status_code == 400
         assert response.json["error"] == "API key already initialized"
+
+    def test_health_check_with_no_api_configured(self, client, mock_session):
+        """Test health check when API is not configured (returns 503)."""
+        # Mock returns None - API not configured
+        mock_session.query.return_value.filter_by.return_value.first.return_value = None
+
+        response = client.get("/api/v1/superadmin/health", headers={"X-Superadmin-API-Key": "sk-any-key"})
+        assert response.status_code == 503
+        assert response.json["error"] == "API not configured"
