@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 """Comprehensive test of all Admin UI pages and submodules."""
 
+import os
+import sys
+from urllib.parse import urljoin
+
 import pytest
 import requests
-import sys
-import os
-from urllib.parse import urljoin
 
 BASE_URL = f"http://localhost:{os.environ.get('ADMIN_UI_PORT', '8001')}"
 TENANT_ID = "default"
@@ -73,9 +74,7 @@ def test_page(session, path, description):
                     results["errors"].append(f"{description}: {error_msg}")
                 elif "UndefinedTable" in response.text:
                     error_msg = "Database table missing"
-                    match = re.search(
-                        r'relation "([^"]+)" does not exist', response.text
-                    )
+                    match = re.search(r'relation "([^"]+)" does not exist', response.text)
                     if match:
                         error_msg = f"Missing table: {match.group(1)}"
                     results["errors"].append(f"{description}: {error_msg}")

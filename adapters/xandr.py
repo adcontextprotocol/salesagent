@@ -41,7 +41,6 @@ class MediaBuy:
             setattr(self, k, v)
 
 
-
 logger = logging.getLogger(__name__)
 
 

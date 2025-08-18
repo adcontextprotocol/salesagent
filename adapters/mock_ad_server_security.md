@@ -30,7 +30,7 @@ The mock adapter maintains in-memory storage with principal isolation:
 ```python
 class MockAdServer(AdServerAdapter):
     _media_buys: Dict[str, Dict[str, Any]] = {}  # Shared class variable
-    
+
     # Each instance filters by principal
     def get_media_buy(self, media_buy_id: str):
         buy = self._media_buys.get(media_buy_id)
@@ -72,10 +72,10 @@ The mock adapter supports testing:
 def test_cross_principal_access():
     adapter1 = MockAdServer(config, principal1)
     adapter2 = MockAdServer(config, principal2)
-    
+
     # Create with principal1
     buy_id = adapter1.create_media_buy(...)
-    
+
     # Attempt access with principal2
     with pytest.raises(PermissionError):
         adapter2.update_media_buy(buy_id, ...)
@@ -153,14 +153,14 @@ def test_principal_isolation():
         name="Company B",
         platform_mappings={"mock": {"advertiser_id": "mock_456"}}
     )
-    
+
     # Create adapters
     adapter_a = MockAdServer({}, principal_a)
     adapter_b = MockAdServer({}, principal_b)
-    
+
     # Create media buy with Company A
     response_a = adapter_a.create_media_buy(request, packages, start, end)
-    
+
     # Try to access with Company B
     with pytest.raises(PermissionError):
         adapter_b.get_media_buy_delivery(

@@ -12,23 +12,25 @@ This script tests the complete flow of creating a simple display campaign:
 Run with: python test_gam_simple_display.py [--dry-run]
 """
 
-import asyncio
 import argparse
+import asyncio
 import sys
 import time
-from datetime import datetime, date, timedelta
+from datetime import date, datetime, timedelta
 from pathlib import Path
+
 from rich.console import Console
-from rich.table import Table
 from rich.panel import Panel
+from rich.table import Table
 
 # Add parent directory to path
 sys.path.append(str(Path(__file__).parent))
 
 from fastmcp.client import Client
 from fastmcp.client.transports import StreamableHttpTransport
+
 from database import db_session
-from models import Tenant, Principal, Product
+from models import Principal, Product, Tenant
 
 console = Console()
 
@@ -36,9 +38,7 @@ console = Console()
 class GAMSimpleDisplayTest:
     """Test harness for simple GAM display campaigns."""
 
-    def __init__(
-        self, dry_run: bool = False, server_url: str = "http://localhost:8080"
-    ):
+    def __init__(self, dry_run: bool = False, server_url: str = "http://localhost:8080"):
         self.dry_run = dry_run
         self.server_url = server_url
         self.test_results = []
@@ -71,9 +71,7 @@ class GAMSimpleDisplayTest:
 
         try:
             # Check for test tenant
-            tenant = (
-                db_session.query(Tenant).filter_by(name="GAM Test Publisher").first()
-            )
+            tenant = db_session.query(Tenant).filter_by(name="GAM Test Publisher").first()
 
             if not tenant:
                 self.log_test(
@@ -104,24 +102,18 @@ class GAMSimpleDisplayTest:
                 )
                 return False
 
-            self.log_test(
-                "Validate GAM config", True, f"Network: {gam_config['network_code']}"
-            )
+            self.log_test("Validate GAM config", True, f"Network: {gam_config['network_code']}")
 
             # Check for test principal
             principal = (
-                db_session.query(Principal)
-                .filter_by(tenant_id=tenant.tenant_id, name="Test Advertiser")
-                .first()
+                db_session.query(Principal).filter_by(tenant_id=tenant.tenant_id, name="Test Advertiser").first()
             )
 
             if not principal:
                 self.log_test("Find test principal", False, "Test principal not found")
                 return False
 
-            self.log_test(
-                "Find test principal", True, f"Token: {principal.access_token[:10]}..."
-            )
+            self.log_test("Find test principal", True, f"Token: {principal.access_token[:10]}...")
             self.access_token = principal.access_token
 
             # Check GAM advertiser mapping
@@ -142,26 +134,20 @@ class GAMSimpleDisplayTest:
 
             # Check for test product
             product = (
-                db_session.query(Product)
-                .filter_by(tenant_id=tenant.tenant_id, name="Simple Display Test")
-                .first()
+                db_session.query(Product).filter_by(tenant_id=tenant.tenant_id, name="Simple Display Test").first()
             )
 
             if not product:
                 self.log_test("Find test product", False, "Test product not found")
                 return False
 
-            self.log_test(
-                "Find test product", True, f"Product ID: {product.product_id}"
-            )
+            self.log_test("Find test product", True, f"Product ID: {product.product_id}")
             self.product_id = product.product_id
 
             # Validate product implementation config
             impl_config = product.implementation_config or {}
             if not impl_config.get("creative_placeholders"):
-                self.log_test(
-                    "Validate product config", False, "No creative placeholders defined"
-                )
+                self.log_test("Validate product config", False, "No creative placeholders defined")
                 return False
 
             self.log_test(
@@ -194,9 +180,7 @@ class GAMSimpleDisplayTest:
 
         try:
             headers = {"x-adcp-auth": self.access_token}
-            transport = StreamableHttpTransport(
-                url=f"{self.server_url}/mcp/", headers=headers
-            )
+            transport = StreamableHttpTransport(url=f"{self.server_url}/mcp/", headers=headers)
             self.client = Client(transport=transport)
 
             async with self.client:
@@ -230,32 +214,24 @@ class GAMSimpleDisplayTest:
                     "flight_end_date": flight_end,
                     "targeting_overlay": {
                         "geo_country_any_of": ["US"],
-                        "frequency_caps": [
-                            {"max_impressions": 3, "time_unit": "DAY", "time_range": 1}
-                        ],
+                        "frequency_caps": [{"max_impressions": 3, "time_unit": "DAY", "time_range": 1}],
                     },
                     "po_number": f"TEST-GAM-{int(time.time())}",
                 }
 
                 if self.dry_run:
-                    console.print(
-                        "[yellow]DRY RUN: Would create media buy with:[/yellow]"
-                    )
+                    console.print("[yellow]DRY RUN: Would create media buy with:[/yellow]")
                     console.print(f"  Budget: ${params['total_budget']}")
                     console.print(f"  Dates: {flight_start} to {flight_end}")
                     console.print(f"  PO: {params['po_number']}")
-                    self.log_test(
-                        "Create media buy", True, "Dry run - no API calls made"
-                    )
+                    self.log_test("Create media buy", True, "Dry run - no API calls made")
                     self.media_buy_id = "dry_run_12345"
                     return True
 
                 result = await self.client.tools.create_media_buy(**params)
 
                 if result.status == "failed":
-                    self.log_test(
-                        "Create media buy", False, result.detail or "Unknown error"
-                    )
+                    self.log_test("Create media buy", False, result.detail or "Unknown error")
                     return False
 
                 self.media_buy_id = result.media_buy_id
@@ -281,9 +257,7 @@ class GAMSimpleDisplayTest:
         console.print("\n[bold]4. Uploading Creatives[/bold]")
 
         if self.dry_run:
-            self.log_test(
-                "Upload creatives", True, "Dry run - skipping creative upload"
-            )
+            self.log_test("Upload creatives", True, "Dry run - skipping creative upload")
             return True
 
         try:
@@ -308,17 +282,11 @@ class GAMSimpleDisplayTest:
                     },
                 ]
 
-                result = await self.client.tools.upload_creatives(
-                    media_buy_id=self.media_buy_id, creatives=creatives
-                )
+                result = await self.client.tools.upload_creatives(media_buy_id=self.media_buy_id, creatives=creatives)
 
                 # Check results
-                approved = sum(
-                    1 for c in result.creative_statuses if c.status == "approved"
-                )
-                failed = sum(
-                    1 for c in result.creative_statuses if c.status == "failed"
-                )
+                approved = sum(1 for c in result.creative_statuses if c.status == "approved")
+                failed = sum(1 for c in result.creative_statuses if c.status == "failed")
 
                 if failed > 0:
                     self.log_test(
@@ -328,9 +296,7 @@ class GAMSimpleDisplayTest:
                     )
                     return False
 
-                self.log_test(
-                    "Upload creatives", True, f"{approved} creatives approved"
-                )
+                self.log_test("Upload creatives", True, f"{approved} creatives approved")
                 return True
 
         except Exception as e:
@@ -347,21 +313,15 @@ class GAMSimpleDisplayTest:
 
         try:
             async with self.client:
-                result = await self.client.tools.check_media_buy_status(
-                    media_buy_id=self.media_buy_id
-                )
+                result = await self.client.tools.check_media_buy_status(media_buy_id=self.media_buy_id)
 
                 self.log_test("Check status", True, f"Status: {result.status}")
 
                 # Show additional details
                 if result.active_packages:
-                    console.print(
-                        f"   [dim]Active packages: {result.active_packages}[/dim]"
-                    )
+                    console.print(f"   [dim]Active packages: {result.active_packages}[/dim]")
                 if result.impressions_delivered:
-                    console.print(
-                        f"   [dim]Impressions: {result.impressions_delivered:,}[/dim]"
-                    )
+                    console.print(f"   [dim]Impressions: {result.impressions_delivered:,}[/dim]")
 
                 return True
 
@@ -385,9 +345,7 @@ class GAMSimpleDisplayTest:
                 )
 
                 if result.status != "accepted":
-                    self.log_test(
-                        "Pause media buy", False, result.reason or "Unknown error"
-                    )
+                    self.log_test("Pause media buy", False, result.reason or "Unknown error")
                     return False
 
                 self.log_test("Pause media buy", True, "Pause accepted")
@@ -401,9 +359,7 @@ class GAMSimpleDisplayTest:
                 )
 
                 if result.status != "accepted":
-                    self.log_test(
-                        "Resume media buy", False, result.reason or "Unknown error"
-                    )
+                    self.log_test("Resume media buy", False, result.reason or "Unknown error")
                     return False
 
                 self.log_test("Resume media buy", True, "Resume accepted")
@@ -429,9 +385,7 @@ class GAMSimpleDisplayTest:
             table.add_row(
                 result["name"],
                 f"[{status_style}]{status}[/{status_style}]",
-                result["details"][:50] + "..."
-                if len(result["details"]) > 50
-                else result["details"],
+                result["details"][:50] + "..." if len(result["details"]) > 50 else result["details"],
             )
 
         console.print(table)
@@ -491,9 +445,7 @@ class GAMSimpleDisplayTest:
 
 async def main():
     """Main entry point."""
-    parser = argparse.ArgumentParser(
-        description="Test simple display campaign on Google Ad Manager"
-    )
+    parser = argparse.ArgumentParser(description="Test simple display campaign on Google Ad Manager")
     parser.add_argument(
         "--dry-run",
         action="store_true",

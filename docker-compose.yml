@@ -20,7 +20,7 @@ services:
     environment:
       # Database configuration
       DATABASE_URL: postgresql://adcp_user:secure_password_change_me@postgres:5432/adcp?sslmode=disable
-      
+
       # Optional: Individual DB vars instead of DATABASE_URL
       # DB_TYPE: postgresql
       # DB_HOST: postgres
@@ -28,27 +28,27 @@ services:
       # DB_NAME: adcp
       # DB_USER: adcp_user
       # DB_PASSWORD: secure_password_change_me
-      
+
       # Gemini API key (required for AI features)
       GEMINI_API_KEY: ${GEMINI_API_KEY}
-      
+
       # Optional: Dry run mode
       # ADCP_DRY_RUN: true
-    
+
     depends_on:
       postgres:
         condition: service_healthy
-    
+
     ports:
       - "${ADCP_SALES_PORT:-8012}:8080"
-    
+
     volumes:
       # Optional: Mount audit logs
       - ./audit_logs:/app/audit_logs
-      
+
       # Optional: Mount for development
       # - .:/app
-    
+
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
       interval: 30s
@@ -75,19 +75,19 @@ services:
       GOOGLE_OAUTH_CREDENTIALS_FILE: ${GOOGLE_OAUTH_CREDENTIALS_FILE:-}
       # Test mode
       ADCP_AUTH_TEST_MODE: ${ADCP_AUTH_TEST_MODE:-false}
-    
+
     depends_on:
       postgres:
         condition: service_healthy
-    
+
     ports:
       - "${ADMIN_UI_PORT:-8011}:${ADMIN_UI_PORT:-8011}"
-    
+
     volumes:
       # Mount OAuth credentials file
       # - ./client_secret.json:/app/client_secret.json:ro
       - ./audit_logs:/app/audit_logs
-    
+
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
       interval: 30s

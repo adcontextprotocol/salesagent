@@ -18,7 +18,7 @@
     .view-mode .card-header {
         background-color: #e9ecef;
     }
-    
+
     /* Edit mode styles */
     .edit-mode .view-only {
         display: none !important;
@@ -31,7 +31,7 @@
         background-color: #007bff;
         color: white;
     }
-    
+
     /* List display in view mode */
     .policy-list {
         max-height: 200px;
@@ -85,7 +85,7 @@
                     </div>
                     <div class="card-body">
                         <div class="form-check mb-3">
-                            <input class="form-check-input" type="checkbox" id="enabled" name="enabled" 
+                            <input class="form-check-input" type="checkbox" id="enabled" name="enabled"
                                    {% if policy_settings.enabled %}checked{% endif %}>
                             <label class="form-check-label" for="enabled">
                                 Enable Policy Checks
@@ -96,7 +96,7 @@
                         </div>
 
                         <div class="form-check mb-3">
-                            <input class="form-check-input" type="checkbox" id="require_manual_review" name="require_manual_review" 
+                            <input class="form-check-input" type="checkbox" id="require_manual_review" name="require_manual_review"
                                    {% if policy_settings.require_manual_review %}checked{% endif %}>
                             <label class="form-check-label" for="require_manual_review">
                                 Require Manual Review
@@ -117,7 +117,7 @@
                         {% if pending_reviews %}
                             <div class="list-group">
                                 {% for review in pending_reviews[:5] %}
-                                <a href="/tenant/{{ tenant_id }}/policy/review/{{ review.task_id }}" 
+                                <a href="/tenant/{{ tenant_id }}/policy/review/{{ review.task_id }}"
                                    class="list-group-item list-group-item-action">
                                     <div class="d-flex w-100 justify-content-between">
                                         <h6 class="mb-1">{{ review.brief[:50] }}...</h6>
@@ -156,9 +156,9 @@
                                 {% endfor %}
                                 </ul>
                             </div>
-                            
+
                             <label for="prohibited_categories">Additional Prohibited Categories <span class="policy-count view-only">({{ policy_settings.prohibited_categories|length }})</span></label>
-                            
+
                             <!-- View mode display -->
                             <div class="view-only">
                                 {% if policy_settings.prohibited_categories %}
@@ -171,10 +171,10 @@
                                     <div class="text-muted">No additional categories configured</div>
                                 {% endif %}
                             </div>
-                            
+
                             <!-- Edit mode input -->
                             <div class="edit-only">
-                                <textarea class="form-control" id="prohibited_categories" name="prohibited_categories" 
+                                <textarea class="form-control" id="prohibited_categories" name="prohibited_categories"
                                           rows="10" placeholder="Enter one category per line">{{ '\n'.join(policy_settings.prohibited_categories) }}</textarea>
                                 <small class="form-text text-muted">
                                     Add custom categories specific to your publication
@@ -202,9 +202,9 @@
                                 {% endfor %}
                                 </ul>
                             </div>
-                            
+
                             <label for="prohibited_tactics">Additional Prohibited Tactics <span class="policy-count view-only">({{ policy_settings.prohibited_tactics|length }})</span></label>
-                            
+
                             <!-- View mode display -->
                             <div class="view-only">
                                 {% if policy_settings.prohibited_tactics %}
@@ -217,10 +217,10 @@
                                     <div class="text-muted">No additional tactics configured</div>
                                 {% endif %}
                             </div>
-                            
+
                             <!-- Edit mode input -->
                             <div class="edit-only">
-                                <textarea class="form-control" id="prohibited_tactics" name="prohibited_tactics" 
+                                <textarea class="form-control" id="prohibited_tactics" name="prohibited_tactics"
                                           rows="6" placeholder="Enter one tactic per line">{{ '\n'.join(policy_settings.prohibited_tactics) }}</textarea>
                                 <small class="form-text text-muted">
                                     Add tactics that violate your advertising standards
@@ -237,7 +237,7 @@
                     <div class="card-body">
                         <div class="form-group">
                             <label for="prohibited_advertisers">Blocked Domains/Companies <span class="policy-count view-only">({{ policy_settings.prohibited_advertisers|length }})</span></label>
-                            
+
                             <!-- View mode display -->
                             <div class="view-only">
                                 {% if policy_settings.prohibited_advertisers %}
@@ -250,10 +250,10 @@
                                     <div class="text-muted">No advertisers blocked</div>
                                 {% endif %}
                             </div>
-                            
+
                             <!-- Edit mode input -->
                             <div class="edit-only">
-                                <textarea class="form-control" id="prohibited_advertisers" name="prohibited_advertisers" 
+                                <textarea class="form-control" id="prohibited_advertisers" name="prohibited_advertisers"
                                           rows="6" placeholder="Enter one advertiser/domain per line
 Example:
 spam-site.com
@@ -347,7 +347,7 @@ function enterEditMode() {
     const container = document.getElementById('policy-container');
     container.classList.remove('view-mode');
     container.classList.add('edit-mode');
-    
+
     // Focus on first input
     setTimeout(() => {
         document.getElementById('enabled').focus();
@@ -358,7 +358,7 @@ function exitEditMode() {
     const container = document.getElementById('policy-container');
     container.classList.remove('edit-mode');
     container.classList.add('view-mode');
-    
+
     // Reset form to original values (reload page to get fresh data)
     if (confirm('Discard any unsaved changes?')) {
         window.location.reload();
@@ -375,18 +375,18 @@ document.addEventListener('DOMContentLoaded', function() {
     const formElements = form.querySelectorAll('input, textarea');
     let formChanged = false;
     let isSubmitting = false;
-    
+
     formElements.forEach(element => {
         element.addEventListener('change', function() {
             formChanged = true;
         });
     });
-    
+
     // Mark form as submitting when save button is clicked
     form.addEventListener('submit', function() {
         isSubmitting = true;
     });
-    
+
     // Warn before leaving if form has changes (but not when submitting)
     window.addEventListener('beforeunload', function(e) {
         if (formChanged && !isSubmitting && document.getElementById('policy-container').classList.contains('edit-mode')) {

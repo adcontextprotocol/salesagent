@@ -4,10 +4,9 @@ Port availability checker for AdCP Sales Agent.
 Validates that required ports are available before starting services.
 """
 
+import os
 import socket
 import sys
-import os
-from typing import List, Tuple
 
 
 def check_port(host: str, port: int) -> bool:
@@ -21,22 +20,22 @@ def check_port(host: str, port: int) -> bool:
         return False
 
 
-def get_ports_from_env() -> List[Tuple[str, int]]:
+def get_ports_from_env() -> list[tuple[str, int]]:
     """Get configured ports from environment variables."""
     ports = []
-    
+
     # PostgreSQL port
-    pg_port = int(os.environ.get('POSTGRES_PORT', '5432'))
-    ports.append(('PostgreSQL', pg_port))
-    
+    pg_port = int(os.environ.get("POSTGRES_PORT", "5432"))
+    ports.append(("PostgreSQL", pg_port))
+
     # MCP Server port
-    mcp_port = int(os.environ.get('ADCP_SALES_PORT', '8080'))
-    ports.append(('MCP Server', mcp_port))
-    
+    mcp_port = int(os.environ.get("ADCP_SALES_PORT", "8080"))
+    ports.append(("MCP Server", mcp_port))
+
     # Admin UI port
-    admin_port = int(os.environ.get('ADMIN_UI_PORT', '8001'))
-    ports.append(('Admin UI', admin_port))
-    
+    admin_port = int(os.environ.get("ADMIN_UI_PORT", "8001"))
+    ports.append(("Admin UI", admin_port))
+
     return ports
 
 
@@ -44,21 +43,21 @@ def main():
     """Check all configured ports and report availability."""
     print("Checking port availability for AdCP Sales Agent...")
     print("-" * 50)
-    
+
     ports = get_ports_from_env()
     all_available = True
     unavailable_ports = []
-    
+
     for service_name, port in ports:
-        if check_port('0.0.0.0', port):
+        if check_port("0.0.0.0", port):
             print(f"✓ {service_name} port {port} is available")
         else:
             print(f"✗ {service_name} port {port} is NOT available")
             all_available = False
             unavailable_ports.append((service_name, port))
-    
+
     print("-" * 50)
-    
+
     if all_available:
         print("✓ All ports are available. Services can be started.")
         sys.exit(0)

@@ -1,6 +1,6 @@
 [run]
 source = .
-omit = 
+omit =
     test_venv/*
     tests/*
     test_*.py

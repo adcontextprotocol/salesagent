@@ -18,7 +18,8 @@ from typing import Any
 import google.generativeai as genai
 
 from database_session import get_db_session
-from models import Tenant, Principal as PrincipalModel
+from models import Principal as PrincipalModel
+from models import Tenant
 
 logger = logging.getLogger(__name__)
 

@@ -1,7 +1,9 @@
 """Simple test to verify dashboard and settings don't return 500 errors."""
 
-import pytest
 import os
+
+import pytest
+
 from database import init_db
 
 # Enable test mode

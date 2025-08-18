@@ -6,7 +6,7 @@
 <div class="container">
     <h1>Workflows Dashboard</h1>
     <p style="color: #666;">Monitor all media buys, tasks, and system activity for {{ tenant.name }}</p>
-    
+
     <!-- Summary Cards -->
     <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin-bottom: 2rem;">
         <div class="card" style="text-align: center;">
@@ -26,14 +26,14 @@
             <p style="margin: 0.5rem 0 0 0; color: #666;">Total Active Spend</p>
         </div>
     </div>
-    
+
     <!-- Tabs -->
     <div class="tabs">
         <div class="tab active" data-tab="media-buys">Media Buys</div>
         <div class="tab" data-tab="tasks">Tasks</div>
         <div class="tab" data-tab="audit-logs">Audit Logs</div>
     </div>
-    
+
     <!-- Media Buys Tab -->
     <div id="media-buys" class="tab-content active">
         <div class="card">
@@ -52,7 +52,7 @@
                     </label>
                 </div>
             </div>
-            
+
             {% if media_buys %}
             <table>
                 <thead>
@@ -113,7 +113,7 @@
             {% endif %}
         </div>
     </div>
-    
+
     <!-- Tasks Tab -->
     <div id="tasks" class="tab-content">
         <div class="card">
@@ -131,7 +131,7 @@
                     </label>
                 </div>
             </div>
-            
+
             {% if tasks %}
             <table>
                 <thead>
@@ -186,7 +186,7 @@
             {% endif %}
         </div>
     </div>
-    
+
     <!-- Audit Logs Tab -->
     <div id="audit-logs" class="tab-content">
         <div class="card">
@@ -212,7 +212,7 @@
                     </label>
                 </div>
             </div>
-            
+
             {% if audit_logs %}
             <table style="font-size: 0.9em;">
                 <thead>
@@ -302,7 +302,7 @@ details summary:hover {
 function filterMediaBuys() {
     const filter = document.getElementById('media-buy-filter').value;
     const rows = document.querySelectorAll('#media-buys tbody tr');
-    
+
     rows.forEach(row => {
         if (filter === 'all' || row.dataset.status === filter) {
             row.style.display = '';
@@ -315,7 +315,7 @@ function filterMediaBuys() {
 function filterTasks() {
     const filter = document.getElementById('task-filter').value;
     const rows = document.querySelectorAll('#tasks tbody tr');
-    
+
     rows.forEach(row => {
         let show = false;
         if (filter === 'all') {
@@ -332,7 +332,7 @@ function filterTasks() {
 function filterLogs() {
     const filter = document.getElementById('log-filter').value;
     const rows = document.querySelectorAll('#audit-logs tbody tr');
-    
+
     rows.forEach(row => {
         let show = false;
         if (filter === 'all') {

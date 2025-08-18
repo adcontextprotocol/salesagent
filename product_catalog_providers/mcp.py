@@ -1,11 +1,14 @@
 """MCP-based product catalog provider for upstream server integration."""
 
 import asyncio
-from typing import List, Dict, Any, Optional
+from typing import Any
+
 from fastmcp.client import FastMCPClient
 from fastmcp.client.transports import StreamableHttpTransport
-from .base import ProductCatalogProvider
+
 from schemas import Product
+
+from .base import ProductCatalogProvider
 
 
 class MCPProductCatalog(ProductCatalogProvider):
@@ -23,7 +26,7 @@ class MCPProductCatalog(ProductCatalogProvider):
         timeout: Request timeout in seconds (default: 30)
     """
 
-    def __init__(self, config: Dict[str, Any]):
+    def __init__(self, config: dict[str, Any]):
         super().__init__(config)
         self.upstream_url = config.get("upstream_url", "http://localhost:9000/mcp/")
         self.upstream_token = config.get("upstream_token")
@@ -51,10 +54,10 @@ class MCPProductCatalog(ProductCatalogProvider):
         self,
         brief: str,
         tenant_id: str,
-        principal_id: Optional[str] = None,
-        context: Optional[Dict[str, Any]] = None,
-        principal_data: Optional[Dict[str, Any]] = None,
-    ) -> List[Product]:
+        principal_id: str | None = None,
+        context: dict[str, Any] | None = None,
+        principal_data: dict[str, Any] | None = None,
+    ) -> list[Product]:
         """
         Query upstream MCP server for products matching the brief.
 
@@ -96,7 +99,7 @@ class MCPProductCatalog(ProductCatalogProvider):
 
             return products
 
-        except asyncio.TimeoutError:
+        except TimeoutError:
             raise Exception(f"Upstream MCP server timeout after {self.timeout} seconds")
         except Exception as e:
             raise Exception(f"Error calling upstream MCP server: {str(e)}")

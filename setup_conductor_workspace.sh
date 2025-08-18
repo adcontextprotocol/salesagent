@@ -78,30 +78,30 @@ PORT_CONFIG="$BASE_DIR/conductor_ports.json"
 
 if [ -f "$PORT_MANAGER" ] && [ -f "$PORT_CONFIG" ]; then
     echo "Using Conductor port reservation system..."
-    
+
     # Reserve ports for this workspace
     PORT_RESULT=$(python3 "$PORT_MANAGER" reserve "$CONDUCTOR_WORKSPACE_NAME" 2>&1)
-    
+
     if [ $? -eq 0 ]; then
         # Extract ports from the output
         POSTGRES_PORT=$(echo "$PORT_RESULT" | grep "PostgreSQL:" | awk '{print $2}')
         ADCP_PORT=$(echo "$PORT_RESULT" | grep "MCP Server:" | awk '{print $3}')
         ADMIN_PORT=$(echo "$PORT_RESULT" | grep "Admin UI:" | awk '{print $3}')
-        
+
         echo "$PORT_RESULT"
     else
         echo "Failed to reserve ports: $PORT_RESULT"
         echo "Falling back to hash-based port assignment..."
-        
+
         # Fallback: Derive a workspace number from the workspace name
         WORKSPACE_HASH=$(echo -n "$CONDUCTOR_WORKSPACE_NAME" | cksum | cut -f1 -d' ')
         WORKSPACE_NUM=$((($WORKSPACE_HASH % 100) + 1))
-        
+
         # Calculate ports based on workspace number
         POSTGRES_PORT=$((5432 + $WORKSPACE_NUM))
         ADCP_PORT=$((8080 + $WORKSPACE_NUM))
         ADMIN_PORT=$((8001 + $WORKSPACE_NUM))
-        
+
         echo "Derived workspace number: $WORKSPACE_NUM (from name hash)"
         echo "Using ports:"
         echo "  PostgreSQL: $POSTGRES_PORT"
@@ -110,16 +110,16 @@ if [ -f "$PORT_MANAGER" ] && [ -f "$PORT_CONFIG" ]; then
     fi
 else
     echo "Port reservation system not found, using hash-based assignment..."
-    
+
     # Fallback: Derive a workspace number from the workspace name
     WORKSPACE_HASH=$(echo -n "$CONDUCTOR_WORKSPACE_NAME" | cksum | cut -f1 -d' ')
     WORKSPACE_NUM=$((($WORKSPACE_HASH % 100) + 1))
-    
+
     # Calculate ports based on workspace number
     POSTGRES_PORT=$((5432 + $WORKSPACE_NUM))
     ADCP_PORT=$((8080 + $WORKSPACE_NUM))
     ADMIN_PORT=$((8001 + $WORKSPACE_NUM))
-    
+
     echo "Derived workspace number: $WORKSPACE_NUM (from name hash)"
     echo "Using ports:"
     echo "  PostgreSQL: $POSTGRES_PORT"
@@ -280,12 +280,12 @@ echo "✓ Configured worktree to use hooks at: $WORKTREE_HOOKS_DIR"
 # Install pre-commit if available
 if command -v pre-commit &> /dev/null && [ -f .pre-commit-config.yaml ]; then
     echo "Installing pre-commit hooks..."
-    
+
     # Pre-commit doesn't like custom hooks paths, so temporarily unset it
     git config --worktree --unset core.hooksPath 2>/dev/null
     pre-commit install >/dev/null 2>&1
     PRECOMMIT_RESULT=$?
-    
+
     # Copy the pre-commit hook to our worktree hooks directory
     if [ $PRECOMMIT_RESULT -eq 0 ] && [ -f "$MAIN_HOOKS_DIR/pre-commit" ]; then
         cp "$MAIN_HOOKS_DIR/pre-commit" "$WORKTREE_HOOKS_DIR/pre-commit"
@@ -294,7 +294,7 @@ if command -v pre-commit &> /dev/null && [ -f .pre-commit-config.yaml ]; then
         echo "✗ Warning: Failed to install pre-commit hooks"
         echo "  To install manually, run: pre-commit install"
     fi
-    
+
     # Restore the worktree hooks path
     git config --worktree core.hooksPath "$WORKTREE_HOOKS_DIR"
 else
@@ -306,7 +306,7 @@ fi
 # Set up pre-push hook
 if [ -f run_all_tests.sh ]; then
     echo "✓ Test runner script found (./run_all_tests.sh)"
-    
+
     # Create/update pre-push hook
     cat > "$WORKTREE_HOOKS_DIR/pre-push" << 'EOF'
 #!/bin/bash
@@ -326,7 +326,7 @@ if [ -f "./run_all_tests.sh" ]; then
     # Run quick tests
     ./run_all_tests.sh quick
     TEST_RESULT=$?
-    
+
     if [ $TEST_RESULT -ne 0 ]; then
         echo ""
         echo "❌ Tests failed! Push aborted."
@@ -365,7 +365,7 @@ if grep -q "ui-tests" pyproject.toml 2>/dev/null; then
     if command -v uv &> /dev/null; then
         uv sync --extra ui-tests
         echo "✓ UI test dependencies installed"
-        
+
         # Configure UI test environment
         if [ -d "ui_tests" ]; then
             echo "export ADMIN_UI_PORT=$ADMIN_PORT" >> .env

@@ -1,35 +1,34 @@
 import json
 import os
+import time
 import uuid
 from datetime import date, datetime, timedelta
-from typing import Dict, List, Optional, Tuple
 
 from fastmcp import FastMCP
 from fastmcp.exceptions import ToolError
 from fastmcp.server.context import Context
 from rich.console import Console
 
-from adapters.mock_creative_engine import MockCreativeEngine
-from adapters.mock_ad_server import MockAdServer as MockAdServerAdapter
+from activity_feed import activity_feed
 from adapters.google_ad_manager import GoogleAdManager
 from adapters.kevel import Kevel
+from adapters.mock_ad_server import MockAdServer as MockAdServerAdapter
+from adapters.mock_creative_engine import MockCreativeEngine
 from adapters.triton_digital import TritonDigital
-from init_database import init_db
-from schemas import *
+from audit_logger import get_audit_logger, logger
 from config_loader import (
-    load_config,
     get_current_tenant,
+    load_config,
     set_current_tenant,
 )
-from database_session import get_db_session
-from models import Tenant, Principal, Product, MediaBuy, Task, AdapterConfig
-from slack_notifier import get_slack_notifier
-from product_catalog_providers.factory import get_product_catalog_provider
-from policy_check_service import PolicyCheckService, PolicyStatus
 from context_manager import get_context_manager
-from activity_feed import activity_feed
-import time
-from audit_logger import get_audit_logger, logger
+from database_session import get_db_session
+from init_database import init_db
+from models import AdapterConfig, MediaBuy, Principal, Product, Task, Tenant
+from policy_check_service import PolicyCheckService, PolicyStatus
+from product_catalog_providers.factory import get_product_catalog_provider
+from schemas import *
+from slack_notifier import get_slack_notifier
 
 # Initialize Rich console
 console = Console()
@@ -55,9 +54,7 @@ def safe_parse_json_field(field_value, field_name="field", default=None):
             parsed = json.loads(field_value)
             # Validate the parsed result is the expected type
             if default is not None and not isinstance(parsed, type(default)):
-                logger.warning(
-                    f"Parsed {field_name} has unexpected type: {type(parsed)}, expected {type(default)}"
-                )
+                logger.warning(f"Parsed {field_name} has unexpected type: {type(parsed)}, expected {type(default)}")
                 return default
             return parsed
         except (json.JSONDecodeError, TypeError) as e:
@@ -73,7 +70,7 @@ def safe_parse_json_field(field_value, field_name="field", default=None):
 # --- Authentication ---
 
 
-def get_principal_from_token(token: str, tenant_id: str) -> Optional[str]:
+def get_principal_from_token(token: str, tenant_id: str) -> str | None:
     """Looks up a principal_id from the database using a token."""
 
     # Check for tenant admin token first
@@ -85,16 +82,12 @@ def get_principal_from_token(token: str, tenant_id: str) -> Optional[str]:
     with get_db_session() as session:
         from models import Principal
 
-        principal = (
-            session.query(Principal)
-            .filter_by(access_token=token, tenant_id=tenant_id)
-            .first()
-        )
+        principal = session.query(Principal).filter_by(access_token=token, tenant_id=tenant_id).first()
 
         return principal.principal_id if principal else None
 
 
-def get_principal_from_context(context: Optional[Context]) -> Optional[str]:
+def get_principal_from_context(context: Context | None) -> str | None:
     """Extract principal ID from the FastMCP context using x-adcp-auth header."""
     if not context:
         return None
@@ -124,11 +117,7 @@ def get_principal_from_context(context: Optional[Context]) -> Optional[str]:
 
         # Load tenant by ID with all new fields
         with get_db_session() as session:
-            tenant = (
-                session.query(Tenant)
-                .filter_by(tenant_id=tenant_id, is_active=True)
-                .first()
-            )
+            tenant = session.query(Tenant).filter_by(tenant_id=tenant_id, is_active=True).first()
 
             if not tenant:
                 print(f"No active tenant found for ID: {tenant_id}")
@@ -166,27 +155,19 @@ def get_principal_from_context(context: Optional[Context]) -> Optional[str]:
         return None
 
 
-def get_principal_adapter_mapping(principal_id: str) -> Dict[str, Any]:
+def get_principal_adapter_mapping(principal_id: str) -> dict[str, Any]:
     """Get the platform mappings for a principal."""
     tenant = get_current_tenant()
     with get_db_session() as session:
-        principal = (
-            session.query(Principal)
-            .filter_by(principal_id=principal_id, tenant_id=tenant["tenant_id"])
-            .first()
-        )
+        principal = session.query(Principal).filter_by(principal_id=principal_id, tenant_id=tenant["tenant_id"]).first()
         return principal.platform_mappings if principal else {}
 
 
-def get_principal_object(principal_id: str) -> Optional[schemas.Principal]:
+def get_principal_object(principal_id: str) -> schemas.Principal | None:
     """Get a Principal object for the given principal_id."""
     tenant = get_current_tenant()
     with get_db_session() as session:
-        principal = (
-            session.query(Principal)
-            .filter_by(principal_id=principal_id, tenant_id=tenant["tenant_id"])
-            .first()
-        )
+        principal = session.query(Principal).filter_by(principal_id=principal_id, tenant_id=tenant["tenant_id"]).first()
 
         if principal:
             return schemas.Principal(
@@ -197,7 +178,7 @@ def get_principal_object(principal_id: str) -> Optional[schemas.Principal]:
     return None
 
 
-def get_adapter_principal_id(principal_id: str, adapter: str) -> Optional[str]:
+def get_adapter_principal_id(principal_id: str, adapter: str) -> str | None:
     """Get the adapter-specific ID for a principal."""
     mappings = get_principal_adapter_mapping(principal_id)
 
@@ -223,11 +204,7 @@ def get_adapter(principal: Principal, dry_run: bool = False):
 
     # Get adapter config from adapter_config table
     with get_db_session() as session:
-        config_row = (
-            session.query(AdapterConfig)
-            .filter_by(tenant_id=tenant["tenant_id"])
-            .first()
-        )
+        config_row = session.query(AdapterConfig).filter_by(tenant_id=tenant["tenant_id"]).first()
 
         adapter_config = {"enabled": True}
         if config_row:
@@ -239,15 +216,11 @@ def get_adapter(principal: Principal, dry_run: bool = False):
                 adapter_config["refresh_token"] = config_row.gam_refresh_token
                 adapter_config["company_id"] = config_row.gam_company_id
                 adapter_config["trafficker_id"] = config_row.gam_trafficker_id
-                adapter_config[
-                    "manual_approval_required"
-                ] = config_row.gam_manual_approval_required
+                adapter_config["manual_approval_required"] = config_row.gam_manual_approval_required
             elif adapter_type == "kevel":
                 adapter_config["network_id"] = config_row.kevel_network_id
                 adapter_config["api_key"] = config_row.kevel_api_key
-                adapter_config[
-                    "manual_approval_required"
-                ] = config_row.kevel_manual_approval_required
+                adapter_config["manual_approval_required"] = config_row.kevel_manual_approval_required
             elif adapter_type == "triton":
                 adapter_config["station_id"] = config_row.triton_station_id
                 adapter_config["api_key"] = config_row.triton_api_key
@@ -260,9 +233,7 @@ def get_adapter(principal: Principal, dry_run: bool = False):
     # Create the appropriate adapter instance with tenant_id
     tenant_id = tenant["tenant_id"]
     if selected_adapter == "mock":
-        return MockAdServerAdapter(
-            adapter_config, principal, dry_run, tenant_id=tenant_id
-        )
+        return MockAdServerAdapter(adapter_config, principal, dry_run, tenant_id=tenant_id)
     elif selected_adapter == "google_ad_manager":
         return GoogleAdManager(adapter_config, principal, dry_run, tenant_id=tenant_id)
     elif selected_adapter == "kevel":
@@ -271,9 +242,7 @@ def get_adapter(principal: Principal, dry_run: bool = False):
         return TritonDigital(adapter_config, principal, dry_run, tenant_id=tenant_id)
     else:
         # Default to mock for unsupported adapters
-        return MockAdServerAdapter(
-            adapter_config, principal, dry_run, tenant_id=tenant_id
-        )
+        return MockAdServerAdapter(adapter_config, principal, dry_run, tenant_id=tenant_id)
 
 
 # --- Initialization ---
@@ -308,24 +277,19 @@ def load_media_buys_from_db():
         # Media buys will be loaded on-demand when needed
         console.print("[dim]Media buys will be loaded on-demand from database[/dim]")
     except Exception as e:
-        console.print(
-            f"[yellow]Warning: Could not initialize media buys from database: {e}[/yellow]"
-        )
+        console.print(f"[yellow]Warning: Could not initialize media buys from database: {e}[/yellow]")
 
 
 # --- In-Memory State ---
-media_buys: Dict[str, Tuple[CreateMediaBuyRequest, str]] = {}
-creative_assignments: Dict[str, Dict[str, List[str]]] = {}
-creative_statuses: Dict[str, CreativeStatus] = {}
-product_catalog: List[Product] = []
-creative_library: Dict[str, Creative] = {}  # creative_id -> Creative
-creative_groups: Dict[str, CreativeGroup] = {}  # group_id -> CreativeGroup
-creative_assignments_v2: Dict[
-    str, CreativeAssignment
-] = {}  # assignment_id -> CreativeAssignment
+media_buys: dict[str, tuple[CreateMediaBuyRequest, str]] = {}
+creative_assignments: dict[str, dict[str, list[str]]] = {}
+creative_statuses: dict[str, CreativeStatus] = {}
+product_catalog: list[Product] = []
+creative_library: dict[str, Creative] = {}  # creative_id -> Creative
+creative_groups: dict[str, CreativeGroup] = {}  # group_id -> CreativeGroup
+creative_assignments_v2: dict[str, CreativeAssignment] = {}  # assignment_id -> CreativeAssignment
 
 # Import audit logger for later use
-from audit_logger import get_audit_logger
 
 # Import context manager for workflow steps
 from context_manager import ContextManager
@@ -338,24 +302,20 @@ SELECTED_ADAPTER = config.get("ad_server", {}).get("adapter", "mock").lower()
 AVAILABLE_ADAPTERS = ["mock", "gam", "kevel", "triton", "triton_digital"]
 
 # --- In-Memory State ---
-media_buys: Dict[str, Tuple[CreateMediaBuyRequest, str]] = {}
-context_map: Dict[str, str] = {}  # Maps context_id to media_buy_id
-creative_assignments: Dict[str, Dict[str, List[str]]] = {}
-creative_statuses: Dict[str, CreativeStatus] = {}
-product_catalog: List[Product] = []
+media_buys: dict[str, tuple[CreateMediaBuyRequest, str]] = {}
+context_map: dict[str, str] = {}  # Maps context_id to media_buy_id
+creative_assignments: dict[str, dict[str, list[str]]] = {}
+creative_statuses: dict[str, CreativeStatus] = {}
+product_catalog: list[Product] = []
 
 # --- Dry Run Mode ---
 DRY_RUN_MODE = config.get("dry_run", False)
 if DRY_RUN_MODE:
-    console.print(
-        "[bold yellow]🏃 DRY RUN MODE ENABLED - Adapter calls will be logged[/bold yellow]"
-    )
+    console.print("[bold yellow]🏃 DRY RUN MODE ENABLED - Adapter calls will be logged[/bold yellow]")
 
 # Display selected adapter
 if SELECTED_ADAPTER not in AVAILABLE_ADAPTERS:
-    console.print(
-        f"[bold red]❌ Invalid adapter '{SELECTED_ADAPTER}'. Using 'mock' instead.[/bold red]"
-    )
+    console.print(f"[bold red]❌ Invalid adapter '{SELECTED_ADAPTER}'. Using 'mock' instead.[/bold red]")
     SELECTED_ADAPTER = "mock"
 console.print(f"[bold cyan]🔌 Using adapter: {SELECTED_ADAPTER.upper()}[/bold cyan]")
 
@@ -387,9 +347,7 @@ def _verify_principal(media_buy_id: str, context: Context):
             resource_id=media_buy_id,
             reason=f"Principal does not own media buy (owner: {media_buys[media_buy_id][1]})",
         )
-        raise PermissionError(
-            f"Principal '{principal_id}' does not own media buy '{media_buy_id}'."
-        )
+        raise PermissionError(f"Principal '{principal_id}' does not own media buy '{media_buy_id}'.")
 
 
 # --- Activity Feed Helper ---
@@ -411,9 +369,7 @@ def log_tool_activity(context: Context, tool_name: str, start_time: float = None
                 from models import Principal
 
                 principal = (
-                    session.query(Principal)
-                    .filter_by(principal_id=principal_id, tenant_id=tenant["tenant_id"])
-                    .first()
+                    session.query(Principal).filter_by(principal_id=principal_id, tenant_id=tenant["tenant_id"]).first()
                 )
                 if principal:
                     principal_name = principal.name
@@ -440,9 +396,7 @@ def log_tool_activity(context: Context, tool_name: str, start_time: float = None
 
 
 @mcp.tool
-async def get_products(
-    req: GetProductsRequest, context: Context
-) -> GetProductsResponse:
+async def get_products(req: GetProductsRequest, context: Context) -> GetProductsResponse:
     start_time = time.time()
     principal_id = _get_principal_id_from_context(context)  # Authenticate
 
@@ -458,9 +412,7 @@ async def get_products(
     # Check policy compliance first
     policy_service = PolicyCheckService()
     # Safely parse policy_settings that might be JSON string (SQLite) or dict (PostgreSQL JSONB)
-    tenant_policies = safe_parse_json_field(
-        tenant.get("policy_settings"), field_name="policy_settings", default={}
-    )
+    tenant_policies = safe_parse_json_field(tenant.get("policy_settings"), field_name="policy_settings", default={})
 
     policy_result = await policy_service.check_brief_compliance(
         brief=req.brief,
@@ -478,9 +430,11 @@ async def get_products(
         success=policy_result.status != PolicyStatus.BLOCKED,
         details={
             "brief": req.brief[:100] + "..." if len(req.brief) > 100 else req.brief,
-            "promoted_offering": req.promoted_offering[:100] + "..."
-            if req.promoted_offering and len(req.promoted_offering) > 100
-            else req.promoted_offering,
+            "promoted_offering": (
+                req.promoted_offering[:100] + "..."
+                if req.promoted_offering and len(req.promoted_offering) > 100
+                else req.promoted_offering
+            ),
             "policy_status": policy_result.status,
             "reason": policy_result.reason,
             "restrictions": policy_result.restrictions,
@@ -497,9 +451,7 @@ async def get_products(
         return GetProductsResponse(products=[])
 
     # If restricted and manual review is required, create a task
-    if policy_result.status == PolicyStatus.RESTRICTED and policy_settings.get(
-        "require_manual_review", False
-    ):
+    if policy_result.status == PolicyStatus.RESTRICTED and policy_settings.get("require_manual_review", False):
         # Create a manual review task
         with get_db_session() as session:
             task_id = f"policy_review_{tenant['tenant_id']}_{int(datetime.utcnow().timestamp())}"
@@ -548,16 +500,12 @@ async def get_products(
     # Filter products based on policy compliance
     eligible_products = []
     for product in products:
-        is_eligible, reason = policy_service.check_product_eligibility(
-            policy_result, product.model_dump()
-        )
+        is_eligible, reason = policy_service.check_product_eligibility(policy_result, product.model_dump())
 
         if is_eligible:
             # Add policy compliance information to product
             if policy_result.status == PolicyStatus.RESTRICTED:
-                product.policy_compliance = (
-                    f"Restricted: {', '.join(policy_result.restrictions)}"
-                )
+                product.policy_compliance = f"Restricted: {', '.join(policy_result.restrictions)}"
             else:
                 product.policy_compliance = "Compliant"
             eligible_products.append(product)
@@ -672,18 +620,14 @@ async def get_signals(req: GetSignalsRequest, context: Context) -> GetSignalsRes
 
 
 @mcp.tool
-def create_media_buy(
-    req: CreateMediaBuyRequest, context: Context
-) -> CreateMediaBuyResponse:
+def create_media_buy(req: CreateMediaBuyRequest, context: Context) -> CreateMediaBuyResponse:
     start_time = time.time()
     principal_id = _get_principal_id_from_context(context)
     tenant = get_current_tenant()
 
     # Context management - only needed for async operations
     ctx_manager = get_context_manager()
-    ctx_id = (
-        context.headers.get("x-context-id") if hasattr(context, "headers") else None
-    )
+    ctx_id = context.headers.get("x-context-id") if hasattr(context, "headers") else None
     persistent_ctx = None
     step = None
 
@@ -697,9 +641,7 @@ def create_media_buy(
     if req.targeting_overlay:
         from targeting_capabilities import validate_overlay_targeting
 
-        violations = validate_overlay_targeting(
-            req.targeting_overlay.model_dump(exclude_none=True)
-        )
+        violations = validate_overlay_targeting(req.targeting_overlay.model_dump(exclude_none=True))
         if violations:
             error_msg = f"Targeting validation failed: {'; '.join(violations)}"
             raise ToolError(error_msg)
@@ -709,22 +651,16 @@ def create_media_buy(
 
     # Check if manual approval is required
     manual_approval_required = (
-        adapter.manual_approval_required
-        if hasattr(adapter, "manual_approval_required")
-        else False
+        adapter.manual_approval_required if hasattr(adapter, "manual_approval_required") else False
     )
     manual_approval_operations = (
-        adapter.manual_approval_operations
-        if hasattr(adapter, "manual_approval_operations")
-        else []
+        adapter.manual_approval_operations if hasattr(adapter, "manual_approval_operations") else []
     )
 
     # Check if auto-creation is disabled in tenant config
     auto_create_enabled = tenant.get("auto_create_media_buys", True)
     product_auto_create = (
-        all(p.get("auto_create_enabled", True) for p in products_in_buy)
-        if "products_in_buy" in locals()
-        else True
+        all(p.get("auto_create_enabled", True) for p in products_in_buy) if "products_in_buy" in locals() else True
     )
 
     if manual_approval_required and "create_media_buy" in manual_approval_operations:
@@ -736,9 +672,7 @@ def create_media_buy(
 
             # Create new context if needed
             if not persistent_ctx:
-                persistent_ctx = ctx_manager.create_context(
-                    tenant_id=tenant["tenant_id"], principal_id=principal_id
-                )
+                persistent_ctx = ctx_manager.create_context(tenant_id=tenant["tenant_id"], principal_id=principal_id)
 
         # Create workflow step for this async operation
         step = ctx_manager.create_workflow_step(
@@ -770,11 +704,11 @@ def create_media_buy(
         task_response = create_workflow_step_for_task(task_req, context)
 
         # Link task to context
-        ctx_manager.link_task_to_context(
-            persistent_ctx.context_id, task_response.task_id, is_current=True
-        )
+        ctx_manager.link_task_to_context(persistent_ctx.context_id, task_response.task_id, is_current=True)
 
-        response_msg = f"Manual approval required. Task ID: {task_response.task_id}. Context ID: {persistent_ctx.context_id}"
+        response_msg = (
+            f"Manual approval required. Task ID: {task_response.task_id}. Context ID: {persistent_ctx.context_id}"
+        )
         ctx_manager.add_message(persistent_ctx.context_id, "assistant", response_msg)
 
         return CreateMediaBuyResponse(
@@ -788,11 +722,7 @@ def create_media_buy(
 
     # Check if either tenant or product disables auto-creation
     if not auto_create_enabled or not product_auto_create:
-        reason = (
-            "Tenant configuration"
-            if not auto_create_enabled
-            else "Product configuration"
-        )
+        reason = "Tenant configuration" if not auto_create_enabled else "Product configuration"
 
         # NOW we need a context since this is going async
         if not persistent_ctx:
@@ -802,9 +732,7 @@ def create_media_buy(
 
             # Create new context if needed
             if not persistent_ctx:
-                persistent_ctx = ctx_manager.create_context(
-                    tenant_id=tenant["tenant_id"], principal_id=principal_id
-                )
+                persistent_ctx = ctx_manager.create_context(tenant_id=tenant["tenant_id"], principal_id=principal_id)
 
         # Create workflow step for this async operation
         step = ctx_manager.create_workflow_step(
@@ -833,9 +761,7 @@ def create_media_buy(
         )
 
         task_response = create_workflow_step_for_task(task_req, context)
-        ctx_manager.link_task_to_context(
-            persistent_ctx.context_id, task_response.task_id, is_current=True
-        )
+        ctx_manager.link_task_to_context(persistent_ctx.context_id, task_response.task_id, is_current=True)
 
         response_msg = f"Media buy requires approval due to {reason.lower()}. Task ID: {task_response.task_id}. Context ID: {persistent_ctx.context_id}"
         ctx_manager.add_message(persistent_ctx.context_id, "assistant", response_msg)
@@ -869,9 +795,7 @@ def create_media_buy(
                 name=product.name,
                 delivery_type=product.delivery_type,
                 cpm=product.cpm if product.cpm else 10.0,  # Default CPM
-                impressions=int(
-                    req.total_budget / (product.cpm if product.cpm else 10.0) * 1000
-                ),
+                impressions=int(req.total_budget / (product.cpm if product.cpm else 10.0) * 1000),
                 format_ids=[format_info.format_id] if format_info else [],
             )
         )
@@ -920,9 +844,7 @@ def create_media_buy(
                     "package_assignments": req.product_ids,
                 }
             )
-        statuses = adapter.add_creative_assets(
-            response.media_buy_id, assets, datetime.now()
-        )
+        statuses = adapter.add_creative_assets(response.media_buy_id, assets, datetime.now())
         for status in statuses:
             creative_statuses[status.creative_id] = CreativeStatus(
                 creative_id=status.creative_id,
@@ -943,9 +865,7 @@ def create_media_buy(
             from models import Principal
 
             principal = (
-                session.query(Principal)
-                .filter_by(principal_id=principal_id, tenant_id=tenant["tenant_id"])
-                .first()
+                session.query(Principal).filter_by(principal_id=principal_id, tenant_id=tenant["tenant_id"]).first()
             )
             if principal:
                 principal_name = principal.name
@@ -970,9 +890,7 @@ def create_media_buy(
 
 
 @mcp.tool
-def check_media_buy_status(
-    req: CheckMediaBuyStatusRequest, context: Context
-) -> CheckMediaBuyStatusResponse:
+def check_media_buy_status(req: CheckMediaBuyStatusRequest, context: Context) -> CheckMediaBuyStatusResponse:
     """Check the status of a media buy using the context_id returned from create_media_buy."""
     _get_principal_id_from_context(context)
 
@@ -984,9 +902,7 @@ def check_media_buy_status(
     # If not in memory, check database
     if not media_buy_id:
         with get_db_session() as session:
-            media_buy = (
-                session.query(MediaBuy).filter_by(context_id=req.context_id).first()
-            )
+            media_buy = session.query(MediaBuy).filter_by(context_id=req.context_id).first()
 
             if media_buy:
                 media_buy_id = media_buy.media_buy_id
@@ -1013,22 +929,14 @@ def check_media_buy_status(
         with get_db_session() as session:
             from models import HumanTask
 
-            pending_task = (
-                session.query(HumanTask)
-                .filter_by(media_buy_id=media_buy_id, status="pending")
-                .first()
-            )
+            pending_task = session.query(HumanTask).filter_by(media_buy_id=media_buy_id, status="pending").first()
 
             if pending_task:
                 status = "pending_manual"
                 detail = "Awaiting manual approval"
             else:
                 status = "active" if creative_count > 0 else "pending_creative"
-                detail = (
-                    "Media buy is active"
-                    if creative_count > 0
-                    else "Awaiting creative assets"
-                )
+                detail = "Media buy is active" if creative_count > 0 else "Awaiting creative assets"
 
         return CheckMediaBuyStatusResponse(
             media_buy_id=media_buy_id,
@@ -1051,18 +959,14 @@ def check_media_buy_status(
 
 
 @mcp.tool
-def add_creative_assets(
-    req: AddCreativeAssetsRequest, context: Context
-) -> AddCreativeAssetsResponse:
+def add_creative_assets(req: AddCreativeAssetsRequest, context: Context) -> AddCreativeAssetsResponse:
     _verify_principal(req.media_buy_id, context)
     principal_id = _get_principal_id_from_context(context)
     tenant = get_current_tenant()
 
     # Create or get persistent context
     ctx_manager = get_context_manager()
-    ctx_id = (
-        context.headers.get("x-context-id") if hasattr(context, "headers") else None
-    )
+    ctx_id = context.headers.get("x-context-id") if hasattr(context, "headers") else None
     persistent_ctx = ctx_manager.get_or_create_context(
         tenant_id=tenant["tenant_id"],
         principal_id=principal_id,
@@ -1115,9 +1019,7 @@ def add_creative_assets(
                 notifier_config = {
                     "features": {
                         "slack_webhook_url": tenant.get("slack_webhook_url"),
-                        "slack_audit_webhook_url": tenant.get(
-                            "slack_audit_webhook_url"
-                        ),
+                        "slack_audit_webhook_url": tenant.get("slack_audit_webhook_url"),
                     }
                 }
                 slack_notifier = get_slack_notifier(notifier_config)
@@ -1128,9 +1030,7 @@ def add_creative_assets(
                     media_buy_id=req.media_buy_id,
                 )
             except Exception as e:
-                console.print(
-                    f"[yellow]Failed to send Slack notification: {e}[/yellow]"
-                )
+                console.print(f"[yellow]Failed to send Slack notification: {e}[/yellow]")
 
     # Update context based on results
     if pending_count > 0:
@@ -1178,14 +1078,8 @@ def add_creative_assets(
 
 
 @mcp.tool
-def check_creative_status(
-    req: CheckCreativeStatusRequest, context: Context
-) -> CheckCreativeStatusResponse:
-    statuses = [
-        creative_statuses.get(cid)
-        for cid in req.creative_ids
-        if cid in creative_statuses
-    ]
+def check_creative_status(req: CheckCreativeStatusRequest, context: Context) -> CheckCreativeStatusResponse:
+    statuses = [creative_statuses.get(cid) for cid in req.creative_ids if cid in creative_statuses]
     return CheckCreativeStatusResponse(statuses=statuses)
 
 
@@ -1312,9 +1206,7 @@ def legacy_update_media_buy(req: LegacyUpdateMediaBuyRequest, context: Context):
 
 # Unified update tools
 @mcp.tool
-def update_media_buy(
-    req: UpdateMediaBuyRequest, context: Context
-) -> UpdateMediaBuyResponse:
+def update_media_buy(req: UpdateMediaBuyRequest, context: Context) -> UpdateMediaBuyResponse:
     """Update a media buy with campaign-level and/or package-level changes."""
     _verify_principal(req.media_buy_id, context)
     _, principal_id = media_buys[req.media_buy_id]
@@ -1322,9 +1214,7 @@ def update_media_buy(
 
     # Create or get persistent context
     ctx_manager = get_context_manager()
-    ctx_id = (
-        context.headers.get("x-context-id") if hasattr(context, "headers") else None
-    )
+    ctx_id = context.headers.get("x-context-id") if hasattr(context, "headers") else None
     persistent_ctx = ctx_manager.get_or_create_context(
         tenant_id=tenant["tenant_id"],
         principal_id=principal_id,
@@ -1345,9 +1235,7 @@ def update_media_buy(
     principal = get_principal_object(principal_id)
     if not principal:
         error_msg = f"Principal {principal_id} not found"
-        ctx_manager.update_workflow_step(
-            step.step_id, status="failed", error_message=error_msg
-        )
+        ctx_manager.update_workflow_step(step.step_id, status="failed", error_message=error_msg)
         raise ToolError(error_msg)
 
     adapter = get_adapter(principal, dry_run=DRY_RUN_MODE)
@@ -1355,14 +1243,10 @@ def update_media_buy(
 
     # Check if manual approval is required
     manual_approval_required = (
-        adapter.manual_approval_required
-        if hasattr(adapter, "manual_approval_required")
-        else False
+        adapter.manual_approval_required if hasattr(adapter, "manual_approval_required") else False
     )
     manual_approval_operations = (
-        adapter.manual_approval_operations
-        if hasattr(adapter, "manual_approval_operations")
-        else []
+        adapter.manual_approval_operations if hasattr(adapter, "manual_approval_operations") else []
     )
 
     if manual_approval_required and "update_media_buy" in manual_approval_operations:
@@ -1462,14 +1346,10 @@ def update_media_buy(
         # Validate targeting doesn't use managed-only dimensions
         from targeting_capabilities import validate_overlay_targeting
 
-        violations = validate_overlay_targeting(
-            req.targeting_overlay.model_dump(exclude_none=True)
-        )
+        violations = validate_overlay_targeting(req.targeting_overlay.model_dump(exclude_none=True))
         if violations:
             error_msg = f"Targeting validation failed: {'; '.join(violations)}"
-            ctx_manager.update_workflow_step(
-                step.step_id, status="failed", error_message=error_msg
-            )
+            ctx_manager.update_workflow_step(step.step_id, status="failed", error_message=error_msg)
             return UpdateMediaBuyResponse(status="failed", detail=error_msg)
         buy_request.targeting_overlay = req.targeting_overlay
     if req.creative_assignments:
@@ -1498,9 +1378,7 @@ def update_media_buy(
 
 
 @mcp.tool
-def update_package(
-    req: UpdatePackageRequest, context: Context
-) -> UpdateMediaBuyResponse:
+def update_package(req: UpdatePackageRequest, context: Context) -> UpdateMediaBuyResponse:
     """Update one or more packages within a media buy."""
     _verify_principal(req.media_buy_id, context)
     _, principal_id = media_buys[req.media_buy_id]
@@ -1559,9 +1437,7 @@ def update_package(
 
 
 @mcp.tool
-def get_media_buy_delivery(
-    req: GetMediaBuyDeliveryRequest, context: Context
-) -> GetMediaBuyDeliveryResponse:
+def get_media_buy_delivery(req: GetMediaBuyDeliveryRequest, context: Context) -> GetMediaBuyDeliveryResponse:
     """Get delivery data for one or more media buys.
 
     Supports:
@@ -1591,9 +1467,7 @@ def get_media_buy_delivery(
                 if buy_principal_id == principal_id:
                     target_media_buys.append((media_buy_id, buy_request))
                 else:
-                    console.print(
-                        f"[yellow]Skipping {media_buy_id} - not owned by principal[/yellow]"
-                    )
+                    console.print(f"[yellow]Skipping {media_buy_id} - not owned by principal[/yellow]")
             else:
                 console.print(f"[yellow]Media buy {media_buy_id} not found[/yellow]")
     else:
@@ -1607,11 +1481,7 @@ def get_media_buy_delivery(
                     if req.today > buy_request.flight_end_date:
                         target_media_buys.append((media_buy_id, buy_request))
                 else:  # "active" (default)
-                    if (
-                        buy_request.flight_start_date
-                        <= req.today
-                        <= buy_request.flight_end_date
-                    ):
+                    if buy_request.flight_start_date <= req.today <= buy_request.flight_end_date:
                         target_media_buys.append((media_buy_id, buy_request))
 
     # Collect delivery data for each media buy
@@ -1632,34 +1502,18 @@ def get_media_buy_delivery(
         try:
             # Get delivery data from the adapter
             simulation_datetime = datetime.combine(req.today, datetime.min.time())
-            delivery_response = adapter.get_media_buy_delivery(
-                media_buy_id, reporting_period, simulation_datetime
-            )
+            delivery_response = adapter.get_media_buy_delivery(media_buy_id, reporting_period, simulation_datetime)
 
             # Calculate totals from the adapter response
-            spend = (
-                delivery_response.totals.spend
-                if hasattr(delivery_response, "totals")
-                else 0
-            )
-            impressions = (
-                delivery_response.totals.impressions
-                if hasattr(delivery_response, "totals")
-                else 0
-            )
+            spend = delivery_response.totals.spend if hasattr(delivery_response, "totals") else 0
+            impressions = delivery_response.totals.impressions if hasattr(delivery_response, "totals") else 0
 
             # Calculate days elapsed
             days_elapsed = (req.today - buy_request.flight_start_date).days
-            total_days = (
-                buy_request.flight_end_date - buy_request.flight_start_date
-            ).days
+            total_days = (buy_request.flight_end_date - buy_request.flight_start_date).days
 
             # Determine pacing
-            expected_spend = (
-                (buy_request.total_budget / total_days) * days_elapsed
-                if total_days > 0
-                else 0
-            )
+            expected_spend = (buy_request.total_budget / total_days) * days_elapsed if total_days > 0 else 0
             if spend > expected_spend * 1.1:
                 pacing = "ahead"
             elif spend < expected_spend * 0.9:
@@ -1707,9 +1561,7 @@ def get_media_buy_delivery(
 
 
 @mcp.tool
-def get_all_media_buy_delivery(
-    req: GetAllMediaBuyDeliveryRequest, context: Context
-) -> GetAllMediaBuyDeliveryResponse:
+def get_all_media_buy_delivery(req: GetAllMediaBuyDeliveryRequest, context: Context) -> GetAllMediaBuyDeliveryResponse:
     """DEPRECATED: Use get_media_buy_delivery with filter parameter instead.
 
     This endpoint is maintained for backward compatibility only.
@@ -1747,19 +1599,13 @@ def get_creatives(req: GetCreativesRequest, context: Context) -> GetCreativesRes
     principal_id = _get_principal_id_from_context(context)
 
     # Filter creatives by principal first
-    principal_creatives = [
-        creative
-        for creative in creative_library.values()
-        if creative.principal_id == principal_id
-    ]
+    principal_creatives = [creative for creative in creative_library.values() if creative.principal_id == principal_id]
 
     # Apply optional filters
     filtered_creatives = principal_creatives
 
     if req.group_id:
-        filtered_creatives = [
-            c for c in filtered_creatives if c.group_id == req.group_id
-        ]
+        filtered_creatives = [c for c in filtered_creatives if c.group_id == req.group_id]
 
     if req.status:
         # Check creative status
@@ -1784,9 +1630,7 @@ def get_creatives(req: GetCreativesRequest, context: Context) -> GetCreativesRes
             for g in creative_groups.values()
             if g.principal_id == principal_id and any(tag in g.tags for tag in req.tags)
         }
-        filtered_creatives = [
-            c for c in filtered_creatives if c.group_id in tagged_groups
-        ]
+        filtered_creatives = [c for c in filtered_creatives if c.group_id in tagged_groups]
 
     # Get assignments if requested
     assignments = None
@@ -1796,25 +1640,18 @@ def get_creatives(req: GetCreativesRequest, context: Context) -> GetCreativesRes
             assignments = [
                 a
                 for a in creative_assignments_v2.values()
-                if a.media_buy_id == req.media_buy_id
-                and a.creative_id in [c.creative_id for c in filtered_creatives]
+                if a.media_buy_id == req.media_buy_id and a.creative_id in [c.creative_id for c in filtered_creatives]
             ]
         else:
             # Get all assignments for these creatives
             creative_ids = {c.creative_id for c in filtered_creatives}
-            assignments = [
-                a
-                for a in creative_assignments_v2.values()
-                if a.creative_id in creative_ids
-            ]
+            assignments = [a for a in creative_assignments_v2.values() if a.creative_id in creative_ids]
 
     return GetCreativesResponse(creatives=filtered_creatives, assignments=assignments)
 
 
 @mcp.tool
-def create_creative_group(
-    req: CreateCreativeGroupRequest, context: Context
-) -> CreateCreativeGroupResponse:
+def create_creative_group(req: CreateCreativeGroupRequest, context: Context) -> CreateCreativeGroupResponse:
     """Create a new creative group for organizing creatives."""
     principal_id = _get_principal_id_from_context(context)
 
@@ -1847,9 +1684,7 @@ def create_creative_group(
 
 
 @mcp.tool
-def create_creative(
-    req: CreateCreativeRequest, context: Context
-) -> CreateCreativeResponse:
+def create_creative(req: CreateCreativeRequest, context: Context) -> CreateCreativeResponse:
     """Create a creative in the library (not tied to a specific media buy)."""
     principal_id = _get_principal_id_from_context(context)
     principal = get_principal_object(principal_id)
@@ -1910,9 +1745,7 @@ def create_creative(
 
 
 @mcp.tool
-def assign_creative(
-    req: AssignCreativeRequest, context: Context
-) -> AssignCreativeResponse:
+def assign_creative(req: AssignCreativeRequest, context: Context) -> AssignCreativeResponse:
     """Assign a creative from the library to a package in a media buy."""
     _verify_principal(req.media_buy_id, context)
     principal_id = _get_principal_id_from_context(context)
@@ -1983,9 +1816,7 @@ def _require_admin(context: Context) -> None:
 
 
 @mcp.tool
-def get_pending_creatives(
-    req: GetPendingCreativesRequest, context: Context
-) -> GetPendingCreativesResponse:
+def get_pending_creatives(req: GetPendingCreativesRequest, context: Context) -> GetPendingCreativesResponse:
     """Admin-only: Get all pending creatives across all principals.
 
     This allows admins to review and approve/reject creatives.
@@ -2009,12 +1840,14 @@ def get_pending_creatives(
                     {
                         "creative": creative.model_dump(),
                         "status": status.model_dump(),
-                        "principal": {
-                            "principal_id": principal.principal_id,
-                            "name": principal.name,
-                        }
-                        if principal
-                        else None,
+                        "principal": (
+                            {
+                                "principal_id": principal.principal_id,
+                                "name": principal.name,
+                            }
+                            if principal
+                            else None
+                        ),
                         "media_buy_assignments": [
                             {"media_buy_id": a.media_buy_id, "package_id": a.package_id}
                             for a in creative_assignments_v2.values()
@@ -2045,9 +1878,7 @@ def get_pending_creatives(
 
 
 @mcp.tool
-def approve_creative(
-    req: ApproveCreativeRequest, context: Context
-) -> ApproveCreativeResponse:
+def approve_creative(req: ApproveCreativeRequest, context: Context) -> ApproveCreativeResponse:
     """Admin-only: Approve or reject a creative.
 
     This updates the creative status and notifies the principal.
@@ -2091,11 +1922,7 @@ def approve_creative(
 
     # If approved and assigned to media buys, push to ad servers
     if new_status == "approved":
-        assignments = [
-            a
-            for a in creative_assignments_v2.values()
-            if a.creative_id == req.creative_id
-        ]
+        assignments = [a for a in creative_assignments_v2.values() if a.creative_id == req.creative_id]
         for assignment in assignments:
             # Get the media buy and principal
             if assignment.media_buy_id in media_buys:
@@ -2111,32 +1938,22 @@ def approve_creative(
                                 "name": creative.name,
                                 "format": creative.format_id,
                                 "media_url": creative.content_uri,
-                                "click_url": assignment.override_click_url
-                                or creative.click_through_url
-                                or "",
+                                "click_url": assignment.override_click_url or creative.click_through_url or "",
                                 "package_assignments": [assignment.package_id],
                             }
                         ]
-                        adapter.add_creative_assets(
-                            assignment.media_buy_id, assets, datetime.now()
-                        )
+                        adapter.add_creative_assets(assignment.media_buy_id, assets, datetime.now())
                         console.print(
                             f"[green]✓ Pushed creative {creative.creative_id} to {assignment.media_buy_id}[/green]"
                         )
                     except Exception as e:
-                        console.print(
-                            f"[red]Failed to push creative to ad server: {e}[/red]"
-                        )
+                        console.print(f"[red]Failed to push creative to ad server: {e}[/red]")
 
-    return ApproveCreativeResponse(
-        creative_id=req.creative_id, new_status=new_status, detail=detail
-    )
+    return ApproveCreativeResponse(creative_id=req.creative_id, new_status=new_status, detail=detail)
 
 
 @mcp.tool
-def update_performance_index(
-    req: UpdatePerformanceIndexRequest, context: Context
-) -> UpdatePerformanceIndexResponse:
+def update_performance_index(req: UpdatePerformanceIndexRequest, context: Context) -> UpdatePerformanceIndexResponse:
     _verify_principal(req.media_buy_id, context)
     buy_request, principal_id = media_buys[req.media_buy_id]
 
@@ -2150,38 +1967,24 @@ def update_performance_index(
 
     # Convert ProductPerformance to PackagePerformance for the adapter
     package_performance = [
-        PackagePerformance(
-            package_id=perf.product_id, performance_index=perf.performance_index
-        )
+        PackagePerformance(package_id=perf.product_id, performance_index=perf.performance_index)
         for perf in req.performance_data
     ]
 
     # Call the adapter's update method
-    success = adapter.update_media_buy_performance_index(
-        req.media_buy_id, package_performance
-    )
+    success = adapter.update_media_buy_performance_index(req.media_buy_id, package_performance)
 
     # Log the performance update
-    console.print(
-        f"[bold green]Performance Index Update for {req.media_buy_id}:[/bold green]"
-    )
+    console.print(f"[bold green]Performance Index Update for {req.media_buy_id}:[/bold green]")
     for perf in req.performance_data:
-        status_emoji = (
-            "📈"
-            if perf.performance_index > 1.0
-            else "📉"
-            if perf.performance_index < 1.0
-            else "➡️"
-        )
+        status_emoji = "📈" if perf.performance_index > 1.0 else "📉" if perf.performance_index < 1.0 else "➡️"
         console.print(
             f"  {status_emoji} {perf.product_id}: {perf.performance_index:.2f} (confidence: {perf.confidence_score or 'N/A'})"
         )
 
     # Simulate optimization based on performance
     if any(p.performance_index < 0.8 for p in req.performance_data):
-        console.print(
-            "  [yellow]⚠️  Low performance detected - optimization recommended[/yellow]"
-        )
+        console.print("  [yellow]⚠️  Low performance detected - optimization recommended[/yellow]")
 
     return UpdatePerformanceIndexResponse(
         status="success" if success else "failed",
@@ -2193,29 +1996,21 @@ def update_performance_index(
 
 
 @mcp.tool
-def create_workflow_step_for_task(
-    req: CreateHumanTaskRequest, context: Context
-) -> CreateHumanTaskResponse:
+def create_workflow_step_for_task(req: CreateHumanTaskRequest, context: Context) -> CreateHumanTaskResponse:
     """Create a task requiring human intervention."""
     principal_id = get_principal_from_context(context)
     if not principal_id:
-        raise ToolError(
-            "AUTHENTICATION_REQUIRED", "You must provide a valid x-adcp-auth header"
-        )
+        raise ToolError("AUTHENTICATION_REQUIRED", "You must provide a valid x-adcp-auth header")
 
     # Get or create context for this workflow
     tenant = get_current_tenant()
-    ctx_id = (
-        context.headers.get("x-context-id") if hasattr(context, "headers") else None
-    )
+    ctx_id = context.headers.get("x-context-id") if hasattr(context, "headers") else None
 
     # For human tasks, we always need a context
     if ctx_id:
         persistent_ctx = context_mgr.get_context(ctx_id)
     else:
-        persistent_ctx = context_mgr.create_context(
-            tenant_id=tenant["tenant_id"], principal_id=principal_id
-        )
+        persistent_ctx = context_mgr.create_context(tenant_id=tenant["tenant_id"], principal_id=principal_id)
         ctx_id = persistent_ctx.context_id
 
     # Calculate due date
@@ -2234,11 +2029,7 @@ def create_workflow_step_for_task(
     if req.task_type in ["compliance_review", "manual_approval"]:
         owner = "publisher"
     elif req.task_type == "creative_approval":
-        owner = (
-            "principal"
-            if req.context_data and req.context_data.get("principal_action_needed")
-            else "publisher"
-        )
+        owner = "principal" if req.context_data and req.context_data.get("principal_action_needed") else "publisher"
 
     # Build object mappings if we have related objects
     object_mappings = []
@@ -2358,9 +2149,7 @@ def create_workflow_step_for_task(
 
 
 @mcp.tool
-def get_pending_workflows(
-    req: GetPendingTasksRequest, context: Context
-) -> GetPendingTasksResponse:
+def get_pending_workflows(req: GetPendingTasksRequest, context: Context) -> GetPendingTasksResponse:
     """Get pending workflow steps that need action."""
     # Check if requester is admin
     principal_id = get_principal_from_context(context)
@@ -2380,9 +2169,7 @@ def get_pending_workflows(
         owner_filter = "publisher"
 
     # Get pending steps from workflow
-    pending_steps = context_mgr.get_pending_steps(
-        owner=owner_filter, assigned_to=req.assigned_to
-    )
+    pending_steps = context_mgr.get_pending_steps(owner=owner_filter, assigned_to=req.assigned_to)
 
     # Convert workflow steps to HumanTask format for compatibility
     tasks = []
@@ -2405,9 +2192,7 @@ def get_pending_workflows(
             context_data=req_data.get("context_data"),
             created_at=step.created_at,
             updated_at=step.created_at,
-            due_by=datetime.fromisoformat(req_data["due_by"])
-            if req_data.get("due_by")
-            else None,
+            due_by=datetime.fromisoformat(req_data["due_by"]) if req_data.get("due_by") else None,
             assigned_to=step.assigned_to,
         )
 
@@ -2426,13 +2211,11 @@ def get_pending_workflows(
     now = datetime.now()
     overdue_count = sum(1 for t in tasks if t.due_by and t.due_by < now)
 
-    return GetPendingTasksResponse(
-        tasks=tasks, total_count=len(tasks), overdue_count=overdue_count
-    )
+    return GetPendingTasksResponse(tasks=tasks, total_count=len(tasks), overdue_count=overdue_count)
 
 
 @mcp.tool
-def assign_task(req: AssignTaskRequest, context: Context) -> Dict[str, str]:
+def assign_task(req: AssignTaskRequest, context: Context) -> dict[str, str]:
     """Assign a task to a human operator."""
     # Admin only
     principal_id = get_principal_from_context(context)
@@ -2465,7 +2248,7 @@ def assign_task(req: AssignTaskRequest, context: Context) -> Dict[str, str]:
 
 
 @mcp.tool
-def complete_task(req: CompleteTaskRequest, context: Context) -> Dict[str, str]:
+def complete_task(req: CompleteTaskRequest, context: Context) -> dict[str, str]:
     """Complete a human task with resolution details."""
     # Admin only
     principal_id = get_principal_from_context(context)
@@ -2481,32 +2264,26 @@ def complete_task(req: CompleteTaskRequest, context: Context) -> Dict[str, str]:
     task.resolution_detail = req.resolution_detail
     task.resolved_by = req.resolved_by
     task.completed_at = datetime.now()
-    task.status = (
-        "completed" if req.resolution in ["approved", "completed"] else "failed"
-    )
+    task.status = "completed" if req.resolution in ["approved", "completed"] else "failed"
     task.updated_at = datetime.now()
 
     # Update task in database
     tenant = get_current_tenant()
     with get_db_session() as session:
-        db_task = (
-            session.query(Task)
-            .filter_by(task_id=req.task_id, tenant_id=tenant["tenant_id"])
-            .first()
-        )
+        db_task = session.query(Task).filter_by(task_id=req.task_id, tenant_id=tenant["tenant_id"]).first()
 
         if db_task:
             db_task.status = task.status
-            db_task.completed_at = (
-                task.completed_at.isoformat() if task.completed_at else None
-            )
+            db_task.completed_at = task.completed_at.isoformat() if task.completed_at else None
             db_task.completed_by = task.resolved_by
             db_task.task_metadata = {
                 "resolution": task.resolution,
                 "resolution_detail": task.resolution_detail,
-                "original_metadata": json.loads(human_tasks[req.task_id].task_metadata)
-                if hasattr(human_tasks[req.task_id], "task_metadata")
-                else {},
+                "original_metadata": (
+                    json.loads(human_tasks[req.task_id].task_metadata)
+                    if hasattr(human_tasks[req.task_id], "task_metadata")
+                    else {}
+                ),
             }
             session.commit()
 
@@ -2550,17 +2327,13 @@ def complete_task(req: CompleteTaskRequest, context: Context) -> Dict[str, str]:
             # Update creative status
             if task.creative_id in creative_statuses:
                 creative_statuses[task.creative_id].status = "approved"
-                creative_statuses[task.creative_id].detail = (
-                    "Manually approved by " + req.resolved_by
-                )
+                creative_statuses[task.creative_id].detail = "Manually approved by " + req.resolved_by
                 console.print(f"[green]✅ Creative {task.creative_id} approved[/green]")
 
     elif task.task_type == "manual_approval" and task.operation:
         if req.resolution == "approved":
             # Execute the deferred operation
-            console.print(
-                f"[green]✅ Executing deferred operation: {task.operation}[/green]"
-            )
+            console.print(f"[green]✅ Executing deferred operation: {task.operation}[/green]")
 
             # Get principal for the operation
             principal = get_principal_object(task.principal_id)
@@ -2573,9 +2346,7 @@ def complete_task(req: CompleteTaskRequest, context: Context) -> Dict[str, str]:
 
                     # Get products for the media buy
                     catalog = get_product_catalog()
-                    products_in_buy = [
-                        p for p in catalog if p.product_id in original_req.product_ids
-                    ]
+                    products_in_buy = [p for p in catalog if p.product_id in original_req.product_ids]
 
                     # Convert products to MediaPackages
                     packages = []
@@ -2588,26 +2359,16 @@ def complete_task(req: CompleteTaskRequest, context: Context) -> Dict[str, str]:
                                 delivery_type=product.delivery_type,
                                 cpm=product.cpm if product.cpm else 10.0,
                                 impressions=int(
-                                    original_req.total_budget
-                                    / (product.cpm if product.cpm else 10.0)
-                                    * 1000
+                                    original_req.total_budget / (product.cpm if product.cpm else 10.0) * 1000
                                 ),
-                                format_ids=[format_info.format_id]
-                                if format_info
-                                else [],
+                                format_ids=[format_info.format_id] if format_info else [],
                             )
                         )
 
                     # Execute the actual creation
-                    start_time = datetime.combine(
-                        original_req.flight_start_date, datetime.min.time()
-                    )
-                    end_time = datetime.combine(
-                        original_req.flight_end_date, datetime.max.time()
-                    )
-                    response = adapter.create_media_buy(
-                        original_req, packages, start_time, end_time
-                    )
+                    start_time = datetime.combine(original_req.flight_start_date, datetime.min.time())
+                    end_time = datetime.combine(original_req.flight_end_date, datetime.max.time())
+                    response = adapter.create_media_buy(original_req, packages, start_time, end_time)
 
                     # Store the media buy in memory (for backward compatibility)
                     media_buys[response.media_buy_id] = (
@@ -2623,15 +2384,10 @@ def complete_task(req: CompleteTaskRequest, context: Context) -> Dict[str, str]:
                             media_buy_id=response.media_buy_id,
                             tenant_id=tenant["tenant_id"],
                             principal_id=task.principal_id,
-                            order_name=original_req.po_number
-                            or f"Order-{response.media_buy_id}",
+                            order_name=original_req.po_number or f"Order-{response.media_buy_id}",
                             advertiser_name=principal.name if principal else "Unknown",
-                            campaign_objective=getattr(
-                                original_req, "campaign_objective", ""
-                            ),  # Optional field
-                            kpi_goal=getattr(
-                                original_req, "kpi_goal", ""
-                            ),  # Optional field
+                            campaign_objective=getattr(original_req, "campaign_objective", ""),  # Optional field
+                            kpi_goal=getattr(original_req, "kpi_goal", ""),  # Optional field
                             budget=original_req.total_budget,
                             start_date=original_req.flight_start_date.isoformat(),
                             end_date=original_req.flight_end_date.isoformat(),
@@ -2640,9 +2396,7 @@ def complete_task(req: CompleteTaskRequest, context: Context) -> Dict[str, str]:
                         )
                         session.add(new_media_buy)
                         session.commit()
-                    console.print(
-                        f"[green]Media buy {response.media_buy_id} created after manual approval[/green]"
-                    )
+                    console.print(f"[green]Media buy {response.media_buy_id} created after manual approval[/green]")
 
                 elif task.operation == "update_media_buy":
                     # Reconstruct and execute the update_media_buy request
@@ -2651,11 +2405,7 @@ def complete_task(req: CompleteTaskRequest, context: Context) -> Dict[str, str]:
 
                     # Execute the updates
                     if original_req.active is not None:
-                        action = (
-                            "resume_media_buy"
-                            if original_req.active
-                            else "pause_media_buy"
-                        )
+                        action = "resume_media_buy" if original_req.active else "pause_media_buy"
                         adapter.update_media_buy(
                             media_buy_id=original_req.media_buy_id,
                             action=action,
@@ -2668,11 +2418,7 @@ def complete_task(req: CompleteTaskRequest, context: Context) -> Dict[str, str]:
                     if original_req.packages:
                         for pkg_update in original_req.packages:
                             if pkg_update.active is not None:
-                                action = (
-                                    "resume_package"
-                                    if pkg_update.active
-                                    else "pause_package"
-                                )
+                                action = "resume_package" if pkg_update.active else "pause_package"
                                 adapter.update_media_buy(
                                     media_buy_id=original_req.media_buy_id,
                                     action=action,
@@ -2681,9 +2427,7 @@ def complete_task(req: CompleteTaskRequest, context: Context) -> Dict[str, str]:
                                     today=datetime.combine(today, datetime.min.time()),
                                 )
 
-                    console.print(
-                        f"[green]Media buy {original_req.media_buy_id} updated after manual approval[/green]"
-                    )
+                    console.print(f"[green]Media buy {original_req.media_buy_id} updated after manual approval[/green]")
         else:
             console.print(f"[red]❌ Manual approval rejected for {task.operation}[/red]")
 
@@ -2725,9 +2469,7 @@ def verify_task(req: VerifyTaskRequest, context: Context) -> VerifyTaskResponse:
                     expected_state["daily_budget"] = expected_budget
 
                     if actual_budget != expected_budget:
-                        discrepancies.append(
-                            f"Daily budget is ${actual_budget}, expected ${expected_budget}"
-                        )
+                        discrepancies.append(f"Daily budget is ${actual_budget}, expected ${expected_budget}")
                         verified = False
 
                 # Check active status
@@ -2742,16 +2484,10 @@ def verify_task(req: VerifyTaskRequest, context: Context) -> VerifyTaskResponse:
                     for pkg_update in update_req["packages"]:
                         if "budget" in pkg_update:
                             # Would need to query adapter for actual package budget
-                            expected_state[
-                                f"package_{pkg_update['package_id']}_budget"
-                            ] = pkg_update["budget"]
+                            expected_state[f"package_{pkg_update['package_id']}_budget"] = pkg_update["budget"]
                             # For demo, assume it matches if task completed
-                            actual_state[
-                                f"package_{pkg_update['package_id']}_budget"
-                            ] = (
-                                pkg_update["budget"]
-                                if task.status == "completed"
-                                else 0
+                            actual_state[f"package_{pkg_update['package_id']}_budget"] = (
+                                pkg_update["budget"] if task.status == "completed" else 0
                             )
 
     elif task.task_type == "creative_approval":
@@ -2763,9 +2499,7 @@ def verify_task(req: VerifyTaskRequest, context: Context) -> VerifyTaskResponse:
             expected_state["creative_status"] = "approved"
 
             if actual_status != "approved" and task.resolution == "approved":
-                discrepancies.append(
-                    f"Creative {creative_id} status is {actual_status}, expected approved"
-                )
+                discrepancies.append(f"Creative {creative_id} status is {actual_status}, expected approved")
                 verified = False
 
     return VerifyTaskResponse(
@@ -2778,17 +2512,13 @@ def verify_task(req: VerifyTaskRequest, context: Context) -> VerifyTaskResponse:
 
 
 @mcp.tool
-def mark_task_complete(
-    req: MarkTaskCompleteRequest, context: Context
-) -> Dict[str, Any]:
+def mark_task_complete(req: MarkTaskCompleteRequest, context: Context) -> dict[str, Any]:
     """Mark a task as complete with automatic verification."""
     # Admin only
     principal_id = get_principal_from_context(context)
     tenant = get_current_tenant()
     if principal_id != f"{tenant['tenant_id']}_admin":
-        raise ToolError(
-            "PERMISSION_DENIED", "Only administrators can mark tasks complete"
-        )
+        raise ToolError("PERMISSION_DENIED", "Only administrators can mark tasks complete")
 
     if req.task_id not in human_tasks:
         raise ToolError("NOT_FOUND", f"Task {req.task_id} not found")
@@ -2820,11 +2550,7 @@ def mark_task_complete(
     # Update task in database
     tenant = get_current_tenant()
     with get_db_session() as session:
-        db_task = (
-            session.query(Task)
-            .filter_by(task_id=req.task_id, tenant_id=tenant["tenant_id"])
-            .first()
-        )
+        db_task = session.query(Task).filter_by(task_id=req.task_id, tenant_id=tenant["tenant_id"]).first()
 
         if db_task:
             db_task.status = task.status
@@ -2868,7 +2594,7 @@ def mark_task_complete(
 # Dry run logs are now handled by the adapters themselves
 
 
-def get_product_catalog() -> List[schemas.Product]:
+def get_product_catalog() -> list[schemas.Product]:
     """Get products for the current tenant."""
     tenant = get_current_tenant()
 
@@ -2902,17 +2628,15 @@ def get_targeting_capabilities(
 ) -> GetTargetingCapabilitiesResponse:
     """Get available targeting dimensions for specified channels."""
     from targeting_dimensions import (
+        Channel,
+        ChannelTargetingCapabilities,
+        TargetingDimensionInfo,
         get_channel_capabilities,
         get_supported_channels,
-        Channel,
-        TargetingDimensionInfo,
-        ChannelTargetingCapabilities,
     )
 
     # Determine which channels to return
-    channels = (
-        req.channels if req.channels else [c.value for c in get_supported_channels()]
-    )
+    channels = req.channels if req.channels else [c.value for c in get_supported_channels()]
 
     capabilities = []
     for channel_str in channels:
@@ -2962,11 +2686,9 @@ def get_targeting_capabilities(
 
 
 @mcp.tool
-def check_aee_requirements(
-    req: CheckAEERequirementsRequest, context: Context
-) -> CheckAEERequirementsResponse:
+def check_aee_requirements(req: CheckAEERequirementsRequest, context: Context) -> CheckAEERequirementsResponse:
     """Check if required AEE dimensions are supported for a channel."""
-    from targeting_dimensions import get_aee_dimensions, Channel
+    from targeting_dimensions import Channel, get_aee_dimensions
 
     try:
         channel = Channel(req.channel)
@@ -3002,8 +2724,9 @@ if __name__ == "__main__":
 # Add admin UI routes when running unified
 if os.environ.get("ADCP_UNIFIED_MODE"):
     from fastapi import Request
-    from fastapi.responses import RedirectResponse
     from fastapi.middleware.wsgi import WSGIMiddleware
+    from fastapi.responses import RedirectResponse
+
     from admin_ui import app as flask_admin_app
 
     # Create WSGI middleware for Flask app
@@ -3037,9 +2760,7 @@ if os.environ.get("ADCP_UNIFIED_MODE"):
         """Handle tenant-specific admin requests."""
         # Forward to Flask app with tenant context
         scope = request.scope.copy()
-        scope["path"] = (
-            f"/tenant/{tenant_id}/{path}" if path else f"/tenant/{tenant_id}"
-        )
+        scope["path"] = f"/tenant/{tenant_id}/{path}" if path else f"/tenant/{tenant_id}"
 
         receive = request.receive
         send = request._send

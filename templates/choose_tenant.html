@@ -5,11 +5,11 @@
 {% block content %}
 <div class="card" style="max-width: 600px; margin: 4rem auto;">
     <h2>Select Tenant</h2>
-    
+
     <p style="margin-bottom: 2rem;">
         Your email address has access to multiple tenants. Please select which one you'd like to manage:
     </p>
-    
+
     <form method="POST" action="{{ url_for('select_tenant') }}">
         <div style="margin-bottom: 2rem;">
             {% for tenant_id, tenant_name in tenants %}
@@ -19,7 +19,7 @@
             </label>
             {% endfor %}
         </div>
-        
+
         <button type="submit" class="btn">Continue</button>
         <a href="{{ url_for('logout') }}" class="btn btn-secondary" style="margin-left: 0.5rem;">Cancel</a>
     </form>

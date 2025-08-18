@@ -7,33 +7,33 @@ Our test suite is organized into four main categories:
 ### 1. Unit Tests (`tests/unit/`)
 Fast, isolated tests that verify individual components without external dependencies.
 
-**Run:** `pytest tests/unit/ -v`  
-**Purpose:** Test business logic, data transformations, and utility functions  
-**Mocking:** Minimal - only external services  
+**Run:** `pytest tests/unit/ -v`
+**Purpose:** Test business logic, data transformations, and utility functions
+**Mocking:** Minimal - only external services
 **Runtime:** < 1 second per test
 
 ### 2. Integration Tests (`tests/integration/`)
 Tests that verify component interactions with real databases and services.
 
-**Run:** `pytest tests/integration/ -v`  
-**Purpose:** Test database operations, API endpoints, and service integrations  
-**Mocking:** External APIs only (GAM, Slack, etc.)  
+**Run:** `pytest tests/integration/ -v`
+**Purpose:** Test database operations, API endpoints, and service integrations
+**Mocking:** External APIs only (GAM, Slack, etc.)
 **Runtime:** < 5 seconds per test
 
 ### 3. End-to-End Tests (`tests/e2e/`)
 Complete workflow tests that simulate real user journeys.
 
-**Run:** `pytest tests/e2e/ -v`  
-**Purpose:** Test complete user workflows from start to finish  
-**Mocking:** None - uses real services in test mode  
+**Run:** `pytest tests/e2e/ -v`
+**Purpose:** Test complete user workflows from start to finish
+**Mocking:** None - uses real services in test mode
 **Runtime:** < 30 seconds per test
 
 ### 4. UI Tests (`tests/ui/`)
 Tests for the Admin UI web interface.
 
-**Run:** `pytest tests/ui/ -v`  
-**Purpose:** Test page rendering, forms, and user interactions  
-**Mocking:** Backend services when appropriate  
+**Run:** `pytest tests/ui/ -v`
+**Purpose:** Test page rendering, forms, and user interactions
+**Mocking:** Backend services when appropriate
 **Runtime:** < 10 seconds per test
 
 ## Running Tests
@@ -149,25 +149,25 @@ from unittest.mock import Mock, patch
 @pytest.mark.requires_db
 class TestFeatureName:
     """Test suite for specific feature."""
-    
+
     @pytest.fixture(autouse=True)
     def setup(self):
         """Setup before each test."""
         # Setup code
         yield
         # Teardown code
-    
+
     def test_happy_path(self, test_db):
         """Test normal successful operation."""
         # Arrange
         data = {"key": "value"}
-        
+
         # Act
         result = function_under_test(data)
-        
+
         # Assert
         assert result['status'] == 'success'
-    
+
     def test_error_handling(self):
         """Test error scenarios."""
         with pytest.raises(ValueError):

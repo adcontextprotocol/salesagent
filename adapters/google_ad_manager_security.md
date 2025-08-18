@@ -153,7 +153,7 @@ GET /api/tenant/{tenant_id}/principals/{principal_id}/gam/reporting
 
 1. **Network Timezone**: Automatically fetched from GAM and cached in adapter config
 2. **Report Configuration**: Uses `timeZoneType: 'PUBLISHER'` for consistency
-3. **Data Format**: 
+3. **Data Format**:
    - DATE: `YYYY-MM-DD` format
    - HOUR: Integer `0-23`
    - All timestamps in network's timezone

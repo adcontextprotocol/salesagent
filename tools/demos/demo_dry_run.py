@@ -3,17 +3,19 @@
 
 import subprocess
 import sys
+
 from rich.console import Console
 from rich.panel import Panel
 
 console = Console()
 
+
 def run_demo(adapter: str):
     """Run a simple demo with the specified adapter."""
     console.print(Panel(f"[bold cyan]Testing {adapter.upper()} Adapter in Dry-Run Mode[/bold cyan]"))
-    
+
     # Run a simple Python script that tests the adapter
-    code = f'''
+    code = f"""
 import os
 os.environ['ADCP_ADAPTER'] = '{adapter}'
 os.environ['ADCP_DRY_RUN'] = 'true'
@@ -53,32 +55,29 @@ response = adapter.create_media_buy(
     datetime(2025, 8, 1), datetime(2025, 8, 15)
 )
 print(f"\\nCreated: {{response.media_buy_id}}")
-'''
-    
+"""
+
     # Run the code
-    result = subprocess.run(
-        [sys.executable, '-c', code],
-        capture_output=True,
-        text=True
-    )
-    
+    result = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True)
+
     if result.stdout:
         console.print(result.stdout)
     if result.stderr:
         console.print(f"[red]{result.stderr}[/red]")
-    
+
     console.print()
+
 
 if __name__ == "__main__":
     console.print("[bold]AdCP Sales Agent Dry-Run Mode Demonstration[/bold]\n")
     console.print("This demonstrates how each adapter logs the API calls it would make.\n")
-    
+
     # Test Mock adapter
-    run_demo('mock')
-    
+    run_demo("mock")
+
     # Test GAM adapter
-    run_demo('gam')
-    
+    run_demo("gam")
+
     console.print("[bold green]✅ Demonstration complete![/bold green]")
     console.print("\n[dim]Key features demonstrated:[/dim]")
     console.print("[dim]- Command-line arguments: --dry-run --adapter <name>[/dim]")

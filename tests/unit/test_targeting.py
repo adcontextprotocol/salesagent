@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 """Test targeting validation within each adapter."""
 
+
 import pytest
-from schemas import Targeting, Dayparting, DaypartSchedule, FrequencyCap
+
 from adapters.google_ad_manager import GoogleAdManager
 from adapters.kevel import Kevel
 from adapters.triton_digital import TritonDigital
-from schemas import Principal
-import json
+from schemas import Dayparting, DaypartSchedule, FrequencyCap, Principal, Targeting
 
 pytestmark = pytest.mark.unit
 
@@ -15,11 +15,7 @@ pytestmark = pytest.mark.unit
 mock_principal = Principal(
     principal_id="test",
     name="Test Principal",
-    platform_mappings={
-        "gam_advertiser_id": "12345",
-        "kevel_advertiser_id": "67890",
-        "triton_advertiser_id": "11111"
-    }
+    platform_mappings={"gam_advertiser_id": "12345", "kevel_advertiser_id": "67890", "triton_advertiser_id": "11111"},
 )
 
 # Create comprehensive targeting that will challenge each adapter
@@ -30,39 +26,24 @@ full_targeting = Targeting(
     geo_metro_any_of=["501", "803"],
     geo_city_any_of=["New York", "Los Angeles"],
     geo_zip_any_of=["10001", "90210"],
-    
     # Device and platform targeting
     device_type_any_of=["mobile", "desktop", "ctv", "tablet"],
     os_any_of=["iOS", "Android", "Windows"],
     browser_any_of=["Chrome", "Safari"],
-    
     # Media type targeting
     media_type_any_of=["video", "display", "audio"],
-    
     # Content and audience targeting
     content_cat_any_of=["IAB17", "IAB19"],
     content_cat_none_of=["IAB7", "IAB14"],
     keywords_any_of=["sports", "technology"],
     keywords_none_of=["gambling"],
     audiences_any_of=["3p:sports_fans", "behavior:early_adopters"],
-    
     # Time-based targeting
     dayparting=Dayparting(
-        timezone="America/New_York",
-        schedules=[
-            DaypartSchedule(
-                days=[1, 2, 3, 4, 5],
-                start_hour=6,
-                end_hour=10
-            )
-        ]
+        timezone="America/New_York", schedules=[DaypartSchedule(days=[1, 2, 3, 4, 5], start_hour=6, end_hour=10)]
     ),
-    
     # Frequency capping
-    frequency_cap=FrequencyCap(
-        suppress_minutes=1440,  # 24 hours
-        scope="media_buy"
-    )
+    frequency_cap=FrequencyCap(suppress_minutes=1440, scope="media_buy"),  # 24 hours
 )
 
 print("Testing Adapter-Specific Targeting Validation")
@@ -76,7 +57,7 @@ gam = GoogleAdManager(gam_config, mock_principal, dry_run=True)
 
 unsupported = gam._validate_targeting(full_targeting)
 if unsupported:
-    print(f"❌ Unsupported features:")
+    print("❌ Unsupported features:")
     for issue in unsupported:
         print(f"   - {issue}")
 else:
@@ -93,7 +74,7 @@ kevel = Kevel(kevel_config, mock_principal, dry_run=True)
 
 unsupported = kevel._validate_targeting(full_targeting)
 if unsupported:
-    print(f"❌ Unsupported features:")
+    print("❌ Unsupported features:")
     for issue in unsupported:
         print(f"   - {issue}")
 else:
@@ -110,7 +91,7 @@ triton = TritonDigital(triton_config, mock_principal, dry_run=True)
 
 unsupported = triton._validate_targeting(full_targeting)
 if unsupported:
-    print(f"❌ Unsupported features:")
+    print("❌ Unsupported features:")
     for issue in unsupported:
         print(f"   - {issue}")
 else:
@@ -131,8 +112,8 @@ audio_targeting = Targeting(
     dayparting=Dayparting(
         timezone="America/New_York",
         schedules=[],  # Empty schedules, using presets instead
-        presets=["drive_time_morning", "drive_time_evening"]
-    )
+        presets=["drive_time_morning", "drive_time_evening"],
+    ),
 )
 
 for name, adapter in [("GAM", gam), ("Kevel", kevel), ("Triton", triton)]:
