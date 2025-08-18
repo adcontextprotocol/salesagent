@@ -119,16 +119,16 @@ class TestDashboardRoutes:
         assert response.status_code != 500
 
     @patch("admin_ui.get_db_session")
-    def test_dashboard_invalid_tenant(self, mock_db, flask_client):
+    def test_dashboard_invalid_tenant(self, mock_get_session, flask_client):
         """Test dashboard with non-existent tenant."""
-        # Mock database connection
-        mock_conn = MagicMock()
-        mock_cursor = MagicMock()
-        mock_conn.execute.return_value = mock_cursor
-        mock_db.return_value = mock_conn
+        # Mock database session using context manager
+        mock_session = MagicMock()
+        mock_session.__enter__ = MagicMock(return_value=mock_session)
+        mock_session.__exit__ = MagicMock(return_value=None)
+        mock_get_session.return_value = mock_session
 
         # Mock tenant query returning None (tenant not found)
-        mock_cursor.fetchone.return_value = None
+        mock_session.query.return_value.filter_by.return_value.first.return_value = None
 
         with flask_client.session_transaction() as sess:
             sess["authenticated"] = True
