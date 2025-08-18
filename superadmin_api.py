@@ -6,7 +6,8 @@ import secrets
 import json
 import uuid
 from datetime import datetime
-from db_config import get_db_connection
+from database_session import get_db_session
+from models import SuperadminConfig, Tenant, Principal
 import logging
 
 logger = logging.getLogger(__name__)
@@ -25,25 +26,20 @@ def require_superadmin_api_key(f):
             return jsonify({'error': 'Missing API key'}), 401
         
         # Get the stored API key from database
-        conn = get_db_connection()
-        try:
-            cursor = conn.execute(
-                "SELECT config_value FROM superadmin_config WHERE config_key = ?",
-                ('superadmin_api_key',)
-            )
-            result = cursor.fetchone()
+        with get_db_session() as db_session:
+            config = db_session.query(SuperadminConfig).filter_by(
+                config_key='superadmin_api_key'
+            ).first()
             
-            if not result or not result[0]:
+            if not config or not config.config_value:
                 logger.error("Superadmin API key not configured in database")
                 return jsonify({'error': 'API not configured'}), 503
             
-            if api_key != result[0]:
+            if api_key != config.config_value:
                 logger.warning(f"Invalid superadmin API key attempted: {api_key[:8]}...")
                 return jsonify({'error': 'Invalid API key'}), 401
             
             return f(*args, **kwargs)
-        finally:
-            conn.close()
     
     return decorated_function
 
@@ -62,93 +58,96 @@ def health_check():
 @require_superadmin_api_key
 def list_tenants():
     """List all tenants."""
-    conn = get_db_connection()
-    try:
-        cursor = conn.execute("""
-            SELECT t.tenant_id, t.name, t.subdomain, t.is_active, 
-                   t.billing_plan, t.ad_server, t.created_at,
-                   COUNT(ac.tenant_id) as has_adapter
-            FROM tenants t
-            LEFT JOIN adapter_config ac ON t.tenant_id = ac.tenant_id
-            GROUP BY t.tenant_id
-            ORDER BY t.created_at DESC
-        """)
-        
-        results = []
-        for row in cursor.fetchall():
-            results.append({
-                'tenant_id': row[0],
-                'name': row[1],
-                'subdomain': row[2],
-                'is_active': bool(row[3]),
-                'billing_plan': row[4],
-                'ad_server': row[5],
-                'created_at': row[6] if row[6] else None,
-                'adapter_configured': bool(row[7])
+    from models import AdapterConfig
+    from sqlalchemy import func
+    
+    with get_db_session() as db_session:
+        try:
+            # Query with left join and group by
+            tenants_query = (
+                db_session.query(
+                    Tenant.tenant_id,
+                    Tenant.name,
+                    Tenant.subdomain,
+                    Tenant.is_active,
+                    Tenant.billing_plan,
+                    Tenant.ad_server,
+                    Tenant.created_at,
+                    func.count(AdapterConfig.tenant_id).label('has_adapter')
+                )
+                .outerjoin(AdapterConfig, Tenant.tenant_id == AdapterConfig.tenant_id)
+                .group_by(Tenant.tenant_id)
+                .order_by(Tenant.created_at.desc())
+            )
+            
+            results = []
+            for row in tenants_query:
+                results.append({
+                    'tenant_id': row.tenant_id,
+                    'name': row.name,
+                    'subdomain': row.subdomain,
+                    'is_active': bool(row.is_active),
+                    'billing_plan': row.billing_plan,
+                    'ad_server': row.ad_server,
+                    'created_at': row.created_at.isoformat() if row.created_at else None,
+                    'adapter_configured': bool(row.has_adapter)
+                })
+            
+            return jsonify({
+                'tenants': results,
+                'count': len(results)
             })
-        
-        return jsonify({
-            'tenants': results,
-            'count': len(results)
-        })
-        
-    except Exception as e:
-        logger.error(f"Error listing tenants: {str(e)}")
-        return jsonify({'error': 'Failed to list tenants'}), 500
-    finally:
-        conn.close()
+            
+        except Exception as e:
+            logger.error(f"Error listing tenants: {str(e)}")
+            return jsonify({'error': 'Failed to list tenants'}), 500
 
 
 @superadmin_api.route('/tenants', methods=['POST'])
 @require_superadmin_api_key
 def create_tenant():
     """Create a new tenant."""
-    conn = get_db_connection()
-    try:
-        data = request.get_json()
+    from models import AdapterConfig
+    from datetime import timezone
+    
+    with get_db_session() as db_session:
+        try:
+            data = request.get_json()
+            
+            # Validate required fields
+            required_fields = ['name', 'subdomain', 'ad_server']
+            for field in required_fields:
+                if field not in data:
+                    return jsonify({'error': f'Missing required field: {field}'}), 400
+            
+            # Generate tenant ID
+            tenant_id = f"tenant_{uuid.uuid4().hex[:8]}"
+            admin_token = secrets.token_urlsafe(32)
         
-        # Validate required fields
-        required_fields = ['name', 'subdomain', 'ad_server']
-        for field in required_fields:
-            if field not in data:
-                return jsonify({'error': f'Missing required field: {field}'}), 400
-        
-        # Generate tenant ID
-        tenant_id = f"tenant_{uuid.uuid4().hex[:8]}"
-        admin_token = secrets.token_urlsafe(32)
-        
-        # Create tenant - using parameterized query for safety
-        conn.execute("""
-            INSERT INTO tenants (
-                tenant_id, name, subdomain, ad_server, is_active,
-                billing_plan, billing_contact, max_daily_budget,
-                enable_aee_signals, authorized_emails, authorized_domains,
-                slack_webhook_url, slack_audit_webhook_url, hitl_webhook_url,
-                admin_token, auto_approve_formats, human_review_required,
-                policy_settings, created_at, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """, (
-            tenant_id,
-            data['name'],
-            data['subdomain'],
-            data['ad_server'],
-            data.get('is_active', True),
-            data.get('billing_plan', 'standard'),
-            data.get('billing_contact'),
-            data.get('max_daily_budget', 10000),
-            data.get('enable_aee_signals', True),
-            json.dumps(data.get('authorized_emails', [])),
-            json.dumps(data.get('authorized_domains', [])),
-            data.get('slack_webhook_url'),
-            data.get('slack_audit_webhook_url'),
-            data.get('hitl_webhook_url'),
-            admin_token,
-            json.dumps(data.get('auto_approve_formats', ['display_300x250'])),
-            data.get('human_review_required', True),
-            json.dumps(data.get('policy_settings', {})),
-            datetime.utcnow(),
-            datetime.utcnow()
-        ))
+            # Create tenant
+            new_tenant = Tenant(
+                tenant_id=tenant_id,
+                name=data['name'],
+                subdomain=data['subdomain'],
+                ad_server=data['ad_server'],
+                is_active=data.get('is_active', True),
+                billing_plan=data.get('billing_plan', 'standard'),
+                billing_contact=data.get('billing_contact'),
+                max_daily_budget=data.get('max_daily_budget', 10000),
+                enable_aee_signals=data.get('enable_aee_signals', True),
+                authorized_emails=json.dumps(data.get('authorized_emails', [])),
+                authorized_domains=json.dumps(data.get('authorized_domains', [])),
+                slack_webhook_url=data.get('slack_webhook_url'),
+                slack_audit_webhook_url=data.get('slack_audit_webhook_url'),
+                hitl_webhook_url=data.get('hitl_webhook_url'),
+                admin_token=admin_token,
+                auto_approve_formats=json.dumps(data.get('auto_approve_formats', ['display_300x250'])),
+                human_review_required=data.get('human_review_required', True),
+                policy_settings=json.dumps(data.get('policy_settings', {})),
+                created_at=datetime.now(timezone.utc),
+                updated_at=datetime.now(timezone.utc)
+            )
+            db_session.add(new_tenant)
         
         # Create adapter config
         adapter_type = data['ad_server']

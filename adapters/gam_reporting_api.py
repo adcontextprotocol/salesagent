@@ -17,7 +17,8 @@ import pytz
 
 from adapters.gam_reporting_service import GAMReportingService
 from gam_helper import get_ad_manager_client_for_tenant
-from db_config import get_db_connection
+from database_session import get_db_session
+from models import Tenant, Principal, GAMLineItem
 
 logger = logging.getLogger(__name__)
 
@@ -103,16 +104,10 @@ def get_gam_reporting(tenant_id: str):
         return jsonify({'error': 'Access denied to this tenant'}), 403
     
     # Check if tenant is using GAM
-    from db_config import get_db_connection
-    conn = get_db_connection()
-    tenant_cursor = conn.execute(
-        "SELECT ad_server FROM tenants WHERE tenant_id = ?",
-        (tenant_id,)
-    )
-    tenant = tenant_cursor.fetchone()
-    conn.close()
+    with get_db_session() as db_session:
+        tenant = db_session.query(Tenant).filter_by(tenant_id=tenant_id).first()
     
-    if not tenant or tenant.get('ad_server') != 'google_ad_manager':
+    if not tenant or tenant.ad_server != 'google_ad_manager':
         return jsonify({'error': 'GAM reporting is only available for tenants using Google Ad Manager'}), 400
     
     # Get query parameters
@@ -209,16 +204,10 @@ def get_advertiser_summary(tenant_id: str, advertiser_id: str):
         return jsonify({'error': 'Access denied to this tenant'}), 403
     
     # Check if tenant is using GAM
-    from db_config import get_db_connection
-    conn = get_db_connection()
-    tenant_cursor = conn.execute(
-        "SELECT ad_server FROM tenants WHERE tenant_id = ?",
-        (tenant_id,)
-    )
-    tenant = tenant_cursor.fetchone()
-    conn.close()
+    with get_db_session() as db_session:
+        tenant = db_session.query(Tenant).filter_by(tenant_id=tenant_id).first()
     
-    if not tenant or tenant.get('ad_server') != 'google_ad_manager':
+    if not tenant or tenant.ad_server != 'google_ad_manager':
         return jsonify({'error': 'GAM reporting is only available for tenants using Google Ad Manager'}), 400
     
     # Get query parameters
@@ -281,20 +270,19 @@ def get_principal_reporting(tenant_id: str, principal_id: str):
         return jsonify({'error': 'Access denied to this tenant'}), 403
     
     # Get the principal's advertiser_id
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute(
-        "SELECT platform_mappings FROM principals WHERE tenant_id = ? AND principal_id = ?",
-        (tenant_id, principal_id)
-    )
-    principal = cursor.fetchone()
-    conn.close()
+    with get_db_session() as db_session:
+        principal = db_session.query(Principal).filter_by(
+            tenant_id=tenant_id,
+            principal_id=principal_id
+        ).first()
     
     if not principal:
         return jsonify({'error': 'Principal not found'}), 404
     
     import json
-    platform_mappings = json.loads(principal['platform_mappings']) if isinstance(principal['platform_mappings'], str) else principal['platform_mappings']
+    platform_mappings = principal.platform_mappings
+    if isinstance(platform_mappings, str):
+        platform_mappings = json.loads(platform_mappings)
     advertiser_id = platform_mappings.get('gam_advertiser_id')
     
     if not advertiser_id:
@@ -324,20 +312,20 @@ def get_principal_reporting(tenant_id: str, principal_id: str):
         gam_client = get_ad_manager_client_for_tenant(tenant_id)
         
         # Get the network timezone from adapter config
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        cursor.execute(
-            "SELECT gam_network_timezone FROM adapter_config WHERE tenant_id = ? AND adapter_type = 'google_ad_manager'",
-            (tenant_id,)
-        )
-        adapter_config = cursor.fetchone()
-        conn.close()
+        from models import AdapterConfig
+        with get_db_session() as db_session:
+            adapter_config = db_session.query(AdapterConfig).filter_by(
+                tenant_id=tenant_id,
+                adapter_type='google_ad_manager'
+            ).first()
         
         if not adapter_config:
             # Default to America/New_York if no config found
             network_timezone = 'America/New_York'
         else:
-            network_timezone = adapter_config.get('gam_network_timezone', 'America/New_York')
+            import json
+            config_data = json.loads(adapter_config.config) if isinstance(adapter_config.config, str) else adapter_config.config
+            network_timezone = config_data.get('gam_network_timezone', 'America/New_York')
         
         # Create reporting service
         reporting_service = GAMReportingService(gam_client, network_timezone)
@@ -397,15 +385,10 @@ def get_country_breakdown(tenant_id: str):
         return jsonify({'error': 'Access denied to this tenant'}), 403
     
     # Check if tenant is using GAM
-    conn = get_db_connection()
-    tenant_cursor = conn.execute(
-        "SELECT ad_server FROM tenants WHERE tenant_id = ?",
-        (tenant_id,)
-    )
-    tenant = tenant_cursor.fetchone()
-    conn.close()
+    with get_db_session() as db_session:
+        tenant = db_session.query(Tenant).filter_by(tenant_id=tenant_id).first()
     
-    if not tenant or tenant.get('ad_server') != 'google_ad_manager':
+    if not tenant or tenant.ad_server != 'google_ad_manager':
         return jsonify({'error': 'GAM reporting is only available for tenants using Google Ad Manager'}), 400
     
     # Get query parameters
@@ -486,15 +469,10 @@ def get_ad_unit_breakdown(tenant_id: str):
         return jsonify({'error': 'Access denied to this tenant'}), 403
     
     # Check if tenant is using GAM
-    conn = get_db_connection()
-    tenant_cursor = conn.execute(
-        "SELECT ad_server FROM tenants WHERE tenant_id = ?",
-        (tenant_id,)
-    )
-    tenant = tenant_cursor.fetchone()
-    conn.close()
+    with get_db_session() as db_session:
+        tenant = db_session.query(Tenant).filter_by(tenant_id=tenant_id).first()
     
-    if not tenant or tenant.get('ad_server') != 'google_ad_manager':
+    if not tenant or tenant.ad_server != 'google_ad_manager':
         return jsonify({'error': 'GAM reporting is only available for tenants using Google Ad Manager'}), 400
     
     # Get query parameters
@@ -577,20 +555,19 @@ def get_principal_summary(tenant_id: str, principal_id: str):
         return jsonify({'error': 'Access denied to this tenant'}), 403
     
     # Get the principal's advertiser_id
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute(
-        "SELECT platform_mappings FROM principals WHERE tenant_id = ? AND principal_id = ?",
-        (tenant_id, principal_id)
-    )
-    principal = cursor.fetchone()
-    conn.close()
+    with get_db_session() as db_session:
+        principal = db_session.query(Principal).filter_by(
+            tenant_id=tenant_id,
+            principal_id=principal_id
+        ).first()
     
     if not principal:
         return jsonify({'error': 'Principal not found'}), 404
     
     import json
-    platform_mappings = json.loads(principal['platform_mappings']) if isinstance(principal['platform_mappings'], str) else principal['platform_mappings']
+    platform_mappings = principal.platform_mappings
+    if isinstance(platform_mappings, str):
+        platform_mappings = json.loads(platform_mappings)
     advertiser_id = platform_mappings.get('gam_advertiser_id')
     
     if not advertiser_id:
@@ -610,20 +587,20 @@ def get_principal_summary(tenant_id: str, principal_id: str):
         gam_client = get_ad_manager_client_for_tenant(tenant_id)
         
         # Get the network timezone from adapter config
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        cursor.execute(
-            "SELECT gam_network_timezone FROM adapter_config WHERE tenant_id = ? AND adapter_type = 'google_ad_manager'",
-            (tenant_id,)
-        )
-        adapter_config = cursor.fetchone()
-        conn.close()
+        from models import AdapterConfig
+        with get_db_session() as db_session:
+            adapter_config = db_session.query(AdapterConfig).filter_by(
+                tenant_id=tenant_id,
+                adapter_type='google_ad_manager'
+            ).first()
         
         if not adapter_config:
             # Default to America/New_York if no config found
             network_timezone = 'America/New_York'
         else:
-            network_timezone = adapter_config.get('gam_network_timezone', 'America/New_York')
+            import json
+            config_data = json.loads(adapter_config.config) if isinstance(adapter_config.config, str) else adapter_config.config
+            network_timezone = config_data.get('gam_network_timezone', 'America/New_York')
         
         # Create reporting service
         reporting_service = GAMReportingService(gam_client, network_timezone)
