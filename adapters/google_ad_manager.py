@@ -99,30 +99,27 @@ class GoogleAdManager(AdServerAdapter):
     
     def _get_oauth_credentials(self):
         """Get OAuth credentials using refresh token and superadmin config."""
-        from db_config import get_db_connection
+        from database_session import get_db_session
+        from models import SuperadminConfig
         from googleads import oauth2
         
         # Get OAuth client credentials from superadmin config
-        with get_db_connection() as conn:
-            cursor = conn.cursor()
+        with get_db_session() as db_session:
+            client_id_config = db_session.query(SuperadminConfig).filter_by(
+                config_key='gam_oauth_client_id'
+            ).first()
             
-            cursor.execute(
-                "SELECT config_value FROM superadmin_config WHERE config_key = 'gam_oauth_client_id'"
-            )
-            client_id_row = cursor.fetchone()
+            client_secret_config = db_session.query(SuperadminConfig).filter_by(
+                config_key='gam_oauth_client_secret'
+            ).first()
             
-            cursor.execute(
-                "SELECT config_value FROM superadmin_config WHERE config_key = 'gam_oauth_client_secret'"
-            )
-            client_secret_row = cursor.fetchone()
-            
-            if not client_id_row or not client_id_row[0]:
+            if not client_id_config or not client_id_config.config_value:
                 raise ValueError("GAM OAuth Client ID not configured in superadmin settings")
-            if not client_secret_row or not client_secret_row[0]:
+            if not client_secret_config or not client_secret_config.config_value:
                 raise ValueError("GAM OAuth Client Secret not configured in superadmin settings")
             
-            client_id = client_id_row[0]
-            client_secret = client_secret_row[0]
+            client_id = client_id_config.config_value
+            client_secret = client_secret_config.config_value
         
         # Create GoogleAds OAuth2 client
         oauth2_client = oauth2.GoogleRefreshTokenClient(
@@ -355,22 +352,21 @@ class GoogleAdManager(AdServerAdapter):
     def create_media_buy(self, request: CreateMediaBuyRequest, packages: List[MediaPackage], start_time: datetime, end_time: datetime) -> CreateMediaBuyResponse:
         """Creates a new Order and associated LineItems in Google Ad Manager."""
         # Get products to access implementation_config
-        from db_config import get_db_connection
+        from database_session import get_db_session
+        from models import Product
         
         # Create a map of package_id to product for easy lookup
         products_map = {}
-        with get_db_connection() as conn:
-            cursor = conn.cursor()
+        with get_db_session() as db_session:
             for package in packages:
-                cursor.execute(
-                    "SELECT product_id, implementation_config FROM products WHERE tenant_id = %s AND product_id = %s",
-                    (self.tenant_id, package.package_id)  # package_id is actually product_id
-                )
-                product_row = cursor.fetchone()
-                if product_row:
+                product = db_session.query(Product).filter_by(
+                    tenant_id=self.tenant_id,
+                    product_id=package.package_id  # package_id is actually product_id
+                ).first()
+                if product:
                     products_map[package.package_id] = {
-                        'product_id': product_row[0],
-                        'implementation_config': product_row[1] or {}
+                        'product_id': product.product_id,
+                        'implementation_config': json.loads(product.implementation_config) if product.implementation_config else {}
                     }
         
         # Log operation
@@ -1002,39 +998,35 @@ class GoogleAdManager(AdServerAdapter):
             from db_config import get_db_connection
             
             # Get tenant and product
-            with get_db_connection() as conn:
-                cursor = conn.cursor()
-                
-                cursor.execute(
-                    "SELECT name FROM tenants WHERE tenant_id = %s",
-                    (tenant_id,)
-                )
-                tenant_row = cursor.fetchone()
-                if not tenant_row:
+            from database_session import get_db_session
+            from models import Tenant, Product, AdapterConfig
+            
+            with get_db_session() as db_session:
+                tenant = db_session.query(Tenant).filter_by(tenant_id=tenant_id).first()
+                if not tenant:
                     flash('Tenant not found', 'error')
                     return redirect(url_for('tenants'))
                 
-                cursor.execute(
-                    "SELECT product_id, name, implementation_config FROM products WHERE tenant_id = %s AND product_id = %s",
-                    (tenant_id, product_id)
-                )
-                product_row = cursor.fetchone()
+                product = db_session.query(Product).filter_by(
+                    tenant_id=tenant_id,
+                    product_id=product_id
+                ).first()
             
-            if not product_row:
+            if not product:
                 flash('Product not found', 'error')
                 return redirect(url_for('products', tenant_id=tenant_id))
             
-            product_id_db, product_name, implementation_config = product_row
+            product_id_db = product.product_id
+            product_name = product.name
+            implementation_config = json.loads(product.implementation_config) if product.implementation_config else {}
             
             # Get network code from adapter config
-            with get_db_connection() as conn:
-                cursor = conn.cursor()
-                cursor.execute(
-                    "SELECT gam_network_code FROM adapter_config WHERE tenant_id = %s",
-                    (tenant_id,)
-                )
-                adapter_row = cursor.fetchone()
-                network_code = adapter_row[0] if adapter_row else 'XXXXX'
+            with get_db_session() as db_session:
+                adapter_config = db_session.query(AdapterConfig).filter_by(
+                    tenant_id=tenant_id,
+                    adapter_type='google_ad_manager'
+                ).first()
+                network_code = adapter_config.gam_network_code if adapter_config else 'XXXXX'
             
             if request.method == 'POST':
                 try:
@@ -1122,13 +1114,14 @@ class GoogleAdManager(AdServerAdapter):
                     validation_result = self.validate_product_config(config)
                     if validation_result[0]:
                         # Save to database
-                        with get_db_connection() as conn:
-                            cursor = conn.cursor()
-                            cursor.execute(
-                                "UPDATE products SET implementation_config = %s WHERE tenant_id = %s AND product_id = %s",
-                                (config, tenant_id, product_id)
-                            )
-                            conn.connection.commit()
+                        with get_db_session() as db_session:
+                            product = db_session.query(Product).filter_by(
+                                tenant_id=tenant_id,
+                                product_id=product_id
+                            ).first()
+                            if product:
+                                product.implementation_config = json.dumps(config)
+                                db_session.commit()
                         flash('GAM configuration saved successfully', 'success')
                         return redirect(url_for('edit_product', tenant_id=tenant_id, product_id=product_id))
                     else:
