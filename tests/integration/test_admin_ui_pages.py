@@ -3,9 +3,10 @@
 These tests ensure that admin UI pages render without errors after database schema changes.
 """
 
-import pytest
-import sys
 import os
+import sys
+
+import pytest
 
 sys.path.insert(0, ".")
 
@@ -13,9 +14,9 @@ sys.path.insert(0, ".")
 os.environ["DATABASE_URL"] = "sqlite:///test_admin_ui.db"
 
 from admin_ui import app
-from tests.fixtures import TenantFactory
-from db_config import get_db_connection
+from database_session import get_db_session
 from init_database import init_db
+from tests.fixtures import TenantFactory
 
 
 @pytest.fixture(scope="module")
@@ -36,7 +37,7 @@ def setup_test_db():
         # Instead, just create tables directly for SQLite
         from database_schema import get_schema
 
-        conn = get_db_connection()
+        conn = get_db_session()
         schema = get_schema("sqlite")
         conn.connection.executescript(schema)
         conn.commit()
@@ -75,7 +76,7 @@ class TestAdminUIPages:
         """Test that the products list page renders without errors."""
         # Create test tenant and insert into database
         tenant = TenantFactory.create()
-        conn = get_db_connection()
+        conn = get_db_session()
 
         # Insert tenant into database using base schema
         conn.execute(
@@ -106,15 +107,13 @@ class TestAdminUIPages:
 
         # Test the products page with authentication
         response = client.get(f"/tenant/{tenant['tenant_id']}/products")
-        assert (
-            response.status_code == 200
-        ), f"Failed to load products page: {response.data}"
+        assert response.status_code == 200, f"Failed to load products page: {response.data}"
 
     def test_policy_settings_page_renders(self, client, authenticated_session):
         """Test that the policy settings page renders without errors."""
         # Create test tenant and insert into database
         tenant = TenantFactory.create()
-        conn = get_db_connection()
+        conn = get_db_session()
 
         # Insert tenant into database using base schema
         conn.execute(
@@ -145,13 +144,9 @@ class TestAdminUIPages:
 
         # Test the policy page with authentication
         response = client.get(f"/tenant/{tenant['tenant_id']}/policy")
-        assert (
-            response.status_code == 200
-        ), f"Failed to load policy page: {response.data}"
+        assert response.status_code == 200, f"Failed to load policy page: {response.data}"
 
-    def test_pages_use_new_schema_not_config_column(
-        self, client, authenticated_session
-    ):
+    def test_pages_use_new_schema_not_config_column(self, client, authenticated_session):
         """Test that pages use the new schema columns instead of the old config column.
 
         This test verifies that after the migration from a single 'config' column
@@ -159,7 +154,7 @@ class TestAdminUIPages:
         """
         # Create test tenant and insert into database
         tenant = TenantFactory.create()
-        conn = get_db_connection()
+        conn = get_db_session()
 
         # Insert tenant into database using base schema
         try:
@@ -203,9 +198,7 @@ class TestAdminUIPages:
                         "SELECT config FROM tenants WHERE tenant_id = ?",
                         (tenant["tenant_id"],),
                     )
-                    pytest.fail(
-                        "The 'config' column should not exist after migration to individual columns"
-                    )
+                    pytest.fail("The 'config' column should not exist after migration to individual columns")
                 except Exception as e:
                     # This is expected - the config column should not exist
                     assert (
@@ -237,9 +230,7 @@ class TestAdminUIPages:
 
         response = client.get(f"/tenant/{tenant['tenant_id']}/products")
         # Should not return 500 error
-        assert (
-            response.status_code != 500
-        ), "Page returned 500 error - likely database schema issue"
+        assert response.status_code != 500, "Page returned 500 error - likely database schema issue"
 
     def test_product_setup_wizard_page_renders(self, client):
         """Test that the product setup wizard page renders without errors.
@@ -251,7 +242,7 @@ class TestAdminUIPages:
         tenant = TenantFactory.create()
 
         # Mock the Flask-Login current_user to bypass authentication
-        from unittest.mock import patch, MagicMock
+        from unittest.mock import MagicMock, patch
 
         mock_user = MagicMock()
         mock_user.is_authenticated = True
@@ -269,14 +260,10 @@ class TestAdminUIPages:
         ):
             # Test the product setup wizard page - this should trigger template rendering
             try:
-                response = client.get(
-                    f"/tenant/{tenant['tenant_id']}/products/setup-wizard"
-                )
+                response = client.get(f"/tenant/{tenant['tenant_id']}/products/setup-wizard")
 
                 # Should not return 500 error
-                assert (
-                    response.status_code != 500
-                ), f"Product wizard page returned 500 error: {response.data}"
+                assert response.status_code != 500, f"Product wizard page returned 500 error: {response.data}"
 
                 # If we got 200, verify no template errors in response
                 if response.status_code == 200:
@@ -284,9 +271,7 @@ class TestAdminUIPages:
                     assert (
                         b"BuildError" not in response.data
                     ), "Template has BuildError - likely bad url_for() reference"
-                    assert (
-                        b"werkzeug.routing.exceptions" not in response.data
-                    ), "Template has routing exception"
+                    assert b"werkzeug.routing.exceptions" not in response.data, "Template has routing exception"
             except Exception as e:
                 # If the template has a BuildError, it will raise during rendering
                 if "BuildError" in str(e) or "gam_inventory_dashboard" in str(e):

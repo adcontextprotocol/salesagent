@@ -1,10 +1,12 @@
 """Integration tests for dashboard with real database."""
 
-import pytest
-from datetime import datetime, timedelta, timezone
 import json
-from db_config import get_db_connection, DatabaseConfig
+from datetime import UTC, datetime, timedelta
+
+import pytest
+
 from database import init_db
+from database_session import DatabaseConfig, get_db_session
 
 
 def get_placeholder():
@@ -33,7 +35,7 @@ def test_db():
         if "already exists" not in str(e):
             raise
 
-    conn = get_db_connection()
+    conn = get_db_session()
 
     # Get placeholder for SQL queries
     ph = get_placeholder()
@@ -108,7 +110,7 @@ def test_db():
         )
 
     # Insert test media buys with different statuses and dates
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
 
     # Active buy from 5 days ago
     conn.execute(

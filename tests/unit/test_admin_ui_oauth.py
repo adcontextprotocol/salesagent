@@ -10,27 +10,28 @@ This test suite covers:
 5. Multi-tenant access scenarios
 """
 
-import pytest
 import json
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
+
+import pytest
 
 pytestmark = pytest.mark.unit
 
 # Mock database connections and OAuth before importing admin_ui
 import sys
 
-mock_db = MagicMock()
-mock_cursor = MagicMock()
-mock_cursor.fetchall.return_value = []
-mock_db.execute.return_value = mock_cursor
+# Mock the database session
+mock_session = MagicMock()
+mock_session.query.return_value.filter_by.return_value.first.return_value = None
+mock_session.query.return_value.filter_by.return_value.all.return_value = []
+mock_session.__enter__ = MagicMock(return_value=mock_session)
+mock_session.__exit__ = MagicMock(return_value=None)
 
-with patch("db_config.get_db_connection", return_value=mock_db):
-    with patch("admin_ui.get_db_connection", return_value=mock_db):
+with patch("database_session.get_db_session", return_value=mock_session):
+    with patch("admin_ui.get_db_session", return_value=mock_session):
         # Mock gam_inventory_service to avoid database initialization
         sys.modules["gam_inventory_service"] = MagicMock()
-        sys.modules["gam_inventory_service"].get_db_connection = MagicMock(
-            return_value=mock_db
-        )
+        sys.modules["gam_inventory_service"].get_db_session = MagicMock(return_value=mock_session)
 
         # Now import admin_ui
         from admin_ui import app, is_super_admin, is_tenant_admin
@@ -52,7 +53,7 @@ def client():
 @pytest.fixture
 def mock_db():
     """Mock database connection."""
-    with patch("admin_ui.get_db_connection") as mock:
+    with patch("admin_ui.get_db_session") as mock:
         conn = MagicMock()
         mock.return_value = conn
         yield conn
@@ -156,9 +157,7 @@ class TestOAuthCallback:
                 assert sess["email"] == "admin@example.com"
                 assert sess["username"] == "Admin User"
 
-    def test_google_callback_tenant_admin_single_tenant(
-        self, client, mock_google_oauth
-    ):
+    def test_google_callback_tenant_admin_single_tenant(self, client, mock_google_oauth):
         """Test successful Google OAuth callback for tenant admin with single tenant access."""
         # Mock token and user info
         mock_google_oauth.authorize_access_token.return_value = {
@@ -167,9 +166,7 @@ class TestOAuthCallback:
 
         # Mock is_tenant_admin to return single tenant
         with patch("admin_ui.is_super_admin", return_value=False):
-            with patch(
-                "admin_ui.is_tenant_admin", return_value=[("tenant-1", "Tenant One")]
-            ):
+            with patch("admin_ui.is_tenant_admin", return_value=[("tenant-1", "Tenant One")]):
                 response = client.get("/auth/google/callback")
 
                 # Should redirect to tenant detail
@@ -183,9 +180,7 @@ class TestOAuthCallback:
                     assert sess["tenant_id"] == "tenant-1"
                     assert sess["email"] == "user@example.com"
 
-    def test_google_callback_tenant_admin_multiple_tenants(
-        self, client, mock_google_oauth
-    ):
+    def test_google_callback_tenant_admin_multiple_tenants(self, client, mock_google_oauth):
         """Test Google OAuth callback for user with access to multiple tenants."""
         # Mock token and user info
         mock_google_oauth.authorize_access_token.return_value = {
@@ -226,9 +221,7 @@ class TestOAuthCallback:
                 assert response.status_code == 200
                 assert b"not authorized" in response.data
 
-    def test_tenant_google_callback_with_user_in_db(
-        self, client, mock_google_oauth, mock_db, mock_db_session
-    ):
+    def test_tenant_google_callback_with_user_in_db(self, client, mock_google_oauth, mock_db, mock_db_session):
         """Test tenant-specific OAuth callback for user in database."""
         # Set oauth_tenant_id in session (simulating tenant-specific login flow)
         with client.session_transaction() as sess:
@@ -282,9 +275,7 @@ class TestOAuthCallback:
         def query_side_effect(model):
             query_mock = MagicMock()
             if model.__name__ == "User":
-                query_mock.join.return_value.filter.return_value.first.return_value = (
-                    mock_user
-                )
+                query_mock.join.return_value.filter.return_value.first.return_value = mock_user
             else:  # Tenant
                 query_mock.filter_by.return_value.first.return_value = mock_tenant
             return query_mock
@@ -428,9 +419,7 @@ class TestHelperFunctions:
         """Test is_tenant_admin ignores inactive tenants."""
         # Mock tenant that is not active - returns None
         mock_query = MagicMock()
-        mock_query.filter_by.return_value.first.return_value = (
-            None  # No active tenant found
-        )
+        mock_query.filter_by.return_value.first.return_value = None  # No active tenant found
         mock_db_session.query.return_value = mock_query
 
         assert is_tenant_admin("user@example.com", "inactive-tenant") is False
@@ -544,9 +533,7 @@ class TestSessionManagement:
         assert response.status_code == 302
         assert "/login" in response.location
 
-    def test_oauth_tenant_id_cleanup(
-        self, client, mock_google_oauth, mock_db, mock_db_session
-    ):
+    def test_oauth_tenant_id_cleanup(self, client, mock_google_oauth, mock_db, mock_db_session):
         """Test that oauth_tenant_id is cleaned up after successful auth."""
         # Set oauth_tenant_id in session
         with client.session_transaction() as sess:
@@ -573,9 +560,7 @@ class TestSessionManagement:
             query_mock = MagicMock()
             if model.__name__ == "User":
                 # User not found in database
-                query_mock.join.return_value.filter.return_value.first.return_value = (
-                    None
-                )
+                query_mock.join.return_value.filter.return_value.first.return_value = None
             elif model.__name__ == "Tenant":
                 # Return tenant object
                 query_mock.filter_by.return_value.first.return_value = mock_tenant
@@ -642,9 +627,7 @@ class TestOAuthErrorHandling:
         assert response.status_code == 200
         assert b"No email address provided" in response.data
 
-    def test_tenant_callback_inactive_user(
-        self, client, mock_google_oauth, mock_db, mock_db_session
-    ):
+    def test_tenant_callback_inactive_user(self, client, mock_google_oauth, mock_db, mock_db_session):
         """Test tenant OAuth callback for inactive tenant."""
         # Set oauth_tenant_id in session
         with client.session_transaction() as sess:
@@ -667,9 +650,7 @@ class TestOAuthErrorHandling:
             query_mock = MagicMock()
             if model.__name__ == "User":
                 # User not found in database
-                query_mock.join.return_value.filter.return_value.first.return_value = (
-                    None
-                )
+                query_mock.join.return_value.filter.return_value.first.return_value = None
             elif model.__name__ == "Tenant":
                 # No tenant found (inactive)
                 query_mock.filter_by.return_value.first.return_value = None
@@ -715,9 +696,7 @@ class TestOAuthErrorHandling:
                 query_mock.filter_by.return_value.first.return_value = mock_tenant
             elif model.__name__ == "MediaBuy":
                 query_mock.filter_by.return_value.count.return_value = 0
-                query_mock.filter_by.return_value.order_by.return_value.limit.return_value.all.return_value = (
-                    []
-                )
+                query_mock.filter_by.return_value.order_by.return_value.limit.return_value.all.return_value = []
                 query_mock.filter.return_value.scalar.return_value = 0
                 query_mock.filter.return_value.group_by.return_value.order_by.return_value.limit.return_value.all.return_value = (
                     []
@@ -727,9 +706,7 @@ class TestOAuthErrorHandling:
             elif model.__name__ == "Principal":
                 query_mock.filter_by.return_value.count.return_value = 0
             elif model.__name__ == "CreativeFormat":
-                query_mock.filter.return_value.order_by.return_value.all.return_value = (
-                    []
-                )
+                query_mock.filter.return_value.order_by.return_value.all.return_value = []
             elif model.__name__ == "GamInventorySync":
                 query_mock.filter_by.return_value.scalar.return_value = None
             return query_mock
@@ -752,13 +729,9 @@ class TestOAuthErrorHandling:
                     query_mock.filter_by.return_value.count.return_value = 0
                 elif model_or_expr.__name__ == "MediaBuy":
                     query_mock.filter_by.return_value.count.return_value = 0
-                    query_mock.filter_by.return_value.order_by.return_value.limit.return_value.all.return_value = (
-                        []
-                    )
+                    query_mock.filter_by.return_value.order_by.return_value.limit.return_value.all.return_value = []
                 elif model_or_expr.__name__ == "CreativeFormat":
-                    query_mock.filter.return_value.order_by.return_value.all.return_value = (
-                        []
-                    )
+                    query_mock.filter.return_value.order_by.return_value.all.return_value = []
             else:
                 # It's a SQL expression (func.coalesce, func.sum, etc.)
                 query_mock.filter.return_value.scalar.return_value = 0
@@ -794,7 +767,7 @@ class TestOAuthErrorHandling:
             sess["email"] = "admin@tenant1.com"
 
         # Mock database for tenant lookup
-        with patch("admin_ui.get_db_connection") as mock_conn:
+        with patch("admin_ui.get_db_session") as mock_conn:
             cursor = MagicMock()
             cursor.fetchone.return_value = ("Tenant 2",)
             mock_conn.return_value.execute.return_value = cursor
@@ -814,9 +787,7 @@ class TestOAuthErrorHandling:
             sess["email"] = "viewer@example.com"
 
         # Try to update tenant
-        response = client.post(
-            "/tenant/test-tenant/update", data={"name": "Updated Name"}
-        )
+        response = client.post("/tenant/test-tenant/update", data={"name": "Updated Name"})
         assert response.status_code == 403
         assert b"Viewers cannot update" in response.data
 

@@ -1,10 +1,11 @@
 """Integration tests for dashboard and settings routes with authentication."""
 
-import pytest
-import os
 import json
-from unittest.mock import patch, MagicMock
-from datetime import datetime, timedelta, timezone
+import os
+from datetime import UTC, datetime, timedelta
+from unittest.mock import MagicMock, patch
+
+import pytest
 
 # Enable test mode for these tests
 os.environ["ADCP_AUTH_TEST_MODE"] = "true"
@@ -15,6 +16,7 @@ def app():
     """Create and configure a test Flask application."""
     # Reload admin_ui to pick up the test mode environment variable
     import importlib
+
     import admin_ui
 
     importlib.reload(admin_ui)
@@ -43,9 +45,7 @@ def authenticated_client(client):
     response = client.post("/test/auth", data=auth_data, follow_redirects=False)
 
     # Test auth endpoint returns 302 redirect on success
-    assert (
-        response.status_code == 302
-    ), f"Auth failed with status {response.status_code}"
+    assert response.status_code == 302, f"Auth failed with status {response.status_code}"
 
     # Verify session was set
     with client.session_transaction() as sess:
@@ -57,7 +57,7 @@ def authenticated_client(client):
 @pytest.fixture
 def mock_db():
     """Mock database connection."""
-    with patch("admin_ui.get_db_connection") as mock:
+    with patch("admin_ui.get_db_session") as mock:
         conn = MagicMock()
         cursor = MagicMock()
         conn.execute.return_value = cursor
@@ -80,9 +80,7 @@ def mock_db():
 class TestDashboardRoutes:
     """Test dashboard routes with authentication."""
 
-    @pytest.mark.skip(
-        reason="Complex mocking - covered by test_dashboard_integration.py"
-    )
+    @pytest.mark.skip(reason="Complex mocking - covered by test_dashboard_integration.py")
     def test_dashboard_loads_authenticated(self, authenticated_client, mock_db):
         """Test that dashboard loads successfully when authenticated."""
         # Manually set session for this test
@@ -113,9 +111,7 @@ class TestDashboardRoutes:
         response = authenticated_client.get("/tenant/default")
 
         assert response.status_code == 200
-        assert (
-            b"Operational Dashboard" in response.data or b"Dashboard" in response.data
-        )
+        assert b"Operational Dashboard" in response.data or b"Dashboard" in response.data
 
         # Ensure no database errors in response
         assert b"UndefinedColumn" not in response.data
@@ -196,16 +192,10 @@ class TestDashboardRoutes:
 
             response = authenticated_client.get(f"/tenant/default/settings/{section}")
 
-            assert (
-                response.status_code == 200
-            ), f"Section {section} failed with status {response.status_code}"
-            assert (
-                b"Internal Server Error" not in response.data
-            ), f"Section {section} has server error"
+            assert response.status_code == 200, f"Section {section} failed with status {response.status_code}"
+            assert b"Internal Server Error" not in response.data, f"Section {section} has server error"
 
-    @pytest.mark.skip(
-        reason="Complex mocking - covered by test_dashboard_integration.py"
-    )
+    @pytest.mark.skip(reason="Complex mocking - covered by test_dashboard_integration.py")
     def test_dashboard_handles_missing_data(self, authenticated_client, mock_db):
         """Test that dashboard handles missing or null data gracefully."""
         # Manually set session for this test
@@ -241,9 +231,7 @@ class TestDashboardRoutes:
         assert response.status_code == 302
         assert "/login" in response.headers.get("Location", "")
 
-    @pytest.mark.skip(
-        reason="Complex mocking - covered by test_dashboard_integration.py"
-    )
+    @pytest.mark.skip(reason="Complex mocking - covered by test_dashboard_integration.py")
     def test_dashboard_with_real_database_columns(self, authenticated_client, mock_db):
         """Test dashboard with realistic database column names."""
         # Manually set session for this test
@@ -269,7 +257,7 @@ class TestDashboardRoutes:
                     "active",
                     5000.0,
                     1200.0,
-                    datetime.now(timezone.utc) - timedelta(hours=2),
+                    datetime.now(UTC) - timedelta(hours=2),
                 ),
                 (
                     "mb_002",
@@ -278,7 +266,7 @@ class TestDashboardRoutes:
                     "pending",
                     3000.0,
                     0.0,
-                    datetime.now(timezone.utc) - timedelta(days=1),
+                    datetime.now(UTC) - timedelta(days=1),
                 ),
             ],
             # Pending tasks from human_tasks table with context_data column
@@ -311,12 +299,8 @@ class TestDashboardRoutes:
                 break
 
         if human_tasks_query:
-            assert (
-                "context_data" in human_tasks_query or True
-            )  # Allow for query variations
-            assert (
-                "details" not in human_tasks_query or True
-            )  # Old column should not be used
+            assert "context_data" in human_tasks_query or True  # Allow for query variations
+            assert "details" not in human_tasks_query or True  # Old column should not be used
 
 
 if __name__ == "__main__":
