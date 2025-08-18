@@ -5,7 +5,7 @@ import argparse
 import asyncio
 from contextlib import AsyncExitStack
 
-from fastmcp.client import FastMCPClient
+from fastmcp.client import Client
 from fastmcp.client.transports import StreamableHttpTransport
 from rich.console import Console
 from rich.table import Table
@@ -35,7 +35,7 @@ async def main():
     transport = StreamableHttpTransport(args.server, headers=headers)
 
     async with AsyncExitStack() as stack:
-        client = FastMCPClient("AdCP Sales Client", transport)
+        client = Client(transport=transport)
         await stack.enter_async_context(client)
 
         console.print(f"[cyan]Connected to {args.server}[/cyan]")
@@ -53,7 +53,7 @@ async def main():
             await interactive_mode(client)
 
 
-async def run_test_flow(client: FastMCPClient):
+async def run_test_flow(client: Client):
     """Run a test media buy flow."""
     console.print("\n[bold cyan]Running test media buy flow...[/bold cyan]")
 
@@ -104,7 +104,7 @@ async def run_test_flow(client: FastMCPClient):
         console.print(f"[red]Error in test flow: {e}[/red]")
 
 
-async def interactive_mode(client: FastMCPClient):
+async def interactive_mode(client: Client):
     """Interactive mode for testing tools."""
     console.print("\n[bold cyan]Interactive Mode[/bold cyan]")
     console.print("Commands: get_products, create_buy, submit_creative, status, quit")
