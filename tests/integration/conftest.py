@@ -34,70 +34,55 @@ def integration_db():
 @pytest.fixture
 def populated_db(integration_db):
     """Provide a database populated with test data."""
-    from db_config import get_db_connection
+    from database_session import get_db_session
     from tests.fixtures import TenantFactory, PrincipalFactory, ProductFactory
-
-    conn = get_db_connection()
+    from models import Tenant, Principal, Product
 
     # Create test data
-    tenant = TenantFactory.create()
-    principal = PrincipalFactory.create(tenant_id=tenant["tenant_id"])
-    products = ProductFactory.create_batch(3, tenant_id=tenant["tenant_id"])
+    tenant_data = TenantFactory.create()
+    principal_data = PrincipalFactory.create(tenant_id=tenant_data["tenant_id"])
+    products_data = ProductFactory.create_batch(3, tenant_id=tenant_data["tenant_id"])
 
-    # Insert test data
-    conn.execute(
-        """
-        INSERT INTO tenants (tenant_id, name, subdomain, config, is_active)
-        VALUES (?, ?, ?, ?, ?)
-    """,
-        (
-            tenant["tenant_id"],
-            tenant["name"],
-            tenant["subdomain"],
-            json.dumps({}),
-            tenant["is_active"],
-        ),
-    )
-
-    conn.execute(
-        """
-        INSERT INTO principals (tenant_id, principal_id, name, access_token, platform_mappings)
-        VALUES (?, ?, ?, ?, ?)
-    """,
-        (
-            principal["tenant_id"],
-            principal["principal_id"],
-            principal["name"],
-            principal["access_token"],
-            principal["platform_mappings"],
-        ),
-    )
-
-    for product in products:
-        conn.execute(
-            """
-            INSERT INTO products (tenant_id, product_id, name, formats, targeting_template)
-            VALUES (?, ?, ?, ?, ?)
-        """,
-            (
-                product["tenant_id"],
-                product["product_id"],
-                product["name"],
-                product["formats"],
-                product["targeting_template"],
-            ),
+    # Insert test data using ORM
+    with get_db_session() as db_session:
+        # Create tenant
+        tenant = Tenant(
+            tenant_id=tenant_data["tenant_id"],
+            name=tenant_data["name"],
+            subdomain=tenant_data["subdomain"],
+            config=json.dumps({}),
+            is_active=tenant_data["is_active"],
         )
+        db_session.add(tenant)
 
-    conn.commit()
+        # Create principal
+        principal = Principal(
+            tenant_id=principal_data["tenant_id"],
+            principal_id=principal_data["principal_id"],
+            name=principal_data["name"],
+            access_token=principal_data["access_token"],
+            platform_mappings=principal_data["platform_mappings"],
+        )
+        db_session.add(principal)
+
+        # Create products
+        for product_data in products_data:
+            product = Product(
+                tenant_id=product_data["tenant_id"],
+                product_id=product_data["product_id"],
+                name=product_data["name"],
+                formats=product_data["formats"],
+                targeting_template=product_data["targeting_template"],
+            )
+            db_session.add(product)
+
+        db_session.commit()
 
     yield {
-        "tenant": tenant,
-        "principal": principal,
-        "products": products,
-        "connection": conn,
+        "tenant": tenant_data,
+        "principal": principal_data,
+        "products": products_data,
     }
-
-    conn.close()
 
 
 @pytest.fixture
@@ -110,9 +95,7 @@ def mock_external_apis():
         with patch("google.generativeai.configure"):
             with patch("google.generativeai.GenerativeModel") as mock_model:
                 mock_instance = MagicMock()
-                mock_instance.generate_content.return_value.text = (
-                    "AI generated content"
-                )
+                mock_instance.generate_content.return_value.text = "AI generated content"
                 mock_model.return_value = mock_instance
 
                 yield {"requests": mock_post, "gemini": mock_instance}
@@ -159,59 +142,51 @@ def authenticated_admin_client(test_admin_app):
 def test_media_buy_workflow(populated_db):
     """Provide complete media buy workflow test setup."""
     from tests.fixtures import MediaBuyFactory, CreativeFactory
+    from database_session import get_db_session
+    from models import MediaBuy, Creative
 
     data = populated_db
-    conn = data["connection"]
 
     # Create media buy
-    media_buy = MediaBuyFactory.create(
+    media_buy_data = MediaBuyFactory.create(
         tenant_id=data["tenant"]["tenant_id"],
         principal_id=data["principal"]["principal_id"],
         status="draft",
     )
 
     # Create creatives
-    creatives = CreativeFactory.create_batch(
+    creatives_data = CreativeFactory.create_batch(
         2,
         tenant_id=data["tenant"]["tenant_id"],
         principal_id=data["principal"]["principal_id"],
     )
 
-    # Insert into database
-    conn.execute(
-        """
-        INSERT INTO media_buys (tenant_id, media_buy_id, principal_id, status, config, total_budget)
-        VALUES (?, ?, ?, ?, ?, ?)
-    """,
-        (
-            media_buy["tenant_id"],
-            media_buy["media_buy_id"],
-            media_buy["principal_id"],
-            media_buy["status"],
-            media_buy["config"],
-            media_buy["total_budget"],
-        ),
-    )
-
-    for creative in creatives:
-        conn.execute(
-            """
-            INSERT INTO creatives (tenant_id, creative_id, principal_id, format_id, status, content)
-            VALUES (?, ?, ?, ?, ?, ?)
-        """,
-            (
-                creative["tenant_id"],
-                creative["creative_id"],
-                creative["principal_id"],
-                creative["format_id"],
-                creative["status"],
-                creative["content"],
-            ),
+    # Insert into database using ORM
+    with get_db_session() as db_session:
+        media_buy = MediaBuy(
+            tenant_id=media_buy_data["tenant_id"],
+            media_buy_id=media_buy_data["media_buy_id"],
+            principal_id=media_buy_data["principal_id"],
+            status=media_buy_data["status"],
+            config=media_buy_data["config"],
+            total_budget=media_buy_data["total_budget"],
         )
+        db_session.add(media_buy)
 
-    conn.commit()
+        for creative_data in creatives_data:
+            creative = Creative(
+                tenant_id=creative_data["tenant_id"],
+                creative_id=creative_data["creative_id"],
+                principal_id=creative_data["principal_id"],
+                format_id=creative_data["format_id"],
+                status=creative_data["status"],
+                content=creative_data["content"],
+            )
+            db_session.add(creative)
 
-    return {**data, "media_buy": media_buy, "creatives": creatives}
+        db_session.commit()
+
+    return {**data, "media_buy": media_buy_data, "creatives": creatives_data}
 
 
 @pytest.fixture
