@@ -6,13 +6,13 @@ created for new tenants to make onboarding easier.
 """
 
 import json
-from typing import List, Dict, Any
 from datetime import datetime
-import uuid
+from typing import Any
 
-def get_default_products() -> List[Dict[str, Any]]:
+
+def get_default_products() -> list[dict[str, Any]]:
     """Get a list of default products that should be created for new tenants."""
-    
+
     return [
         {
             "product_id": "run_of_site_display",
@@ -23,15 +23,8 @@ def get_default_products() -> List[Dict[str, Any]]:
             "price_guidance": {"min": 1.0, "max": 10.0},
             "formats": ["display_300x250", "display_728x90", "display_320x50", "display_300x600"],
             "countries": None,  # All countries
-            "targeting_template": {
-                "device_targets": {
-                    "device_types": ["desktop", "mobile", "tablet"]
-                }
-            },
-            "implementation_config": {
-                "is_run_of_site": True,
-                "priority": "low"
-            }
+            "targeting_template": {"device_targets": {"device_types": ["desktop", "mobile", "tablet"]}},
+            "implementation_config": {"is_run_of_site": True, "priority": "low"},
         },
         {
             "product_id": "homepage_takeover",
@@ -43,18 +36,10 @@ def get_default_products() -> List[Dict[str, Any]]:
             "formats": ["display_970x250", "display_728x90", "display_320x50"],
             "countries": ["US", "CA", "GB"],
             "targeting_template": {
-                "placement_targets": {
-                    "ad_unit_ids": ["homepage_top", "homepage_leaderboard"]
-                },
-                "device_targets": {
-                    "device_types": ["desktop", "mobile"]
-                }
+                "placement_targets": {"ad_unit_ids": ["homepage_top", "homepage_leaderboard"]},
+                "device_targets": {"device_types": ["desktop", "mobile"]},
             },
-            "implementation_config": {
-                "is_premium": True,
-                "priority": "high",
-                "viewability_threshold": 70
-            }
+            "implementation_config": {"is_premium": True, "priority": "high", "viewability_threshold": 70},
         },
         {
             "product_id": "mobile_interstitial",
@@ -66,18 +51,10 @@ def get_default_products() -> List[Dict[str, Any]]:
             "formats": ["display_320x480", "display_300x250"],
             "countries": None,
             "targeting_template": {
-                "device_targets": {
-                    "device_types": ["mobile"]
-                },
-                "frequency_cap": {
-                    "impressions": 3,
-                    "time_unit": "day"
-                }
+                "device_targets": {"device_types": ["mobile"]},
+                "frequency_cap": {"impressions": 3, "time_unit": "day"},
             },
-            "implementation_config": {
-                "is_interstitial": True,
-                "priority": "medium"
-            }
+            "implementation_config": {"is_interstitial": True, "priority": "medium"},
         },
         {
             "product_id": "video_preroll",
@@ -88,19 +65,11 @@ def get_default_products() -> List[Dict[str, Any]]:
             "price_guidance": {"min": 10.0, "max": 50.0},
             "formats": ["video_vast"],
             "countries": None,
-            "targeting_template": {
-                "device_targets": {
-                    "device_types": ["desktop", "mobile", "tablet", "ctv"]
-                }
-            },
+            "targeting_template": {"device_targets": {"device_types": ["desktop", "mobile", "tablet", "ctv"]}},
             "implementation_config": {
-                "video_settings": {
-                    "skippable_after_seconds": 5,
-                    "max_duration_seconds": 30,
-                    "vast_version": "4.0"
-                },
-                "priority": "medium"
-            }
+                "video_settings": {"skippable_after_seconds": 5, "max_duration_seconds": 30, "vast_version": "4.0"},
+                "priority": "medium",
+            },
         },
         {
             "product_id": "native_infeed",
@@ -111,18 +80,14 @@ def get_default_products() -> List[Dict[str, Any]]:
             "price_guidance": {"min": 2.0, "max": 15.0},
             "formats": ["native_infeed"],
             "countries": None,
-            "targeting_template": {
-                "device_targets": {
-                    "device_types": ["desktop", "mobile", "tablet"]
-                }
-            },
+            "targeting_template": {"device_targets": {"device_types": ["desktop", "mobile", "tablet"]}},
             "implementation_config": {
                 "native_settings": {
                     "template_type": "standard",
-                    "required_assets": ["headline", "description", "image", "logo"]
+                    "required_assets": ["headline", "description", "image", "logo"],
                 },
-                "priority": "medium"
-            }
+                "priority": "medium",
+            },
         },
         {
             "product_id": "contextual_display",
@@ -134,87 +99,92 @@ def get_default_products() -> List[Dict[str, Any]]:
             "formats": ["display_300x250", "display_728x90", "display_160x600"],
             "countries": None,
             "targeting_template": {
-                "device_targets": {
-                    "device_types": ["desktop", "mobile", "tablet"]
-                },
-                "contextual_targets": {
-                    "categories": ["auto", "finance", "health", "technology", "travel"]
-                }
+                "device_targets": {"device_types": ["desktop", "mobile", "tablet"]},
+                "contextual_targets": {"categories": ["auto", "finance", "health", "technology", "travel"]},
             },
-            "implementation_config": {
-                "privacy_compliant": True,
-                "no_cookies": True,
-                "priority": "medium"
-            }
-        }
+            "implementation_config": {"privacy_compliant": True, "no_cookies": True, "priority": "medium"},
+        },
     ]
 
-def create_default_products_for_tenant(conn, tenant_id: str, industry: str = None) -> List[str]:
+
+def create_default_products_for_tenant(conn, tenant_id: str, industry: str = None) -> list[str]:
     """Create default products for a new tenant.
-    
+
     Args:
         conn: Database connection
         tenant_id: The tenant to create products for
-        
+
     Returns:
         List of created product IDs
     """
     created_products = []
-    
+
     # Get products based on industry if specified
     products_to_create = get_industry_specific_products(industry) if industry else get_default_products()
-    
+
     for product_template in products_to_create:
         try:
             # Check if product already exists
             cursor = conn.execute(
                 "SELECT product_id FROM products WHERE tenant_id = ? AND product_id = ?",
-                (tenant_id, product_template["product_id"])
+                (tenant_id, product_template["product_id"]),
             )
             if cursor.fetchone():
                 continue  # Skip if already exists
-            
+
             # Insert the product
-            conn.execute("""
+            conn.execute(
+                """
                 INSERT INTO products (
-                    product_id, tenant_id, name, description, 
-                    creative_formats, delivery_type, cpm, 
+                    product_id, tenant_id, name, description,
+                    creative_formats, delivery_type, cpm,
                     price_guidance_min, price_guidance_max,
                     countries, targeting_template, implementation_config,
                     created_at, updated_at
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """, (
-                product_template["product_id"],
-                tenant_id,
-                product_template["name"],
-                product_template["description"],
-                json.dumps(product_template["formats"]),
-                product_template["delivery_type"],
-                product_template["cpm"],
-                product_template.get("price_guidance", {}).get("min") if product_template.get("price_guidance") else None,
-                product_template.get("price_guidance", {}).get("max") if product_template.get("price_guidance") else None,
-                json.dumps(product_template["countries"]) if product_template["countries"] else None,
-                json.dumps(product_template["targeting_template"]),
-                json.dumps(product_template["implementation_config"]),
-                datetime.now().isoformat(),
-                datetime.now().isoformat()
-            ))
-            
+            """,
+                (
+                    product_template["product_id"],
+                    tenant_id,
+                    product_template["name"],
+                    product_template["description"],
+                    json.dumps(product_template["formats"]),
+                    product_template["delivery_type"],
+                    product_template["cpm"],
+                    (
+                        product_template.get("price_guidance", {}).get("min")
+                        if product_template.get("price_guidance")
+                        else None
+                    ),
+                    (
+                        product_template.get("price_guidance", {}).get("max")
+                        if product_template.get("price_guidance")
+                        else None
+                    ),
+                    json.dumps(product_template["countries"]) if product_template["countries"] else None,
+                    json.dumps(product_template["targeting_template"]),
+                    json.dumps(product_template["implementation_config"]),
+                    datetime.now().isoformat(),
+                    datetime.now().isoformat(),
+                ),
+            )
+
             created_products.append(product_template["product_id"])
-            
+
         except Exception as e:
             print(f"Warning: Failed to create default product {product_template['product_id']}: {e}")
             continue
-    
+
     conn.commit()
     return created_products
 
-def get_industry_specific_products(industry: str) -> List[Dict[str, Any]]:
+
+def get_industry_specific_products(industry: str) -> list[dict[str, Any]]:
     """Get product templates specific to an industry.
-    
+
     Args:
         industry: Industry type (e.g., 'news', 'sports', 'entertainment', 'ecommerce')
-        
+
     Returns:
         List of product templates for the industry
     """
@@ -231,9 +201,9 @@ def get_industry_specific_products(industry: str) -> List[Dict[str, Any]]:
                 "countries": None,
                 "targeting_template": {
                     "content_targets": {"categories": ["breaking_news"]},
-                    "device_targets": {"device_types": ["desktop", "mobile"]}
+                    "device_targets": {"device_types": ["desktop", "mobile"]},
                 },
-                "implementation_config": {}
+                "implementation_config": {},
             }
         ],
         "sports": [
@@ -248,9 +218,9 @@ def get_industry_specific_products(industry: str) -> List[Dict[str, Any]]:
                 "countries": None,
                 "targeting_template": {
                     "date_targets": {"day_of_week": ["saturday", "sunday"]},
-                    "content_targets": {"categories": ["live_games"]}
+                    "content_targets": {"categories": ["live_games"]},
                 },
-                "implementation_config": {}
+                "implementation_config": {},
             }
         ],
         "entertainment": [
@@ -265,9 +235,9 @@ def get_industry_specific_products(industry: str) -> List[Dict[str, Any]]:
                 "countries": None,
                 "targeting_template": {
                     "placement_targets": {"placement_types": ["video_companion"]},
-                    "content_targets": {"content_types": ["video"]}
+                    "content_targets": {"content_types": ["video"]},
                 },
-                "implementation_config": {}
+                "implementation_config": {},
             }
         ],
         "ecommerce": [
@@ -282,13 +252,13 @@ def get_industry_specific_products(industry: str) -> List[Dict[str, Any]]:
                 "countries": None,
                 "targeting_template": {
                     "audience_targets": {"segments": ["cart_abandoners", "product_viewers"]},
-                    "frequency_cap": {"impressions": 10, "time_unit": "day"}
+                    "frequency_cap": {"impressions": 10, "time_unit": "day"},
                 },
-                "implementation_config": {}
+                "implementation_config": {},
             }
-        ]
+        ],
     }
-    
+
     # Return industry-specific products plus standard ones
     base_products = get_default_products()
     if industry in industry_products:

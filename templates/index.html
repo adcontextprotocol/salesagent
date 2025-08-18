@@ -14,7 +14,7 @@
             <a href="/tenant/wizard" class="btn">Create New Tenant</a>
         </div>
     </div>
-    
+
     {% if tenants %}
     <table>
         <thead>
@@ -110,28 +110,28 @@
                 {% endif %}
             {% endif %}
         {% endfor %}
-        
+
         <div style="text-align: center; padding: 1rem; background: #f8f9fa; border-radius: 4px;">
             <div style="font-size: 2rem; font-weight: bold; color: #1a73e8;">{{ gam_tenants|length }}</div>
             <div style="color: #666;">GAM Tenants</div>
         </div>
-        
+
         <div style="text-align: center; padding: 1rem; background: #f8f9fa; border-radius: 4px;">
             <div style="font-size: 2rem; font-weight: bold; color: #28a745;">{{ synced_tenants|length }}</div>
             <div style="color: #666;">Synced</div>
         </div>
-        
+
         <div style="text-align: center; padding: 1rem; background: #f8f9fa; border-radius: 4px;">
             <div style="font-size: 2rem; font-weight: bold; color: #ffc107;">{{ stale_tenants|length }}</div>
             <div style="color: #666;">Need Sync (>24h)</div>
         </div>
-        
+
         <div style="text-align: center; padding: 1rem; background: #f8f9fa; border-radius: 4px;">
             <div style="font-size: 2rem; font-weight: bold; color: #dc3545;">{{ gam_tenants|length - synced_tenants|length }}</div>
             <div style="color: #666;">Never Synced</div>
         </div>
     </div>
-    
+
     {% if superadmin_api_key %}
     <div style="background: #e8f4fd; padding: 0.75rem; border-radius: 4px; margin-top: 1rem;">
         <strong>Sync API Endpoint:</strong> <code>POST /api/v1/sync/trigger/{tenant_id}</code><br>
@@ -150,7 +150,7 @@
         <li>Use the token in the <code>x-adcp-auth</code> header for API requests</li>
         <li>Access the MCP server at the tenant's subdomain URL</li>
     </ol>
-    
+
     <h3 style="margin-top: 1.5rem;">Example API Request</h3>
     <pre>curl -H "x-adcp-auth: YOUR_ADMIN_TOKEN" \
      http://localhost:8080/principals/summary</pre>

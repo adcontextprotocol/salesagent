@@ -20,38 +20,38 @@ services:
     environment:
       # Database configuration
       DATABASE_URL: postgresql://adcp_user:secure_password_change_me@postgres:5432/adcp?sslmode=disable
-      
+
       # Gemini API key (required for AI features)
       GEMINI_API_KEY: ${GEMINI_API_KEY}
-      
+
       # OAuth configuration
       SUPER_ADMIN_EMAILS: ${SUPER_ADMIN_EMAILS}
       SUPER_ADMIN_DOMAINS: ${SUPER_ADMIN_DOMAINS}
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
       GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
       GOOGLE_OAUTH_CREDENTIALS_FILE: ${GOOGLE_OAUTH_CREDENTIALS_FILE:-/app/client_secret.json}
-      
+
       # Server configuration
       ADCP_PORT: 8080
       ADCP_HOST: 0.0.0.0
       FLASK_ENV: production
-      
+
       # Optional: Dry run mode
       # ADCP_DRY_RUN: true
-    
+
     depends_on:
       postgres:
         condition: service_healthy
-    
+
     ports:
       - "8080:8080"
-    
+
     volumes:
       # Mount OAuth credentials (if using file-based auth)
       - ./client_secret*.json:/app/:ro
       # Mount audit logs
       - ./audit_logs:/app/audit_logs
-      
+
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
       interval: 30s

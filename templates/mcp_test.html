@@ -11,18 +11,18 @@
         margin-bottom: 2rem;
         box-shadow: 0 2px 8px rgba(0,0,0,0.08);
     }
-    
+
     .form-group {
         margin-bottom: 1rem;
     }
-    
+
     .form-group label {
         display: block;
         margin-bottom: 0.25rem;
         font-weight: 500;
         color: #374151;
     }
-    
+
     .form-group input,
     .form-group select,
     .form-group textarea {
@@ -32,33 +32,33 @@
         border-radius: 4px;
         font-size: 0.875rem;
     }
-    
+
     .form-group textarea {
         min-height: 100px;
         font-family: 'Monaco', 'Courier New', monospace;
         font-size: 0.75rem;
     }
-    
+
     .button-group {
         display: flex;
         gap: 0.5rem;
         margin-top: 1rem;
     }
-    
+
     .results-section {
         background: #f3f4f6;
         border-radius: 8px;
         padding: 1rem;
         margin-top: 1rem;
     }
-    
+
     .results-section h3 {
         margin-top: 0;
         margin-bottom: 0.5rem;
         font-size: 1rem;
         color: #111827;
     }
-    
+
     .result-content {
         background: white;
         border: 1px solid #e5e7eb;
@@ -71,22 +71,22 @@
         max-height: 400px;
         overflow-y: auto;
     }
-    
+
     .success {
         color: #059669;
     }
-    
+
     .error {
         color: #dc2626;
     }
-    
+
     .method-select {
         display: grid;
         grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
         gap: 0.5rem;
         margin-bottom: 1rem;
     }
-    
+
     .method-option {
         padding: 0.5rem;
         border: 1px solid #d1d5db;
@@ -94,12 +94,12 @@
         cursor: pointer;
         transition: all 0.2s;
     }
-    
+
     .method-option:hover {
         background: #f3f4f6;
         border-color: #3b82f6;
     }
-    
+
     .method-option.selected {
         background: #dbeafe;
         border-color: #3b82f6;
@@ -112,31 +112,31 @@
     <p style="color: #6b7280; margin-bottom: 1.5rem;">
         Test MCP server endpoints using the official FastMCP client library.
     </p>
-    
+
     <div class="form-group">
         <label for="server_url">Server URL</label>
         <input type="text" id="server_url" value="{{ server_url }}" placeholder="http://localhost:8080/mcp/">
     </div>
-    
+
     <div class="form-group">
         <label for="principal_select">Principal (Auth Token)</label>
         <select id="principal_select" onchange="updateAuthToken()">
             <option value="">-- Select a Principal --</option>
             {% for principal in principals %}
-            <option value="{{ principal.access_token }}" data-tenant="{{ principal.tenant_id }}" 
+            <option value="{{ principal.access_token }}" data-tenant="{{ principal.tenant_id }}"
                     title="Token: {{ principal.access_token[:10] }}...{{ principal.access_token[-4:] if principal.access_token|length > 14 else principal.access_token }}">
                 {{ principal.tenant_name }} / {{ principal.name }} ({{ principal.principal_id }})
             </option>
             {% endfor %}
         </select>
     </div>
-    
+
     <div class="form-group">
         <label for="auth_token">Auth Token</label>
         <input type="password" id="auth_token" placeholder="Enter token or select principal above">
         <small style="color: #6b7280;">Token will be masked for security</small>
     </div>
-    
+
     <div class="form-group">
         <label>Tool</label>
         <div class="method-select">
@@ -166,22 +166,22 @@
             </div>
         </div>
     </div>
-    
+
     <div class="form-group">
         <label for="method">Selected Tool</label>
         <input type="text" id="method" value="get_products" readonly style="background: #f9fafb;">
     </div>
-    
+
     <div class="form-group" id="parsed_data_group" style="display: none;">
         <label for="parsed_data">Parsed Data from Previous Response</label>
         <textarea id="parsed_data" readonly style="background: #f9fafb; color: #059669;"></textarea>
     </div>
-    
+
     <div class="form-group">
         <label for="params">Parameters (JSON)</label>
         <textarea id="params" placeholder='{"key": "value"}'>{}</textarea>
     </div>
-    
+
     <div class="button-group">
         <button class="btn btn-primary" onclick="testMCPCall()">Send Request</button>
         <button class="btn" onclick="clearResults()">Clear</button>
@@ -193,7 +193,7 @@
         <h3>Request</h3>
         <div class="result-content" id="request_details"></div>
     </div>
-    
+
     <div class="results-section">
         <h3>Response</h3>
         <div class="result-content" id="response_details"></div>
@@ -221,10 +221,10 @@ function selectMethod(method) {
         el.classList.remove('selected');
     });
     document.querySelector(`[data-method="${method}"]`).classList.add('selected');
-    
+
     // Update method input
     document.getElementById('method').value = method;
-    
+
     // Set sample parameters based on method
     const paramsField = document.getElementById('params');
     const sampleParams = {
@@ -274,7 +274,7 @@ function selectMethod(method) {
             media_buy_id: "mb_123"
         }, null, 2)
     };
-    
+
     paramsField.value = sampleParams[method] || '{}';
 }
 
@@ -286,12 +286,12 @@ function testMCPCall() {
     const authToken = document.getElementById('auth_token').value;
     const method = document.getElementById('method').value;
     const paramsText = document.getElementById('params').value;
-    
+
     if (!serverUrl || !authToken || !method) {
         alert('Please fill in all required fields');
         return;
     }
-    
+
     let params;
     try {
         params = JSON.parse(paramsText);
@@ -299,7 +299,7 @@ function testMCPCall() {
         alert('Invalid JSON in parameters: ' + e.message);
         return;
     }
-    
+
     // Show request details (but don't include auth token in the display)
     const requestDetails = {
         server_url: serverUrl,
@@ -307,18 +307,18 @@ function testMCPCall() {
         params: params,
         access_token: authToken  // This will be used in header, not shown
     };
-    
+
     const displayDetails = {
         server_url: serverUrl,
         tool: method,
         params: params,
         auth_header: 'x-adcp-auth: [REDACTED]'
     };
-    
+
     document.getElementById('request_details').textContent = JSON.stringify(displayDetails, null, 2);
     document.getElementById('results_container').style.display = 'block';
     document.getElementById('response_details').innerHTML = '<span style="color: #6b7280;">Sending request...</span>';
-    
+
     // Make the API call
     fetch('/api/mcp-test/call', {
         method: 'POST',
@@ -339,7 +339,7 @@ function testMCPCall() {
             successSpan.textContent = '✓ Success';
             responseEl.appendChild(successSpan);
             responseEl.appendChild(document.createTextNode('\n\n' + JSON.stringify(data.result, null, 2)));
-            
+
             // Parse and show useful data for next call
             parseResponseForNextCall(method, data.result);
         } else {
@@ -351,7 +351,7 @@ function testMCPCall() {
             errorSpan.textContent = '✗ Error';
             responseEl.appendChild(errorSpan);
             responseEl.appendChild(document.createTextNode('\n\n' + (data.error || 'Unknown error')));
-            
+
             if (data.details) {
                 responseEl.appendChild(document.createTextNode('\n\nDetails:\n' + JSON.stringify(data.details, null, 2)));
             }
@@ -379,7 +379,7 @@ function parseResponseForNextCall(method, response) {
     const parsedDataGroup = document.getElementById('parsed_data_group');
     const parsedDataField = document.getElementById('parsed_data');
     let parsedData = {};
-    
+
     switch(method) {
         case 'get_products':
             if (response.products && response.products.length > 0) {
@@ -387,14 +387,14 @@ function parseResponseForNextCall(method, response) {
                 parsedData.sample_product = response.products[0];
             }
             break;
-            
+
         case 'create_media_buy':
             if (response.media_buy_id) {
                 parsedData.media_buy_id = response.media_buy_id;
                 parsedData.status = response.status;
             }
             break;
-            
+
         case 'check_media_buy_status':
             if (response.media_buy_id) {
                 parsedData.media_buy_id = response.media_buy_id;
@@ -404,7 +404,7 @@ function parseResponseForNextCall(method, response) {
                 }
             }
             break;
-            
+
         case 'add_creative_assets':
             if (response.creative_ids) {
                 parsedData.creative_ids = response.creative_ids;
@@ -412,18 +412,18 @@ function parseResponseForNextCall(method, response) {
             }
             break;
     }
-    
+
     if (Object.keys(parsedData).length > 0) {
         parsedDataGroup.style.display = 'block';
         parsedDataField.value = JSON.stringify(parsedData, null, 2);
-        
+
         // Add button to use parsed data
         const useButton = document.createElement('button');
         useButton.className = 'btn btn-secondary';
         useButton.style.marginTop = '0.5rem';
         useButton.textContent = 'Use in Next Call';
         useButton.onclick = () => useParsedData(parsedData);
-        
+
         // Remove old button if exists
         const oldButton = parsedDataGroup.querySelector('button');
         if (oldButton) oldButton.remove();
@@ -437,7 +437,7 @@ function parseResponseForNextCall(method, response) {
 function useParsedData(parsedData) {
     const paramsField = document.getElementById('params');
     const currentParams = JSON.parse(paramsField.value || '{}');
-    
+
     // Merge parsed data into current params
     Object.assign(currentParams, parsedData);
     paramsField.value = JSON.stringify(currentParams, null, 2);

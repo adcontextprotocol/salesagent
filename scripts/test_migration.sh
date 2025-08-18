@@ -53,7 +53,7 @@ cleanup() {
 run_test() {
     local test_name="$1"
     local test_command="$2"
-    
+
     echo -n "Testing $test_name... "
     if eval "$test_command" >> $LOG_FILE 2>&1; then
         echo -e "${GREEN}PASSED${NC}"
@@ -88,10 +88,10 @@ command.current(cfg)
 
 if [ "$TEST_ROLLBACK" = true ]; then
     echo -e "\n${YELLOW}Test 2: Rollback Testing${NC}"
-    
+
     # Backup current state
     cp $TEST_DB $BACKUP_DB
-    
+
     # Test downgrade
     run_test "downgrade one revision" "python -c \"
 from alembic import command
@@ -99,30 +99,30 @@ from alembic.config import Config
 cfg = Config('alembic.ini')
 command.downgrade(cfg, '-1')
 \""
-    
+
     # Test upgrade again
     run_test "upgrade after downgrade" "python migrate.py"
 fi
 
 if [ "$FULL_WORKFLOW" = true ]; then
     echo -e "\n${YELLOW}Test 3: Full Workflow Testing${NC}"
-    
+
     # Start PostgreSQL for integration tests
     echo "Starting PostgreSQL container..."
     docker-compose up -d postgres
     sleep 5  # Wait for PostgreSQL to start
-    
+
     # Run migrations on PostgreSQL
     export DATABASE_URL="postgresql://adcp_user:${POSTGRES_PASSWORD:-postgres}@localhost:5432/adcp_test"
     export DB_TYPE="postgresql"
-    
+
     # Create test database
     PGPASSWORD="${POSTGRES_PASSWORD:-postgres}" psql -h localhost -U adcp_user -d postgres -c "DROP DATABASE IF EXISTS adcp_test;"
     PGPASSWORD="${POSTGRES_PASSWORD:-postgres}" psql -h localhost -U adcp_user -d postgres -c "CREATE DATABASE adcp_test;"
-    
+
     # Run migrations
     run_test "PostgreSQL migrations" "python migrate.py"
-    
+
     # Test schema integrity
     run_test "schema integrity check" "python -c \"
 import sys
@@ -135,24 +135,24 @@ from sqlalchemy import inspect
 with get_db_connection() as db:
     inspector = inspect(db.connection)
     tables = inspector.get_table_names()
-    
+
     required_tables = ['tenants', 'gam_inventory', 'principals', 'products', 'media_buys']
     for table in required_tables:
         if table not in tables:
             raise Exception(f'Missing required table: {table}')
-    
+
     # Check column types
     columns = inspector.get_columns('gam_inventory')
     inventory_type_col = next(c for c in columns if c['name'] == 'inventory_type')
     if inventory_type_col['type'].length < 30:
         raise Exception('inventory_type column too short')
-    
+
     # Check no config column exists
     tenant_columns = [c['name'] for c in inspector.get_columns('tenants')]
     if 'config' in tenant_columns:
         raise Exception('config column still exists in tenants table')
 \""
-    
+
     # Test code compatibility
     run_test "code compatibility check" "python -c \"
 import ast
@@ -175,7 +175,7 @@ for root, dirs, files in os.walk('.'):
             except:
                 pass  # Skip files that can't be read
 \""
-    
+
     # Test inventory sync workflow
     run_test "inventory sync workflow" "python -c \"
 import asyncio
@@ -201,19 +201,19 @@ fi
 
 if [ "$TEST_PERFORMANCE" = true ]; then
     echo -e "\n${YELLOW}Test 4: Performance Testing${NC}"
-    
+
     # Test migration performance
     START_TIME=$(date +%s)
     run_test "migration performance" "python migrate.py"
     END_TIME=$(date +%s)
     DURATION=$((END_TIME - START_TIME))
-    
+
     if [ $DURATION -gt 30 ]; then
         echo -e "${RED}Warning: Migrations took ${DURATION}s (>30s threshold)${NC}"
     else
         echo -e "${GREEN}Migration completed in ${DURATION}s${NC}"
     fi
-    
+
     # Test query performance
     run_test "query performance" "python -c \"
 import time
@@ -223,16 +223,16 @@ with get_db_connection() as db:
     # Test inventory query performance
     start = time.time()
     result = db.execute('''
-        SELECT COUNT(*) 
-        FROM gam_inventory 
+        SELECT COUNT(*)
+        FROM gam_inventory
         WHERE inventory_type = 'ad_unit'
     ''')
     count = result.scalar()
     duration = time.time() - start
-    
+
     if duration > 1.0:
         raise Exception(f'Inventory query too slow: {duration:.2f}s')
-    
+
     print(f'Query completed in {duration:.2f}s')
 \""
 fi

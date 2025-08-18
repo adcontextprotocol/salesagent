@@ -4,10 +4,11 @@ Integration test specific fixtures.
 These fixtures are for tests that require database and service integration.
 """
 
-import pytest
 import json
 import os
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
+
+import pytest
 
 
 @pytest.fixture(scope="module")
@@ -35,8 +36,8 @@ def integration_db():
 def populated_db(integration_db):
     """Provide a database populated with test data."""
     from database_session import get_db_session
-    from tests.fixtures import TenantFactory, PrincipalFactory, ProductFactory
-    from models import Tenant, Principal, Product
+    from models import Principal, Product, Tenant
+    from tests.fixtures import PrincipalFactory, ProductFactory, TenantFactory
 
     # Create test data
     tenant_data = TenantFactory.create()
@@ -104,8 +105,9 @@ def mock_external_apis():
 @pytest.fixture
 def test_server():
     """Provide a test MCP server instance."""
-    from main import app as mcp_app
     from fastmcp.testing import TestClient
+
+    from main import app as mcp_app
 
     # Create test client
     client = TestClient(mcp_app)
@@ -141,9 +143,9 @@ def authenticated_admin_client(test_admin_app):
 @pytest.fixture
 def test_media_buy_workflow(populated_db):
     """Provide complete media buy workflow test setup."""
-    from tests.fixtures import MediaBuyFactory, CreativeFactory
     from database_session import get_db_session
-    from models import MediaBuy, Creative
+    from models import Creative, MediaBuy
+    from tests.fixtures import CreativeFactory, MediaBuyFactory
 
     data = populated_db
 

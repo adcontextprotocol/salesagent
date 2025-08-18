@@ -9,7 +9,7 @@ repos:
         pass_filenames: false
         always_run: true
         stages: [pre-commit]
-        
+
       # Check for removed columns still referenced in code
       - id: check-schema-references
         name: Check schema references
@@ -17,21 +17,21 @@ repos:
         language: system
         pass_filenames: false
         always_run: true
-        
+
       # Validate model column lengths
       - id: validate-column-lengths
         name: Validate database column lengths
         entry: python3 scripts/validate_column_lengths.py
         language: system
         files: '(models|schemas)\.py$'
-        
+
       # Check for tenant.config references
       - id: no-tenant-config
         name: No tenant.config references
         entry: sh -c 'if grep -r "tenant\.config\|tenant\[.config.\]" --include="*.py" . | grep -v "test_migration\|postmortem\|pre-commit"; then echo "Found tenant.config references!"; exit 1; fi'
         language: system
         pass_filenames: false
-        
+
       # Validate migrations can run
       - id: test-migrations
         name: Test database migrations
@@ -39,7 +39,7 @@ repos:
         language: system
         pass_filenames: false
         stages: [manual]  # Changed from commit to manual - run with: pre-commit run test-migrations
-        
+
       # Run quick unit tests before commit (optional - can be skipped with --no-verify)
       - id: pytest-unit
         name: Run unit tests (optional)
@@ -48,14 +48,14 @@ repos:
         pass_filenames: false
         stages: [manual]  # Changed to manual - run with: pre-commit run pytest-unit
         verbose: true
-        
+
       # Check for API deprecations
       - id: check-api-deprecations
         name: Check for deprecated API usage
         entry: python3 scripts/check_api_deprecations.py
         language: system
         files: 'adapters/.*\.py$'
-        
+
       # Validate Pydantic vs SQLAlchemy imports
       - id: validate-model-imports
         name: Validate model imports

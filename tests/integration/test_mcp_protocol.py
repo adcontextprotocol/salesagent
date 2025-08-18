@@ -1,11 +1,12 @@
 """Integration tests for MCP protocol implementation and flow."""
 
-import pytest
 import json
 from datetime import date, timedelta
+from unittest.mock import MagicMock, patch
+
+import pytest
 from fastmcp.client import Client
 from fastmcp.client.transports import StreamableHttpTransport
-from unittest.mock import patch, MagicMock
 
 pytestmark = [pytest.mark.integration, pytest.mark.asyncio]
 
@@ -17,9 +18,7 @@ class TestMCPProtocol:
     async def mcp_client(self, sample_principal):
         """Create an MCP client with test credentials."""
         headers = {"x-adcp-auth": sample_principal["access_token"]}
-        transport = StreamableHttpTransport(
-            url="http://localhost:8080/mcp/", headers=headers
-        )
+        transport = StreamableHttpTransport(url="http://localhost:8080/mcp/", headers=headers)
         client = Client(transport=transport)
         return client
 
@@ -41,11 +40,7 @@ class TestMCPProtocol:
             assert result is not None
 
             # FastMCP call_tool returns structured_content
-            content = (
-                result.structured_content
-                if hasattr(result, "structured_content")
-                else result
-            )
+            content = result.structured_content if hasattr(result, "structured_content") else result
             assert "products" in content
 
             products = content.get("products", [])
@@ -75,10 +70,7 @@ class TestMCPProtocol:
                 )
 
             # Should get validation error
-            assert (
-                "promoted_offering" in str(exc_info.value).lower()
-                or "required" in str(exc_info.value).lower()
-            )
+            assert "promoted_offering" in str(exc_info.value).lower() or "required" in str(exc_info.value).lower()
 
     @pytest.mark.requires_server
     async def test_full_media_buy_lifecycle(self, mcp_client):
@@ -137,31 +129,19 @@ class TestMCPProtocol:
                 media_buy_id = create_result.get("media_buy_id")
                 context_id = create_result.get("context_id")
             else:
-                media_buy_id = (
-                    create_result.media_buy_id
-                    if hasattr(create_result, "media_buy_id")
-                    else None
-                )
-                context_id = (
-                    create_result.context_id
-                    if hasattr(create_result, "context_id")
-                    else None
-                )
+                media_buy_id = create_result.media_buy_id if hasattr(create_result, "media_buy_id") else None
+                context_id = create_result.context_id if hasattr(create_result, "context_id") else None
 
             assert media_buy_id is not None, "Should return a media_buy_id"
             assert context_id is not None, "Should return a context_id"
 
             # Step 3: Check status using context_id
-            status_result = await client.call_tool(
-                "check_media_buy_status", {"req": {"context_id": context_id}}
-            )
+            status_result = await client.call_tool("check_media_buy_status", {"req": {"context_id": context_id}})
 
             if isinstance(status_result, dict):
                 status = status_result.get("status")
             else:
-                status = (
-                    status_result.status if hasattr(status_result, "status") else None
-                )
+                status = status_result.status if hasattr(status_result, "status") else None
 
             assert status in [
                 "pending_creative",
@@ -213,9 +193,7 @@ class TestMCPProtocol:
             assert update_result is not None
 
             # Step 6: Get delivery stats
-            delivery_result = await client.call_tool(
-                "get_media_buy_delivery", {"req": {"media_buy_id": media_buy_id}}
-            )
+            delivery_result = await client.call_tool("get_media_buy_delivery", {"req": {"media_buy_id": media_buy_id}})
 
             assert delivery_result is not None
 
@@ -225,16 +203,10 @@ class TestMCPProtocol:
         async with mcp_client as client:
             try:
                 # get_signals is optional per spec
-                result = await client.call_tool(
-                    "get_signals", {"req": {"query": "sports", "type": "contextual"}}
-                )
+                result = await client.call_tool("get_signals", {"req": {"query": "sports", "type": "contextual"}})
 
                 # If it exists, verify structure
-                content = (
-                    result.structured_content
-                    if hasattr(result, "structured_content")
-                    else result
-                )
+                content = result.structured_content if hasattr(result, "structured_content") else result
                 signals = content.get("signals", [])
 
                 assert isinstance(signals, list)
@@ -258,10 +230,7 @@ class TestMCPProtocol:
                 )
 
             # Should get auth error
-            assert (
-                "auth" in str(exc_info.value).lower()
-                or "unauthorized" in str(exc_info.value).lower()
-            )
+            assert "auth" in str(exc_info.value).lower() or "unauthorized" in str(exc_info.value).lower()
 
     @pytest.mark.requires_server
     async def test_country_targeting_validation(self, mcp_client):
@@ -282,11 +251,7 @@ class TestMCPProtocol:
 
             assert len(products) > 0
 
-            product_id = (
-                products[0]["product_id"]
-                if isinstance(products[0], dict)
-                else products[0].product_id
-            )
+            product_id = products[0]["product_id"] if isinstance(products[0], dict) else products[0].product_id
 
             # Test with valid ISO country codes
             start_date = date.today() + timedelta(days=1)
@@ -300,9 +265,7 @@ class TestMCPProtocol:
                         "total_budget": 1000.0,
                         "flight_start_date": start_date.isoformat(),
                         "flight_end_date": end_date.isoformat(),
-                        "targeting_overlay": {
-                            "geo_country_any_of": ["US", "GB", "FR", "DE", "JP"]
-                        },
+                        "targeting_overlay": {"geo_country_any_of": ["US", "GB", "FR", "DE", "JP"]},
                     }
                 },
             )
@@ -422,9 +385,7 @@ class TestMCPTestPage:
             assert data["success"] is True
             assert "result" in data
 
-    def test_mcp_test_page_shows_principals(
-        self, auth_session, sample_tenant, sample_principal
-    ):
+    def test_mcp_test_page_shows_principals(self, auth_session, sample_tenant, sample_principal):
         """Test that MCP test page shows available principals."""
         # The page dynamically loads principals, so we just check the page loads
         response = auth_session.get("/mcp-test")

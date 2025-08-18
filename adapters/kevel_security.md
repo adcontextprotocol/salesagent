@@ -123,7 +123,7 @@ Security considerations:
 
 ## Best Practices
 
-1. **API Key Management**: 
+1. **API Key Management**:
    - Use environment variables for API keys
    - Rotate keys regularly
    - Never commit keys to version control

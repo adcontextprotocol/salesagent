@@ -11,7 +11,7 @@ The `test_auth_mode.py` file tests the authentication bypass mode for automated 
 1. Enable test mode and optionally customize credentials:
    ```bash
    export ADCP_AUTH_TEST_MODE=true
-   
+
    # Optional: Customize test credentials
    export TEST_SUPER_ADMIN_PASSWORD=my_secure_test_pass
    export TEST_TENANT_ADMIN_PASSWORD=another_secure_pass
@@ -22,7 +22,7 @@ The `test_auth_mode.py` file tests the authentication bypass mode for automated 
    ```bash
    # Copy override file if not already done
    cp docker-compose.override.example.yml docker-compose.override.yml
-   
+
    # Edit override file to enable test mode
    # Then start services
    docker-compose up

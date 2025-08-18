@@ -5,32 +5,32 @@
 {% block content %}
 <div class="card">
     <h2>Add New Product</h2>
-    
+
     {% if error %}
     <div class="alert alert-error">{{ error }}</div>
     {% endif %}
-    
+
     <form method="POST">
         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
             <div class="form-group">
                 <label for="name">Product Name *</label>
                 <input type="text" id="name" name="name" required placeholder="e.g., Homepage Premium Display">
             </div>
-            
+
             <div class="form-group">
                 <label for="product_id">Product ID</label>
                 <input type="text" id="product_id" name="product_id" placeholder="Auto-generated from name">
                 <small style="color: #666;">Leave blank to auto-generate</small>
             </div>
         </div>
-        
+
         <div class="form-group">
             <label for="description">Description</label>
             <textarea id="description" name="description" rows="3" placeholder="Describe this product offering"></textarea>
         </div>
-        
+
         <h3 style="margin-top: 2rem;">Creative Formats</h3>
-        
+
         <div class="form-group">
             <label>Select supported formats:</label>
             <div style="margin-top: 1rem;">
@@ -64,9 +64,9 @@
                 {% endfor %}
             </div>
         </div>
-        
+
         <h3 style="margin-top: 2rem;">Pricing & Delivery</h3>
-        
+
         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
             <div class="form-group">
                 <label for="delivery_type">Delivery Type</label>
@@ -75,12 +75,12 @@
                     <option value="non_guaranteed">Non-guaranteed</option>
                 </select>
             </div>
-            
+
             <div class="form-group" id="cpm-group">
                 <label for="cpm">CPM (Cost per 1000 impressions) *</label>
                 <input type="number" id="cpm" name="cpm" value="5.00" step="0.01">
             </div>
-            
+
             <div class="form-group" id="price-guidance-group" style="display: none;">
                 <label for="price_guidance_min">Price Guidance (CPM Range)</label>
                 <div style="display: flex; gap: 10px; align-items: center;">
@@ -91,9 +91,9 @@
                 <small style="color: #666;">Suggested CPM range for non-guaranteed inventory</small>
             </div>
         </div>
-        
+
         <h3 style="margin-top: 2rem;">Geographic Targeting</h3>
-        
+
         <div class="form-group">
             <label for="countries">Target Countries</label>
             <select id="countries" name="countries" multiple style="height: 120px; width: 100%;">
@@ -121,7 +121,7 @@
             </select>
             <small style="color: #666;">Hold Ctrl/Cmd to select multiple countries. Different pricing may apply per country.</small>
         </div>
-        
+
         <div style="margin-top: 2rem;">
             <button type="submit" class="btn">Create Product</button>
             <a href="{{ url_for('list_products', tenant_id=tenant_id) }}" class="btn btn-secondary">Cancel</a>
@@ -135,7 +135,7 @@ function updatePricingFields() {
     const cpmGroup = document.getElementById('cpm-group');
     const priceGuidanceGroup = document.getElementById('price-guidance-group');
     const cpmInput = document.getElementById('cpm');
-    
+
     if (deliveryType === 'guaranteed') {
         cpmGroup.style.display = 'block';
         priceGuidanceGroup.style.display = 'none';
@@ -150,15 +150,15 @@ function updatePricingFields() {
 // Initialize on page load
 document.addEventListener('DOMContentLoaded', function() {
     updatePricingFields();
-    
+
     // Add event listener to delivery type dropdown
     document.getElementById('delivery_type').addEventListener('change', updatePricingFields);
-    
+
     // Handle country selection
     const countriesSelect = document.getElementById('countries');
     countriesSelect.addEventListener('change', function() {
         const selectedOptions = Array.from(this.selectedOptions).map(opt => opt.value);
-        
+
         // If "ALL" is selected, deselect all others
         if (selectedOptions.includes('ALL') && selectedOptions.length > 1) {
             // Clear all selections and just select ALL

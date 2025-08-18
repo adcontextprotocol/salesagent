@@ -106,11 +106,11 @@ class AdServerAdapter(ABC):
     @abstractmethod
     def get_avails(self, request: GetAvailsRequest) -> GetAvailsResponse:
         """Check inventory availability"""
-    
+
     @abstractmethod
     def create_media_buy(self, request, packages, start_time, end_time):
         """Create campaign/order"""
-    
+
     @abstractmethod
     def activate_media_buy(self, media_buy_id: str):
         """Activate pending campaign"""
@@ -265,14 +265,14 @@ Used for:
 services:
   postgres:
     image: postgres:16
-    volumes: 
+    volumes:
       - postgres_data:/var/lib/postgresql/data
-      
+
   adcp-server:
     build: .
     depends_on: [postgres]
     ports: ["8080:8080"]
-    
+
   admin-ui:
     build: .
     command: python admin_ui.py

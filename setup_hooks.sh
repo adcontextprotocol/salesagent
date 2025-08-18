@@ -25,7 +25,7 @@ if [ -f "./run_all_tests.sh" ]; then
     # Run quick tests
     ./run_all_tests.sh quick
     TEST_RESULT=$?
-    
+
     if [ $TEST_RESULT -ne 0 ]; then
         echo ""
         echo "❌ Tests failed! Push aborted."

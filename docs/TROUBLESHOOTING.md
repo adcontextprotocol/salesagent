@@ -166,7 +166,7 @@ docker volume rm adcp_global_uv_cache
 # Enable query logging in PostgreSQL
 
 # Add indexes for common queries
-CREATE INDEX idx_media_buys_tenant_status 
+CREATE INDEX idx_media_buys_tenant_status
 ON media_buys(tenant_id, status);
 
 # Use connection pooling

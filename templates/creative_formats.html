@@ -15,15 +15,15 @@
             <a href="{{ url_for('add_creative_format_ai', tenant_id=tenant_id) }}" class="btn btn-secondary">Add with AI</a>
         </div>
     </div>
-    
+
     <div class="alert alert-info">
         <strong>Creative Formats:</strong> Define the creative specifications that your products support. Standard formats are maintained by AdContext Protocol and custom formats are specific to your organization.
     </div>
-    
+
     <!-- Standard Formats Section -->
     <h3 style="margin-top: 2rem;">Standard Formats</h3>
     <p style="color: #666; margin-bottom: 1rem;">Industry-standard formats from AdContext Protocol</p>
-    
+
     <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 1rem;">
         {% for format in formats if format.is_standard %}
         <div class="format-card">
@@ -48,11 +48,11 @@
         </div>
         {% endfor %}
     </div>
-    
+
     <!-- Custom Formats Section -->
     <h3 style="margin-top: 3rem;">Custom Formats</h3>
     <p style="color: #666; margin-bottom: 1rem;">Organization-specific creative formats</p>
-    
+
     {% set custom_formats = formats|selectattr('is_standard', 'equalto', false)|list %}
     {% if custom_formats %}
     <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 1rem;">
@@ -97,20 +97,20 @@
         <span class="close" onclick="hideDiscoverFromUrlModal()">&times;</span>
         <h3>Discover Creative Formats from URL</h3>
         <p>Enter a URL to discover multiple creative format specifications:</p>
-        
+
         <form id="discoverForm">
             <div class="form-group">
                 <label for="discover_url">Specification URL:</label>
                 <input type="url" id="discover_url" name="url" placeholder="https://example.com/ad-specs" required style="width: 100%;">
                 <small style="color: #666;">Examples: Yahoo Ad Specs, Google Ad Manager formats, etc.</small>
             </div>
-            
+
             <div class="form-actions">
                 <button type="button" onclick="hideDiscoverFromUrlModal()" class="btn btn-secondary">Cancel</button>
                 <button type="submit" class="btn btn-primary" id="discoverBtn">Discover Formats</button>
             </div>
         </form>
-        
+
         <div id="discoveryResults" style="display: none; margin-top: 2rem;">
             <h4>Discovered Formats:</h4>
             <p>Select the formats you want to add:</p>
@@ -318,7 +318,7 @@ async function syncStandardFormats() {
     if (!confirm('This will sync standard formats from adcontextprotocol.org. Continue?')) {
         return;
     }
-    
+
     try {
         const response = await fetch(`{{ url_for('sync_standard_formats', tenant_id=tenant_id) }}`, {
             method: 'POST',
@@ -326,9 +326,9 @@ async function syncStandardFormats() {
                 'Content-Type': 'application/json',
             }
         });
-        
+
         const result = await response.json();
-        
+
         if (result.success) {
             alert(`Successfully synced ${result.count} standard formats.`);
             location.reload();
@@ -348,7 +348,7 @@ async function deleteFormat(formatId) {
     if (!confirm('Are you sure you want to delete this custom format? This cannot be undone.')) {
         return;
     }
-    
+
     try {
         const response = await fetch(`/tenant/{{ tenant_id }}/creative-formats/${formatId}/delete`, {
             method: 'POST',
@@ -356,9 +356,9 @@ async function deleteFormat(formatId) {
                 'Content-Type': 'application/json',
             }
         });
-        
+
         const result = await response.json();
-        
+
         if (result.success) {
             alert('Format deleted successfully');
             location.reload();
@@ -393,15 +393,15 @@ window.onclick = function(event) {
 document.addEventListener('DOMContentLoaded', function() {
     document.getElementById('discoverForm').addEventListener('submit', async function(e) {
         e.preventDefault();
-        
+
         const url = document.getElementById('discover_url').value;
         const discoverBtn = document.getElementById('discoverBtn');
         const originalText = discoverBtn.textContent;
-        
+
         // Show loading state
         discoverBtn.textContent = 'Discovering...';
         discoverBtn.disabled = true;
-        
+
         try {
             const response = await fetch('/tenant/{{ tenant_id }}/creative-formats/discover', {
                 method: 'POST',
@@ -410,9 +410,9 @@ document.addEventListener('DOMContentLoaded', function() {
                 },
                 body: JSON.stringify({ url: url })
             });
-            
+
             const result = await response.json();
-            
+
             if (result.success) {
                 displayDiscoveredFormats(result.formats);
             } else {
@@ -430,7 +430,7 @@ document.addEventListener('DOMContentLoaded', function() {
 function displayDiscoveredFormats(formats) {
     const formatsList = document.getElementById('formatsList');
     const resultsDiv = document.getElementById('discoveryResults');
-    
+
     if (formats.length === 0) {
         formatsList.innerHTML = '<p style="color: #666;">No formats found at this URL.</p>';
     } else {
@@ -439,7 +439,7 @@ function displayDiscoveredFormats(formats) {
             const dimensions = format.width && format.height ? `${format.width}x${format.height}` : '';
             const duration = format.duration_seconds ? `${format.duration_seconds}s` : '';
             const fileSize = format.max_file_size_kb ? `${format.max_file_size_kb}KB max` : '';
-            
+
             html += `
                 <div class="discovered-format">
                     <label>
@@ -465,7 +465,7 @@ function displayDiscoveredFormats(formats) {
         });
         formatsList.innerHTML = html;
     }
-    
+
     // Store formats for later use
     window.discoveredFormats = formats;
     resultsDiv.style.display = 'block';
@@ -483,17 +483,17 @@ function toggleFormatSelection(checkbox) {
 async function saveSelectedFormats() {
     const checkboxes = document.querySelectorAll('#formatsList input[type="checkbox"]:checked');
     const selectedFormats = Array.from(checkboxes).map(cb => window.discoveredFormats[parseInt(cb.value)]);
-    
+
     if (selectedFormats.length === 0) {
         alert('Please select at least one format to save.');
         return;
     }
-    
+
     const saveBtn = document.getElementById('saveBtn');
     const originalText = saveBtn.textContent;
     saveBtn.textContent = 'Saving...';
     saveBtn.disabled = true;
-    
+
     try {
         const response = await fetch('/tenant/{{ tenant_id }}/creative-formats/save-multiple', {
             method: 'POST',
@@ -502,9 +502,9 @@ async function saveSelectedFormats() {
             },
             body: JSON.stringify({ formats: selectedFormats })
         });
-        
+
         const result = await response.json();
-        
+
         if (result.success) {
             alert(`Successfully saved ${selectedFormats.length} format(s).`);
             hideDiscoverFromUrlModal();

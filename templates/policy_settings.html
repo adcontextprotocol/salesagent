@@ -26,7 +26,7 @@
                 <div class="card-body">
                     <form action="/tenant/{{ tenant_id }}/policy/update" method="POST">
                         <div class="form-check mb-3">
-                            <input class="form-check-input" type="checkbox" id="enabled" name="enabled" 
+                            <input class="form-check-input" type="checkbox" id="enabled" name="enabled"
                                    {% if policy_settings.enabled %}checked{% endif %}>
                             <label class="form-check-label" for="enabled">
                                 Enable Policy Checks
@@ -37,7 +37,7 @@
                         </div>
 
                         <div class="form-check mb-3">
-                            <input class="form-check-input" type="checkbox" id="require_manual_review" name="require_manual_review" 
+                            <input class="form-check-input" type="checkbox" id="require_manual_review" name="require_manual_review"
                                    {% if policy_settings.require_manual_review %}checked{% endif %}>
                             <label class="form-check-label" for="require_manual_review">
                                 Require Manual Review for Restricted Content
@@ -66,7 +66,7 @@
                     {% if pending_reviews %}
                         <div class="list-group">
                             {% for review in pending_reviews %}
-                            <a href="/tenant/{{ tenant_id }}/policy/review/{{ review.task_id }}" 
+                            <a href="/tenant/{{ tenant_id }}/policy/review/{{ review.task_id }}"
                                class="list-group-item list-group-item-action">
                                 <div class="d-flex w-100 justify-content-between">
                                     <h6 class="mb-1">{{ review.brief[:50] }}...</h6>
