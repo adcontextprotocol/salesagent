@@ -1,5 +1,5 @@
 version = 1
-revision = 2
+revision = 3
 requires-python = ">=3.12"
 resolution-markers = [
     "python_full_version >= '3.13'",
@@ -72,7 +72,7 @@ requires-dist = [
     { name = "flask-socketio", specifier = ">=5.5.1" },
     { name = "google-ads", specifier = ">=24.1.0" },
     { name = "google-generativeai", specifier = ">=0.5.4" },
-    { name = "googleads", specifier = ">=46.0.0" },
+    { name = "googleads", specifier = "==46.0.0" },
     { name = "playwright", marker = "extra == 'ui-tests'", specifier = "==1.48.0" },
     { name = "psycopg2-binary", specifier = ">=2.9.9" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.3.2" },
