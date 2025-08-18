@@ -544,7 +544,9 @@ class TestSessionManagement:
         assert response.status_code == 302
         assert "/login" in response.location
 
-    def test_oauth_tenant_id_cleanup(self, client, mock_google_oauth, mock_db):
+    def test_oauth_tenant_id_cleanup(
+        self, client, mock_google_oauth, mock_db, mock_db_session
+    ):
         """Test that oauth_tenant_id is cleaned up after successful auth."""
         # Set oauth_tenant_id in session
         with client.session_transaction() as sess:
@@ -562,23 +564,32 @@ class TestSessionManagement:
             else:
                 return [("test-tenant", "Test Tenant")]
 
-        # Mock user lookup - return None to simulate user not in users table
-        cursor_user = MagicMock()
-        cursor_user.fetchone.return_value = None
+        # Mock tenant object for ORM
+        mock_tenant = MagicMock()
+        mock_tenant.name = "Test Tenant"
 
-        # Mock tenant lookup
+        # Setup ORM query side effects
+        def query_side_effect(model):
+            query_mock = MagicMock()
+            if model.__name__ == "User":
+                # User not found in database
+                query_mock.join.return_value.filter.return_value.first.return_value = (
+                    None
+                )
+            elif model.__name__ == "Tenant":
+                # Return tenant object
+                query_mock.filter_by.return_value.first.return_value = mock_tenant
+            return query_mock
+
+        mock_db_session.query.side_effect = query_side_effect
+
+        # Mock raw database for is_tenant_admin (still uses raw queries)
         cursor_tenant = MagicMock()
         cursor_tenant.fetchone.return_value = (
             json.dumps(["user@example.com"]),  # authorized_emails
             json.dumps([]),  # authorized_domains
         )
-
-        # Mock tenant name lookup
-        cursor_name = MagicMock()
-        cursor_name.fetchone.return_value = ("Test Tenant",)
-
-        # Configure mock to return different cursors for different queries
-        mock_db.execute.side_effect = [cursor_user, cursor_tenant, cursor_name]
+        mock_db.execute.return_value = cursor_tenant
 
         # Mock is_tenant_admin
         with patch("admin_ui.is_tenant_admin", side_effect=mock_is_tenant_admin_func):
@@ -631,7 +642,9 @@ class TestOAuthErrorHandling:
         assert response.status_code == 200
         assert b"No email address provided" in response.data
 
-    def test_tenant_callback_inactive_user(self, client, mock_google_oauth, mock_db):
+    def test_tenant_callback_inactive_user(
+        self, client, mock_google_oauth, mock_db, mock_db_session
+    ):
         """Test tenant OAuth callback for inactive tenant."""
         # Set oauth_tenant_id in session
         with client.session_transaction() as sess:
@@ -649,16 +662,25 @@ class TestOAuthErrorHandling:
             else:
                 return []  # No tenants available
 
-        # Mock user lookup - return None
-        cursor_user = MagicMock()
-        cursor_user.fetchone.return_value = None
+        # Setup ORM query side effects for new code path
+        def query_side_effect(model):
+            query_mock = MagicMock()
+            if model.__name__ == "User":
+                # User not found in database
+                query_mock.join.return_value.filter.return_value.first.return_value = (
+                    None
+                )
+            elif model.__name__ == "Tenant":
+                # No tenant found (inactive)
+                query_mock.filter_by.return_value.first.return_value = None
+            return query_mock
 
-        # Mock inactive tenant
+        mock_db_session.query.side_effect = query_side_effect
+
+        # Mock raw database for is_tenant_admin (still uses raw queries)
         cursor_tenant = MagicMock()
         cursor_tenant.fetchone.return_value = None  # No active tenant found
-
-        # Configure mock to return cursors
-        mock_db.execute.side_effect = [cursor_user, cursor_tenant]
+        mock_db.execute.return_value = cursor_tenant
 
         # Mock is_tenant_admin to return empty list (no access)
         with patch("admin_ui.is_tenant_admin", side_effect=mock_is_tenant_admin_func):
@@ -668,33 +690,89 @@ class TestOAuthErrorHandling:
         assert response.status_code == 200
         assert b"not authorized" in response.data
 
-    @patch("admin_ui.get_db_connection")
-    def test_tenant_root_authenticated_redirect(self, mock_db, client):
+    @patch("admin_ui.get_db_session")
+    def test_tenant_root_authenticated_redirect(self, mock_get_db_session, client):
         """Test tenant root shows dashboard for authenticated users."""
-        # Mock database connection
-        mock_conn = MagicMock()
-        mock_cursor = MagicMock()
-        mock_conn.execute.return_value = mock_cursor
-        mock_db.return_value = mock_conn
+        # Mock the ORM session
+        mock_session = MagicMock()
+        mock_context = MagicMock()
+        mock_context.__enter__ = MagicMock(return_value=mock_session)
+        mock_context.__exit__ = MagicMock(return_value=None)
+        mock_get_db_session.return_value = mock_context
 
-        # Create a function that returns appropriate values
-        def mock_fetchone():
-            # Return tenant info first, then numeric values for everything else
-            if not hasattr(mock_fetchone, "call_count"):
-                mock_fetchone.call_count = 0
-            mock_fetchone.call_count += 1
+        # Mock tenant object
+        mock_tenant = MagicMock()
+        mock_tenant.tenant_id = "test-tenant"
+        mock_tenant.name = "Test Tenant"
+        mock_tenant.subdomain = "test"
+        mock_tenant.is_active = True
+        mock_tenant.ad_server = "mock"
 
-            if mock_fetchone.call_count == 1:
-                # Tenant query
-                return ("test-tenant", "Test Tenant", "test", True, "mock")
+        # Mock query methods
+        def query_side_effect(model):
+            query_mock = MagicMock()
+            if model.__name__ == "Tenant":
+                query_mock.filter_by.return_value.first.return_value = mock_tenant
+            elif model.__name__ == "MediaBuy":
+                query_mock.filter_by.return_value.count.return_value = 0
+                query_mock.filter_by.return_value.order_by.return_value.limit.return_value.all.return_value = (
+                    []
+                )
+                query_mock.filter.return_value.scalar.return_value = 0
+                query_mock.filter.return_value.group_by.return_value.order_by.return_value.limit.return_value.all.return_value = (
+                    []
+                )
+            elif model.__name__ == "Product":
+                query_mock.filter_by.return_value.count.return_value = 0
+            elif model.__name__ == "Principal":
+                query_mock.filter_by.return_value.count.return_value = 0
+            elif model.__name__ == "CreativeFormat":
+                query_mock.filter.return_value.order_by.return_value.all.return_value = (
+                    []
+                )
+            elif model.__name__ == "GamInventorySync":
+                query_mock.filter_by.return_value.scalar.return_value = None
+            return query_mock
+
+        mock_session.query.side_effect = query_side_effect
+
+        # Mock sqlalchemy query for all different patterns
+        def mock_query_with_func(*args):
+            query_mock = MagicMock()
+            model_or_expr = args[0] if args else None
+
+            # Check if it's a model class or an expression
+            if hasattr(model_or_expr, "__name__"):
+                # It's a model class
+                if model_or_expr.__name__ == "Tenant":
+                    query_mock.filter_by.return_value.first.return_value = mock_tenant
+                elif model_or_expr.__name__ == "Product":
+                    query_mock.filter_by.return_value.count.return_value = 0
+                elif model_or_expr.__name__ == "Principal":
+                    query_mock.filter_by.return_value.count.return_value = 0
+                elif model_or_expr.__name__ == "MediaBuy":
+                    query_mock.filter_by.return_value.count.return_value = 0
+                    query_mock.filter_by.return_value.order_by.return_value.limit.return_value.all.return_value = (
+                        []
+                    )
+                elif model_or_expr.__name__ == "CreativeFormat":
+                    query_mock.filter.return_value.order_by.return_value.all.return_value = (
+                        []
+                    )
             else:
-                # All metric queries return a numeric value
-                return (0,)
+                # It's a SQL expression (func.coalesce, func.sum, etc.)
+                query_mock.filter.return_value.scalar.return_value = 0
+                query_mock.scalar.return_value = 0
 
-        mock_cursor.fetchone.side_effect = mock_fetchone
+            # Setup default chain returns
+            query_mock.filter.return_value.group_by.return_value.order_by.return_value.limit.return_value.all.return_value = (
+                []
+            )
+            query_mock.filter.return_value.order_by.return_value.all.return_value = []
 
-        # Also need fetchall for some queries
-        mock_cursor.fetchall.return_value = []
+            return query_mock
+
+        mock_session.query = mock_query_with_func
 
         # Set up authenticated session
         with client.session_transaction() as sess:
