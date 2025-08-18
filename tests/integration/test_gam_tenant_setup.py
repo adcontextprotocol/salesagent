@@ -12,13 +12,14 @@ specifically testing the scenarios that caused the regression:
 This would have caught the regression where network code was required upfront.
 """
 
-import pytest
-import tempfile
-import sqlite3
 import os
-from unittest.mock import Mock, patch, MagicMock
+import sqlite3
 import sys
+import tempfile
 from pathlib import Path
+from unittest.mock import MagicMock, Mock, patch
+
+import pytest
 
 # Add project root to path
 project_root = Path(__file__).parent.parent.parent
@@ -49,7 +50,7 @@ class TestGAMTenantSetup:
             self._create_test_schema(conn)
 
             # Mock database connection to use our test DB
-            with patch("setup_tenant.get_db_connection") as mock_get_conn:
+            with patch("setup_tenant.get_db_session") as mock_get_conn:
                 mock_conn = Mock()
                 mock_conn.execute = conn.execute
                 mock_conn.commit = conn.commit
@@ -89,12 +90,8 @@ class TestGAMTenantSetup:
                 )
                 adapter_config = cursor.fetchone()
                 assert adapter_config is not None
-                assert (
-                    adapter_config[0] is None
-                )  # network_code should be null initially
-                assert (
-                    adapter_config[1] == "test_refresh_token_123"
-                )  # refresh_token should be stored
+                assert adapter_config[0] is None  # network_code should be null initially
+                assert adapter_config[1] == "test_refresh_token_123"  # refresh_token should be stored
 
         finally:
             conn.close()
@@ -113,7 +110,7 @@ class TestGAMTenantSetup:
             conn = sqlite3.connect(tmp_path)
             self._create_test_schema(conn)
 
-            with patch("setup_tenant.get_db_connection") as mock_get_conn:
+            with patch("setup_tenant.get_db_session") as mock_get_conn:
                 mock_conn = Mock()
                 mock_conn.execute = conn.execute
                 mock_conn.commit = conn.commit
@@ -163,7 +160,7 @@ class TestGAMTenantSetup:
                 "--adapter",
                 "google_ad_manager",
                 "--gam-refresh-token",
-                "test_token"
+                "test_token",
                 # Note: NO --gam-network-code provided - should NOT error
             ]
 
@@ -189,9 +186,7 @@ class TestGAMTenantSetup:
                     # Any other exception means parsing failed
                     parsing_succeeded = False
 
-            assert (
-                parsing_succeeded
-            ), "Network code should be optional when refresh token is provided"
+            assert parsing_succeeded, "Network code should be optional when refresh token is provided"
 
         finally:
             sys.argv = old_argv
