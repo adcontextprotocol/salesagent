@@ -22,8 +22,8 @@ cd "$GIT_DIR"
 
 # Check if test runner exists
 if [ -f "./run_all_tests.sh" ]; then
-    # Run quick tests
-    ./run_all_tests.sh quick
+    # Run unit and integration tests to match CI
+    ./run_all_tests.sh pre-push
     TEST_RESULT=$?
 
     if [ $TEST_RESULT -ne 0 ]; then
