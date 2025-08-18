@@ -613,7 +613,7 @@ class FullLifecycleSimulation:
                     console.print(f"  [dim]{log}[/dim]")
                 
                 console.print(f"\n[bold yellow]Total adapter calls: {len(dry_run_logs)}[/bold yellow]")
-        except Exception as e:
+        except Exception:
             # Dry run logs might not be available in all environments
             pass
 

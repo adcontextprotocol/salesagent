@@ -102,7 +102,7 @@ def check_file(filepath: str) -> List[str]:
         for key, line, obj in dict_findings:
             issues.append(f"{filepath}:{line}: Accessing removed column '{key}' on '{obj}'")
             
-    except Exception as e:
+    except Exception:
         # Silently skip files that can't be parsed
         pass
     
