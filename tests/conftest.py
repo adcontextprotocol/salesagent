@@ -259,18 +259,22 @@ def tenant_admin_session(sample_tenant):
 def flask_app():
     """Provide Flask test app."""
     # Mock database before importing admin_ui
-    with patch('admin_ui.get_db_connection') as mock_conn:
-        mock_db = MagicMock()
-        mock_cursor = MagicMock()
-        mock_cursor.fetchall.return_value = []
-        mock_db.execute.return_value = mock_cursor
-        mock_conn.return_value = mock_db
+    with patch('admin_ui.get_db_session') as mock_get_session:
+        mock_session = MagicMock()
+        mock_session.query.return_value.filter_by.return_value.first.return_value = None
+        mock_session.query.return_value.filter_by.return_value.all.return_value = []
+        mock_session.query.return_value.filter.return_value.first.return_value = None
+        mock_session.query.return_value.filter.return_value.all.return_value = []
+        mock_session.query.return_value.all.return_value = []
+        mock_session.__enter__ = MagicMock(return_value=mock_session)
+        mock_session.__exit__ = MagicMock(return_value=None)
+        mock_get_session.return_value = mock_session
         
         # Mock inventory service database session
-        with patch('gam_inventory_service.db_session') as mock_session:
-            mock_session.query.return_value.filter.return_value.all.return_value = []
-            mock_session.close = MagicMock()
-            mock_session.remove = MagicMock()
+        with patch('gam_inventory_service.db_session') as mock_inv_session:
+            mock_inv_session.query.return_value.filter.return_value.all.return_value = []
+            mock_inv_session.close = MagicMock()
+            mock_inv_session.remove = MagicMock()
             
             from admin_ui import app
             app.config['TESTING'] = True

@@ -78,7 +78,7 @@ def check_file(filepath: str) -> List[str]:
                 
             issues.append(issue_msg)
             
-    except Exception as e:
+    except Exception:
         # Skip files that can't be parsed
         pass
         

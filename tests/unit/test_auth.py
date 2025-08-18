@@ -68,7 +68,7 @@ class CustomAuthSimulation:
         async with acme_client:
             try:
                 await acme_client.call_tool("get_media_buy_delivery", {"req": delivery_req.model_dump(mode='json')})
-            except Exception as e:
+            except Exception:
                 console.print(f"[bold green] \u2713 Successfully failed as expected.[/bold green]")
 
 if __name__ == "__main__":

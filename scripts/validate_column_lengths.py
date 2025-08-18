@@ -79,7 +79,7 @@ def check_pydantic_schemas(filepath: str) -> Dict[str, int]:
             max_length = int(match.group(2))
             constraints[field_name] = max_length
             
-    except Exception as e:
+    except Exception:
         pass
         
     return constraints
