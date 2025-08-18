@@ -171,11 +171,16 @@ class TestSuperAdminTenantAPI:
             "subdomain": "new",
             "billing_plan": "standard",
             "ad_server": "google_ad_manager",
-            "network_code": "123456",
-            "refresh_token": "test_token",
+            "gam_network_code": "123456",
+            "gam_refresh_token": "test_token",
         }
 
         response = client.post("/api/v1/superadmin/tenants", headers={"X-Superadmin-API-Key": api_key}, json=payload)
+
+        # Debug if there's an error
+        if response.status_code != 201:
+            print(f"Response status: {response.status_code}")
+            print(f"Response data: {response.json}")
 
         assert response.status_code == 201
         assert "tenant_id" in response.json
@@ -267,7 +272,7 @@ class TestSuperAdminTenantAPI:
         assert response.status_code == 200
         assert response.json["message"] == "Tenant soft deleted successfully"
         # Verify is_active was set to False
-        assert mock_tenant.is_active == False
+        assert mock_tenant.is_active is False
 
     def test_delete_tenant_hard(self, client, mock_session, api_key):
         """Test hard deleting a tenant."""
@@ -313,7 +318,7 @@ class TestSuperAdminTenantAPI:
 
         response = client.post("/api/v1/superadmin/init-api-key")
 
-        assert response.status_code == 200
+        assert response.status_code == 201  # Created status
         assert "api_key" in response.json
         assert response.json["api_key"].startswith("sk-")
         # Verify add was called
@@ -328,7 +333,7 @@ class TestSuperAdminTenantAPI:
 
         response = client.post("/api/v1/superadmin/init-api-key")
 
-        assert response.status_code == 400
+        assert response.status_code == 409  # Conflict status
         assert response.json["error"] == "API key already initialized"
 
     def test_health_check_with_no_api_configured(self, client, mock_session):

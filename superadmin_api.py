@@ -199,11 +199,24 @@ def create_tenant():
                 principal_id = f"principal_{uuid.uuid4().hex[:8]}"
                 principal_token = secrets.token_urlsafe(32)
 
+                # Add a default platform mapping based on the adapter type
+                default_mappings = {}
+                if adapter_type == "google_ad_manager":
+                    # For GAM, add a placeholder advertiser ID
+                    default_mappings = {"google_ad_manager": {"advertiser_id": "placeholder"}}
+                elif adapter_type == "kevel":
+                    default_mappings = {"kevel": {"advertiser_id": "placeholder"}}
+                elif adapter_type == "triton":
+                    default_mappings = {"triton": {"advertiser_id": "placeholder"}}
+                else:
+                    # For mock and others
+                    default_mappings = {"mock": {"advertiser_id": "default"}}
+
                 new_principal = Principal(
                     tenant_id=tenant_id,
                     principal_id=principal_id,
                     name=f"{data['name']} Default Principal",
-                    platform_mappings=json.dumps({}),
+                    platform_mappings=json.dumps(default_mappings),
                     access_token=principal_token,
                     created_at=datetime.now(UTC),
                 )
@@ -432,6 +445,10 @@ def delete_tenant(tenant_id):
             # Soft delete by default
             hard_delete = request.args.get("hard_delete", "false").lower() == "true"
 
+            # Check request body for hard_delete flag (not query params)
+            data = request.get_json() or {}
+            hard_delete = data.get("hard_delete", False)
+
             if hard_delete:
                 # Delete related records first due to foreign key constraints
                 db_session.query(AdapterConfig).filter_by(tenant_id=tenant_id).delete()
@@ -444,12 +461,12 @@ def delete_tenant(tenant_id):
 
                 # Finally delete the tenant
                 db_session.delete(tenant)
-                message = f"Tenant {tenant_id} permanently deleted"
+                message = "Tenant and all related data permanently deleted"
             else:
                 # Just mark as inactive
                 tenant.is_active = False
                 tenant.updated_at = datetime.now(UTC)
-                message = f"Tenant {tenant_id} deactivated"
+                message = "Tenant soft deleted successfully"
 
             db_session.commit()
 

@@ -78,6 +78,7 @@ class TestGAMLineItemViewer:
             }
         ]
 
+    @patch("admin_ui.get_tenant_config_from_db")
     @patch("gam_orders_service.db_session")
     @patch("zeep.helpers.serialize_object")
     @patch("googleads.ad_manager")
@@ -85,11 +86,12 @@ class TestGAMLineItemViewer:
     @patch("admin_ui.get_db_session")
     def test_get_gam_line_item_success(
         self,
-        mock_db,
+        mock_get_db_session,
         mock_gam_client,
         mock_ad_manager,
         mock_serialize,
-        mock_db_session,
+        mock_gam_orders_db_session,
+        mock_get_tenant_config,
         mock_line_item_response,
         mock_order_response,
         mock_creative_response,
@@ -97,56 +99,66 @@ class TestGAMLineItemViewer:
         """Test successful retrieval of GAM line item data."""
         from admin_ui import app
 
-        # Setup mocks
-        mock_conn = Mock()
+        # Mock the tenant config to enable GAM
+        mock_get_tenant_config.return_value = {
+            "adapters": {
+                "google_ad_manager": {
+                    "enabled": True,
+                    "network_code": "123456",
+                    "refresh_token": None,  # Dry-run mode
+                }
+            }
+        }
 
-        # Create two cursors for the two queries
-        # First query: SELECT * FROM tenants WHERE tenant_id = ?
-        mock_cursor1 = Mock()
-        mock_cursor1.fetchone.return_value = (
-            "test_tenant",  # tenant_id
-            "Test Tenant",  # name
-            "test",  # subdomain
-            json.dumps({"adapters": {"google_ad_manager": {"enabled": True, "network_code": "123456"}}}),  # config
-            "standard",  # billing_plan
-            True,  # is_active
-            json.dumps([]),  # authorized_emails
-            json.dumps([]),  # authorized_domains
-        )
+        # Setup mock_get_db_session to return a proper context manager
+        mock_session = Mock()
+        mock_session.__enter__ = Mock(return_value=mock_session)
+        mock_session.__exit__ = Mock(return_value=None)
+        mock_get_db_session.return_value = mock_session
 
-        # Second query: get_tenant_config_from_db columns
-        mock_cursor2 = Mock()
-        mock_cursor2.fetchone.return_value = (
-            "google_ad_manager",  # ad_server
-            10000,  # max_daily_budget
-            True,  # enable_aee_signals
-            json.dumps([]),  # authorized_emails
-            json.dumps([]),  # authorized_domains
-            None,  # slack_webhook_url
-            None,  # slack_audit_webhook_url
-            None,  # hitl_webhook_url
-            "test_token",  # admin_token
-            json.dumps(["display_300x250"]),  # auto_approve_formats
-            False,  # human_review_required
-            json.dumps({"enabled": False}),  # policy_settings
-        )
+        # Setup mock_gam_orders_db_session as a context manager too
+        mock_gam_orders_db_session.__enter__ = Mock(return_value=mock_gam_orders_db_session)
+        mock_gam_orders_db_session.__exit__ = Mock(return_value=None)
 
-        # Third query: adapter_config table
-        mock_cursor3 = Mock()
-        mock_cursor3.fetchone.return_value = (
-            "test_tenant",  # tenant_id
-            "google_ad_manager",  # adapter_type
-            "123456",  # network_code
-            None,  # refresh_token - None means dry-run mode
-            None,  # company_id
-        )
+        # Mock the tenant query
+        mock_tenant = Mock()
+        mock_tenant.tenant_id = "test_tenant"
+        mock_tenant.name = "Test Tenant"
+        mock_tenant.subdomain = "test"
+        mock_tenant.ad_server = "google_ad_manager"
+        mock_tenant.is_active = True
+        mock_tenant.billing_plan = "standard"
+        # Remove the line below as it causes issues with multiple queries
+        # mock_session.query.return_value.filter_by.return_value.first.return_value = mock_tenant
 
-        # Setup execute to return different cursors for different queries
-        mock_conn.execute.side_effect = [mock_cursor1, mock_cursor2, mock_cursor3]
-        mock_conn.close = Mock()  # Mock the close method
-        mock_db.return_value = mock_conn
+        # Mock the adapter config query
+        mock_adapter = Mock()
+        mock_adapter.adapter_type = "google_ad_manager"
+        mock_adapter.gam_network_code = "123456"
+        mock_adapter.gam_refresh_token = None  # Dry-run mode
+        mock_adapter.gam_company_id = None
 
-        # Mock database session for dry-run mode
+        # Setup multiple query calls for different entities
+        query_call_count = 0
+
+        def query_side_effect(model):
+            nonlocal query_call_count
+            query_call_count += 1
+            mock_query = Mock()
+
+            if query_call_count == 1:
+                # First query is for Tenant
+                mock_query.filter_by.return_value.first.return_value = mock_tenant
+            elif query_call_count == 2:
+                # Second query is for AdapterConfig
+                mock_query.filter_by.return_value.first.return_value = mock_adapter
+            else:
+                # Any other queries return None
+                mock_query.filter_by.return_value.first.return_value = None
+
+            return mock_query
+
+        mock_session.query.side_effect = query_side_effect
 
         # Mock GAMLineItem object
         mock_line_item_obj = Mock()
@@ -196,12 +208,12 @@ class TestGAMLineItemViewer:
         mock_order_obj.po_number = None
         mock_order_obj.notes = None
 
-        # Mock query results
+        # Mock query results for GAMLineItem and GAMOrder
         mock_query = Mock()
         mock_query.filter.return_value = mock_query
         mock_query.first.side_effect = [mock_line_item_obj, mock_order_obj]
-        mock_db_session.query.return_value = mock_query
-        mock_db_session.remove = Mock()
+        mock_gam_orders_db_session.query.return_value = mock_query
+        mock_gam_orders_db_session.remove = Mock()
 
         # Since we're testing dry-run mode (no refresh_token), GAM client won't be used
         # But we'll keep the mocks in case the code path changes
