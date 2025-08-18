@@ -263,40 +263,30 @@ def create_tenant():
 @require_superadmin_api_key
 def get_tenant(tenant_id):
     """Get details for a specific tenant."""
-    conn = get_db_connection()
-    try:
-        # Get tenant details
-        cursor = conn.execute("""
-            SELECT tenant_id, name, subdomain, is_active, billing_plan,
-                   billing_contact, ad_server, created_at, updated_at,
-                   max_daily_budget, enable_aee_signals, authorized_emails,
-                   authorized_domains, slack_webhook_url, slack_audit_webhook_url,
-                   hitl_webhook_url, auto_approve_formats, human_review_required,
-                   policy_settings
-            FROM tenants
-            WHERE tenant_id = ?
-        """, (tenant_id,))
-        
-        tenant = cursor.fetchone()
-        if not tenant:
-            return jsonify({'error': 'Tenant not found'}), 404
-        
-        result = {
-            'tenant_id': tenant[0],
-            'name': tenant[1],
-            'subdomain': tenant[2],
-            'is_active': bool(tenant[3]),
-            'billing_plan': tenant[4],
-            'billing_contact': tenant[5],
-            'ad_server': tenant[6],
-            'created_at': tenant[7],
-            'updated_at': tenant[8],
-            'settings': {
-                'max_daily_budget': tenant[9],
-                'enable_aee_signals': bool(tenant[10]),
-                'authorized_emails': json.loads(tenant[11]) if tenant[11] else [],
-                'authorized_domains': json.loads(tenant[12]) if tenant[12] else [],
-                'slack_webhook_url': tenant[13],
+    with get_db_session() as db_session:
+        try:
+            # Get tenant details
+            tenant = db_session.query(Tenant).filter_by(tenant_id=tenant_id).first()
+            
+            if not tenant:
+                return jsonify({'error': 'Tenant not found'}), 404
+            
+            result = {
+                'tenant_id': tenant.tenant_id,
+                'name': tenant.name,
+                'subdomain': tenant.subdomain,
+                'is_active': bool(tenant.is_active),
+                'billing_plan': tenant.billing_plan,
+                'billing_contact': tenant.billing_contact,
+                'ad_server': tenant.ad_server,
+                'created_at': tenant.created_at.isoformat() if tenant.created_at else None,
+                'updated_at': tenant.updated_at.isoformat() if tenant.updated_at else None,
+                'settings': {
+                    'max_daily_budget': tenant.max_daily_budget,
+                    'enable_aee_signals': bool(tenant.enable_aee_signals),
+                    'authorized_emails': json.loads(tenant.authorized_emails) if tenant.authorized_emails else [],
+                    'authorized_domains': json.loads(tenant.authorized_domains) if tenant.authorized_domains else [],
+                    'slack_webhook_url': tenant.slack_webhook_url,
                 'slack_audit_webhook_url': tenant[14],
                 'hitl_webhook_url': tenant[15],
                 'auto_approve_formats': json.loads(tenant[16]) if tenant[16] else [],
@@ -587,45 +577,39 @@ def delete_tenant(tenant_id):
 @superadmin_api.route('/init-api-key', methods=['POST'])
 def initialize_api_key():
     """Initialize the super admin API key (can only be done once)."""
-    conn = get_db_connection()
-    try:
-        # Check if API key already exists
-        cursor = conn.execute(
-            "SELECT config_value FROM superadmin_config WHERE config_key = ?",
-            ('superadmin_api_key',)
-        )
-        
-        if cursor.fetchone():
-            return jsonify({'error': 'API key already initialized'}), 409
-        
-        # Generate new API key
-        api_key = f"sk-{secrets.token_urlsafe(32)}"
-        
-        # Store in database
-        conn.execute("""
-            INSERT INTO superadmin_config (
-                config_key, config_value, description, updated_at, updated_by
-            ) VALUES (?, ?, ?, ?, ?)
-        """, (
-            'superadmin_api_key',
-            api_key,
-            'Super admin API key for tenant management',
-            datetime.utcnow(),
-            'system'
-        ))
-        
-        conn.connection.commit()
-        
-        return jsonify({
-            'message': 'Super admin API key initialized',
-            'api_key': api_key,
-            'warning': 'Save this key securely. It cannot be retrieved again.'
-        }), 201
-        
-    except Exception as e:
-        # Note: DatabaseConnection doesn't support rollback
-        # Changes are not committed unless we explicitly call commit()
-        logger.error(f"Error initializing API key: {str(e)}")
-        return jsonify({'error': 'Failed to initialize API key'}), 500
-    finally:
-        conn.close()
+    from datetime import timezone
+    
+    with get_db_session() as db_session:
+        try:
+            # Check if API key already exists
+            existing_config = db_session.query(SuperadminConfig).filter_by(
+                config_key='superadmin_api_key'
+            ).first()
+            
+            if existing_config:
+                return jsonify({'error': 'API key already initialized'}), 409
+            
+            # Generate new API key
+            api_key = f"sk-{secrets.token_urlsafe(32)}"
+            
+            # Store in database
+            new_config = SuperadminConfig(
+                config_key='superadmin_api_key',
+                config_value=api_key,
+                description='Super admin API key for tenant management',
+                updated_at=datetime.now(timezone.utc),
+                updated_by='system'
+            )
+            db_session.add(new_config)
+            db_session.commit()
+            
+            return jsonify({
+                'message': 'Super admin API key initialized',
+                'api_key': api_key,
+                'warning': 'Save this key securely. It cannot be retrieved again.'
+            }), 201
+            
+        except Exception as e:
+            db_session.rollback()
+            logger.error(f"Error initializing API key: {str(e)}")
+            return jsonify({'error': 'Failed to initialize API key'}), 500
