@@ -1,5 +1,11 @@
 #!/bin/bash
 # Test runner script for pre-push hook and manual testing
+#
+# Modes:
+#   quick    - Unit tests only (fast, for rapid development)
+#   pre-push - Unit + Integration tests (matches CI, runs on git push)
+#   integration - Integration tests only
+#   full     - All tests including E2E (default)
 
 set -e  # Exit on first error
 
@@ -54,6 +60,17 @@ if [ "$MODE" = "quick" ]; then
     # Run only unit tests for quick feedback
     run_tests "tests/unit/" "Unit tests" || OVERALL_SUCCESS=1
 
+elif [ "$MODE" = "pre-push" ]; then
+    echo "Pre-push mode: Running unit and integration tests (matching CI)..."
+    echo ""
+
+    # Run unit tests first
+    run_tests "tests/unit/" "Unit tests" || OVERALL_SUCCESS=1
+    echo ""
+
+    # Run integration tests to match CI
+    run_tests "tests/integration/" "Integration tests" || OVERALL_SUCCESS=1
+
 elif [ "$MODE" = "integration" ]; then
     echo "Integration mode: Running integration tests only..."
     echo ""
@@ -85,6 +102,7 @@ else
     echo ""
     echo "To run specific test categories:"
     echo "  ./run_all_tests.sh quick       # Unit tests only (fast)"
+    echo "  ./run_all_tests.sh pre-push    # Unit + Integration (matches CI)"
     echo "  ./run_all_tests.sh integration # Integration tests only"
     echo "  ./run_all_tests.sh             # All tests (default)"
     echo ""
