@@ -2501,11 +2501,11 @@ def complete_task(req: CompleteTaskRequest, context: Context) -> Dict[str, str]:
                 task.completed_at.isoformat() if task.completed_at else None
             )
             db_task.completed_by = task.resolved_by
-            db_task.metadata = {
+            db_task.task_metadata = {
                 "resolution": task.resolution,
                 "resolution_detail": task.resolution_detail,
-                "original_metadata": json.loads(human_tasks[req.task_id].metadata)
-                if hasattr(human_tasks[req.task_id], "metadata")
+                "original_metadata": json.loads(human_tasks[req.task_id].task_metadata)
+                if hasattr(human_tasks[req.task_id], "task_metadata")
                 else {},
             }
             session.commit()
@@ -2830,7 +2830,7 @@ def mark_task_complete(
             db_task.status = task.status
             db_task.completed_at = task.completed_at.isoformat()
             db_task.completed_by = task.resolved_by
-            db_task.metadata = {
+            db_task.task_metadata = {
                 "resolution": task.resolution,
                 "resolution_detail": task.resolution_detail,
                 "verification": verification.model_dump(),
