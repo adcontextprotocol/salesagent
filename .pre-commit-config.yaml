@@ -64,7 +64,7 @@ repos:
         files: '\.py$'
 
   - repo: https://github.com/pre-commit/pre-commit-hooks
-    rev: v4.4.0
+    rev: v6.0.0
     hooks:
       - id: trailing-whitespace
       - id: end-of-file-fixer
@@ -77,13 +77,13 @@ repos:
       - id: debug-statements
 
   - repo: https://github.com/psf/black
-    rev: 23.3.0
+    rev: 25.1.0
     hooks:
       - id: black
         language_version: python3
 
-  - repo: https://github.com/charliermarsh/ruff-pre-commit
-    rev: v0.0.272
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.12.9
     hooks:
       - id: ruff
         args: [--fix, --exit-non-zero-on-fix]
