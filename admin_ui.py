@@ -13,7 +13,7 @@ import traceback
 from datetime import datetime, timezone
 from functools import wraps
 from authlib.integrations.flask_client import OAuth
-from db_config import DatabaseConfig
+from db_config import DatabaseConfig, get_db_connection
 from database_session import get_db_session
 from models import (
     Tenant, Principal, Product, MediaBuy, Task, HumanTask, AuditLog,
@@ -1922,7 +1922,7 @@ def targeting_browser(tenant_id):
         tenant = db_session.query(Tenant).filter_by(tenant_id=tenant_id).first()
         row = (tenant.tenant_id, tenant.name) if tenant else None
         if not row:
-        return "Tenant not found", 404
+            return "Tenant not found", 404
 
     tenant = {
         'tenant_id': row[0],
@@ -1948,7 +1948,7 @@ def inventory_browser(tenant_id):
         tenant = db_session.query(Tenant).filter_by(tenant_id=tenant_id).first()
         row = (tenant.tenant_id, tenant.name) if tenant else None
         if not row:
-        return "Tenant not found", 404
+            return "Tenant not found", 404
 
     tenant = {
         'tenant_id': row[0],
@@ -3271,8 +3271,8 @@ def api_health():
     """API health check endpoint."""
     try:
         with get_db_session() as db_session:
-        db_session.execute("SELECT 1")
-        return jsonify({"status": "healthy"})
+            db_session.execute("SELECT 1")
+            return jsonify({"status": "healthy"})
     except:
         return jsonify({"status": "unhealthy"}), 500
 

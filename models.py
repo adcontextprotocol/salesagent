@@ -264,7 +264,7 @@ class Task(Base):
     due_date = Column(DateTime)
     completed_at = Column(DateTime)
     completed_by = Column(String(255))
-    metadata = Column(JSON)  # JSONB in PostgreSQL
+    task_metadata = Column(JSON)  # JSONB in PostgreSQL
     details = Column(JSON)  # JSONB in PostgreSQL (for backward compatibility)
     created_at = Column(DateTime, server_default=func.now())
 
@@ -280,7 +280,7 @@ class HumanTask(Base):
     task_id = Column(String(100), primary_key=True)
     media_buy_id = Column(String(100))
     status = Column(String(50), nullable=False, default="pending")
-    metadata = Column(Text)
+    task_metadata = Column(Text)
 
 
 class AuditLog(Base):

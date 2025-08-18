@@ -56,6 +56,17 @@ def mock_db():
         mock.return_value = conn
         yield conn
 
+@pytest.fixture
+def mock_db_session():
+    """Mock database session for ORM queries."""
+    with patch('admin_ui.get_db_session') as mock:
+        mock_session = MagicMock()
+        mock_context = MagicMock()
+        mock_context.__enter__ = MagicMock(return_value=mock_session)
+        mock_context.__exit__ = MagicMock(return_value=None)
+        mock.return_value = mock_context
+        yield mock_session
+
 
 @pytest.fixture
 def mock_google_oauth():
@@ -73,23 +84,25 @@ class TestOAuthLogin:
         assert response.status_code == 200
         assert b'Sign in' in response.data
     
-    def test_tenant_login_page_renders(self, client, mock_db):
+    def test_tenant_login_page_renders(self, client, mock_db_session):
         """Test that the tenant-specific login page renders correctly."""
         # Mock tenant exists
-        cursor = MagicMock()
-        cursor.fetchone.return_value = ('Test Tenant',)
-        mock_db.execute.return_value = cursor
+        mock_tenant = MagicMock()
+        mock_tenant.name = 'Test Tenant'
+        mock_query = MagicMock()
+        mock_query.filter_by.return_value.first.return_value = mock_tenant
+        mock_db_session.query.return_value = mock_query
         
         response = client.get('/tenant/test-tenant/login')
         assert response.status_code == 200
         assert b'Test Tenant' in response.data
     
-    def test_tenant_login_page_404_for_invalid_tenant(self, client, mock_db):
+    def test_tenant_login_page_404_for_invalid_tenant(self, client, mock_db_session):
         """Test that invalid tenant returns 404."""
         # Mock tenant doesn't exist
-        cursor = MagicMock()
-        cursor.fetchone.return_value = None
-        mock_db.execute.return_value = cursor
+        mock_query = MagicMock()
+        mock_query.filter_by.return_value.first.return_value = None
+        mock_db_session.query.return_value = mock_query
         
         response = client.get('/tenant/invalid-tenant/login')
         assert response.status_code == 404
@@ -214,7 +227,7 @@ class TestOAuthCallback:
                 assert response.status_code == 200
                 assert b'not authorized' in response.data
     
-    def test_tenant_google_callback_with_user_in_db(self, client, mock_google_oauth, mock_db):
+    def test_tenant_google_callback_with_user_in_db(self, client, mock_google_oauth, mock_db, mock_db_session):
         """Test tenant-specific OAuth callback for user in database."""
         # Set oauth_tenant_id in session (simulating tenant-specific login flow)
         with client.session_transaction() as sess:
@@ -253,6 +266,31 @@ class TestOAuthCallback:
         
         # Configure mock to return different cursors for different queries
         mock_db.execute.side_effect = [cursor_user, cursor_tenant, cursor_name]
+        
+        # Mock the ORM query for User
+        mock_user = MagicMock()
+        mock_user.is_active = True
+        mock_user.last_login = None
+        mock_user.google_id = None
+        mock_user.role = 'admin'
+        mock_user.user_id = 'user123'
+        mock_user.name = 'DB User'
+        
+        # Mock tenant for the session
+        mock_tenant = MagicMock()
+        mock_tenant.name = 'Test Tenant'
+        
+        # Configure query to return user first, then tenant
+        def query_side_effect(model):
+            query_mock = MagicMock()
+            if model.__name__ == 'User':
+                query_mock.join.return_value.filter.return_value.first.return_value = mock_user
+            else:  # Tenant
+                query_mock.filter_by.return_value.first.return_value = mock_tenant
+            return query_mock
+            
+        mock_db_session.query.side_effect = query_side_effect
+        mock_db_session.commit = MagicMock()  # Mock the commit method
         
         # Mock is_tenant_admin with side_effect
         with patch('admin_ui.is_tenant_admin', side_effect=mock_is_tenant_admin_func):
@@ -332,16 +370,16 @@ class TestHelperFunctions:
             assert is_super_admin('anyone@example.com') is True
             assert is_super_admin('user@other.com') is False
     
-    def test_is_tenant_admin_specific_tenant(self, mock_db):
+    def test_is_tenant_admin_specific_tenant(self, mock_db, mock_db_session):
         """Test is_tenant_admin for specific tenant."""
-        # Mock tenant config with authorized emails
-        cursor = MagicMock()
-        # Returns (authorized_emails, authorized_domains) as expected by the function
-        cursor.fetchone.return_value = (
-            json.dumps(['user@example.com']),  # authorized_emails
-            json.dumps(['allowed.com'])         # authorized_domains
-        )
-        mock_db.execute.return_value = cursor
+        # Mock tenant with authorized emails and domains
+        mock_tenant = MagicMock()
+        mock_tenant.authorized_emails = ['user@example.com']
+        mock_tenant.authorized_domains = ['allowed.com']
+        
+        mock_query = MagicMock()
+        mock_query.filter_by.return_value.first.return_value = mock_tenant
+        mock_db_session.query.return_value = mock_query
         
         # Test authorized email
         assert is_tenant_admin('user@example.com', 'test-tenant') is True
