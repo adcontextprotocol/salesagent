@@ -1,47 +1,49 @@
 #!/usr/bin/env python3
 """Admin UI with Google OAuth2 authentication."""
 
+import json
+import logging
+import os
+import secrets
+import traceback
+import uuid
+from datetime import UTC, datetime
+from functools import wraps
+
+from authlib.integrations.flask_client import OAuth
 from flask import (
     Flask,
-    render_template,
-    request,
+    abort,
+    flash,
+    g,
     jsonify,
     redirect,
-    url_for,
-    session,
-    flash,
+    render_template,
+    request,
     send_from_directory,
-    g,
-    abort,
+    session,
+    url_for,
 )
 from flask_socketio import SocketIO, emit, join_room, leave_room
-import secrets
-import json
-import os
-import uuid
-import logging
-import traceback
-from datetime import datetime, timezone
-from functools import wraps
-from authlib.integrations.flask_client import OAuth
-from db_config import get_db_connection
+
+from audit_logger import AuditLogger
 from database_session import get_db_session
+from db_config import get_db_connection
 from models import (
-    Tenant,
+    AdapterConfig,
+    MediaBuy,
     Principal,
     Product,
-    MediaBuy,
     SuperadminConfig,
-    AdapterConfig,
+    Tenant,
     User,
 )
 from validation import (
     FormValidator,
-    validate_form_data,
     sanitize_form_data,
+    validate_form_data,
     validate_gam_config,
 )
-from audit_logger import AuditLogger
 
 
 def validate_gam_network_response(network):
@@ -96,9 +98,6 @@ app.logger.setLevel(logging.INFO)
 # Initialize SocketIO with Flask app
 socketio = SocketIO(app, cors_allowed_origins="*", async_mode="threading")
 
-# Import schemas after Flask app is created
-from schemas import Principal
-
 # Import and register super admin API blueprint
 from superadmin_api import superadmin_api
 
@@ -115,13 +114,14 @@ from adapters.gam_reporting_api import gam_reporting_api
 app.register_blueprint(gam_reporting_api)
 
 # Import GAM inventory service for targeting browser
-from gam_inventory_service import (
-    create_inventory_endpoints as register_inventory_endpoints,
-    db_session,
-)
-
 # Import activity feed for WebSocket support
 from activity_feed import activity_feed
+from gam_inventory_service import (
+    create_inventory_endpoints as register_inventory_endpoints,
+)
+from gam_inventory_service import (
+    db_session,
+)
 
 
 # Configure for being mounted at different paths and proxy headers
@@ -179,30 +179,18 @@ else:
     # Try environment variables as fallback
     GOOGLE_CLIENT_ID = os.environ.get("GOOGLE_CLIENT_ID")
     GOOGLE_CLIENT_SECRET = os.environ.get("GOOGLE_CLIENT_SECRET")
-    app.logger.debug(
-        f"OAuth configured: client_id={'set' if GOOGLE_CLIENT_ID else 'not set'}"
-    )
+    app.logger.debug(f"OAuth configured: client_id={'set' if GOOGLE_CLIENT_ID else 'not set'}")
 
 # Test mode configuration - ONLY FOR AUTOMATED TESTING
 TEST_MODE_ENABLED = os.environ.get("ADCP_AUTH_TEST_MODE", "").lower() == "true"
 if TEST_MODE_ENABLED:
-    print(
-        "⚠️  WARNING: Test authentication mode is ENABLED. This should NEVER be used in production!"
-    )
-    print(
-        "⚠️  OAuth authentication is BYPASSED. Disable by removing ADCP_AUTH_TEST_MODE environment variable."
-    )
+    print("⚠️  WARNING: Test authentication mode is ENABLED. This should NEVER be used in production!")
+    print("⚠️  OAuth authentication is BYPASSED. Disable by removing ADCP_AUTH_TEST_MODE environment variable.")
 
 # Super admin configuration from environment or config
-SUPER_ADMIN_EMAILS = (
-    os.environ.get("SUPER_ADMIN_EMAILS", "").split(",")
-    if os.environ.get("SUPER_ADMIN_EMAILS")
-    else []
-)
+SUPER_ADMIN_EMAILS = os.environ.get("SUPER_ADMIN_EMAILS", "").split(",") if os.environ.get("SUPER_ADMIN_EMAILS") else []
 SUPER_ADMIN_DOMAINS = (
-    os.environ.get("SUPER_ADMIN_DOMAINS", "").split(",")
-    if os.environ.get("SUPER_ADMIN_DOMAINS")
-    else []
+    os.environ.get("SUPER_ADMIN_DOMAINS", "").split(",") if os.environ.get("SUPER_ADMIN_DOMAINS") else []
 )
 
 # Default super admin config if none provided
@@ -280,18 +268,14 @@ def get_tenant_config_from_db(tenant_id):
                 "max_daily_budget": tenant.max_daily_budget or 10000,
                 "enable_aee_signals": bool(tenant.enable_aee_signals),
             },
-            "creative_engine": {
-                "human_review_required": bool(tenant.human_review_required)
-            },
+            "creative_engine": {"human_review_required": bool(tenant.human_review_required)},
         }
 
         # Add adapter configuration
         if tenant.ad_server:
             # Get adapter-specific config from adapter_config table
             adapter_config_obj = (
-                session.query(AdapterConfig)
-                .filter_by(tenant_id=tenant_id, adapter_type=tenant.ad_server)
-                .first()
+                session.query(AdapterConfig).filter_by(tenant_id=tenant_id, adapter_type=tenant.ad_server).first()
             )
 
             adapter_config = {"enabled": True}
@@ -309,17 +293,13 @@ def get_tenant_config_from_db(tenant_id):
         if tenant.slack_webhook_url:
             config["features"]["slack_webhook_url"] = tenant.slack_webhook_url
         if tenant.slack_audit_webhook_url:
-            config["features"][
-                "slack_audit_webhook_url"
-            ] = tenant.slack_audit_webhook_url
+            config["features"]["slack_audit_webhook_url"] = tenant.slack_audit_webhook_url
         if tenant.hitl_webhook_url:
             config["features"]["hitl_webhook_url"] = tenant.hitl_webhook_url
         if tenant.admin_token:
             config["admin_token"] = tenant.admin_token
         if tenant.auto_approve_formats:
-            config["creative_engine"][
-                "auto_approve_formats"
-            ] = tenant.auto_approve_formats
+            config["creative_engine"]["auto_approve_formats"] = tenant.auto_approve_formats
         if tenant.policy_settings:
             config["policy_settings"] = tenant.policy_settings
 
@@ -354,11 +334,7 @@ def is_tenant_admin(email, tenant_id=None):
     with get_db_session() as session:
         if tenant_id:
             # Check specific tenant
-            tenant = (
-                session.query(Tenant)
-                .filter_by(tenant_id=tenant_id, is_active=True)
-                .first()
-            )
+            tenant = session.query(Tenant).filter_by(tenant_id=tenant_id, is_active=True).first()
 
             if tenant:
                 # Parse JSON arrays
@@ -475,9 +451,7 @@ def tenant_login(tenant_id):
     """Show login page for specific tenant."""
     # Verify tenant exists
     with get_db_session() as session:
-        tenant = (
-            session.query(Tenant).filter_by(tenant_id=tenant_id, is_active=True).first()
-        )
+        tenant = session.query(Tenant).filter_by(tenant_id=tenant_id, is_active=True).first()
 
         if not tenant:
             return "Tenant not found", 404
@@ -561,11 +535,7 @@ def google_callback():
                     db_session.commit()
 
                     # Get tenant info
-                    tenant = (
-                        db_session.query(Tenant)
-                        .filter_by(tenant_id=oauth_tenant_id)
-                        .first()
-                    )
+                    tenant = db_session.query(Tenant).filter_by(tenant_id=oauth_tenant_id).first()
 
                     session["authenticated"] = True
                     session["role"] = user.role  # Use actual user role from DB
@@ -579,19 +549,13 @@ def google_callback():
                     next_url = session.pop("next_url", None)
                     if next_url:
                         return redirect(next_url)
-                    return redirect(
-                        url_for("tenant_dashboard", tenant_id=oauth_tenant_id)
-                    )
+                    return redirect(url_for("tenant_dashboard", tenant_id=oauth_tenant_id))
 
             # If not in users table, check legacy tenant admin config
             if is_tenant_admin(email, oauth_tenant_id):
                 # Get tenant name for session
                 with get_db_session() as db_session:
-                    tenant = (
-                        db_session.query(Tenant)
-                        .filter_by(tenant_id=oauth_tenant_id)
-                        .first()
-                    )
+                    tenant = db_session.query(Tenant).filter_by(tenant_id=oauth_tenant_id).first()
 
                     session["authenticated"] = True
                     session["role"] = "tenant_admin"  # Legacy role
@@ -604,19 +568,13 @@ def google_callback():
                     next_url = session.pop("next_url", None)
                     if next_url:
                         return redirect(next_url)
-                    return redirect(
-                        url_for("tenant_dashboard", tenant_id=oauth_tenant_id)
-                    )
+                    return redirect(url_for("tenant_dashboard", tenant_id=oauth_tenant_id))
 
             # Check if super admin trying to access tenant
             if is_super_admin(email):
                 # Get tenant name for session
                 with get_db_session() as db_session:
-                    tenant = (
-                        db_session.query(Tenant)
-                        .filter_by(tenant_id=oauth_tenant_id)
-                        .first()
-                    )
+                    tenant = db_session.query(Tenant).filter_by(tenant_id=oauth_tenant_id).first()
 
                     session["authenticated"] = True
                     session["role"] = "super_admin"
@@ -631,9 +589,7 @@ def google_callback():
                     next_url = session.pop("next_url", None)
                     if next_url:
                         return redirect(next_url)
-                    return redirect(
-                        url_for("tenant_dashboard", tenant_id=oauth_tenant_id)
-                    )
+                    return redirect(url_for("tenant_dashboard", tenant_id=oauth_tenant_id))
 
             # Fall back to checking tenant config
             config = get_tenant_config_from_db(oauth_tenant_id)
@@ -645,9 +601,7 @@ def google_callback():
 
                 domain = email.split("@")[1] if "@" in email else None
 
-                if email in authorized_emails or (
-                    domain and domain in authorized_domains
-                ):
+                if email in authorized_emails or (domain and domain in authorized_domains):
                     session["authenticated"] = True
                     session["role"] = "tenant_user"
                     session["tenant_id"] = oauth_tenant_id
@@ -656,11 +610,7 @@ def google_callback():
 
                     # Get tenant name
                     with get_db_session() as db_session:
-                        tenant = (
-                            db_session.query(Tenant)
-                            .filter_by(tenant_id=oauth_tenant_id)
-                            .first()
-                        )
+                        tenant = db_session.query(Tenant).filter_by(tenant_id=oauth_tenant_id).first()
 
                         if tenant:
                             session["tenant_name"] = tenant.name
@@ -669,9 +619,7 @@ def google_callback():
                     next_url = session.pop("next_url", None)
                     if next_url:
                         return redirect(next_url)
-                    return redirect(
-                        url_for("tenant_dashboard", tenant_id=oauth_tenant_id)
-                    )
+                    return redirect(url_for("tenant_dashboard", tenant_id=oauth_tenant_id))
 
             # Not authorized for this tenant
             return render_template(
@@ -727,9 +675,7 @@ def google_callback():
     except Exception as e:
         app.logger.error(f"OAuth callback error: {e}")
         oauth_tenant_id = session.pop("oauth_tenant_id", None)
-        return render_template(
-            "login.html", error="Authentication failed", tenant_id=oauth_tenant_id
-        )
+        return render_template("login.html", error="Authentication failed", tenant_id=oauth_tenant_id)
 
 
 # Removed tenant-specific callback - now handled by the centralized callback
@@ -796,10 +742,7 @@ def test_auth():
     # Check test user credentials
     if email not in TEST_USERS or TEST_USERS[email]["password"] != password:
         if tenant_id:
-            return redirect(
-                url_for("tenant_login", tenant_id=tenant_id)
-                + "?error=Invalid+test+credentials"
-            )
+            return redirect(url_for("tenant_login", tenant_id=tenant_id) + "?error=Invalid+test+credentials")
         return redirect(url_for("login") + "?error=Invalid+test+credentials")
 
     test_user = TEST_USERS[email]
@@ -814,18 +757,11 @@ def test_auth():
 
     # For tenant users, we need a tenant_id
     if not tenant_id:
-        return redirect(
-            url_for("login")
-            + "?error=Tenant+ID+required+for+non-super-admin+test+users"
-        )
+        return redirect(url_for("login") + "?error=Tenant+ID+required+for+non-super-admin+test+users")
 
     # Verify tenant exists
     with get_db_session() as db_session:
-        tenant = (
-            db_session.query(Tenant)
-            .filter_by(tenant_id=tenant_id, is_active=True)
-            .first()
-        )
+        tenant = db_session.query(Tenant).filter_by(tenant_id=tenant_id, is_active=True).first()
 
         if not tenant:
             return redirect(url_for("login") + "?error=Invalid+tenant+ID")
@@ -926,9 +862,7 @@ def index():
 
     # Super admins see all tenants
     with get_db_session() as db_session:
-        tenant_objects = (
-            db_session.query(Tenant).order_by(Tenant.created_at.desc()).all()
-        )
+        tenant_objects = db_session.query(Tenant).order_by(Tenant.created_at.desc()).all()
 
         tenants = []
         for tenant in tenant_objects:
@@ -959,11 +893,7 @@ def settings():
     """Superadmin settings page."""
     with get_db_session() as db_session:
         # Get all superadmin config values
-        config_objects = (
-            db_session.query(SuperadminConfig)
-            .order_by(SuperadminConfig.config_key)
-            .all()
-        )
+        config_objects = db_session.query(SuperadminConfig).order_by(SuperadminConfig.config_key).all()
 
         config_items = {}
         for config in config_objects:
@@ -986,11 +916,7 @@ def update_settings():
             gam_client_secret = request.form.get("gam_oauth_client_secret", "").strip()
 
             # Update GAM client ID
-            client_id_config = (
-                db_session.query(SuperadminConfig)
-                .filter_by(config_key="gam_oauth_client_id")
-                .first()
-            )
+            client_id_config = db_session.query(SuperadminConfig).filter_by(config_key="gam_oauth_client_id").first()
             if client_id_config:
                 client_id_config.config_value = gam_client_id
                 client_id_config.updated_at = datetime.now()
@@ -998,9 +924,7 @@ def update_settings():
 
             # Update GAM client secret
             client_secret_config = (
-                db_session.query(SuperadminConfig)
-                .filter_by(config_key="gam_oauth_client_secret")
-                .first()
+                db_session.query(SuperadminConfig).filter_by(config_key="gam_oauth_client_secret").first()
             )
             if client_secret_config:
                 client_secret_config.config_value = gam_client_secret
@@ -1025,10 +949,7 @@ def update_tenant(tenant_id):
         return "Access denied. Viewers cannot update configuration.", 403
 
     # Check if user is trying to update another tenant
-    if (
-        session.get("role") in ["admin", "manager", "tenant_admin"]
-        and session.get("tenant_id") != tenant_id
-    ):
+    if session.get("role") in ["admin", "manager", "tenant_admin"] and session.get("tenant_id") != tenant_id:
         return "Access denied. You can only update your own tenant.", 403
 
     with get_db_session() as db_session:
@@ -1069,9 +990,7 @@ def update_slack(tenant_id):
         # Validate webhook URLs
         form_data = {
             "slack_webhook_url": request.form.get("slack_webhook_url", "").strip(),
-            "slack_audit_webhook_url": request.form.get(
-                "slack_audit_webhook_url", ""
-            ).strip(),
+            "slack_audit_webhook_url": request.form.get("slack_audit_webhook_url", "").strip(),
         }
 
         # Sanitize form data
@@ -1097,9 +1016,7 @@ def update_slack(tenant_id):
             tenant = db_session.query(Tenant).filter_by(tenant_id=tenant_id).first()
             if tenant:
                 tenant.slack_webhook_url = slack_webhook if slack_webhook else None
-                tenant.slack_audit_webhook_url = (
-                    audit_webhook if audit_webhook else None
-                )
+                tenant.slack_audit_webhook_url = audit_webhook if audit_webhook else None
                 tenant.updated_at = datetime.now().isoformat()
                 db_session.commit()
 
@@ -1126,8 +1043,9 @@ def test_slack(tenant_id):
             return jsonify({"success": False, "error": "No webhook URL provided"})
 
         # Send test message
-        import requests
         from datetime import datetime
+
+        import requests
 
         test_message = {
             "text": "🎉 Test message from AdCP Sales Agent",
@@ -1151,7 +1069,7 @@ def test_slack(tenant_id):
                     "elements": [
                         {
                             "type": "mrkdwn",
-                            "text": f"Sent at {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}",
+                            "text": f"Sent at {datetime.now(UTC).strftime('%Y-%m-%d %H:%M:%S UTC')}",
                         }
                     ],
                 },
@@ -1185,31 +1103,21 @@ def create_tenant():
     if request.method == "POST":
         try:
             tenant_name = request.form.get("name")
-            tenant_id = request.form.get("tenant_id") or tenant_name.lower().replace(
-                " ", "_"
-            )
+            tenant_id = request.form.get("tenant_id") or tenant_name.lower().replace(" ", "_")
             subdomain = request.form.get("subdomain") or tenant_id
 
-            app.logger.info(
-                f"Creating tenant: name={tenant_name}, id={tenant_id}, subdomain={subdomain}"
-            )
+            app.logger.info(f"Creating tenant: name={tenant_name}, id={tenant_id}, subdomain={subdomain}")
 
             # Parse authorization lists
             authorized_emails = [
-                email.strip()
-                for email in request.form.get("authorized_emails", "").split(",")
-                if email.strip()
+                email.strip() for email in request.form.get("authorized_emails", "").split(",") if email.strip()
             ]
             authorized_domains = [
-                domain.strip()
-                for domain in request.form.get("authorized_domains", "").split(",")
-                if domain.strip()
+                domain.strip() for domain in request.form.get("authorized_domains", "").split(",") if domain.strip()
             ]
 
             # Build minimal config for unmigrated fields
-            config = {
-                "setup_complete": False  # Flag to track if tenant has completed setup
-            }
+            config = {"setup_complete": False}  # Flag to track if tenant has completed setup
 
             with get_db_session() as session:
                 # Create tenant with new fields (config column removed)
@@ -1227,9 +1135,7 @@ def create_tenant():
                     authorized_domains=authorized_domains,  # authorized_domains
                     auto_approve_formats=[],  # auto_approve_formats
                     human_review_required=True,  # human_review_required
-                    admin_token=config.get(
-                        "admin_token", f"admin_{tenant_id}_{secrets.token_hex(16)}"
-                    ),  # admin_token
+                    admin_token=config.get("admin_token", f"admin_{tenant_id}_{secrets.token_hex(16)}"),  # admin_token
                 )
                 session.add(new_tenant)
 
@@ -1289,10 +1195,11 @@ def tenant_dashboard(tenant_id):
         metrics = {}
 
         # Use SQLAlchemy for date arithmetic
-        from sqlalchemy import func
         from datetime import timedelta
 
-        now = datetime.now(timezone.utc)
+        from sqlalchemy import func
+
+        now = datetime.now(UTC)
         date_30_days_ago = now - timedelta(days=30)
         date_60_days_ago = now - timedelta(days=60)
         date_7_days_ago = now - timedelta(days=7)
@@ -1323,9 +1230,7 @@ def tenant_dashboard(tenant_id):
         prev_revenue = float(prev_revenue) if prev_revenue else 0.0
 
         if prev_revenue > 0:
-            metrics["revenue_change"] = (
-                (metrics["total_revenue"] - prev_revenue) / prev_revenue
-            ) * 100
+            metrics["revenue_change"] = ((metrics["total_revenue"] - prev_revenue) / prev_revenue) * 100
         else:
             metrics["revenue_change"] = 0
 
@@ -1333,18 +1238,10 @@ def tenant_dashboard(tenant_id):
         metrics["revenue_change_abs"] = abs(metrics["revenue_change"])
 
         # Active media buys
-        metrics["active_buys"] = (
-            db_session.query(MediaBuy)
-            .filter_by(tenant_id=tenant_id, status="active")
-            .count()
-        )
+        metrics["active_buys"] = db_session.query(MediaBuy).filter_by(tenant_id=tenant_id, status="active").count()
 
         # Pending media buys
-        metrics["pending_buys"] = (
-            db_session.query(MediaBuy)
-            .filter_by(tenant_id=tenant_id, status="pending")
-            .count()
-        )
+        metrics["pending_buys"] = db_session.query(MediaBuy).filter_by(tenant_id=tenant_id, status="pending").count()
 
         # Open tasks - workflow_steps doesn't have tenant_id, so just set to 0
         metrics["open_tasks"] = 0
@@ -1355,17 +1252,13 @@ def tenant_dashboard(tenant_id):
         # Active advertisers (principals with activity in last 30 days)
         metrics["active_advertisers"] = (
             db_session.query(func.count(func.distinct(MediaBuy.principal_id)))
-            .filter(
-                MediaBuy.tenant_id == tenant_id, MediaBuy.created_at >= date_30_days_ago
-            )
+            .filter(MediaBuy.tenant_id == tenant_id, MediaBuy.created_at >= date_30_days_ago)
             .scalar()
             or 0
         )
 
         # Total advertisers
-        metrics["total_advertisers"] = (
-            db_session.query(Principal).filter_by(tenant_id=tenant_id).count()
-        )
+        metrics["total_advertisers"] = db_session.query(Principal).filter_by(tenant_id=tenant_id).count()
 
         # Get recent media buys
         recent_buys = (
@@ -1381,11 +1274,9 @@ def tenant_dashboard(tenant_id):
             # Calculate relative time
             created_at = buy.created_at
             if not isinstance(created_at, datetime):
-                created_at = datetime.fromisoformat(
-                    str(created_at).replace("Z", "+00:00")
-                )
+                created_at = datetime.fromisoformat(str(created_at).replace("Z", "+00:00"))
             if created_at.tzinfo is None:
-                created_at = created_at.replace(tzinfo=timezone.utc)
+                created_at = created_at.replace(tzinfo=UTC)
 
             delta = now - created_at
 
@@ -1416,9 +1307,7 @@ def tenant_dashboard(tenant_id):
 
         # Chart data for revenue by advertiser (last 7 days)
         chart_results = (
-            db_session.query(
-                MediaBuy.advertiser_name, func.sum(MediaBuy.budget).label("revenue")
-            )
+            db_session.query(MediaBuy.advertiser_name, func.sum(MediaBuy.budget).label("revenue"))
             .filter(
                 MediaBuy.tenant_id == tenant_id,
                 MediaBuy.created_at >= date_7_days_ago,
@@ -1506,9 +1395,7 @@ def tenant_settings(tenant_id, section=None):
             from models import AdapterConfig
 
             adapter_obj = (
-                db_session.query(AdapterConfig)
-                .filter_by(tenant_id=tenant_id, adapter_type=tenant["ad_server"])
-                .first()
+                db_session.query(AdapterConfig).filter_by(tenant_id=tenant_id, adapter_type=tenant["ad_server"]).first()
             )
 
             if adapter_obj:
@@ -1532,27 +1419,25 @@ def tenant_settings(tenant_id, section=None):
         active_products = product_count
         draft_products = 0
 
-        advertiser_count = (
-            db_session.query(Principal).filter_by(tenant_id=tenant_id).count()
-        )
+        advertiser_count = db_session.query(Principal).filter_by(tenant_id=tenant_id).count()
 
         # Get active advertisers (principals with activity in last 30 days)
-        from sqlalchemy import func
         from datetime import timedelta
 
-        date_30_days_ago = datetime.now(timezone.utc) - timedelta(days=30)
+        from sqlalchemy import func
+
+        date_30_days_ago = datetime.now(UTC) - timedelta(days=30)
         active_advertisers = (
             db_session.query(func.count(func.distinct(MediaBuy.principal_id)))
-            .filter(
-                MediaBuy.tenant_id == tenant_id, MediaBuy.created_at >= date_30_days_ago
-            )
+            .filter(MediaBuy.tenant_id == tenant_id, MediaBuy.created_at >= date_30_days_ago)
             .scalar()
             or 0
         )
 
         # Get creative formats (auto_approve column doesn't exist, default to 0)
-        from models import CreativeFormat
         from sqlalchemy import or_
+
+        from models import CreativeFormat
 
         formats = (
             db_session.query(CreativeFormat)
@@ -1572,9 +1457,7 @@ def tenant_settings(tenant_id, section=None):
                 {
                     "id": fmt.format_id,
                     "name": fmt.name,
-                    "dimensions": f"{fmt.width}x{fmt.height}"
-                    if fmt.width and fmt.height
-                    else "Variable",
+                    "dimensions": f"{fmt.width}x{fmt.height}" if fmt.width and fmt.height else "Variable",
                     "auto_approve": 0,  # Default to 0 as column doesn't exist
                 }
             )
@@ -1596,16 +1479,14 @@ def tenant_settings(tenant_id, section=None):
 
                 if latest_sync:
                     if isinstance(latest_sync, str):
-                        last_sync = datetime.fromisoformat(
-                            latest_sync.replace("Z", "+00:00")
-                        )
+                        last_sync = datetime.fromisoformat(latest_sync.replace("Z", "+00:00"))
                     else:
                         last_sync = latest_sync
 
                     if last_sync.tzinfo is None:
-                        last_sync = last_sync.replace(tzinfo=timezone.utc)
+                        last_sync = last_sync.replace(tzinfo=UTC)
 
-                    now = datetime.now(timezone.utc)
+                    now = datetime.now(UTC)
                     delta = now - last_sync
                     if delta.days > 0:
                         last_sync_time = f"{delta.days} days ago"
@@ -1653,19 +1534,19 @@ def revenue_chart_api(tenant_id):
         days = 7
 
     with get_db_session() as db_session:
-        from sqlalchemy import func
         from datetime import timedelta
 
+        from sqlalchemy import func
+
         # Calculate date range
-        date_start = datetime.now(timezone.utc) - timedelta(days=days)
+        date_start = datetime.now(UTC) - timedelta(days=days)
 
         # Query revenue by principal
         results = (
             db_session.query(Principal.name, func.sum(MediaBuy.budget).label("revenue"))
             .join(
                 MediaBuy,
-                (MediaBuy.principal_id == Principal.principal_id)
-                & (MediaBuy.tenant_id == Principal.tenant_id),
+                (MediaBuy.principal_id == Principal.principal_id) & (MediaBuy.tenant_id == Principal.tenant_id),
             )
             .filter(
                 MediaBuy.tenant_id == tenant_id,
@@ -1754,31 +1635,20 @@ def oauth_status():
         # Check for GAM OAuth credentials in superadmin_config table (as per original implementation)
         with get_db_session() as db_session:
             client_id_row = (
-                db_session.query(SuperadminConfig.config_value)
-                .filter_by(config_key="gam_oauth_client_id")
-                .first()
+                db_session.query(SuperadminConfig.config_value).filter_by(config_key="gam_oauth_client_id").first()
             )
 
             client_secret_row = (
-                db_session.query(SuperadminConfig.config_value)
-                .filter_by(config_key="gam_oauth_client_secret")
-                .first()
+                db_session.query(SuperadminConfig.config_value).filter_by(config_key="gam_oauth_client_secret").first()
             )
 
-        if (
-            client_id_row
-            and client_id_row[0]
-            and client_secret_row
-            and client_secret_row[0]
-        ):
+        if client_id_row and client_id_row[0] and client_secret_row and client_secret_row[0]:
             # Credentials exist in database
             client_id = client_id_row[0]
             return jsonify(
                 {
                     "configured": True,
-                    "client_id_prefix": client_id[:20]
-                    if len(client_id) > 20
-                    else client_id,
+                    "client_id_prefix": client_id[:20] if len(client_id) > 20 else client_id,
                     "has_secret": True,
                     "source": "database",
                 }
@@ -1825,21 +1695,17 @@ def detect_gam_network(tenant_id):
             return jsonify({"success": False, "error": "Refresh token required"}), 400
 
         # Create a temporary GAM client with just the refresh token
-        from googleads import oauth2, ad_manager
+        from googleads import ad_manager, oauth2
 
         # Get OAuth credentials from superadmin_config table (as per original implementation)
         with get_db_session() as db_session:
             # Get GAM OAuth client credentials from superadmin config
             client_id_row = (
-                db_session.query(SuperadminConfig.config_value)
-                .filter_by(config_key="gam_oauth_client_id")
-                .first()
+                db_session.query(SuperadminConfig.config_value).filter_by(config_key="gam_oauth_client_id").first()
             )
 
             client_secret_row = (
-                db_session.query(SuperadminConfig.config_value)
-                .filter_by(config_key="gam_oauth_client_secret")
-                .first()
+                db_session.query(SuperadminConfig.config_value).filter_by(config_key="gam_oauth_client_secret").first()
             )
 
             if not client_id_row or not client_id_row[0]:
@@ -1879,9 +1745,7 @@ def detect_gam_network(tenant_id):
             oauth2_client.Refresh()
         except Exception as e:
             return (
-                jsonify(
-                    {"success": False, "error": f"Invalid refresh token: {str(e)}"}
-                ),
+                jsonify({"success": False, "error": f"Invalid refresh token: {str(e)}"}),
                 400,
             )
 
@@ -1918,25 +1782,17 @@ def detect_gam_network(tenant_id):
                     try:
                         # Set the network code in the client so we can get user info
                         client.network_code = str(network["networkCode"])
-                        user_service = client.GetService(
-                            "UserService", version="v202408"
-                        )
+                        user_service = client.GetService("UserService", version="v202408")
                         current_user = user_service.getCurrentUser()
 
                         if current_user:
                             # Validate user response
-                            is_valid, error_msg = validate_gam_user_response(
-                                current_user
-                            )
+                            is_valid, error_msg = validate_gam_user_response(current_user)
                             if is_valid:
                                 trafficker_id = str(current_user["id"])
-                                app.logger.info(
-                                    f"Detected current user ID: {trafficker_id}"
-                                )
+                                app.logger.info(f"Detected current user ID: {trafficker_id}")
                             else:
-                                app.logger.warning(
-                                    f"Invalid user response: {error_msg}"
-                                )
+                                app.logger.warning(f"Invalid user response: {error_msg}")
                     except Exception as e:
                         app.logger.warning(f"Could not get current user: {e}")
 
@@ -2005,17 +1861,9 @@ def configure_gam(tenant_id):
             return jsonify({"success": False, "errors": validation_errors}), 400
 
         # Sanitize input data
-        network_code = (
-            str(data.get("network_code", "")).strip()
-            if data.get("network_code")
-            else None
-        )
+        network_code = str(data.get("network_code", "")).strip() if data.get("network_code") else None
         refresh_token = data.get("refresh_token", "").strip()
-        trafficker_id = (
-            str(data.get("trafficker_id", "")).strip()
-            if data.get("trafficker_id")
-            else None
-        )
+        trafficker_id = str(data.get("trafficker_id", "")).strip() if data.get("trafficker_id") else None
 
         # Log what we received (without exposing sensitive token)
         app.logger.info(
@@ -2030,11 +1878,7 @@ def configure_gam(tenant_id):
         with get_db_session() as db_session:
             try:
                 # Check if ANY adapter config exists for this tenant
-                existing_config = (
-                    db_session.query(AdapterConfig)
-                    .filter_by(tenant_id=tenant_id)
-                    .first()
-                )
+                existing_config = db_session.query(AdapterConfig).filter_by(tenant_id=tenant_id).first()
 
                 if existing_config:
                     # Check if it's already GAM config
@@ -2094,9 +1938,7 @@ def configure_gam(tenant_id):
     except Exception as e:
         app.logger.error(f"Error saving GAM config for tenant {tenant_id}: {e}")
         return (
-            jsonify(
-                {"success": False, "error": f"Error saving configuration: {str(e)}"}
-            ),
+            jsonify({"success": False, "error": f"Error saving configuration: {str(e)}"}),
             500,
         )
 
@@ -2116,9 +1958,7 @@ def update_slack_settings(tenant_id):
             db_session.commit()
 
     flash("Slack settings updated successfully", "success")
-    return redirect(
-        url_for("tenant_settings", tenant_id=tenant_id, section="integrations")
-    )
+    return redirect(url_for("tenant_settings", tenant_id=tenant_id, section="integrations"))
 
 
 # Targeting Browser Route
@@ -2195,11 +2035,7 @@ def orders_browser(tenant_id):
         tenant_name = tenant.name
 
         # Get API key for API calls
-        api_key_row = (
-            db_session.query(SuperadminConfig.config_value)
-            .filter_by(config_key="api_key")
-            .first()
-        )
+        api_key_row = db_session.query(SuperadminConfig.config_value).filter_by(config_key="api_key").first()
         api_key = api_key_row[0] if api_key_row else ""
 
         return render_template(
@@ -2323,8 +2159,9 @@ def get_tenant_sync_status(tenant_id):
             return jsonify({"error": "Sync only available for GAM tenants"}), 400
 
         # Get latest sync job
-        from models import SyncJob, GamInventory
-        from sqlalchemy import func, case
+        from sqlalchemy import case, func
+
+        from models import GamInventory, SyncJob
 
         sync_job = (
             db_session.query(SyncJob.started_at, SyncJob.status, SyncJob.summary)
@@ -2336,15 +2173,13 @@ def get_tenant_sync_status(tenant_id):
         # Get inventory counts
         counts_query = (
             db_session.query(
-                func.count(case((GamInventory.inventory_type == "ad_unit", 1))).label(
-                    "ad_units"
+                func.count(case((GamInventory.inventory_type == "ad_unit", 1))).label("ad_units"),
+                func.count(case((GamInventory.inventory_type == "custom_targeting_key", 1))).label(
+                    "custom_targeting_keys"
                 ),
-                func.count(
-                    case((GamInventory.inventory_type == "custom_targeting_key", 1))
-                ).label("custom_targeting_keys"),
-                func.count(
-                    case((GamInventory.inventory_type == "custom_targeting_value", 1))
-                ).label("custom_targeting_values"),
+                func.count(case((GamInventory.inventory_type == "custom_targeting_value", 1))).label(
+                    "custom_targeting_values"
+                ),
                 func.count(GamInventory.id).label("total"),
             )
             .filter_by(tenant_id=tenant_id)
@@ -2397,6 +2232,7 @@ def trigger_tenant_sync(tenant_id):
             # Create a new sync job
             import uuid
             from datetime import datetime
+
             from models import SyncJob
 
             sync_id = str(uuid.uuid4())
@@ -2438,9 +2274,10 @@ def get_tenant_orders_session(tenant_id):
         return jsonify({"error": "Access denied"}), 403
 
     try:
-        from gam_orders_service import db_session
-        from models import GAMOrder, GAMLineItem
         from sqlalchemy import func
+
+        from gam_orders_service import db_session
+        from models import GAMLineItem, GAMOrder
 
         # Remove any existing session to start fresh
         try:
@@ -2458,10 +2295,7 @@ def get_tenant_orders_session(tenant_id):
         query = db_session.query(GAMOrder).filter(GAMOrder.tenant_id == tenant_id)
 
         if search:
-            query = query.filter(
-                (GAMOrder.name.ilike(f"%{search}%"))
-                | (GAMOrder.order_id.ilike(f"%{search}%"))
-            )
+            query = query.filter((GAMOrder.name.ilike(f"%{search}%")) | (GAMOrder.order_id.ilike(f"%{search}%")))
 
         if status:
             query = query.filter(GAMOrder.status == status)
@@ -2504,9 +2338,7 @@ def get_tenant_orders_session(tenant_id):
             )
             .filter(
                 GAMLineItem.tenant_id == tenant_id,
-                GAMLineItem.order_id.in_([o.order_id for o in orders])
-                if orders
-                else [],
+                GAMLineItem.order_id.in_([o.order_id for o in orders]) if orders else [],
             )
             .group_by(GAMLineItem.order_id)
             .all()
@@ -2534,15 +2366,9 @@ def get_tenant_orders_session(tenant_id):
                     "start_date": o.start_date.isoformat() if o.start_date else None,
                     "end_date": o.end_date.isoformat() if o.end_date else None,
                     "line_item_count": stats_dict.get(o.order_id, {}).get("count", 0),
-                    "total_impressions_delivered": stats_dict.get(o.order_id, {}).get(
-                        "impressions", 0
-                    ),
-                    "total_clicks_delivered": stats_dict.get(o.order_id, {}).get(
-                        "clicks", 0
-                    ),
-                    "last_modified_date": o.last_modified_date.isoformat()
-                    if o.last_modified_date
-                    else None,
+                    "total_impressions_delivered": stats_dict.get(o.order_id, {}).get("impressions", 0),
+                    "total_clicks_delivered": stats_dict.get(o.order_id, {}).get("clicks", 0),
+                    "last_modified_date": o.last_modified_date.isoformat() if o.last_modified_date else None,
                 }
                 for o in orders
             ],
@@ -2575,15 +2401,13 @@ def get_order_details_session(tenant_id, order_id):
 
     try:
         from gam_orders_service import db_session
-        from models import GAMOrder, GAMLineItem
+        from models import GAMLineItem, GAMOrder
 
         db_session.remove()
 
         # Get order
         order = (
-            db_session.query(GAMOrder)
-            .filter(GAMOrder.tenant_id == tenant_id, GAMOrder.order_id == order_id)
-            .first()
+            db_session.query(GAMOrder).filter(GAMOrder.tenant_id == tenant_id, GAMOrder.order_id == order_id).first()
         )
 
         if not order:
@@ -2592,26 +2416,16 @@ def get_order_details_session(tenant_id, order_id):
         # Get line items
         line_items = (
             db_session.query(GAMLineItem)
-            .filter(
-                GAMLineItem.tenant_id == tenant_id, GAMLineItem.order_id == order_id
-            )
+            .filter(GAMLineItem.tenant_id == tenant_id, GAMLineItem.order_id == order_id)
             .all()
         )
 
         # Calculate delivery metrics
-        total_impressions_delivered = sum(
-            li.stats_impressions or 0 for li in line_items
-        )
+        total_impressions_delivered = sum(li.stats_impressions or 0 for li in line_items)
         total_impressions_goal = sum(
-            li.primary_goal_units or 0
-            for li in line_items
-            if li.primary_goal_type == "IMPRESSIONS"
+            li.primary_goal_units or 0 for li in line_items if li.primary_goal_type == "IMPRESSIONS"
         )
-        total_clicks_goal = sum(
-            li.primary_goal_units or 0
-            for li in line_items
-            if li.primary_goal_type == "CLICKS"
-        )
+        total_clicks_goal = sum(li.primary_goal_units or 0 for li in line_items if li.primary_goal_type == "CLICKS")
 
         result = {
             "order": {
@@ -2626,9 +2440,7 @@ def get_order_details_session(tenant_id, order_id):
                 "salesperson_id": order.salesperson_id,
                 "salesperson_name": order.salesperson_name,
                 "status": order.status,
-                "start_date": order.start_date.isoformat()
-                if order.start_date
-                else None,
+                "start_date": order.start_date.isoformat() if order.start_date else None,
                 "end_date": order.end_date.isoformat() if order.end_date else None,
                 "unlimited_end_date": order.unlimited_end_date,
                 "total_budget": order.total_budget,
@@ -2636,19 +2448,13 @@ def get_order_details_session(tenant_id, order_id):
                 "external_order_id": order.external_order_id,
                 "po_number": order.po_number,
                 "notes": order.notes,
-                "last_modified_date": order.last_modified_date.isoformat()
-                if order.last_modified_date
-                else None,
+                "last_modified_date": order.last_modified_date.isoformat() if order.last_modified_date else None,
                 "total_impressions_delivered": total_impressions_delivered,
-                "total_clicks_delivered": sum(
-                    li.stats_clicks or 0 for li in line_items
-                ),
+                "total_clicks_delivered": sum(li.stats_clicks or 0 for li in line_items),
                 "delivery_metrics": {
                     "total_impressions_delivered": total_impressions_delivered,
                     "total_impressions_goal": total_impressions_goal,
-                    "total_clicks_delivered": sum(
-                        li.stats_clicks or 0 for li in line_items
-                    ),
+                    "total_clicks_delivered": sum(li.stats_clicks or 0 for li in line_items),
                     "total_clicks_goal": total_clicks_goal,
                 },
             },
@@ -2663,18 +2469,16 @@ def get_order_details_session(tenant_id, order_id):
                     "primary_goal_units": li.primary_goal_units,
                     "stats_impressions": li.stats_impressions or 0,
                     "stats_clicks": li.stats_clicks or 0,
-                    "impressions_delivered": li.stats_impressions
-                    or 0,  # Keep for backward compatibility
-                    "clicks_delivered": li.stats_clicks
-                    or 0,  # Keep for backward compatibility
-                    "cost_per_unit": float(li.cost_per_unit) / 1000000
-                    if li.cost_per_unit
-                    else None,  # Convert from micros to dollars
+                    "impressions_delivered": li.stats_impressions or 0,  # Keep for backward compatibility
+                    "clicks_delivered": li.stats_clicks or 0,  # Keep for backward compatibility
+                    "cost_per_unit": (
+                        float(li.cost_per_unit) / 1000000 if li.cost_per_unit else None
+                    ),  # Convert from micros to dollars
                     "delivery_percentage": (
-                        li.stats_impressions / li.primary_goal_units * 100
-                    )
-                    if li.primary_goal_units and li.primary_goal_units > 0
-                    else 0,
+                        (li.stats_impressions / li.primary_goal_units * 100)
+                        if li.primary_goal_units and li.primary_goal_units > 0
+                        else 0
+                    ),
                     "start_date": li.start_date.isoformat() if li.start_date else None,
                     "end_date": li.end_date.isoformat() if li.end_date else None,
                 }
@@ -2945,16 +2749,14 @@ def media_buy_approval(tenant_id, media_buy_id):
 
     with get_db_session() as db_session:
         # Get the media buy details
-        buy_obj = db_session.query(MediaBuy).filter_by(
-            tenant_id=tenant_id,
-            media_buy_id=media_buy_id
-        ).first()
+        buy_obj = db_session.query(MediaBuy).filter_by(tenant_id=tenant_id, media_buy_id=media_buy_id).first()
 
         if not buy_obj:
             return "Media buy not found", 404
 
         # Parse the media buy
         from datetime import datetime
+
         media_buy = {
             "media_buy_id": buy_obj.media_buy_id,
             "tenant_id": buy_obj.tenant_id,
@@ -2967,14 +2769,18 @@ def media_buy_approval(tenant_id, media_buy_id):
             "start_date": buy_obj.start_date,
             "end_date": buy_obj.end_date,
             "status": buy_obj.status,
-            "created_at": buy_obj.created_at
-            if not isinstance(buy_obj.created_at, str)
-            else datetime.fromisoformat(buy_obj.created_at),
-            "raw_request": json.loads(buy_obj.raw_request)
-            if buy_obj.raw_request and isinstance(buy_obj.raw_request, str)
-        else buy_row[15],
-        "context_id": buy_row[16] if len(buy_row) > 16 else None,
-    }
+            "created_at": (
+                buy_obj.created_at
+                if not isinstance(buy_obj.created_at, str)
+                else datetime.fromisoformat(buy_obj.created_at)
+            ),
+            "raw_request": (
+                json.loads(buy_obj.raw_request)
+                if buy_obj.raw_request and isinstance(buy_obj.raw_request, str)
+                else buy_row[15]
+            ),
+            "context_id": buy_row[16] if len(buy_row) > 16 else None,
+        }
 
     # Get associated human task if exists
     task_cursor = conn.execute(
@@ -3041,56 +2847,36 @@ def media_buy_approval(tenant_id, media_buy_id):
             if prod_row:
                 formats = prod_row[3]
                 # Debug logging
-                app.logger.info(
-                    f"Product {product_id} formats value: {formats!r}, type: {type(formats)}"
-                )
+                app.logger.info(f"Product {product_id} formats value: {formats!r}, type: {type(formats)}")
 
                 if formats and isinstance(formats, str) and formats.strip():
                     try:
                         formats = json.loads(formats)
                     except json.JSONDecodeError as e:
-                        app.logger.error(
-                            f"Failed to parse formats for {product_id}: {e}"
-                        )
+                        app.logger.error(f"Failed to parse formats for {product_id}: {e}")
                         formats = []
                 elif not formats or (isinstance(formats, str) and not formats.strip()):
                     formats = []
 
                 targeting_template = prod_row[4]
-                if (
-                    targeting_template
-                    and isinstance(targeting_template, str)
-                    and targeting_template.strip()
-                ):
+                if targeting_template and isinstance(targeting_template, str) and targeting_template.strip():
                     try:
                         targeting_template = json.loads(targeting_template)
                     except json.JSONDecodeError as e:
-                        app.logger.error(
-                            f"Failed to parse targeting_template for {product_id}: {e}"
-                        )
+                        app.logger.error(f"Failed to parse targeting_template for {product_id}: {e}")
                         targeting_template = {}
-                elif not targeting_template or (
-                    isinstance(targeting_template, str)
-                    and not targeting_template.strip()
-                ):
+                elif not targeting_template or (isinstance(targeting_template, str) and not targeting_template.strip()):
                     targeting_template = {}
 
                 implementation_config = prod_row[11] if len(prod_row) > 11 else None
-                if (
-                    implementation_config
-                    and isinstance(implementation_config, str)
-                    and implementation_config.strip()
-                ):
+                if implementation_config and isinstance(implementation_config, str) and implementation_config.strip():
                     try:
                         implementation_config = json.loads(implementation_config)
                     except json.JSONDecodeError as e:
-                        app.logger.error(
-                            f"Failed to parse implementation_config for {product_id}: {e}"
-                        )
+                        app.logger.error(f"Failed to parse implementation_config for {product_id}: {e}")
                         implementation_config = {}
                 elif not implementation_config or (
-                    isinstance(implementation_config, str)
-                    and not implementation_config.strip()
+                    isinstance(implementation_config, str) and not implementation_config.strip()
                 ):
                     implementation_config = {}
 
@@ -3108,9 +2894,7 @@ def media_buy_approval(tenant_id, media_buy_id):
                 )
 
     # Prepare dry-run preview (simulate what would happen in GAM)
-    dry_run_preview = generate_dry_run_preview(
-        media_buy, products, principal, human_task
-    )
+    dry_run_preview = generate_dry_run_preview(media_buy, products, principal, human_task)
 
     # Context manager handles cleanup
 
@@ -3154,24 +2938,16 @@ def generate_dry_run_preview(media_buy, products, principal, human_task):
         if product.get("implementation_config"):
             config = product["implementation_config"]
             if "ad_unit_ids" in config:
-                line_item["implementation_notes"].append(
-                    f"Will target {len(config['ad_unit_ids'])} ad units"
-                )
+                line_item["implementation_notes"].append(f"Will target {len(config['ad_unit_ids'])} ad units")
             if "placement_ids" in config:
-                line_item["implementation_notes"].append(
-                    f"Will use {len(config['placement_ids'])} placements"
-                )
+                line_item["implementation_notes"].append(f"Will use {len(config['placement_ids'])} placements")
             if "custom_targeting" in config:
-                line_item["implementation_notes"].append(
-                    "Custom targeting will be applied"
-                )
+                line_item["implementation_notes"].append("Custom targeting will be applied")
 
         preview["line_items"].append(line_item)
 
     # Add any targeting overlay from the request
-    if media_buy.get("raw_request") and media_buy["raw_request"].get(
-        "targeting_overlay"
-    ):
+    if media_buy.get("raw_request") and media_buy["raw_request"].get("targeting_overlay"):
         preview["targeting_overlay"] = media_buy["raw_request"]["targeting_overlay"]
 
     return preview
@@ -3187,9 +2963,7 @@ def list_users(tenant_id):
         return "Access denied", 403
 
     with get_db_session() as db_session:
-        user_list = db_session.query(User).filter_by(
-            tenant_id=tenant_id
-        ).order_by(User.created_at.desc()).all()
+        user_list = db_session.query(User).filter_by(tenant_id=tenant_id).order_by(User.created_at.desc()).all()
 
         users = []
         for user_obj in user_list:
@@ -3209,9 +2983,7 @@ def list_users(tenant_id):
         tenant = db_session.query(Tenant).filter_by(tenant_id=tenant_id).first()
         tenant_name = tenant.name if tenant else "Unknown Tenant"
 
-        return render_template(
-            "users.html", users=users, tenant_id=tenant_id, tenant_name=tenant_name
-        )
+        return render_template("users.html", users=users, tenant_id=tenant_id, tenant_name=tenant_name)
 
 
 @app.route("/tenant/<tenant_id>/users/add", methods=["POST"])
@@ -3249,7 +3021,7 @@ def add_user(tenant_id):
                 name=name,
                 role=role,
                 created_at=datetime.now(),
-                is_active=True
+                is_active=True,
             )
             db_session.add(new_user)
             db_session.commit()
@@ -3266,20 +3038,14 @@ def toggle_user(tenant_id, user_id):
     """Enable/disable a user."""
     # Check access - only admins can toggle users
     if session.get("role") != "super_admin":
-        if (
-            session.get("role") != "tenant_admin"
-            or session.get("tenant_id") != tenant_id
-        ):
+        if session.get("role") != "tenant_admin" or session.get("tenant_id") != tenant_id:
             return "Access denied", 403
 
     with get_db_session() as db_session:
         try:
             # Toggle the is_active status
-            user = db_session.query(User).filter_by(
-                user_id=user_id,
-                tenant_id=tenant_id
-            ).first()
-            
+            user = db_session.query(User).filter_by(user_id=user_id, tenant_id=tenant_id).first()
+
             if user:
                 user.is_active = not user.is_active
                 db_session.commit()
@@ -3296,10 +3062,7 @@ def update_user_role(tenant_id, user_id):
     """Update a user's role."""
     # Check access - only admins can update roles
     if session.get("role") != "super_admin":
-        if (
-            session.get("role") != "tenant_admin"
-            or session.get("tenant_id") != tenant_id
-        ):
+        if session.get("role") != "tenant_admin" or session.get("tenant_id") != tenant_id:
             return "Access denied", 403
 
     conn = get_db_connection()
@@ -3328,9 +3091,7 @@ def update_user_role(tenant_id, user_id):
         return f"Error: {e}", 400
 
 
-@app.route(
-    "/tenant/<tenant_id>/principal/<principal_id>/update_mappings", methods=["POST"]
-)
+@app.route("/tenant/<tenant_id>/principal/<principal_id>/update_mappings", methods=["POST"])
 @require_auth()
 def update_principal_mappings(tenant_id, principal_id):
     """Update principal platform mappings."""
@@ -3338,10 +3099,7 @@ def update_principal_mappings(tenant_id, principal_id):
     if session.get("role") == "viewer":
         return "Access denied", 403
 
-    if (
-        session.get("role") in ["admin", "manager", "tenant_admin"]
-        and session.get("tenant_id") != tenant_id
-    ):
+    if session.get("role") in ["admin", "manager", "tenant_admin"] and session.get("tenant_id") != tenant_id:
         return "Access denied", 403
 
     conn = get_db_connection()
@@ -3357,14 +3115,10 @@ def update_principal_mappings(tenant_id, principal_id):
             }
 
         if request.form.get("kevel_advertiser_id"):
-            mappings["kevel"] = {
-                "advertiser_id": request.form.get("kevel_advertiser_id")
-            }
+            mappings["kevel"] = {"advertiser_id": request.form.get("kevel_advertiser_id")}
 
         if request.form.get("triton_advertiser_id"):
-            mappings["triton"] = {
-                "advertiser_id": request.form.get("triton_advertiser_id")
-            }
+            mappings["triton"] = {"advertiser_id": request.form.get("triton_advertiser_id")}
 
         # Update the principal
         conn.execute(
@@ -3379,17 +3133,13 @@ def update_principal_mappings(tenant_id, principal_id):
         db_session.commit()
         # Context manager handles cleanup
 
-        return redirect(
-            url_for("tenant_dashboard", tenant_id=tenant_id) + "#principals"
-        )
+        return redirect(url_for("tenant_dashboard", tenant_id=tenant_id) + "#principals")
     except Exception as e:
         # Context manager handles cleanup
         return f"Error: {e}", 400
 
 
-@app.route(
-    "/tenant/<tenant_id>/adapter/<adapter_name>/inventory_schema", methods=["GET"]
-)
+@app.route("/tenant/<tenant_id>/adapter/<adapter_name>/inventory_schema", methods=["GET"])
 @require_auth()
 def get_adapter_inventory_schema(tenant_id, adapter_name):
     """Get the inventory configuration schema for a specific adapter."""
@@ -3404,9 +3154,7 @@ def get_adapter_inventory_schema(tenant_id, adapter_name):
         if not config_data:
             return jsonify({"error": "Tenant not found"}), 404
         # PostgreSQL returns JSONB as dict, SQLite returns string
-        tenant_config = (
-            config_data if isinstance(config_data, dict) else json.loads(config_data)
-        )
+        tenant_config = config_data if isinstance(config_data, dict) else json.loads(config_data)
         adapter_config = tenant_config.get("adapters", {}).get(adapter_name, {})
 
         if not adapter_config.get("enabled"):
@@ -3425,27 +3173,19 @@ def get_adapter_inventory_schema(tenant_id, adapter_name):
         if adapter_name == "google_ad_manager":
             from adapters.google_ad_manager import GoogleAdManager
 
-            adapter = GoogleAdManager(
-                adapter_config, dummy_principal, dry_run=True, tenant_id=tenant_id
-            )
+            adapter = GoogleAdManager(adapter_config, dummy_principal, dry_run=True, tenant_id=tenant_id)
         elif adapter_name == "mock":
             from adapters.mock_ad_server import MockAdServer
 
-            adapter = MockAdServer(
-                adapter_config, dummy_principal, dry_run=True, tenant_id=tenant_id
-            )
+            adapter = MockAdServer(adapter_config, dummy_principal, dry_run=True, tenant_id=tenant_id)
         elif adapter_name == "kevel":
             from adapters.kevel import KevelAdapter
 
-            adapter = KevelAdapter(
-                adapter_config, dummy_principal, dry_run=True, tenant_id=tenant_id
-            )
+            adapter = KevelAdapter(adapter_config, dummy_principal, dry_run=True, tenant_id=tenant_id)
         elif adapter_name == "triton":
             from adapters.triton_digital import TritonDigitalAdapter
 
-            adapter = TritonDigitalAdapter(
-                adapter_config, dummy_principal, dry_run=True, tenant_id=tenant_id
-            )
+            adapter = TritonDigitalAdapter(adapter_config, dummy_principal, dry_run=True, tenant_id=tenant_id)
         else:
             return jsonify({"error": f"Unknown adapter: {adapter_name}"}), 400
 
@@ -3467,10 +3207,7 @@ def setup_adapter(tenant_id):
     if session.get("role") in ["viewer", "manager"]:
         return "Access denied. Admin privileges required.", 403
 
-    if (
-        session.get("role") in ["admin", "tenant_admin"]
-        and session.get("tenant_id") != tenant_id
-    ):
+    if session.get("role") in ["admin", "tenant_admin"] and session.get("tenant_id") != tenant_id:
         return "Access denied.", 403
 
     conn = get_db_connection()
@@ -3597,17 +3334,12 @@ def create_principal(tenant_id):
     if session.get("role") in ["viewer"]:
         return "Access denied. Admin or manager privileges required.", 403
 
-    if (
-        session.get("role") in ["admin", "manager", "tenant_admin"]
-        and session.get("tenant_id") != tenant_id
-    ):
+    if session.get("role") in ["admin", "manager", "tenant_admin"] and session.get("tenant_id") != tenant_id:
         return "Access denied.", 403
 
     # Check if tenant has GAM configured
     with get_db_session() as db_session:
-        adapter_config = (
-            db_session.query(AdapterConfig).filter_by(tenant_id=tenant_id).first()
-        )
+        adapter_config = db_session.query(AdapterConfig).filter_by(tenant_id=tenant_id).first()
         has_gam = adapter_config and adapter_config.adapter_type == "google_ad_manager"
 
     if request.method == "POST":
@@ -3615,9 +3347,7 @@ def create_principal(tenant_id):
         form_data = {
             "principal_id": request.form.get("principal_id", "").strip(),
             "name": request.form.get("name", "").strip(),
-            "gam_advertiser_id": request.form.get("gam_advertiser_id", "").strip()
-            if has_gam
-            else None,
+            "gam_advertiser_id": request.form.get("gam_advertiser_id", "").strip() if has_gam else None,
         }
 
         # Sanitize
@@ -3628,17 +3358,13 @@ def create_principal(tenant_id):
             "principal_id": [FormValidator.validate_principal_id],
             "name": [
                 lambda v: FormValidator.validate_required(v, "Principal name"),
-                lambda v: FormValidator.validate_length(
-                    v, min_length=3, max_length=100, field_name="Principal name"
-                ),
+                lambda v: FormValidator.validate_length(v, min_length=3, max_length=100, field_name="Principal name"),
             ],
         }
 
         # If GAM is configured, advertiser ID is required
         if has_gam:
-            validators["gam_advertiser_id"] = [
-                lambda v: FormValidator.validate_required(v, "GAM Advertiser")
-            ]
+            validators["gam_advertiser_id"] = [lambda v: FormValidator.validate_required(v, "GAM Advertiser")]
 
         errors = validate_form_data(form_data, validators)
         if errors:
@@ -3661,9 +3387,7 @@ def create_principal(tenant_id):
                 # Build platform mappings
                 platform_mappings = {}
                 if has_gam and form_data.get("gam_advertiser_id"):
-                    platform_mappings["gam_advertiser_id"] = form_data[
-                        "gam_advertiser_id"
-                    ]
+                    platform_mappings["gam_advertiser_id"] = form_data["gam_advertiser_id"]
 
                 # Create the principal
                 new_principal = Principal(
@@ -3676,9 +3400,7 @@ def create_principal(tenant_id):
                 db_session.add(new_principal)
                 db_session.commit()
 
-                return redirect(
-                    url_for("tenant_dashboard", tenant_id=tenant_id) + "#principals"
-                )
+                return redirect(url_for("tenant_dashboard", tenant_id=tenant_id) + "#principals")
             except Exception as e:
                 db_session.rollback()
                 return render_template(
@@ -3688,9 +3410,7 @@ def create_principal(tenant_id):
                     has_gam=has_gam,
                 )
 
-    return render_template(
-        "create_principal.html", tenant_id=tenant_id, has_gam=has_gam
-    )
+    return render_template("create_principal.html", tenant_id=tenant_id, has_gam=has_gam)
 
 
 @app.route("/api/health")
@@ -3746,7 +3466,7 @@ def test_gam_connection():
         TempConfig(refresh_token)
 
         # Test by creating credentials and making a simple API call
-        from googleads import oauth2, ad_manager
+        from googleads import ad_manager, oauth2
 
         # Create GoogleAds OAuth2 client with refresh token
         oauth2_client = oauth2.GoogleRefreshTokenClient(
@@ -3791,9 +3511,7 @@ def test_gam_connection():
                 app.logger.info("getAllNetworks() returned empty/None")
         except AttributeError as e:
             # getAllNetworks might not be available, fall back to getCurrentNetwork
-            app.logger.info(
-                f"getAllNetworks not available (AttributeError: {e}), falling back to getCurrentNetwork"
-            )
+            app.logger.info(f"getAllNetworks not available (AttributeError: {e}), falling back to getCurrentNetwork")
             try:
                 current_network = network_service.getCurrentNetwork()
                 app.logger.info(f"getCurrentNetwork() returned: {current_network}")
@@ -3823,13 +3541,9 @@ def test_gam_connection():
             try:
                 # Reinitialize client with network code for subsequent calls
                 network_code = networks[0]["networkCode"]
-                app.logger.info(
-                    f"Reinitializing client with network code: {network_code}"
-                )
+                app.logger.info(f"Reinitializing client with network code: {network_code}")
 
-                client = ad_manager.AdManagerClient(
-                    oauth2_client, "AdCP-Sales-Agent-Setup", network_code=network_code
-                )
+                client = ad_manager.AdManagerClient(oauth2_client, "AdCP-Sales-Agent-Setup", network_code=network_code)
 
                 # Get company service for advertisers
                 company_service = client.GetService("CompanyService", version="v202408")
@@ -3843,21 +3557,15 @@ def test_gam_connection():
                 statement_builder.Limit(100)
 
                 # Get companies
-                app.logger.info(
-                    "Calling getCompaniesByStatement for ADVERTISER companies"
-                )
-                response = company_service.getCompaniesByStatement(
-                    statement_builder.ToStatement()
-                )
+                app.logger.info("Calling getCompaniesByStatement for ADVERTISER companies")
+                response = company_service.getCompaniesByStatement(statement_builder.ToStatement())
                 app.logger.info(f"getCompaniesByStatement response: {response}")
 
                 companies = []
                 if response and hasattr(response, "results"):
                     app.logger.info(f"Found {len(response.results)} companies")
                     for company in response.results:
-                        app.logger.info(
-                            f"Company: id={company.id}, name={company.name}, type={company.type}"
-                        )
+                        app.logger.info(f"Company: id={company.id}, name={company.name}, type={company.type}")
                         companies.append(
                             {
                                 "id": company.id,
@@ -3881,9 +3589,7 @@ def test_gam_connection():
 
             except Exception as e:
                 # It's okay if we can't fetch companies/users
-                result[
-                    "warning"
-                ] = f"Connected but couldn't fetch all resources: {str(e)}"
+                result["warning"] = f"Connected but couldn't fetch all resources: {str(e)}"
 
         return jsonify(result)
 
@@ -3957,7 +3663,7 @@ def get_gam_advertisers():
         if not oauth_config.get("client_id") or not oauth_config.get("client_secret"):
             return jsonify({"error": "GAM OAuth credentials not configured"}), 400
 
-        from googleads import oauth2, ad_manager
+        from googleads import ad_manager, oauth2
 
         # Create OAuth2 client
         oauth2_client = oauth2.GoogleRefreshTokenClient(
@@ -3967,9 +3673,7 @@ def get_gam_advertisers():
         )
 
         # Initialize GAM client
-        client = ad_manager.AdManagerClient(
-            oauth2_client, "AdCP-Sales-Agent", network_code=network_code
-        )
+        client = ad_manager.AdManagerClient(oauth2_client, "AdCP-Sales-Agent", network_code=network_code)
 
         # Get company service to fetch advertisers
         company_service = client.GetService("CompanyService", version="v202408")
@@ -3983,9 +3687,7 @@ def get_gam_advertisers():
 
         advertisers = []
         while True:
-            response = company_service.getCompaniesByStatement(
-                statement_builder.ToStatement()
-            )
+            response = company_service.getCompaniesByStatement(statement_builder.ToStatement())
 
             if "results" in response and len(response["results"]):
                 for company in response["results"]:
@@ -4005,9 +3707,7 @@ def get_gam_advertisers():
 
     except Exception as e:
         # Log detailed error for debugging but return generic message
-        app.logger.error(
-            f"GAM advertisers fetch error for tenant {tenant_id}: {str(e)}"
-        )
+        app.logger.error(f"GAM advertisers fetch error for tenant {tenant_id}: {str(e)}")
         return (
             jsonify({"error": "Failed to load advertisers from Google Ad Manager"}),
             500,
@@ -4060,9 +3760,7 @@ def list_products(tenant_id):
         )
 
         # Get adapter configuration from adapter_config table
-        adapter_config = (
-            db_session.query(AdapterConfig).filter_by(tenant_id=tenant_id).first()
-        )
+        adapter_config = db_session.query(AdapterConfig).filter_by(tenant_id=tenant_id).first()
 
         try:
             if active_adapter == "google_ad_manager":
@@ -4070,16 +3768,10 @@ def list_products(tenant_id):
 
                 config = {
                     "enabled": True,
-                    "network_code": adapter_config.gam_network_code
-                    if adapter_config
-                    else None,
-                    "refresh_token": adapter_config.gam_refresh_token
-                    if adapter_config
-                    else None,
+                    "network_code": adapter_config.gam_network_code if adapter_config else None,
+                    "refresh_token": adapter_config.gam_refresh_token if adapter_config else None,
                 }
-                adapter = GoogleAdManager(
-                    config, dummy_principal, dry_run=True, tenant_id=tenant_id
-                )
+                adapter = GoogleAdManager(config, dummy_principal, dry_run=True, tenant_id=tenant_id)
                 adapter_ui_endpoint = adapter.get_config_ui_endpoint()
             elif active_adapter == "mock":
                 from adapters.mock_ad_server import MockAdServer
@@ -4088,9 +3780,7 @@ def list_products(tenant_id):
                     "enabled": True,
                     "dry_run": adapter_config.mock_dry_run if adapter_config else False,
                 }
-                adapter = MockAdServer(
-                    config, dummy_principal, dry_run=True, tenant_id=tenant_id
-                )
+                adapter = MockAdServer(config, dummy_principal, dry_run=True, tenant_id=tenant_id)
                 adapter_ui_endpoint = adapter.get_config_ui_endpoint()
             # Add other adapters as needed
         except Exception as e:
@@ -4098,12 +3788,7 @@ def list_products(tenant_id):
             pass
 
         # Get products
-        product_objs = (
-            db_session.query(Product)
-            .filter_by(tenant_id=tenant_id)
-            .order_by(Product.product_id)
-            .all()
-        )
+        product_objs = db_session.query(Product).filter_by(tenant_id=tenant_id).order_by(Product.product_id).all()
 
         products = []
         for prod in product_objs:
@@ -4156,17 +3841,17 @@ def edit_product_basic(tenant_id, product_id):
                     request.form.get("description", ""),
                     request.form.get("delivery_type", "guaranteed"),
                     request.form.get("delivery_type") == "guaranteed",
-                    float(request.form.get("cpm", 0))
-                    if request.form.get("delivery_type") == "guaranteed"
-                    else None,
-                    json.dumps(
-                        {
-                            "min_cpm": float(request.form.get("price_guidance_min", 0)),
-                            "max_cpm": float(request.form.get("price_guidance_max", 0)),
-                        }
-                    )
-                    if request.form.get("delivery_type") != "guaranteed"
-                    else None,
+                    float(request.form.get("cpm", 0)) if request.form.get("delivery_type") == "guaranteed" else None,
+                    (
+                        json.dumps(
+                            {
+                                "min_cpm": float(request.form.get("price_guidance_min", 0)),
+                                "max_cpm": float(request.form.get("price_guidance_max", 0)),
+                            }
+                        )
+                        if request.form.get("delivery_type") != "guaranteed"
+                        else None
+                    ),
                     tenant_id,
                     product_id,
                 ),
@@ -4179,9 +3864,7 @@ def edit_product_basic(tenant_id, product_id):
 
         except Exception as e:
             # Context manager handles cleanup
-            return render_template(
-                "edit_product.html", tenant_id=tenant_id, product=None, error=str(e)
-            )
+            return render_template("edit_product.html", tenant_id=tenant_id, product=None, error=str(e))
 
     # GET request - load product
     cursor = conn.execute(
@@ -4198,16 +3881,8 @@ def edit_product_basic(tenant_id, product_id):
         return "Product not found", 404
 
     # Handle PostgreSQL (returns objects) vs SQLite (returns JSON strings)
-    formats = (
-        product_row[3]
-        if isinstance(product_row[3], list)
-        else json.loads(product_row[3] or "[]")
-    )
-    price_guidance = (
-        product_row[7]
-        if isinstance(product_row[7], dict)
-        else json.loads(product_row[7] or "{}")
-    )
+    formats = product_row[3] if isinstance(product_row[3], list) else json.loads(product_row[3] or "[]")
+    price_guidance = product_row[7] if isinstance(product_row[7], dict) else json.loads(product_row[7] or "{}")
 
     product = {
         "product_id": product_row[0],
@@ -4255,9 +3930,7 @@ def add_product(tenant_id):
                 description = request.form.get("description")
             else:
                 # Regular form submission
-                product_id = request.form.get("product_id") or request.form[
-                    "name"
-                ].lower().replace(" ", "_")
+                product_id = request.form.get("product_id") or request.form["name"].lower().replace(" ", "_")
                 formats = request.form.getlist("formats")
                 name = request.form.get("name")
                 description = request.form.get("description")
@@ -4334,9 +4007,7 @@ def add_product(tenant_id):
             # Context manager handles cleanup
             # Get available formats
             formats = get_creative_formats()
-            return render_template(
-                "add_product.html", tenant_id=tenant_id, error=str(e), formats=formats
-            )
+            return render_template("add_product.html", tenant_id=tenant_id, error=str(e), formats=formats)
 
     # GET request - show form
     # Context manager handles cleanup
@@ -4365,6 +4036,7 @@ def analyze_product_ai(tenant_id):
 
     try:
         import asyncio
+
         from ai_product_service import analyze_product_description
 
         data = request.get_json()
@@ -4404,9 +4076,7 @@ def bulk_product_upload_form(tenant_id):
 
     templates = get_default_products()
 
-    return render_template(
-        "bulk_product_upload.html", tenant_id=tenant_id, templates=templates
-    )
+    return render_template("bulk_product_upload.html", tenant_id=tenant_id, templates=templates)
 
 
 @app.route("/tenant/<tenant_id>/products/bulk/upload", methods=["POST"])
@@ -4451,9 +4121,7 @@ def bulk_product_upload(tenant_id):
                     continue
 
                 # Generate product ID if not provided
-                product_id = product_data.get(
-                    "product_id", product_data["name"].lower().replace(" ", "_")
-                )
+                product_id = product_data.get("product_id", product_data["name"].lower().replace(" ", "_"))
 
                 # Parse formats (handle comma-separated string or list)
                 formats = product_data.get("formats", [])
@@ -4469,21 +4137,13 @@ def bulk_product_upload(tenant_id):
 
                 # Determine delivery type and pricing
                 delivery_type = product_data.get("delivery_type", "guaranteed")
-                cpm = (
-                    float(product_data.get("cpm", 0))
-                    if product_data.get("cpm")
-                    else None
-                )
+                cpm = float(product_data.get("cpm", 0)) if product_data.get("cpm") else None
 
                 price_guidance_min = None
                 price_guidance_max = None
                 if delivery_type == "non_guaranteed" and not cpm:
-                    price_guidance_min = float(
-                        product_data.get("price_guidance_min", 2.0)
-                    )
-                    price_guidance_max = float(
-                        product_data.get("price_guidance_max", 10.0)
-                    )
+                    price_guidance_min = float(product_data.get("price_guidance_min", 2.0))
+                    price_guidance_max = float(product_data.get("price_guidance_max", 10.0))
 
                 # Build targeting template
                 targeting_template = {}
@@ -4491,9 +4151,7 @@ def bulk_product_upload(tenant_id):
                     device_types = product_data["device_types"]
                     if isinstance(device_types, str):
                         device_types = [d.strip() for d in device_types.split(",")]
-                    targeting_template["device_targets"] = {
-                        "device_types": device_types
-                    }
+                    targeting_template["device_targets"] = {"device_types": device_types}
 
                 if countries:
                     targeting_template["geo_targets"] = {"countries": countries}
@@ -4594,11 +4252,7 @@ def browse_product_templates(tenant_id):
     # Filter out standard templates from industry lists
     standard_ids = {t["product_id"] for t in standard_templates}
     for industry in industry_templates:
-        industry_templates[industry] = [
-            t
-            for t in industry_templates[industry]
-            if t["product_id"] not in standard_ids
-        ]
+        industry_templates[industry] = [t for t in industry_templates[industry] if t["product_id"] not in standard_ids]
 
     # Get creative formats for display
     formats = get_creative_formats()
@@ -4670,15 +4324,9 @@ def create_from_template(tenant_id):
                 json.dumps(product.get("formats", [])),
                 product.get("delivery_type", "guaranteed"),
                 product.get("cpm"),
-                product.get("price_guidance", {}).get("min")
-                if not product.get("cpm")
-                else None,
-                product.get("price_guidance", {}).get("max")
-                if not product.get("cpm")
-                else None,
-                json.dumps(product.get("countries"))
-                if product.get("countries")
-                else None,
+                product.get("price_guidance", {}).get("min") if not product.get("cpm") else None,
+                product.get("price_guidance", {}).get("max") if not product.get("cpm") else None,
+                json.dumps(product.get("countries")) if product.get("countries") else None,
                 json.dumps(product.get("targeting_template", {})),
                 json.dumps(product.get("implementation_config", {})),
                 datetime.now().isoformat(),
@@ -5136,6 +4784,7 @@ def analyze_creative_format(tenant_id):
 
     try:
         import asyncio
+
         from ai_creative_format_service import discover_creative_format
 
         data = request.get_json()
@@ -5248,6 +4897,7 @@ def sync_standard_formats(tenant_id):
 
     try:
         import asyncio
+
         from ai_creative_format_service import sync_standard_formats as sync_formats
 
         loop = asyncio.new_event_loop()
@@ -5277,6 +4927,7 @@ def discover_formats_from_url(tenant_id):
             return jsonify({"error": "URL is required"}), 400
 
         import asyncio
+
         from ai_creative_format_service import AICreativeFormatService
 
         loop = asyncio.new_event_loop()
@@ -5413,9 +5064,7 @@ def get_creative_format(tenant_id, format_id):
     format_dict = dict(format_data)
     if format_dict["specs"]:
         format_dict["specs"] = (
-            json.loads(format_dict["specs"])
-            if isinstance(format_dict["specs"], str)
-            else format_dict["specs"]
+            json.loads(format_dict["specs"]) if isinstance(format_dict["specs"], str) else format_dict["specs"]
         )
 
     return jsonify(format_dict)
@@ -5463,9 +5112,7 @@ def edit_creative_format_page(tenant_id, format_id):
     format_dict = dict(format_data)
     if format_dict["specs"]:
         format_dict["specs"] = (
-            json.loads(format_dict["specs"])
-            if isinstance(format_dict["specs"], str)
-            else format_dict["specs"]
+            json.loads(format_dict["specs"]) if isinstance(format_dict["specs"], str) else format_dict["specs"]
         )
 
     return render_template(
@@ -5582,11 +5229,7 @@ def delete_creative_format(tenant_id, format_id):
         result = cursor.fetchone()
         if result["count"] > 0:
             return (
-                jsonify(
-                    {
-                        "error": f"Cannot delete format - it is used by {result['count']} product(s)"
-                    }
-                ),
+                jsonify({"error": f"Cannot delete format - it is used by {result['count']} product(s)"}),
                 400,
             )
 
@@ -5614,18 +5257,14 @@ def get_product_suggestions(tenant_id):
     """API endpoint to get product suggestions based on industry and criteria."""
     try:
         from default_products import (
-            get_industry_specific_products,
             get_default_products,
+            get_industry_specific_products,
         )
 
         # Get query parameters
         industry = request.args.get("industry")
-        include_standard = (
-            request.args.get("include_standard", "true").lower() == "true"
-        )
-        delivery_type = request.args.get(
-            "delivery_type"
-        )  # 'guaranteed', 'non_guaranteed', or None for all
+        include_standard = request.args.get("include_standard", "true").lower() == "true"
+        delivery_type = request.args.get("delivery_type")  # 'guaranteed', 'non_guaranteed', or None for all
         max_cpm = request.args.get("max_cpm", type=float)
         formats = request.args.getlist("formats")  # Can specify multiple format IDs
 
@@ -5667,15 +5306,10 @@ def get_product_suggestions(tenant_id):
         # Sort suggestions by relevance
         # Prioritize: 1) Industry-specific, 2) Lower CPM, 3) More formats
         def sort_key(product):
-            is_industry_specific = product["product_id"] not in [
-                p["product_id"] for p in get_default_products()
-            ]
+            is_industry_specific = product["product_id"] not in [p["product_id"] for p in get_default_products()]
             avg_cpm = (
                 product.get("cpm", 0)
-                or (
-                    product.get("price_guidance", {}).get("min", 0)
-                    + product.get("price_guidance", {}).get("max", 0)
-                )
+                or (product.get("price_guidance", {}).get("min", 0) + product.get("price_guidance", {}).get("max", 0))
                 / 2
             )
             format_count = len(product.get("formats", []))
@@ -5685,9 +5319,7 @@ def get_product_suggestions(tenant_id):
 
         # Check existing products to mark which are already created
         conn = get_db_connection()
-        cursor = conn.execute(
-            "SELECT product_id FROM products WHERE tenant_id = ?", (tenant_id,)
-        )
+        cursor = conn.execute("SELECT product_id FROM products WHERE tenant_id = ?", (tenant_id,))
         existing_ids = {row[0] for row in cursor.fetchall()}
         # Context manager handles cleanup
 
@@ -5703,9 +5335,7 @@ def get_product_suggestions(tenant_id):
             if delivery_type and suggestion.get("delivery_type") == delivery_type:
                 score += 20
             if formats:
-                matching_formats = len(
-                    set(suggestion.get("formats", [])).intersection(set(formats))
-                )
+                matching_formats = len(set(suggestion.get("formats", [])).intersection(set(formats)))
                 score += matching_formats * 10
             if industry and suggestion["is_industry_specific"]:
                 score += 30
@@ -5748,8 +5378,8 @@ def quick_create_products(tenant_id):
             return jsonify({"error": "No product IDs provided"}), 400
 
         from default_products import (
-            get_industry_specific_products,
             get_default_products,
+            get_industry_specific_products,
         )
 
         # Get all available templates
@@ -5801,15 +5431,9 @@ def quick_create_products(tenant_id):
                         json.dumps(template.get("formats", [])),
                         template.get("delivery_type", "guaranteed"),
                         template.get("cpm"),
-                        template.get("price_guidance", {}).get("min")
-                        if not template.get("cpm")
-                        else None,
-                        template.get("price_guidance", {}).get("max")
-                        if not template.get("cpm")
-                        else None,
-                        json.dumps(template.get("countries"))
-                        if template.get("countries")
-                        else None,
+                        template.get("price_guidance", {}).get("min") if not template.get("cpm") else None,
+                        template.get("price_guidance", {}).get("max") if not template.get("cpm") else None,
+                        json.dumps(template.get("countries")) if template.get("countries") else None,
                         json.dumps(template.get("targeting_template", {})),
                         json.dumps(template.get("implementation_config", {})),
                         datetime.now().isoformat(),
@@ -5864,10 +5488,11 @@ def check_inventory_sync(tenant_id):
         return jsonify({"error": "Access denied"}), 403
 
     try:
-        from models import GAMInventory
         from sqlalchemy import create_engine
         from sqlalchemy.orm import sessionmaker
+
         from db_config import DatabaseConfig
+        from models import GAMInventory
 
         # Create database session
         engine = create_engine(DatabaseConfig.get_connection_string())
@@ -5876,11 +5501,7 @@ def check_inventory_sync(tenant_id):
         # Use context manager for automatic cleanup
         with Session() as db_session:
             # Check if any inventory exists for this tenant
-            inventory_count = (
-                db_session.query(GAMInventory)
-                .filter(GAMInventory.tenant_id == tenant_id)
-                .count()
-            )
+            inventory_count = db_session.query(GAMInventory).filter(GAMInventory.tenant_id == tenant_id).count()
 
             has_inventory = inventory_count > 0
 
@@ -5974,11 +5595,7 @@ def analyze_ad_server_inventory(tenant_id):
         # Create principal object
         from schemas import Principal
 
-        mappings = (
-            principal_row[3]
-            if isinstance(principal_row[3], dict)
-            else json.loads(principal_row[3])
-        )
+        mappings = principal_row[3] if isinstance(principal_row[3], dict) else json.loads(principal_row[3])
         principal = Principal(
             tenant_id=tenant_id,
             principal_id=principal_row[0],
@@ -5991,9 +5608,7 @@ def analyze_ad_server_inventory(tenant_id):
         from adapters import get_adapter_class
 
         adapter_class = get_adapter_class(adapter_type)
-        app.logger.info(
-            f"Creating adapter for tenant_id={tenant_id}, adapter_type={adapter_type}"
-        )
+        app.logger.info(f"Creating adapter for tenant_id={tenant_id}, adapter_type={adapter_type}")
         adapter = adapter_class(
             config=adapter_config,
             principal=principal,
@@ -6024,9 +5639,7 @@ def analyze_ad_server_inventory(tenant_id):
             "key_values": inventory.get("key_values", []),
             "properties": inventory.get("properties", {}),
         }
-        app.logger.info(
-            f"Returning response with {len(response_data['key_values'])} key_values"
-        )
+        app.logger.info(f"Returning response with {len(response_data['key_values'])} key_values")
         return jsonify(response_data)
 
     except Exception as e:
@@ -6077,9 +5690,7 @@ def create_products_bulk(tenant_id):
                 # Generate unique product ID if needed
                 product_id = product.get("product_id")
                 if not product_id:
-                    product_id = (
-                        product["name"].lower().replace(" ", "_").replace("-", "_")
-                    )
+                    product_id = product["name"].lower().replace(" ", "_").replace("-", "_")
                     product_id = f"{product_id}_{uuid.uuid4().hex[:6]}"
 
                 print(f"Creating product: {product_id} - {product.get('name')}")
@@ -6112,31 +5723,23 @@ def create_products_bulk(tenant_id):
                         is_fixed_price,
                         product.get("cpm"),
                         price_guidance,
-                        json.dumps(product.get("countries"))
-                        if product.get("countries")
-                        else None,
+                        json.dumps(product.get("countries")) if product.get("countries") else None,
                         json.dumps(product.get("targeting_template", {})),
                         json.dumps(product.get("implementation_config", {})),
                     ),
                 )
 
                 created_count += 1
-                print(
-                    f"Successfully created product {product_id}, total count: {created_count}"
-                )
+                print(f"Successfully created product {product_id}, total count: {created_count}")
 
             except Exception as e:
                 print(f"Error creating product: {e}")
-                errors.append(
-                    f"Failed to create {product.get('name', 'product')}: {str(e)}"
-                )
+                errors.append(f"Failed to create {product.get('name', 'product')}: {str(e)}")
 
         db_session.commit()
         # Context manager handles cleanup
 
-        return jsonify(
-            {"success": True, "created_count": created_count, "errors": errors}
-        )
+        return jsonify({"success": True, "created_count": created_count, "errors": errors})
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -6247,9 +5850,7 @@ def get_custom_targeting_keys(tenant_id):
         formatted_keys = {}
         for key_id, key_name in key_mappings.items():
             # Generate display names from the key names
-            display_name = (
-                key_name.replace("_", " ").replace("hb ", "Header Bidding ").title()
-            )
+            display_name = key_name.replace("_", " ").replace("hb ", "Header Bidding ").title()
             formatted_keys[key_id] = {"name": key_name, "displayName": display_name}
 
         formatted_values = {}
@@ -6291,11 +5892,7 @@ def get_gam_line_item(tenant_id, line_item_id):
             # GAM line item IDs are typically 8+ digits
             if len(str(line_item_id_int)) < 8:
                 return (
-                    jsonify(
-                        {
-                            "error": "Invalid GAM line item ID format (must be at least 8 digits)"
-                        }
-                    ),
+                    jsonify({"error": "Invalid GAM line item ID format (must be at least 8 digits)"}),
                     400,
                 )
         except (ValueError, TypeError) as e:
@@ -6323,8 +5920,8 @@ def get_gam_line_item(tenant_id, line_item_id):
 
         if is_dry_run:
             # Fetch from database in dry-run mode
-            from models import GAMLineItem, GAMOrder
             from gam_orders_service import db_session
+            from models import GAMLineItem, GAMOrder
 
             db_session.remove()
 
@@ -6360,46 +5957,45 @@ def get_gam_line_item(tenant_id, line_item_id):
                 "status": line_item.status,
                 "lineItemType": line_item.line_item_type,
                 "priority": line_item.priority,
-                "startDateTime": line_item.start_date.isoformat()
-                if line_item.start_date
-                else None,
-                "endDateTime": line_item.end_date.isoformat()
-                if line_item.end_date
-                else None,
+                "startDateTime": line_item.start_date.isoformat() if line_item.start_date else None,
+                "endDateTime": line_item.end_date.isoformat() if line_item.end_date else None,
                 "unlimitedEndDateTime": line_item.unlimited_end_date,
                 "costType": line_item.cost_type,
-                "costPerUnit": {
-                    "currencyCode": "USD",
-                    "microAmount": int((line_item.cost_per_unit or 0) * 1000000),
-                }
-                if line_item.cost_per_unit
-                else None,
-                "primaryGoal": {
-                    "goalType": line_item.goal_type,
-                    "unitType": line_item.primary_goal_type,
-                    "units": line_item.primary_goal_units,
-                }
-                if line_item.primary_goal_units
-                else None,
+                "costPerUnit": (
+                    {
+                        "currencyCode": "USD",
+                        "microAmount": int((line_item.cost_per_unit or 0) * 1000000),
+                    }
+                    if line_item.cost_per_unit
+                    else None
+                ),
+                "primaryGoal": (
+                    {
+                        "goalType": line_item.goal_type,
+                        "unitType": line_item.primary_goal_type,
+                        "units": line_item.primary_goal_units,
+                    }
+                    if line_item.primary_goal_units
+                    else None
+                ),
                 "stats": {
                     "impressionsDelivered": line_item.stats_impressions or 0,
                     "clicksDelivered": line_item.stats_clicks or 0,
                     "ctr": line_item.stats_ctr or 0,
                     "videoCompletionsDelivered": line_item.stats_video_completions or 0,
                     "videoStartsDelivered": line_item.stats_video_starts or 0,
-                    "viewableImpressionsDelivered": line_item.stats_viewable_impressions
-                    or 0,
+                    "viewableImpressionsDelivered": line_item.stats_viewable_impressions or 0,
                 },
                 "targeting": line_item.targeting or {},
                 "creativePlaceholders": line_item.creative_placeholders or [],
                 "frequencyCaps": line_item.frequency_caps or [],
                 "deliveryRateType": line_item.delivery_rate_type,
-                "deliveryIndicator": {"type": line_item.delivery_indicator_type}
-                if line_item.delivery_indicator_type
-                else None,
-                "lastModifiedDateTime": line_item.last_modified_date.isoformat()
-                if line_item.last_modified_date
-                else None,
+                "deliveryIndicator": (
+                    {"type": line_item.delivery_indicator_type} if line_item.delivery_indicator_type else None
+                ),
+                "lastModifiedDateTime": (
+                    line_item.last_modified_date.isoformat() if line_item.last_modified_date else None
+                ),
             }
 
             order_data = (
@@ -6411,18 +6007,16 @@ def get_gam_line_item(tenant_id, line_item_id):
                     "traffickerId": order.trafficker_id,
                     "trafficklerName": order.trafficker_name,
                     "status": order.status,
-                    "startDateTime": order.start_date.isoformat()
-                    if order.start_date
-                    else None,
-                    "endDateTime": order.end_date.isoformat()
-                    if order.end_date
-                    else None,
-                    "totalBudget": {
-                        "currencyCode": order.currency_code or "USD",
-                        "microAmount": int((order.total_budget or 0) * 1000000),
-                    }
-                    if order.total_budget
-                    else None,
+                    "startDateTime": order.start_date.isoformat() if order.start_date else None,
+                    "endDateTime": order.end_date.isoformat() if order.end_date else None,
+                    "totalBudget": (
+                        {
+                            "currencyCode": order.currency_code or "USD",
+                            "microAmount": int((order.total_budget or 0) * 1000000),
+                        }
+                        if order.total_budget
+                        else None
+                    ),
                     "externalOrderId": order.external_order_id,
                     "poNumber": order.po_number,
                     "notes": order.notes,
@@ -6437,9 +6031,7 @@ def get_gam_line_item(tenant_id, line_item_id):
                 "creatives": [],  # Would need to fetch from creative associations
                 "creative_associations": [],
                 "inventory_details": {},
-                "media_product_json": convert_line_item_to_product_json(
-                    line_item_data, []
-                ),
+                "media_product_json": convert_line_item_to_product_json(line_item_data, []),
             }
 
             db_session.remove()
@@ -6447,9 +6039,10 @@ def get_gam_line_item(tenant_id, line_item_id):
 
         # Original code for non-dry-run mode
         # Get GAM client using the helper
-        from gam_helper import get_ad_manager_client_for_tenant
         from googleads import ad_manager
         from zeep.helpers import serialize_object
+
+        from gam_helper import get_ad_manager_client_for_tenant
 
         try:
             client = get_ad_manager_client_for_tenant(tenant_id)
@@ -6468,11 +6061,7 @@ def get_gam_line_item(tenant_id, line_item_id):
         response = line_item_service.getLineItemsByStatement(statement.ToStatement())
 
         # Check if response has results (SOAP object, not dict)
-        if (
-            not hasattr(response, "results")
-            or not response.results
-            or len(response.results) == 0
-        ):
+        if not hasattr(response, "results") or not response.results or len(response.results) == 0:
             return jsonify({"error": "Line item not found"}), 404
 
         # Serialize the SOAP object to dict
@@ -6486,9 +6075,7 @@ def get_gam_line_item(tenant_id, line_item_id):
             .WithBindVariable("orderId", line_item["orderId"])
             .Limit(1)
         )
-        order_response = order_service.getOrdersByStatement(
-            order_statement.ToStatement()
-        )
+        order_response = order_service.getOrdersByStatement(order_statement.ToStatement())
         order = (
             serialize_object(order_response.results[0])
             if hasattr(order_response, "results") and order_response.results
@@ -6502,9 +6089,7 @@ def get_gam_line_item(tenant_id, line_item_id):
             .Where("lineItemId = :lineItemId")
             .WithBindVariable("lineItemId", line_item_id_int)
         )
-        lica_response = lica_service.getLineItemCreativeAssociationsByStatement(
-            lica_statement.ToStatement()
-        )
+        lica_response = lica_service.getLineItemCreativeAssociationsByStatement(lica_statement.ToStatement())
         creative_associations = (
             serialize_object(lica_response.results)
             if hasattr(lica_response, "results") and lica_response.results
@@ -6521,9 +6106,7 @@ def get_gam_line_item(tenant_id, line_item_id):
                 .Where("id IN (:creativeIds)")
                 .WithBindVariable("creativeIds", creative_ids)
             )
-            creative_response = creative_service.getCreativesByStatement(
-                creative_statement.ToStatement()
-            )
+            creative_response = creative_service.getCreativesByStatement(creative_statement.ToStatement())
             creatives = (
                 serialize_object(creative_response.results)
                 if hasattr(creative_response, "results") and creative_response.results
@@ -6534,16 +6117,10 @@ def get_gam_line_item(tenant_id, line_item_id):
         inventory_details = {}
 
         # Fetch ad unit details if targeted
-        if (
-            line_item.get("targeting", {})
-            .get("inventoryTargeting", {})
-            .get("targetedAdUnits")
-        ):
+        if line_item.get("targeting", {}).get("inventoryTargeting", {}).get("targetedAdUnits"):
             try:
                 ad_unit_service = client.GetService("InventoryService")
-                targeted_units = line_item["targeting"]["inventoryTargeting"][
-                    "targetedAdUnits"
-                ]
+                targeted_units = line_item["targeting"]["inventoryTargeting"]["targetedAdUnits"]
                 ad_unit_ids = [unit["adUnitId"] for unit in targeted_units]
 
                 # Batch fetch ad units
@@ -6553,14 +6130,9 @@ def get_gam_line_item(tenant_id, line_item_id):
                         .Where("id IN (:adUnitIds)")
                         .WithBindVariable("adUnitIds", ad_unit_ids)
                     )
-                    ad_unit_response = ad_unit_service.getAdUnitsByStatement(
-                        ad_unit_statement.ToStatement()
-                    )
+                    ad_unit_response = ad_unit_service.getAdUnitsByStatement(ad_unit_statement.ToStatement())
 
-                    if (
-                        hasattr(ad_unit_response, "results")
-                        and ad_unit_response.results
-                    ):
+                    if hasattr(ad_unit_response, "results") and ad_unit_response.results:
                         ad_units_data = serialize_object(ad_unit_response.results)
                         # Create a mapping of ad unit ID to details including hierarchy
                         inventory_details["ad_units"] = {}
@@ -6585,16 +6157,10 @@ def get_gam_line_item(tenant_id, line_item_id):
                 inventory_details["ad_units"] = {}
 
         # Fetch placement details if targeted
-        if (
-            line_item.get("targeting", {})
-            .get("inventoryTargeting", {})
-            .get("targetedPlacementIds")
-        ):
+        if line_item.get("targeting", {}).get("inventoryTargeting", {}).get("targetedPlacementIds"):
             try:
                 placement_service = client.GetService("PlacementService")
-                placement_ids = line_item["targeting"]["inventoryTargeting"][
-                    "targetedPlacementIds"
-                ]
+                placement_ids = line_item["targeting"]["inventoryTargeting"]["targetedPlacementIds"]
 
                 if placement_ids:
                     placement_statement = (
@@ -6602,30 +6168,21 @@ def get_gam_line_item(tenant_id, line_item_id):
                         .Where("id IN (:placementIds)")
                         .WithBindVariable("placementIds", placement_ids)
                     )
-                    placement_response = placement_service.getPlacementsByStatement(
-                        placement_statement.ToStatement()
-                    )
+                    placement_response = placement_service.getPlacementsByStatement(placement_statement.ToStatement())
 
-                    if (
-                        hasattr(placement_response, "results")
-                        and placement_response.results
-                    ):
+                    if hasattr(placement_response, "results") and placement_response.results:
                         placements_data = serialize_object(placement_response.results)
                         inventory_details["placements"] = {}
                         for placement in placements_data:
                             # Get the ad units in this placement
-                            ad_unit_ids_in_placement = placement.get(
-                                "targetedAdUnitIds", []
-                            )
+                            ad_unit_ids_in_placement = placement.get("targetedAdUnitIds", [])
                             inventory_details["placements"][placement["id"]] = {
                                 "id": placement["id"],
                                 "name": placement.get("name", "Unknown"),
                                 "description": placement.get("description", ""),
                                 "status": placement.get("status", "ACTIVE"),
                                 "targetedAdUnitIds": ad_unit_ids_in_placement,
-                                "isAdSenseTargetingEnabled": placement.get(
-                                    "isAdSenseTargetingEnabled", False
-                                ),
+                                "isAdSenseTargetingEnabled": placement.get("isAdSenseTargetingEnabled", False),
                             }
             except Exception as e:
                 app.logger.warning(f"Failed to fetch placement details: {str(e)}")
@@ -6641,14 +6198,10 @@ def get_gam_line_item(tenant_id, line_item_id):
             "line_item": line_item_data,
             "order": order_data,
             "creatives": creatives_data,
-            "creative_associations": creative_associations
-            if isinstance(creative_associations, list)
-            else [],
+            "creative_associations": creative_associations if isinstance(creative_associations, list) else [],
             "inventory_details": inventory_details,  # Add the new inventory details
             # Convert to our internal media product JSON format
-            "media_product_json": convert_line_item_to_product_json(
-                line_item_data, creatives_data
-            ),
+            "media_product_json": convert_line_item_to_product_json(line_item_data, creatives_data),
         }
 
         return jsonify(result)
@@ -6718,9 +6271,7 @@ def extract_targeting_overlay(targeting):
     if targeting.get("technologyTargeting"):
         tech = targeting["technologyTargeting"]
         if tech.get("deviceCategoryTargeting"):
-            devices = tech["deviceCategoryTargeting"].get(
-                "targetedDeviceCategories", []
-            )
+            devices = tech["deviceCategoryTargeting"].get("targetedDeviceCategories", [])
             device_types = []
             for device in devices:
                 # GAM device category IDs
@@ -6805,9 +6356,9 @@ def extract_creative_formats(line_item, creatives):
                 formats.append(
                     {
                         "id": format_id,
-                        "display_name": f"{format_type.title()} {width}x{height}"
-                        if format_type != "audio"
-                        else "Audio",
+                        "display_name": (
+                            f"{format_type.title()} {width}x{height}" if format_type != "audio" else "Audio"
+                        ),
                         "creative_type": format_type,
                         "width": width,
                         "height": height,
@@ -6865,13 +6416,13 @@ def convert_line_item_to_product_json(line_item, creatives):
         "name": line_item.get("name", "Unknown"),
         "description": f'GAM Line Item: {line_item.get("name", "")}',
         "formats": formats,
-        "delivery_type": "guaranteed"
-        if line_item.get("lineItemType") == "STANDARD"
-        else "non_guaranteed",
+        "delivery_type": "guaranteed" if line_item.get("lineItemType") == "STANDARD" else "non_guaranteed",
         "is_fixed_price": line_item.get("costType") == "CPM",
-        "cpm": float(line_item.get("costPerUnit", {}).get("microAmount", 0)) / 1000000.0
-        if line_item.get("costPerUnit")
-        else None,
+        "cpm": (
+            float(line_item.get("costPerUnit", {}).get("microAmount", 0)) / 1000000.0
+            if line_item.get("costPerUnit")
+            else None
+        ),
         "targeting_overlay": targeting_overlay,
         "implementation_config": {
             "gam": {
@@ -6885,12 +6436,11 @@ def convert_line_item_to_product_json(line_item, creatives):
                 "end_datetime": line_item.get("endDateTime"),
                 "units_bought": line_item.get("unitsBought"),
                 "cost_type": line_item.get("costType"),
-                "cost_per_unit": float(
-                    line_item.get("costPerUnit", {}).get("microAmount", 0)
-                )
-                / 1000000.0
-                if line_item.get("costPerUnit")
-                else None,
+                "cost_per_unit": (
+                    float(line_item.get("costPerUnit", {}).get("microAmount", 0)) / 1000000.0
+                    if line_item.get("costPerUnit")
+                    else None
+                ),
                 "discount_type": line_item.get("discountType"),
                 "allow_overbook": line_item.get("allowOverbook", False),
                 # Add human-readable key-value targeting
@@ -6905,14 +6455,11 @@ def convert_line_item_to_product_json(line_item, creatives):
                     if p.get("size")
                 ],
                 # Add ad units if present
-                "ad_units": [
-                    au.get("adUnitId")
-                    for au in targeting.get("inventoryTargeting", {}).get(
-                        "targetedAdUnits", []
-                    )
-                ]
-                if targeting.get("inventoryTargeting", {}).get("targetedAdUnits")
-                else [],
+                "ad_units": (
+                    [au.get("adUnitId") for au in targeting.get("inventoryTargeting", {}).get("targetedAdUnits", [])]
+                    if targeting.get("inventoryTargeting", {}).get("targetedAdUnits")
+                    else []
+                ),
             }
         },
     }
@@ -6927,9 +6474,7 @@ def register_adapter_routes():
         print("Starting adapter route registration...")
         # Get all enabled adapters across all tenants
         conn = get_db_connection()
-        cursor = conn.execute(
-            "SELECT tenant_id, ad_server FROM tenants WHERE ad_server IS NOT NULL"
-        )
+        cursor = conn.execute("SELECT tenant_id, ad_server FROM tenants WHERE ad_server IS NOT NULL")
 
         registered_adapters = set()
         for row in cursor.fetchall():
@@ -6944,10 +6489,7 @@ def register_adapter_routes():
             adapters_config = tenant_config.get("adapters", {})
 
             for adapter_name, adapter_config in adapters_config.items():
-                if (
-                    adapter_config.get("enabled")
-                    and adapter_name not in registered_adapters
-                ):
+                if adapter_config.get("enabled") and adapter_name not in registered_adapters:
                     # Create a dummy principal for route registration
                     dummy_principal = Principal(
                         tenant_id="system",
@@ -6987,17 +6529,13 @@ def register_adapter_routes():
                         elif adapter_name == "kevel":
                             from adapters.kevel import KevelAdapter
 
-                            adapter = KevelAdapter(
-                                adapter_config, dummy_principal, dry_run=True
-                            )
+                            adapter = KevelAdapter(adapter_config, dummy_principal, dry_run=True)
                             if hasattr(adapter, "register_ui_routes"):
                                 adapter.register_ui_routes(app)
                                 registered_adapters.add(adapter_name)
                         # Add other adapters as they implement UI routes
                     except Exception as e:
-                        print(
-                            f"Warning: Failed to register routes for {adapter_name}: {e}"
-                        )
+                        print(f"Warning: Failed to register routes for {adapter_name}: {e}")
 
         # Context manager handles cleanup
         print(f"Registered UI routes for adapters: {', '.join(registered_adapters)}")
@@ -7134,9 +6672,7 @@ def mcp_test():
     server_port = int(os.environ.get("ADCP_SALES_PORT", 8005))
     server_url = f"http://localhost:{server_port}/mcp/"
 
-    return render_template(
-        "mcp_test.html", tenants=tenants, principals=principals, server_url=server_url
-    )
+    return render_template("mcp_test.html", tenants=tenants, principals=principals, server_url=server_url)
 
 
 @app.route("/api/mcp-test/call", methods=["POST"])
@@ -7166,6 +6702,7 @@ def mcp_test_call():
 
     try:
         import asyncio
+
         from fastmcp.client import Client
         from fastmcp.client.transports import StreamableHttpTransport
 
@@ -7196,9 +6733,7 @@ def mcp_test_call():
 
         # Look up the tenant for this token
         conn = get_db_connection()
-        cursor = conn.execute(
-            "SELECT tenant_id FROM principals WHERE access_token = ?", (access_token,)
-        )
+        cursor = conn.execute("SELECT tenant_id FROM principals WHERE access_token = ?", (access_token,))
         row = cursor.fetchone()
         # Context manager handles cleanup
 
@@ -7209,9 +6744,7 @@ def mcp_test_call():
         headers = {"x-adcp-auth": access_token, "x-adcp-tenant": tenant_id}
 
         # Log for debugging
-        app.logger.info(
-            f"MCP Test Call - Tool: {tool_name}, Server: {server_url}, Token: {access_token[:20]}..."
-        )
+        app.logger.info(f"MCP Test Call - Tool: {tool_name}, Server: {server_url}, Token: {access_token[:20]}...")
 
         async def make_call():
             """Make the actual MCP call."""
@@ -7229,9 +6762,7 @@ def mcp_test_call():
                         # Most tools have a single parameter named 'req'
                         arguments = {"req": tool_params} if tool_params else {"req": {}}
 
-                    app.logger.info(
-                        f"Calling tool {tool_name} with arguments: {arguments}"
-                    )
+                    app.logger.info(f"Calling tool {tool_name} with arguments: {arguments}")
                     result = await client.call_tool(tool_name, arguments)
 
                     # Convert result to dict if it's a pydantic model or handle TextContent
@@ -7248,29 +6779,19 @@ def mcp_test_call():
                             # Remove implementation_config from products (security - proprietary data)
                             if isinstance(content, dict) and "products" in content:
                                 for product in content.get("products", []):
-                                    if (
-                                        isinstance(product, dict)
-                                        and "implementation_config" in product
-                                    ):
+                                    if isinstance(product, dict) and "implementation_config" in product:
                                         del product["implementation_config"]
                             return {"success": True, "result": content}
-                        elif hasattr(result, "data") and hasattr(
-                            result.data, "model_dump"
-                        ):
+                        elif hasattr(result, "data") and hasattr(result.data, "model_dump"):
                             # Use the data field if it has model_dump
                             return {"success": True, "result": result.data.model_dump()}
                         elif hasattr(result, "content"):
                             # Handle content field which might be a list of TextContent
-                            if (
-                                isinstance(result.content, list)
-                                and len(result.content) > 0
-                            ):
+                            if isinstance(result.content, list) and len(result.content) > 0:
                                 first_item = result.content[0]
                                 if hasattr(first_item, "text"):
                                     try:
-                                        parsed_result = json_module.loads(
-                                            first_item.text
-                                        )
+                                        parsed_result = json_module.loads(first_item.text)
                                         return {
                                             "success": True,
                                             "result": parsed_result,
@@ -7334,9 +6855,7 @@ def mcp_test_call():
     if not SUPER_ADMIN_EMAILS and not SUPER_ADMIN_DOMAINS:
         print("\nWARNING: No super admin emails or domains configured!")
         print("Set SUPER_ADMIN_EMAILS='email1@example.com,email2@example.com' or")
-        print(
-            "Set SUPER_ADMIN_DOMAINS='example.com,company.com' in environment variables"
-        )
+        print("Set SUPER_ADMIN_DOMAINS='example.com,company.com' in environment variables")
 
     # Use socketio.run instead of app.run to enable WebSocket support
     socketio.run(app, host="0.0.0.0", port=port, debug=debug)
