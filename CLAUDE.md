@@ -38,6 +38,34 @@ When documenting:
 4. Remove outdated information
 5. Avoid creating new files
 
+## Git Commit Guidelines
+
+### IMPORTANT: Pre-commit Hooks
+
+**DO NOT use `--no-verify` when committing or pushing code.** The pre-commit hooks are there to catch issues early:
+
+- **Always fix pre-commit failures** rather than bypassing them
+- **If tests fail**, fix the tests before committing
+- **If linting fails**, fix the code style issues
+- **If validation fails**, address the validation errors
+
+When committing:
+```bash
+# CORRECT - Run pre-commit hooks
+git commit -m "feat: Your commit message"
+git push
+
+# WRONG - Don't bypass checks
+git commit --no-verify -m "feat: Your commit message"  # DON'T DO THIS
+git push --no-verify  # DON'T DO THIS
+```
+
+If pre-commit hooks are failing:
+1. Read the error messages carefully
+2. Fix the underlying issues
+3. Run the hooks locally: `pre-commit run --all-files`
+4. Only commit once all checks pass
+
 ## Current Project Structure
 
 ```
@@ -60,7 +88,7 @@ salesagent/
 │   ├── foundational_creative_formats.json
 │   └── examples/
 ├── scripts/            # Utility scripts
-├── templates/          # UI templates  
+├── templates/          # UI templates
 ├── tests/              # Test suite
 │   ├── unit/
 │   ├── integration/
@@ -157,7 +185,7 @@ Conductor workspaces use **git worktrees**, which means:
 
 When working in a Conductor workspace (e.g., `.conductor/quito/`):
 
-1. **Configuration Changes Only**: 
+1. **Configuration Changes Only**:
    - Modify `.env` files for environment-specific settings
    - Create `docker-compose.override.yml` for development features
    - NEVER modify core application files unless that's the intended change
@@ -199,7 +227,7 @@ When working in a Conductor workspace (e.g., `.conductor/quito/`):
 - **Each Principal = One Advertiser**: Clear separation between publisher (tenant owner) and advertisers (principals)
 - **GAM Integration**: Each principal selects their own GAM advertiser ID during creation
 - **No Admin Principals**: Publishers don't need principals - they own the tenant
-- **UI Improvements**: 
+- **UI Improvements**:
   - "Principals" renamed to "Advertisers" throughout UI
   - "Create Principal" → "Add Advertiser"
   - Clear messaging that principals represent advertisers buying inventory
@@ -218,7 +246,7 @@ When working in a Conductor workspace (e.g., `.conductor/quito/`):
 - **Test Suite**: `tests/ui/test_auth_mode.py` - Complete pytest suite for UI testing
 - **IMPORTANT**: Never enable in production! Clear warning banners shown when active
 
-### Database Migrations Support 
+### Database Migrations Support
 - **Alembic Integration**: Added Alembic for database schema version control
 - **Automatic Migrations**: Migrations run automatically on server startup
 - **Multi-Database Support**: Works with both SQLite and PostgreSQL
@@ -227,7 +255,7 @@ When working in a Conductor workspace (e.g., `.conductor/quito/`):
 - **Documentation**: See `docs/database-migrations.md` for detailed guide
 
 ### Product Management & Adapter Configuration Improvements
-- **Clean Separation of Concerns**: 
+- **Clean Separation of Concerns**:
   - Basic product fields (name, pricing, countries) in main product form
   - Adapter-specific configuration moved to dedicated UIs
   - Countries field moved to products table (buyer-facing concern)
@@ -452,7 +480,7 @@ Tests run automatically on push/PR via GitHub Actions:
 3. **Leverage Fixtures**:
    ```python
    from tests.fixtures import TenantFactory, PrincipalFactory, ProductFactory
-   
+
    def test_my_feature():
        tenant = TenantFactory.create()
        principal = PrincipalFactory.create(tenant_id=tenant["tenant_id"])
@@ -461,7 +489,7 @@ Tests run automatically on push/PR via GitHub Actions:
 4. **Mock External Dependencies**:
    ```python
    from unittest.mock import patch, MagicMock
-   
+
    @patch('module.external_service')
    def test_with_mock(mock_service):
        mock_service.return_value = {"result": "success"}
@@ -481,10 +509,10 @@ Tests run automatically on push/PR via GitHub Actions:
    ```bash
    # Run specific test file
    uv run pytest tests/unit/test_my_feature.py -v
-   
+
    # Run with debugging output
    uv run pytest tests/unit/test_my_feature.py -v -s
-   
+
    # Run only tests matching pattern
    uv run pytest -k "test_my_feature"
    ```
@@ -531,7 +559,7 @@ The system runs with Docker Compose, which manages all services:
 ```yaml
 # docker-compose.yml services:
 postgres      # PostgreSQL database
-adcp-server   # MCP server on port 8080  
+adcp-server   # MCP server on port 8080
 admin-ui      # Admin interface on port 8001
 ```
 
@@ -557,7 +585,7 @@ SUPER_ADMIN_DOMAINS=example.com
 
 # Port Configuration (for Conductor workspaces)
 POSTGRES_PORT=5432          # Default: 5432
-ADCP_SALES_PORT=8080       # Default: 8080  
+ADCP_SALES_PORT=8080       # Default: 8080
 ADMIN_UI_PORT=8001         # Default: 8001
 
 # Database Configuration
@@ -566,7 +594,7 @@ DATABASE_URL=postgresql://adcp_user:secure_password_change_me@localhost:5432/adc
 
 ### Important Configuration Notes
 
-1. **OAuth Setup**: 
+1. **OAuth Setup**:
    - Prefer environment variables (`GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET`)
    - File mounting is legacy - avoid hardcoding paths in docker-compose.yml
    - Admin UI will check environment variables first, then look for client_secret*.json files
@@ -688,22 +716,22 @@ Proxy (port 8000)
    # OAuth configuration
    fly secrets set GOOGLE_CLIENT_ID="your-client-id.apps.googleusercontent.com"
    fly secrets set GOOGLE_CLIENT_SECRET="your-client-secret"
-   
+
    # Admin configuration
    fly secrets set SUPER_ADMIN_EMAILS="admin1@example.com,admin2@example.com"
    fly secrets set SUPER_ADMIN_DOMAINS="example.com"
-   
+
    # API keys
    fly secrets set GEMINI_API_KEY="your-gemini-api-key"
    ```
 
 7. **Configure OAuth redirect URI**:
-   
+
    In your Google Cloud Console, add this redirect URI:
    ```
    https://adcp-sales-agent.fly.dev/auth/google/callback
    ```
-   
+
    This single URI handles both super admin and tenant-specific authentication.
 
 8. **Deploy the application**:
@@ -858,7 +886,7 @@ def upgrade():
 
 #### Migration Rules:
 1. **Test locally first**: Run migrations on a test database before committing
-2. **One-way only**: Migrations should work going forward, not be edited retroactively  
+2. **One-way only**: Migrations should work going forward, not be edited retroactively
 3. **Create fix migrations**: If a migration fails, create a NEW migration to fix it
 4. **Check production state**: Always verify what migrations have run in production
 5. **Use safe operations**: In fix migrations, use conditional checks (see 015_handle_partial_schemas.py)
@@ -1000,13 +1028,13 @@ client = Client(transport=transport)
 async with client:
     # Get products
     products = await client.tools.get_products(brief="video ads for sports content")
-    
+
     # Discover available signals (optional)
     signals = await client.tools.get_signals(
         query="sports",
         type="contextual"
     )
-    
+
     # Create media buy with signals
     result = await client.tools.create_media_buy(
         product_ids=["prod_1"],
@@ -1039,12 +1067,12 @@ curl -X POST -H "Cookie: session=YOUR_SESSION" \
 
 ## Debugging Tips
 
-1. **Authentication Issues**: 
+1. **Authentication Issues**:
    - Check x-adcp-auth header matches token in principals table
    - Verify tenant_id routing for subdomain access
    - Use Admin UI to view/copy correct tokens
 
-2. **Adapter Errors**: 
+2. **Adapter Errors**:
    - Enable dry-run mode to see exact API calls
    - Check adapter security documentation in `adapters/*_security.md`
    - Verify platform_mappings in principal record
@@ -1219,7 +1247,7 @@ from models import Principal  # SQLAlchemy ORM model (no methods)
 from schemas import Principal  # Pydantic model (has get_adapter_id())
 ```
 
-**Rule**: 
+**Rule**:
 - `models.py` = Database ORM models (for queries)
 - `schemas.py` = API/business models (for logic)
 
@@ -1312,7 +1340,7 @@ cursor.execute("SELECT * FROM tenants WHERE id = ?", (tenant_id,))
 
 **Required Validations**:
 - **IDs**: Alphanumeric with `_-` only, max 100 chars
-- **Numeric IDs**: Digits only, max 20 chars  
+- **Numeric IDs**: Digits only, max 20 chars
 - **Timezones**: Must exist in pytz database
 - **Date ranges**: Use enum values only
 
@@ -1359,7 +1387,7 @@ Before making ANY database or API changes:
    ```bash
    # SQLite
    DATABASE_URL=sqlite:///test.db python your_script.py
-   
+
    # PostgreSQL
    docker-compose up -d postgres
    DATABASE_URL=postgresql://... python your_script.py
