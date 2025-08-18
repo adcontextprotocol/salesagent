@@ -2220,18 +2220,14 @@ def sync_orders_endpoint(tenant_id):
 
     try:
         # Get tenant and check if GAM is configured
-        conn = get_db_connection()
-        cursor = conn.execute(
-            "SELECT ad_server FROM tenants WHERE tenant_id = ?", (tenant_id,)
-        )
-        tenant = cursor.fetchone()
-        # Context manager handles cleanup
+        with get_db_session() as db_session_check:
+            tenant = db_session_check.query(Tenant).filter_by(tenant_id=tenant_id).first()
 
-        if not tenant:
-            return jsonify({"error": "Tenant not found"}), 404
+            if not tenant:
+                return jsonify({"error": "Tenant not found"}), 404
 
-        if tenant["ad_server"] != "google_ad_manager":
-            return jsonify({"error": "Only Google Ad Manager sync is supported"}), 400
+            if tenant.ad_server != "google_ad_manager":
+                return jsonify({"error": "Only Google Ad Manager sync is supported"}), 400
 
         # Get GAM client
         from gam_helper import get_ad_manager_client_for_tenant
@@ -2705,30 +2701,26 @@ def workflows_dashboard(tenant_id):
         return "Access denied", 403
 
     # Get tenant
-    conn = get_db_connection()
-    tenant_cursor = conn.execute(
-        "SELECT * FROM tenants WHERE tenant_id = ?", (tenant_id,)
-    )
-    tenant_row = tenant_cursor.fetchone()
+    with get_db_session() as db_session:
+        tenant_obj = db_session.query(Tenant).filter_by(tenant_id=tenant_id).first()
 
-    if not tenant_row:
-        # Context manager handles cleanup
-        return "Tenant not found", 404
+        if not tenant_obj:
+            return "Tenant not found", 404
 
-    # PostgreSQL returns JSONB as dict, SQLite as string
-    config = tenant_row[3]
-    if isinstance(config, str):
-        config = json.loads(config)
+        # Convert to dict for template compatibility
+        config = tenant_obj.config
+        if isinstance(config, str):
+            config = json.loads(config)
 
-    tenant = {
-        "tenant_id": tenant_row[0],
-        "name": tenant_row[1],
-        "subdomain": tenant_row[2],
-        "config": config,
-        "created_at": tenant_row[4],
-        "updated_at": tenant_row[5],
-        "is_active": tenant_row[6],
-    }
+        tenant = {
+            "tenant_id": tenant_obj.tenant_id,
+            "name": tenant_obj.name,
+            "subdomain": tenant_obj.subdomain,
+            "config": config,
+            "created_at": tenant_obj.created_at,
+            "updated_at": tenant_obj.updated_at,
+            "is_active": tenant_obj.is_active,
+        }
 
     # Get summary statistics
     from datetime import datetime
@@ -2951,40 +2943,35 @@ def media_buy_approval(tenant_id, media_buy_id):
     if session.get("role") != "super_admin" and session.get("tenant_id") != tenant_id:
         return "Access denied", 403
 
-    conn = get_db_connection()
+    with get_db_session() as db_session:
+        # Get the media buy details
+        buy_obj = db_session.query(MediaBuy).filter_by(
+            tenant_id=tenant_id,
+            media_buy_id=media_buy_id
+        ).first()
 
-    # Get the media buy details
-    buy_cursor = conn.execute(
-        """
-        SELECT * FROM media_buys
-        WHERE tenant_id = ? AND media_buy_id = ?
-    """,
-        (tenant_id, media_buy_id),
-    )
+        if not buy_obj:
+            return "Media buy not found", 404
 
-    buy_row = buy_cursor.fetchone()
-    if not buy_row:
-        # Context manager handles cleanup
-        return "Media buy not found", 404
-
-    # Parse the media buy
-    media_buy = {
-        "media_buy_id": buy_row[0],
-        "tenant_id": buy_row[1],
-        "principal_id": buy_row[2],
-        "order_name": buy_row[3],
-        "advertiser_name": buy_row[4],
-        "campaign_objective": buy_row[5],
-        "kpi_goal": buy_row[6],
-        "budget": buy_row[7],
-        "start_date": buy_row[8],
-        "end_date": buy_row[9],
-        "status": buy_row[10],
-        "created_at": buy_row[11]
-        if not isinstance(buy_row[11], str)
-        else datetime.fromisoformat(buy_row[11]),
-        "raw_request": json.loads(buy_row[15])
-        if buy_row[15] and isinstance(buy_row[15], str)
+        # Parse the media buy
+        from datetime import datetime
+        media_buy = {
+            "media_buy_id": buy_obj.media_buy_id,
+            "tenant_id": buy_obj.tenant_id,
+            "principal_id": buy_obj.principal_id,
+            "order_name": buy_obj.order_name,
+            "advertiser_name": buy_obj.advertiser_name,
+            "campaign_objective": buy_obj.campaign_objective,
+            "kpi_goal": buy_obj.kpi_goal,
+            "budget": buy_obj.budget,
+            "start_date": buy_obj.start_date,
+            "end_date": buy_obj.end_date,
+            "status": buy_obj.status,
+            "created_at": buy_obj.created_at
+            if not isinstance(buy_obj.created_at, str)
+            else datetime.fromisoformat(buy_obj.created_at),
+            "raw_request": json.loads(buy_obj.raw_request)
+            if buy_obj.raw_request and isinstance(buy_obj.raw_request, str)
         else buy_row[15],
         "context_id": buy_row[16] if len(buy_row) > 16 else None,
     }
@@ -3199,40 +3186,32 @@ def list_users(tenant_id):
     if session.get("role") == "tenant_admin" and session.get("tenant_id") != tenant_id:
         return "Access denied", 403
 
-    conn = get_db_connection()
-    cursor = conn.execute(
-        """
-        SELECT u.user_id, u.email, u.name, u.role, u.created_at, u.last_login, u.is_active
-        FROM users u
-        WHERE u.tenant_id = ?
-        ORDER BY u.created_at DESC
-    """,
-        (tenant_id,),
-    )
+    with get_db_session() as db_session:
+        user_list = db_session.query(User).filter_by(
+            tenant_id=tenant_id
+        ).order_by(User.created_at.desc()).all()
 
-    users = []
-    for row in cursor.fetchall():
-        users.append(
-            {
-                "user_id": row[0],
-                "email": row[1],
-                "name": row[2],
-                "role": row[3],
-                "created_at": row[4],
-                "last_login": row[5],
-                "is_active": row[6],
-            }
+        users = []
+        for user_obj in user_list:
+            users.append(
+                {
+                    "user_id": user_obj.user_id,
+                    "email": user_obj.email,
+                    "name": user_obj.name,
+                    "role": user_obj.role,
+                    "created_at": user_obj.created_at,
+                    "last_login": user_obj.last_login,
+                    "is_active": user_obj.is_active,
+                }
+            )
+
+        # Get tenant name
+        tenant = db_session.query(Tenant).filter_by(tenant_id=tenant_id).first()
+        tenant_name = tenant.name if tenant else "Unknown Tenant"
+
+        return render_template(
+            "users.html", users=users, tenant_id=tenant_id, tenant_name=tenant_name
         )
-
-    # Get tenant name
-    cursor = conn.execute("SELECT name FROM tenants WHERE tenant_id = ?", (tenant_id,))
-    result = cursor.fetchone()
-    tenant_name = result[0] if result else "Unknown Tenant"
-
-    # Context manager handles cleanup
-    return render_template(
-        "users.html", users=users, tenant_id=tenant_id, tenant_name=tenant_name
-    )
 
 
 @app.route("/tenant/<tenant_id>/users/add", methods=["POST"])
@@ -3246,38 +3225,39 @@ def add_user(tenant_id):
     if session.get("role") == "tenant_admin" and session.get("tenant_id") != tenant_id:
         return "Access denied", 403
 
-    conn = get_db_connection()
-    try:
-        user_id = f"user_{uuid.uuid4().hex[:8]}"
-        email = request.form.get("email")
-        name = request.form.get("name")
-        role = request.form.get("role", "viewer")
+    with get_db_session() as db_session:
+        try:
+            user_id = f"user_{uuid.uuid4().hex[:8]}"
+            email = request.form.get("email")
+            name = request.form.get("name")
+            role = request.form.get("role", "viewer")
 
-        # Validate role
-        if role not in ["admin", "manager", "viewer"]:
-            return "Invalid role", 400
+            # Validate role
+            if role not in ["admin", "manager", "viewer"]:
+                return "Invalid role", 400
 
-        # Check if email already exists
-        cursor = conn.execute("SELECT user_id FROM users WHERE email = ?", (email,))
-        if cursor.fetchone():
-            return "User with this email already exists", 400
+            # Check if email already exists
+            existing_user = db_session.query(User).filter_by(email=email).first()
+            if existing_user:
+                return "User with this email already exists", 400
 
-        # Use proper boolean value for PostgreSQL
-        conn.execute(
-            """
-            INSERT INTO users (user_id, tenant_id, email, name, role, created_at, is_active)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-        """,
-            (user_id, tenant_id, email, name, role, datetime.now().isoformat(), True),
-        )
+            # Create new user
+            new_user = User(
+                user_id=user_id,
+                tenant_id=tenant_id,
+                email=email,
+                name=name,
+                role=role,
+                created_at=datetime.now(),
+                is_active=True
+            )
+            db_session.add(new_user)
+            db_session.commit()
 
-        db_session.commit()
-        # Context manager handles cleanup
-
-        return redirect(url_for("list_users", tenant_id=tenant_id))
-    except Exception as e:
-        # Context manager handles cleanup
-        return f"Error: {e}", 400
+            return redirect(url_for("list_users", tenant_id=tenant_id))
+        except Exception as e:
+            db_session.rollback()
+            return f"Error: {e}", 400
 
 
 @app.route("/tenant/<tenant_id>/users/<user_id>/toggle", methods=["POST"])
@@ -3292,25 +3272,22 @@ def toggle_user(tenant_id, user_id):
         ):
             return "Access denied", 403
 
-    conn = get_db_connection()
-    try:
-        # Toggle the is_active status
-        conn.execute(
-            """
-            UPDATE users
-            SET is_active = NOT is_active
-            WHERE user_id = ? AND tenant_id = ?
-        """,
-            (user_id, tenant_id),
-        )
+    with get_db_session() as db_session:
+        try:
+            # Toggle the is_active status
+            user = db_session.query(User).filter_by(
+                user_id=user_id,
+                tenant_id=tenant_id
+            ).first()
+            
+            if user:
+                user.is_active = not user.is_active
+                db_session.commit()
 
-        db_session.commit()
-        # Context manager handles cleanup
-
-        return redirect(url_for("list_users", tenant_id=tenant_id))
-    except Exception as e:
-        # Context manager handles cleanup
-        return f"Error: {e}", 400
+            return redirect(url_for("list_users", tenant_id=tenant_id))
+        except Exception as e:
+            db_session.rollback()
+            return f"Error: {e}", 400
 
 
 @app.route("/tenant/<tenant_id>/users/<user_id>/update_role", methods=["POST"])
