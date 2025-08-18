@@ -3065,30 +3065,25 @@ def update_user_role(tenant_id, user_id):
         if session.get("role") != "tenant_admin" or session.get("tenant_id") != tenant_id:
             return "Access denied", 403
 
-    conn = get_db_connection()
-    try:
-        new_role = request.form.get("role")
+    with get_db_session() as db_session:
+        try:
+            new_role = request.form.get("role")
 
-        # Validate role
-        if new_role not in ["admin", "manager", "viewer"]:
-            return "Invalid role", 400
+            # Validate role
+            if new_role not in ["admin", "manager", "viewer"]:
+                return "Invalid role", 400
 
-        conn.execute(
-            """
-            UPDATE users
-            SET role = ?
-            WHERE user_id = ? AND tenant_id = ?
-        """,
-            (new_role, user_id, tenant_id),
-        )
+            db_session.query(User).filter_by(
+                user_id=user_id,
+                tenant_id=tenant_id
+            ).update({"role": new_role})
 
-        db_session.commit()
-        # Context manager handles cleanup
+            db_session.commit()
 
-        return redirect(url_for("list_users", tenant_id=tenant_id))
-    except Exception as e:
-        # Context manager handles cleanup
-        return f"Error: {e}", 400
+            return redirect(url_for("list_users", tenant_id=tenant_id))
+        except Exception as e:
+            db_session.rollback()
+            return f"Error: {e}", 400
 
 
 @app.route("/tenant/<tenant_id>/principal/<principal_id>/update_mappings", methods=["POST"])
@@ -3102,41 +3097,36 @@ def update_principal_mappings(tenant_id, principal_id):
     if session.get("role") in ["admin", "manager", "tenant_admin"] and session.get("tenant_id") != tenant_id:
         return "Access denied", 403
 
-    conn = get_db_connection()
-    try:
-        # Get the form data for platform mappings
-        mappings = {}
+    with get_db_session() as db_session:
+        try:
+            # Get the form data for platform mappings
+            mappings = {}
 
-        # Check for common ad server mappings
-        if request.form.get("gam_advertiser_id"):
-            mappings["gam"] = {
-                "advertiser_id": request.form.get("gam_advertiser_id"),
-                "network_id": request.form.get("gam_network_id", ""),
-            }
+            # Check for common ad server mappings
+            if request.form.get("gam_advertiser_id"):
+                mappings["gam"] = {
+                    "advertiser_id": request.form.get("gam_advertiser_id"),
+                    "network_id": request.form.get("gam_network_id", ""),
+                }
 
-        if request.form.get("kevel_advertiser_id"):
-            mappings["kevel"] = {"advertiser_id": request.form.get("kevel_advertiser_id")}
+            if request.form.get("kevel_advertiser_id"):
+                mappings["kevel"] = {"advertiser_id": request.form.get("kevel_advertiser_id")}
 
-        if request.form.get("triton_advertiser_id"):
-            mappings["triton"] = {"advertiser_id": request.form.get("triton_advertiser_id")}
+            if request.form.get("triton_advertiser_id"):
+                mappings["triton"] = {"advertiser_id": request.form.get("triton_advertiser_id")}
 
-        # Update the principal
-        conn.execute(
-            """
-            UPDATE principals
-            SET platform_mappings = ?
-            WHERE tenant_id = ? AND principal_id = ?
-        """,
-            (json.dumps(mappings), tenant_id, principal_id),
-        )
+            # Update the principal
+            db_session.query(Principal).filter_by(
+                tenant_id=tenant_id,
+                principal_id=principal_id
+            ).update({"platform_mappings": json.dumps(mappings)})
 
-        db_session.commit()
-        # Context manager handles cleanup
+            db_session.commit()
 
-        return redirect(url_for("tenant_dashboard", tenant_id=tenant_id) + "#principals")
-    except Exception as e:
-        # Context manager handles cleanup
-        return f"Error: {e}", 400
+            return redirect(url_for("tenant_dashboard", tenant_id=tenant_id) + "#principals")
+        except Exception as e:
+            db_session.rollback()
+            return f"Error: {e}", 400
 
 
 @app.route("/tenant/<tenant_id>/adapter/<adapter_name>/inventory_schema", methods=["GET"])
@@ -3149,8 +3139,7 @@ def get_adapter_inventory_schema(tenant_id, adapter_name):
 
     try:
         # Get tenant config to instantiate adapter
-        conn = get_db_connection()
-        config_data = get_tenant_config_from_db(conn, tenant_id)
+        config_data = get_tenant_config_from_db(tenant_id)
         if not config_data:
             return jsonify({"error": "Tenant not found"}), 404
         # PostgreSQL returns JSONB as dict, SQLite returns string
@@ -3210,120 +3199,86 @@ def setup_adapter(tenant_id):
     if session.get("role") in ["admin", "tenant_admin"] and session.get("tenant_id") != tenant_id:
         return "Access denied.", 403
 
-    conn = get_db_connection()
-    try:
-        # Get adapter type
-        adapter_type = request.form.get("adapter")
-        adapter_type_map = {
-            "mock": "mock",
-            "gam": "google_ad_manager",
-            "kevel": "kevel",
-            "triton": "triton",
-        }
+    with get_db_session() as db_session:
+        try:
+            # Get adapter type
+            adapter_type = request.form.get("adapter")
+            adapter_type_map = {
+                "mock": "mock",
+                "gam": "google_ad_manager",
+                "kevel": "kevel",
+                "triton": "triton",
+            }
 
-        if adapter_type not in adapter_type_map:
-            return "Invalid adapter type", 400
+            if adapter_type not in adapter_type_map:
+                return "Invalid adapter type", 400
 
-        mapped_adapter = adapter_type_map[adapter_type]
+            mapped_adapter = adapter_type_map[adapter_type]
 
-        # Update tenant's ad_server field
-        conn.execute(
-            """
-            UPDATE tenants
-            SET ad_server = ?, updated_at = ?
-            WHERE tenant_id = ?
-        """,
-            (mapped_adapter, datetime.now().isoformat(), tenant_id),
-        )
+            # Update tenant's ad_server field
+            db_session.query(Tenant).filter_by(tenant_id=tenant_id).update({
+                "ad_server": mapped_adapter,
+                "updated_at": datetime.now()
+            })
 
-        # Delete any existing adapter config
-        conn.execute(
-            """
-            DELETE FROM adapter_config WHERE tenant_id = ?
-        """,
-            (tenant_id,),
-        )
+            # Delete any existing adapter config
+            db_session.query(AdapterConfig).filter_by(tenant_id=tenant_id).delete()
 
-        # Insert new adapter configuration
-        if adapter_type == "mock":
-            conn.execute(
-                """
-                INSERT INTO adapter_config (tenant_id, adapter_type, mock_dry_run)
-                VALUES (?, ?, ?)
-            """,
-                (tenant_id, mapped_adapter, False),
-            )
-
-        elif adapter_type == "gam":
-            # Log the form data for debugging
-            app.logger.info(f"GAM setup for tenant {tenant_id}")
-            app.logger.info(
-                f"Form data: network_code={request.form.get('network_code')}, "
-                f"trafficker_id={request.form.get('trafficker_id')}"
-            )
-
-            conn.execute(
-                """
-                INSERT INTO adapter_config (
-                    tenant_id, adapter_type, gam_network_code, gam_refresh_token,
-                    gam_company_id, gam_trafficker_id, gam_manual_approval_required
+            # Insert new adapter configuration
+            if adapter_type == "mock":
+                adapter_config = AdapterConfig(
+                    tenant_id=tenant_id,
+                    adapter_type=mapped_adapter,
+                    mock_dry_run=False
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?)
-            """,
-                (
-                    tenant_id,
-                    mapped_adapter,
-                    request.form.get("network_code"),
-                    request.form.get("refresh_token"),
-                    None,  # company_id is now per-principal, not per-tenant
-                    request.form.get("trafficker_id"),
-                    False,
-                ),
-            )
+                db_session.add(adapter_config)
 
-        elif adapter_type == "kevel":
-            conn.execute(
-                """
-                INSERT INTO adapter_config (
-                    tenant_id, adapter_type, kevel_network_id, kevel_api_key,
-                    kevel_manual_approval_required
+            elif adapter_type == "gam":
+                # Log the form data for debugging
+                app.logger.info(f"GAM setup for tenant {tenant_id}")
+                app.logger.info(
+                    f"Form data: network_code={request.form.get('network_code')}, "
+                    f"trafficker_id={request.form.get('trafficker_id')}"
                 )
-                VALUES (?, ?, ?, ?, ?)
-            """,
-                (
-                    tenant_id,
-                    mapped_adapter,
-                    request.form.get("network_id"),
-                    request.form.get("api_key"),
-                    False,
-                ),
-            )
 
-        elif adapter_type == "triton":
-            conn.execute(
-                """
-                INSERT INTO adapter_config (
-                    tenant_id, adapter_type, triton_station_id, triton_api_key
+                adapter_config = AdapterConfig(
+                    tenant_id=tenant_id,
+                    adapter_type=mapped_adapter,
+                    gam_network_code=request.form.get("network_code"),
+                    gam_refresh_token=request.form.get("refresh_token"),
+                    gam_company_id=None,  # company_id is now per-principal, not per-tenant
+                    gam_trafficker_id=request.form.get("trafficker_id"),
+                    gam_manual_approval_required=False
                 )
-                VALUES (?, ?, ?, ?)
-            """,
-                (
-                    tenant_id,
-                    mapped_adapter,
-                    request.form.get("station_id"),
-                    request.form.get("api_key"),
-                ),
-            )
+                db_session.add(adapter_config)
 
-        db_session.commit()
-        # Context manager handles cleanup
+            elif adapter_type == "kevel":
+                adapter_config = AdapterConfig(
+                    tenant_id=tenant_id,
+                    adapter_type=mapped_adapter,
+                    kevel_network_id=request.form.get("network_id"),
+                    kevel_api_key=request.form.get("api_key"),
+                    kevel_manual_approval_required=False
+                )
+                db_session.add(adapter_config)
 
-        flash("Ad server configuration updated successfully!", "success")
-        return redirect(url_for("tenant_dashboard", tenant_id=tenant_id) + "#adserver")
-    except Exception as e:
-        # Context manager handles cleanup
-        flash(f"Error updating adapter configuration: {str(e)}", "error")
-        return redirect(url_for("tenant_dashboard", tenant_id=tenant_id) + "#adserver")
+            elif adapter_type == "triton":
+                adapter_config = AdapterConfig(
+                    tenant_id=tenant_id,
+                    adapter_type=mapped_adapter,
+                    triton_station_id=request.form.get("station_id"),
+                    triton_api_key=request.form.get("api_key")
+                )
+                db_session.add(adapter_config)
+
+            db_session.commit()
+
+            flash("Ad server configuration updated successfully!", "success")
+            return redirect(url_for("tenant_dashboard", tenant_id=tenant_id) + "#adserver")
+        except Exception as e:
+            db_session.rollback()
+            flash(f"Error updating adapter configuration: {str(e)}", "error")
+            return redirect(url_for("tenant_dashboard", tenant_id=tenant_id) + "#adserver")
 
 
 @app.route("/tenant/<tenant_id>/principals/create", methods=["GET", "POST"])
@@ -3938,7 +3893,7 @@ def add_product(tenant_id):
                 implementation_config = {}
 
             # Build implementation config based on adapter
-            tenant_config = get_tenant_config_from_db(conn, tenant_id)
+            tenant_config = get_tenant_config_from_db(tenant_id)
             if not tenant_config:
                 return jsonify({"error": "Tenant not found"}), 404
 
@@ -4208,7 +4163,7 @@ def get_product_templates(tenant_id):
 
         # Get tenant's industry from config
         conn = get_db_connection()
-        config = get_tenant_config_from_db(conn, tenant_id)
+        config = get_tenant_config_from_db(tenant_id)
         # Context manager handles cleanup
 
         if not config:
@@ -4373,7 +4328,7 @@ def policy_settings(tenant_id):
     tenant_name = tenant[0]
 
     # Get tenant config using helper function
-    config = get_tenant_config_from_db(conn, tenant_id)
+    config = get_tenant_config_from_db(tenant_id)
     if not config:
         # Context manager handles cleanup
         return "Tenant config not found", 404
@@ -4488,7 +4443,7 @@ def update_policy_settings(tenant_id):
         conn = get_db_connection()
 
         # Get current config
-        config = get_tenant_config_from_db(conn, tenant_id)
+        config = get_tenant_config_from_db(tenant_id)
         if not config:
             return jsonify({"error": "Tenant not found"}), 404
 
@@ -5545,7 +5500,7 @@ def analyze_ad_server_inventory(tenant_id):
         conn = get_db_connection()
 
         # Get tenant config to determine adapter
-        config = get_tenant_config_from_db(conn, tenant_id)
+        config = get_tenant_config_from_db(tenant_id)
         if not config:
             return jsonify({"error": "Tenant not found"}), 404
 
@@ -5908,7 +5863,7 @@ def get_gam_line_item(tenant_id, line_item_id):
             # Context manager handles cleanup
             return jsonify({"error": "Tenant not found"}), 404
 
-        tenant_config = get_tenant_config_from_db(conn, tenant_id)
+        tenant_config = get_tenant_config_from_db(tenant_id)
         # Context manager handles cleanup
         gam_config = tenant_config.get("adapters", {}).get("google_ad_manager", {})
 
@@ -6482,7 +6437,7 @@ def register_adapter_routes():
             ad_server = row[1]
             print(f"Processing tenant {tenant_id} with adapter {ad_server}")
 
-            tenant_config = get_tenant_config_from_db(conn, tenant_id)
+            tenant_config = get_tenant_config_from_db(tenant_id)
             if not tenant_config:
                 continue
 
