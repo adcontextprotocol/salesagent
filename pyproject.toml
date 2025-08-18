@@ -52,6 +52,7 @@ dev = [
     "pytest-asyncio>=1.1.0",
     "pytest-cov>=6.2.1",
     "pytest-mock>=3.14.1",
+    "ruff>=0.8.0",
 ]
 
 [tool.black]
@@ -91,6 +92,8 @@ exclude = [
     "dist",
     "alembic/versions",
 ]
+
+[tool.ruff.lint]
 select = [
     "E",  # pycodestyle errors
     "W",  # pycodestyle warnings
@@ -107,6 +110,6 @@ ignore = [
     "F821",  # undefined name
 ]
 
-[tool.ruff.per-file-ignores]
+[tool.ruff.lint.per-file-ignores]
 "tests/*" = ["E722", "F821"]
 "admin_ui.py" = ["E402", "E722"]
