@@ -3,7 +3,7 @@
 import asyncio
 from typing import Any
 
-from fastmcp.client import FastMCPClient
+from fastmcp.client import Client
 from fastmcp.client.transports import StreamableHttpTransport
 
 from schemas import Product
@@ -42,7 +42,7 @@ class MCPProductCatalog(ProductCatalogProvider):
             headers[self.upstream_auth_header] = self.upstream_token
 
         transport = StreamableHttpTransport(url=self.upstream_url, headers=headers)
-        self.client = FastMCPClient("MCP Product Catalog Client", transport)
+        self.client = Client(transport=transport)
         await self.client.__aenter__()
 
     async def shutdown(self) -> None:
@@ -99,7 +99,7 @@ class MCPProductCatalog(ProductCatalogProvider):
 
             return products
 
-        except TimeoutError:
-            raise Exception(f"Upstream MCP server timeout after {self.timeout} seconds")
+        except TimeoutError as err:
+            raise Exception(f"Upstream MCP server timeout after {self.timeout} seconds") from err
         except Exception as e:
-            raise Exception(f"Error calling upstream MCP server: {str(e)}")
+            raise Exception(f"Error calling upstream MCP server: {str(e)}") from e

@@ -3,7 +3,7 @@
 
 
 import pytest
-from fastmcp.client import FastMCPClient
+from fastmcp.client import Client
 from fastmcp.client.transports import StreamableHttpTransport
 
 pytestmark = pytest.mark.integration
@@ -17,7 +17,7 @@ async def test_spec_compliance_tools_exposed(sample_principal):
     # Create client with test token from fixture
     headers = {"x-adcp-auth": sample_principal["access_token"]}
     transport = StreamableHttpTransport(url="http://localhost:8080/mcp/", headers=headers)
-    client = FastMCPClient("AdCP Test Client", transport)
+    client = Client(transport=transport)
 
     async with client:
         # Test that core AdCP tools exist and are callable
@@ -41,11 +41,11 @@ async def test_spec_compliance_tools_exposed(sample_principal):
             pass
 
         # Test 3: get_principal_summary should NOT exist
-        with pytest.raises(Exception):  # FastMCP will raise an error for unknown tools
+        with pytest.raises(ValueError):  # FastMCP will raise an error for unknown tools
             await client.call_tool("get_principal_summary", {})
 
         # Test 4: submit_creatives should NOT exist (old name)
-        with pytest.raises(Exception):  # FastMCP will raise an error for unknown tools
+        with pytest.raises(ValueError):  # FastMCP will raise an error for unknown tools
             await client.call_tool("submit_creatives", {"media_buy_id": "test", "creatives": []})
 
 
@@ -56,7 +56,7 @@ async def test_core_adcp_tools_callable(sample_principal):
 
     headers = {"x-adcp-auth": sample_principal["access_token"]}
     transport = StreamableHttpTransport(url="http://localhost:8080/mcp/", headers=headers)
-    client = FastMCPClient("AdCP Test Client", transport)
+    client = Client(transport=transport)
 
     from datetime import date
 

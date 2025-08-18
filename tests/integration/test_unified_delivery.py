@@ -4,7 +4,7 @@
 from datetime import date
 
 import pytest
-from fastmcp.client import FastMCPClient
+from fastmcp.client import Client
 from fastmcp.client.transports import StreamableHttpTransport
 
 pytestmark = pytest.mark.integration
@@ -18,7 +18,7 @@ async def test_unified_delivery_single_buy(sample_principal, sample_media_buy_re
     # Create client with test token from fixture
     headers = {"x-adcp-auth": sample_principal["access_token"]}
     transport = StreamableHttpTransport(url="http://localhost:8080/mcp/", headers=headers)
-    client = FastMCPClient("AdCP Test Client", transport)
+    client = Client(transport=transport)
 
     async with client:
         # Test single media buy query
@@ -37,7 +37,7 @@ async def test_unified_delivery_multiple_buys(sample_principal):
 
     headers = {"x-adcp-auth": sample_principal["access_token"]}
     transport = StreamableHttpTransport(url="http://localhost:8080/mcp/", headers=headers)
-    client = FastMCPClient("AdCP Test Client", transport)
+    client = Client(transport=transport)
 
     async with client:
         result = await client.call_tool(
@@ -56,7 +56,7 @@ async def test_unified_delivery_active_filter(sample_principal):
 
     headers = {"x-adcp-auth": sample_principal["access_token"]}
     transport = StreamableHttpTransport(url="http://localhost:8080/mcp/", headers=headers)
-    client = FastMCPClient("AdCP Test Client", transport)
+    client = Client(transport=transport)
 
     async with client:
         # Default filter should be 'active'
@@ -73,7 +73,7 @@ async def test_unified_delivery_all_filter(sample_principal):
 
     headers = {"x-adcp-auth": sample_principal["access_token"]}
     transport = StreamableHttpTransport(url="http://localhost:8080/mcp/", headers=headers)
-    client = FastMCPClient("AdCP Test Client", transport)
+    client = Client(transport=transport)
 
     async with client:
         result = await client.call_tool(
@@ -85,7 +85,7 @@ async def test_unified_delivery_all_filter(sample_principal):
         # Check aggregate fields
         assert "total_spend" in result
         assert "active_count" in result
-        assert isinstance(result["total_spend"], (int, float))
+        assert isinstance(result["total_spend"], int | float)
         assert isinstance(result["active_count"], int)
 
 
@@ -96,7 +96,7 @@ async def test_unified_delivery_completed_filter(sample_principal):
 
     headers = {"x-adcp-auth": sample_principal["access_token"]}
     transport = StreamableHttpTransport(url="http://localhost:8080/mcp/", headers=headers)
-    client = FastMCPClient("AdCP Test Client", transport)
+    client = Client(transport=transport)
 
     async with client:
         result = await client.call_tool(
@@ -115,7 +115,7 @@ async def test_deprecated_endpoint_backward_compatibility(sample_principal):
 
     headers = {"x-adcp-auth": sample_principal["access_token"]}
     transport = StreamableHttpTransport(url="http://localhost:8080/mcp/", headers=headers)
-    client = FastMCPClient("AdCP Test Client", transport)
+    client = Client(transport=transport)
 
     async with client:
         # This may raise an exception if the endpoint was removed
