@@ -26,9 +26,7 @@ from flask import (
 )
 from flask_socketio import SocketIO, emit, join_room, leave_room
 
-from audit_logger import AuditLogger
 from database_session import get_db_session
-from db_config import get_db_connection
 from models import (
     AdapterConfig,
     MediaBuy,
@@ -118,9 +116,6 @@ app.register_blueprint(gam_reporting_api)
 from activity_feed import activity_feed
 from gam_inventory_service import (
     create_inventory_endpoints as register_inventory_endpoints,
-)
-from gam_inventory_service import (
-    db_session,
 )
 
 
@@ -3073,10 +3068,7 @@ def update_user_role(tenant_id, user_id):
             if new_role not in ["admin", "manager", "viewer"]:
                 return "Invalid role", 400
 
-            db_session.query(User).filter_by(
-                user_id=user_id,
-                tenant_id=tenant_id
-            ).update({"role": new_role})
+            db_session.query(User).filter_by(user_id=user_id, tenant_id=tenant_id).update({"role": new_role})
 
             db_session.commit()
 
@@ -3116,10 +3108,9 @@ def update_principal_mappings(tenant_id, principal_id):
                 mappings["triton"] = {"advertiser_id": request.form.get("triton_advertiser_id")}
 
             # Update the principal
-            db_session.query(Principal).filter_by(
-                tenant_id=tenant_id,
-                principal_id=principal_id
-            ).update({"platform_mappings": json.dumps(mappings)})
+            db_session.query(Principal).filter_by(tenant_id=tenant_id, principal_id=principal_id).update(
+                {"platform_mappings": json.dumps(mappings)}
+            )
 
             db_session.commit()
 
@@ -3216,21 +3207,16 @@ def setup_adapter(tenant_id):
             mapped_adapter = adapter_type_map[adapter_type]
 
             # Update tenant's ad_server field
-            db_session.query(Tenant).filter_by(tenant_id=tenant_id).update({
-                "ad_server": mapped_adapter,
-                "updated_at": datetime.now()
-            })
+            db_session.query(Tenant).filter_by(tenant_id=tenant_id).update(
+                {"ad_server": mapped_adapter, "updated_at": datetime.now()}
+            )
 
             # Delete any existing adapter config
             db_session.query(AdapterConfig).filter_by(tenant_id=tenant_id).delete()
 
             # Insert new adapter configuration
             if adapter_type == "mock":
-                adapter_config = AdapterConfig(
-                    tenant_id=tenant_id,
-                    adapter_type=mapped_adapter,
-                    mock_dry_run=False
-                )
+                adapter_config = AdapterConfig(tenant_id=tenant_id, adapter_type=mapped_adapter, mock_dry_run=False)
                 db_session.add(adapter_config)
 
             elif adapter_type == "gam":
@@ -3248,7 +3234,7 @@ def setup_adapter(tenant_id):
                     gam_refresh_token=request.form.get("refresh_token"),
                     gam_company_id=None,  # company_id is now per-principal, not per-tenant
                     gam_trafficker_id=request.form.get("trafficker_id"),
-                    gam_manual_approval_required=False
+                    gam_manual_approval_required=False,
                 )
                 db_session.add(adapter_config)
 
@@ -3258,7 +3244,7 @@ def setup_adapter(tenant_id):
                     adapter_type=mapped_adapter,
                     kevel_network_id=request.form.get("network_id"),
                     kevel_api_key=request.form.get("api_key"),
-                    kevel_manual_approval_required=False
+                    kevel_manual_approval_required=False,
                 )
                 db_session.add(adapter_config)
 
@@ -3267,7 +3253,7 @@ def setup_adapter(tenant_id):
                     tenant_id=tenant_id,
                     adapter_type=mapped_adapter,
                     triton_station_id=request.form.get("station_id"),
-                    triton_api_key=request.form.get("api_key")
+                    triton_api_key=request.form.get("api_key"),
                 )
                 db_session.add(adapter_config)
 
@@ -3390,10 +3376,12 @@ def test_gam_connection():
 
         # Get OAuth credentials from superadmin config
         with get_db_session() as db_session:
-            configs = db_session.query(SuperadminConfig).filter(
-                SuperadminConfig.config_key.in_(['gam_oauth_client_id', 'gam_oauth_client_secret'])
-            ).all()
-            
+            configs = (
+                db_session.query(SuperadminConfig)
+                .filter(SuperadminConfig.config_key.in_(["gam_oauth_client_id", "gam_oauth_client_secret"]))
+                .all()
+            )
+
             oauth_config = {}
             for config in configs:
                 if config.config_key == "gam_oauth_client_id":
@@ -3580,11 +3568,10 @@ def get_gam_advertisers():
 
         # Get adapter configuration for the tenant
         with get_db_session() as db_session:
-            adapter = db_session.query(AdapterConfig).filter_by(
-                tenant_id=tenant_id,
-                adapter_type='google_ad_manager'
-            ).first()
-            
+            adapter = (
+                db_session.query(AdapterConfig).filter_by(tenant_id=tenant_id, adapter_type="google_ad_manager").first()
+            )
+
             if not adapter:
                 return jsonify({"error": "GAM not configured for this tenant"}), 400
 
@@ -3592,10 +3579,12 @@ def get_gam_advertisers():
             network_code = adapter.gam_network_code
 
             # Get OAuth credentials from superadmin config
-            configs = db_session.query(SuperadminConfig).filter(
-                SuperadminConfig.config_key.in_(['gam_oauth_client_id', 'gam_oauth_client_secret'])
-            ).all()
-            
+            configs = (
+                db_session.query(SuperadminConfig)
+                .filter(SuperadminConfig.config_key.in_(["gam_oauth_client_id", "gam_oauth_client_secret"]))
+                .all()
+            )
+
             oauth_config = {}
             for config in configs:
                 if config.config_key == "gam_oauth_client_id":
@@ -3772,17 +3761,16 @@ def edit_product_basic(tenant_id, product_id):
         if request.method == "POST":
             try:
                 # Update product basic details
-                product = db_session.query(Product).filter_by(
-                    tenant_id=tenant_id,
-                    product_id=product_id
-                ).first()
-                
+                product = db_session.query(Product).filter_by(tenant_id=tenant_id, product_id=product_id).first()
+
                 if product:
                     product.name = request.form["name"]
                     product.description = request.form.get("description", "")
                     product.delivery_type = request.form.get("delivery_type", "guaranteed")
                     product.is_fixed_price = request.form.get("delivery_type") == "guaranteed"
-                    product.cpm = float(request.form.get("cpm", 0)) if request.form.get("delivery_type") == "guaranteed" else None
+                    product.cpm = (
+                        float(request.form.get("cpm", 0)) if request.form.get("delivery_type") == "guaranteed" else None
+                    )
                     product.price_guidance = (
                         json.dumps(
                             {
@@ -3793,28 +3781,33 @@ def edit_product_basic(tenant_id, product_id):
                         if request.form.get("delivery_type") != "guaranteed"
                         else None
                     )
-                    
+
                     db_session.commit()
                     return redirect(url_for("list_products", tenant_id=tenant_id))
                 else:
-                    return render_template("edit_product.html", tenant_id=tenant_id, product=None, error="Product not found")
+                    return render_template(
+                        "edit_product.html", tenant_id=tenant_id, product=None, error="Product not found"
+                    )
 
             except Exception as e:
                 db_session.rollback()
                 return render_template("edit_product.html", tenant_id=tenant_id, product=None, error=str(e))
 
         # GET request - load product
-        product_data = db_session.query(Product).filter_by(
-            tenant_id=tenant_id,
-            product_id=product_id
-        ).first()
+        product_data = db_session.query(Product).filter_by(tenant_id=tenant_id, product_id=product_id).first()
 
         if not product_data:
             return "Product not found", 404
 
         # Handle PostgreSQL (returns objects) vs SQLite (returns JSON strings)
-        formats = product_data.formats if isinstance(product_data.formats, list) else json.loads(product_data.formats or "[]")
-        price_guidance = product_data.price_guidance if isinstance(product_data.price_guidance, dict) else json.loads(product_data.price_guidance or "{}")
+        formats = (
+            product_data.formats if isinstance(product_data.formats, list) else json.loads(product_data.formats or "[]")
+        )
+        price_guidance = (
+            product_data.price_guidance
+            if isinstance(product_data.price_guidance, dict)
+            else json.loads(product_data.price_guidance or "{}")
+        )
 
         product = {
             "product_id": product_data.product_id,
@@ -3843,7 +3836,7 @@ def add_product(tenant_id):
             try:
                 # Check if this is from AI form
                 ai_config = request.form.get("ai_config")
-                    if ai_config:
+                if ai_config:
                     # Parse AI-generated configuration
                     config = json.loads(ai_config)
                     product_id = request.form.get("product_id") or config.get("product_id")
@@ -3867,61 +3860,61 @@ def add_product(tenant_id):
                     targeting_template = {}
                     implementation_config = {}
 
-                # Build implementation config based on adapter
-                tenant_config = get_tenant_config_from_db(tenant_id)
-                if not tenant_config:
-                    return jsonify({"error": "Tenant not found"}), 404
+                    # Build implementation config based on adapter
+                    tenant_config = get_tenant_config_from_db(tenant_id)
+                    if not tenant_config:
+                        return jsonify({"error": "Tenant not found"}), 404
 
-                # Handle regular form submission fields if not from AI
-                if not ai_config:
-                    # Get selected countries
-                    countries = request.form.getlist("countries")
-                    # If "ALL" is selected or no countries selected, set to None (all countries)
-                    if "ALL" in countries or not countries:
-                        countries = None
+                    # Handle regular form submission fields if not from AI
+                    if not ai_config:
+                        # Get selected countries
+                        countries = request.form.getlist("countries")
+                        # If "ALL" is selected or no countries selected, set to None (all countries)
+                        if "ALL" in countries or not countries:
+                            countries = None
 
-                    # Determine pricing based on delivery type
-                    delivery_type = request.form.get("delivery_type", "guaranteed")
-                    is_fixed_price = delivery_type == "guaranteed"
+                        # Determine pricing based on delivery type
+                        delivery_type = request.form.get("delivery_type", "guaranteed")
+                        is_fixed_price = delivery_type == "guaranteed"
 
-                    # Handle CPM and price guidance
-                    cpm = None
-                    price_guidance = None
+                        # Handle CPM and price guidance
+                        cpm = None
+                        price_guidance = None
 
-                    if is_fixed_price:
-                        cpm = float(request.form.get("cpm", 5.0))
+                        if is_fixed_price:
+                            cpm = float(request.form.get("cpm", 5.0))
+                        else:
+                            # Non-guaranteed: use price guidance
+                            min_cpm = request.form.get("price_guidance_min")
+                            max_cpm = request.form.get("price_guidance_max")
+                            if min_cpm and max_cpm:
+                                price_guidance = {
+                                    "min_cpm": float(min_cpm),
+                                    "max_cpm": float(max_cpm),
+                                }
                     else:
-                        # Non-guaranteed: use price guidance
-                        min_cpm = request.form.get("price_guidance_min")
-                        max_cpm = request.form.get("price_guidance_max")
-                        if min_cpm and max_cpm:
-                            price_guidance = {
-                                "min_cpm": float(min_cpm),
-                                "max_cpm": float(max_cpm),
-                            }
-                else:
-                    # AI config already has these values
-                    is_fixed_price = delivery_type == "guaranteed"
+                        # AI config already has these values
+                        is_fixed_price = delivery_type == "guaranteed"
 
-                # Insert product
-                new_product = Product(
-                    tenant_id=tenant_id,
-                    product_id=product_id,
-                    name=name,
-                    description=description,
-                    formats=json.dumps(formats),
-                    targeting_template=json.dumps(targeting_template),
-                    delivery_type=delivery_type,
-                    is_fixed_price=is_fixed_price,
-                    cpm=cpm,
-                    price_guidance=json.dumps(price_guidance),
-                    countries=json.dumps(countries),
-                    implementation_config=json.dumps(implementation_config)
-                )
-                db_session.add(new_product)
-                db_session.commit()
+                    # Insert product
+                    new_product = Product(
+                        tenant_id=tenant_id,
+                        product_id=product_id,
+                        name=name,
+                        description=description,
+                        formats=json.dumps(formats),
+                        targeting_template=json.dumps(targeting_template),
+                        delivery_type=delivery_type,
+                        is_fixed_price=is_fixed_price,
+                        cpm=cpm,
+                        price_guidance=json.dumps(price_guidance),
+                        countries=json.dumps(countries),
+                        implementation_config=json.dumps(implementation_config),
+                    )
+                    db_session.add(new_product)
+                    db_session.commit()
 
-                return redirect(url_for("list_products", tenant_id=tenant_id))
+                    return redirect(url_for("list_products", tenant_id=tenant_id))
 
             except Exception as e:
                 db_session.rollback()
@@ -4028,91 +4021,82 @@ def bulk_product_upload(tenant_id):
             # Direct JSON submission
             products = request.get_json().get("products", [])
 
-        conn = get_db_connection()
-        created_count = 0
-        errors = []
+        with get_db_session() as db_session:
+            created_count = 0
+            errors = []
 
-        for idx, product_data in enumerate(products):
-            try:
-                # Validate required fields
-                if not product_data.get("name"):
-                    errors.append(f"Row {idx+1}: Missing product name")
-                    continue
+            for idx, product_data in enumerate(products):
+                try:
+                    # Validate required fields
+                    if not product_data.get("name"):
+                        errors.append(f"Row {idx+1}: Missing product name")
+                        continue
 
-                # Generate product ID if not provided
-                product_id = product_data.get("product_id", product_data["name"].lower().replace(" ", "_"))
+                    # Generate product ID if not provided
+                    product_id = product_data.get("product_id", product_data["name"].lower().replace(" ", "_"))
 
-                # Parse formats (handle comma-separated string or list)
-                formats = product_data.get("formats", [])
-                if isinstance(formats, str):
-                    formats = [f.strip() for f in formats.split(",")]
+                    # Parse formats (handle comma-separated string or list)
+                    formats = product_data.get("formats", [])
+                    if isinstance(formats, str):
+                        formats = [f.strip() for f in formats.split(",")]
 
-                # Parse countries
-                countries = product_data.get("countries")
-                if isinstance(countries, str) and countries:
-                    countries = [c.strip() for c in countries.split(",")]
-                elif not countries:
-                    countries = None
+                    # Parse countries
+                    countries = product_data.get("countries")
+                    if isinstance(countries, str) and countries:
+                        countries = [c.strip() for c in countries.split(",")]
+                    elif not countries:
+                        countries = None
 
-                # Determine delivery type and pricing
-                delivery_type = product_data.get("delivery_type", "guaranteed")
-                cpm = float(product_data.get("cpm", 0)) if product_data.get("cpm") else None
+                    # Determine delivery type and pricing
+                    delivery_type = product_data.get("delivery_type", "guaranteed")
+                    cpm = float(product_data.get("cpm", 0)) if product_data.get("cpm") else None
 
-                price_guidance_min = None
-                price_guidance_max = None
-                if delivery_type == "non_guaranteed" and not cpm:
-                    price_guidance_min = float(product_data.get("price_guidance_min", 2.0))
-                    price_guidance_max = float(product_data.get("price_guidance_max", 10.0))
+                    price_guidance_min = None
+                    price_guidance_max = None
+                    if delivery_type == "non_guaranteed" and not cpm:
+                        price_guidance_min = float(product_data.get("price_guidance_min", 2.0))
+                        price_guidance_max = float(product_data.get("price_guidance_max", 10.0))
 
-                # Build targeting template
-                targeting_template = {}
-                if product_data.get("device_types"):
-                    device_types = product_data["device_types"]
-                    if isinstance(device_types, str):
-                        device_types = [d.strip() for d in device_types.split(",")]
-                    targeting_template["device_targets"] = {"device_types": device_types}
+                    # Build targeting template
+                    targeting_template = {}
+                    if product_data.get("device_types"):
+                        device_types = product_data["device_types"]
+                        if isinstance(device_types, str):
+                            device_types = [d.strip() for d in device_types.split(",")]
+                        targeting_template["device_targets"] = {"device_types": device_types}
 
-                if countries:
-                    targeting_template["geo_targets"] = {"countries": countries}
+                    if countries:
+                        targeting_template["geo_targets"] = {"countries": countries}
 
-                # Insert product
-                conn.execute(
-                    """
-                    INSERT INTO products (
-                        product_id, tenant_id, name, description,
-                        creative_formats, delivery_type, cpm,
-                        price_guidance_min, price_guidance_max,
-                        countries, targeting_template, implementation_config,
-                        created_at, updated_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                    (
-                        product_id,
-                        tenant_id,
-                        product_data["name"],
-                        product_data.get("description", ""),
-                        json.dumps(formats),
-                        delivery_type,
-                        cpm,
-                        price_guidance_min,
-                        price_guidance_max,
-                        json.dumps(countries) if countries else None,
-                        json.dumps(targeting_template),
-                        json.dumps(product_data.get("implementation_config", {})),
-                        datetime.now().isoformat(),
-                        datetime.now().isoformat(),
-                    ),
-                )
+                    # Insert product
+                    new_product = Product(
+                        product_id=product_id,
+                        tenant_id=tenant_id,
+                        name=product_data["name"],
+                        description=product_data.get("description", ""),
+                        formats=json.dumps(formats),
+                        delivery_type=delivery_type,
+                        cpm=cpm,
+                        price_guidance=(
+                            json.dumps({"min_cpm": price_guidance_min, "max_cpm": price_guidance_max})
+                            if price_guidance_min and price_guidance_max
+                            else None
+                        ),
+                        countries=json.dumps(countries) if countries else None,
+                        targeting_template=json.dumps(targeting_template),
+                        implementation_config=json.dumps(product_data.get("implementation_config", {})),
+                        created_at=datetime.now(),
+                        updated_at=datetime.now(),
+                    )
+                    db_session.add(new_product)
+                    created_count += 1
 
-                created_count += 1
+                except Exception as e:
+                    errors.append(f"Row {idx+1}: {str(e)}")
 
-            except Exception as e:
-                errors.append(f"Row {idx+1}: {str(e)}")
+            db_session.commit()
 
-        db_session.commit()
-        # Context manager handles cleanup
-
-        return jsonify({"success": True, "created": created_count, "errors": errors})
+            return jsonify({"success": True, "created": created_count, "errors": errors})
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -4126,9 +4110,7 @@ def get_product_templates(tenant_id):
         from default_products import get_industry_specific_products
 
         # Get tenant's industry from config
-        conn = get_db_connection()
         config = get_tenant_config_from_db(tenant_id)
-        # Context manager handles cleanup
 
         if not config:
             return jsonify({"error": "Tenant not found"}), 404
@@ -4213,48 +4195,33 @@ def create_from_template(tenant_id):
             product["product_id"] = f"{template['product_id']}_{uuid.uuid4().hex[:6]}"
 
         # Insert product
-        conn = get_db_connection()
+        with get_db_session() as db_session:
+            # Check if product ID already exists
+            existing_product = (
+                db_session.query(Product).filter_by(tenant_id=tenant_id, product_id=product["product_id"]).first()
+            )
+            if existing_product:
+                return jsonify({"error": "Product ID already exists"}), 400
 
-        # Check if product ID already exists
-        cursor = conn.execute(
-            "SELECT product_id FROM products WHERE tenant_id = ? AND product_id = ?",
-            (tenant_id, product["product_id"]),
-        )
-        if cursor.fetchone():
-            # Context manager handles cleanup
-            return jsonify({"error": "Product ID already exists"}), 400
-
-        # Insert the product
-        conn.execute(
-            """
-            INSERT INTO products (
-                product_id, tenant_id, name, description,
-                creative_formats, delivery_type, cpm,
-                price_guidance_min, price_guidance_max,
-                countries, targeting_template, implementation_config,
-                created_at, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """,
-            (
-                product["product_id"],
-                tenant_id,
-                product["name"],
-                product.get("description", ""),
-                json.dumps(product.get("formats", [])),
-                product.get("delivery_type", "guaranteed"),
-                product.get("cpm"),
-                product.get("price_guidance", {}).get("min") if not product.get("cpm") else None,
-                product.get("price_guidance", {}).get("max") if not product.get("cpm") else None,
-                json.dumps(product.get("countries")) if product.get("countries") else None,
-                json.dumps(product.get("targeting_template", {})),
-                json.dumps(product.get("implementation_config", {})),
-                datetime.now().isoformat(),
-                datetime.now().isoformat(),
-            ),
-        )
-
-        db_session.commit()
-        # Context manager handles cleanup
+            # Insert the product
+            new_product = Product(
+                product_id=product["product_id"],
+                tenant_id=tenant_id,
+                name=product["name"],
+                description=product.get("description", ""),
+                creative_formats=json.dumps(product.get("formats", [])),
+                delivery_type=product.get("delivery_type", "guaranteed"),
+                cpm=product.get("cpm"),
+                price_guidance_min=product.get("price_guidance", {}).get("min") if not product.get("cpm") else None,
+                price_guidance_max=product.get("price_guidance", {}).get("max") if not product.get("cpm") else None,
+                countries=json.dumps(product.get("countries")) if product.get("countries") else None,
+                targeting_template=json.dumps(product.get("targeting_template", {})),
+                implementation_config=json.dumps(product.get("implementation_config", {})),
+                created_at=datetime.now().isoformat(),
+                updated_at=datetime.now().isoformat(),
+            )
+            db_session.add(new_product)
+            db_session.commit()
 
         return jsonify(
             {
@@ -4280,107 +4247,95 @@ def policy_settings(tenant_id):
     if session.get("role") == "tenant_admin" and session.get("tenant_id") != tenant_id:
         return "Access denied", 403
 
-    conn = get_db_connection()
+    with get_db_session() as db_session:
+        # Get tenant info
+        tenant = db_session.query(Tenant).filter_by(tenant_id=tenant_id).first()
+        if not tenant:
+            return "Tenant not found", 404
 
-    # Get tenant info
-    cursor = conn.execute("SELECT name FROM tenants WHERE tenant_id = ?", (tenant_id,))
-    tenant = cursor.fetchone()
-    if not tenant:
-        # Context manager handles cleanup
-        return "Tenant not found", 404
+        tenant_name = tenant.name
 
-    tenant_name = tenant[0]
+        # Get tenant config using helper function
+        config = get_tenant_config_from_db(tenant_id)
+        if not config:
+            return "Tenant config not found", 404
 
-    # Get tenant config using helper function
-    config = get_tenant_config_from_db(tenant_id)
-    if not config:
-        # Context manager handles cleanup
-        return "Tenant config not found", 404
+        # Define default policies that all publishers start with
+        default_policies = {
+            "enabled": True,
+            "require_manual_review": False,
+            "default_prohibited_categories": [
+                "illegal_content",
+                "hate_speech",
+                "violence",
+                "adult_content",
+                "misleading_health_claims",
+                "financial_scams",
+            ],
+            "default_prohibited_tactics": [
+                "targeting_children_under_13",
+                "discriminatory_targeting",
+                "deceptive_claims",
+                "impersonation",
+                "privacy_violations",
+            ],
+            "prohibited_advertisers": [],
+            "prohibited_categories": [],
+            "prohibited_tactics": [],
+        }
 
-    # Define default policies that all publishers start with
-    default_policies = {
-        "enabled": True,
-        "require_manual_review": False,
-        "default_prohibited_categories": [
-            "illegal_content",
-            "hate_speech",
-            "violence",
-            "adult_content",
-            "misleading_health_claims",
-            "financial_scams",
-        ],
-        "default_prohibited_tactics": [
-            "targeting_children_under_13",
-            "discriminatory_targeting",
-            "deceptive_claims",
-            "impersonation",
-            "privacy_violations",
-        ],
-        "prohibited_advertisers": [],
-        "prohibited_categories": [],
-        "prohibited_tactics": [],
-    }
+        # Get tenant policy settings, using defaults where not specified
+        tenant_policies = config.get("policy_settings", {})
+        policy_settings = default_policies.copy()
+        policy_settings.update(tenant_policies)
 
-    # Get tenant policy settings, using defaults where not specified
-    tenant_policies = config.get("policy_settings", {})
-    policy_settings = default_policies.copy()
-    policy_settings.update(tenant_policies)
-
-    # Get recent policy checks from audit log
-    cursor = conn.execute(
-        """
-        SELECT timestamp, principal_id, success, details
-        FROM audit_logs
-        WHERE tenant_id = ? AND operation = 'policy_check'
-        ORDER BY timestamp DESC
-        LIMIT 20
-    """,
-        (tenant_id,),
-    )
-
-    recent_checks = []
-    for row in cursor.fetchall():
-        details = json.loads(row[3]) if row[3] else {}
-        recent_checks.append(
-            {
-                "timestamp": row[0],
-                "principal_id": row[1],
-                "success": row[2],
-                "status": details.get("policy_status", "unknown"),
-                "brief": details.get("brief", ""),
-                "reason": details.get("reason", ""),
-            }
+        # Get recent policy checks from audit log
+        audit_logs = (
+            db_session.query(AuditLog)
+            .filter_by(tenant_id=tenant_id, operation="policy_check")
+            .order_by(AuditLog.timestamp.desc())
+            .limit(20)
+            .all()
         )
 
-    # Get pending policy review tasks
-    # Query workflow steps instead of tasks (tasks table was removed)
-    try:
-        cursor = conn.execute(
-            """
-            SELECT step_id, created_at, data
-            FROM workflow_steps
-            WHERE tenant_id = ? AND step_type = 'policy_review' AND status = 'pending'
-            ORDER BY created_at DESC
-        """,
-            (tenant_id,),
-        )
-    except:
-        cursor = None
-
-    pending_reviews = []
-    if cursor:
-        for row in cursor.fetchall():
-            details = json.loads(row[2]) if row[2] else {}
-            pending_reviews.append(
+        recent_checks = []
+        for log in audit_logs:
+            details = json.loads(log.details) if log.details else {}
+            recent_checks.append(
                 {
-                    "task_id": row[0],
-                    "created_at": row[1],
+                    "timestamp": log.timestamp,
+                    "principal_id": log.principal_id,
+                    "success": log.success,
+                    "status": details.get("policy_status", "unknown"),
                     "brief": details.get("brief", ""),
-                    "advertiser": details.get("promoted_offering", ""),
+                    "reason": details.get("reason", ""),
                 }
             )
 
-    # Context manager handles cleanup
+        # Get pending policy review tasks
+        # Query workflow steps instead of tasks (tasks table was removed)
+        pending_reviews = []
+        try:
+            workflow_steps = (
+                db_session.query(WorkflowStep)
+                .filter_by(tenant_id=tenant_id, step_type="policy_review", status="pending")
+                .order_by(WorkflowStep.created_at.desc())
+                .all()
+            )
+
+            for step in workflow_steps:
+                details = json.loads(step.data) if step.data else {}
+                pending_reviews.append(
+                    {
+                        "task_id": step.step_id,
+                        "created_at": step.created_at,
+                        "brief": details.get("brief", ""),
+                        "advertiser": details.get("promoted_offering", ""),
+                    }
+                )
+        except:
+            # WorkflowStep table might not exist
+            pass
 
     return render_template(
         "policy_settings_comprehensive.html",
@@ -4404,8 +4359,6 @@ def update_policy_settings(tenant_id):
         return "Access denied", 403
 
     try:
-        conn = get_db_connection()
-
         # Get current config
         config = get_tenant_config_from_db(tenant_id)
         if not config:
@@ -4451,17 +4404,11 @@ def update_policy_settings(tenant_id):
         config["policy_settings"] = policy_settings
 
         # Update database
-        conn.execute(
-            """
-            UPDATE tenants
-            SET config = ?
-            WHERE tenant_id = ?
-        """,
-            (json.dumps(config), tenant_id),
-        )
-
-        db_session.commit()
-        # Context manager handles cleanup
+        with get_db_session() as db_session:
+            tenant = db_session.query(Tenant).filter_by(tenant_id=tenant_id).first()
+            if tenant:
+                tenant.policy_settings = json.dumps(policy_settings)
+                db_session.commit()
 
         return redirect(url_for("policy_settings", tenant_id=tenant_id))
 
@@ -4487,98 +4434,83 @@ def review_policy_task(tenant_id, task_id):
     if session.get("role") == "tenant_admin" and session.get("tenant_id") != tenant_id:
         return "Access denied", 403
 
-    conn = get_db_connection()
-
-    if request.method == "POST":
-        try:
-            action = request.form.get("action")
-            review_notes = request.form.get("review_notes", "")
-
-            if action not in ["approve", "reject"]:
-                return "Invalid action", 400
-
-            # Update task status
-            new_status = "approved" if action == "approve" else "rejected"
-
-            # Get workflow step details (tasks table was replaced by workflow system)
+    with get_db_session() as db_session:
+        if request.method == "POST":
             try:
-                cursor = conn.execute(
-                    """
-                    SELECT data FROM workflow_steps
-                    WHERE tenant_id = ? AND step_id = ?
-                """,
-                    (tenant_id, task_id),
+                action = request.form.get("action")
+                review_notes = request.form.get("review_notes", "")
+
+                if action not in ["approve", "reject"]:
+                    return "Invalid action", 400
+
+                # Update task status
+                new_status = "approved" if action == "approve" else "rejected"
+
+                # Get workflow step details (tasks table was replaced by workflow system)
+                try:
+                    workflow_step = (
+                        db_session.query(WorkflowStep).filter_by(tenant_id=tenant_id, step_id=task_id).first()
+                    )
+                except:
+                    workflow_step = None
+
+                if not workflow_step:
+                    return "Task not found", 404
+
+                details = json.loads(workflow_step.data) if workflow_step.data else {}
+                details["review_notes"] = review_notes
+                details["reviewed_by"] = session.get("email", "unknown")
+                details["reviewed_at"] = datetime.utcnow().isoformat()
+
+                # Update workflow step instead of task
+                workflow_step.status = new_status
+                workflow_step.data = json.dumps(details)
+                workflow_step.completed_at = datetime.utcnow()
+
+                # Log the review
+                audit_log = AuditLog(
+                    tenant_id=tenant_id,
+                    operation="policy_review",
+                    principal_id=details.get("principal_id"),
+                    success=True,
+                    details=json.dumps(
+                        {
+                            "task_id": task_id,
+                            "action": action,
+                            "reviewer": session.get("email", "unknown"),
+                        }
+                    ),
+                    timestamp=datetime.utcnow().isoformat(),
                 )
-            except:
-                cursor = None
+                db_session.add(audit_log)
+                db_session.commit()
 
-            row = cursor.fetchone()
-            if not row:
-                # Context manager handles cleanup
-                return "Task not found", 404
+                return redirect(url_for("policy_settings", tenant_id=tenant_id))
 
-            details = json.loads(row[0]) if row[0] else {}
-            details["review_notes"] = review_notes
-            details["reviewed_by"] = session.get("email", "unknown")
-            details["reviewed_at"] = datetime.utcnow().isoformat()
+            except Exception as e:
+                return f"Error: {e}", 400
 
-            # Update workflow step instead of task
-            conn.execute(
-                """
-                UPDATE workflow_steps
-                SET status = ?, data = ?, completed_at = CURRENT_TIMESTAMP
-                WHERE tenant_id = ? AND step_id = ?
-            """,
-                (new_status, json.dumps(details), tenant_id, task_id),
+        # GET: Show review form
+        # Query workflow steps instead of tasks
+        try:
+            result = (
+                db_session.query(WorkflowStep.created_at, WorkflowStep.data, Tenant.name)
+                .join(Tenant, WorkflowStep.tenant_id == Tenant.tenant_id)
+                .filter(
+                    WorkflowStep.tenant_id == tenant_id,
+                    WorkflowStep.step_id == task_id,
+                    WorkflowStep.step_type == "policy_review",
+                )
+                .first()
             )
+        except:
+            result = None
 
-            # Log the review
-            audit_logger = AuditLogger(conn)
-            audit_logger.log(
-                operation="policy_review",
-                tenant_id=tenant_id,
-                principal_id=details.get("principal_id"),
-                success=True,
-                details={
-                    "task_id": task_id,
-                    "action": action,
-                    "reviewer": session.get("email", "unknown"),
-                },
-            )
+        if not result:
+            return "Task not found", 404
 
-            db_session.commit()
-            # Context manager handles cleanup
-
-            return redirect(url_for("policy_settings", tenant_id=tenant_id))
-
-        except Exception as e:
-            # Context manager handles cleanup
-            return f"Error: {e}", 400
-
-    # GET: Show review form
-    # Query workflow steps instead of tasks
-    try:
-        cursor = conn.execute(
-            """
-            SELECT w.created_at, w.data, tn.name
-            FROM workflow_steps w
-            JOIN tenants tn ON w.tenant_id = tn.tenant_id
-            WHERE w.tenant_id = ? AND w.step_id = ? AND w.step_type = 'policy_review'
-        """,
-            (tenant_id, task_id),
-        )
-    except:
-        cursor = None
-
-    row = cursor.fetchone() if cursor else None
-    if not row:
-        # Context manager handles cleanup
-        return "Task not found", 404
-
-    created_at, details_str, tenant_name = row
-    details = json.loads(details_str) if details_str else {}
-
-    # Context manager handles cleanup
+        created_at, details_str, tenant_name = result
+        details = json.loads(details_str) if details_str else {}
 
     return render_template(
         "policy_review.html",
@@ -4592,32 +4524,29 @@ def review_policy_task(tenant_id, task_id):
 
 def get_creative_formats():
     """Get all creative formats from the database."""
-    conn = get_db_connection()
-    cursor = conn.execute(
-        """
-        SELECT format_id, name, type, description, width, height, duration_seconds
-        FROM creative_formats
-        WHERE is_standard = true
-        ORDER BY type, name
-    """
-    )
+    with get_db_session() as db_session:
+        creative_formats = (
+            db_session.query(CreativeFormat)
+            .filter_by(is_standard=True)
+            .order_by(CreativeFormat.type, CreativeFormat.name)
+            .all()
+        )
 
-    formats = []
-    for row in cursor.fetchall():
-        format_info = {
-            "format_id": row[0],
-            "name": row[1],
-            "type": row[2],
-            "description": row[3],
-        }
-        if row[4] and row[5]:  # width and height for display
-            format_info["dimensions"] = f"{row[4]}x{row[5]}"
-        elif row[6]:  # duration for video
-            format_info["duration"] = f"{row[6]}s"
-        formats.append(format_info)
+        formats = []
+        for cf in creative_formats:
+            format_info = {
+                "format_id": cf.format_id,
+                "name": cf.name,
+                "type": cf.type,
+                "description": cf.description,
+            }
+            if cf.width and cf.height:  # width and height for display
+                format_info["dimensions"] = f"{cf.width}x{cf.height}"
+            elif cf.duration_seconds:  # duration for video
+                format_info["duration"] = f"{cf.duration_seconds}s"
+            formats.append(format_info)
 
-    # Context manager handles cleanup
-    return formats
+        return formats
 
 
 # Creative Format Management Routes
@@ -4629,50 +4558,43 @@ def list_creative_formats(tenant_id):
     if session.get("role") != "super_admin" and session.get("tenant_id") != tenant_id:
         return "Access denied", 403
 
-    conn = get_db_connection()
+    with get_db_session() as db_session:
+        # Get tenant name
+        tenant = db_session.query(Tenant).filter_by(tenant_id=tenant_id).first()
+        if not tenant:
+            return "Tenant not found", 404
 
-    # Get tenant name
-    cursor = conn.execute("SELECT name FROM tenants WHERE tenant_id = ?", (tenant_id,))
-    tenant_row = cursor.fetchone()
-    if not tenant_row:
-        # Context manager handles cleanup
-        return "Tenant not found", 404
+        tenant_name = tenant.name
 
-    tenant_name = tenant_row[0]
+        # Get all formats (standard + custom for this tenant)
+        from sqlalchemy import or_
 
-    # Get all formats (standard + custom for this tenant)
-    cursor = conn.execute(
-        """
-        SELECT format_id, name, type, description, width, height,
-               duration_seconds, is_standard, source_url, created_at
-        FROM creative_formats
-        WHERE tenant_id IS NULL OR tenant_id = ?
-        ORDER BY is_standard DESC, type, name
-    """,
-        (tenant_id,),
-    )
+        creative_formats = (
+            db_session.query(CreativeFormat)
+            .filter(or_(CreativeFormat.tenant_id.is_(None), CreativeFormat.tenant_id == tenant_id))
+            .order_by(CreativeFormat.is_standard.desc(), CreativeFormat.type, CreativeFormat.name)
+            .all()
+        )
 
-    formats = []
-    for row in cursor.fetchall():
-        format_info = {
-            "format_id": row[0],
-            "name": row[1],
-            "type": row[2],
-            "description": row[3],
-            "is_standard": row[7],
-            "source_url": row[8],
-            "created_at": row[9],
-        }
+        formats = []
+        for cf in creative_formats:
+            format_info = {
+                "format_id": cf.format_id,
+                "name": cf.name,
+                "type": cf.type,
+                "description": cf.description,
+                "is_standard": cf.is_standard,
+                "source_url": cf.source_url,
+                "created_at": cf.created_at,
+            }
 
-        # Add dimensions or duration
-        if row[4] and row[5]:  # width and height
-            format_info["dimensions"] = f"{row[4]}x{row[5]}"
-        elif row[6]:  # duration
-            format_info["duration"] = f"{row[6]}s"
+            # Add dimensions or duration
+            if cf.width and cf.height:  # width and height
+                format_info["dimensions"] = f"{cf.width}x{cf.height}"
+            elif cf.duration_seconds:  # duration
+                format_info["duration"] = f"{cf.duration_seconds}s"
 
-        formats.append(format_info)
-
-    # Context manager handles cleanup
+            formats.append(format_info)
 
     return render_template(
         "creative_formats.html",
@@ -4740,65 +4662,40 @@ def save_creative_format(tenant_id):
         data = request.get_json()
         format_data = data["format"]
 
-        conn = get_db_connection()
+        with get_db_session() as db_session:
+            # Check if format ID already exists
+            existing_format = db_session.query(CreativeFormat).filter_by(format_id=format_data["format_id"]).first()
 
-        # Check if format ID already exists
-        cursor = conn.execute(
-            "SELECT format_id FROM creative_formats WHERE format_id = ?",
-            (format_data["format_id"],),
-        )
+            if existing_format:
+                # Update existing
+                existing_format.name = format_data["name"]
+                existing_format.type = format_data["type"]
+                existing_format.description = format_data["description"]
+                existing_format.width = format_data.get("width")
+                existing_format.height = format_data.get("height")
+                existing_format.duration_seconds = format_data.get("duration_seconds")
+                existing_format.max_file_size_kb = format_data.get("max_file_size_kb")
+                existing_format.specs = format_data.get("specs", "{}")
+                existing_format.source_url = format_data.get("source_url")
+            else:
+                # Insert new
+                new_format = CreativeFormat(
+                    format_id=format_data["format_id"],
+                    tenant_id=format_data.get("tenant_id"),
+                    name=format_data["name"],
+                    type=format_data["type"],
+                    description=format_data["description"],
+                    width=format_data.get("width"),
+                    height=format_data.get("height"),
+                    duration_seconds=format_data.get("duration_seconds"),
+                    max_file_size_kb=format_data.get("max_file_size_kb"),
+                    specs=format_data.get("specs", "{}"),
+                    is_standard=format_data.get("is_standard", False),
+                    source_url=format_data.get("source_url"),
+                )
+                db_session.add(new_format)
 
-        if cursor.fetchone():
-            # Update existing
-            conn.execute(
-                """
-                UPDATE creative_formats
-                SET name = ?, type = ?, description = ?, width = ?, height = ?,
-                    duration_seconds = ?, max_file_size_kb = ?, specs = ?,
-                    source_url = ?
-                WHERE format_id = ?
-            """,
-                (
-                    format_data["name"],
-                    format_data["type"],
-                    format_data["description"],
-                    format_data.get("width"),
-                    format_data.get("height"),
-                    format_data.get("duration_seconds"),
-                    format_data.get("max_file_size_kb"),
-                    format_data.get("specs", "{}"),
-                    format_data.get("source_url"),
-                    format_data["format_id"],
-                ),
-            )
-        else:
-            # Insert new
-            conn.execute(
-                """
-                INSERT INTO creative_formats (
-                    format_id, tenant_id, name, type, description,
-                    width, height, duration_seconds, max_file_size_kb,
-                    specs, is_standard, source_url
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-                (
-                    format_data["format_id"],
-                    format_data.get("tenant_id"),
-                    format_data["name"],
-                    format_data["type"],
-                    format_data["description"],
-                    format_data.get("width"),
-                    format_data.get("height"),
-                    format_data.get("duration_seconds"),
-                    format_data.get("max_file_size_kb"),
-                    format_data.get("specs", "{}"),
-                    format_data.get("is_standard", False),
-                    format_data.get("source_url"),
-                ),
-            )
-
-        db_session.commit()
-        # Context manager handles cleanup
+            db_session.commit()
 
         return jsonify({"success": True})
 
@@ -4895,58 +4792,46 @@ def save_discovered_formats(tenant_id):
         if not formats:
             return jsonify({"error": "No formats provided"}), 400
 
-        conn = get_db_connection()
-        saved_count = 0
+        with get_db_session() as db_session:
+            saved_count = 0
 
-        for format_data in formats:
-            # Generate a unique format_id if needed
-            base_format_id = format_data.get(
-                "format_id",
-                f"{format_data['type']}_{format_data['name'].lower().replace(' ', '_')}",
-            )
-            format_id = base_format_id
-            counter = 1
-
-            # Ensure format_id is unique
-            while True:
-                cursor = conn.execute(
-                    "SELECT format_id FROM creative_formats WHERE format_id = ?",
-                    (format_id,),
+            for format_data in formats:
+                # Generate a unique format_id if needed
+                base_format_id = format_data.get(
+                    "format_id",
+                    f"{format_data['type']}_{format_data['name'].lower().replace(' ', '_')}",
                 )
-                if not cursor.fetchone():
-                    break
-                format_id = f"{base_format_id}_{counter}"
-                counter += 1
+                format_id = base_format_id
+                counter = 1
 
-            # Insert new format
-            conn.execute(
-                """
-                INSERT INTO creative_formats (
-                    format_id, tenant_id, name, type, description,
-                    width, height, duration_seconds, max_file_size_kb,
-                    specs, is_standard, source_url, extends
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-                (
-                    format_id,
-                    tenant_id,  # Custom formats belong to the tenant
-                    format_data["name"],
-                    format_data["type"],
-                    format_data.get("description", ""),
-                    format_data.get("width"),
-                    format_data.get("height"),
-                    format_data.get("duration_seconds"),
-                    format_data.get("max_file_size_kb"),
-                    json.dumps(format_data.get("specs", {})),
-                    False,  # Custom formats are not standard
-                    format_data.get("source_url"),
-                    format_data.get("extends"),  # Include the extends field
-                ),
-            )
-            saved_count += 1
+                # Ensure format_id is unique
+                while True:
+                    existing = db_session.query(CreativeFormat).filter_by(format_id=format_id).first()
+                    if not existing:
+                        break
+                    format_id = f"{base_format_id}_{counter}"
+                    counter += 1
 
-        db_session.commit()
-        # Context manager handles cleanup
+                # Insert new format
+                new_format = CreativeFormat(
+                    format_id=format_id,
+                    tenant_id=tenant_id,  # Custom formats belong to the tenant
+                    name=format_data["name"],
+                    type=format_data["type"],
+                    description=format_data.get("description", ""),
+                    width=format_data.get("width"),
+                    height=format_data.get("height"),
+                    duration_seconds=format_data.get("duration_seconds"),
+                    max_file_size_kb=format_data.get("max_file_size_kb"),
+                    specs=json.dumps(format_data.get("specs", {})),
+                    is_standard=False,  # Custom formats are not standard
+                    source_url=format_data.get("source_url"),
+                    extends=format_data.get("extends"),  # Include the extends field
+                )
+                db_session.add(new_format)
+                saved_count += 1
+
+            db_session.commit()
 
         return jsonify({"success": True, "saved_count": saved_count})
 
@@ -4962,29 +4847,39 @@ def get_creative_format(tenant_id, format_id):
     if session.get("role") != "super_admin" and session.get("tenant_id") != tenant_id:
         abort(403)
 
-    conn = get_db_connection()
-    cursor = conn.execute(
-        """
-        SELECT format_id, name, type, description, width, height,
-               duration_seconds, max_file_size_kb, specs, is_standard, source_url
-        FROM creative_formats
-        WHERE format_id = ? AND (tenant_id = ? OR is_standard = TRUE)
-    """,
-        (format_id, tenant_id),
-    )
+    with get_db_session() as db_session:
+        from sqlalchemy import or_
 
-    format_data = cursor.fetchone()
-    # Context manager handles cleanup
-
-    if not format_data:
-        abort(404)
-
-    # Convert to dict
-    format_dict = dict(format_data)
-    if format_dict["specs"]:
-        format_dict["specs"] = (
-            json.loads(format_dict["specs"]) if isinstance(format_dict["specs"], str) else format_dict["specs"]
+        creative_format = (
+            db_session.query(CreativeFormat)
+            .filter(
+                CreativeFormat.format_id == format_id,
+                or_(CreativeFormat.tenant_id == tenant_id, CreativeFormat.is_standard == True),
+            )
+            .first()
         )
+
+        if not creative_format:
+            abort(404)
+
+        # Convert to dict
+        format_dict = {
+            "format_id": creative_format.format_id,
+            "name": creative_format.name,
+            "type": creative_format.type,
+            "description": creative_format.description,
+            "width": creative_format.width,
+            "height": creative_format.height,
+            "duration_seconds": creative_format.duration_seconds,
+            "max_file_size_kb": creative_format.max_file_size_kb,
+            "specs": creative_format.specs,
+            "is_standard": creative_format.is_standard,
+            "source_url": creative_format.source_url,
+        }
+        if format_dict["specs"]:
+            format_dict["specs"] = (
+                json.loads(format_dict["specs"]) if isinstance(format_dict["specs"], str) else format_dict["specs"]
+            )
 
     return jsonify(format_dict)
 
@@ -4998,46 +4893,55 @@ def edit_creative_format_page(tenant_id, format_id):
         abort(403)
 
     # Get tenant info
-    conn = get_db_connection()
-    cursor = conn.execute("SELECT name FROM tenants WHERE tenant_id = ?", (tenant_id,))
-    tenant = cursor.fetchone()
+    with get_db_session() as db_session:
+        tenant = db_session.query(Tenant).filter_by(tenant_id=tenant_id).first()
 
-    if not tenant:
-        abort(404)
+        if not tenant:
+            abort(404)
 
-    # Get creative format
-    cursor = conn.execute(
-        """
-        SELECT format_id, name, type, description, width, height,
-               duration_seconds, max_file_size_kb, specs, is_standard, source_url
-        FROM creative_formats
-        WHERE format_id = ? AND (tenant_id = ? OR is_standard = TRUE)
-    """,
-        (format_id, tenant_id),
-    )
+        # Get creative format
+        from sqlalchemy import or_
 
-    format_data = cursor.fetchone()
-    # Context manager handles cleanup
-
-    if not format_data:
-        abort(404)
-
-    # Don't allow editing standard formats
-    if format_data["is_standard"]:
-        flash("Standard formats cannot be edited", "error")
-        return redirect(url_for("creative_formats", tenant_id=tenant_id))
-
-    # Convert to dict and parse specs
-    format_dict = dict(format_data)
-    if format_dict["specs"]:
-        format_dict["specs"] = (
-            json.loads(format_dict["specs"]) if isinstance(format_dict["specs"], str) else format_dict["specs"]
+        creative_format = (
+            db_session.query(CreativeFormat)
+            .filter(
+                CreativeFormat.format_id == format_id,
+                or_(CreativeFormat.tenant_id == tenant_id, CreativeFormat.is_standard == True),
+            )
+            .first()
         )
+
+        if not creative_format:
+            abort(404)
+
+        # Don't allow editing standard formats
+        if creative_format.is_standard:
+            flash("Standard formats cannot be edited", "error")
+            return redirect(url_for("creative_formats", tenant_id=tenant_id))
+
+        # Convert to dict and parse specs
+        format_dict = {
+            "format_id": creative_format.format_id,
+            "name": creative_format.name,
+            "type": creative_format.type,
+            "description": creative_format.description,
+            "width": creative_format.width,
+            "height": creative_format.height,
+            "duration_seconds": creative_format.duration_seconds,
+            "max_file_size_kb": creative_format.max_file_size_kb,
+            "specs": creative_format.specs,
+            "is_standard": creative_format.is_standard,
+            "source_url": creative_format.source_url,
+        }
+        if format_dict["specs"]:
+            format_dict["specs"] = (
+                json.loads(format_dict["specs"]) if isinstance(format_dict["specs"], str) else format_dict["specs"]
+            )
 
     return render_template(
         "edit_creative_format.html",
         tenant_id=tenant_id,
-        tenant_name=tenant["name"],
+        tenant_name=tenant.name,
         format=format_dict,
     )
 
@@ -5057,51 +4961,32 @@ def update_creative_format(tenant_id, format_id):
         if not data.get("name"):
             return jsonify({"error": "Name is required"}), 400
 
-        conn = get_db_connection()
+        with get_db_session() as db_session:
+            # Check if format exists and is editable
+            creative_format = (
+                db_session.query(CreativeFormat).filter_by(format_id=format_id, tenant_id=tenant_id).first()
+            )
 
-        # Check if format exists and is editable
-        cursor = conn.execute(
-            """
-            SELECT is_standard FROM creative_formats
-            WHERE format_id = ? AND tenant_id = ?
-        """,
-            (format_id, tenant_id),
-        )
+            if not creative_format:
+                return jsonify({"error": "Format not found"}), 404
 
-        format_info = cursor.fetchone()
-        if not format_info:
-            return jsonify({"error": "Format not found"}), 404
+            if creative_format.is_standard:
+                return jsonify({"error": "Cannot edit standard formats"}), 400
 
-        if format_info["is_standard"]:
-            return jsonify({"error": "Cannot edit standard formats"}), 400
+            # Update the format
+            specs = json.dumps(data.get("specs", {})) if data.get("specs") else None
 
-        # Update the format
-        specs = json.dumps(data.get("specs", {})) if data.get("specs") else None
+            creative_format.name = data["name"]
+            creative_format.description = data.get("description")
+            creative_format.width = data.get("width")
+            creative_format.height = data.get("height")
+            creative_format.duration_seconds = data.get("duration_seconds")
+            creative_format.max_file_size_kb = data.get("max_file_size_kb")
+            creative_format.specs = specs
+            creative_format.source_url = data.get("source_url")
+            creative_format.updated_at = datetime.utcnow()
 
-        conn.execute(
-            """
-            UPDATE creative_formats
-            SET name = ?, description = ?, width = ?, height = ?,
-                duration_seconds = ?, max_file_size_kb = ?, specs = ?,
-                source_url = ?, updated_at = CURRENT_TIMESTAMP
-            WHERE format_id = ? AND tenant_id = ?
-        """,
-            (
-                data["name"],
-                data.get("description"),
-                data.get("width"),
-                data.get("height"),
-                data.get("duration_seconds"),
-                data.get("max_file_size_kb"),
-                specs,
-                data.get("source_url"),
-                format_id,
-                tenant_id,
-            ),
-        )
-
-        db_session.commit()
-        # Context manager handles cleanup
+            db_session.commit()
 
         return jsonify({"success": True})
 
@@ -5118,51 +5003,39 @@ def delete_creative_format(tenant_id, format_id):
         return jsonify({"error": "Access denied"}), 403
 
     try:
-        conn = get_db_connection()
-
-        # Check if format exists and is editable
-        cursor = conn.execute(
-            """
-            SELECT is_standard FROM creative_formats
-            WHERE format_id = ? AND tenant_id = ?
-        """,
-            (format_id, tenant_id),
-        )
-
-        format_info = cursor.fetchone()
-        if not format_info:
-            return jsonify({"error": "Format not found"}), 404
-
-        if format_info["is_standard"]:
-            return jsonify({"error": "Cannot delete standard formats"}), 400
-
-        # Check if format is used in any products
-        cursor = conn.execute(
-            """
-            SELECT COUNT(*) as count FROM products
-            WHERE tenant_id = ? AND formats LIKE ?
-        """,
-            (tenant_id, f"%{format_id}%"),
-        )
-
-        result = cursor.fetchone()
-        if result["count"] > 0:
-            return (
-                jsonify({"error": f"Cannot delete format - it is used by {result['count']} product(s)"}),
-                400,
+        with get_db_session() as db_session:
+            # Check if format exists and is editable
+            creative_format = (
+                db_session.query(CreativeFormat).filter_by(format_id=format_id, tenant_id=tenant_id).first()
             )
 
-        # Delete the format
-        conn.execute(
-            """
-            DELETE FROM creative_formats
-            WHERE format_id = ? AND tenant_id = ?
-        """,
-            (format_id, tenant_id),
-        )
+            if not creative_format:
+                return jsonify({"error": "Format not found"}), 404
 
-        db_session.commit()
-        # Context manager handles cleanup
+            if creative_format.is_standard:
+                return jsonify({"error": "Cannot delete standard formats"}), 400
+
+            # Check if format is used in any products
+            from sqlalchemy import func
+
+            count = (
+                db_session.query(func.count(Product.product_id))
+                .filter(
+                    Product.tenant_id == tenant_id,
+                    Product.creative_formats.like(f"%{format_id}%"),
+                )
+                .scalar()
+            )
+
+            if count > 0:
+                return (
+                    jsonify({"error": f"Cannot delete format - it is used by {count} product(s)"}),
+                    400,
+                )
+
+            # Delete the format
+            db_session.delete(creative_format)
+            db_session.commit()
 
         return jsonify({"success": True})
 
@@ -5237,10 +5110,9 @@ def get_product_suggestions(tenant_id):
         filtered_suggestions.sort(key=sort_key)
 
         # Check existing products to mark which are already created
-        conn = get_db_connection()
-        cursor = conn.execute("SELECT product_id FROM products WHERE tenant_id = ?", (tenant_id,))
-        existing_ids = {row[0] for row in cursor.fetchall()}
-        # Context manager handles cleanup
+        with get_db_session() as db_session:
+            existing_products = db_session.query(Product.product_id).filter_by(tenant_id=tenant_id).all()
+            existing_ids = {product[0] for product in existing_products}
 
         # Add metadata to suggestions
         for suggestion in filtered_suggestions:
@@ -5310,63 +5182,55 @@ def quick_create_products(tenant_id):
         # Create a map for quick lookup
         template_map = {t["product_id"]: t for t in all_templates}
 
-        conn = get_db_connection()
-        created = []
-        errors = []
+        with get_db_session() as db_session:
+            created = []
+            errors = []
 
-        for product_id in product_ids:
-            if product_id not in template_map:
-                errors.append(f"Template not found: {product_id}")
-                continue
-
-            template = template_map[product_id]
-
-            try:
-                # Check if already exists
-                cursor = conn.execute(
-                    "SELECT product_id FROM products WHERE tenant_id = ? AND product_id = ?",
-                    (tenant_id, product_id),
-                )
-                if cursor.fetchone():
-                    errors.append(f"Product already exists: {product_id}")
+            for product_id in product_ids:
+                if product_id not in template_map:
+                    errors.append(f"Template not found: {product_id}")
                     continue
 
-                # Insert product
-                conn.execute(
-                    """
-                    INSERT INTO products (
-                        product_id, tenant_id, name, description,
-                        creative_formats, delivery_type, cpm,
-                        price_guidance_min, price_guidance_max,
-                        countries, targeting_template, implementation_config,
-                        created_at, updated_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                    (
-                        template["product_id"],
-                        tenant_id,
-                        template["name"],
-                        template.get("description", ""),
-                        json.dumps(template.get("formats", [])),
-                        template.get("delivery_type", "guaranteed"),
-                        template.get("cpm"),
-                        template.get("price_guidance", {}).get("min") if not template.get("cpm") else None,
-                        template.get("price_guidance", {}).get("max") if not template.get("cpm") else None,
-                        json.dumps(template.get("countries")) if template.get("countries") else None,
-                        json.dumps(template.get("targeting_template", {})),
-                        json.dumps(template.get("implementation_config", {})),
-                        datetime.now().isoformat(),
-                        datetime.now().isoformat(),
-                    ),
-                )
+                template = template_map[product_id]
 
-                created.append(product_id)
+                try:
+                    # Check if already exists
+                    existing_product = (
+                        db_session.query(Product).filter_by(tenant_id=tenant_id, product_id=product_id).first()
+                    )
+                    if existing_product:
+                        errors.append(f"Product already exists: {product_id}")
+                        continue
 
-            except Exception as e:
-                errors.append(f"Failed to create {product_id}: {str(e)}")
+                    # Insert product
+                    new_product = Product(
+                        product_id=template["product_id"],
+                        tenant_id=tenant_id,
+                        name=template["name"],
+                        description=template.get("description", ""),
+                        creative_formats=json.dumps(template.get("formats", [])),
+                        delivery_type=template.get("delivery_type", "guaranteed"),
+                        cpm=template.get("cpm"),
+                        price_guidance_min=(
+                            template.get("price_guidance", {}).get("min") if not template.get("cpm") else None
+                        ),
+                        price_guidance_max=(
+                            template.get("price_guidance", {}).get("max") if not template.get("cpm") else None
+                        ),
+                        countries=json.dumps(template.get("countries")) if template.get("countries") else None,
+                        targeting_template=json.dumps(template.get("targeting_template", {})),
+                        implementation_config=json.dumps(template.get("implementation_config", {})),
+                        created_at=datetime.now().isoformat(),
+                        updated_at=datetime.now().isoformat(),
+                    )
+                    db_session.add(new_product)
 
-        db_session.commit()
-        # Context manager handles cleanup
+                    created.append(product_id)
+
+                except Exception as e:
+                    errors.append(f"Failed to create {product_id}: {str(e)}")
+
+            db_session.commit()
 
         return jsonify(
             {
@@ -5461,8 +5325,6 @@ def analyze_ad_server_inventory(tenant_id):
         return jsonify({"error": "Access denied"}), 403
 
     try:
-        conn = get_db_connection()
-
         # Get tenant config to determine adapter
         config = get_tenant_config_from_db(tenant_id)
         if not config:
@@ -5501,27 +5363,27 @@ def analyze_ad_server_inventory(tenant_id):
             )
 
         # Get a principal for API calls
-        cursor = conn.execute(
-            "SELECT principal_id, name, access_token, platform_mappings FROM principals WHERE tenant_id = ? LIMIT 1",
-            (tenant_id,),
-        )
-        principal_row = cursor.fetchone()
-        # Context manager handles cleanup
+        with get_db_session() as db_session:
+            principal_obj = db_session.query(Principal).filter_by(tenant_id=tenant_id).first()
 
-        if not principal_row:
-            return jsonify({"error": "No principal found for tenant"}), 404
+            if not principal_obj:
+                return jsonify({"error": "No principal found for tenant"}), 404
 
-        # Create principal object
-        from schemas import Principal
+            # Create principal object
+            from schemas import Principal as PrincipalSchema
 
-        mappings = principal_row[3] if isinstance(principal_row[3], dict) else json.loads(principal_row[3])
-        principal = Principal(
-            tenant_id=tenant_id,
-            principal_id=principal_row[0],
-            name=principal_row[1],
-            access_token=principal_row[2],
-            platform_mappings=mappings,
-        )
+            mappings = (
+                principal_obj.platform_mappings
+                if isinstance(principal_obj.platform_mappings, dict)
+                else json.loads(principal_obj.platform_mappings)
+            )
+            principal = PrincipalSchema(
+                tenant_id=tenant_id,
+                principal_id=principal_obj.principal_id,
+                name=principal_obj.name,
+                access_token=principal_obj.access_token,
+                platform_mappings=mappings,
+            )
 
         # Get adapter instance
         from adapters import get_adapter_class
@@ -5600,63 +5462,58 @@ def create_products_bulk(tenant_id):
         if not products:
             return jsonify({"error": "No products provided"}), 400
 
-        conn = get_db_connection()
-        created_count = 0
-        errors = []
+        with get_db_session() as db_session:
+            created_count = 0
+            errors = []
 
-        for product in products:
-            try:
-                # Generate unique product ID if needed
-                product_id = product.get("product_id")
-                if not product_id:
-                    product_id = product["name"].lower().replace(" ", "_").replace("-", "_")
-                    product_id = f"{product_id}_{uuid.uuid4().hex[:6]}"
+            for product in products:
+                try:
+                    # Generate unique product ID if needed
+                    product_id = product.get("product_id")
+                    if not product_id:
+                        product_id = product["name"].lower().replace(" ", "_").replace("-", "_")
+                        product_id = f"{product_id}_{uuid.uuid4().hex[:6]}"
 
-                print(f"Creating product: {product_id} - {product.get('name')}")
+                    print(f"Creating product: {product_id} - {product.get('name')}")
 
-                # Build price guidance
-                price_guidance = None
-                if product.get("price_guidance"):
-                    price_guidance = json.dumps(product["price_guidance"])
+                    # Build price guidance
+                    price_guidance = None
+                    if product.get("price_guidance"):
+                        price_guidance = json.dumps(product["price_guidance"])
 
-                # Determine if fixed price based on whether CPM is provided
-                is_fixed_price = product.get("cpm") is not None
+                    # Determine if fixed price based on whether CPM is provided
+                    is_fixed_price = product.get("cpm") is not None
 
-                # Insert product
-                conn.execute(
-                    """
-                    INSERT INTO products (
-                        product_id, tenant_id, name, description,
-                        formats, delivery_type, is_fixed_price, cpm,
-                        price_guidance,
-                        countries, targeting_template, implementation_config
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                    (
-                        product_id,
-                        tenant_id,
-                        product["name"],
-                        product.get("description", ""),
-                        json.dumps(product.get("formats", [])),
-                        product.get("delivery_type", "non_guaranteed"),
-                        is_fixed_price,
-                        product.get("cpm"),
-                        price_guidance,
-                        json.dumps(product.get("countries")) if product.get("countries") else None,
-                        json.dumps(product.get("targeting_template", {})),
-                        json.dumps(product.get("implementation_config", {})),
-                    ),
-                )
+                    # Handle price guidance fields for ORM
+                    price_guidance_dict = product.get("price_guidance", {}) if product.get("price_guidance") else {}
+                    price_guidance_min = price_guidance_dict.get("min") if not is_fixed_price else None
+                    price_guidance_max = price_guidance_dict.get("max") if not is_fixed_price else None
 
-                created_count += 1
-                print(f"Successfully created product {product_id}, total count: {created_count}")
+                    # Insert product
+                    new_product = Product(
+                        product_id=product_id,
+                        tenant_id=tenant_id,
+                        name=product["name"],
+                        description=product.get("description", ""),
+                        creative_formats=json.dumps(product.get("formats", [])),
+                        delivery_type=product.get("delivery_type", "non_guaranteed"),
+                        cpm=product.get("cpm"),
+                        price_guidance_min=price_guidance_min,
+                        price_guidance_max=price_guidance_max,
+                        countries=json.dumps(product.get("countries")) if product.get("countries") else None,
+                        targeting_template=json.dumps(product.get("targeting_template", {})),
+                        implementation_config=json.dumps(product.get("implementation_config", {})),
+                    )
+                    db_session.add(new_product)
 
-            except Exception as e:
-                print(f"Error creating product: {e}")
-                errors.append(f"Failed to create {product.get('name', 'product')}: {str(e)}")
+                    created_count += 1
+                    print(f"Successfully created product {product_id}, total count: {created_count}")
 
-        db_session.commit()
-        # Context manager handles cleanup
+                except Exception as e:
+                    print(f"Error creating product: {e}")
+                    errors.append(f"Failed to create {product.get('name', 'product')}: {str(e)}")
+
+            db_session.commit()
 
         return jsonify({"success": True, "created_count": created_count, "errors": errors})
 
@@ -5819,16 +5676,13 @@ def get_gam_line_item(tenant_id, line_item_id):
             return jsonify({"error": "Line item ID must be a valid number"}), 400
 
         # Get the tenant's GAM configuration
-        conn = get_db_connection()
-        cursor = conn.execute("SELECT * FROM tenants WHERE tenant_id = ?", (tenant_id,))
-        tenant = cursor.fetchone()
+        with get_db_session() as db_session:
+            tenant = db_session.query(Tenant).filter_by(tenant_id=tenant_id).first()
 
-        if not tenant:
-            # Context manager handles cleanup
-            return jsonify({"error": "Tenant not found"}), 404
+            if not tenant:
+                return jsonify({"error": "Tenant not found"}), 404
 
         tenant_config = get_tenant_config_from_db(tenant_id)
-        # Context manager handles cleanup
         gam_config = tenant_config.get("adapters", {}).get("google_ad_manager", {})
 
         if not gam_config.get("enabled"):
@@ -6135,18 +5989,26 @@ def get_gam_line_item(tenant_id, line_item_id):
 @require_auth()
 def view_gam_line_item(tenant_id, line_item_id):
     """View GAM line item details."""
-    conn = get_db_connection()
-    cursor = conn.execute("SELECT * FROM tenants WHERE tenant_id = ?", (tenant_id,))
-    tenant = cursor.fetchone()
-    # Context manager handles cleanup
+    with get_db_session() as db_session:
+        tenant = db_session.query(Tenant).filter_by(tenant_id=tenant_id).first()
 
-    if not tenant:
-        flash("Tenant not found", "danger")
-        return redirect(url_for("index"))
+        if not tenant:
+            flash("Tenant not found", "danger")
+            return redirect(url_for("index"))
+
+        # Convert tenant to dict-like object for template
+        # Build config from individual columns
+        config = get_tenant_config_from_db(tenant_id)
+        tenant_dict = {
+            "tenant_id": tenant.tenant_id,
+            "name": tenant.name,
+            "subdomain": tenant.subdomain,
+            "config": json.dumps(config) if config else "{}",
+        }
 
     return render_template(
         "gam_line_item_viewer.html",
-        tenant=tenant,
+        tenant=tenant_dict,
         tenant_id=tenant_id,
         line_item_id=line_item_id,
         user_email=session.get("user_email", "Unknown"),
@@ -6392,69 +6254,69 @@ def register_adapter_routes():
     try:
         print("Starting adapter route registration...")
         # Get all enabled adapters across all tenants
-        conn = get_db_connection()
-        cursor = conn.execute("SELECT tenant_id, ad_server FROM tenants WHERE ad_server IS NOT NULL")
+        with get_db_session() as db_session:
+            tenants_with_adapters = (
+                db_session.query(Tenant.tenant_id, Tenant.ad_server).filter(Tenant.ad_server.isnot(None)).all()
+            )
 
-        registered_adapters = set()
-        for row in cursor.fetchall():
-            tenant_id = row[0]
-            ad_server = row[1]
-            print(f"Processing tenant {tenant_id} with adapter {ad_server}")
+            registered_adapters = set()
+            for tenant_id, ad_server in tenants_with_adapters:
+                print(f"Processing tenant {tenant_id} with adapter {ad_server}")
 
-            tenant_config = get_tenant_config_from_db(tenant_id)
-            if not tenant_config:
-                continue
+                tenant_config = get_tenant_config_from_db(tenant_id)
+                if not tenant_config:
+                    continue
 
-            adapters_config = tenant_config.get("adapters", {})
+                adapters_config = tenant_config.get("adapters", {})
 
-            for adapter_name, adapter_config in adapters_config.items():
-                if adapter_config.get("enabled") and adapter_name not in registered_adapters:
-                    # Create a dummy principal for route registration
-                    dummy_principal = Principal(
-                        tenant_id="system",
-                        principal_id="route_registration",
-                        name="Route Registration",
-                        access_token="",
-                        platform_mappings={},
-                    )
+                for adapter_name, adapter_config in adapters_config.items():
+                    if adapter_config.get("enabled") and adapter_name not in registered_adapters:
+                        # Create a dummy principal for route registration
+                        dummy_principal = Principal(
+                            tenant_id="system",
+                            principal_id="route_registration",
+                            name="Route Registration",
+                            access_token="",
+                            platform_mappings={},
+                        )
 
-                    # Import and register adapter routes
-                    try:
-                        if adapter_name == "google_ad_manager":
-                            print(f"Registering routes for {adapter_name}")
-                            print(f"Adapter config: {adapter_config}")
-                            from adapters.google_ad_manager import GoogleAdManager
+                        # Import and register adapter routes
+                        try:
+                            if adapter_name == "google_ad_manager":
+                                print(f"Registering routes for {adapter_name}")
+                                print(f"Adapter config: {adapter_config}")
+                                from adapters.google_ad_manager import GoogleAdManager
 
-                            adapter = GoogleAdManager(
-                                adapter_config,
-                                dummy_principal,
-                                dry_run=True,
-                                tenant_id="system",
-                            )
-                            adapter.register_ui_routes(app)
-                            registered_adapters.add(adapter_name)
-                        elif adapter_name == "mock":
-                            print(f"Registering routes for {adapter_name}")
-                            from adapters.mock_ad_server import MockAdServer
-
-                            adapter = MockAdServer(
-                                adapter_config,
-                                dummy_principal,
-                                dry_run=True,
-                                tenant_id="system",
-                            )
-                            adapter.register_ui_routes(app)
-                            registered_adapters.add(adapter_name)
-                        elif adapter_name == "kevel":
-                            from adapters.kevel import KevelAdapter
-
-                            adapter = KevelAdapter(adapter_config, dummy_principal, dry_run=True)
-                            if hasattr(adapter, "register_ui_routes"):
+                                adapter = GoogleAdManager(
+                                    adapter_config,
+                                    dummy_principal,
+                                    dry_run=True,
+                                    tenant_id="system",
+                                )
                                 adapter.register_ui_routes(app)
                                 registered_adapters.add(adapter_name)
-                        # Add other adapters as they implement UI routes
-                    except Exception as e:
-                        print(f"Warning: Failed to register routes for {adapter_name}: {e}")
+                            elif adapter_name == "mock":
+                                print(f"Registering routes for {adapter_name}")
+                                from adapters.mock_ad_server import MockAdServer
+
+                                adapter = MockAdServer(
+                                    adapter_config,
+                                    dummy_principal,
+                                    dry_run=True,
+                                    tenant_id="system",
+                                )
+                                adapter.register_ui_routes(app)
+                                registered_adapters.add(adapter_name)
+                            elif adapter_name == "kevel":
+                                from adapters.kevel import KevelAdapter
+
+                                adapter = KevelAdapter(adapter_config, dummy_principal, dry_run=True)
+                                if hasattr(adapter, "register_ui_routes"):
+                                    adapter.register_ui_routes(app)
+                                    registered_adapters.add(adapter_name)
+                            # Add other adapters as they implement UI routes
+                        except Exception as e:
+                            print(f"Warning: Failed to register routes for {adapter_name}: {e}")
 
         # Context manager handles cleanup
         print(f"Registered UI routes for adapters: {', '.join(registered_adapters)}")
@@ -6548,44 +6410,41 @@ if __name__ == "__main__":
 def mcp_test():
     """MCP protocol testing interface for super admins."""
     # Get all tenants and their principals
-    conn = get_db_connection()
+    with get_db_session() as db_session:
+        # Get tenants
+        tenant_objs = db_session.query(Tenant).filter_by(is_active=True).order_by(Tenant.name).all()
+        tenants = []
+        for tenant in tenant_objs:
+            tenants.append(
+                {
+                    "tenant_id": tenant.tenant_id,
+                    "name": tenant.name,
+                    "subdomain": tenant.subdomain,
+                }
+            )
 
-    # Get tenants
-    cursor = conn.execute(
-        """
-        SELECT tenant_id, name, subdomain
-        FROM tenants
-        WHERE is_active = true
-        ORDER BY name
-    """
-    )
-    tenants = []
-    for row in cursor.fetchall():
-        tenants.append({"tenant_id": row[0], "name": row[1], "subdomain": row[2]})
+        # Get all principals with their tenant info
 
-    # Get all principals with their tenant info
-    cursor = conn.execute(
-        """
-        SELECT p.principal_id, p.name, p.tenant_id, p.access_token, t.name as tenant_name
-        FROM principals p
-        JOIN tenants t ON p.tenant_id = t.tenant_id
-        WHERE t.is_active = true
-        ORDER BY t.name, p.name
-    """
-    )
-    principals = []
-    for row in cursor.fetchall():
-        principals.append(
-            {
-                "principal_id": row[0],
-                "name": row[1],
-                "tenant_id": row[2],
-                "access_token": row[3],
-                "tenant_name": row[4],
-            }
+        principal_objs = (
+            db_session.query(Principal)
+            .join(Tenant)
+            .filter(Tenant.is_active == True)
+            .order_by(Tenant.name, Principal.name)
+            .all()
         )
-
-    # Context manager handles cleanup
+        principals = []
+        for principal in principal_objs:
+            # Get the tenant name via relationship or separate query
+            tenant_name = db_session.query(Tenant.name).filter_by(tenant_id=principal.tenant_id).scalar()
+            principals.append(
+                {
+                    "principal_id": principal.principal_id,
+                    "name": principal.name,
+                    "tenant_id": principal.tenant_id,
+                    "access_token": principal.access_token,
+                    "tenant_name": tenant_name,
+                }
+            )
 
     # Get server URL - use correct port from environment
     server_port = int(os.environ.get("ADCP_SALES_PORT", 8005))
@@ -6651,12 +6510,10 @@ def mcp_test_call():
             )
 
         # Look up the tenant for this token
-        conn = get_db_connection()
-        cursor = conn.execute("SELECT tenant_id FROM principals WHERE access_token = ?", (access_token,))
-        row = cursor.fetchone()
-        # Context manager handles cleanup
+        with get_db_session() as db_session:
+            principal = db_session.query(Principal.tenant_id).filter_by(access_token=access_token).first()
 
-        tenant_id = row[0] if row else "default"
+            tenant_id = principal[0] if principal else "default"
 
         # Set up headers for authentication
         # Include tenant header for proper principal resolution
