@@ -17,13 +17,17 @@ def client():
 
 
 @pytest.fixture
-def test_tenant():
+def test_tenant(integration_db):
     """Create a test tenant for product creation tests."""
+    # integration_db ensures database tables exist
     with get_db_session() as session:
-        # Clean up any existing test tenant
-        session.query(Product).filter(Product.tenant_id == "test_product_tenant").delete()
-        session.query(Tenant).filter(Tenant.tenant_id == "test_product_tenant").delete()
-        session.commit()
+        # Clean up any existing test tenant (in case of test reruns)
+        try:
+            session.query(Product).filter(Product.tenant_id == "test_product_tenant").delete()
+            session.query(Tenant).filter(Tenant.tenant_id == "test_product_tenant").delete()
+            session.commit()
+        except Exception:
+            session.rollback()  # Ignore errors if tables don't exist yet
 
         # Create test tenant
         from datetime import UTC, datetime
