@@ -26,6 +26,7 @@ from flask import (
     url_for,
 )
 from flask_socketio import SocketIO, emit, join_room, leave_room
+from sqlalchemy import text
 
 from database_session import get_db_session
 from models import (
@@ -3379,7 +3380,7 @@ def api_health():
     """API health check endpoint."""
     try:
         with get_db_session() as db_session:
-            db_session.execute("SELECT 1")
+            db_session.execute(text("SELECT 1"))
             return jsonify({"status": "healthy"})
     except:
         return jsonify({"status": "unhealthy"}), 500
