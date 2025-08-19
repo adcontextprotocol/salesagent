@@ -56,27 +56,34 @@ def mock_db_connection():
         patch("database_session.get_db_session") as mock_db_config_session,
     ):
 
-        # Create a mock cursor that returns the tenant with ad_server field
-        mock_cursor = Mock()
+        # Create a mock Tenant object with the correct ad_server attribute
+        mock_tenant = Mock()
+        mock_tenant.ad_server = "google_ad_manager"
+        mock_tenant.tenant_id = "test_tenant"
+        mock_tenant.name = "Test Tenant"
 
-        # Create a dict-like object that supports both dict access and attribute access
-        tenant_data = {"ad_server": "google_ad_manager", "tenant_id": "test_tenant", "name": "Test Tenant"}
-
-        # Mock fetchone to return dict with get method
-        mock_cursor.fetchone.return_value = tenant_data
-
-        # Setup all mock sessions to work as context managers
+        # Setup all mock sessions to work as context managers returning SQLAlchemy sessions
         for mock_session in [mock_api_session, mock_ui_session, mock_db_config_session]:
+            # Create a mock SQLAlchemy session
             mock_session_instance = Mock()
-            mock_session_instance.execute.return_value = mock_cursor
-            mock_session_instance.cursor.return_value = mock_cursor
+
+            # Mock the query chain for Tenant lookups
+            mock_query = Mock()
+            mock_filter = Mock()
+            mock_filter.first.return_value = mock_tenant
+            mock_query.filter_by.return_value = mock_filter
+            mock_session_instance.query.return_value = mock_query
+
+            # Add other session methods
             mock_session_instance.close = Mock()
             mock_session_instance.commit = Mock()
             mock_session_instance.rollback = Mock()
+
             # Make it work as a context manager
-            mock_session_instance.__enter__ = Mock(return_value=mock_session_instance)
-            mock_session_instance.__exit__ = Mock(return_value=None)
-            mock_session.return_value = mock_session_instance
+            mock_context = Mock()
+            mock_context.__enter__ = Mock(return_value=mock_session_instance)
+            mock_context.__exit__ = Mock(return_value=None)
+            mock_session.return_value = mock_context
 
         yield mock_api_session
 
@@ -268,22 +275,26 @@ class TestGAMReportingAPI:
 
     def test_get_reporting_non_gam_tenant(self, authenticated_session):
         """Test that non-GAM tenants cannot access reporting."""
-        with (
-            patch("database_session.get_db_session") as mock_db_conn,
-            patch("admin_ui.get_db_session") as mock_ui_conn,
-            patch("gam_helper.get_db_session") as mock_gam_conn,
-        ):
-            mock_cursor = Mock()
-            mock_cursor.fetchone.return_value = {
-                "ad_server": "kevel",  # Not GAM
-                "tenant_id": "test_tenant",
-                "name": "Test Tenant",
-            }
+        with patch("adapters.gam_reporting_api.get_db_session") as mock_db_session:
+            # Create a mock Tenant object with kevel ad_server
+            mock_tenant = Mock()
+            mock_tenant.ad_server = "kevel"  # Not GAM
+            mock_tenant.tenant_id = "test_tenant"
+            mock_tenant.name = "Test Tenant"
 
-            for mock_conn in [mock_db_conn, mock_ui_conn, mock_gam_conn]:
-                mock_conn.return_value.execute.return_value = mock_cursor
-                mock_conn.return_value.cursor.return_value = mock_cursor
-                mock_conn.return_value.close = Mock()
+            # Setup mock session to return non-GAM tenant
+            mock_session_instance = Mock()
+            mock_query = Mock()
+            mock_filter = Mock()
+            mock_filter.first.return_value = mock_tenant
+            mock_query.filter_by.return_value = mock_filter
+            mock_session_instance.query.return_value = mock_query
+
+            # Make it work as a context manager
+            mock_context = Mock()
+            mock_context.__enter__ = Mock(return_value=mock_session_instance)
+            mock_context.__exit__ = Mock(return_value=None)
+            mock_db_session.return_value = mock_context
 
             response = authenticated_session.get("/api/tenant/test_tenant/gam/reporting?date_range=today")
             assert response.status_code == 400

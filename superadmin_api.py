@@ -270,16 +270,14 @@ def get_tenant(tenant_id):
                 "settings": {
                     "max_daily_budget": tenant.max_daily_budget,
                     "enable_aee_signals": bool(tenant.enable_aee_signals),
-                    "authorized_emails": json.loads(tenant.authorized_emails) if tenant.authorized_emails else [],
-                    "authorized_domains": json.loads(tenant.authorized_domains) if tenant.authorized_domains else [],
+                    "authorized_emails": tenant.authorized_emails if tenant.authorized_emails else [],
+                    "authorized_domains": tenant.authorized_domains if tenant.authorized_domains else [],
                     "slack_webhook_url": tenant.slack_webhook_url,
                     "slack_audit_webhook_url": tenant.slack_audit_webhook_url,
                     "hitl_webhook_url": tenant.hitl_webhook_url,
-                    "auto_approve_formats": (
-                        json.loads(tenant.auto_approve_formats) if tenant.auto_approve_formats else []
-                    ),
+                    "auto_approve_formats": (tenant.auto_approve_formats if tenant.auto_approve_formats else []),
                     "human_review_required": bool(tenant.human_review_required),
-                    "policy_settings": json.loads(tenant.policy_settings) if tenant.policy_settings else {},
+                    "policy_settings": tenant.policy_settings if tenant.policy_settings else {},
                 },
             }
 
@@ -446,7 +444,7 @@ def delete_tenant(tenant_id):
             hard_delete = request.args.get("hard_delete", "false").lower() == "true"
 
             # Check request body for hard_delete flag (not query params)
-            data = request.get_json() or {}
+            data = request.get_json(force=True, silent=True) or {}
             hard_delete = data.get("hard_delete", False)
 
             if hard_delete:
@@ -466,7 +464,7 @@ def delete_tenant(tenant_id):
                 # Just mark as inactive
                 tenant.is_active = False
                 tenant.updated_at = datetime.now(UTC)
-                message = "Tenant soft deleted successfully"
+                message = "Tenant deactivated successfully"
 
             db_session.commit()
 

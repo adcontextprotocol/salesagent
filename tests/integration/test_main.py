@@ -6,7 +6,6 @@ import uuid
 import pytest
 
 from config_loader import get_current_tenant, set_current_tenant
-from database_session import get_db_session
 from models import Product as ProductModel
 
 # Ensure the main module can be imported
@@ -105,6 +104,8 @@ class TestAdcpServerV2_3(unittest.TestCase):
                     targeting_template TEXT DEFAULT '{}',
                     implementation_config TEXT DEFAULT '{}',
                     adapter_product_id VARCHAR(100),
+                    is_custom BOOLEAN DEFAULT 0,
+                    expires_at DATETIME,
                     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
                     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
                     PRIMARY KEY (product_id, tenant_id)
@@ -262,7 +263,14 @@ class TestAdcpServerV2_3(unittest.TestCase):
         tenant = get_current_tenant()
         self.assertIsNotNone(tenant)
 
-        with get_db_session() as db_session:
+        # Use the same database connection as setUpClass
+        from sqlalchemy import create_engine
+        from sqlalchemy.orm import sessionmaker
+
+        engine = create_engine(os.environ["DATABASE_URL"])
+        Session = sessionmaker(bind=engine)
+
+        with Session() as db_session:
             products = db_session.query(ProductModel).filter_by(tenant_id=tenant["tenant_id"]).all()
 
             # Convert to list of dicts for consistency
