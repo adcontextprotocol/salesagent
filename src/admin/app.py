@@ -20,7 +20,7 @@ from src.admin.blueprints.policy import policy_bp
 from src.admin.blueprints.products import products_bp
 from src.admin.blueprints.settings import settings_bp
 from src.admin.blueprints.tenants import tenants_bp
-from src.admin.utils import is_super_admin, require_auth
+from src.admin.utils import require_auth
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -76,12 +76,12 @@ def create_app(config=None):
     app.register_blueprint(tenants_bp, url_prefix="/tenant")
     app.register_blueprint(products_bp, url_prefix="/tenant/<tenant_id>/products")
     app.register_blueprint(gam_bp)
-    app.register_blueprint(operations_bp)
-    app.register_blueprint(creatives_bp)
-    app.register_blueprint(policy_bp)
-    app.register_blueprint(settings_bp)
-    app.register_blueprint(adapters_bp)
-    app.register_blueprint(api_bp)
+    app.register_blueprint(operations_bp, url_prefix="/tenant/<tenant_id>")
+    app.register_blueprint(creatives_bp, url_prefix="/tenant/<tenant_id>/creative-formats")
+    app.register_blueprint(policy_bp, url_prefix="/tenant/<tenant_id>/policy")
+    app.register_blueprint(settings_bp, url_prefix="/tenant/<tenant_id>/settings")
+    app.register_blueprint(adapters_bp, url_prefix="/tenant/<tenant_id>")
+    app.register_blueprint(api_bp, url_prefix="/api")
     app.register_blueprint(mcp_test_bp)
 
     # Import and register existing blueprints
@@ -118,25 +118,40 @@ def create_app(config=None):
     @app.route("/")
     @require_auth()
     def index():
-        """Main index page."""
-        email = session.get("user")
+        """Dashboard showing all tenants (super admin) or redirect to tenant page (tenant admin)."""
+        from datetime import datetime
 
-        # If super admin, show all tenants
-        if is_super_admin(email):
-            try:
-                with get_db_session() as db_session:
-                    tenants = db_session.query(Tenant).order_by(Tenant.name).all()
-                    return render_template("index.html", tenants=tenants)
-            except Exception as e:
-                logger.error(f"Error loading tenants: {e}")
-                return render_template("error.html", error="Failed to load tenants"), 500
+        # Tenant admins should go directly to their tenant page
+        if session.get("role") == "tenant_admin":
+            return redirect(url_for("tenants.dashboard", tenant_id=session.get("tenant_id")))
 
-        # If regular user, redirect to their tenant
-        if "tenant_id" in session:
-            return redirect(url_for("tenants.dashboard", tenant_id=session["tenant_id"]))
-
-        # Otherwise show limited view
-        return render_template("index.html", tenants=[])
+        # Super admins see all tenants
+        try:
+            with get_db_session() as db_session:
+                tenant_objects = db_session.query(Tenant).order_by(Tenant.created_at.desc()).all()
+                tenants = []
+                for tenant in tenant_objects:
+                    # Convert datetime if it's a string
+                    created_at = tenant.created_at
+                    if isinstance(created_at, str):
+                        try:
+                            created_at = datetime.fromisoformat(created_at.replace("T", " "))
+                        except Exception as e:
+                            logger.warning(f"Could not parse datetime {created_at}: {e}")
+                            pass
+                    tenants.append(
+                        {
+                            "tenant_id": tenant.tenant_id,
+                            "name": tenant.name,
+                            "subdomain": tenant.subdomain,
+                            "is_active": tenant.is_active,
+                            "created_at": created_at,
+                        }
+                    )
+                return render_template("index.html", tenants=tenants)
+        except Exception as e:
+            logger.error(f"Error loading tenants: {e}")
+            return render_template("error.html", error="Failed to load tenants"), 500
 
     @app.route("/settings", methods=["GET", "POST"])
     @require_auth(admin_only=True)
@@ -194,18 +209,26 @@ def register_adapter_routes(app):
         from adapters.google_ad_manager import GoogleAdManager
         from adapters.mock_ad_server import MockAdServer
 
-        # Register routes for each adapter that supports UI configuration
-        adapters = [
-            GoogleAdManager(principal=None),  # Dummy instance for route registration
-            MockAdServer(principal=None, dry_run=False),
+        # Register routes for each adapter that supports UI routes
+        # Note: We skip instantiation errors since routes are optional
+        adapter_configs = [
+            (GoogleAdManager, {"config": {}, "principal": None}),
+            (MockAdServer, {"principal": None, "dry_run": False}),
         ]
 
-        for adapter in adapters:
-            if hasattr(adapter, "register_ui_routes"):
-                adapter.register_ui_routes(app)
+        for adapter_class, kwargs in adapter_configs:
+            try:
+                # Try to create instance for route registration
+                adapter_instance = adapter_class(**kwargs)
+                if hasattr(adapter_instance, "register_ui_routes"):
+                    adapter_instance.register_ui_routes(app)
+                    logger.info(f"Registered UI routes for {adapter_class.__name__}")
+            except Exception as e:
+                # This is expected for some adapters that require specific config
+                logger.debug(f"Could not register {adapter_class.__name__} routes: {e}")
 
     except Exception as e:
-        logger.warning(f"Error registering adapter routes: {e}")
+        logger.warning(f"Error importing adapter modules: {e}")
 
 
 def broadcast_activity_to_websocket(tenant_id: str, activity: dict):
