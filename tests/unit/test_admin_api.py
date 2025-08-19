@@ -270,7 +270,7 @@ class TestSuperAdminTenantAPI:
         )
 
         assert response.status_code == 200
-        assert response.json["message"] == "Tenant soft deleted successfully"
+        assert response.json["message"] == "Tenant deactivated successfully"
         # Verify is_active was set to False
         assert mock_tenant.is_active is False
 
