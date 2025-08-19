@@ -46,8 +46,9 @@ class DatabaseProductCatalog(ProductCatalogProvider):
                     "name": product_obj.name,
                     "description": product_obj.description,
                     "formats": product_obj.formats,
-                    "is_guaranteed": product_obj.is_guaranteed,
-                    "price_model": product_obj.price_model,
+                    "delivery_type": product_obj.delivery_type,
+                    "is_fixed_price": product_obj.is_fixed_price,
+                    "cpm": product_obj.cpm,
                     "price_guidance": product_obj.price_guidance,
                     "is_custom": product_obj.is_custom,
                     "countries": product_obj.countries,
@@ -167,6 +168,14 @@ class DatabaseProductCatalog(ProductCatalogProvider):
                         fixed_formats.append(format_obj)
                     product_data["formats"] = fixed_formats
 
-                loaded_products.append(Product(**product_data))
+                # Validate against AdCP protocol schema before returning
+                try:
+                    validated_product = Product(**product_data)
+                    loaded_products.append(validated_product)
+                except Exception as e:
+                    logger.error(f"Product {product_data.get('product_id')} failed validation: {e}")
+                    logger.debug(f"Product data that failed: {product_data}")
+                    # Skip invalid products rather than failing entire request
+                    continue
 
             return loaded_products

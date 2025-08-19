@@ -29,12 +29,15 @@ from flask_socketio import SocketIO, emit, join_room, leave_room
 from database_session import get_db_session
 from models import (
     AdapterConfig,
+    AuditLog,
+    CreativeFormat,
     MediaBuy,
     Principal,
     Product,
     SuperadminConfig,
     Tenant,
     User,
+    WorkflowStep,
 )
 from validation import (
     FormValidator,
@@ -1142,7 +1145,7 @@ def create_tenant():
                     tenant_id=tenant_id,
                     principal_id=f"{tenant_id}_admin",
                     name=f"{tenant_name} Admin",
-                    platform_mappings={},
+                    platform_mappings={"mock": {"id": "system"}},  # Default mock mapping
                     access_token=admin_token,
                 )
                 session.add(new_principal)
@@ -3140,13 +3143,16 @@ def get_adapter_inventory_schema(tenant_id, adapter_name):
         if not adapter_config.get("enabled"):
             return jsonify({"error": f"Adapter {adapter_name} is not enabled"}), 400
 
+        # Import the Pydantic Principal schema for dummy principal
+        from schemas import Principal as PrincipalSchema
+
         # Create a dummy principal for schema retrieval
-        dummy_principal = Principal(
+        dummy_principal = PrincipalSchema(
             tenant_id=tenant_id,
             principal_id="schema_query",
             name="Schema Query",
             access_token="",
-            platform_mappings={},
+            platform_mappings={"mock": {"id": "system"}},  # Provide valid mapping
         )
 
         # Import the adapter dynamically
@@ -3328,7 +3334,11 @@ def create_principal(tenant_id):
                 # Build platform mappings
                 platform_mappings = {}
                 if has_gam and form_data.get("gam_advertiser_id"):
-                    platform_mappings["gam_advertiser_id"] = form_data["gam_advertiser_id"]
+                    # Use google_ad_manager as the platform key
+                    platform_mappings["google_ad_manager"] = {"advertiser_id": form_data["gam_advertiser_id"]}
+                else:
+                    # Default to mock if no GAM
+                    platform_mappings["mock"] = {"id": "system"}
 
                 # Create the principal
                 new_principal = Principal(
@@ -3682,13 +3692,16 @@ def list_products(tenant_id):
     # Get active adapter and its UI endpoint
     adapter_ui_endpoint = None
     if active_adapter:
+        # Import the Pydantic Principal schema for dummy principal
+        from schemas import Principal as PrincipalSchema
+
         # Create dummy principal to get UI endpoint
-        dummy_principal = Principal(
+        dummy_principal = PrincipalSchema(
             tenant_id=tenant_id,
             principal_id="ui_query",
             name="UI Query",
             access_token="",
-            platform_mappings={},
+            platform_mappings={"mock": {"id": "system"}},  # Provide valid mapping
         )
 
         # Get adapter configuration from adapter_config table
@@ -3724,6 +3737,16 @@ def list_products(tenant_id):
 
         products = []
         for prod in product_objs:
+            # Parse price_guidance if it's a JSON string
+            price_guidance = prod.price_guidance
+            if isinstance(price_guidance, str):
+                try:
+                    import json
+
+                    price_guidance = json.loads(price_guidance)
+                except (json.JSONDecodeError, TypeError):
+                    price_guidance = None
+
             products.append(
                 {
                     "product_id": prod.product_id,
@@ -3733,7 +3756,7 @@ def list_products(tenant_id):
                     "delivery_type": prod.delivery_type,
                     "is_fixed_price": prod.is_fixed_price,
                     "cpm": prod.cpm,
-                    "price_guidance": prod.price_guidance,
+                    "price_guidance": price_guidance,
                     "is_custom": prod.is_custom,
                     "expires_at": prod.expires_at,
                     "countries": prod.countries,
@@ -6271,13 +6294,16 @@ def register_adapter_routes():
 
                 for adapter_name, adapter_config in adapters_config.items():
                     if adapter_config.get("enabled") and adapter_name not in registered_adapters:
+                        # Import the Pydantic Principal schema for dummy principal
+                        from schemas import Principal as PrincipalSchema
+
                         # Create a dummy principal for route registration
-                        dummy_principal = Principal(
+                        dummy_principal = PrincipalSchema(
                             tenant_id="system",
                             principal_id="route_registration",
                             name="Route Registration",
                             access_token="",
-                            platform_mappings={},
+                            platform_mappings={"mock": {"id": "system"}},  # Provide valid mapping
                         )
 
                         # Import and register adapter routes
@@ -6326,11 +6352,28 @@ def register_adapter_routes():
         traceback.print_exc()
 
 
-# Register adapter routes at module level
-register_adapter_routes()
-
-# Register GAM inventory endpoints at module level
-register_inventory_endpoints(app)
+# Only register adapter routes if not in testing mode
+# This prevents database queries during module import which breaks tests
+if not app.config.get("TESTING"):
+    try:
+        register_adapter_routes()
+        register_inventory_endpoints(app)
+    except Exception as e:
+        app.logger.warning(f"Failed to register adapter routes at startup: {e}")
+else:
+    # In testing mode, register routes lazily on first request
+    @app.before_request
+    def ensure_adapters_registered():
+        """Ensure adapter routes are registered before first request in test mode."""
+        if not hasattr(app, "_adapters_registered"):
+            try:
+                register_adapter_routes()
+                register_inventory_endpoints(app)
+            except Exception as e:
+                # In tests, it's OK if this fails initially
+                app.logger.debug(f"Adapter registration deferred: {e}")
+            finally:
+                app._adapters_registered = True  # Don't retry on every request
 
 
 # WebSocket event handlers for activity feed
