@@ -81,7 +81,8 @@ class TestAdminAppIntegration:
 
     def test_tenant_login_page(self, client):
         """Test tenant-specific login page."""
-        with patch("src.admin.utils.get_db_session") as mock_get_db_session:
+        # Need to patch in the auth blueprint where it's actually used
+        with patch("src.admin.blueprints.auth.get_db_session") as mock_get_db_session:
             mock_session = Mock()
             mock_get_db_session.return_value.__enter__.return_value = mock_session
 
@@ -95,7 +96,7 @@ class TestAdminAppIntegration:
 
     def test_tenant_login_page_not_found(self, client):
         """Test tenant login page for non-existent tenant."""
-        with patch("src.admin.utils.get_db_session") as mock_get_db_session:
+        with patch("src.admin.blueprints.auth.get_db_session") as mock_get_db_session:
             mock_session = Mock()
             mock_get_db_session.return_value.__enter__.return_value = mock_session
             mock_session.query.return_value.filter_by.return_value.first.return_value = None

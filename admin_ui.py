@@ -12,6 +12,7 @@ from functools import wraps
 
 from authlib.integrations.flask_client import OAuth
 from flask import (
+    Blueprint,
     Flask,
     abort,
     flash,
@@ -98,6 +99,10 @@ app.logger.setLevel(logging.INFO)
 
 # Initialize SocketIO with Flask app
 socketio = SocketIO(app, cors_allowed_origins="*", async_mode="threading")
+
+# Create blueprints for namespaced routes (for template compatibility)
+auth_bp = Blueprint("auth", __name__)
+tenants_bp = Blueprint("tenants", __name__)
 
 # Import and register super admin API blueprint
 from superadmin_api import superadmin_api
@@ -439,6 +444,7 @@ def require_tenant_access(api_mode=False):
 
 
 @app.route("/login")
+@auth_bp.route("/login")
 def login():
     """Show login page for super admin."""
     return render_template("login.html", tenant_id=None, test_mode=TEST_MODE_ENABLED)
@@ -463,6 +469,7 @@ def tenant_login(tenant_id):
 
 
 @app.route("/auth/google")
+@auth_bp.route("/google_auth")
 def google_auth():
     """Initiate Google OAuth flow for super admin."""
     redirect_uri = url_for("google_callback", _external=True)
@@ -470,6 +477,7 @@ def google_auth():
 
 
 @app.route("/tenant/<tenant_id>/auth/google")
+@auth_bp.route("/tenant_google_auth/<tenant_id>")
 def tenant_google_auth(tenant_id):
     """Initiate Google OAuth flow for specific tenant."""
     # Store tenant_id in session for callback
@@ -711,6 +719,7 @@ def select_tenant():
 
 
 @app.route("/logout")
+@auth_bp.route("/logout")
 def logout():
     """Log out and clear session."""
     # Save tenant_id before clearing session
@@ -1168,6 +1177,7 @@ def create_tenant():
 
 # New Dashboard Routes (v2)
 @app.route("/tenant/<tenant_id>")
+@tenants_bp.route("/dashboard/<tenant_id>")
 @require_auth()
 def tenant_dashboard(tenant_id):
     """Show new operational dashboard for tenant."""
@@ -6519,6 +6529,10 @@ def broadcast_activity_to_websocket(tenant_id: str, activity: dict):
 # Note: This is a simplified integration since activity_feed uses asyncio
 # In production, you might want to use a message queue or event system
 activity_feed.broadcast_to_websocket = broadcast_activity_to_websocket
+
+# Register blueprints at the end after all routes are defined
+app.register_blueprint(auth_bp, url_prefix="/auth")
+app.register_blueprint(tenants_bp, url_prefix="/tenants")
 
 if __name__ == "__main__":
     # Create templates directory
