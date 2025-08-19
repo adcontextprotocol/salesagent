@@ -112,8 +112,8 @@ def create_app(config=None):
     # Core routes
     @app.route("/health")
     def health():
-        """Health check endpoint."""
-        return {"status": "healthy"}, 200
+        """Health check endpoint for monitoring."""
+        return "OK", 200
 
     @app.route("/")
     @require_auth()
