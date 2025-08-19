@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 api_bp = Blueprint("api", __name__)
 
 
-@api_bp.route("/api/health", methods=["GET"])
+@api_bp.route("/health", methods=["GET"])
 def api_health():
     """API health check endpoint."""
     try:
