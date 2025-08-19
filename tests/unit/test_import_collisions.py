@@ -56,17 +56,26 @@ def test_no_import_collisions():
         if wildcard_line:
             for class_name in collision_prone_classes:
                 if class_name in imports and imports[class_name] < wildcard_line:
-                    # Check if there's a re-import AFTER wildcard
+                    # Check if there's a re-import AFTER wildcard or aliasing
                     has_reimport = False
+                    is_aliased = False
+
+                    # Check if it's aliased in the original import
                     for node in ast.walk(tree):
                         if isinstance(node, ast.ImportFrom):
-                            if node.module == "models" and node.lineno > wildcard_line:
+                            if node.module == "models" and node.lineno == imports[class_name]:
+                                for alias in node.names:
+                                    if alias.name == class_name and alias.asname:
+                                        # It's aliased, so no collision
+                                        is_aliased = True
+                                        break
+                            elif node.module == "models" and node.lineno > wildcard_line:
                                 for alias in node.names:
                                     if class_name in (alias.name, alias.asname):
                                         has_reimport = True
                                         break
 
-                    if not has_reimport:
+                    if not has_reimport and not is_aliased:
                         issues.append(
                             f"{file_path}: {class_name} imported before wildcard (line {imports[class_name]}) "
                             f"and not re-imported after wildcard (line {wildcard_line})"
