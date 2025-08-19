@@ -9,8 +9,16 @@ from flask_socketio import SocketIO, join_room
 
 from database_session import get_db_session
 from models import Tenant
+from src.admin.blueprints.adapters import adapters_bp
+from src.admin.blueprints.api import api_bp
 from src.admin.blueprints.auth import auth_bp, init_oauth
+from src.admin.blueprints.creatives import creatives_bp
+from src.admin.blueprints.gam import gam_bp
+from src.admin.blueprints.mcp_test import mcp_test_bp
+from src.admin.blueprints.operations import operations_bp
+from src.admin.blueprints.policy import policy_bp
 from src.admin.blueprints.products import products_bp
+from src.admin.blueprints.settings import settings_bp
 from src.admin.blueprints.tenants import tenants_bp
 from src.admin.utils import is_super_admin, require_auth
 
@@ -65,8 +73,16 @@ def create_app(config=None):
 
     # Register blueprints
     app.register_blueprint(auth_bp)
-    app.register_blueprint(tenants_bp)
-    app.register_blueprint(products_bp)
+    app.register_blueprint(tenants_bp, url_prefix="/tenant")
+    app.register_blueprint(products_bp, url_prefix="/tenant/<tenant_id>/products")
+    app.register_blueprint(gam_bp)
+    app.register_blueprint(operations_bp)
+    app.register_blueprint(creatives_bp)
+    app.register_blueprint(policy_bp)
+    app.register_blueprint(settings_bp)
+    app.register_blueprint(adapters_bp)
+    app.register_blueprint(api_bp)
+    app.register_blueprint(mcp_test_bp)
 
     # Import and register existing blueprints
     try:

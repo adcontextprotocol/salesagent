@@ -185,7 +185,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
             if (result.success) {
                 alert('Creative format updated successfully');
-                window.location.href = '{{ url_for("creative_formats", tenant_id=tenant_id) }}';
+                window.location.href = '{{ url_for("creatives.index", tenant_id=tenant_id) }}';
             } else {
                 alert('Error: ' + (result.error || 'Failed to update format'));
             }
