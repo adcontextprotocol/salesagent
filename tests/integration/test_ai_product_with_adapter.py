@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from ai_product_service import AIProductConfigurationService
+from ai_product_service import AIProductConfigurationService, ProductDescription
 from database_session import get_db_session
 from models import AdapterConfig, Tenant
 
@@ -21,10 +21,12 @@ def ai_tenant_with_adapter(integration_db):
         tenant = Tenant(
             tenant_id="test_ai_tenant",
             name="Test AI Tenant",
+            subdomain="test-ai",
             ad_server="mock",
             authorized_emails=["test@example.com"],
             created_at=now,
             updated_at=now,
+            is_active=True,
         )
         session.add(tenant)
 
@@ -44,10 +46,12 @@ def ai_tenant_with_adapter(integration_db):
 @pytest.mark.asyncio
 async def test_ai_product_with_adapter_config(ai_tenant_with_adapter):
     """Test that AI product service correctly handles AdapterConfig without config column."""
-    service = AIProductConfigurationService()
+    # Mock the Gemini API before initializing the service
+    with (
+        patch("ai_product_service.genai.configure"),
+        patch("ai_product_service.genai.GenerativeModel") as mock_model_class,
+    ):
 
-    # Mock Gemini API
-    with patch("ai_product_service.genai") as mock_genai:
         mock_model = MagicMock()
         mock_response = MagicMock()
         mock_response.text = json.dumps(
@@ -68,11 +72,14 @@ async def test_ai_product_with_adapter_config(ai_tenant_with_adapter):
                 ]
             }
         )
-        mock_model.generate_content_async = AsyncMock(return_value=mock_response)
-        mock_genai.GenerativeModel.return_value = mock_model
+        mock_model.generate_content = MagicMock(return_value=mock_response)
+        mock_model_class.return_value = mock_model
+
+        # Now initialize the service with mocked Gemini
+        service = AIProductConfigurationService()
 
         # Mock adapter's get_available_inventory
-        with patch("ai_product_service.get_adapter_class") as mock_get_adapter:
+        with patch("adapters.get_adapter_class") as mock_get_adapter:
             mock_adapter_class = MagicMock()
             mock_adapter_instance = MagicMock()
             mock_adapter_instance.get_available_inventory = AsyncMock(
@@ -83,7 +90,11 @@ async def test_ai_product_with_adapter_config(ai_tenant_with_adapter):
 
             # Test product generation - should not raise AttributeError about 'config'
             result = await service.create_product_from_description(
-                tenant_id="test_ai_tenant", description="News website", name="Test Product"
+                tenant_id="test_ai_tenant",
+                description=ProductDescription(
+                    name="Test Product", external_description="News website", internal_details="Mock adapter testing"
+                ),
+                adapter_type="mock",
             )
 
             # The method returns a Product object or error dict
@@ -104,18 +115,20 @@ async def test_ai_product_with_adapter_config(ai_tenant_with_adapter):
 @pytest.mark.asyncio
 async def test_ai_product_with_gam_adapter(integration_db):
     """Test AI product service with Google Ad Manager adapter config."""
+    from datetime import UTC, datetime
+
     with get_db_session() as session:
         # Create tenant with GAM adapter
-        from datetime import UTC, datetime
-
         now = datetime.now(UTC)
         tenant = Tenant(
             tenant_id="gam_tenant",
             name="GAM Tenant",
+            subdomain="gam-test",
             ad_server="google_ad_manager",
             authorized_emails=["test@example.com"],
             created_at=now,
             updated_at=now,
+            is_active=True,
         )
         session.add(tenant)
 
@@ -132,16 +145,21 @@ async def test_ai_product_with_gam_adapter(integration_db):
         session.add(adapter_config)
         session.commit()
 
-    service = AIProductConfigurationService()
-
-    with patch("ai_product_service.genai") as mock_genai:
+    # Mock the Gemini API before initializing the service
+    with (
+        patch("ai_product_service.genai.configure"),
+        patch("ai_product_service.genai.GenerativeModel") as mock_model_class,
+    ):
         mock_model = MagicMock()
         mock_response = MagicMock()
         mock_response.text = json.dumps({"products": []})
-        mock_model.generate_content_async = AsyncMock(return_value=mock_response)
-        mock_genai.GenerativeModel.return_value = mock_model
+        mock_model.generate_content = MagicMock(return_value=mock_response)
+        mock_model_class.return_value = mock_model
 
-        with patch("ai_product_service.get_adapter_class") as mock_get_adapter:
+        # Now initialize the service with mocked Gemini
+        service = AIProductConfigurationService()
+
+        with patch("adapters.get_adapter_class") as mock_get_adapter:
             mock_adapter_class = MagicMock()
             mock_adapter_instance = MagicMock()
             mock_adapter_instance.get_available_inventory = AsyncMock(
@@ -152,7 +170,11 @@ async def test_ai_product_with_gam_adapter(integration_db):
 
             # Generate products - should correctly build GAM config
             await service.create_product_from_description(
-                tenant_id="gam_tenant", description="Sports site", name="Sports Product"
+                tenant_id="gam_tenant",
+                description=ProductDescription(
+                    name="Sports Product", external_description="Sports site", internal_details="GAM adapter testing"
+                ),
+                adapter_type="google_ad_manager",
             )
 
             # Verify GAM config was built correctly

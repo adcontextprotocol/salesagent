@@ -39,6 +39,7 @@ def test_tenant():
             auto_approve_formats=["display_300x250"],
             human_review_required=False,
             billing_plan="basic",
+            is_active=True,
             created_at=now,
             updated_at=now,
         )

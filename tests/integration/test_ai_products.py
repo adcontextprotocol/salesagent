@@ -305,7 +305,7 @@ class TestProductAPIs:
             session.commit()
 
         csv_data = """name,product_id,formats,delivery_type,cpm,is_fixed_price,targeting_template
-Test Product,test_prod,"[""display_300x250"",""display_728x90""]",guaranteed,15.0,true,"{}"
+Test Product,test_prod,"[{""format_id"":""display_300x250"",""name"":""Medium Rectangle"",""type"":""display"",""description"":""Standard medium rectangle"",""width"":300,""height"":250,""delivery_options"":{}}]",guaranteed,15.0,true,"{}"
 """
         from io import BytesIO
 

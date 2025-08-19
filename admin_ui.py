@@ -4080,10 +4080,15 @@ def bulk_product_upload(tenant_id):
                     # Generate product ID if not provided
                     product_id = product_data.get("product_id", product_data["name"].lower().replace(" ", "_"))
 
-                    # Parse formats (handle comma-separated string or list)
+                    # Parse formats (handle JSON string, comma-separated string, or list)
                     formats = product_data.get("formats", [])
                     if isinstance(formats, str):
-                        formats = [f.strip() for f in formats.split(",")]
+                        # Try to parse as JSON first (for complex format objects)
+                        try:
+                            formats = json.loads(formats)
+                        except json.JSONDecodeError:
+                            # Fall back to comma-separated simple format IDs
+                            formats = [f.strip() for f in formats.split(",")]
 
                     # Parse countries
                     countries = product_data.get("countries")
@@ -4113,25 +4118,27 @@ def bulk_product_upload(tenant_id):
                     if countries:
                         targeting_template["geo_targets"] = {"countries": countries}
 
+                    # Calculate is_fixed_price
+                    is_fixed_price = delivery_type == "guaranteed" and cpm is not None
+
                     # Insert product
                     new_product = Product(
                         product_id=product_id,
                         tenant_id=tenant_id,
                         name=product_data["name"],
                         description=product_data.get("description", ""),
-                        formats=json.dumps(formats),
+                        formats=formats,  # Pass as Python object, not JSON string
                         delivery_type=delivery_type,
+                        is_fixed_price=is_fixed_price,
                         cpm=cpm,
                         price_guidance=(
-                            json.dumps({"min_cpm": price_guidance_min, "max_cpm": price_guidance_max})
+                            {"min_cpm": price_guidance_min, "max_cpm": price_guidance_max}
                             if price_guidance_min and price_guidance_max
                             else None
                         ),
-                        countries=json.dumps(countries) if countries else None,
-                        targeting_template=json.dumps(targeting_template),
-                        implementation_config=json.dumps(product_data.get("implementation_config", {})),
-                        created_at=datetime.now(),
-                        updated_at=datetime.now(),
+                        countries=countries,
+                        targeting_template=targeting_template,
+                        implementation_config=product_data.get("implementation_config", {}),
                     )
                     db_session.add(new_product)
                     created_count += 1
