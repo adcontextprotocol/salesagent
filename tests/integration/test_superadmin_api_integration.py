@@ -1,46 +1,22 @@
 #!/usr/bin/env python3
 """Integration tests for the Super Admin API - tests with actual database."""
 
-import os
-import shutil
-import tempfile
 
 import pytest
 from flask import Flask
 
-from database import init_db
 from superadmin_api import superadmin_api
 
 pytestmark = pytest.mark.integration
 
 
-@pytest.fixture
-def temp_db():
-    """Create a temporary database for testing."""
-    # Create temp directory
-    temp_dir = tempfile.mkdtemp()
-    db_path = os.path.join(temp_dir, "test.db")
-
-    # Set up test database - clear any existing DB config
-    for key in ["DATABASE_URL", "DB_TYPE", "DB_PATH"]:
-        if key in os.environ:
-            del os.environ[key]
-
-    # Set the SQLite path directly
-    os.environ["DB_PATH"] = db_path
-
-    # Initialize database
-    init_db()
-
-    yield db_path
-
-    # Cleanup
-    shutil.rmtree(temp_dir)
+# temp_db fixture removed - using integration_db from conftest instead
 
 
 @pytest.fixture
-def app(temp_db):
+def app(integration_db):
     """Create test Flask app."""
+    # integration_db ensures database is properly initialized
     app = Flask(__name__)
     app.config["TESTING"] = True
     app.register_blueprint(superadmin_api)
