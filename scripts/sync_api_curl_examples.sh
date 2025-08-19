@@ -68,9 +68,9 @@ if [ "$SYNC_ID" != "null" ]; then
         STATUS=$(curl -s -X GET \
           -H "X-API-Key: $API_KEY" \
           "${BASE_URL}/api/v1/sync/status/${TENANT_ID}" | jq -r '.status')
-        
+
         echo "   Check $i: $STATUS"
-        
+
         if [ "$STATUS" = "completed" ] || [ "$STATUS" = "failed" ]; then
             break
         fi

@@ -1,30 +1,44 @@
 """SQLAlchemy models for database schema."""
 
 from sqlalchemy import (
-    Boolean, Column, DateTime, ForeignKey, Integer, String, Text, 
-    DECIMAL, Date, JSON, UniqueConstraint, Index, CheckConstraint,
-    ForeignKeyConstraint, Float, BigInteger
+    DECIMAL,
+    JSON,
+    BigInteger,
+    Boolean,
+    CheckConstraint,
+    Column,
+    Date,
+    DateTime,
+    Float,
+    ForeignKey,
+    ForeignKeyConstraint,
+    Index,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
 )
 from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import relationship, validates
+from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
-from sqlalchemy.dialects.postgresql import JSONB
-from json_validators import JSONValidatorMixin, ensure_json_array, ensure_json_object
+
+from json_validators import JSONValidatorMixin
 
 Base = declarative_base()
 
+
 class Tenant(Base, JSONValidatorMixin):
-    __tablename__ = 'tenants'
-    
+    __tablename__ = "tenants"
+
     tenant_id = Column(String(50), primary_key=True)
-    name = Column(String(255), nullable=False)
+    name = Column(String(200), nullable=False)
     subdomain = Column(String(100), unique=True, nullable=False)
     created_at = Column(DateTime, nullable=False, server_default=func.now())
     updated_at = Column(DateTime, nullable=False, server_default=func.now(), onupdate=func.now())
     is_active = Column(Boolean, default=True)
-    billing_plan = Column(String(50), default='standard')
+    billing_plan = Column(String(50), default="standard")
     billing_contact = Column(String(255))
-    
+
     # New columns from migration
     ad_server = Column(String(50))
     max_daily_budget = Column(Integer, nullable=False, default=10000)
@@ -38,7 +52,7 @@ class Tenant(Base, JSONValidatorMixin):
     auto_approve_formats = Column(JSON)  # JSON array
     human_review_required = Column(Boolean, nullable=False, default=True)
     policy_settings = Column(JSON)  # JSON object
-    
+
     # Relationships
     products = relationship("Product", back_populates="tenant", cascade="all, delete-orphan")
     principals = relationship("Principal", back_populates="tenant", cascade="all, delete-orphan")
@@ -46,21 +60,25 @@ class Tenant(Base, JSONValidatorMixin):
     media_buys = relationship("MediaBuy", back_populates="tenant", cascade="all, delete-orphan")
     # tasks table removed - replaced by workflow_steps
     audit_logs = relationship("AuditLog", back_populates="tenant", cascade="all, delete-orphan")
-    adapter_config = relationship("AdapterConfig", back_populates="tenant", uselist=False, cascade="all, delete-orphan")
-    
-    __table_args__ = (
-        Index('idx_subdomain', 'subdomain'),
+    adapter_config = relationship(
+        "AdapterConfig",
+        back_populates="tenant",
+        uselist=False,
+        cascade="all, delete-orphan",
     )
-    
+
+    __table_args__ = (Index("idx_subdomain", "subdomain"),)
+
     # JSON validators are inherited from JSONValidatorMixin
     # No need for duplicate validators here
 
+
 class CreativeFormat(Base):
-    __tablename__ = 'creative_formats'
-    
+    __tablename__ = "creative_formats"
+
     format_id = Column(String(50), primary_key=True)
-    tenant_id = Column(String(50), ForeignKey('tenants.tenant_id', ondelete='CASCADE'), nullable=True)
-    name = Column(String(255), nullable=False)
+    tenant_id = Column(String(50), ForeignKey("tenants.tenant_id", ondelete="CASCADE"), nullable=True)
+    name = Column(String(200), nullable=False)
     type = Column(String(20), nullable=False)
     description = Column(Text)
     width = Column(Integer)
@@ -70,26 +88,33 @@ class CreativeFormat(Base):
     specs = Column(JSON, nullable=False)  # JSONB in PostgreSQL
     is_standard = Column(Boolean, default=True)
     is_foundational = Column(Boolean, default=False)
-    extends = Column(String(50), ForeignKey('creative_formats.format_id', ondelete='RESTRICT'), nullable=True)
+    extends = Column(
+        String(50),
+        ForeignKey("creative_formats.format_id", ondelete="RESTRICT"),
+        nullable=True,
+    )
     modifications = Column(JSON, nullable=True)  # JSONB in PostgreSQL
     source_url = Column(Text)
     created_at = Column(DateTime, server_default=func.now())
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
-    
+
     # Relationships
     tenant = relationship("Tenant", backref="creative_formats")
     base_format = relationship("CreativeFormat", remote_side=[format_id], backref="extensions")
-    
-    __table_args__ = (
-        CheckConstraint("type IN ('display', 'video', 'audio', 'native')"),
-    )
+
+    __table_args__ = (CheckConstraint("type IN ('display', 'video', 'audio', 'native')"),)
+
 
 class Product(Base, JSONValidatorMixin):
-    __tablename__ = 'products'
-    
-    tenant_id = Column(String(50), ForeignKey('tenants.tenant_id', ondelete='CASCADE'), primary_key=True)
+    __tablename__ = "products"
+
+    tenant_id = Column(
+        String(50),
+        ForeignKey("tenants.tenant_id", ondelete="CASCADE"),
+        primary_key=True,
+    )
     product_id = Column(String(100), primary_key=True)
-    name = Column(String(255), nullable=False)
+    name = Column(String(200), nullable=False)
     description = Column(Text)
     formats = Column(JSON, nullable=False)  # JSONB in PostgreSQL
     targeting_template = Column(JSON, nullable=False)  # JSONB in PostgreSQL
@@ -101,62 +126,67 @@ class Product(Base, JSONValidatorMixin):
     expires_at = Column(DateTime)
     countries = Column(JSON)  # JSONB in PostgreSQL
     implementation_config = Column(JSON)  # JSONB in PostgreSQL
-    
+
     # Relationships
     tenant = relationship("Tenant", back_populates="products")
-    
-    __table_args__ = (
-        Index('idx_products_tenant', 'tenant_id'),
-    )
+
+    __table_args__ = (Index("idx_products_tenant", "tenant_id"),)
+
 
 class Principal(Base, JSONValidatorMixin):
-    __tablename__ = 'principals'
-    
-    tenant_id = Column(String(50), ForeignKey('tenants.tenant_id', ondelete='CASCADE'), primary_key=True)
-    principal_id = Column(String(100), primary_key=True)
-    name = Column(String(255), nullable=False)
+    __tablename__ = "principals"
+
+    tenant_id = Column(
+        String(50),
+        ForeignKey("tenants.tenant_id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    principal_id = Column(String(50), primary_key=True)
+    name = Column(String(200), nullable=False)
     platform_mappings = Column(JSON, nullable=False)  # JSONB in PostgreSQL
     access_token = Column(String(255), unique=True, nullable=False)
     created_at = Column(DateTime, server_default=func.now())
-    
+
     # Relationships
     tenant = relationship("Tenant", back_populates="principals")
     media_buys = relationship("MediaBuy", back_populates="principal")
-    
+
     __table_args__ = (
-        Index('idx_principals_tenant', 'tenant_id'),
-        Index('idx_principals_token', 'access_token'),
+        Index("idx_principals_tenant", "tenant_id"),
+        Index("idx_principals_token", "access_token"),
     )
 
+
 class User(Base):
-    __tablename__ = 'users'
-    
+    __tablename__ = "users"
+
     user_id = Column(String(50), primary_key=True)
-    tenant_id = Column(String(50), ForeignKey('tenants.tenant_id', ondelete='CASCADE'), nullable=False)
+    tenant_id = Column(String(50), ForeignKey("tenants.tenant_id", ondelete="CASCADE"), nullable=False)
     email = Column(String(255), unique=True, nullable=False)
-    name = Column(String(255), nullable=False)
+    name = Column(String(200), nullable=False)
     role = Column(String(20), nullable=False)
     google_id = Column(String(255))
     created_at = Column(DateTime, server_default=func.now())
     last_login = Column(DateTime)
     is_active = Column(Boolean, default=True)
-    
+
     # Relationships
     tenant = relationship("Tenant", back_populates="users")
-    
+
     __table_args__ = (
         CheckConstraint("role IN ('admin', 'manager', 'viewer')"),
-        Index('idx_users_tenant', 'tenant_id'),
-        Index('idx_users_email', 'email'),
-        Index('idx_users_google_id', 'google_id'),
+        Index("idx_users_tenant", "tenant_id"),
+        Index("idx_users_email", "email"),
+        Index("idx_users_google_id", "google_id"),
     )
 
+
 class MediaBuy(Base):
-    __tablename__ = 'media_buys'
-    
+    __tablename__ = "media_buys"
+
     media_buy_id = Column(String(100), primary_key=True)
-    tenant_id = Column(String(50), ForeignKey('tenants.tenant_id', ondelete='CASCADE'), nullable=False)
-    principal_id = Column(String(100), nullable=False)
+    tenant_id = Column(String(50), ForeignKey("tenants.tenant_id", ondelete="CASCADE"), nullable=False)
+    principal_id = Column(String(50), nullable=False)
     order_name = Column(String(255), nullable=False)
     advertiser_name = Column(String(255), nullable=False)
     campaign_objective = Column(String(100))
@@ -164,55 +194,98 @@ class MediaBuy(Base):
     budget = Column(DECIMAL(15, 2))
     start_date = Column(Date, nullable=False)
     end_date = Column(Date, nullable=False)
-    status = Column(String(50), nullable=False, default='draft')
+    status = Column(String(20), nullable=False, default="draft")
     created_at = Column(DateTime, server_default=func.now())
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
     approved_at = Column(DateTime)
     approved_by = Column(String(255))
     raw_request = Column(JSON, nullable=False)  # JSONB in PostgreSQL
-    
-    # Context removed - using ObjectWorkflowMapping for lifecycle tracking
-    
+    context_id = Column(String(100), nullable=True)  # Link to context if created through A2A protocol
+
     # Relationships
     tenant = relationship("Tenant", back_populates="media_buys")
-    principal = relationship("Principal", foreign_keys=[tenant_id, principal_id],
-                           primaryjoin="and_(MediaBuy.tenant_id==Principal.tenant_id, MediaBuy.principal_id==Principal.principal_id)")
+    principal = relationship(
+        "Principal",
+        foreign_keys=[tenant_id, principal_id],
+        primaryjoin="and_(MediaBuy.tenant_id==Principal.tenant_id, MediaBuy.principal_id==Principal.principal_id)",
+    )
     # Removed tasks and context relationships - using ObjectWorkflowMapping instead
-    
+
     __table_args__ = (
-        ForeignKeyConstraint(['tenant_id', 'principal_id'], ['principals.tenant_id', 'principals.principal_id'], ondelete='CASCADE'),
-        Index('idx_media_buys_tenant', 'tenant_id'),
-        Index('idx_media_buys_status', 'status'),
+        ForeignKeyConstraint(
+            ["tenant_id", "principal_id"],
+            ["principals.tenant_id", "principals.principal_id"],
+            ondelete="CASCADE",
+        ),
+        Index("idx_media_buys_tenant", "tenant_id"),
+        Index("idx_media_buys_status", "status"),
     )
 
-# Task table removed - replaced by WorkflowStep and ObjectWorkflowMapping
+
+# Task table - still used for backward compatibility
+class Task(Base):
+    __tablename__ = "tasks"
+
+    task_id = Column(String(100), primary_key=True)
+    tenant_id = Column(String(50), ForeignKey("tenants.tenant_id", ondelete="CASCADE"), nullable=False)
+    media_buy_id = Column(
+        String(100),
+        ForeignKey("media_buys.media_buy_id", ondelete="CASCADE"),
+        nullable=True,
+    )
+    task_type = Column(String(50), nullable=False)
+    title = Column(String(255), nullable=False, default="")
+    description = Column(Text)
+    status = Column(String(20), nullable=False, default="pending")
+    assigned_to = Column(String(255))
+    due_date = Column(DateTime)
+    completed_at = Column(DateTime)
+    completed_by = Column(String(255))
+    task_metadata = Column(JSON)  # JSONB in PostgreSQL
+    details = Column(JSON)  # JSONB in PostgreSQL (for backward compatibility)
+    created_at = Column(DateTime, server_default=func.now())
+
+    __table_args__ = (
+        Index("idx_tasks_tenant", "tenant_id"),
+        Index("idx_tasks_status", "status"),
+    )
+
+
+class HumanTask(Base):
+    __tablename__ = "human_tasks"
+
+    task_id = Column(String(100), primary_key=True)
+    media_buy_id = Column(String(100))
+    status = Column(String(20), nullable=False, default="pending")
+    task_metadata = Column(Text)
+
 
 class AuditLog(Base):
-    __tablename__ = 'audit_logs'
-    
+    __tablename__ = "audit_logs"
+
     log_id = Column(Integer, primary_key=True, autoincrement=True)
-    tenant_id = Column(String(50), ForeignKey('tenants.tenant_id', ondelete='CASCADE'), nullable=False)
+    tenant_id = Column(String(50), ForeignKey("tenants.tenant_id", ondelete="CASCADE"), nullable=False)
     timestamp = Column(DateTime, server_default=func.now())
     operation = Column(String(100), nullable=False)
     principal_name = Column(String(255))
-    principal_id = Column(String(100))
+    principal_id = Column(String(50))
     adapter_id = Column(String(50))
     success = Column(Boolean, nullable=False)
     error_message = Column(Text)
     details = Column(JSON)  # JSONB in PostgreSQL
-    
+
     # Relationships
     tenant = relationship("Tenant", back_populates="audit_logs")
-    
+
     __table_args__ = (
-        Index('idx_audit_logs_tenant', 'tenant_id'),
-        Index('idx_audit_logs_timestamp', 'timestamp'),
+        Index("idx_audit_logs_tenant", "tenant_id"),
+        Index("idx_audit_logs_timestamp", "timestamp"),
     )
 
 
 class SuperadminConfig(Base):
-    __tablename__ = 'superadmin_config'
-    
+    __tablename__ = "superadmin_config"
+
     config_key = Column(String(100), primary_key=True)
     config_value = Column(Text)
     description = Column(Text)
@@ -221,98 +294,107 @@ class SuperadminConfig(Base):
 
 
 class AdapterConfig(Base):
-    __tablename__ = 'adapter_config'
-    
-    tenant_id = Column(String(50), ForeignKey('tenants.tenant_id', ondelete='CASCADE'), primary_key=True)
+    __tablename__ = "adapter_config"
+
+    tenant_id = Column(
+        String(50),
+        ForeignKey("tenants.tenant_id", ondelete="CASCADE"),
+        primary_key=True,
+    )
     adapter_type = Column(String(50), nullable=False)
-    
+
     # Mock adapter
     mock_dry_run = Column(Boolean)
-    
+
     # Google Ad Manager
     gam_network_code = Column(String(50))
     gam_refresh_token = Column(Text)
     gam_company_id = Column(String(50))
     gam_trafficker_id = Column(String(50))
     gam_manual_approval_required = Column(Boolean, default=False)
-    
+
     # Kevel
     kevel_network_id = Column(String(50))
     kevel_api_key = Column(String(100))
     kevel_manual_approval_required = Column(Boolean, default=False)
-    
+
     # Triton
     triton_station_id = Column(String(50))
     triton_api_key = Column(String(100))
-    
+
     created_at = Column(DateTime, server_default=func.now())
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
-    
+
     # Relationships
     tenant = relationship("Tenant", back_populates="adapter_config")
-    
-    __table_args__ = (
-        Index('idx_adapter_config_type', 'adapter_type'),
-    )
+
+    __table_args__ = (Index("idx_adapter_config_type", "adapter_type"),)
 
 
 class GAMInventory(Base):
-    __tablename__ = 'gam_inventory'
-    
+    __tablename__ = "gam_inventory"
+
     id = Column(Integer, primary_key=True)
-    tenant_id = Column(String(50), ForeignKey('tenants.tenant_id', ondelete='CASCADE'), nullable=False)
-    inventory_type = Column(String(30), nullable=False)  # 'ad_unit', 'placement', 'label', 'custom_targeting_key', 'custom_targeting_value'
+    tenant_id = Column(String(50), ForeignKey("tenants.tenant_id", ondelete="CASCADE"), nullable=False)
+    inventory_type = Column(
+        String(30), nullable=False
+    )  # 'ad_unit', 'placement', 'label', 'custom_targeting_key', 'custom_targeting_value'
     inventory_id = Column(String(50), nullable=False)  # GAM ID
-    name = Column(String(255), nullable=False)
+    name = Column(String(200), nullable=False)
     path = Column(JSON)  # Array of path components for ad units
     status = Column(String(20), nullable=False)
     inventory_metadata = Column(JSON)  # Full inventory details
     last_synced = Column(DateTime, nullable=False, default=func.now())
     created_at = Column(DateTime, nullable=False, default=func.now())
     updated_at = Column(DateTime, nullable=False, default=func.now(), onupdate=func.now())
-    
+
     # Relationships
     tenant = relationship("Tenant")
-    
+
     __table_args__ = (
-        UniqueConstraint('tenant_id', 'inventory_type', 'inventory_id', name='uq_gam_inventory'),
-        Index('idx_gam_inventory_tenant', 'tenant_id'),
-        Index('idx_gam_inventory_type', 'inventory_type'),
-        Index('idx_gam_inventory_status', 'status'),
+        UniqueConstraint("tenant_id", "inventory_type", "inventory_id", name="uq_gam_inventory"),
+        Index("idx_gam_inventory_tenant", "tenant_id"),
+        Index("idx_gam_inventory_type", "inventory_type"),
+        Index("idx_gam_inventory_status", "status"),
     )
 
 
 class ProductInventoryMapping(Base):
-    __tablename__ = 'product_inventory_mappings'
-    
+    __tablename__ = "product_inventory_mappings"
+
     id = Column(Integer, primary_key=True)
-    tenant_id = Column(String(50), ForeignKey('tenants.tenant_id', ondelete='CASCADE'), nullable=False)
+    tenant_id = Column(String(50), ForeignKey("tenants.tenant_id", ondelete="CASCADE"), nullable=False)
     product_id = Column(String(50), nullable=False)
     inventory_type = Column(String(30), nullable=False)  # 'ad_unit' or 'placement'
     inventory_id = Column(String(50), nullable=False)  # GAM inventory ID
     is_primary = Column(Boolean, default=False)  # Primary targeting for the product
     created_at = Column(DateTime, nullable=False, default=func.now())
-    
+
     # Add foreign key constraint for product
     __table_args__ = (
         ForeignKeyConstraint(
-            ['tenant_id', 'product_id'],
-            ['products.tenant_id', 'products.product_id'],
-            ondelete='CASCADE'
+            ["tenant_id", "product_id"],
+            ["products.tenant_id", "products.product_id"],
+            ondelete="CASCADE",
         ),
-        Index('idx_product_inventory_mapping', 'tenant_id', 'product_id'),
-        UniqueConstraint('tenant_id', 'product_id', 'inventory_type', 'inventory_id', 
-                        name='uq_product_inventory'),
+        Index("idx_product_inventory_mapping", "tenant_id", "product_id"),
+        UniqueConstraint(
+            "tenant_id",
+            "product_id",
+            "inventory_type",
+            "inventory_id",
+            name="uq_product_inventory",
+        ),
     )
 
 
 class GAMOrder(Base):
-    __tablename__ = 'gam_orders'
-    
+    __tablename__ = "gam_orders"
+
     id = Column(Integer, primary_key=True)
-    tenant_id = Column(String(50), ForeignKey('tenants.tenant_id', ondelete='CASCADE'), nullable=False)
+    tenant_id = Column(String(50), ForeignKey("tenants.tenant_id", ondelete="CASCADE"), nullable=False)
     order_id = Column(String(50), nullable=False)  # GAM Order ID
-    name = Column(String(255), nullable=False)
+    name = Column(String(200), nullable=False)
     advertiser_id = Column(String(50), nullable=True)
     advertiser_name = Column(String(255), nullable=True)
     agency_id = Column(String(50), nullable=True)
@@ -321,7 +403,7 @@ class GAMOrder(Base):
     trafficker_name = Column(String(255), nullable=True)
     salesperson_id = Column(String(50), nullable=True)
     salesperson_name = Column(String(255), nullable=True)
-    status = Column(String(30), nullable=False)  # DRAFT, PENDING_APPROVAL, APPROVED, PAUSED, CANCELED, DELETED
+    status = Column(String(20), nullable=False)  # DRAFT, PENDING_APPROVAL, APPROVED, PAUSED, CANCELED, DELETED
     start_date = Column(DateTime, nullable=True)
     end_date = Column(DateTime, nullable=True)
     unlimited_end_date = Column(Boolean, nullable=False, default=False)
@@ -339,30 +421,34 @@ class GAMOrder(Base):
     last_synced = Column(DateTime, nullable=False, default=func.now())
     created_at = Column(DateTime, nullable=False, default=func.now())
     updated_at = Column(DateTime, nullable=False, default=func.now(), onupdate=func.now())
-    
+
     # Relationships
     tenant = relationship("Tenant")
-    line_items = relationship("GAMLineItem", back_populates="order", foreign_keys="GAMLineItem.order_id", 
-                            primaryjoin="and_(GAMOrder.tenant_id==GAMLineItem.tenant_id, GAMOrder.order_id==GAMLineItem.order_id)")
-    
+    line_items = relationship(
+        "GAMLineItem",
+        back_populates="order",
+        foreign_keys="GAMLineItem.order_id",
+        primaryjoin="and_(GAMOrder.tenant_id==GAMLineItem.tenant_id, GAMOrder.order_id==GAMLineItem.order_id)",
+    )
+
     __table_args__ = (
-        UniqueConstraint('tenant_id', 'order_id', name='uq_gam_orders'),
-        Index('idx_gam_orders_tenant', 'tenant_id'),
-        Index('idx_gam_orders_order_id', 'order_id'),
-        Index('idx_gam_orders_status', 'status'),
-        Index('idx_gam_orders_advertiser', 'advertiser_id'),
+        UniqueConstraint("tenant_id", "order_id", name="uq_gam_orders"),
+        Index("idx_gam_orders_tenant", "tenant_id"),
+        Index("idx_gam_orders_order_id", "order_id"),
+        Index("idx_gam_orders_status", "status"),
+        Index("idx_gam_orders_advertiser", "advertiser_id"),
     )
 
 
 class GAMLineItem(Base):
-    __tablename__ = 'gam_line_items'
-    
+    __tablename__ = "gam_line_items"
+
     id = Column(Integer, primary_key=True)
-    tenant_id = Column(String(50), ForeignKey('tenants.tenant_id', ondelete='CASCADE'), nullable=False)
+    tenant_id = Column(String(50), ForeignKey("tenants.tenant_id", ondelete="CASCADE"), nullable=False)
     line_item_id = Column(String(50), nullable=False)  # GAM Line Item ID
     order_id = Column(String(50), nullable=False)  # GAM Order ID
-    name = Column(String(255), nullable=False)
-    status = Column(String(30), nullable=False)  # DRAFT, PENDING_APPROVAL, APPROVED, PAUSED, ARCHIVED, CANCELED
+    name = Column(String(200), nullable=False)
+    status = Column(String(20), nullable=False)  # DRAFT, PENDING_APPROVAL, APPROVED, PAUSED, ARCHIVED, CANCELED
     line_item_type = Column(String(30), nullable=False)  # STANDARD, SPONSORSHIP, NETWORK, HOUSE, etc.
     priority = Column(Integer, nullable=True)
     start_date = Column(DateTime, nullable=True)
@@ -391,7 +477,9 @@ class GAMLineItem(Base):
     stats_video_completions = Column(BigInteger, nullable=True)
     stats_video_starts = Column(BigInteger, nullable=True)
     stats_viewable_impressions = Column(BigInteger, nullable=True)
-    delivery_indicator_type = Column(String(30), nullable=True)  # UNDER_DELIVERY, EXPECTED_DELIVERY, OVER_DELIVERY, etc.
+    delivery_indicator_type = Column(
+        String(30), nullable=True
+    )  # UNDER_DELIVERY, EXPECTED_DELIVERY, OVER_DELIVERY, etc.
     delivery_data = Column(JSON, nullable=True)  # Detailed delivery stats
     targeting = Column(JSON, nullable=True)  # Full targeting criteria
     creative_placeholders = Column(JSON, nullable=True)  # Creative sizes and companions
@@ -408,27 +496,31 @@ class GAMLineItem(Base):
     last_synced = Column(DateTime, nullable=False, default=func.now())
     created_at = Column(DateTime, nullable=False, default=func.now())
     updated_at = Column(DateTime, nullable=False, default=func.now(), onupdate=func.now())
-    
+
     # Relationships
     tenant = relationship("Tenant")
-    order = relationship("GAMOrder", back_populates="line_items", foreign_keys=[tenant_id, order_id],
-                        primaryjoin="and_(GAMLineItem.tenant_id==GAMOrder.tenant_id, GAMLineItem.order_id==GAMOrder.order_id)")
-    
+    order = relationship(
+        "GAMOrder",
+        back_populates="line_items",
+        foreign_keys=[tenant_id, order_id],
+        primaryjoin="and_(GAMLineItem.tenant_id==GAMOrder.tenant_id, GAMLineItem.order_id==GAMOrder.order_id)",
+    )
+
     __table_args__ = (
-        UniqueConstraint('tenant_id', 'line_item_id', name='uq_gam_line_items'),
-        Index('idx_gam_line_items_tenant', 'tenant_id'),
-        Index('idx_gam_line_items_line_item_id', 'line_item_id'),
-        Index('idx_gam_line_items_order_id', 'order_id'),
-        Index('idx_gam_line_items_status', 'status'),
-        Index('idx_gam_line_items_type', 'line_item_type'),
+        UniqueConstraint("tenant_id", "line_item_id", name="uq_gam_line_items"),
+        Index("idx_gam_line_items_tenant", "tenant_id"),
+        Index("idx_gam_line_items_line_item_id", "line_item_id"),
+        Index("idx_gam_line_items_order_id", "order_id"),
+        Index("idx_gam_line_items_status", "status"),
+        Index("idx_gam_line_items_type", "line_item_type"),
     )
 
 
 class SyncJob(Base):
-    __tablename__ = 'sync_jobs'
-    
+    __tablename__ = "sync_jobs"
+
     sync_id = Column(String(50), primary_key=True)
-    tenant_id = Column(String(50), ForeignKey('tenants.tenant_id', ondelete='CASCADE'), nullable=False)
+    tenant_id = Column(String(50), ForeignKey("tenants.tenant_id", ondelete="CASCADE"), nullable=False)
     adapter_type = Column(String(50), nullable=False)
     sync_type = Column(String(20), nullable=False)  # inventory, targeting, full, orders
     status = Column(String(20), nullable=False)  # pending, running, completed, failed
@@ -438,68 +530,80 @@ class SyncJob(Base):
     error_message = Column(Text)
     triggered_by = Column(String(50), nullable=False)  # user, cron, system
     triggered_by_id = Column(String(255))  # user email or system identifier
-    
+
     # Relationships
     tenant = relationship("Tenant")
-    
+
     __table_args__ = (
-        Index('idx_sync_jobs_tenant', 'tenant_id'),
-        Index('idx_sync_jobs_status', 'status'),
-        Index('idx_sync_jobs_started', 'started_at'),
+        Index("idx_sync_jobs_tenant", "tenant_id"),
+        Index("idx_sync_jobs_status", "status"),
+        Index("idx_sync_jobs_started", "started_at"),
     )
 
 
 class Context(Base):
     """Simple conversation tracker for asynchronous operations.
-    
+
     For synchronous operations, no context is needed.
     For asynchronous operations, workflow_steps table is the source of truth for status.
     This just tracks the conversation history for clarifications and refinements.
     """
-    __tablename__ = 'contexts'
-    
+
+    __tablename__ = "contexts"
+
     context_id = Column(String(100), primary_key=True)
-    tenant_id = Column(String(50), ForeignKey('tenants.tenant_id', ondelete='CASCADE'), nullable=False)
-    principal_id = Column(String(100), nullable=False)
-    
+    tenant_id = Column(String(50), ForeignKey("tenants.tenant_id", ondelete="CASCADE"), nullable=False)
+    principal_id = Column(String(50), nullable=False)
+
     # Simple conversation tracking
     conversation_history = Column(JSON, nullable=False, default=list)  # Clarifications and refinements only
     created_at = Column(DateTime, nullable=False, server_default=func.now())
     last_activity_at = Column(DateTime, nullable=False, server_default=func.now())
-    
+
     # Relationships
     tenant = relationship("Tenant")
-    principal = relationship("Principal", 
-                           foreign_keys=[tenant_id, principal_id],
-                           primaryjoin="and_(Context.tenant_id==Principal.tenant_id, Context.principal_id==Principal.principal_id)")
+    principal = relationship(
+        "Principal",
+        foreign_keys=[tenant_id, principal_id],
+        primaryjoin="and_(Context.tenant_id==Principal.tenant_id, Context.principal_id==Principal.principal_id)",
+    )
     # Direct object relationships removed - using ObjectWorkflowMapping instead
     workflow_steps = relationship("WorkflowStep", back_populates="context", cascade="all, delete-orphan")
-    
+
     __table_args__ = (
-        ForeignKeyConstraint(['tenant_id', 'principal_id'], 
-                           ['principals.tenant_id', 'principals.principal_id'], 
-                           ondelete='CASCADE'),
-        Index('idx_contexts_tenant', 'tenant_id'),
-        Index('idx_contexts_principal', 'principal_id'),
-        Index('idx_contexts_last_activity', 'last_activity_at'),
+        ForeignKeyConstraint(
+            ["tenant_id", "principal_id"],
+            ["principals.tenant_id", "principals.principal_id"],
+            ondelete="CASCADE",
+        ),
+        Index("idx_contexts_tenant", "tenant_id"),
+        Index("idx_contexts_principal", "principal_id"),
+        Index("idx_contexts_last_activity", "last_activity_at"),
     )
 
 
 class WorkflowStep(Base, JSONValidatorMixin):
     """Represents an individual step/task in a workflow.
-    
+
     This serves as a work queue where each step can be queried, updated, and tracked independently.
     Steps represent tool calls, approvals, notifications, etc.
     """
-    __tablename__ = 'workflow_steps'
-    
+
+    __tablename__ = "workflow_steps"
+
     step_id = Column(String(100), primary_key=True)
-    context_id = Column(String(100), ForeignKey('contexts.context_id', ondelete='CASCADE'), nullable=False)
+    context_id = Column(
+        String(100),
+        ForeignKey("contexts.context_id", ondelete="CASCADE"),
+        nullable=False,
+    )
     step_type = Column(String(50), nullable=False)  # tool_call, approval, notification, etc.
     tool_name = Column(String(100), nullable=True)  # MCP tool name if applicable
     request_data = Column(JSON, nullable=True)  # Original request JSON
     response_data = Column(JSON, nullable=True)  # Response/result JSON
-    status = Column(String(20), nullable=False, default='pending')  # pending, in_progress, completed, failed, requires_approval
+    status = Column(
+        String(20), nullable=False, default="pending"
+    )  # pending, in_progress, completed, failed, requires_approval
     owner = Column(String(20), nullable=False)  # principal, publisher, system
     assigned_to = Column(String(255), nullable=True)  # Specific user/system if assigned
     created_at = Column(DateTime, nullable=False, server_default=func.now())
@@ -507,42 +611,51 @@ class WorkflowStep(Base, JSONValidatorMixin):
     error_message = Column(Text, nullable=True)
     transaction_details = Column(JSON, nullable=True)  # Actual API calls made to GAM, etc.
     comments = Column(JSON, nullable=False, default=list)  # Array of {user, timestamp, comment} objects
-    
+
     # Relationships
     context = relationship("Context", back_populates="workflow_steps")
-    object_mappings = relationship("ObjectWorkflowMapping", back_populates="workflow_step", cascade="all, delete-orphan")
-    
+    object_mappings = relationship(
+        "ObjectWorkflowMapping",
+        back_populates="workflow_step",
+        cascade="all, delete-orphan",
+    )
+
     __table_args__ = (
-        Index('idx_workflow_steps_context', 'context_id'),
-        Index('idx_workflow_steps_status', 'status'),
-        Index('idx_workflow_steps_owner', 'owner'),
-        Index('idx_workflow_steps_assigned', 'assigned_to'),
-        Index('idx_workflow_steps_created', 'created_at'),
+        Index("idx_workflow_steps_context", "context_id"),
+        Index("idx_workflow_steps_status", "status"),
+        Index("idx_workflow_steps_owner", "owner"),
+        Index("idx_workflow_steps_assigned", "assigned_to"),
+        Index("idx_workflow_steps_created", "created_at"),
     )
 
 
 class ObjectWorkflowMapping(Base):
     """Maps workflow steps to business objects throughout their lifecycle.
-    
+
     This allows tracking all CRUD operations and workflow steps for any object
     (media_buy, creative, product, etc.) without tight coupling.
-    
+
     Example: Query for 'media_buy', '1234' to see every action taken over its lifecycle.
     """
-    __tablename__ = 'object_workflow_mapping'
-    
+
+    __tablename__ = "object_workflow_mapping"
+
     id = Column(Integer, primary_key=True, autoincrement=True)
     object_type = Column(String(50), nullable=False)  # media_buy, creative, product, etc.
-    object_id = Column(String(100), nullable=False)   # The actual object's ID
-    step_id = Column(String(100), ForeignKey('workflow_steps.step_id', ondelete='CASCADE'), nullable=False)
-    action = Column(String(50), nullable=False)       # create, update, approve, reject, etc.
+    object_id = Column(String(100), nullable=False)  # The actual object's ID
+    step_id = Column(
+        String(100),
+        ForeignKey("workflow_steps.step_id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    action = Column(String(50), nullable=False)  # create, update, approve, reject, etc.
     created_at = Column(DateTime, nullable=False, server_default=func.now())
-    
+
     # Relationships
     workflow_step = relationship("WorkflowStep", back_populates="object_mappings")
-    
+
     __table_args__ = (
-        Index('idx_object_workflow_type_id', 'object_type', 'object_id'),
-        Index('idx_object_workflow_step', 'step_id'),
-        Index('idx_object_workflow_created', 'created_at'),
+        Index("idx_object_workflow_type_id", "object_type", "object_id"),
+        Index("idx_object_workflow_step", "step_id"),
+        Index("idx_object_workflow_created", "created_at"),
     )

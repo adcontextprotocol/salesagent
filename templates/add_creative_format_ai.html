@@ -5,20 +5,20 @@
 {% block content %}
 <div class="card">
     <h2>Discover Creative Format with AI</h2>
-    
+
     <div class="alert alert-info">
         <strong>AI-Powered Discovery:</strong> Provide a URL to a creative specification page or describe the format, and AI will extract or generate the technical specifications.
     </div>
-    
+
     <div id="discovery-form">
         <form id="format-discovery-form">
             <h3>Format Information</h3>
-            
+
             <div class="form-group">
                 <label for="name">Format Name *</label>
                 <input type="text" id="name" name="name" required placeholder="e.g., Interactive Rich Media Banner">
             </div>
-            
+
             <div class="form-group">
                 <label for="type_hint">Format Type (optional)</label>
                 <select id="type_hint" name="type_hint">
@@ -30,9 +30,9 @@
                 </select>
                 <small style="color: #666;">AI will attempt to detect the type if not specified</small>
             </div>
-            
+
             <h3>Discovery Method</h3>
-            
+
             <div class="discovery-options">
                 <label class="discovery-option">
                     <input type="radio" name="discovery_method" value="url" checked onchange="toggleDiscoveryMethod()">
@@ -41,7 +41,7 @@
                         <p>Provide a URL to a creative specification page</p>
                     </div>
                 </label>
-                
+
                 <label class="discovery-option">
                     <input type="radio" name="discovery_method" value="description" onchange="toggleDiscoveryMethod()">
                     <div>
@@ -50,57 +50,57 @@
                     </div>
                 </label>
             </div>
-            
+
             <div id="url-input" class="form-group">
                 <label for="url">Creative Specification URL</label>
                 <input type="url" id="url" name="url" placeholder="https://publisher.com/creative-specs">
                 <small style="color: #666;">AI will extract format specifications from this page</small>
             </div>
-            
+
             <div id="description-input" class="form-group" style="display: none;">
                 <label for="description">Format Description</label>
-                <textarea id="description" name="description" rows="4" 
+                <textarea id="description" name="description" rows="4"
                     placeholder="Describe the creative format requirements. For example: 'High-impact video banner that expands to 970x550 on hover, supports HTML5 with video background, max 5MB file size, 30 second max duration.'"></textarea>
                 <small style="color: #666;">Be specific about dimensions, file types, sizes, and technical requirements</small>
             </div>
-            
+
             <div style="margin-top: 2rem;">
                 <button type="submit" class="btn btn-primary">Discover Format</button>
                 <a href="{{ url_for('list_creative_formats', tenant_id=tenant_id) }}" class="btn btn-secondary">Cancel</a>
             </div>
         </form>
     </div>
-    
+
     <div id="discovery-results" style="display: none;">
         <h3>Discovery Results</h3>
-        
+
         <div class="alert alert-success">
             AI has analyzed the format and extracted specifications.
         </div>
-        
+
         <div id="format-preview" style="background: #f9f9f9; padding: 1.5rem; border-radius: 8px; margin: 1rem 0;">
             <!-- Format preview will be inserted here -->
         </div>
-        
+
         <form id="save-format-form">
             <h4>Review & Save</h4>
-            
+
             <div class="form-group">
                 <label for="final_name">Format Name</label>
                 <input type="text" id="final_name" name="name" required>
             </div>
-            
+
             <div class="form-group">
                 <label for="final_format_id">Format ID</label>
                 <input type="text" id="final_format_id" name="format_id" required>
                 <small style="color: #666;">Unique identifier for this format</small>
             </div>
-            
+
             <div class="form-group">
                 <label for="final_description">Description</label>
                 <textarea id="final_description" name="description" rows="3"></textarea>
             </div>
-            
+
             <div id="dimension-fields" style="display: none;">
                 <h5>Dimensions</h5>
                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
@@ -114,19 +114,19 @@
                     </div>
                 </div>
             </div>
-            
+
             <div id="duration-field" style="display: none;">
                 <div class="form-group">
                     <label for="final_duration">Duration (seconds)</label>
                     <input type="number" id="final_duration" name="duration_seconds">
                 </div>
             </div>
-            
+
             <div class="form-group">
                 <label for="final_max_file_size">Max File Size (KB)</label>
                 <input type="number" id="final_max_file_size" name="max_file_size_kb">
             </div>
-            
+
             <div style="margin-top: 2rem;">
                 <button type="submit" class="btn btn-primary">Save Creative Format</button>
                 <button type="button" class="btn btn-secondary" onclick="resetToDiscoveryForm()">Start Over</button>
@@ -235,34 +235,34 @@ function resetToDiscoveryForm() {
 
 function displayFormat(format) {
     const preview = document.getElementById('format-preview');
-    
+
     let html = '<div class="format-preview-section">';
-    
+
     // Basic info
     html += `<h5>${format.name}</h5>`;
     html += `<p><strong>Type:</strong> <span class="format-spec">${format.type}</span></p>`;
-    
+
     if (format.format_id) {
         html += `<p><strong>ID:</strong> <code>${format.format_id}</code></p>`;
     }
-    
+
     if (format.description) {
         html += `<p><strong>Description:</strong> ${format.description}</p>`;
     }
-    
+
     // Dimensions or duration
     if (format.width && format.height) {
         html += `<p><strong>Dimensions:</strong> <span class="format-spec">${format.width}x${format.height}</span></p>`;
     }
-    
+
     if (format.duration_seconds) {
         html += `<p><strong>Duration:</strong> <span class="format-spec">${format.duration_seconds}s</span></p>`;
     }
-    
+
     if (format.max_file_size_kb) {
         html += `<p><strong>Max File Size:</strong> <span class="format-spec">${format.max_file_size_kb} KB</span></p>`;
     }
-    
+
     // Technical specs
     if (format.specs) {
         const specs = typeof format.specs === 'string' ? JSON.parse(format.specs) : format.specs;
@@ -279,37 +279,37 @@ function displayFormat(format) {
             }
         }
     }
-    
+
     if (format.source_url) {
         html += `<p style="margin-top: 1rem;"><a href="${format.source_url}" target="_blank">View source →</a></p>`;
     }
-    
+
     html += '</div>';
     preview.innerHTML = html;
 }
 
 document.getElementById('format-discovery-form').addEventListener('submit', async function(e) {
     e.preventDefault();
-    
+
     const submitButton = e.target.querySelector('button[type="submit"]');
     const originalText = submitButton.innerHTML;
     submitButton.innerHTML = 'Discovering... <span class="loading-spinner"></span>';
     submitButton.disabled = true;
-    
+
     const formData = new FormData(e.target);
     const method = formData.get('discovery_method');
-    
+
     const data = {
         name: formData.get('name'),
         type_hint: formData.get('type_hint') || null
     };
-    
+
     if (method === 'url') {
         data.url = formData.get('url');
     } else {
         data.description = formData.get('description');
     }
-    
+
     try {
         const response = await fetch(`{{ url_for('analyze_creative_format', tenant_id=tenant_id) }}`, {
             method: 'POST',
@@ -318,23 +318,23 @@ document.getElementById('format-discovery-form').addEventListener('submit', asyn
             },
             body: JSON.stringify(data)
         });
-        
+
         if (response.ok) {
             const result = await response.json();
             discoveredFormat = result.format;
-            
+
             // Display results
             document.getElementById('discovery-form').style.display = 'none';
             document.getElementById('discovery-results').style.display = 'block';
-            
+
             // Show format preview
             displayFormat(discoveredFormat);
-            
+
             // Populate form fields
             document.getElementById('final_name').value = discoveredFormat.name;
             document.getElementById('final_format_id').value = discoveredFormat.format_id;
             document.getElementById('final_description').value = discoveredFormat.description || '';
-            
+
             // Show/hide dimension fields based on type
             if (discoveredFormat.type === 'display') {
                 document.getElementById('dimension-fields').style.display = 'block';
@@ -353,9 +353,9 @@ document.getElementById('format-discovery-form').addEventListener('submit', asyn
                 document.getElementById('dimension-fields').style.display = 'none';
                 document.getElementById('duration-field').style.display = 'none';
             }
-            
+
             document.getElementById('final_max_file_size').value = discoveredFormat.max_file_size_kb || '';
-            
+
         } else {
             const error = await response.json();
             alert('Error: ' + (error.error || 'Failed to discover format'));
@@ -370,25 +370,25 @@ document.getElementById('format-discovery-form').addEventListener('submit', asyn
 
 document.getElementById('save-format-form').addEventListener('submit', async function(e) {
     e.preventDefault();
-    
+
     const formData = new FormData(e.target);
-    
+
     // Update discovered format with edited values
     discoveredFormat.name = formData.get('name');
     discoveredFormat.format_id = formData.get('format_id');
     discoveredFormat.description = formData.get('description');
-    
+
     if (document.getElementById('dimension-fields').style.display !== 'none') {
         discoveredFormat.width = parseInt(formData.get('width')) || null;
         discoveredFormat.height = parseInt(formData.get('height')) || null;
     }
-    
+
     if (document.getElementById('duration-field').style.display !== 'none') {
         discoveredFormat.duration_seconds = parseInt(formData.get('duration_seconds')) || null;
     }
-    
+
     discoveredFormat.max_file_size_kb = parseInt(formData.get('max_file_size_kb')) || null;
-    
+
     try {
         const response = await fetch(`{{ url_for('save_creative_format', tenant_id=tenant_id) }}`, {
             method: 'POST',
@@ -397,7 +397,7 @@ document.getElementById('save-format-form').addEventListener('submit', async fun
             },
             body: JSON.stringify({ format: discoveredFormat })
         });
-        
+
         if (response.ok) {
             window.location.href = `{{ url_for('list_creative_formats', tenant_id=tenant_id) }}`;
         } else {

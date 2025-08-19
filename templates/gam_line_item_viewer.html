@@ -14,16 +14,16 @@
         display: block !important;
         margin-top: 1rem;
     }
-    
+
     /* Ensure proper Bootstrap tab behavior */
     .tab-pane {
         display: none;
     }
-    
+
     .tab-pane.active {
         display: block;
     }
-    
+
     .tab-pane.show {
         display: block;
     }
@@ -31,7 +31,7 @@
 
 <div class="container-fluid">
     <h1 class="mb-4">GAM Line Item Viewer</h1>
-    
+
     <!-- Line Item ID Input -->
     <div class="card mb-4">
         <div class="card-body">
@@ -55,7 +55,7 @@
 
     <!-- Line Item Data Display -->
     <div id="lineItemContent" style="display: none;">
-        
+
         <!-- Navigation Tabs -->
         <ul class="nav nav-tabs mb-3" id="lineItemTabs" role="tablist">
             <li class="nav-item" role="presentation">
@@ -80,7 +80,7 @@
 
         <!-- Tab Content -->
         <div class="tab-content" id="lineItemTabContent">
-            
+
             <!-- Overview Tab -->
             <div class="tab-pane fade show active" id="overview" role="tabpanel">
                 <div class="row">
@@ -105,7 +105,7 @@
                         </div>
                     </div>
                 </div>
-                
+
                 <div class="card mb-3">
                     <div class="card-header">Pricing & Budget</div>
                     <div class="card-body">
@@ -114,7 +114,7 @@
                         </table>
                     </div>
                 </div>
-                
+
                 <div class="card mb-3">
                     <div class="card-header">Schedule</div>
                     <div class="card-body">
@@ -206,18 +206,18 @@ function formatNumber(num) {
 // Parse custom targeting tree structure into readable HTML
 function parseCustomTargeting(customTargeting) {
     if (!customTargeting) return null;
-    
+
     let html = '';
-    
+
     function parseNode(node, depth = 0) {
         const indent = depth * 20;
         let nodeHtml = '';
-        
+
         if (node.logicalOperator) {
             // This is a group node
             nodeHtml += `<div style="margin-left: ${indent}px; margin-bottom: 10px;">`;
             nodeHtml += `<span class="badge bg-primary">${escapeHtml(node.logicalOperator)}</span>`;
-            
+
             if (node.children && node.children.length > 0) {
                 nodeHtml += '<div class="mt-2">';
                 node.children.forEach((child, index) => {
@@ -233,17 +233,17 @@ function parseCustomTargeting(customTargeting) {
             // This is a key-value node
             nodeHtml += `<div style="margin-left: ${indent}px; margin-bottom: 8px;" class="key-value-item">`;
             nodeHtml += '<div class="d-flex align-items-center">';
-            
+
             // Key - try to get name from mappings
             const keyId = String(node.keyId);
             const keyInfo = customTargetingMappings?.keys?.[keyId];
             const keyDisplay = keyInfo ? `${keyInfo.name} (${keyInfo.displayName})` : `Key ID: ${keyId}`;
             nodeHtml += `<span class="badge bg-secondary me-2">${escapeHtml(keyDisplay)}</span>`;
-            
+
             // Operator
             const operatorDisplay = node.operator === 'IS_NOT' ? 'IS NOT' : (node.operator || 'IS');
             nodeHtml += `<span class="badge bg-info me-2">${escapeHtml(operatorDisplay)}</span>`;
-            
+
             // Values - try to get names from mappings
             if (node.valueIds && node.valueIds.length > 0) {
                 const valueDisplays = node.valueIds.map(id => {
@@ -259,36 +259,36 @@ function parseCustomTargeting(customTargeting) {
                 nodeHtml += node.values.map(v => escapeHtml(v.name || v)).join(', ');
                 nodeHtml += '</span>';
             }
-            
+
             nodeHtml += '</div>';
             nodeHtml += '</div>';
         }
-        
+
         return nodeHtml;
     }
-    
+
     // Start parsing from the root
     html = parseNode(customTargeting);
-    
+
     return html || null;
 }
 
 // Load line item if ID is provided in URL
 window.addEventListener('DOMContentLoaded', function() {
     console.log('DOMContentLoaded event fired');
-    
+
     // Initialize Bootstrap tabs properly
     const triggerTabList = document.querySelectorAll('#lineItemTabs button[data-bs-toggle="tab"]');
     console.log('Found tabs:', triggerTabList.length);
     triggerTabList.forEach(triggerEl => {
         const tabTrigger = new bootstrap.Tab(triggerEl);
-        
+
         triggerEl.addEventListener('click', event => {
             event.preventDefault();
             tabTrigger.show();
         });
     });
-    
+
     const lineItemId = document.getElementById('lineItemId').value;
     if (lineItemId) {
         // Add a small delay to ensure authentication is established
@@ -308,7 +308,7 @@ async function fetchCustomTargetingMappings() {
                 'Accept': 'application/json'
             }
         });
-        
+
         if (response.ok) {
             customTargetingMappings = await response.json();
             console.log('Loaded custom targeting mappings:', customTargetingMappings);
@@ -322,25 +322,25 @@ async function loadLineItem() {
     console.log('loadLineItem function called');
     const lineItemId = document.getElementById('lineItemId').value.trim();
     console.log('Line Item ID to load:', lineItemId);
-    
+
     if (!lineItemId) {
         showError('Please enter a Line Item ID');
         return;
     }
-    
+
     // Update URL
     window.history.pushState({}, '', `/tenant/{{ tenant_id }}/gam/line-item/${lineItemId}`);
-    
+
     // Show loading
     document.getElementById('loading').style.display = 'block';
     document.getElementById('error').style.display = 'none';
     document.getElementById('lineItemContent').style.display = 'none';
-    
+
     // Fetch custom targeting mappings if not already loaded
     if (!customTargetingMappings) {
         await fetchCustomTargetingMappings();
     }
-    
+
     try {
         console.log('Fetching line item from API...');
         const response = await fetch(`/api/tenant/{{ tenant_id }}/gam/line-item/${lineItemId}`, {
@@ -350,9 +350,9 @@ async function loadLineItem() {
                 'Accept': 'application/json'
             }
         });
-        
+
         console.log('API response status:', response.status);
-        
+
         // Check if we got redirected to login (HTML response)
         const contentType = response.headers.get('content-type');
         console.log('Response content-type:', contentType);
@@ -362,7 +362,7 @@ async function loadLineItem() {
             window.location.reload();
             return;
         }
-        
+
         if (!response.ok) {
             let errorMsg = 'Failed to fetch line item';
             try {
@@ -374,12 +374,12 @@ async function loadLineItem() {
             }
             throw new Error(errorMsg);
         }
-        
+
         currentLineItemData = await response.json();
         console.log('Parsed JSON data:', currentLineItemData);
         console.log('About to call displayLineItemData...');
         displayLineItemData(currentLineItemData);
-        
+
     } catch (error) {
         showError(`Error loading line item: ${error.message}`);
     } finally {
@@ -389,58 +389,58 @@ async function loadLineItem() {
 
 function displayLineItemData(data) {
     console.log('displayLineItemData called');
-    
+
     if (!data || !data.line_item) {
         console.error('Invalid data: missing line_item');
         showError('Invalid data received from server');
         return;
     }
-    
+
     console.log('Setting lineItemContent to visible...');
     document.getElementById('lineItemContent').style.display = 'block';
-    
+
     try {
         // Display all sections
         console.log('Calling displayBasicInfo...');
         displayBasicInfo(data.line_item);
-        
+
         console.log('Calling displayOrderInfo...');
         displayOrderInfo(data.order);
-        
+
         console.log('Calling displayPricingInfo...');
         displayPricingInfo(data.line_item);
-        
+
         console.log('Calling displayScheduleInfo...');
         displayScheduleInfo(data.line_item);
-        
+
         console.log('Targeting data:', data.line_item.targeting);
         console.log('Inventory details:', data.inventory_details);
         if (data.line_item.targeting) {
             console.log('Calling displayTargeting...');
             displayTargeting(data.line_item.targeting, data.inventory_details);
         }
-        
+
         console.log('Creatives data:', data.creatives);
         console.log('Creative associations:', data.creative_associations);
         console.log('Calling displayCreatives...');
         displayCreatives(data.creatives, data.creative_associations);
-        
+
         console.log('Calling displayDeliverySettings...');
         displayDeliverySettings(data.line_item);
-        
+
         // Display raw data
         document.getElementById('rawData').textContent = JSON.stringify(data, null, 2);
-        
+
         // Display product JSON with human-readable targeting prominently
         if (data.media_product_json) {
             console.log('Media Product JSON with human-readable targeting:', data.media_product_json);
-            
+
             // Highlight the key-value targeting if present
             if (data.media_product_json.implementation_config?.gam?.key_value_targeting) {
-                console.log('Human-readable key-value targeting:', 
+                console.log('Human-readable key-value targeting:',
                     data.media_product_json.implementation_config.gam.key_value_targeting);
             }
-            
+
             document.getElementById('productJsonContent').textContent = JSON.stringify(data.media_product_json, null, 2);
         }
     } catch (error) {
@@ -468,7 +468,7 @@ function displayOrderInfo(order) {
         tbody.innerHTML = '<tr><td>Order information not available</td></tr>';
         return;
     }
-    
+
     tbody.innerHTML = `
         <tr><td><strong>Order ID:</strong></td><td>${escapeHtml(order.id)}</td></tr>
         <tr><td><strong>Order Name:</strong></td><td>${escapeHtml(order.name)}</td></tr>
@@ -484,7 +484,7 @@ function displayPricingInfo(lineItem) {
     if (lineItem.costPerUnit && lineItem.costPerUnit.microAmount) {
         cpm = lineItem.costPerUnit.microAmount / 1000000;
     }
-    
+
     // Get delivery stats if available
     let impressionsDelivered = 0;
     let clicksDelivered = 0;
@@ -492,11 +492,11 @@ function displayPricingInfo(lineItem) {
         impressionsDelivered = lineItem.stats.impressionsDelivered;
         clicksDelivered = lineItem.stats.clicksDelivered || 0;
     }
-    
+
     // Calculate delivery percentage
     const goal = lineItem.unitsBought || 0;
     const deliveryPercentage = goal > 0 ? (impressionsDelivered / goal * 100).toFixed(1) : 0;
-    
+
     tbody.innerHTML = `
         <tr><td><strong>Cost Type:</strong></td><td>${lineItem.costType}</td></tr>
         <tr><td><strong>CPM:</strong></td><td>$${cpm.toFixed(2)}</td></tr>
@@ -512,10 +512,10 @@ function displayPricingInfo(lineItem) {
 
 function displayScheduleInfo(lineItem) {
     const tbody = document.getElementById('scheduleInfo');
-    
+
     function formatDateTime(dt) {
         if (!dt) return 'N/A';
-        
+
         // Handle ISO string format (e.g., "2023-07-25T19:33:00")
         if (typeof dt === 'string') {
             const date = new Date(dt);
@@ -524,15 +524,15 @@ function displayScheduleInfo(lineItem) {
             }
             return dt; // Return as-is if not a valid date string
         }
-        
+
         // Handle GAM object format with nested date/time
         if (dt.date) {
             return `${dt.date.year}-${String(dt.date.month).padStart(2, '0')}-${String(dt.date.day).padStart(2, '0')} ${String(dt.hour || 0).padStart(2, '0')}:${String(dt.minute || 0).padStart(2, '0')}`;
         }
-        
+
         return 'N/A';
     }
-    
+
     tbody.innerHTML = `
         <tr><td><strong>Start Date:</strong></td><td>${formatDateTime(lineItem.startDateTime)}</td></tr>
         <tr><td><strong>End Date:</strong></td><td>${formatDateTime(lineItem.endDateTime)}</td></tr>
@@ -545,19 +545,19 @@ function displayScheduleInfo(lineItem) {
 function displayTargeting(targeting, inventoryDetails) {
     const container = document.getElementById('targetingContent');
     console.log('displayTargeting called with:', targeting, inventoryDetails);
-    
+
     if (!container) {
         console.error('targetingContent element not found!');
         return;
     }
-    
+
     if (!targeting) {
         container.innerHTML = '<p>No targeting configured</p>';
         return;
     }
-    
+
     let html = '<div class="row">';
-    
+
     // Inventory targeting - MOVED TO TOP AND ENHANCED
     if (targeting.inventoryTargeting) {
         html += '<div class="col-md-12 mb-4">';
@@ -566,7 +566,7 @@ function displayTargeting(targeting, inventoryDetails) {
         html += '<h5 class="mb-0">Inventory Targeting (Ad Units & Placements)</h5>';
         html += '</div>';
         html += '<div class="card-body">';
-        
+
         // Placements section
         if (targeting.inventoryTargeting.targetedPlacementIds && targeting.inventoryTargeting.targetedPlacementIds.length > 0) {
             html += '<div class="mb-3">';
@@ -575,7 +575,7 @@ function displayTargeting(targeting, inventoryDetails) {
             html += '<table class="table table-sm table-hover">';
             html += '<thead><tr><th>Placement Name</th><th>ID</th><th>Status</th><th>Ad Units in Placement</th></tr></thead>';
             html += '<tbody>';
-            
+
             targeting.inventoryTargeting.targetedPlacementIds.forEach(placementId => {
                 const placement = inventoryDetails?.placements?.[placementId];
                 if (placement) {
@@ -601,12 +601,12 @@ function displayTargeting(targeting, inventoryDetails) {
                     html += '</tr>';
                 }
             });
-            
+
             html += '</tbody></table>';
             html += '</div>';
             html += '</div>';
         }
-        
+
         // Ad Units section with hierarchy
         if (targeting.inventoryTargeting.targetedAdUnits && targeting.inventoryTargeting.targetedAdUnits.length > 0) {
             html += '<div class="mb-3">';
@@ -615,7 +615,7 @@ function displayTargeting(targeting, inventoryDetails) {
             html += '<table class="table table-sm table-hover">';
             html += '<thead><tr><th>Ad Unit Hierarchy</th><th>ID</th><th>Code</th><th>Include Descendants</th><th>Status</th></tr></thead>';
             html += '<tbody>';
-            
+
             targeting.inventoryTargeting.targetedAdUnits.forEach(targetedUnit => {
                 const adUnit = inventoryDetails?.ad_units?.[targetedUnit.adUnitId];
                 if (adUnit) {
@@ -645,29 +645,29 @@ function displayTargeting(targeting, inventoryDetails) {
                     html += '</tr>';
                 }
             });
-            
+
             html += '</tbody></table>';
             html += '</div>';
             html += '</div>';
         }
-        
+
         // If neither placements nor ad units are targeted
         if ((!targeting.inventoryTargeting.targetedAdUnits || targeting.inventoryTargeting.targetedAdUnits.length === 0) &&
             (!targeting.inventoryTargeting.targetedPlacementIds || targeting.inventoryTargeting.targetedPlacementIds.length === 0)) {
             html += '<p class="text-muted">No specific inventory targeted (Run of Network)</p>';
         }
-        
+
         html += '</div>'; // card-body
         html += '</div>'; // card
         html += '</div>'; // col-md-12
     }
-    
+
     // Geographic targeting
     if (targeting.geoTargeting) {
         html += '<div class="col-md-6 mb-3">';
         html += '<h6>Geographic Targeting</h6>';
         html += '<ul class="list-unstyled">';
-        
+
         if (targeting.geoTargeting.targetedLocations && targeting.geoTargeting.targetedLocations.length > 0) {
             html += '<li><strong>Included:</strong><ul>';
             targeting.geoTargeting.targetedLocations.forEach(loc => {
@@ -675,7 +675,7 @@ function displayTargeting(targeting, inventoryDetails) {
             });
             html += '</ul></li>';
         }
-        
+
         if (targeting.geoTargeting.excludedLocations && targeting.geoTargeting.excludedLocations.length > 0) {
             html += '<li><strong>Excluded:</strong><ul>';
             targeting.geoTargeting.excludedLocations.forEach(loc => {
@@ -683,16 +683,16 @@ function displayTargeting(targeting, inventoryDetails) {
             });
             html += '</ul></li>';
         }
-        
+
         html += '</ul></div>';
     }
-    
+
     // Technology targeting
     if (targeting.technologyTargeting) {
         html += '<div class="col-md-6 mb-3">';
         html += '<h6>Technology Targeting</h6>';
         html += '<ul class="list-unstyled">';
-        
+
         const tech = targeting.technologyTargeting;
         if (tech.deviceCategoryTargeting) {
             html += '<li><strong>Device Categories:</strong><ul>';
@@ -701,7 +701,7 @@ function displayTargeting(targeting, inventoryDetails) {
             });
             html += '</ul></li>';
         }
-        
+
         if (tech.browserTargeting) {
             html += '<li><strong>Browsers:</strong><ul>';
             (tech.browserTargeting.browsers || []).forEach(browser => {
@@ -709,17 +709,17 @@ function displayTargeting(targeting, inventoryDetails) {
             });
             html += '</ul></li>';
         }
-        
+
         html += '</ul></div>';
     }
-    
+
     // Custom targeting (Key-Value Pairs)
     if (targeting.customTargeting) {
         html += '<div class="col-md-12 mb-3">';
         html += '<h6>Custom Targeting (Key-Value Pairs)</h6>';
         html += '<div class="card">';
         html += '<div class="card-body">';
-        
+
         // Parse and display the custom targeting tree
         const customTargetingHtml = parseCustomTargeting(targeting.customTargeting);
         if (customTargetingHtml) {
@@ -727,25 +727,25 @@ function displayTargeting(targeting, inventoryDetails) {
         } else {
             html += '<p class="text-muted">No key-value pairs configured</p>';
         }
-        
+
         // Also show the raw structure in a collapsible section
         html += '<details class="mt-3">';
         html += '<summary class="text-muted" style="cursor: pointer;">View Raw Structure</summary>';
         html += '<pre class="bg-light p-2 mt-2" style="font-size: 0.85em;">' + JSON.stringify(targeting.customTargeting, null, 2) + '</pre>';
         html += '</details>';
-        
+
         html += '</div>';
         html += '</div>';
         html += '</div>';
     }
-    
+
     // Day part targeting
     if (targeting.dayPartTargeting) {
         html += '<div class="col-md-6 mb-3">';
         html += '<h6>Daypart Targeting</h6>';
         html += '<ul class="list-unstyled">';
         html += `<li><strong>Timezone:</strong> ${escapeHtml(targeting.dayPartTargeting.timeZone)}</li>`;
-        
+
         if (targeting.dayPartTargeting.dayParts) {
             html += '<li><strong>Schedule:</strong><ul>';
             targeting.dayPartTargeting.dayParts.forEach(dp => {
@@ -754,10 +754,10 @@ function displayTargeting(targeting, inventoryDetails) {
             });
             html += '</ul></li>';
         }
-        
+
         html += '</ul></div>';
     }
-    
+
     html += '</div>';
     container.innerHTML = html;
 }
@@ -765,23 +765,23 @@ function displayTargeting(targeting, inventoryDetails) {
 function displayCreatives(creatives, associations) {
     const container = document.getElementById('creativesContent');
     console.log('displayCreatives called with:', creatives, associations);
-    
+
     if (!container) {
         console.error('creativesContent element not found!');
         return;
     }
-    
+
     if (!creatives || creatives.length === 0) {
         container.innerHTML = '<p>No creatives associated with this line item</p>';
         return;
     }
-    
+
     let html = '<div class="table-responsive"><table class="table table-sm">';
     html += '<thead><tr><th>Creative ID</th><th>Name</th><th>Type</th><th>Size</th><th>Status</th></tr></thead><tbody>';
-    
+
     creatives.forEach(creative => {
         const size = creative.size ? `${escapeHtml(creative.size.width)}x${escapeHtml(creative.size.height)}` : 'N/A';
-        const previewLink = creative.previewUrl ? 
+        const previewLink = creative.previewUrl ?
             `<a href="${escapeHtml(creative.previewUrl)}" target="_blank">Preview</a>` : 'N/A';
         html += `<tr>`;
         html += `<td>${escapeHtml(creative.id)}</td>`;
@@ -791,7 +791,7 @@ function displayCreatives(creatives, associations) {
         html += `<td>${previewLink}</td>`;
         html += `</tr>`;
     });
-    
+
     html += '</tbody></table></div>';
     container.innerHTML = html;
 }
@@ -799,14 +799,14 @@ function displayCreatives(creatives, associations) {
 function displayDeliverySettings(lineItem) {
     const container = document.getElementById('deliveryContent');
     console.log('displayDeliverySettings called with:', lineItem);
-    
+
     if (!container) {
         console.error('deliveryContent element not found!');
         return;
     }
-    
+
     let html = '<div class="row">';
-    
+
     // Delivery settings
     html += '<div class="col-md-6">';
     html += '<h6>Delivery Configuration</h6>';
@@ -818,7 +818,7 @@ function displayDeliverySettings(lineItem) {
     html += `<li><strong>Reserve Inventory:</strong> ${lineItem.reserveAtCreation ? 'Yes' : 'No'}</li>`;
     html += '</ul>';
     html += '</div>';
-    
+
     // Frequency caps
     if (lineItem.frequencyCaps && lineItem.frequencyCaps.length > 0) {
         html += '<div class="col-md-6">';
@@ -830,14 +830,14 @@ function displayDeliverySettings(lineItem) {
         html += '</ul>';
         html += '</div>';
     }
-    
+
     // Creative placeholders
     if (lineItem.creativePlaceholders && lineItem.creativePlaceholders.length > 0) {
         html += '<div class="col-md-12">';
         html += '<h6>Creative Placeholders</h6>';
         html += '<table class="table table-sm">';
         html += '<thead><tr><th>Size</th><th>Expected Count</th><th>Companions</th></tr></thead><tbody>';
-        
+
         lineItem.creativePlaceholders.forEach(placeholder => {
             const size = placeholder.size ? `${placeholder.size.width}x${placeholder.size.height}` : 'Flexible';
             const companions = placeholder.companions ? placeholder.companions.map(c => `${c.size.width}x${c.size.height}`).join(', ') : 'None';
@@ -847,11 +847,11 @@ function displayDeliverySettings(lineItem) {
             html += `<td>${companions}</td>`;
             html += `</tr>`;
         });
-        
+
         html += '</tbody></table>';
         html += '</div>';
     }
-    
+
     html += '</div>';
     container.innerHTML = html;
 }

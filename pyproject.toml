@@ -11,7 +11,7 @@ dependencies = [
     "rich>=13.7.1",
     "google-ads>=24.1.0",
     "requests>=2.32.3",
-    "googleads>=46.0.0",
+    "googleads==46.0.0",  # Pinned to avoid API deprecation issues
     "flask>=3.0.0",
     "psycopg2-binary>=2.9.9",
     "authlib>=1.3.0",
@@ -52,4 +52,70 @@ dev = [
     "pytest-asyncio>=1.1.0",
     "pytest-cov>=6.2.1",
     "pytest-mock>=3.14.1",
+    "ruff>=0.8.0",
 ]
+
+[tool.black]
+line-length = 120
+target-version = ['py311']
+include = '\.pyi?$'
+extend-exclude = '''
+/(
+  # directories
+  \.eggs
+  | \.git
+  | \.hg
+  | \.mypy_cache
+  | \.tox
+  | \.venv
+  | _build
+  | buck-out
+  | build
+  | dist
+  | alembic/versions
+)/
+'''
+
+[tool.ruff]
+line-length = 120
+target-version = "py311"
+exclude = [
+    ".eggs",
+    ".git",
+    ".hg",
+    ".mypy_cache",
+    ".tox",
+    ".venv",
+    "_build",
+    "buck-out",
+    "build",
+    "dist",
+    "alembic/versions",
+]
+
+[tool.ruff.lint]
+select = [
+    "E",  # pycodestyle errors
+    "W",  # pycodestyle warnings
+    "F",  # pyflakes
+    "I",  # isort
+    "B",  # flake8-bugbear
+    "C4", # flake8-comprehensions
+    "UP", # pyupgrade
+]
+ignore = [
+    "E501",  # line too long (handled by formatter)
+    "E402",  # module import not at top of file
+    "E722",  # bare except
+    "F821",  # undefined name
+    "F403",  # star imports (TODO: fix by replacing with specific imports)
+    "F405",  # undefined from star imports (related to F403)
+    "E741",  # ambiguous variable names (l, I, O)
+    "B904",  # raise without from (TODO: fix exception handling)
+    "B027",  # empty method in abstract class (TODO: add @abstractmethod)
+    "F841",  # unused variables (mostly fixed, remaining are complex)
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["E722", "F821"]
+"admin_ui.py" = ["E402", "E722"]

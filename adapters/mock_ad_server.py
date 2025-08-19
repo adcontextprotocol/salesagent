@@ -1,9 +1,20 @@
-from datetime import datetime, timedelta
-from typing import List, Dict, Any, Optional
 import random
+from datetime import datetime, timedelta
+from typing import Any
 
 from adapters.base import AdServerAdapter
-from schemas import *
+from schemas import (
+    AdapterGetMediaBuyDeliveryResponse,
+    AssetStatus,
+    CheckMediaBuyStatusResponse,
+    CreateMediaBuyRequest,
+    CreateMediaBuyResponse,
+    DeliveryTotals,
+    MediaPackage,
+    PackagePerformance,
+    ReportingPeriod,
+    UpdateMediaBuyResponse,
+)
 
 
 class MockAdServer(AdServerAdapter):
@@ -13,15 +24,13 @@ class MockAdServer(AdServerAdapter):
     """
 
     adapter_name = "mock"
-    _media_buys: Dict[str, Dict[str, Any]] = {}
+    _media_buys: dict[str, dict[str, Any]] = {}
 
     # Supported targeting dimensions (mock supports everything)
     SUPPORTED_DEVICE_TYPES = {"mobile", "desktop", "tablet", "ctv", "dooh", "audio"}
     SUPPORTED_MEDIA_TYPES = {"video", "display", "native", "audio", "dooh"}
 
-    def __init__(
-        self, config, principal, dry_run=False, creative_engine=None, tenant_id=None
-    ):
+    def __init__(self, config, principal, dry_run=False, creative_engine=None, tenant_id=None):
         """Initialize mock adapter with GAM-like objects."""
         super().__init__(config, principal, dry_run, creative_engine, tenant_id)
 
@@ -185,7 +194,7 @@ class MockAdServer(AdServerAdapter):
     def create_media_buy(
         self,
         request: CreateMediaBuyRequest,
-        packages: List[MediaPackage],
+        packages: list[MediaPackage],
         start_time: datetime,
         end_time: datetime,
     ) -> CreateMediaBuyResponse:
@@ -193,11 +202,7 @@ class MockAdServer(AdServerAdapter):
         # Generate a unique media_buy_id
         import uuid
 
-        media_buy_id = (
-            f"buy_{request.po_number}"
-            if request.po_number
-            else f"buy_{uuid.uuid4().hex[:8]}"
-        )
+        media_buy_id = f"buy_{request.po_number}" if request.po_number else f"buy_{uuid.uuid4().hex[:8]}"
 
         # Select appropriate template based on packages
         template_name = "standard_display"  # Default
@@ -208,9 +213,7 @@ class MockAdServer(AdServerAdapter):
         elif any(p.delivery_type == "guaranteed" for p in packages):
             template_name = "programmatic_guaranteed"
 
-        template = self.line_item_templates.get(
-            template_name, self.line_item_templates["standard_display"]
-        )
+        template = self.line_item_templates.get(template_name, self.line_item_templates["standard_display"])
 
         # Log operation start
         self.audit_logger.log_operation(
@@ -227,11 +230,7 @@ class MockAdServer(AdServerAdapter):
         )
 
         # Calculate total budget from packages (CPM * impressions / 1000)
-        total_budget = sum(
-            (p.cpm * p.impressions / 1000)
-            for p in packages
-            if p.delivery_type == "guaranteed"
-        )
+        total_budget = sum((p.cpm * p.impressions / 1000) for p in packages if p.delivery_type == "guaranteed")
         # Use the request's total_budget if available, otherwise use calculated
         total_budget = request.total_budget if request.total_budget else total_budget
 
@@ -252,21 +251,13 @@ class MockAdServer(AdServerAdapter):
             self.log("    'targeting': {")
             if request.targeting_overlay:
                 if request.targeting_overlay.geo_country_any_of:
-                    self.log(
-                        f"      'countries': {request.targeting_overlay.geo_country_any_of},"
-                    )
+                    self.log(f"      'countries': {request.targeting_overlay.geo_country_any_of},")
                 if request.targeting_overlay.geo_region_any_of:
-                    self.log(
-                        f"      'regions': {request.targeting_overlay.geo_region_any_of},"
-                    )
+                    self.log(f"      'regions': {request.targeting_overlay.geo_region_any_of},")
                 if request.targeting_overlay.device_type_any_of:
-                    self.log(
-                        f"      'devices': {request.targeting_overlay.device_type_any_of},"
-                    )
+                    self.log(f"      'devices': {request.targeting_overlay.device_type_any_of},")
                 if request.targeting_overlay.media_type_any_of:
-                    self.log(
-                        f"      'media_types': {request.targeting_overlay.media_type_any_of},"
-                    )
+                    self.log(f"      'media_types': {request.targeting_overlay.media_type_any_of},")
             self.log("    }")
             self.log("  }")
 
@@ -285,9 +276,7 @@ class MockAdServer(AdServerAdapter):
             # Log successful creation
             self.audit_logger.log_success(f"Created Mock Order ID: {media_buy_id}")
         else:
-            self.log(
-                f"Would return: Campaign ID '{media_buy_id}' with status 'pending_creative'"
-            )
+            self.log(f"Would return: Campaign ID '{media_buy_id}' with status 'pending_creative'")
 
         return CreateMediaBuyResponse(
             media_buy_id=media_buy_id,
@@ -298,8 +287,8 @@ class MockAdServer(AdServerAdapter):
         )
 
     def add_creative_assets(
-        self, media_buy_id: str, assets: List[Dict[str, Any]], today: datetime
-    ) -> List[AssetStatus]:
+        self, media_buy_id: str, assets: list[dict[str, Any]], today: datetime
+    ) -> list[AssetStatus]:
         """Simulates adding creatives and returns an 'approved' status."""
         # Log operation
         self.audit_logger.log_operation(
@@ -326,9 +315,7 @@ class MockAdServer(AdServerAdapter):
                 self.log(f"    'format': '{asset['format']}',")
                 self.log(f"    'media_url': '{asset['media_url']}',")
                 self.log(f"    'click_url': '{asset['click_url']}'")
-            self.log(
-                f"Would return: All {len(assets)} creatives with status 'approved'"
-            )
+            self.log(f"Would return: All {len(assets)} creatives with status 'approved'")
         else:
             if media_buy_id not in self._media_buys:
                 raise ValueError(f"Media buy {media_buy_id} not found.")
@@ -336,13 +323,9 @@ class MockAdServer(AdServerAdapter):
             self._media_buys[media_buy_id]["creatives"].extend(assets)
             self.log(f"✓ Successfully uploaded {len(assets)} creatives")
 
-        return [
-            AssetStatus(creative_id=asset["id"], status="approved") for asset in assets
-        ]
+        return [AssetStatus(creative_id=asset["id"], status="approved") for asset in assets]
 
-    def check_media_buy_status(
-        self, media_buy_id: str, today: datetime
-    ) -> CheckMediaBuyStatusResponse:
+    def check_media_buy_status(self, media_buy_id: str, today: datetime) -> CheckMediaBuyStatusResponse:
         """Simulates checking the status of a media buy."""
         if media_buy_id not in self._media_buys:
             raise ValueError(f"Media buy {media_buy_id} not found.")
@@ -419,24 +402,20 @@ class MockAdServer(AdServerAdapter):
             spend = impressions * 0.01  # $10 CPM
 
         if not self.dry_run:
-            self.log(
-                f"✓ Retrieved delivery data: {impressions:,} impressions, ${spend:,.2f} spend"
-            )
+            self.log(f"✓ Retrieved delivery data: {impressions:,} impressions, ${spend:,.2f} spend")
         else:
             self.log("Would retrieve delivery data from ad server")
 
         return AdapterGetMediaBuyDeliveryResponse(
             media_buy_id=media_buy_id,
             reporting_period=date_range,
-            totals=DeliveryTotals(
-                impressions=impressions, spend=spend, clicks=100, video_completions=5000
-            ),
+            totals=DeliveryTotals(impressions=impressions, spend=spend, clicks=100, video_completions=5000),
             by_package=[],
             currency="USD",
         )
 
     def update_media_buy_performance_index(
-        self, media_buy_id: str, package_performance: List[PackagePerformance]
+        self, media_buy_id: str, package_performance: list[PackagePerformance]
     ) -> bool:
         return True
 
@@ -444,120 +423,95 @@ class MockAdServer(AdServerAdapter):
         self,
         media_buy_id: str,
         action: str,
-        package_id: Optional[str],
-        budget: Optional[int],
+        package_id: str | None,
+        budget: int | None,
         today: datetime,
     ) -> UpdateMediaBuyResponse:
         return UpdateMediaBuyResponse(status="accepted")
 
-    def get_config_ui_endpoint(self) -> Optional[str]:
+    def get_config_ui_endpoint(self) -> str | None:
         """Return the URL path for the mock adapter's configuration UI."""
         return "/adapters/mock/config"
 
     def register_ui_routes(self, app):
         """Register Flask routes for the mock adapter configuration UI."""
-        from flask import render_template, request
-        import json
 
-        @app.route(
-            "/adapters/mock/config/<tenant_id>/<product_id>", methods=["GET", "POST"]
-        )
+        from flask import render_template, request
+
+        @app.route("/adapters/mock/config/<tenant_id>/<product_id>", methods=["GET", "POST"])
         def mock_product_config(tenant_id, product_id):
             # Import here to avoid circular imports
-            from admin_ui import get_db_connection, require_auth
             from functools import wraps
+
+            from admin_ui import require_auth
+            from database_session import get_db_session
+            from models import Product
 
             # Apply auth decorator manually
             @require_auth()
             @wraps(mock_product_config)
             def wrapped_view():
-                conn = get_db_connection()
+                with get_db_session() as session:
+                    # Get product details
+                    product_obj = session.query(Product).filter_by(tenant_id=tenant_id, product_id=product_id).first()
 
-                # Get product details
-                cursor = conn.execute(
-                    "SELECT name, implementation_config FROM products WHERE tenant_id = ? AND product_id = ?",
-                    (tenant_id, product_id),
-                )
-                product_row = cursor.fetchone()
+                    if not product_obj:
+                        return "Product not found", 404
 
-                if not product_row:
-                    conn.close()
-                    return "Product not found", 404
+                    product = {"product_id": product_id, "name": product_obj.name}
 
-                product = {"product_id": product_id, "name": product_row[0]}
+                    # Get current config
+                    config = product_obj.implementation_config or {}
 
-                # Get current config
-                implementation_config = product_row[1]
-                if isinstance(implementation_config, str):
-                    config = (
-                        json.loads(implementation_config)
-                        if implementation_config
-                        else {}
-                    )
-                else:
-                    config = implementation_config or {}
+                    if request.method == "POST":
+                        # Update configuration
+                        new_config = {
+                            "daily_impressions": int(request.form.get("daily_impressions", 100000)),
+                            "fill_rate": float(request.form.get("fill_rate", 85)),
+                            "ctr": float(request.form.get("ctr", 0.5)),
+                            "viewability_rate": float(request.form.get("viewability_rate", 70)),
+                            "latency_ms": int(request.form.get("latency_ms", 50)),
+                            "error_rate": float(request.form.get("error_rate", 0.1)),
+                            "test_mode": request.form.get("test_mode", "normal"),
+                            "price_variance": float(request.form.get("price_variance", 10)),
+                            "seasonal_factor": float(request.form.get("seasonal_factor", 1.0)),
+                            "verbose_logging": "verbose_logging" in request.form,
+                            "predictable_ids": "predictable_ids" in request.form,
+                        }
 
-                if request.method == "POST":
-                    # Update configuration
-                    new_config = {
-                        "daily_impressions": int(
-                            request.form.get("daily_impressions", 100000)
-                        ),
-                        "fill_rate": float(request.form.get("fill_rate", 85)),
-                        "ctr": float(request.form.get("ctr", 0.5)),
-                        "viewability_rate": float(
-                            request.form.get("viewability_rate", 70)
-                        ),
-                        "latency_ms": int(request.form.get("latency_ms", 50)),
-                        "error_rate": float(request.form.get("error_rate", 0.1)),
-                        "test_mode": request.form.get("test_mode", "normal"),
-                        "price_variance": float(request.form.get("price_variance", 10)),
-                        "seasonal_factor": float(
-                            request.form.get("seasonal_factor", 1.0)
-                        ),
-                        "verbose_logging": "verbose_logging" in request.form,
-                        "predictable_ids": "predictable_ids" in request.form,
-                    }
+                        # Validate the configuration
+                        validation_errors = self.validate_product_config(new_config)
+                        if validation_errors:
+                            return render_template(
+                                "adapters/mock_product_config.html",
+                                tenant_id=tenant_id,
+                                product=product,
+                                config=config,
+                                error=validation_errors[0],
+                            )
 
-                    # Validate the configuration
-                    validation_errors = self.validate_product_config(new_config)
-                    if validation_errors:
-                        conn.close()
+                        # Save to database
+                        product_obj.implementation_config = new_config
+                        session.commit()
+
                         return render_template(
                             "adapters/mock_product_config.html",
                             tenant_id=tenant_id,
                             product=product,
-                            config=config,
-                            error=validation_errors[0],
+                            config=new_config,
+                            success=True,
                         )
-
-                    # Save to database
-                    conn.execute(
-                        "UPDATE products SET implementation_config = ? WHERE tenant_id = ? AND product_id = ?",
-                        (json.dumps(new_config), tenant_id, product_id),
-                    )
-                    conn.connection.commit()
-                    conn.close()
 
                     return render_template(
                         "adapters/mock_product_config.html",
                         tenant_id=tenant_id,
                         product=product,
-                        config=new_config,
-                        success=True,
+                        config=config,
                     )
-
-                conn.close()
-                return render_template(
-                    "adapters/mock_product_config.html",
-                    tenant_id=tenant_id,
-                    product=product,
-                    config=config,
-                )
 
             return wrapped_view()
 
-    def validate_product_config(self, config: dict) -> List[str]:
+    def validate_product_config(self, config: dict) -> list[str]:
         """Validate mock adapter configuration."""
         errors = []
 
@@ -571,10 +525,7 @@ class MockAdServer(AdServerAdapter):
         if config.get("ctr", 0) < 0 or config.get("ctr", 0) > 100:
             errors.append("CTR must be between 0 and 100")
 
-        if (
-            config.get("viewability_rate", 0) < 0
-            or config.get("viewability_rate", 0) > 100
-        ):
+        if config.get("viewability_rate", 0) < 0 or config.get("viewability_rate", 0) > 100:
             errors.append("Viewability rate must be between 0 and 100")
 
         if config.get("daily_impressions", 0) < 1000:
@@ -585,7 +536,7 @@ class MockAdServer(AdServerAdapter):
 
         return errors
 
-    async def get_available_inventory(self) -> Dict[str, Any]:
+    async def get_available_inventory(self) -> dict[str, Any]:
         """
         Return mock inventory that simulates a typical publisher's ad server.
         This helps demonstrate the AI configuration capabilities.

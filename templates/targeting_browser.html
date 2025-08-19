@@ -16,18 +16,18 @@
         width: 100% !important;
         min-height: 50px !important;
     }
-    
+
     .list-group-item:hover {
         background-color: #f8f9fa !important;
         cursor: pointer !important;
     }
-    
+
     .list-group-item.active {
         background-color: #007bff !important;
         border-color: #007bff !important;
         color: white !important;
     }
-    
+
     /* Ensure badges are visible */
     .badge {
         display: inline-block !important;
@@ -36,11 +36,11 @@
         font-weight: 700 !important;
         color: #fff !important;
     }
-    
+
     .badge.bg-primary {
         background-color: #0d6efd !important;
     }
-    
+
     .badge.bg-secondary {
         background-color: #6c757d !important;
     }
@@ -60,7 +60,7 @@
 
     <!-- Last Sync Info -->
     <div class="alert alert-info" id="sync-info">
-        <i class="fas fa-info-circle"></i> 
+        <i class="fas fa-info-circle"></i>
         <span id="sync-message">Loading targeting data...</span>
     </div>
 
@@ -137,7 +137,7 @@
                     </select>
                 </div>
             </div>
-            
+
             <div class="row" id="audience-cards">
                 <!-- Audience cards will be loaded here -->
             </div>
@@ -151,7 +151,7 @@
                     <i class="fas fa-search"></i>
                 </button>
             </div>
-            
+
             <div class="table-responsive">
                 <table class="table table-hover">
                     <thead>
@@ -207,28 +207,28 @@ async function loadTargetingData() {
         const response = await fetch(`/api/tenant/${tenantId}/targeting/all`, {
             credentials: 'same-origin'
         });
-        
+
         // Check if we got redirected to login
         if (response.redirected || response.status === 302) {
             window.location.href = response.url || `/tenant/${tenantId}/login`;
             return;
         }
-        
+
         if (!response.ok) {
             const errorText = await response.text();
             console.error('API Error:', errorText);
             throw new Error(`Failed to load targeting data: ${response.status}`);
         }
-        
+
         const data = await response.json();
         targetingData = data;
-        
+
         // Update UI
         updateSyncInfo(data.last_sync);
         renderCustomKeys();
         renderAudiences();
         renderLabels();
-        
+
     } catch (error) {
         console.error('Error loading targeting data:', error);
         document.getElementById('sync-message').textContent = 'Failed to load targeting data';
@@ -245,7 +245,7 @@ function updateSyncInfo(lastSync) {
         const diffMins = Math.floor(diffMs / (1000 * 60));
         const diffHours = Math.floor(diffMins / 60);
         const diffDays = Math.floor(diffHours / 24);
-        
+
         let timeAgo;
         if (diffDays > 0) {
             timeAgo = `${diffDays} day${diffDays > 1 ? 's' : ''} ago`;
@@ -256,9 +256,9 @@ function updateSyncInfo(lastSync) {
         } else {
             timeAgo = 'just now';
         }
-        
+
         syncMessage.innerHTML = `Last synced: ${date.toLocaleString()} (${timeAgo})`;
-        
+
         if (diffHours > 24) {
             syncMessage.innerHTML += ' <span class="text-warning">- Consider refreshing</span>';
         }
@@ -272,80 +272,80 @@ function renderCustomKeys() {
     console.log('renderCustomKeys called');
     const keysList = document.getElementById('keys-list');
     console.log('keysList element:', keysList);
-    
+
     if (!keysList) {
         console.error('keys-list element not found!');
         return;
     }
-    
+
     keysList.innerHTML = '';
-    
+
     const searchTerm = document.getElementById('search-keys').value.toLowerCase();
     console.log('searchTerm:', searchTerm);
-    
+
     if (!targetingData.customKeys) {
         console.error('No customKeys in targetingData!');
         return;
     }
-    
-    const filteredKeys = targetingData.customKeys.filter(key => 
+
+    const filteredKeys = targetingData.customKeys.filter(key =>
         key.name.toLowerCase().includes(searchTerm) ||
         (key.display_name || '').toLowerCase().includes(searchTerm)
     );
     console.log('filteredKeys count:', filteredKeys.length);
-    
+
     filteredKeys.forEach((key, index) => {
         console.log(`Processing key ${index}:`, key.name);
         const item = document.createElement('a');
         item.href = '#';
         item.className = 'list-group-item list-group-item-action';
-        
+
         // Create elements manually to avoid innerHTML issues
         const wrapper = document.createElement('div');
         wrapper.className = 'd-flex justify-content-between align-items-start';
-        
+
         const leftDiv = document.createElement('div');
         const title = document.createElement('h6');
         title.className = 'mb-1';
         title.textContent = key.display_name || key.name;
         leftDiv.appendChild(title);
-        
+
         const subtitle = document.createElement('small');
         subtitle.className = 'text-muted';
         subtitle.textContent = `Key: ${key.name}`;
         leftDiv.appendChild(subtitle);
-        
+
         const rightDiv = document.createElement('div');
         const badge = document.createElement('span');
         badge.className = `badge bg-${key.type === 'PREDEFINED' ? 'primary' : 'secondary'}`;
         badge.textContent = key.type || 'UNKNOWN';
         rightDiv.appendChild(badge);
-        
+
         if (key.metadata && key.metadata.values_count) {
             rightDiv.appendChild(document.createElement('br'));
             const small = document.createElement('small');
             small.textContent = `${key.metadata.values_count} values`;
             rightDiv.appendChild(small);
         }
-        
+
         wrapper.appendChild(leftDiv);
         wrapper.appendChild(rightDiv);
         item.appendChild(wrapper);
-        
+
         item.addEventListener('click', (e) => {
             e.preventDefault();
             selectKey(key);
         });
-        
+
         keysList.appendChild(item);
-        
+
         if (index === 0) {
             console.log('First item created and appended');
             console.log('Item element:', item);
             console.log('Item in DOM?', keysList.contains(item));
         }
     });
-    
+
     console.log('Finished rendering, keysList innerHTML length:', keysList.innerHTML.length);
     console.log('keysList children count:', keysList.children.length);
 }
@@ -353,13 +353,13 @@ function renderCustomKeys() {
 // Select a custom targeting key
 function selectKey(key) {
     currentKeyId = key.id;
-    
+
     // Update UI
     document.querySelectorAll('#keys-list .list-group-item').forEach(item => {
         item.classList.remove('active');
     });
     event.target.closest('.list-group-item').classList.add('active');
-    
+
     // Update selected key info
     document.getElementById('selected-key-info').innerHTML = `
         <h5>${key.display_name || key.name}</h5>
@@ -368,11 +368,11 @@ function selectKey(key) {
             ${key.metadata.reportable_type ? `| <span class="text-muted">Reportable:</span> ${key.metadata.reportable_type}` : ''}
         </p>
     `;
-    
+
     // Enable value search
     document.getElementById('search-values').disabled = false;
     document.querySelector('#search-values + button').disabled = false;
-    
+
     // Load values for this key
     renderCustomValues(key.id);
 }
@@ -381,18 +381,18 @@ function selectKey(key) {
 function renderCustomValues(keyId) {
     const valuesList = document.getElementById('values-list');
     const values = targetingData.customValues[keyId] || [];
-    
+
     const searchTerm = document.getElementById('search-values').value.toLowerCase();
-    const filteredValues = values.filter(value => 
+    const filteredValues = values.filter(value =>
         value.name.toLowerCase().includes(searchTerm) ||
         (value.display_name || '').toLowerCase().includes(searchTerm)
     );
-    
+
     if (filteredValues.length === 0) {
         valuesList.innerHTML = '<p class="text-muted text-center">No values found</p>';
         return;
     }
-    
+
     valuesList.innerHTML = `
         <div class="row row-cols-1 row-cols-md-2 g-3">
             ${filteredValues.map(value => `
@@ -418,21 +418,21 @@ function renderAudiences() {
     const audienceCards = document.getElementById('audience-cards');
     const searchTerm = document.getElementById('search-audiences').value.toLowerCase();
     const typeFilter = document.getElementById('audience-type-filter').value;
-    
-    let filteredAudiences = targetingData.audiences.filter(audience => 
+
+    let filteredAudiences = targetingData.audiences.filter(audience =>
         audience.name.toLowerCase().includes(searchTerm) ||
         (audience.description && audience.description.toLowerCase().includes(searchTerm))
     );
-    
+
     if (typeFilter) {
         filteredAudiences = filteredAudiences.filter(audience => audience.type === typeFilter);
     }
-    
+
     if (filteredAudiences.length === 0) {
         audienceCards.innerHTML = '<div class="col-12"><p class="text-muted text-center">No audiences found</p></div>';
         return;
     }
-    
+
     audienceCards.innerHTML = filteredAudiences.map(audience => `
         <div class="col-md-6 col-lg-4">
             <div class="card h-100">
@@ -462,17 +462,17 @@ function renderAudiences() {
 function renderLabels() {
     const labelsTbody = document.getElementById('labels-tbody');
     const searchTerm = document.getElementById('search-labels').value.toLowerCase();
-    
-    const filteredLabels = targetingData.labels.filter(label => 
+
+    const filteredLabels = targetingData.labels.filter(label =>
         label.name.toLowerCase().includes(searchTerm) ||
         (label.description && label.description.toLowerCase().includes(searchTerm))
     );
-    
+
     if (filteredLabels.length === 0) {
         labelsTbody.innerHTML = '<tr><td colspan="5" class="text-center text-muted">No labels found</td></tr>';
         return;
     }
-    
+
     labelsTbody.innerHTML = filteredLabels.map(label => `
         <tr>
             <td><strong>${label.name}</strong></td>
@@ -492,34 +492,34 @@ function renderLabels() {
 document.getElementById('sync-targeting').addEventListener('click', async () => {
     const modal = new bootstrap.Modal(document.getElementById('syncModal'));
     modal.show();
-    
+
     try {
         const response = await fetch(`/api/tenant/${tenantId}/inventory/sync`, {
             method: 'POST'
         });
-        
+
         if (!response.ok) throw new Error('Sync failed');
-        
+
         const result = await response.json();
         console.log('Sync result:', result);
-        
+
         // Reload data
         await loadTargetingData();
-        
+
         modal.hide();
-        
+
         // Show success message
         const alert = document.createElement('div');
         alert.className = 'alert alert-success alert-dismissible fade show';
         alert.innerHTML = `
-            <strong>Sync Complete!</strong> 
+            <strong>Sync Complete!</strong>
             Discovered ${result.custom_targeting.total_keys} custom targeting keys,
             ${result.audience_segments.total} audience segments, and
             ${result.labels.total} labels.
             <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
         `;
         document.querySelector('.container-fluid').insertBefore(alert, document.querySelector('h1').nextSibling);
-        
+
     } catch (error) {
         modal.hide();
         alert('Sync failed: ' + error.message);

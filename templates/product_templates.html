@@ -8,16 +8,16 @@
         <h2>Product Templates</h2>
         <a href="{{ url_for('list_products', tenant_id=tenant_id) }}" class="btn btn-secondary">← Back to Products</a>
     </div>
-    
+
     <div class="alert alert-info">
         <strong>Quick Start:</strong> Choose from pre-configured product templates to quickly set up common advertising products. You can customize any template before creating the product.
     </div>
-    
+
     <!-- Standard Templates -->
     <div class="template-section">
         <h3>Standard Templates</h3>
         <p class="section-description">Essential advertising products that work for most publishers</p>
-        
+
         <div class="template-grid">
             {% for template in standard_templates %}
             <div class="template-card">
@@ -27,9 +27,9 @@
                         {{ template.delivery_type.replace('_', ' ').title() }}
                     </span>
                 </div>
-                
+
                 <p class="template-description">{{ template.description }}</p>
-                
+
                 <div class="template-details">
                     <div class="detail-row">
                         <strong>Pricing:</strong>
@@ -39,7 +39,7 @@
                             <span class="price">${{ template.price_guidance.min }} - ${{ template.price_guidance.max }} CPM</span>
                         {% endif %}
                     </div>
-                    
+
                     <div class="detail-row">
                         <strong>Formats:</strong>
                         <div class="format-tags">
@@ -51,7 +51,7 @@
                             {% endif %}
                         </div>
                     </div>
-                    
+
                     <div class="detail-row">
                         <strong>Targeting:</strong>
                         <span class="targeting-info">
@@ -60,7 +60,7 @@
                             {% else %}
                                 Global
                             {% endif %}
-                            • 
+                            •
                             {% if template.targeting_template.device_targets %}
                                 {{ template.targeting_template.device_targets.device_types|join(', ') }}
                             {% else %}
@@ -69,7 +69,7 @@
                         </span>
                     </div>
                 </div>
-                
+
                 <div class="template-actions">
                     <button class="btn btn-primary btn-small" onclick="useTemplate('{{ template.product_id }}', {{ template | tojson }})">
                         Use Template
@@ -82,14 +82,14 @@
             {% endfor %}
         </div>
     </div>
-    
+
     <!-- Industry-Specific Templates -->
     {% for industry, templates in industry_templates.items() %}
     {% if templates %}
     <div class="template-section">
         <h3>{{ industry.title() }} Industry Templates</h3>
         <p class="section-description">Specialized products for {{ industry }} publishers</p>
-        
+
         <div class="template-grid">
             {% for template in templates %}
             <div class="template-card industry-specific">
@@ -97,9 +97,9 @@
                     <h4>{{ template.name }}</h4>
                     <span class="industry-badge">{{ industry }}</span>
                 </div>
-                
+
                 <p class="template-description">{{ template.description }}</p>
-                
+
                 <div class="template-details">
                     <div class="detail-row">
                         <strong>Pricing:</strong>
@@ -109,7 +109,7 @@
                             <span class="price">${{ template.price_guidance.min }} - ${{ template.price_guidance.max }} CPM</span>
                         {% endif %}
                     </div>
-                    
+
                     <div class="detail-row">
                         <strong>Formats:</strong>
                         <div class="format-tags">
@@ -119,7 +119,7 @@
                         </div>
                     </div>
                 </div>
-                
+
                 <div class="template-actions">
                     <button class="btn btn-primary btn-small" onclick="useTemplate('{{ template.product_id }}', {{ template | tojson }})">
                         Use Template
@@ -137,30 +137,30 @@
 <div id="customization-modal" class="modal" style="display: none;">
     <div class="modal-content">
         <h3>Customize Product</h3>
-        
+
         <form id="customization-form">
             <div class="form-group">
                 <label for="custom-name">Product Name</label>
                 <input type="text" id="custom-name" name="name" required>
             </div>
-            
+
             <div class="form-group">
                 <label for="custom-product-id">Product ID</label>
-                <input type="text" id="custom-product-id" name="product_id" 
+                <input type="text" id="custom-product-id" name="product_id"
                        pattern="[a-z0-9_]+" title="Lowercase letters, numbers, and underscores only">
                 <small>Leave blank to auto-generate</small>
             </div>
-            
+
             <div class="form-group">
                 <label for="custom-description">Description</label>
                 <textarea id="custom-description" name="description" rows="3"></textarea>
             </div>
-            
+
             <div class="form-group" id="cpm-group">
                 <label for="custom-cpm">CPM Price</label>
                 <input type="number" id="custom-cpm" name="cpm" step="0.01" min="0">
             </div>
-            
+
             <div class="form-group" id="price-guidance-group" style="display: none;">
                 <label>Price Guidance Range</label>
                 <div style="display: flex; gap: 10px;">
@@ -168,7 +168,7 @@
                     <input type="number" id="custom-price-max" placeholder="Max" step="0.01" min="0">
                 </div>
             </div>
-            
+
             <div class="modal-actions">
                 <button type="submit" class="btn btn-primary">Create Product</button>
                 <button type="button" class="btn btn-secondary" onclick="closeModal()">Cancel</button>
@@ -361,11 +361,11 @@ let currentTemplate = null;
 
 function useTemplate(templateId, template) {
     currentTemplate = template;
-    
+
     // Pre-fill the customization form
     document.getElementById('custom-name').value = template.name;
     document.getElementById('custom-description').value = template.description || '';
-    
+
     // Handle pricing fields
     if (template.delivery_type === 'guaranteed') {
         document.getElementById('cpm-group').style.display = 'block';
@@ -377,7 +377,7 @@ function useTemplate(templateId, template) {
         document.getElementById('custom-price-min').value = template.price_guidance?.min || '';
         document.getElementById('custom-price-max').value = template.price_guidance?.max || '';
     }
-    
+
     // Show modal
     document.getElementById('customization-modal').style.display = 'flex';
 }
@@ -411,22 +411,22 @@ window.onclick = function(event) {
 // Handle form submission
 document.getElementById('customization-form').addEventListener('submit', async function(e) {
     e.preventDefault();
-    
+
     if (!currentTemplate) return;
-    
+
     const formData = new FormData(e.target);
     const customizations = {};
-    
+
     // Get customizations
     const name = formData.get('name');
     if (name) customizations.name = name;
-    
+
     const productId = formData.get('product_id');
     if (productId) customizations.product_id = productId;
-    
+
     const description = formData.get('description');
     if (description) customizations.description = description;
-    
+
     // Handle pricing based on delivery type
     if (currentTemplate.delivery_type === 'guaranteed') {
         const cpm = formData.get('cpm');
@@ -441,7 +441,7 @@ document.getElementById('customization-form').addEventListener('submit', async f
             };
         }
     }
-    
+
     try {
         const response = await fetch(`{{ url_for('create_from_template', tenant_id=tenant_id) }}`, {
             method: 'POST',
@@ -453,15 +453,15 @@ document.getElementById('customization-form').addEventListener('submit', async f
                 customizations: customizations
             })
         });
-        
+
         const result = await response.json();
-        
+
         if (result.success) {
             window.location.href = result.redirect_url;
         } else {
             alert('Error: ' + (result.error || 'Failed to create product'));
         }
-        
+
     } catch (error) {
         alert('Error: ' + error.message);
     }

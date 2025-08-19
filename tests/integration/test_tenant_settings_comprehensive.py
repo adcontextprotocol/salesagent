@@ -5,12 +5,13 @@ This test connects to the real database and performs actual queries
 to ensure SQL compatibility and schema correctness.
 """
 
-import pytest
-import requests
-import psycopg2
-from psycopg2.extras import DictCursor
 import os
 import sys
+
+import psycopg2
+import pytest
+import requests
+from psycopg2.extras import DictCursor
 
 # Test configuration
 BASE_URL = f"http://localhost:{os.environ.get('ADMIN_UI_PORT', '8001')}"
@@ -131,9 +132,7 @@ def test_settings_page():
     # Test authentication
     print("\n1. Testing authentication...")
     auth_data = {"email": TEST_EMAIL, "password": TEST_PASSWORD}
-    response = session.post(
-        f"{BASE_URL}/test/auth", data=auth_data, allow_redirects=False
-    )
+    response = session.post(f"{BASE_URL}/test/auth", data=auth_data, allow_redirects=False)
     print(f"   Auth response: {response.status_code}")
 
     if response.status_code == 302:

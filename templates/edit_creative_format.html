@@ -8,30 +8,30 @@
         <h2>Edit Creative Format</h2>
         <a href="{{ url_for('creative_formats', tenant_id=tenant_id) }}" class="btn btn-secondary">← Back to Creative Formats</a>
     </div>
-    
+
     <form id="editFormatForm">
         <div class="form-group">
             <label for="format_id">Format ID</label>
             <input type="text" id="format_id" name="format_id" value="{{ format.format_id }}" disabled class="form-control">
             <small>Format IDs cannot be changed after creation</small>
         </div>
-        
+
         <div class="form-group">
             <label for="name">Name *</label>
             <input type="text" id="name" name="name" value="{{ format.name }}" required class="form-control">
         </div>
-        
+
         <div class="form-group">
             <label for="type">Type</label>
             <input type="text" id="type" name="type" value="{{ format.type }}" disabled class="form-control">
             <small>Format type cannot be changed</small>
         </div>
-        
+
         <div class="form-group">
             <label for="description">Description</label>
             <textarea id="description" name="description" rows="3" class="form-control">{{ format.description or '' }}</textarea>
         </div>
-        
+
         {% if format.type in ['display', 'video'] %}
         <div class="row">
             <div class="col-md-6">
@@ -48,31 +48,31 @@
             </div>
         </div>
         {% endif %}
-        
+
         {% if format.type in ['video', 'audio'] %}
         <div class="form-group">
             <label for="duration_seconds">Duration (seconds)</label>
             <input type="number" id="duration_seconds" name="duration_seconds" value="{{ format.duration_seconds or '' }}" class="form-control">
         </div>
         {% endif %}
-        
+
         <div class="form-group">
             <label for="max_file_size_kb">Max File Size (KB)</label>
             <input type="number" id="max_file_size_kb" name="max_file_size_kb" value="{{ format.max_file_size_kb or '' }}" class="form-control">
         </div>
-        
+
         <div class="form-group">
             <label for="source_url">Source URL</label>
             <input type="url" id="source_url" name="source_url" value="{{ format.source_url or '' }}" class="form-control">
             <small>Link to the original specification page</small>
         </div>
-        
+
         <div class="form-group">
             <label for="specs">Additional Specifications (JSON)</label>
             <textarea id="specs" name="specs" rows="6" class="form-control">{{ format.specs|tojson(indent=2) if format.specs else '{}' }}</textarea>
             <small>Additional technical specifications in JSON format</small>
         </div>
-        
+
         <div class="form-actions">
             <button type="submit" class="btn btn-primary">Save Changes</button>
             <a href="{{ url_for('creative_formats', tenant_id=tenant_id) }}" class="btn btn-secondary">Cancel</a>
@@ -138,7 +138,7 @@ textarea.form-control {
 document.addEventListener('DOMContentLoaded', function() {
     document.getElementById('editFormatForm').addEventListener('submit', async function(e) {
         e.preventDefault();
-        
+
         // Validate specs JSON
         let specs = {};
         const specsText = document.getElementById('specs').value.trim();
@@ -150,7 +150,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 return;
             }
         }
-        
+
         // Collect form data
         const formData = {
             name: document.getElementById('name').value,
@@ -158,20 +158,20 @@ document.addEventListener('DOMContentLoaded', function() {
             source_url: document.getElementById('source_url').value,
             specs: specs
         };
-        
+
         // Add optional numeric fields
         const width = document.getElementById('width')?.value;
         if (width) formData.width = parseInt(width);
-        
+
         const height = document.getElementById('height')?.value;
         if (height) formData.height = parseInt(height);
-        
+
         const duration = document.getElementById('duration_seconds')?.value;
         if (duration) formData.duration_seconds = parseInt(duration);
-        
+
         const fileSize = document.getElementById('max_file_size_kb')?.value;
         if (fileSize) formData.max_file_size_kb = parseInt(fileSize);
-        
+
         try {
             const response = await fetch(`/tenant/{{ tenant_id }}/creative-formats/{{ format.format_id }}/update`, {
                 method: 'POST',
@@ -180,9 +180,9 @@ document.addEventListener('DOMContentLoaded', function() {
                 },
                 body: JSON.stringify(formData)
             });
-            
+
             const result = await response.json();
-            
+
             if (result.success) {
                 alert('Creative format updated successfully');
                 window.location.href = '{{ url_for("creative_formats", tenant_id=tenant_id) }}';

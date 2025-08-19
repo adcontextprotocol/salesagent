@@ -2,35 +2,37 @@
 """Run the AdCP Sales Agent with HTTP transport."""
 
 import os
-import sys
 import subprocess
+import sys
+
 
 def main():
     """Run the server with configurable port."""
-    port = os.environ.get('ADCP_SALES_PORT', '8080')
-    host = os.environ.get('ADCP_SALES_HOST', '0.0.0.0')
-    
+    port = os.environ.get("ADCP_SALES_PORT", "8080")
+    host = os.environ.get("ADCP_SALES_HOST", "0.0.0.0")
+
     # Check if we're in production (Docker or Fly.io)
-    is_production = bool(os.environ.get('FLY_APP_NAME') or os.environ.get('PRODUCTION'))
-    
+    is_production = bool(os.environ.get("FLY_APP_NAME") or os.environ.get("PRODUCTION"))
+
     if is_production:
         # In production, bind to all interfaces
-        host = '0.0.0.0'
-    
+        host = "0.0.0.0"
+
     print(f"Starting AdCP Sales Agent on {host}:{port}")
     print(f"Server endpoint: http://{host}:{port}/")
-    
+
     # Run the server
     cmd = [
-        sys.executable, "-c",
+        sys.executable,
+        "-c",
         f"""
 import sys
 sys.path.insert(0, '.')
 from main import mcp
 mcp.run(transport='http', host='{host}', port={port})
-"""
+""",
     ]
-    
+
     try:
         subprocess.run(cmd, check=True)
     except KeyboardInterrupt:
@@ -39,6 +41,7 @@ mcp.run(transport='http', host='{host}', port={port})
     except subprocess.CalledProcessError as e:
         print(f"Error running server: {e}")
         sys.exit(1)
+
 
 if __name__ == "__main__":
     main()

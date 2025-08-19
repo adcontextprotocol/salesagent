@@ -67,9 +67,9 @@ uv run python scripts/run_tests.py --list
 ## Test Categories
 
 ### 1. Unit Tests (`tests/unit/`)
-**Purpose**: Test individual components in isolation  
-**Runtime**: < 1 second per test  
-**Dependencies**: None (all external dependencies mocked)  
+**Purpose**: Test individual components in isolation
+**Runtime**: < 1 second per test
+**Dependencies**: None (all external dependencies mocked)
 
 **Key test files**:
 - `test_schemas.py` - Data model validation
@@ -79,9 +79,9 @@ uv run python scripts/run_tests.py --list
 - `adapters/test_base.py` - Adapter interface compliance
 
 ### 2. Integration Tests (`tests/integration/`)
-**Purpose**: Test component interactions with real services  
-**Runtime**: < 5 seconds per test  
-**Dependencies**: Database (SQLite/PostgreSQL), mocked external APIs  
+**Purpose**: Test component interactions with real services
+**Runtime**: < 5 seconds per test
+**Dependencies**: Database (SQLite/PostgreSQL), mocked external APIs
 
 **Key test files**:
 - `test_main.py` - MCP server functionality
@@ -92,9 +92,9 @@ uv run python scripts/run_tests.py --list
 - `test_policy.py` - Policy compliance
 
 ### 3. End-to-End Tests (`tests/e2e/`)
-**Purpose**: Test complete user workflows  
-**Runtime**: < 30 seconds per test  
-**Dependencies**: Full system stack, may use real external services  
+**Purpose**: Test complete user workflows
+**Runtime**: < 30 seconds per test
+**Dependencies**: Full system stack, may use real external services
 
 **Key test files**:
 - `test_full_campaign.py` - Complete campaign lifecycle
@@ -102,8 +102,8 @@ uv run python scripts/run_tests.py --list
 - `test_gam_integration.py` - Real GAM adapter integration
 
 ### 4. UI Tests (`tests/ui/`)
-**Purpose**: Test web interface functionality  
-**Dependencies**: Flask test client, test authentication mode  
+**Purpose**: Test web interface functionality
+**Dependencies**: Flask test client, test authentication mode
 
 **Key test files**:
 - `test_auth_mode.py` - Test authentication mode
@@ -199,7 +199,7 @@ The system includes a test authentication mode for automated UI testing without 
    ```bash
    # Copy override file
    cp docker-compose.override.example.yml docker-compose.override.yml
-   
+
    # Edit to enable ADCP_AUTH_TEST_MODE=true
    # Then start services
    docker-compose up
@@ -290,14 +290,14 @@ from tests.fixtures import TenantFactory, PrincipalFactory
 
 class TestFeatureName:
     """Tests for specific feature."""
-    
+
     @pytest.fixture
     def setup_data(self):
         """Setup test data."""
         tenant = TenantFactory.create()
         principal = PrincipalFactory.create(tenant_id=tenant["tenant_id"])
         return tenant, principal
-    
+
     def test_specific_behavior(self, setup_data):
         """Test description."""
         tenant, principal = setup_data

@@ -170,10 +170,10 @@ def test_new_oauth_scenario(self, client, mock_google_oauth, mock_db):
     mock_google_oauth.authorize_access_token.return_value = {
         'userinfo': {'email': 'test@example.com'}
     }
-    
+
     # Execute test
     response = client.get('/auth/google/callback')
-    
+
     # Verify results
     assert response.status_code == 302
     with client.session_transaction() as sess:

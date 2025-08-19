@@ -36,7 +36,7 @@
             <a href="{{ url_for('add_product', tenant_id=tenant_id) }}" class="btn btn-secondary">Add Manually</a>
         </div>
     </div>
-    
+
     <table>
         <thead>
             <tr>
@@ -85,7 +85,15 @@
                     ${{ "%.2f"|format(product.cpm) }}
                     {% else %}
                         {% if product.price_guidance %}
-                        ${{ "%.2f"|format(product.price_guidance.min) }} - ${{ "%.2f"|format(product.price_guidance.max) }}
+                            {% if product.price_guidance.floor is defined %}
+                                {# New format with floor/p50/p75 #}
+                                ${{ "%.2f"|format(product.price_guidance.floor) }} - ${{ "%.2f"|format(product.price_guidance.p75) }}
+                            {% elif product.price_guidance.min is defined %}
+                                {# Old format with min/max #}
+                                ${{ "%.2f"|format(product.price_guidance.min) }} - ${{ "%.2f"|format(product.price_guidance.max) }}
+                            {% else %}
+                                Guidance available
+                            {% endif %}
                         {% else %}
                         -
                         {% endif %}
@@ -103,7 +111,7 @@
             {% endfor %}
         </tbody>
     </table>
-    
+
     {% endif %} <!-- end else (has products) -->
 </div>
 

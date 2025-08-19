@@ -5,7 +5,7 @@
 {% block content %}
 <div class="container-fluid">
     <h1>GAM Reporting - {{ tenant.name }}</h1>
-    
+
     <!-- Controls -->
     <div class="card mb-4">
         <div class="card-body">
@@ -149,9 +149,9 @@
                             </select>
                         </div>
                     </div>
-                    
+
                     <h4>CPM by Country <small class="text-muted">(Circle size = Impressions)</small></h4>
-                    
+
                     <!-- Loading indicator -->
                     <div id="country-loading" class="text-center py-5" style="display: none;">
                         <div class="spinner-border text-primary" role="status">
@@ -159,7 +159,7 @@
                         </div>
                         <p class="mt-2">Loading country data...</p>
                     </div>
-                    
+
                     <div id="world-map" style="height: 500px;"></div>
                     <div id="country-table" class="mt-4">
                         <table class="table table-sm">
@@ -198,9 +198,9 @@
                             </select>
                         </div>
                     </div>
-                    
+
                     <h4>Performance by Ad Unit</h4>
-                    
+
                     <!-- Loading indicator -->
                     <div id="adunit-loading" class="text-center py-5" style="display: none;">
                         <div class="spinner-border text-primary" role="status">
@@ -208,7 +208,7 @@
                         </div>
                         <p class="mt-2">Loading ad unit data...</p>
                     </div>
-                    
+
                     <canvas id="adunit-chart" style="max-height: 400px;"></canvas>
                     <div class="mt-4">
                         <table class="table table-sm">
@@ -246,7 +246,7 @@ function showLoadingIndicators() {
     // Show loading for table
     document.getElementById('table-loading').style.display = 'block';
     document.getElementById('table-container').style.display = 'none';
-    
+
     // Show loading for charts
     const chartContainers = ['time-chart-container', 'heatmap-container', 'ad-unit-container'];
     chartContainers.forEach(id => {
@@ -261,11 +261,11 @@ function hideLoadingIndicators() {
     // Hide table loading and force display the container
     const tableLoading = document.getElementById('table-loading');
     const tableContainer = document.getElementById('table-container');
-    
+
     if (tableLoading) {
         tableLoading.style.display = 'none';
     }
-    
+
     if (tableContainer) {
         // Force display with important to override any other styles
         tableContainer.style.cssText = 'display: block !important;';
@@ -275,10 +275,10 @@ function hideLoadingIndicators() {
 async function updateReports() {
     const dateRange = document.getElementById('date-range').value;
     const timezone = document.getElementById('timezone').value;
-    
+
     // Show loading indicators for all tabs
     showLoadingIndicators();
-    
+
     // Update loading message
     const loadingElements = document.querySelectorAll('.loading-indicator');
     loadingElements.forEach(el => {
@@ -286,24 +286,24 @@ async function updateReports() {
             el.textContent = 'Loading GAM data...';
         }
     });
-    
+
     try {
         const response = await fetch(`/api/tenant/{{ tenant.tenant_id }}/gam/reporting?date_range=${dateRange}&timezone=${timezone}`, {
             credentials: 'same-origin'
         });
-        
+
         if (!response.ok) {
             throw new Error(`HTTP error! status: ${response.status}`);
         }
-        
+
         const result = await response.json();
         currentData = result;
-        
+
         console.log(`Loaded ${result.data.length} rows of data`);
-        
+
         updateSummaryCards(result.data);
         updateViews();
-        
+
     } catch (error) {
         console.error('Error fetching report:', error);
         alert('Failed to load report data. Please try again.');
@@ -320,14 +320,14 @@ function updateSummaryCards(data) {
         // Countries not available in simplified data
         return acc;
     }, { impressions: 0, spend: 0, clicks: 0 });
-    
+
     const avgCpm = totals.impressions > 0 ? (totals.spend / totals.impressions * 1000) : 0;
-    
+
     document.getElementById('total-impressions').textContent = totals.impressions.toLocaleString();
     document.getElementById('total-spend').textContent = '$' + totals.spend.toFixed(2);
     document.getElementById('avg-cpm').textContent = '$' + avgCpm.toFixed(2);
     document.getElementById('country-count').textContent = 'N/A'; // Not available in simplified data
-    
+
     // Populate filter dropdowns with unique values from data
     populateFiltersFromData(data);
 }
@@ -337,7 +337,7 @@ function populateFiltersFromData(data) {
     const advertisers = new Map();
     const adUnits = new Map();
     const countries = new Set();
-    
+
     data.forEach(row => {
         if (row.advertiser_id && row.advertiser_name) {
             advertisers.set(row.advertiser_id, row.advertiser_name);
@@ -349,7 +349,7 @@ function populateFiltersFromData(data) {
             countries.add(row.country);
         }
     });
-    
+
     // Populate advertiser filters
     const advertiserFilters = ['country-advertiser-filter', 'adunit-advertiser-filter'];
     advertiserFilters.forEach(filterId => {
@@ -368,7 +368,7 @@ function populateFiltersFromData(data) {
             select.value = currentValue;
         }
     });
-    
+
     // Populate ad unit filter
     const adUnitFilter = document.getElementById('country-adunit-filter');
     if (adUnitFilter && adUnitFilter.options.length <= 1) {
@@ -384,7 +384,7 @@ function populateFiltersFromData(data) {
             });
         adUnitFilter.value = currentValue;
     }
-    
+
     // Populate country filter
     const countryFilter = document.getElementById('adunit-country-filter');
     if (countryFilter && countryFilter.options.length <= 1) {
@@ -404,9 +404,9 @@ function populateFiltersFromData(data) {
 
 function updateViews() {
     if (!currentData) return;
-    
+
     const aggregation = document.getElementById('aggregation').value;
-    
+
     updateTableView(aggregation);
     updateTimeChart(aggregation);
     updateCountryHeatmap();
@@ -416,10 +416,10 @@ function updateViews() {
 function updateTableView(aggregation) {
     const data = aggregateData(currentData.data, aggregation);
     console.log(`Aggregated data for ${aggregation}:`, data.slice(0, 5)); // Debug first 5 rows
-    
+
     const tableHeader = document.getElementById('table-header');
     const tableBody = document.getElementById('table-body');
-    
+
     // Create header
     tableHeader.innerHTML = `
         <tr>
@@ -431,15 +431,15 @@ function updateTableView(aggregation) {
             <th>CPM</th>
         </tr>
     `;
-    
+
     // Create rows
     tableBody.innerHTML = '';
-    
+
     if (data.length === 0) {
         tableBody.innerHTML = '<tr><td colspan="6" class="text-center">No data available</td></tr>';
         return;
     }
-    
+
     data.forEach(row => {
         const tr = document.createElement('tr');
         // Display name based on available fields
@@ -454,16 +454,16 @@ function updateTableView(aggregation) {
         `;
         tableBody.appendChild(tr);
     });
-    
+
     console.log(`Added ${data.length} rows to table`);
 }
 
 function aggregateData(data, by) {
     const aggregated = {};
-    
+
     // Debug: log first few rows to see what we have
     console.log('Sample data rows:', data.slice(0, 3));
-    
+
     data.forEach(row => {
         let key, name;
         switch(by) {
@@ -492,7 +492,7 @@ function aggregateData(data, by) {
                 key = 'Unknown';
                 name = 'Unknown';
         }
-        
+
         if (!aggregated[key]) {
             aggregated[key] = {
                 name: name,
@@ -505,13 +505,13 @@ function aggregateData(data, by) {
             // Update name if we get a real name (not just "Advertiser ID")
             aggregated[key].name = name;
         }
-        
+
         aggregated[key].impressions += row.impressions || 0;
         aggregated[key].clicks += row.clicks || 0;
         aggregated[key].spend += row.spend || 0;
         aggregated[key].count += 1;
     });
-    
+
     // Calculate derived metrics
     return Object.values(aggregated).map(item => ({
         ...item,
@@ -522,7 +522,7 @@ function aggregateData(data, by) {
 
 function updateTimeChart(aggregation) {
     const ctx = document.getElementById('time-chart').getContext('2d');
-    
+
     // Group data by date
     const timeData = {};
     currentData.data.forEach(row => {
@@ -534,15 +534,15 @@ function updateTimeChart(aggregation) {
         timeData[date].spend += row.spend || 0;
         timeData[date].clicks += row.clicks || 0;
     });
-    
+
     const labels = Object.keys(timeData).sort();
     const impressions = labels.map(date => timeData[date].impressions);
     const spend = labels.map(date => timeData[date].spend);
-    
+
     if (timeChart) {
         timeChart.destroy();
     }
-    
+
     timeChart = new Chart(ctx, {
         type: 'line',
         data: {
@@ -599,41 +599,41 @@ async function updateCountryHeatmap() {
     const timezone = document.getElementById('timezone').value;
     const advertiserId = document.getElementById('country-advertiser-filter').value;
     const adUnitId = document.getElementById('country-adunit-filter').value;
-    
+
     // Show loading indicator
     document.getElementById('country-loading').style.display = 'block';
     document.getElementById('world-map').style.opacity = '0.5';
-    
+
     try {
         // Build query params
         let params = `date_range=${dateRange}&timezone=${timezone}`;
         if (advertiserId) params += `&advertiser_id=${advertiserId}`;
         if (adUnitId) params += `&ad_unit_id=${adUnitId}`;
-        
+
         // Fetch country breakdown data
         const response = await fetch(`/api/tenant/{{ tenant.tenant_id }}/gam/reporting/countries?${params}`, {
             credentials: 'same-origin'
         });
-        
+
         if (!response.ok) {
             throw new Error(`HTTP error! status: ${response.status}`);
         }
-        
+
         const result = await response.json();
         const countries = result.data.countries || [];
         const advertiserNames = result.data.advertisers || {};
         const rawData = result.data.raw_data || [];
-        
+
         // Update country count in summary card
         document.getElementById('country-count').textContent = result.data.total_countries || countries.length;
-        
+
         // Populate filters with data
         populateCountryFilters(rawData, advertiserNames);
-        
+
         // Update country table
         const tbody = document.getElementById('country-tbody');
         tbody.innerHTML = '';
-        
+
         if (countries.length === 0) {
             tbody.innerHTML = '<tr><td colspan="5" class="text-center">No country data available</td></tr>';
         } else {
@@ -648,7 +648,7 @@ async function updateCountryHeatmap() {
                 `;
             });
         }
-        
+
         // Initialize or update map
         const mapContainer = document.getElementById('world-map');
         if (mapContainer && countries.length > 0) {
@@ -657,7 +657,7 @@ async function updateCountryHeatmap() {
                 worldMap.remove();
                 worldMap = null;
             }
-            
+
             // Wait for tab to be visible and container to have size
             setTimeout(() => {
                 // Create new map
@@ -666,15 +666,15 @@ async function updateCountryHeatmap() {
                     attribution: '© OpenStreetMap contributors',
                     maxZoom: 18
                 }).addTo(worldMap);
-                
+
                 // Force map to recalculate its size
                 worldMap.invalidateSize();
-                
+
                 // Add markers for countries with data
                 updateMapMarkers(worldMap, countries);
             }, 100);
         }
-        
+
     } catch (error) {
         console.error('Error fetching country data:', error);
         const tbody = document.getElementById('country-tbody');
@@ -693,29 +693,29 @@ function updateMapMarkers(map, countryData) {
             map.removeLayer(layer);
         }
     });
-    
+
     // Calculate min and max CPM from actual data
     const cpmValues = countryData.map(c => c.avg_cpm).filter(cpm => cpm > 0);
     if (cpmValues.length === 0) return;
-    
+
     const minCPM = Math.min(...cpmValues);
     const maxCPM = Math.max(...cpmValues);
-    
+
     // Calculate min and max impressions for proportional sizing
     const impressionValues = countryData.map(c => c.impressions).filter(imp => imp > 0);
     const minImpressions = Math.min(...impressionValues);
     const maxImpressions = Math.max(...impressionValues);
     const impressionRange = maxImpressions - minImpressions;
-    
+
     // Add markers for top countries
     countryData.slice(0, 20).forEach(country => {
         const coords = getCountryCoordinates(country.country);
         if (coords) {
             // Scale radius based on actual data range (5-30 pixels)
-            const normalizedImpressions = impressionRange > 0 ? 
+            const normalizedImpressions = impressionRange > 0 ?
                 (country.impressions - minImpressions) / impressionRange : 0.5;
             const radius = 5 + (normalizedImpressions * 25); // 5 to 30 pixels
-            
+
             const marker = L.circleMarker(coords, {
                 radius: radius,
                 fillColor: getCPMColor(country.avg_cpm, minCPM, maxCPM),
@@ -724,7 +724,7 @@ function updateMapMarkers(map, countryData) {
                 opacity: 1,
                 fillOpacity: 0.8
             }).addTo(map);
-            
+
             marker.bindPopup(`
                 <strong>${country.country}</strong><br>
                 Impressions: ${country.impressions.toLocaleString()}<br>
@@ -734,7 +734,7 @@ function updateMapMarkers(map, countryData) {
             `);
         }
     });
-    
+
     // Add legend showing CPM range
     addMapLegend(map, minCPM, maxCPM);
 }
@@ -744,7 +744,7 @@ function getCPMColor(cpm, minCPM, maxCPM) {
     // Normalize CPM to 0-1 range
     const range = maxCPM - minCPM;
     const normalized = range > 0 ? (cpm - minCPM) / range : 0.5;
-    
+
     // Use a gradient from red through yellow to green (reversed for "green = good")
     if (normalized < 0.5) {
         // Red to Yellow (low to medium CPM)
@@ -768,19 +768,19 @@ function addMapLegend(map, minCPM, maxCPM) {
     if (map.legendControl) {
         map.removeControl(map.legendControl);
     }
-    
+
     // Create custom legend control
     const legend = L.control({position: 'bottomright'});
-    
+
     legend.onAdd = function() {
         const div = L.DomUtil.create('div', 'map-legend');
         div.style.backgroundColor = 'white';
         div.style.padding = '10px';
         div.style.borderRadius = '5px';
         div.style.boxShadow = '0 1px 5px rgba(0,0,0,0.4)';
-        
+
         const midCPM = (minCPM + maxCPM) / 2;
-        
+
         div.innerHTML = `
             <div style="font-weight: bold; margin-bottom: 5px;">CPM Range</div>
             <div style="display: flex; align-items: center; margin-bottom: 3px;">
@@ -796,10 +796,10 @@ function addMapLegend(map, minCPM, maxCPM) {
                 <span>$${maxCPM.toFixed(2)} (High)</span>
             </div>
         `;
-        
+
         return div;
     };
-    
+
     legend.addTo(map);
     map.legendControl = legend;
 }
@@ -888,40 +888,40 @@ async function updateAdUnitAnalysis() {
     const timezone = document.getElementById('timezone').value;
     const country = document.getElementById('adunit-country-filter').value;
     const advertiserId = document.getElementById('adunit-advertiser-filter').value;
-    
+
     // Show loading indicator
     document.getElementById('adunit-loading').style.display = 'block';
     const chartContainer = document.getElementById('adunit-chart');
     if (chartContainer) chartContainer.style.opacity = '0.5';
-    
+
     try {
         // Build query params
         let params = `date_range=${dateRange}&timezone=${timezone}`;
         if (country) params += `&country=${encodeURIComponent(country)}`;
         if (advertiserId) params += `&advertiser_id=${advertiserId}`;
-        
+
         // Fetch ad unit breakdown data
         const response = await fetch(`/api/tenant/{{ tenant.tenant_id }}/gam/reporting/ad-units?${params}`, {
             credentials: 'same-origin'
         });
-        
+
         if (!response.ok) {
             throw new Error(`HTTP error! status: ${response.status}`);
         }
-        
+
         const result = await response.json();
         const adUnits = result.data.ad_units || [];
         const advertiserNames = result.data.advertisers || {};
         const countries = result.data.countries || [];
         const rawData = result.data.raw_data || [];
-        
+
         // Populate filters with data
         populateAdUnitFilters(rawData, advertiserNames, countries);
-        
+
         // Update ad unit table
         const tbody = document.getElementById('adunit-tbody');
         tbody.innerHTML = '';
-        
+
         if (adUnits.length === 0) {
             tbody.innerHTML = '<tr><td colspan="5" class="text-center">No ad unit data available</td></tr>';
         } else {
@@ -938,7 +938,7 @@ async function updateAdUnitAnalysis() {
                 `;
             });
         }
-        
+
         // Update chart
         const chartContainer = document.getElementById('adunit-chart');
         if (chartContainer && adUnits.length > 0) {
@@ -946,7 +946,7 @@ async function updateAdUnitAnalysis() {
             if (adUnitChart) {
                 adUnitChart.destroy();
             }
-            
+
             // Create bar chart showing top 10 ad units by spend
             const topAdUnits = adUnits.slice(0, 10);
             adUnitChart = new Chart(chartContainer, {
@@ -1020,7 +1020,7 @@ async function updateAdUnitAnalysis() {
                 }
             });
         }
-        
+
     } catch (error) {
         console.error('Error fetching ad unit data:', error);
         const tbody = document.getElementById('adunit-tbody');
@@ -1035,10 +1035,10 @@ async function updateAdUnitAnalysis() {
 
 function exportData() {
     if (!currentData) return;
-    
+
     const aggregation = document.getElementById('aggregation').value;
     const data = aggregateData(currentData.data, aggregation);
-    
+
     // Convert to CSV
     const csv = [
         [aggregation, 'Impressions', 'Clicks', 'CTR', 'Spend', 'CPM'].join(','),
@@ -1051,7 +1051,7 @@ function exportData() {
             row.cpm.toFixed(2)
         ].join(','))
     ].join('\n');
-    
+
     // Download
     const blob = new Blob([csv], { type: 'text/csv' });
     const url = window.URL.createObjectURL(blob);
@@ -1068,7 +1068,7 @@ function exportData() {
 document.addEventListener('DOMContentLoaded', function() {
     updateReports();
     populateAllFilters();
-    
+
     // Handle tab changes to reinitialize map when shown
     document.querySelectorAll('#reportTabs a[data-bs-toggle="tab"]').forEach(tab => {
         tab.addEventListener('shown.bs.tab', function (e) {
@@ -1089,7 +1089,7 @@ function populateCountryFilters(rawData, advertiserNames) {
     // Extract unique advertisers and ad units
     const advertisers = new Map();
     const adUnits = new Map();
-    
+
     rawData.forEach(row => {
         if (row.advertiser_id) {
             const name = advertiserNames[row.advertiser_id] || `Advertiser ${row.advertiser_id}`;
@@ -1099,7 +1099,7 @@ function populateCountryFilters(rawData, advertiserNames) {
             adUnits.set(row.ad_unit_id, row.ad_unit_name);
         }
     });
-    
+
     // Populate advertiser filter
     const advertiserFilter = document.getElementById('country-advertiser-filter');
     if (advertiserFilter) {
@@ -1115,7 +1115,7 @@ function populateCountryFilters(rawData, advertiserNames) {
             });
         advertiserFilter.value = currentValue;
     }
-    
+
     // Populate ad unit filter
     const adUnitFilter = document.getElementById('country-adunit-filter');
     if (adUnitFilter) {
@@ -1136,14 +1136,14 @@ function populateCountryFilters(rawData, advertiserNames) {
 function populateAdUnitFilters(rawData, advertiserNames, countries) {
     // Extract unique advertisers
     const advertisers = new Map();
-    
+
     rawData.forEach(row => {
         if (row.advertiser_id) {
             const name = advertiserNames[row.advertiser_id] || `Advertiser ${row.advertiser_id}`;
             advertisers.set(row.advertiser_id, name);
         }
     });
-    
+
     // Populate advertiser filter
     const advertiserFilter = document.getElementById('adunit-advertiser-filter');
     if (advertiserFilter) {
@@ -1159,7 +1159,7 @@ function populateAdUnitFilters(rawData, advertiserNames, countries) {
             });
         advertiserFilter.value = currentValue;
     }
-    
+
     // Populate country filter
     const countryFilter = document.getElementById('adunit-country-filter');
     if (countryFilter) {
@@ -1178,17 +1178,17 @@ function populateAdUnitFilters(rawData, advertiserNames, countries) {
 async function populateAllFilters() {
     const dateRange = document.getElementById('date-range').value;
     const timezone = document.getElementById('timezone').value;
-    
+
     try {
         // Fetch base report to get advertisers
         const baseResponse = await fetch(`/api/tenant/{{ tenant.tenant_id }}/gam/reporting?date_range=${dateRange}&timezone=${timezone}`, {
             credentials: 'same-origin'
         });
-        
+
         if (baseResponse.ok) {
             const baseResult = await baseResponse.json();
             const data = baseResult.data || [];
-            
+
             // Extract unique advertisers from base data
             const advertisers = new Map();
             data.forEach(row => {
@@ -1196,7 +1196,7 @@ async function populateAllFilters() {
                     advertisers.set(row.advertiser_id, row.advertiser_name);
                 }
             });
-            
+
             // Populate advertiser filters
             const advertiserFilters = ['country-advertiser-filter', 'adunit-advertiser-filter'];
             advertiserFilters.forEach(filterId => {
@@ -1214,16 +1214,16 @@ async function populateAllFilters() {
                 }
             });
         }
-        
+
         // Fetch country data to populate country filter
         const countryResponse = await fetch(`/api/tenant/{{ tenant.tenant_id }}/gam/reporting/countries?date_range=${dateRange}&timezone=${timezone}`, {
             credentials: 'same-origin'
         });
-        
+
         if (countryResponse.ok) {
             const countryResult = await countryResponse.json();
             const countries = countryResult.data.countries || [];
-            
+
             const countryFilter = document.getElementById('adunit-country-filter');
             if (countryFilter) {
                 countryFilter.innerHTML = '<option value="">All Countries</option>';
@@ -1237,16 +1237,16 @@ async function populateAllFilters() {
                 });
             }
         }
-        
+
         // Fetch ad unit data to populate ad unit filter
         const adUnitResponse = await fetch(`/api/tenant/{{ tenant.tenant_id }}/gam/reporting/ad-units?date_range=${dateRange}&timezone=${timezone}`, {
             credentials: 'same-origin'
         });
-        
+
         if (adUnitResponse.ok) {
             const adUnitResult = await adUnitResponse.json();
             const adUnits = adUnitResult.data.ad_units || [];
-            
+
             const adUnitFilter = document.getElementById('country-adunit-filter');
             if (adUnitFilter) {
                 adUnitFilter.innerHTML = '<option value="">All Ad Units</option>';
@@ -1260,7 +1260,7 @@ async function populateAllFilters() {
                 });
             }
         }
-        
+
     } catch (error) {
         console.error('Error populating filters:', error);
     }

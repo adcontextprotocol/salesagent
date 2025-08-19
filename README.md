@@ -74,7 +74,7 @@ from fastmcp.client.transports import StreamableHttpTransport
 # Connect to server
 headers = {"x-adcp-auth": "your_token"}
 transport = StreamableHttpTransport(
-    url="http://localhost:8080/mcp/", 
+    url="http://localhost:8080/mcp/",
     headers=headers
 )
 client = Client(transport=transport)
@@ -84,7 +84,7 @@ async with client:
     products = await client.tools.get_products(
         brief="video ads for sports content"
     )
-    
+
     # Create media buy
     result = await client.tools.create_media_buy(
         product_ids=["ctv_sports"],
