@@ -3,73 +3,72 @@
 import asyncio
 import json
 import logging
-from datetime import datetime, timezone
-from typing import Dict, Set
 import weakref
 from collections import deque
+from datetime import UTC, datetime
 
 logger = logging.getLogger(__name__)
 
+
 class ActivityFeed:
     """Manages real-time activity feed for tenant dashboards."""
-    
+
     def __init__(self):
         # Store active WebSocket connections per tenant
-        self.connections: Dict[str, Set[weakref.ref]] = {}
+        self.connections: dict[str, set[weakref.ref]] = {}
         # Store recent activities per tenant (for new connections)
-        self.recent_activities: Dict[str, deque] = {}
+        self.recent_activities: dict[str, deque] = {}
         self.max_recent = 50
-    
+
     def add_connection(self, tenant_id: str, websocket):
         """Add a new WebSocket connection for a tenant."""
         if tenant_id not in self.connections:
             self.connections[tenant_id] = set()
             self.recent_activities[tenant_id] = deque(maxlen=self.max_recent)
-        
+
         # Use weak reference to avoid memory leaks
         self.connections[tenant_id].add(weakref.ref(websocket))
-        
+
         # Send recent activities to new connection
         for activity in self.recent_activities[tenant_id]:
             try:
                 asyncio.create_task(websocket.send(json.dumps(activity)))
             except:
                 pass
-    
+
     def remove_connection(self, tenant_id: str, websocket):
         """Remove a WebSocket connection."""
         if tenant_id in self.connections:
             # Remove dead references
             self.connections[tenant_id] = {
-                ref for ref in self.connections[tenant_id] 
-                if ref() is not None and ref() != websocket
+                ref for ref in self.connections[tenant_id] if ref() is not None and ref() != websocket
             }
-            
+
             # Clean up empty tenant entries
             if not self.connections[tenant_id]:
                 del self.connections[tenant_id]
-    
+
     async def broadcast_activity(self, tenant_id: str, activity: dict):
         """Broadcast an activity to all connections for a tenant."""
         # Add timestamp if not present
-        if 'timestamp' not in activity:
-            activity['timestamp'] = datetime.now(timezone.utc).isoformat()
-        
+        if "timestamp" not in activity:
+            activity["timestamp"] = datetime.now(UTC).isoformat()
+
         # Calculate relative time
-        activity['time_relative'] = self._get_relative_time(activity['timestamp'])
-        
+        activity["time_relative"] = self._get_relative_time(activity["timestamp"])
+
         # Store in recent activities
         if tenant_id not in self.recent_activities:
             self.recent_activities[tenant_id] = deque(maxlen=self.max_recent)
         self.recent_activities[tenant_id].append(activity)
-        
+
         # If we have a Flask-SocketIO callback, use it
-        if hasattr(self, 'broadcast_to_websocket'):
+        if hasattr(self, "broadcast_to_websocket"):
             try:
                 self.broadcast_to_websocket(tenant_id, activity)
             except Exception as e:
                 logger.debug(f"Failed to broadcast via Socket.IO: {e}")
-        
+
         # Also broadcast to any raw WebSocket connections (backward compatibility)
         if tenant_id in self.connections:
             dead_refs = []
@@ -83,88 +82,86 @@ class ActivityFeed:
                     except Exception as e:
                         logger.debug(f"Failed to send to WebSocket: {e}")
                         dead_refs.append(ref)
-            
+
             # Clean up dead references
             for ref in dead_refs:
                 self.connections[tenant_id].discard(ref)
-    
-    def log_api_call(self, tenant_id: str, principal_name: str, method: str, 
-                     status_code: int = None, response_time_ms: int = None):
+
+    def log_api_call(
+        self, tenant_id: str, principal_name: str, method: str, status_code: int = None, response_time_ms: int = None
+    ):
         """Log an API call activity."""
-        activity = {
-            'type': 'api-call',
-            'principal_name': principal_name,
-            'action': f"Called {method}",
-            'details': {}
-        }
-        
+        activity = {"type": "api-call", "principal_name": principal_name, "action": f"Called {method}", "details": {}}
+
         if status_code:
-            activity['details']['primary'] = f"{status_code} {'OK' if status_code == 200 else 'ERROR'}"
+            activity["details"]["primary"] = f"{status_code} {'OK' if status_code == 200 else 'ERROR'}"
         if response_time_ms:
-            activity['details']['secondary'] = f"{response_time_ms}ms"
-        
+            activity["details"]["secondary"] = f"{response_time_ms}ms"
+
         asyncio.create_task(self.broadcast_activity(tenant_id, activity))
-    
-    def log_media_buy(self, tenant_id: str, principal_name: str, media_buy_id: str,
-                      budget: float = None, duration_days: int = None, action: str = "created"):
+
+    def log_media_buy(
+        self,
+        tenant_id: str,
+        principal_name: str,
+        media_buy_id: str,
+        budget: float = None,
+        duration_days: int = None,
+        action: str = "created",
+    ):
         """Log a media buy activity."""
         activity = {
-            'type': 'media-buy',
-            'principal_name': principal_name,
-            'action': f"{action.capitalize()} media buy {media_buy_id}",
-            'details': {}
+            "type": "media-buy",
+            "principal_name": principal_name,
+            "action": f"{action.capitalize()} media buy {media_buy_id}",
+            "details": {},
         }
-        
+
         if budget:
-            activity['details']['primary'] = f"${budget:,.0f}"
+            activity["details"]["primary"] = f"${budget:,.0f}"
         if duration_days:
-            activity['details']['secondary'] = f"{duration_days} days"
-        
+            activity["details"]["secondary"] = f"{duration_days} days"
+
         asyncio.create_task(self.broadcast_activity(tenant_id, activity))
-    
-    def log_creative(self, tenant_id: str, principal_name: str, creative_id: str,
-                     format_name: str = None, status: str = None):
+
+    def log_creative(
+        self, tenant_id: str, principal_name: str, creative_id: str, format_name: str = None, status: str = None
+    ):
         """Log a creative activity."""
         activity = {
-            'type': 'creative',
-            'principal_name': principal_name,
-            'action': f"Uploaded creative {creative_id}",
-            'details': {}
+            "type": "creative",
+            "principal_name": principal_name,
+            "action": f"Uploaded creative {creative_id}",
+            "details": {},
         }
-        
+
         if format_name:
-            activity['details']['primary'] = format_name
+            activity["details"]["primary"] = format_name
         if status:
-            activity['details']['secondary'] = status
-        
+            activity["details"]["secondary"] = status
+
         asyncio.create_task(self.broadcast_activity(tenant_id, activity))
-    
-    def log_error(self, tenant_id: str, principal_name: str, error_message: str,
-                  error_code: str = None):
+
+    def log_error(self, tenant_id: str, principal_name: str, error_message: str, error_code: str = None):
         """Log an error activity."""
-        activity = {
-            'type': 'error',
-            'principal_name': principal_name,
-            'action': error_message,
-            'details': {}
-        }
-        
+        activity = {"type": "error", "principal_name": principal_name, "action": error_message, "details": {}}
+
         if error_code:
-            activity['details']['primary'] = f"Error {error_code}"
-        
+            activity["details"]["primary"] = f"Error {error_code}"
+
         asyncio.create_task(self.broadcast_activity(tenant_id, activity))
-    
+
     def _get_relative_time(self, timestamp: str) -> str:
         """Convert timestamp to relative time string."""
         try:
             if isinstance(timestamp, str):
-                dt = datetime.fromisoformat(timestamp.replace('Z', '+00:00'))
+                dt = datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
             else:
                 dt = timestamp
-            
-            now = datetime.now(timezone.utc)
+
+            now = datetime.now(UTC)
             delta = now - dt
-            
+
             if delta.days > 0:
                 return f"{delta.days}d ago"
             elif delta.seconds > 3600:
@@ -175,6 +172,7 @@ class ActivityFeed:
                 return "Just now"
         except:
             return "Unknown"
+
 
 # Global activity feed instance
 activity_feed = ActivityFeed()

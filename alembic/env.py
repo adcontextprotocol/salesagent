@@ -1,10 +1,8 @@
-from logging.config import fileConfig
 import sys
-import os
+from logging.config import fileConfig
 from pathlib import Path
 
-from sqlalchemy import engine_from_config
-from sqlalchemy import pool
+from sqlalchemy import engine_from_config, pool
 
 from alembic import context
 
@@ -30,7 +28,7 @@ target_metadata = Base.metadata
 
 # Get database URL from our configuration
 db_url = DatabaseConfig.get_connection_string()
-config.set_main_option('sqlalchemy.url', db_url)
+config.set_main_option("sqlalchemy.url", db_url)
 
 # other values from the config, defined by the needs of env.py,
 # can be acquired:
@@ -77,10 +75,10 @@ def run_migrations_online() -> None:
 
     with connectable.connect() as connection:
         context.configure(
-            connection=connection, 
+            connection=connection,
             target_metadata=target_metadata,
             compare_type=True,  # Detect column type changes
-            compare_server_default=True  # Detect default value changes
+            compare_server_default=True,  # Detect default value changes
         )
 
         with context.begin_transaction():

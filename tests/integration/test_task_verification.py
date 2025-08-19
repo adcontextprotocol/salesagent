@@ -3,8 +3,9 @@
 Test script for AI task verification functionality.
 """
 
-import pytest
 import asyncio
+
+import pytest
 import requests
 from rich.console import Console
 from rich.panel import Panel
@@ -71,9 +72,7 @@ async def verify_task(task_id: str):
     response = make_request("verify_task", verify_req)
 
     console.print("\n[bold]Verification Result:[/bold]")
-    console.print(
-        f"Verified: {'✅' if response['verified'] else '❌'} {response['verified']}"
-    )
+    console.print(f"Verified: {'✅' if response['verified'] else '❌'} {response['verified']}")
     console.print(f"Actual State: {response['actual_state']}")
     console.print(f"Expected State: {response['expected_state']}")
 

@@ -127,7 +127,7 @@
 </head>
 <body>
     <h1>User Management</h1>
-    
+
     <div class="container">
         <h2>{{ tenant_name }}</h2>
         <a href="/tenant/{{ tenant_id }}" class="btn btn-secondary">← Back to Home</a>
@@ -197,7 +197,7 @@
                                     <button type="submit" class="btn btn-success" onclick="return confirm('Enable this user?')">Enable</button>
                                 {% endif %}
                             </form>
-                            
+
                             <!-- Change Role -->
                             {% if user.role != 'admin' %}
                                 <form method="POST" action="/tenant/{{ tenant_id }}/users/{{ user.user_id }}/update_role" class="inline-form">

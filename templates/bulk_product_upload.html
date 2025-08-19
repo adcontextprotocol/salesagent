@@ -5,11 +5,11 @@
 {% block content %}
 <div class="card">
     <h2>Bulk Product Upload</h2>
-    
+
     <div class="alert alert-info">
         <strong>Bulk Import:</strong> Upload multiple products at once using CSV or JSON format. You can also use pre-built templates.
     </div>
-    
+
     <!-- Upload Options Tabs -->
     <div class="tabs">
         <button class="tab-button active" onclick="showTab('csv')">CSV Upload</button>
@@ -17,22 +17,22 @@
         <button class="tab-button" onclick="showTab('templates')">Use Templates</button>
         <button class="tab-button" onclick="showTab('paste')">Paste Data</button>
     </div>
-    
+
     <!-- CSV Upload Tab -->
     <div id="csv-tab" class="tab-content active">
         <h3>Upload CSV File</h3>
-        
+
         <div class="form-group">
             <label>Download Template:</label>
             <button class="btn btn-secondary" onclick="downloadCSVTemplate()">Download CSV Template</button>
         </div>
-        
+
         <form id="csv-upload-form" enctype="multipart/form-data">
             <div class="form-group">
                 <label for="csv-file">Select CSV File:</label>
                 <input type="file" id="csv-file" name="file" accept=".csv" required>
             </div>
-            
+
             <div class="csv-requirements">
                 <h4>CSV Format Requirements:</h4>
                 <ul>
@@ -48,41 +48,41 @@
                     <li><strong>device_types</strong>: Comma-separated device types (e.g., "desktop,mobile")</li>
                 </ul>
             </div>
-            
+
             <button type="submit" class="btn btn-primary">Upload CSV</button>
         </form>
     </div>
-    
+
     <!-- JSON Upload Tab -->
     <div id="json-tab" class="tab-content">
         <h3>Upload JSON File</h3>
-        
+
         <div class="form-group">
             <label>Download Template:</label>
             <button class="btn btn-secondary" onclick="downloadJSONTemplate()">Download JSON Template</button>
         </div>
-        
+
         <form id="json-upload-form" enctype="multipart/form-data">
             <div class="form-group">
                 <label for="json-file">Select JSON File:</label>
                 <input type="file" id="json-file" name="file" accept=".json" required>
             </div>
-            
+
             <button type="submit" class="btn btn-primary">Upload JSON</button>
         </form>
     </div>
-    
+
     <!-- Templates Tab -->
     <div id="templates-tab" class="tab-content">
         <h3>Use Product Templates</h3>
-        
+
         <div class="template-selector">
             <div class="form-group">
                 <label>Select Templates to Import:</label>
                 <div class="template-list">
                     {% for template in templates %}
                     <div class="template-item">
-                        <input type="checkbox" id="template_{{ template.product_id }}" 
+                        <input type="checkbox" id="template_{{ template.product_id }}"
                                name="templates" value="{{ template.product_id }}"
                                data-template='{{ template | tojson }}'>
                         <label for="template_{{ template.product_id }}">
@@ -99,19 +99,19 @@
                     {% endfor %}
                 </div>
             </div>
-            
+
             <div class="form-group">
                 <button class="btn btn-secondary" onclick="loadIndustryTemplates()">Load Industry-Specific Templates</button>
             </div>
-            
+
             <button type="button" class="btn btn-primary" onclick="importSelectedTemplates()">Import Selected Templates</button>
         </div>
     </div>
-    
+
     <!-- Paste Data Tab -->
     <div id="paste-tab" class="tab-content">
         <h3>Paste Product Data</h3>
-        
+
         <form id="paste-form">
             <div class="form-group">
                 <label for="paste-format">Data Format:</label>
@@ -120,17 +120,17 @@
                     <option value="csv">CSV</option>
                 </select>
             </div>
-            
+
             <div class="form-group">
                 <label for="paste-data">Paste your data here:</label>
-                <textarea id="paste-data" name="data" rows="15" 
+                <textarea id="paste-data" name="data" rows="15"
                     placeholder='[{"name": "Homepage Banner", "formats": ["display_728x90"], ...}]'></textarea>
             </div>
-            
+
             <button type="submit" class="btn btn-primary">Import Data</button>
         </form>
     </div>
-    
+
     <!-- Results Section -->
     <div id="upload-results" style="display: none; margin-top: 2rem;">
         <h3>Import Results</h3>
@@ -264,7 +264,7 @@ function showTab(tabName) {
     document.querySelectorAll('.tab-button').forEach(button => {
         button.classList.remove('active');
     });
-    
+
     // Show selected tab
     document.getElementById(tabName + '-tab').classList.add('active');
     event.target.classList.add('active');
@@ -275,7 +275,7 @@ function downloadCSVTemplate() {
 "Homepage Banner","","Premium homepage placement","display_728x90,display_970x250","guaranteed",25.0,,,"US,CA,GB","desktop,mobile"
 "Run of Site Display","","Standard display advertising","display_300x250,display_728x90","non_guaranteed",,2.0,10.0,,"desktop,mobile,tablet"
 "Mobile Interstitial","","Full-screen mobile ads","display_320x480","guaranteed",15.0,,,"US","mobile"`;
-    
+
     const blob = new Blob([csvContent], { type: 'text/csv' });
     const url = window.URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -306,7 +306,7 @@ function downloadJSONTemplate() {
             "device_types": ["desktop", "mobile", "tablet"]
         }
     ], null, 2);
-    
+
     const blob = new Blob([jsonContent], { type: 'application/json' });
     const url = window.URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -320,7 +320,7 @@ async function loadIndustryTemplates() {
     try {
         const response = await fetch(`{{ url_for('get_product_templates', tenant_id=tenant_id) }}`);
         const data = await response.json();
-        
+
         if (data.templates) {
             alert(`Loaded ${data.templates.length} industry-specific templates`);
             // Reload page to show new templates
@@ -336,12 +336,12 @@ function importSelectedTemplates() {
     document.querySelectorAll('input[name="templates"]:checked').forEach(checkbox => {
         selected.push(JSON.parse(checkbox.dataset.template));
     });
-    
+
     if (selected.length === 0) {
         alert('Please select at least one template');
         return;
     }
-    
+
     uploadProducts(selected);
 }
 
@@ -354,10 +354,10 @@ async function uploadProducts(products) {
             },
             body: JSON.stringify({ products: products })
         });
-        
+
         const result = await response.json();
         displayResults(result);
-        
+
     } catch (error) {
         displayResults({ error: error.message });
     }
@@ -366,12 +366,12 @@ async function uploadProducts(products) {
 function displayResults(result) {
     const resultsDiv = document.getElementById('upload-results');
     const contentDiv = document.getElementById('results-content');
-    
+
     resultsDiv.style.display = 'block';
-    
+
     // Clear content safely
     contentDiv.innerHTML = '';
-    
+
     if (result.error) {
         const errorDiv = document.createElement('div');
         errorDiv.className = 'alert alert-error';
@@ -382,15 +382,15 @@ function displayResults(result) {
         successDiv.className = 'alert alert-success';
         successDiv.textContent = `Successfully created ${result.created} products`;
         contentDiv.appendChild(successDiv);
-        
+
         if (result.errors && result.errors.length > 0) {
             const errorDiv = document.createElement('div');
             errorDiv.className = 'alert alert-error';
-            
+
             const strong = document.createElement('strong');
             strong.textContent = 'Errors:';
             errorDiv.appendChild(strong);
-            
+
             const ul = document.createElement('ul');
             result.errors.forEach(error => {
                 const li = document.createElement('li');
@@ -400,7 +400,7 @@ function displayResults(result) {
             errorDiv.appendChild(ul);
             contentDiv.appendChild(errorDiv);
         }
-        
+
         // Redirect to products list after 3 seconds
         if (result.created > 0) {
             setTimeout(() => {
@@ -413,19 +413,19 @@ function displayResults(result) {
 // Handle CSV upload
 document.getElementById('csv-upload-form').addEventListener('submit', async function(e) {
     e.preventDefault();
-    
+
     const formData = new FormData();
     formData.append('file', document.getElementById('csv-file').files[0]);
-    
+
     try {
         const response = await fetch(`{{ url_for('bulk_product_upload', tenant_id=tenant_id) }}`, {
             method: 'POST',
             body: formData
         });
-        
+
         const result = await response.json();
         displayResults(result);
-        
+
     } catch (error) {
         displayResults({ error: error.message });
     }
@@ -434,19 +434,19 @@ document.getElementById('csv-upload-form').addEventListener('submit', async func
 // Handle JSON upload
 document.getElementById('json-upload-form').addEventListener('submit', async function(e) {
     e.preventDefault();
-    
+
     const formData = new FormData();
     formData.append('file', document.getElementById('json-file').files[0]);
-    
+
     try {
         const response = await fetch(`{{ url_for('bulk_product_upload', tenant_id=tenant_id) }}`, {
             method: 'POST',
             body: formData
         });
-        
+
         const result = await response.json();
         displayResults(result);
-        
+
     } catch (error) {
         displayResults({ error: error.message });
     }
@@ -455,10 +455,10 @@ document.getElementById('json-upload-form').addEventListener('submit', async fun
 // Handle paste form
 document.getElementById('paste-form').addEventListener('submit', async function(e) {
     e.preventDefault();
-    
+
     const format = document.getElementById('paste-format').value;
     const data = document.getElementById('paste-data').value;
-    
+
     let products;
     try {
         if (format === 'json') {
@@ -468,7 +468,7 @@ document.getElementById('paste-form').addEventListener('submit', async function(
             const lines = data.trim().split('\n');
             const headers = lines[0].split(',').map(h => h.trim().replace(/"/g, ''));
             products = [];
-            
+
             for (let i = 1; i < lines.length; i++) {
                 const values = lines[i].match(/(".*?"|[^,]+)/g).map(v => v.trim().replace(/"/g, ''));
                 const product = {};
@@ -480,9 +480,9 @@ document.getElementById('paste-form').addEventListener('submit', async function(
                 products.push(product);
             }
         }
-        
+
         uploadProducts(products);
-        
+
     } catch (error) {
         displayResults({ error: 'Invalid data format: ' + error.message });
     }

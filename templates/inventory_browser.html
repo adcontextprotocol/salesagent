@@ -64,7 +64,7 @@
                     <h5 class="card-title">Search Inventory</h5>
                     <div class="row">
                         <div class="col-md-4">
-                            <input type="text" class="form-control" id="searchQuery" 
+                            <input type="text" class="form-control" id="searchQuery"
                                    placeholder="Search by name or path...">
                         </div>
                         <div class="col-md-2">
@@ -233,9 +233,9 @@ document.addEventListener('DOMContentLoaded', function() {
     if (typeParam) {
         document.getElementById('inventoryType').value = typeParam;
     }
-    
+
     loadInventoryStatus();
-    
+
     // If type is specified, do initial search
     if (typeParam) {
         searchInventory();
@@ -250,7 +250,7 @@ function loadInventoryStatus() {
         .then(data => {
             const syncStatus = document.getElementById('syncStatus');
             const stats = document.getElementById('inventoryStats');
-            
+
             if (data.last_sync) {
                 const lastSync = new Date(data.last_sync);
                 const now = new Date();
@@ -258,7 +258,7 @@ function loadInventoryStatus() {
                 const diffMins = Math.floor(diffMs / (1000 * 60));
                 const diffHours = Math.floor(diffMins / 60);
                 const diffDays = Math.floor(diffHours / 24);
-                
+
                 let timeAgo;
                 if (diffDays > 0) {
                     timeAgo = `${diffDays} day${diffDays > 1 ? 's' : ''} ago`;
@@ -269,7 +269,7 @@ function loadInventoryStatus() {
                 } else {
                     timeAgo = 'just now';
                 }
-                
+
                 syncStatus.innerHTML = `
                     Last synced: ${lastSync.toLocaleString()}
                     <span class="text-muted">(${timeAgo})</span>
@@ -278,18 +278,18 @@ function loadInventoryStatus() {
             } else {
                 syncStatus.innerHTML = '<span class="text-warning">Never synced</span>';
             }
-            
+
             stats.innerHTML = `
                 <div><strong>Total Ad Units:</strong> ${data.total_units || 0}</div>
                 <div><strong>Root Units:</strong> ${data.root_units ? data.root_units.length : 0}</div>
             `;
-            
+
             inventoryTree = data;
             renderAdUnitTree(data.root_units || []);
         })
         .catch(error => {
             console.error('Error loading inventory status:', error);
-            document.getElementById('syncStatus').innerHTML = 
+            document.getElementById('syncStatus').innerHTML =
                 '<span class="text-danger">Error loading status</span>';
         });
 }
@@ -298,8 +298,8 @@ function syncInventory() {
     const btn = document.getElementById('syncBtn');
     btn.disabled = true;
     btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Syncing...';
-    
-    fetch(`/api/tenant/${tenantId}/inventory/sync`, { 
+
+    fetch(`/api/tenant/${tenantId}/inventory/sync`, {
         method: 'POST',
         credentials: 'same-origin'
     })
@@ -308,10 +308,10 @@ function syncInventory() {
             if (data.error) {
                 throw new Error(data.error);
             }
-            
+
             alert(`Sync completed!\n\nAd Units: ${data.ad_units.total}\n` +
                   `Placements: ${data.placements.total}\nLabels: ${data.labels.total}`);
-            
+
             // Reload the page to show new data
             window.location.reload();
         })
@@ -330,12 +330,12 @@ function renderAdUnitTree(units, container = null) {
         container = document.getElementById('adUnitTree');
         container.innerHTML = '';
     }
-    
+
     if (units.length === 0) {
         container.innerHTML = '<p class="text-muted">No ad units found</p>';
         return;
     }
-    
+
     units.forEach(unit => {
         const node = createTreeNode(unit);
         container.appendChild(node);
@@ -346,9 +346,9 @@ function createTreeNode(unit) {
     const div = document.createElement('div');
     div.className = 'tree-node';
     div.dataset.unitId = unit.id;
-    
+
     const hasChildren = unit.children && unit.children.length > 0;
-    
+
     div.innerHTML = `
         <span class="tree-toggle" onclick="toggleNode(this, event)">
             ${hasChildren ? '▼' : '&nbsp;'}
@@ -359,7 +359,7 @@ function createTreeNode(unit) {
         </span>
         <span class="node-status ${unit.status.toLowerCase()}">[${unit.status}]</span>
     `;
-    
+
     if (hasChildren) {
         const childContainer = document.createElement('div');
         childContainer.className = 'tree-children';
@@ -367,7 +367,7 @@ function createTreeNode(unit) {
         renderAdUnitTree(unit.children, childContainer);
         div.appendChild(childContainer);
     }
-    
+
     return div;
 }
 
@@ -375,7 +375,7 @@ function toggleNode(toggle, event) {
     event.stopPropagation();
     const node = toggle.parentElement;
     const children = node.querySelector('.tree-children');
-    
+
     if (children) {
         if (children.style.display === 'none') {
             children.style.display = 'block';
@@ -389,11 +389,11 @@ function toggleNode(toggle, event) {
 
 function selectNode(unitId, event) {
     event.stopPropagation();
-    
+
     // Update selection
     document.querySelectorAll('.tree-node').forEach(n => n.classList.remove('selected'));
     event.target.closest('.tree-node').classList.add('selected');
-    
+
     // Find unit data
     const unit = findUnitById(inventoryTree.root_units, unitId);
     if (unit) {
@@ -414,9 +414,9 @@ function findUnitById(units, unitId) {
 
 function showInventoryDetail(item, type) {
     selectedInventory = { item, type };
-    
+
     const detail = document.getElementById('inventoryDetail');
-    
+
     let html = `
         <h6>${item.name}</h6>
         <table class="table table-sm">
@@ -424,11 +424,11 @@ function showInventoryDetail(item, type) {
             <tr><th>Type:</th><td>${type}</td></tr>
             <tr><th>Status:</th><td><span class="badge bg-${getStatusColor(item.status)}">${item.status}</span></td></tr>
     `;
-    
+
     if (item.path && item.path.length > 0) {
         html += `<tr><th>Path:</th><td>${item.path.join(' > ')}</td></tr>`;
     }
-    
+
     if (item.metadata) {
         if (item.metadata.sizes && item.metadata.sizes.length > 0) {
             html += '<tr><th>Sizes:</th><td>';
@@ -437,18 +437,18 @@ function showInventoryDetail(item, type) {
             });
             html += '</td></tr>';
         }
-        
+
         if (item.metadata.ad_unit_code) {
             html += `<tr><th>Ad Unit Code:</th><td><code>${item.metadata.ad_unit_code}</code></td></tr>`;
         }
-        
+
         if (item.metadata.explicitly_targeted) {
             html += `<tr><th>Targeting:</th><td>Explicitly Targeted</td></tr>`;
         }
     }
-    
+
     html += '</table>';
-    
+
     html += `
         <div class="mt-3">
             <button class="btn btn-sm btn-primary" onclick="assignToProduct()">
@@ -459,7 +459,7 @@ function showInventoryDetail(item, type) {
             </button>
         </div>
     `;
-    
+
     detail.innerHTML = html;
 }
 
@@ -476,12 +476,12 @@ function searchInventory() {
     const query = document.getElementById('searchQuery').value;
     const type = document.getElementById('inventoryType').value;
     const status = document.getElementById('inventoryStatus').value;
-    
+
     const params = new URLSearchParams();
     if (query) params.append('q', query);
     if (type) params.append('type', type);
     if (status) params.append('status', status);
-    
+
     fetch(`/api/tenant/${tenantId}/inventory/search?${params}`, {
         credentials: 'same-origin'
     })
@@ -498,16 +498,16 @@ function searchInventory() {
 function showSearchResults(results) {
     const resultsDiv = document.getElementById('searchResults');
     const content = document.getElementById('searchResultsContent');
-    
+
     if (results.length === 0) {
         content.innerHTML = '<p class="text-muted">No results found</p>';
     } else {
         let html = `<p>Found ${results.length} items</p>`;
         html += '<div class="list-group">';
-        
+
         results.forEach(item => {
             html += `
-                <div class="list-group-item search-result-item" 
+                <div class="list-group-item search-result-item"
                      onclick="showInventoryDetail(${JSON.stringify(item).replace(/"/g, '&quot;')}, '${item.type}')">
                     <div class="d-flex justify-content-between">
                         <div>
@@ -522,38 +522,38 @@ function showSearchResults(results) {
                 </div>
             `;
         });
-        
+
         html += '</div>';
         content.innerHTML = html;
     }
-    
+
     resultsDiv.style.display = 'block';
 }
 
 function assignToProduct() {
     if (!selectedInventory) return;
-    
+
     // Load products
     fetch(`/api/tenant/${tenantId}/products`)
         .then(response => response.json())
         .then(data => {
             const productList = document.getElementById('productList');
             let html = '<div class="list-group">';
-            
+
             data.products.forEach(product => {
                 html += `
                     <label class="list-group-item">
-                        <input class="form-check-input me-1" type="radio" 
+                        <input class="form-check-input me-1" type="radio"
                                name="productSelection" value="${product.product_id}">
                         <strong>${product.name}</strong>
                         <small class="text-muted d-block">${product.description || 'No description'}</small>
                     </label>
                 `;
             });
-            
+
             html += '</div>';
             productList.innerHTML = html;
-            
+
             new bootstrap.Modal(document.getElementById('assignProductModal')).show();
         })
         .catch(error => {
@@ -565,12 +565,12 @@ function assignToProduct() {
 function saveProductAssignment() {
     const selectedProduct = document.querySelector('input[name="productSelection"]:checked');
     if (!selectedProduct || !selectedInventory) return;
-    
+
     const productId = selectedProduct.value;
-    
+
     // For now, just alert - in production, this would update the product configuration
     alert(`Would assign ${selectedInventory.item.name} to product ${productId}`);
-    
+
     bootstrap.Modal.getInstance(document.getElementById('assignProductModal')).hide();
 }
 

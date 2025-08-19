@@ -8,8 +8,8 @@ repos:
         language: system
         pass_filenames: false
         always_run: true
-        stages: [commit]
-        
+        stages: [pre-commit]
+
       # Check for removed columns still referenced in code
       - id: check-schema-references
         name: Check schema references
@@ -17,21 +17,21 @@ repos:
         language: system
         pass_filenames: false
         always_run: true
-        
+
       # Validate model column lengths
       - id: validate-column-lengths
         name: Validate database column lengths
         entry: python3 scripts/validate_column_lengths.py
         language: system
         files: '(models|schemas)\.py$'
-        
+
       # Check for tenant.config references
       - id: no-tenant-config
         name: No tenant.config references
         entry: sh -c 'if grep -r "tenant\.config\|tenant\[.config.\]" --include="*.py" . | grep -v "test_migration\|postmortem\|pre-commit"; then echo "Found tenant.config references!"; exit 1; fi'
         language: system
         pass_filenames: false
-        
+
       # Validate migrations can run
       - id: test-migrations
         name: Test database migrations
@@ -39,7 +39,7 @@ repos:
         language: system
         pass_filenames: false
         stages: [manual]  # Changed from commit to manual - run with: pre-commit run test-migrations
-        
+
       # Run quick unit tests before commit (optional - can be skipped with --no-verify)
       - id: pytest-unit
         name: Run unit tests (optional)
@@ -48,14 +48,30 @@ repos:
         pass_filenames: false
         stages: [manual]  # Changed to manual - run with: pre-commit run pytest-unit
         verbose: true
-        
+
+      # Test AdCP contract compliance
+      - id: adcp-contract-tests
+        name: Verify AdCP protocol compliance
+        entry: uv run pytest tests/unit/test_adcp_contract.py -v --tb=short
+        language: system
+        pass_filenames: false
+        always_run: true
+
+      # Test MCP endpoints (requires server running)
+      - id: mcp-endpoint-tests
+        name: Test MCP endpoints
+        entry: echo Run MCP tests with uv run pytest tests/integration/test_mcp_endpoints_comprehensive.py
+        language: system
+        pass_filenames: false
+        stages: [manual]  # Manual because it needs server running
+
       # Check for API deprecations
       - id: check-api-deprecations
         name: Check for deprecated API usage
         entry: python3 scripts/check_api_deprecations.py
         language: system
         files: 'adapters/.*\.py$'
-        
+
       # Validate Pydantic vs SQLAlchemy imports
       - id: validate-model-imports
         name: Validate model imports
@@ -64,7 +80,7 @@ repos:
         files: '\.py$'
 
   - repo: https://github.com/pre-commit/pre-commit-hooks
-    rev: v4.4.0
+    rev: v6.0.0
     hooks:
       - id: trailing-whitespace
       - id: end-of-file-fixer
@@ -77,13 +93,13 @@ repos:
       - id: debug-statements
 
   - repo: https://github.com/psf/black
-    rev: 23.3.0
+    rev: 25.1.0
     hooks:
       - id: black
         language_version: python3
 
-  - repo: https://github.com/charliermarsh/ruff-pre-commit
-    rev: v0.0.272
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.12.9
     hooks:
       - id: ruff
         args: [--fix, --exit-non-zero-on-fix]

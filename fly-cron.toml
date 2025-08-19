@@ -14,7 +14,7 @@ primary_region = "iad"
 [[services]]
   internal_port = 8080
   protocol = "tcp"
-  
+
 [processes]
   cron = "supercronic /app/crontab"
 

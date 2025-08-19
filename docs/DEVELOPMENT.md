@@ -89,7 +89,7 @@ The system uses a predefined pool of ports to avoid OAuth redirect URI updates:
    ```bash
    python manage_conductor_ports.py oauth-urls
    ```
-   
+
    Add these URLs to your Google OAuth app:
    - http://localhost:8002/auth/google/callback
    - http://localhost:8003/auth/google/callback
@@ -156,17 +156,17 @@ from schemas import *
 
 class MyPlatformAdapter(AdServerAdapter):
     adapter_name = "myplatform"
-    
+
     def __init__(self, config, principal, dry_run=False, creative_engine=None):
         super().__init__(config, principal, dry_run, creative_engine)
         self.advertiser_id = self.principal.get_adapter_id("myplatform")
-        
+
     def create_media_buy(self, request, packages, start_time, end_time):
         # Implementation
-        
+
     def get_avails(self, request):
         # Implementation
-        
+
     def activate_media_buy(self, media_buy_id):
         # Implementation
 ```
@@ -192,7 +192,7 @@ def register_ui_routes(self, app, db_session_factory):
     @app.route(self.get_config_ui_endpoint() + "/<tenant_id>/<product_id>")
     def config_ui(tenant_id, product_id):
         # Render configuration UI
-        
+
 def validate_product_config(self, config: dict) -> tuple[bool, Optional[str]]:
     # Validate adapter-specific configuration
 ```
@@ -218,17 +218,17 @@ Each adapter translates AdCP targeting to platform-specific format:
 ```python
 def _translate_targeting(self, overlay):
     platform_targeting = {}
-    
+
     if "geo_country_any_of" in overlay:
         platform_targeting["location"] = {
             "countries": overlay["geo_country_any_of"]
         }
-    
+
     if "signals" in overlay:
         platform_targeting["custom_targeting"] = {
             "keys": self._map_signals(overlay["signals"])
         }
-    
+
     return platform_targeting
 ```
 
@@ -291,7 +291,7 @@ uv run alembic revision -m "add_new_column"
 3. Edit migration file:
 ```python
 def upgrade():
-    op.add_column('table_name', 
+    op.add_column('table_name',
         sa.Column('new_column', sa.String(100)))
 
 def downgrade():
@@ -326,10 +326,10 @@ async def get_products(
 ) -> GetProductsResponse:
     # Get auth from headers
     auth_token = context.http.headers.get("x-adcp-auth")
-    
+
     # Resolve principal and tenant
     principal, tenant = await resolve_auth(auth_token)
-    
+
     # Return products
     return GetProductsResponse(products=products)
 ```
@@ -413,7 +413,7 @@ logger.log(
    ```bash
    # Run tests
    uv run pytest
-   
+
    # Check formatting
    black --check .
    ruff check .
@@ -485,15 +485,15 @@ from local_app import modules
 # Class structure
 class MyClass:
     """Class description."""
-    
+
     def __init__(self):
         """Initialize."""
         pass
-    
+
     def public_method(self) -> str:
         """Public method description."""
         return self._private_method()
-    
+
     def _private_method(self) -> str:
         """Private method description."""
         return "result"

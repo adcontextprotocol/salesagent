@@ -5,7 +5,7 @@
 {% block content %}
 <div class="wizard-container">
     <h2>Product Setup Wizard</h2>
-    
+
     <!-- Inventory Sync Check -->
     <div id="inventory-check" style="display: none;">
         <div class="alert alert-warning">
@@ -20,7 +20,7 @@
             <p class="text-muted">After syncing your inventory, return here to set up your products.</p>
         </div>
     </div>
-    
+
     <div id="wizard-content">
     <div class="wizard-progress">
         <div class="step active" data-step="1">
@@ -40,12 +40,12 @@
             <span class="step-title">Create</span>
         </div>
     </div>
-    
+
     <!-- Step 1: Market Selection -->
     <div class="wizard-step" id="step-1">
         <h3>Select Your Primary Markets</h3>
         <p>Choose the markets that are most important for your advertisers. We'll create run-of-site products for each market.</p>
-        
+
         <div class="market-grid">
             <h4>Top Markets</h4>
             <div class="market-options">
@@ -82,7 +82,7 @@
                     <span class="market-name">🇧🇷 Brazil</span>
                 </label>
             </div>
-            
+
             <h4>Add another market</h4>
             <div class="custom-market">
                 <select id="country-select" class="form-control">
@@ -91,17 +91,17 @@
                 <button class="btn btn-secondary" onclick="addSelectedCountry()">Add Market</button>
             </div>
         </div>
-        
+
         <div class="wizard-actions">
             <button class="btn btn-primary" onclick="nextStep()">Next: Analyze Ad Server</button>
         </div>
     </div>
-    
+
     <!-- Step 2: Ad Server Analysis -->
     <div class="wizard-step" id="step-2" style="display: none;">
         <h3>Analyzing Your Ad Server Configuration</h3>
         <p>We're querying your ad server to discover audiences, formats, and placements...</p>
-        
+
         <div class="analysis-progress">
             <div class="analysis-item" id="analyze-audiences">
                 <span class="spinner"></span>
@@ -116,7 +116,7 @@
                 <span class="analysis-text">Mapping ad placements...</span>
             </div>
         </div>
-        
+
         <div id="analysis-results" style="display: none;">
             <h4>What We Found</h4>
             <div class="results-grid">
@@ -138,51 +138,51 @@
                 </div>
             </div>
         </div>
-        
+
         <div class="wizard-actions" style="display: none;">
             <button class="btn btn-secondary" onclick="previousStep()">Back</button>
             <button class="btn btn-primary" onclick="nextStep()">Next: Review Suggestions</button>
         </div>
     </div>
-    
+
     <!-- Step 3: Product Suggestions -->
     <div class="wizard-step" id="step-3" style="display: none;">
         <h3>Suggested Products</h3>
         <p>Based on your markets and ad server configuration, we recommend creating these products:</p>
-        
+
         <div style="margin: 1rem 0;">
             <p class="text-muted">You can configure pricing for each product below.</p>
         </div>
-        
+
         <div id="product-suggestions">
             <!-- Suggestions will be populated here -->
         </div>
-        
+
         <div class="suggestion-actions">
             <button class="btn btn-secondary" onclick="selectAll()">Select All</button>
             <button class="btn btn-secondary" onclick="deselectAll()">Deselect All</button>
         </div>
-        
+
         <div class="wizard-actions">
             <button class="btn btn-secondary" onclick="previousStep()">Back</button>
             <button class="btn btn-primary" onclick="createSelectedProducts()">Create Selected Products</button>
         </div>
     </div>
-    
+
     <!-- Step 4: Creation Results -->
     <div class="wizard-step" id="step-4" style="display: none;">
         <h3>Creating Products...</h3>
-        
+
         <div id="creation-progress">
             <!-- Progress will be shown here -->
         </div>
-        
+
         <div id="creation-results" style="display: none;">
             <div class="alert alert-success">
                 <h4>Success!</h4>
                 <p>Created <span id="created-count">0</span> products successfully.</p>
             </div>
-            
+
             <div class="wizard-actions">
                 <a href="{{ url_for('list_products', tenant_id=tenant_id) }}" class="btn btn-primary">View Products</a>
                 <button class="btn btn-secondary" onclick="startOver()">Create More Products</button>
@@ -635,17 +635,17 @@ function nextStep() {
         // Collect selected markets
         selectedMarkets = Array.from(document.querySelectorAll('input[name="markets"]:checked'))
             .map(cb => cb.value);
-        
+
         if (selectedMarkets.length === 0) {
             alert('Please select at least one market');
             return;
         }
     }
-    
+
     document.getElementById(`step-${currentStep}`).style.display = 'none';
     currentStep++;
     document.getElementById(`step-${currentStep}`).style.display = 'block';
-    
+
     // Update progress
     document.querySelectorAll('.step').forEach((step, index) => {
         if (index < currentStep - 1) {
@@ -655,7 +655,7 @@ function nextStep() {
             step.classList.add('active');
         }
     });
-    
+
     // Trigger ad server analysis on step 2
     if (currentStep === 2) {
         analyzeAdServer();
@@ -671,18 +671,18 @@ function previousStep() {
 async function analyzeAdServer() {
     // Simulate querying ad server
     const steps = ['audiences', 'formats', 'placements'];
-    
+
     for (const step of steps) {
         await new Promise(resolve => setTimeout(resolve, 1000));
         document.getElementById(`analyze-${step}`).classList.add('complete');
     }
-    
+
     // Fetch actual data from ad server
     try {
         const response = await fetch(`{{ url_for('analyze_ad_server_inventory', tenant_id=tenant_id) }}`);
         adServerData = await response.json();
         console.log('Ad server data received:', adServerData);
-        
+
         // Check if inventory sync is needed
         if (adServerData.error && adServerData.properties && adServerData.properties.needs_sync) {
             // Show error message about needing to sync inventory
@@ -703,17 +703,17 @@ async function analyzeAdServer() {
             document.querySelector('#step-2 .wizard-actions').style.display = 'none';
             return;
         }
-        
+
         displayAnalysisResults();
         generateProductSuggestions();
-        
+
         // Show info if data is from cache
         if (adServerData.properties && adServerData.properties.from_cache) {
-            const lastSync = adServerData.properties.last_sync ? 
+            const lastSync = adServerData.properties.last_sync ?
                 new Date(adServerData.properties.last_sync).toLocaleString() : 'Unknown';
             console.log(`Using cached inventory data from ${lastSync}`);
         }
-        
+
     } catch (error) {
         console.error('Error analyzing ad server:', error);
         // Use mock data for demo
@@ -735,41 +735,41 @@ async function analyzeAdServer() {
         displayAnalysisResults();
         generateProductSuggestions();
     }
-    
+
     document.getElementById('analysis-results').style.display = 'block';
     document.querySelector('#step-2 .wizard-actions').style.display = 'flex';
 }
 
 function displayAnalysisResults() {
     // Display audiences
-    const audienceHtml = (adServerData.audiences || []).map(aud => 
+    const audienceHtml = (adServerData.audiences || []).map(aud =>
         `<div class="result-item">
             <strong>${aud.name}</strong>
             <span class="badge">${aud.size ? (aud.size / 1000000).toFixed(1) + 'M users' : 'N/A'}</span>
         </div>`
     ).join('');
     document.getElementById('audience-list').innerHTML = audienceHtml || '<p>No custom audiences found</p>';
-    
+
     // Display key-value pairs
-    const keyValuesHtml = (adServerData.key_values || []).map(kv => 
+    const keyValuesHtml = (adServerData.key_values || []).map(kv =>
         `<div class="result-item">
             <strong>${kv.display_name || kv.name}</strong>
             <span class="badge">${kv.values ? kv.values.length + ' values' : '0 values'}</span>
         </div>`
     ).join('');
     document.getElementById('key-values-list').innerHTML = keyValuesHtml || '<p>No key-value pairs found in GAM</p>';
-    
+
     // Display formats
-    const formatHtml = (adServerData.formats || []).map(fmt => 
+    const formatHtml = (adServerData.formats || []).map(fmt =>
         `<div class="result-item">
             <strong>${fmt.name}</strong>
             <span class="badge">${fmt.type}</span>
         </div>`
     ).join('');
     document.getElementById('format-list').innerHTML = formatHtml || '<p>No custom formats found</p>';
-    
+
     // Display placements
-    const placementHtml = (adServerData.placements || []).map(plc => 
+    const placementHtml = (adServerData.placements || []).map(plc =>
         `<div class="result-item">
             <strong>${plc.name}</strong>
             <span class="badge">${plc.sizes ? plc.sizes.join(', ') : 'N/A'}</span>
@@ -780,7 +780,7 @@ function displayAnalysisResults() {
 
 function generateProductSuggestions() {
     suggestedProducts = [];
-    
+
     // 1. Run-of-site products for each market
     selectedMarkets.forEach(market => {
         const country = countries.find(c => c.code === market) || {name: market};
@@ -795,7 +795,7 @@ function generateProductSuggestions() {
             price_guidance: {min: 2.0, max: 10.0}
         });
     });
-    
+
     // 2. Key-value based products (for important custom targeting)
     if (adServerData.key_values && adServerData.key_values.length > 0) {
         // Create products for the first few key-value pairs with multiple values
@@ -822,7 +822,7 @@ function generateProductSuggestions() {
             }
         });
     }
-    
+
     // 3. Audience-based products
     (adServerData.audiences || []).forEach(audience => {
         if (audience.size > 100000) { // Only for significant audiences
@@ -841,7 +841,7 @@ function generateProductSuggestions() {
             });
         }
     });
-    
+
     // 4. Custom format products for each market
     (adServerData.formats || []).forEach(format => {
         selectedMarkets.forEach(market => {
@@ -858,7 +858,7 @@ function generateProductSuggestions() {
             });
         });
     });
-    
+
     displayProductSuggestions();
 }
 
@@ -886,9 +886,9 @@ function displayProductSuggestions() {
                         </label>
                     </div>
                     <div class="pricing-inputs" id="pricing-inputs-${index}">
-                        ${product.cpm ? 
+                        ${product.cpm ?
                             `<input type="number" id="cpm-${index}" placeholder="CPM" value="${product.cpm}" step="0.01" min="0">
-                             <span>CPM</span>` : 
+                             <span>CPM</span>` :
                             `<input type="number" id="min-cpm-${index}" placeholder="Min" value="${product.price_guidance?.min || ''}" step="0.01" min="0">
                              <span>-</span>
                              <input type="number" id="max-cpm-${index}" placeholder="Max" value="${product.price_guidance?.max || ''}" step="0.01" min="0">
@@ -907,7 +907,7 @@ function displayProductSuggestions() {
             </div>
         </div>
     `).join('');
-    
+
     document.getElementById('product-suggestions').innerHTML = suggestionsHtml;
 }
 
@@ -922,11 +922,11 @@ function deselectAll() {
 async function createSelectedProducts() {
     const selectedIndices = Array.from(document.querySelectorAll('.product-suggestion input[type="checkbox"]:checked'))
         .map(cb => parseInt(cb.id.replace('product-', '')));
-    
+
     const productsToCreate = selectedIndices.map(i => {
         const product = {...suggestedProducts[i]};
         const pricingType = document.querySelector(`input[name="pricing-type-${i}"]:checked`).value;
-        
+
         if (pricingType === 'fixed') {
             const cpm = document.getElementById(`cpm-${i}`).value;
             if (cpm) {
@@ -946,26 +946,26 @@ async function createSelectedProducts() {
         }
         return product;
     });
-    
+
     if (productsToCreate.length === 0) {
         alert('Please select at least one product to create');
         return;
     }
-    
+
     nextStep(); // Move to creation step
-    
-    document.getElementById('creation-progress').innerHTML = 
+
+    document.getElementById('creation-progress').innerHTML =
         `<p>Creating ${productsToCreate.length} products...</p><div class="spinner"></div>`;
-    
+
     try {
         const response = await fetch(`{{ url_for('create_products_bulk', tenant_id=tenant_id) }}`, {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify({products: productsToCreate})
         });
-        
+
         const result = await response.json();
-        
+
         if (result.success) {
             document.getElementById('created-count').textContent = result.created_count;
             document.getElementById('creation-progress').style.display = 'none';
@@ -973,7 +973,7 @@ async function createSelectedProducts() {
         } else {
             alert('Error creating products: ' + result.error);
         }
-        
+
     } catch (error) {
         alert('Error creating products: ' + error.message);
     }
@@ -982,19 +982,19 @@ async function createSelectedProducts() {
 function addSelectedCountry() {
     const select = document.getElementById('country-select');
     const selectedCode = select.value;
-    
+
     if (!selectedCode) {
         alert('Please select a country');
         return;
     }
-    
+
     // Check if already added
     const existingCheckbox = document.querySelector(`input[name="markets"][value="${selectedCode}"]`);
     if (existingCheckbox) {
         alert('This country has already been added');
         return;
     }
-    
+
     const country = countries.find(c => c.code === selectedCode);
     const container = document.querySelector('.market-options');
     const newOption = document.createElement('label');
@@ -1004,7 +1004,7 @@ function addSelectedCountry() {
         <span class="market-name">${country.flag} ${country.name}</span>
     `;
     container.appendChild(newOption);
-    
+
     // Reset select
     select.value = '';
 }
@@ -1016,7 +1016,7 @@ function startOver() {
 function togglePricingInputs(index) {
     const pricingType = document.querySelector(`input[name="pricing-type-${index}"]:checked`).value;
     const pricingInputsDiv = document.getElementById(`pricing-inputs-${index}`);
-    
+
     if (pricingType === 'fixed') {
         pricingInputsDiv.innerHTML = `
             <input type="number" id="cpm-${index}" placeholder="CPM" step="0.01" min="0">
@@ -1038,32 +1038,32 @@ document.addEventListener('DOMContentLoaded', async function() {
     try {
         const response = await fetch(`{{ url_for('check_inventory_sync', tenant_id=tenant_id) }}`);
         const data = await response.json();
-        
+
         if (!data.has_inventory) {
             // No inventory synced - show warning and hide wizard
             document.getElementById('inventory-check').style.display = 'block';
             document.getElementById('wizard-content').style.display = 'none';
             return; // Don't proceed with wizard initialization
         }
-        
+
         // Inventory exists - proceed with wizard
         console.log(`Inventory synced: ${data.inventory_count} items, last sync: ${data.last_sync}`);
-        
+
     } catch (error) {
         console.error('Error checking inventory sync status:', error);
         // Continue anyway in case of error
     }
-    
+
     // Initialize country dropdown
     const select = document.getElementById('country-select');
     const alreadyShownCodes = ['US', 'CA', 'GB', 'AU', 'DE', 'FR', 'JP', 'BR'];
-    
+
     // Filter out countries that are already shown as top markets
     const availableCountries = countries.filter(c => !alreadyShownCodes.includes(c.code));
-    
+
     // Sort countries by name
     availableCountries.sort((a, b) => a.name.localeCompare(b.name));
-    
+
     // Populate dropdown
     availableCountries.forEach(country => {
         const option = document.createElement('option');

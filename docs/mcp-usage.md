@@ -65,9 +65,9 @@ async def example_mcp_usage():
         "x-adcp-auth": "your_access_token",
         "x-adcp-tenant": "your_tenant_id"
     }
-    
+
     transport = StreamableHttpTransport(server_url, headers=headers)
-    
+
     async with Client(transport) as client:
         # 1. Get Products
         products_result = await client.call_tool('get_products', {
@@ -75,11 +75,11 @@ async def example_mcp_usage():
                 'brief': 'Show all advertising products'
             }
         })
-        
+
         if hasattr(products_result, 'products'):
             print(f"Found {len(products_result.products)} products")
             product_id = products_result.products[0].product_id
-        
+
         # 2. Create Media Buy
         media_buy_result = await client.call_tool('create_media_buy', {
             'req': {
@@ -89,7 +89,7 @@ async def example_mcp_usage():
                 'flight_end_date': '2025-02-28'
             }
         })
-        
+
         if hasattr(media_buy_result, 'media_buy_id'):
             print(f"Created media buy: {media_buy_result.media_buy_id}")
 

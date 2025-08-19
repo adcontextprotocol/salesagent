@@ -7,12 +7,11 @@ Run this in one terminal to see the full flow.
 """
 
 import asyncio
-import subprocess
-import time
-import sys
-import os
 import json
-from typing import Optional
+import os
+import subprocess
+import sys
+import time
 
 # Simple upstream server code (embedded for convenience)
 UPSTREAM_SERVER_CODE = '''
@@ -38,7 +37,7 @@ PRODUCTS = [
         }
     },
     {
-        "product_id": "news_standard", 
+        "product_id": "news_standard",
         "name": "News Standard Display",
         "description": "Standard news inventory",
         "formats": [{"format_id": "display_728x90", "name": "Leaderboard", "type": "display", "specs": {"width": 728, "height": 90}}],
@@ -46,14 +45,14 @@ PRODUCTS = [
         "is_fixed_price": True,
         "cpm": 5.0,
         "implementation_config": {
-            "ad_server": "google_ad_manager", 
+            "ad_server": "google_ad_manager",
             "placement_ids": ["news_728x90_standard"],
             "targeting": {"content_cat_any_of": ["news"]}
         }
     },
     {
         "product_id": "finance_video",
-        "name": "Finance Video Pre-roll", 
+        "name": "Finance Video Pre-roll",
         "description": "Video ads on finance content",
         "formats": [{"format_id": "video_16x9", "name": "HD Video", "type": "video", "specs": {"aspect_ratio": "16:9"}}],
         "delivery_type": "guaranteed",
@@ -71,31 +70,31 @@ PRODUCTS = [
 async def get_products(brief: str, tenant_id: Optional[str] = None, **kwargs) -> dict:
     """Simple product matching based on keywords in brief."""
     print(f"\\n📨 Upstream received: {brief}")
-    
+
     brief_lower = brief.lower()
     matched = []
-    
+
     # Simple keyword matching
     for product in PRODUCTS:
         score = 0
         if "sport" in brief_lower and "sports" in str(product):
             score += 10
         if "news" in brief_lower and "news" in str(product):
-            score += 10  
+            score += 10
         if "video" in brief_lower and "video" in str(product):
             score += 5
         if "premium" in brief_lower and "premium" in product["name"].lower():
             score += 5
         if "finance" in brief_lower and "finance" in str(product):
             score += 10
-            
+
         if score > 0:
             matched.append((score, product))
-    
+
     # Sort by score and return top matches
     matched.sort(key=lambda x: x[0], reverse=True)
     results = [p[1] for p in matched[:2]]
-    
+
     print(f"✅ Returning {len(results)} products")
     return {"products": results}
 
@@ -108,27 +107,21 @@ if __name__ == "__main__":
 def start_upstream_server():
     """Start the upstream catalog server in a subprocess."""
     print("🚀 Starting upstream product catalog server...")
-    
+
     # Write the server code to a temp file
-    with open('.upstream_server_temp.py', 'w') as f:
+    with open(".upstream_server_temp.py", "w") as f:
         f.write(UPSTREAM_SERVER_CODE)
-    
+
     # Start the server
     env = os.environ.copy()
     if sys.platform == "win32":
         # Windows needs special handling
         proc = subprocess.Popen(
-            [sys.executable, '.upstream_server_temp.py'],
-            env=env,
-            creationflags=subprocess.CREATE_NEW_PROCESS_GROUP
+            [sys.executable, ".upstream_server_temp.py"], env=env, creationflags=subprocess.CREATE_NEW_PROCESS_GROUP
         )
     else:
-        proc = subprocess.Popen(
-            ['uv', 'run', 'python', '.upstream_server_temp.py'],
-            env=env,
-            preexec_fn=os.setsid
-        )
-    
+        proc = subprocess.Popen(["uv", "run", "python", ".upstream_server_temp.py"], env=env, preexec_fn=os.setsid)
+
     # Wait for server to start
     time.sleep(2)
     print("✅ Upstream server started on http://localhost:9000/mcp/\n")
@@ -138,36 +131,27 @@ def start_upstream_server():
 async def configure_tenant_for_mcp():
     """Configure the default tenant to use the upstream MCP server."""
     from db_config import get_db_connection
-    
+
     print("🔧 Configuring tenant to use upstream catalog...")
-    
+
     conn = get_db_connection()
-    
+
     # Get current config
-    cursor = conn.execute(
-        "SELECT config FROM tenants WHERE tenant_id = 'default'"
-    )
+    cursor = conn.execute("SELECT config FROM tenants WHERE tenant_id = 'default'")
     row = cursor.fetchone()
-    current_config = json.loads(dict(row)['config']) if row else {}
-    
+    current_config = json.loads(dict(row)["config"]) if row else {}
+
     # Add product catalog config
-    current_config['product_catalog'] = {
-        'provider': 'mcp',
-        'config': {
-            'upstream_url': 'http://localhost:9000/mcp/',
-            'tool_name': 'get_products',
-            'timeout': 10
-        }
+    current_config["product_catalog"] = {
+        "provider": "mcp",
+        "config": {"upstream_url": "http://localhost:9000/mcp/", "tool_name": "get_products", "timeout": 10},
     }
-    
+
     # Update tenant
-    conn.execute(
-        "UPDATE tenants SET config = ? WHERE tenant_id = 'default'",
-        (json.dumps(current_config),)
-    )
+    conn.execute("UPDATE tenants SET config = ? WHERE tenant_id = 'default'", (json.dumps(current_config),))
     conn.commit()
     conn.close()
-    
+
     print("✅ Tenant configured to use upstream catalog\n")
 
 
@@ -175,37 +159,34 @@ async def test_product_listing():
     """Test the product listing through the AdCP Sales Agent."""
     from fastmcp.client import Client
     from fastmcp.client.transports import StreamableHttpTransport
-    
+
     print("🧪 Testing product catalog through AdCP Sales Agent...\n")
-    
+
     # Test different briefs
     test_briefs = [
         "I need premium sports advertising for March Madness",
         "Looking for news display inventory",
-        "Want video ads on finance content for affluent audiences"
+        "Want video ads on finance content for affluent audiences",
     ]
-    
+
     # Create MCP client to AdCP Sales Agent
     headers = {"x-adcp-auth": "default_token"}
-    transport = StreamableHttpTransport(
-        url="http://localhost:8081/mcp/",
-        headers=headers
-    )
-    
+    transport = StreamableHttpTransport(url="http://localhost:8081/mcp/", headers=headers)
+
     async with Client(transport=transport) as client:
         for brief in test_briefs:
             print(f"📝 Brief: {brief}")
-            
+
             try:
                 result = await client.tools.get_products(brief=brief)
-                products = result.get('products', [])
-                
+                products = result.get("products", [])
+
                 print(f"📦 Got {len(products)} products:")
                 for p in products:
                     print(f"   - {p['name']} ({p['product_id']})")
                     print(f"     {p['description']}")
                 print()
-                
+
             except Exception as e:
                 print(f"❌ Error: {e}\n")
 
@@ -216,32 +197,30 @@ async def main():
     print("UPSTREAM PRODUCT CATALOG QUICK START")
     print("=" * 60)
     print()
-    
+
     # Initialize database
     from database import init_db
+
     init_db()
-    
+
     # Start upstream server
     upstream_proc = start_upstream_server()
-    
+
     try:
         # Configure tenant
         await configure_tenant_for_mcp()
-        
+
         # Start AdCP Sales Agent
         print("🚀 Starting AdCP Sales Agent...")
-        adcp_proc = subprocess.Popen(
-            ['uv', 'run', 'python', 'run_server.py'],
-            env=os.environ.copy()
-        )
-        
+        adcp_proc = subprocess.Popen(["uv", "run", "python", "run_server.py"], env=os.environ.copy())
+
         # Wait for it to start
         time.sleep(3)
         print("✅ AdCP Sales Agent started on http://localhost:8081/mcp/\n")
-        
+
         # Run tests
         await test_product_listing()
-        
+
         print("\n" + "=" * 60)
         print("✨ SUCCESS! The upstream catalog is working!")
         print("\nYou now have:")
@@ -250,13 +229,13 @@ async def main():
         print("3. Tenant configured to use upstream catalog")
         print("\nThe AdCP agent is calling your upstream server for products!")
         print("=" * 60)
-        
+
         print("\nPress Ctrl+C to stop all servers...")
-        
+
         # Keep running
         while True:
             time.sleep(1)
-            
+
     except KeyboardInterrupt:
         print("\n\n🛑 Shutting down...")
     finally:
@@ -267,11 +246,11 @@ async def main():
         else:
             os.killpg(os.getpgid(upstream_proc.pid), 9)
             adcp_proc.terminate()
-        
+
         # Remove temp file
-        if os.path.exists('.upstream_server_temp.py'):
-            os.remove('.upstream_server_temp.py')
-        
+        if os.path.exists(".upstream_server_temp.py"):
+            os.remove(".upstream_server_temp.py")
+
         print("✅ Cleanup complete")
 
 

@@ -310,15 +310,13 @@ CREATE TABLE IF NOT EXISTS superadmin_config (
 );
 """
 
+
 def get_schema(db_type: str) -> str:
     """Get the appropriate schema for the database type."""
-    schemas = {
-        'sqlite': SCHEMA_SQLITE,
-        'postgresql': SCHEMA_POSTGRESQL
-    }
-    
+    schemas = {"sqlite": SCHEMA_SQLITE, "postgresql": SCHEMA_POSTGRESQL}
+
     schema = schemas.get(db_type)
     if not schema:
         raise ValueError(f"Unsupported database type: {db_type}. Use 'sqlite' or 'postgresql'")
-    
+
     return schema

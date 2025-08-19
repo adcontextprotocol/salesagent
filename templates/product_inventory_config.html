@@ -47,7 +47,7 @@
                         <li>• {{ format }}</li>
                         {% endfor %}
                     </ul>
-                    
+
                     {% if product.implementation_config %}
                         {% if product.implementation_config.creative_placeholders %}
                         <p><strong>Required Sizes:</strong></p>
@@ -78,7 +78,7 @@
                             <i class="bi bi-lightbulb"></i> Get Suggestions
                         </button>
                     </div>
-                    
+
                     <div id="inventoryTree" style="max-height: 400px; overflow-y: auto;">
                         <p class="text-muted">Loading inventory...</p>
                     </div>
@@ -97,12 +97,12 @@
                     <div id="selectedInventory">
                         <p class="text-muted">No inventory selected</p>
                     </div>
-                    
+
                     <div class="mt-3">
                         <button class="btn btn-primary" onclick="saveConfiguration()">
                             Save Configuration
                         </button>
-                        <a href="/tenant/{{ tenant_id }}/products/{{ product.product_id }}/edit" 
+                        <a href="/tenant/{{ tenant_id }}/products/{{ product.product_id }}/edit"
                            class="btn btn-secondary">Cancel</a>
                     </div>
                 </div>
@@ -179,14 +179,14 @@ function loadCurrentConfig() {
         .then(response => response.json())
         .then(data => {
             const configDiv = document.getElementById('currentConfig');
-            
+
             if (!data || data.error) {
                 configDiv.innerHTML = '<p class="text-muted">No inventory configured yet</p>';
                 return;
             }
-            
+
             let html = '';
-            
+
             if (data.ad_units && data.ad_units.length > 0) {
                 html += '<h6>Ad Units (' + data.ad_units.length + ')</h6>';
                 html += '<ul class="list-unstyled">';
@@ -198,7 +198,7 @@ function loadCurrentConfig() {
                 });
                 html += '</ul>';
             }
-            
+
             if (data.placements && data.placements.length > 0) {
                 html += '<h6>Placements (' + data.placements.length + ')</h6>';
                 html += '<ul class="list-unstyled">';
@@ -207,11 +207,11 @@ function loadCurrentConfig() {
                 });
                 html += '</ul>';
             }
-            
+
             if (!html) {
                 html = '<p class="text-muted">No inventory configured yet</p>';
             }
-            
+
             configDiv.innerHTML = html;
         })
         .catch(error => {
@@ -229,7 +229,7 @@ function loadInventoryTree() {
         })
         .catch(error => {
             console.error('Error loading inventory:', error);
-            document.getElementById('inventoryTree').innerHTML = 
+            document.getElementById('inventoryTree').innerHTML =
                 '<p class="text-danger">Error loading inventory</p>';
         });
 }
@@ -239,31 +239,31 @@ function renderInventoryTree(units, container = null, level = 0) {
         container = document.getElementById('inventoryTree');
         container.innerHTML = '';
     }
-    
+
     units.forEach(unit => {
         if (unit.status !== 'ACTIVE') return; // Only show active units
-        
+
         const div = document.createElement('div');
         div.className = 'inventory-item';
         div.style.marginLeft = (level * 20) + 'px';
         if (selectedAdUnits.has(unit.id)) {
             div.classList.add('selected');
         }
-        
+
         let html = `
-            <input type="checkbox" class="inventory-checkbox" 
-                   value="${unit.id}" 
+            <input type="checkbox" class="inventory-checkbox"
+                   value="${unit.id}"
                    ${selectedAdUnits.has(unit.id) ? 'checked' : ''}
                    onchange="toggleSelection('${unit.id}')">
             <span>${unit.name}</span>
         `;
-        
+
         if (unit.metadata && unit.metadata.sizes && unit.metadata.sizes.length > 0) {
             unit.metadata.sizes.forEach(size => {
                 html += ` <span class="inventory-size">${size.width}x${size.height}</span>`;
             });
         }
-        
+
         div.innerHTML = html;
         div.onclick = function(e) {
             if (e.target.type !== 'checkbox') {
@@ -272,9 +272,9 @@ function renderInventoryTree(units, container = null, level = 0) {
                 toggleSelection(unit.id);
             }
         };
-        
+
         container.appendChild(div);
-        
+
         // Render children
         if (unit.children && unit.children.length > 0) {
             renderInventoryTree(unit.children, container, level + 1);
@@ -293,22 +293,22 @@ function toggleSelection(unitId) {
 
 function updateSelectedDisplay() {
     const display = document.getElementById('selectedInventory');
-    
+
     if (selectedAdUnits.size === 0) {
         display.innerHTML = '<p class="text-muted">No inventory selected</p>';
         return;
     }
-    
+
     let html = `<p><strong>${selectedAdUnits.size} ad units selected</strong></p>`;
     html += '<ul class="list-unstyled">';
-    
+
     selectedAdUnits.forEach(unitId => {
         const unit = findUnitById(inventoryData.root_units, unitId);
         if (unit) {
             html += `<li>• ${unit.path.join(' > ')}</li>`;
         }
     });
-    
+
     html += '</ul>';
     display.innerHTML = html;
 }
@@ -326,7 +326,7 @@ function findUnitById(units, unitId) {
 
 function refreshInventory() {
     if (!confirm('This will sync the latest inventory from GAM. Continue?')) return;
-    
+
     fetch(`/api/tenant/${tenantId}/inventory/sync`, { method: 'POST' })
         .then(response => response.json())
         .then(data => {
@@ -350,10 +350,10 @@ function getSuggestions() {
         sizes.push('{{ placeholder.width }}x{{ placeholder.height }}');
         {% endfor %}
     {% endif %}
-    
+
     const params = new URLSearchParams();
     sizes.forEach(size => params.append('sizes', size));
-    
+
     fetch(`/api/tenant/${tenantId}/inventory/suggest?${params}`)
         .then(response => response.json())
         .then(data => {
@@ -369,10 +369,10 @@ function showSuggestions(suggestions) {
         alert('No suggestions found for this product configuration');
         return;
     }
-    
+
     let html = '<h5>Suggested Ad Units</h5>';
     html += '<div style="max-height: 300px; overflow-y: auto;">';
-    
+
     suggestions.forEach(suggestion => {
         const unit = suggestion.inventory;
         html += `
@@ -380,16 +380,16 @@ function showSuggestions(suggestions) {
                 <span class="suggestion-score">Score: ${suggestion.score}</span>
                 <strong>${unit.path}</strong><br>
                 <small class="text-muted">${suggestion.reasons.join(', ')}</small><br>
-                <button class="btn btn-sm btn-primary mt-2" 
+                <button class="btn btn-sm btn-primary mt-2"
                         onclick="addSuggestion('${unit.id}')">
                     Add to Selection
                 </button>
             </div>
         `;
     });
-    
+
     html += '</div>';
-    
+
     // Show in a modal or replace current tree temporarily
     document.getElementById('inventoryTree').innerHTML = html;
 }
@@ -404,12 +404,12 @@ function saveConfiguration() {
         alert('Please select at least one ad unit');
         return;
     }
-    
+
     const data = {
         ad_unit_ids: Array.from(selectedAdUnits),
         placement_ids: [] // Not implemented in this basic version
     };
-    
+
     fetch(`/api/tenant/${tenantId}/product/${productId}/inventory`, {
         method: 'POST',
         headers: {

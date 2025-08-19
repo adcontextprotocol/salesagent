@@ -7,7 +7,7 @@
     <div class="row">
         <div class="col-12">
             <h2>GAM Orders - {{ tenant_name }}</h2>
-            
+
             <!-- Quick Line Item Search -->
             <div class="card mb-4">
                 <div class="card-body">
@@ -26,7 +26,7 @@
                     </div>
                 </div>
             </div>
-            
+
             <!-- Sync Controls -->
             <div class="card mb-4">
                 <div class="card-body">
@@ -154,7 +154,7 @@ function searchLineItem() {
         alert('Please enter a Line Item ID');
         return;
     }
-    
+
     // Open the line item viewer in a new tab
     window.open(`/tenant/${tenantId}/gam/line-item/${lineItemId}`, '_blank');
 }
@@ -164,13 +164,13 @@ function loadOrders() {
     const status = document.getElementById('statusFilter').value;
     const advertiserId = document.getElementById('advertiserFilter').value;
     const hasLineItems = document.getElementById('lineItemsFilter').value;
-    
+
     let url = `/api/tenant/${tenantId}/orders?`;
     if (searchTerm) url += `search=${encodeURIComponent(searchTerm)}&`;
     if (status) url += `status=${encodeURIComponent(status)}&`;
     if (advertiserId) url += `advertiser_id=${encodeURIComponent(advertiserId)}&`;
     if (hasLineItems) url += `has_line_items=${encodeURIComponent(hasLineItems)}&`;
-    
+
     fetch(url, {
         credentials: 'same-origin'  // Include session cookies
     })
@@ -181,30 +181,30 @@ function loadOrders() {
     })
     .catch(error => {
         console.error('Error loading orders:', error);
-        document.getElementById('ordersTableBody').innerHTML = 
+        document.getElementById('ordersTableBody').innerHTML =
             '<tr><td colspan="9" class="text-center text-danger">Error loading orders</td></tr>';
     });
 }
 
 function displayOrders(orders) {
     const tbody = document.getElementById('ordersTableBody');
-    
+
     if (orders.length === 0) {
         tbody.innerHTML = '<tr><td colspan="9" class="text-center">No orders found</td></tr>';
         return;
     }
-    
+
     tbody.innerHTML = orders.map(order => {
         const deliveryStatus = order.delivery_status || order.status;
         const deliveryMetrics = order.delivery_metrics || {};
         const deliveryPercentage = deliveryMetrics.delivery_percentage || 0;
         const hasLineItems = order.line_item_count > 0;
-        
+
         let progressBar = '';
         if (hasLineItems && deliveryMetrics.total_impressions_goal > 0) {
             progressBar = `
                 <div class="progress" style="height: 20px;">
-                    <div class="progress-bar" role="progressbar" style="width: ${Math.min(deliveryPercentage, 100)}%" 
+                    <div class="progress-bar" role="progressbar" style="width: ${Math.min(deliveryPercentage, 100)}%"
                          aria-valuenow="${deliveryPercentage}" aria-valuemin="0" aria-valuemax="100">
                         ${deliveryPercentage.toFixed(1)}%
                     </div>
@@ -216,7 +216,7 @@ function displayOrders(orders) {
         } else {
             progressBar = `<span class="text-muted">${order.line_item_count} line item${order.line_item_count > 1 ? 's' : ''}</span>`;
         }
-        
+
         return `
             <tr>
                 <td>${order.order_id}</td>
@@ -316,14 +316,14 @@ function viewOrderDetails(orderId) {
 
 function displayOrderDetails(order) {
     const detailsBody = document.getElementById('orderDetailsBody');
-    
+
     // Calculate line items stats
     const activeLineItems = (order.line_items || []).filter(li => li.status === 'APPROVED').length;
     const totalLineItems = (order.line_items || []).length;
-    
+
     const deliveryMetrics = order.delivery_metrics || {};
     const deliveryStatus = order.delivery_status || order.status;
-    
+
     detailsBody.innerHTML = `
         <div class="row">
             <div class="col-md-6">
@@ -348,9 +348,9 @@ function displayOrderDetails(order) {
                 </table>
             </div>
         </div>
-        
+
         <hr>
-        
+
         <div class="row">
             <div class="col-12">
                 <h6>Delivery Metrics</h6>
@@ -398,9 +398,9 @@ function displayOrderDetails(order) {
                 </div>
             </div>
         </div>
-        
+
         <hr>
-        
+
         <div class="row">
             <div class="col-12">
                 <h6>Line Items (${totalLineItems})</h6>
@@ -435,8 +435,8 @@ function displayOrderDetails(order) {
                                     <td>${liDeliveryPercentage.toFixed(1)}%</td>
                                     <td>${li.cost_per_unit ? '$' + li.cost_per_unit.toFixed(2) : '-'}</td>
                                     <td>
-                                        <a href="/tenant/${tenantId}/gam/line-item/${li.line_item_id}" 
-                                           class="btn btn-sm btn-outline-info" 
+                                        <a href="/tenant/${tenantId}/gam/line-item/${li.line_item_id}"
+                                           class="btn btn-sm btn-outline-info"
                                            target="_blank"
                                            title="View full line item details including targeting, creatives, and JSON representation">
                                             <i class="bi bi-box-arrow-up-right"></i> Details
@@ -457,18 +457,18 @@ function syncOrders() {
     const syncButton = document.getElementById('syncButton');
     syncButton.disabled = true;
     syncButton.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Syncing...';
-    
+
     // Try session-based authentication first, fall back to API key if available
     const headers = {
         'Content-Type': 'application/json'
     };
-    
+
     // Only add API key if it exists and is not empty
     const apiKey = {{ api_key|tojson|safe }};
     if (apiKey && apiKey !== '') {
         headers['X-API-Key'] = apiKey;
     }
-    
+
     fetch(`/api/tenant/${tenantId}/sync/orders`, {
         method: 'POST',
         credentials: 'same-origin',  // Include session cookies
@@ -506,10 +506,10 @@ function loadAdvertisers() {
             }));
         }
     });
-    
+
     const advertiserSelect = document.getElementById('advertiserFilter');
     advertiserSelect.innerHTML = '<option value="">All Advertisers</option>';
-    
+
     Array.from(advertisers).forEach(advertiserStr => {
         const advertiser = JSON.parse(advertiserStr);
         const option = document.createElement('option');

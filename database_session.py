@@ -5,13 +5,15 @@ This module provides a consistent, thread-safe approach to database session
 management across the entire application.
 """
 
+from collections.abc import Generator
 from contextlib import contextmanager
-from typing import Generator, Optional, Any
-from sqlalchemy.orm import Session, scoped_session
-from sqlalchemy.exc import SQLAlchemyError
-from db_config import DatabaseConfig
+from typing import Any
+
 from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.orm import Session, scoped_session, sessionmaker
+
+from db_config import DatabaseConfig
 
 # Create engine and session factory
 engine = create_engine(DatabaseConfig.get_connection_string())
@@ -24,17 +26,22 @@ logger = logging.getLogger(__name__)
 db_session = scoped_session(SessionLocal)
 
 
+def get_engine():
+    """Get the current database engine."""
+    return engine
+
+
 @contextmanager
 def get_db_session() -> Generator[Session, None, None]:
     """
     Context manager for database sessions with automatic cleanup.
-    
+
     Usage:
         with get_db_session() as session:
             result = session.query(Model).filter(...).first()
             session.add(new_object)
             session.commit()  # Explicit commit needed
-    
+
     The session will automatically rollback on exception and
     always be properly closed.
     """
@@ -50,24 +57,20 @@ def get_db_session() -> Generator[Session, None, None]:
         db_session.remove()
 
 
-def execute_with_retry(
-    func,
-    max_retries: int = 3,
-    retry_on: tuple = (SQLAlchemyError,)
-) -> Any:
+def execute_with_retry(func, max_retries: int = 3, retry_on: tuple = (SQLAlchemyError,)) -> Any:
     """
     Execute a database operation with retry logic.
-    
+
     Args:
         func: Function that takes a session as its first argument
         max_retries: Maximum number of retry attempts
         retry_on: Tuple of exception types to retry on
-    
+
     Returns:
         The result of the function
     """
     last_exception = None
-    
+
     for attempt in range(max_retries):
         try:
             with get_db_session() as session:
@@ -81,7 +84,7 @@ def execute_with_retry(
                 db_session.remove()  # Clear the session registry
                 continue
             raise
-    
+
     if last_exception:
         raise last_exception
 
@@ -89,21 +92,21 @@ def execute_with_retry(
 class DatabaseManager:
     """
     Manager class for database operations with session management.
-    
+
     This class can be used as a base for services that need
     consistent database access patterns.
     """
-    
+
     def __init__(self):
-        self._session: Optional[Session] = None
-    
+        self._session: Session | None = None
+
     @property
     def session(self) -> Session:
         """Get or create a session."""
         if self._session is None:
             self._session = db_session()
         return self._session
-    
+
     def commit(self):
         """Commit the current transaction."""
         if self._session:
@@ -112,23 +115,23 @@ class DatabaseManager:
             except SQLAlchemyError:
                 self.rollback()
                 raise
-    
+
     def rollback(self):
         """Rollback the current transaction."""
         if self._session:
             self._session.rollback()
-    
+
     def close(self):
         """Close and cleanup the session."""
         if self._session:
             self._session.close()
             db_session.remove()
             self._session = None
-    
+
     def __enter__(self):
         """Context manager entry."""
         return self
-    
+
     def __exit__(self, exc_type, exc_val, exc_tb):
         """Context manager exit with automatic cleanup."""
         if exc_type:
@@ -142,15 +145,15 @@ class DatabaseManager:
 def get_or_404(session: Session, model, **kwargs):
     """
     Get a model instance or raise 404-like exception.
-    
+
     Args:
         session: Database session
         model: SQLAlchemy model class
         **kwargs: Filter criteria
-    
+
     Returns:
         Model instance
-    
+
     Raises:
         ValueError: If not found
     """
@@ -163,24 +166,24 @@ def get_or_404(session: Session, model, **kwargs):
 def get_or_create(session: Session, model, defaults: dict = None, **kwargs):
     """
     Get an existing instance or create a new one.
-    
+
     Args:
         session: Database session
         model: SQLAlchemy model class
         defaults: Default values for creation
         **kwargs: Filter criteria (also used for creation)
-    
+
     Returns:
         Tuple of (instance, created) where created is a boolean
     """
     instance = session.query(model).filter_by(**kwargs).first()
     if instance:
         return instance, False
-    
+
     params = dict(kwargs)
     if defaults:
         params.update(defaults)
-    
+
     instance = model(**params)
     session.add(instance)
     return instance, True

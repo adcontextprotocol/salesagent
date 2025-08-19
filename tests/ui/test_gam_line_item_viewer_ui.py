@@ -7,9 +7,10 @@ Requires ADCP_AUTH_TEST_MODE=true for authentication bypass.
 """
 
 import os
+from urllib.parse import urljoin
+
 import pytest
 import requests
-from urllib.parse import urljoin
 
 
 @pytest.mark.requires_server
@@ -34,9 +35,7 @@ class TestGAMLineItemViewerUI:
             pytest.skip("ADCP_AUTH_TEST_MODE not enabled")
 
         login_data = {"email": "test_super_admin@example.com", "password": "test123"}
-        response = session.post(
-            urljoin(base_url, "/test/auth"), data=login_data, allow_redirects=False
-        )
+        response = session.post(urljoin(base_url, "/test/auth"), data=login_data, allow_redirects=False)
         assert response.status_code in [302, 303], "Authentication failed"
 
     def test_line_item_viewer_page_loads(self, session, base_url):

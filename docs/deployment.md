@@ -47,7 +47,7 @@ The `docker-compose.yml` defines three services:
 ```yaml
 services:
   postgres:      # PostgreSQL database
-  adcp-server:   # MCP server (port 8080)  
+  adcp-server:   # MCP server (port 8080)
   admin-ui:      # Admin interface (port 8001)
 ```
 
@@ -124,7 +124,7 @@ Internet → Fly.io Edge → Proxy (8000) → MCP Server (8080)
      --initial-cluster-size 1 \
      --vm-size shared-cpu-1x \
      --volume-size 10
-   
+
    fly postgres attach adcp-db --app adcp-sales-agent
    ```
 
@@ -138,17 +138,17 @@ Internet → Fly.io Edge → Proxy (8000) → MCP Server (8080)
    # OAuth configuration
    fly secrets set GOOGLE_CLIENT_ID="your-client-id.apps.googleusercontent.com"
    fly secrets set GOOGLE_CLIENT_SECRET="your-client-secret"
-   
+
    # Admin configuration
    fly secrets set SUPER_ADMIN_EMAILS="admin@example.com"
    fly secrets set SUPER_ADMIN_DOMAINS="example.com"
-   
+
    # API keys
    fly secrets set GEMINI_API_KEY="your-gemini-api-key"
    ```
 
 5. **Configure OAuth redirect URI:**
-   
+
    Add to Google Cloud Console:
    ```
    https://adcp-sales-agent.fly.dev/auth/google/callback
@@ -189,7 +189,7 @@ fly dashboard
 # Scale horizontally
 fly scale count 2
 
-# Scale vertically  
+# Scale vertically
 fly scale vm shared-cpu-2x
 ```
 
@@ -357,11 +357,11 @@ server {
     listen 443 ssl;
     ssl_certificate /etc/nginx/ssl/cert.pem;
     ssl_certificate_key /etc/nginx/ssl/key.pem;
-    
+
     location / {
         proxy_pass http://admin-ui:8001;
     }
-    
+
     location /mcp/ {
         proxy_pass http://adcp-server:8080;
     }

@@ -1,5 +1,11 @@
 #!/bin/bash
 # Test runner script for pre-push hook and manual testing
+#
+# Modes:
+#   quick    - Unit tests only (fast, for rapid development)
+#   pre-push - Unit + Integration tests (matches CI, runs on git push)
+#   integration - Integration tests only
+#   full     - All tests including E2E (default)
 
 set -e  # Exit on first error
 
@@ -23,9 +29,9 @@ echo ""
 run_tests() {
     local test_path="$1"
     local test_name="$2"
-    
+
     echo -e "${YELLOW}Running $test_name...${NC}"
-    
+
     if [ "$MODE" = "quick" ]; then
         # Quick mode: only unit tests, fail fast
         uv run pytest "$test_path" -x --tb=short -q
@@ -33,7 +39,7 @@ run_tests() {
         # Full mode: all tests with verbose output
         uv run pytest "$test_path" -v --tb=short
     fi
-    
+
     if [ $? -eq 0 ]; then
         echo -e "${GREEN}✅ $test_name passed${NC}"
         return 0
@@ -50,21 +56,32 @@ OVERALL_SUCCESS=0
 if [ "$MODE" = "quick" ]; then
     echo "Quick mode: Running unit tests only..."
     echo ""
-    
+
     # Run only unit tests for quick feedback
     run_tests "tests/unit/" "Unit tests" || OVERALL_SUCCESS=1
-    
+
+elif [ "$MODE" = "pre-push" ]; then
+    echo "Pre-push mode: Running unit and integration tests (matching CI)..."
+    echo ""
+
+    # Run unit tests first
+    run_tests "tests/unit/" "Unit tests" || OVERALL_SUCCESS=1
+    echo ""
+
+    # Run integration tests to match CI
+    run_tests "tests/integration/" "Integration tests" || OVERALL_SUCCESS=1
+
 elif [ "$MODE" = "integration" ]; then
     echo "Integration mode: Running integration tests only..."
     echo ""
-    
+
     # Run only integration tests
     run_tests "tests/integration/" "Integration tests" || OVERALL_SUCCESS=1
-    
+
 else
     echo "Full mode: Running all tests..."
     echo ""
-    
+
     # Run all test categories
     run_tests "tests/unit/" "Unit tests" || OVERALL_SUCCESS=1
     echo ""
@@ -85,6 +102,7 @@ else
     echo ""
     echo "To run specific test categories:"
     echo "  ./run_all_tests.sh quick       # Unit tests only (fast)"
+    echo "  ./run_all_tests.sh pre-push    # Unit + Integration (matches CI)"
     echo "  ./run_all_tests.sh integration # Integration tests only"
     echo "  ./run_all_tests.sh             # All tests (default)"
     echo ""
