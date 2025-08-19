@@ -51,6 +51,7 @@ class TestSessionManagement:
     def test_context_manager_pattern(self, test_db):
         """Test the get_db_session context manager."""
         # Create a tenant using context manager
+        now = datetime.now(UTC)
         with get_db_session() as session:
             tenant = Tenant(
                 tenant_id="test_tenant",
@@ -60,6 +61,8 @@ class TestSessionManagement:
                 authorized_domains=["test.com"],
                 auto_approve_formats=["display_300x250"],
                 policy_settings={"enabled": True},
+                created_at=now,
+                updated_at=now,
             )
             session.add(tenant)
             session.commit()
@@ -76,12 +79,15 @@ class TestSessionManagement:
 
         class TestManager(DatabaseManager):
             def create_tenant(self, tenant_id: str, name: str) -> Tenant:
+                now = datetime.now(UTC)
                 tenant = Tenant(
                     tenant_id=tenant_id,
                     name=name,
                     subdomain=tenant_id.lower(),
                     authorized_emails=[],
                     policy_settings={},
+                    created_at=now,
+                    updated_at=now,
                 )
                 self.session.add(tenant)
                 return tenant
@@ -100,9 +106,16 @@ class TestSessionManagement:
     def test_get_or_404(self, test_db):
         """Test the get_or_404 helper function."""
         # Create a tenant
+        now = datetime.now(UTC)
         with get_db_session() as session:
             tenant = Tenant(
-                tenant_id="test3", name="Test 3", subdomain="test3", authorized_emails=[], policy_settings={}
+                tenant_id="test3",
+                name="Test 3",
+                subdomain="test3",
+                authorized_emails=[],
+                policy_settings={},
+                created_at=now,
+                updated_at=now,
             )
             session.add(tenant)
             session.commit()
@@ -217,6 +230,7 @@ class TestJSONValidation:
         """Test JSON validation in SQLAlchemy models."""
         with get_db_session() as session:
             # Test Tenant with valid JSON fields
+            now = datetime.now(UTC)
             tenant = Tenant(
                 tenant_id="json_test",
                 name="JSON Test",
@@ -225,6 +239,8 @@ class TestJSONValidation:
                 authorized_domains=["example.com"],  # Valid array
                 auto_approve_formats=["display_300x250"],  # Valid array
                 policy_settings={"enabled": True},  # Valid object
+                created_at=now,
+                updated_at=now,
             )
             session.add(tenant)
             session.commit()
@@ -241,8 +257,15 @@ class TestJSONValidation:
         """Test Principal platform_mappings validation."""
         with get_db_session() as session:
             # Create tenant first
+            now = datetime.now(UTC)
             tenant = Tenant(
-                tenant_id="test_tenant", name="Test", subdomain="test", authorized_emails=[], policy_settings={}
+                tenant_id="test_tenant",
+                name="Test",
+                subdomain="test",
+                authorized_emails=[],
+                policy_settings={},
+                created_at=now,
+                updated_at=now,
             )
             session.add(tenant)
 
@@ -253,6 +276,7 @@ class TestJSONValidation:
                 name="Test Principal",
                 access_token="token123",
                 platform_mappings={"mock": {"enabled": True}},
+                created_at=now,
             )
             session.add(principal)
             session.commit()
@@ -296,6 +320,7 @@ class TestIntegration:
         class WorkflowManager(DatabaseManager):
             def setup_tenant_with_products(self):
                 # Create tenant with validated JSON fields
+                now = datetime.now(UTC)
                 tenant = Tenant(
                     tenant_id="workflow_test",
                     name="Workflow Test",
@@ -304,6 +329,8 @@ class TestIntegration:
                     authorized_domains=["workflow.com"],
                     auto_approve_formats=["display_300x250", "video_16x9"],
                     policy_settings={"enabled": True, "require_approval": False, "max_daily_budget": 10000.0},
+                    created_at=now,
+                    updated_at=now,
                 )
                 self.session.add(tenant)
 
@@ -338,6 +365,7 @@ class TestIntegration:
                     name="Test Buyer",
                     access_token="buyer_token_123",
                     platform_mappings={"google_ad_manager": {"advertiser_id": "12345"}, "mock": {"test_mode": True}},
+                    created_at=now,
                 )
                 self.session.add(principal)
 

@@ -32,11 +32,13 @@ def authenticated_session(client):
 def test_tenant(integration_db):
     """Create a test tenant in the database."""
     import json
+    from datetime import UTC, datetime
 
     from database_session import get_db_session
     from models import Tenant
 
     tenant_data = TenantFactory.create()
+    now = datetime.now(UTC)
 
     with get_db_session() as session:
         tenant = Tenant(
@@ -48,6 +50,8 @@ def test_tenant(integration_db):
             auto_approve_formats=json.dumps([]),
             human_review_required=False,
             policy_settings=json.dumps({}),
+            created_at=now,
+            updated_at=now,
         )
         session.add(tenant)
         session.commit()

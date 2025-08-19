@@ -51,9 +51,12 @@ def populated_db(integration_db):
 @pytest.fixture
 def sample_tenant(integration_db):
     """Create a sample tenant for testing."""
+    from datetime import datetime
+
     from database_session import get_db_session
     from models import Tenant
 
+    now = datetime.now(UTC)
     with get_db_session() as session:
         tenant = Tenant(
             tenant_id="test_tenant",
@@ -68,6 +71,8 @@ def sample_tenant(integration_db):
             auto_approve_formats=["display_300x250"],
             human_review_required=False,
             admin_token="test_admin_token",
+            created_at=now,
+            updated_at=now,
         )
         session.add(tenant)
         session.commit()
@@ -86,12 +91,16 @@ def sample_principal(integration_db, sample_tenant):
     from models import Principal
 
     with get_db_session() as session:
+        from datetime import datetime
+
+        now = datetime.now(UTC)
         principal = Principal(
             tenant_id=sample_tenant["tenant_id"],
             principal_id="test_principal",
             name="Test Advertiser",
             access_token="test_token_12345",
             platform_mappings={"mock": {"id": "test_advertiser"}},
+            created_at=now,
         )
         session.add(principal)
         session.commit()
@@ -167,12 +176,17 @@ def sample_products(integration_db, sample_tenant):
     # Insert test data using ORM
     with get_db_session() as db_session:
         # Create tenant
+        from datetime import datetime
+
+        now = datetime.now(UTC)
         tenant = Tenant(
             tenant_id=tenant_data["tenant_id"],
             name=tenant_data["name"],
             subdomain=tenant_data["subdomain"],
             config=json.dumps({}),
             is_active=tenant_data["is_active"],
+            created_at=now,
+            updated_at=now,
         )
         db_session.add(tenant)
 
@@ -183,6 +197,7 @@ def sample_products(integration_db, sample_tenant):
             name=principal_data["name"],
             access_token=principal_data["access_token"],
             platform_mappings=principal_data["platform_mappings"],
+            created_at=now,
         )
         db_session.add(principal)
 
