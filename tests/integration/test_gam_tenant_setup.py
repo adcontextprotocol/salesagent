@@ -50,12 +50,21 @@ class TestGAMTenantSetup:
             self._create_test_schema(conn)
 
             # Mock database connection to use our test DB
-            with patch("setup_tenant.get_db_session") as mock_get_conn:
-                mock_conn = Mock()
-                mock_conn.execute = conn.execute
-                mock_conn.commit = conn.commit
-                mock_conn.close = Mock()  # Don't actually close the connection yet
-                mock_get_conn.return_value = mock_conn
+            with patch("setup_tenant.get_db_session") as mock_get_session:
+                # Create a mock session that works with SQLAlchemy ORM
+                mock_session = Mock()
+                mock_session.execute = conn.execute
+                mock_session.commit = conn.commit
+                mock_session.close = Mock()  # Don't actually close the connection yet
+                mock_session.query = Mock()  # Add query method for ORM operations
+                mock_session.add = Mock()  # Add method for adding objects
+                mock_session.flush = Mock()  # Add flush method
+
+                # Make it work as a context manager
+                mock_context = Mock()
+                mock_context.__enter__ = Mock(return_value=mock_session)
+                mock_context.__exit__ = Mock(return_value=None)
+                mock_get_session.return_value = mock_context
 
                 # Create args without network code (should work)
                 args = Mock()
@@ -110,12 +119,21 @@ class TestGAMTenantSetup:
             conn = sqlite3.connect(tmp_path)
             self._create_test_schema(conn)
 
-            with patch("setup_tenant.get_db_session") as mock_get_conn:
-                mock_conn = Mock()
-                mock_conn.execute = conn.execute
-                mock_conn.commit = conn.commit
-                mock_conn.close = Mock()  # Don't actually close the connection yet
-                mock_get_conn.return_value = mock_conn
+            with patch("setup_tenant.get_db_session") as mock_get_session:
+                # Create a mock session that works with SQLAlchemy ORM
+                mock_session = Mock()
+                mock_session.execute = conn.execute
+                mock_session.commit = conn.commit
+                mock_session.close = Mock()  # Don't actually close the connection yet
+                mock_session.query = Mock()  # Add query method for ORM operations
+                mock_session.add = Mock()  # Add method for adding objects
+                mock_session.flush = Mock()  # Add flush method
+
+                # Make it work as a context manager
+                mock_context = Mock()
+                mock_context.__enter__ = Mock(return_value=mock_session)
+                mock_context.__exit__ = Mock(return_value=None)
+                mock_get_session.return_value = mock_context
 
                 args = Mock()
                 args.name = "Test GAM Publisher With Code"

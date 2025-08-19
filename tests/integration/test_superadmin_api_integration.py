@@ -40,6 +40,42 @@ def api_key(client):
     return "sk-test-key"
 
 
+@pytest.fixture
+def test_tenant(integration_db):
+    """Create a test tenant."""
+    from datetime import UTC, datetime
+
+    from database_session import get_db_session
+    from models import Tenant
+
+    with get_db_session() as session:
+        # Create a test tenant
+        now = datetime.now(UTC)
+        tenant = Tenant(
+            tenant_id="test_tenant",
+            name="Test Tenant",
+            subdomain="test",
+            ad_server="mock",
+            max_daily_budget=10000,
+            enable_aee_signals=True,
+            auto_approve_formats=[],
+            human_review_required=False,
+            billing_plan="basic",
+            is_active=True,
+            created_at=now,
+            updated_at=now,
+        )
+        session.add(tenant)
+        session.commit()
+
+    yield tenant
+
+    # Cleanup
+    with get_db_session() as session:
+        session.query(Tenant).filter_by(tenant_id="test_tenant").delete()
+        session.commit()
+
+
 class TestSuperAdminAPIIntegration:
     """Integration tests for Super Admin API."""
 
@@ -124,7 +160,7 @@ class TestSuperAdminAPIIntegration:
         assert data["name"] == "Test News Publisher"
         assert data["subdomain"] == "test-news"
 
-    def test_list_tenants(self, client, api_key):
+    def test_list_tenants(self, client, api_key, test_tenant):
         """Test listing all tenants."""
         response = client.get("/api/v1/superadmin/tenants", headers={"X-Superadmin-API-Key": api_key})
 
@@ -178,7 +214,7 @@ class TestSuperAdminAPIIntegration:
         assert data["adapter_config"]["adapter_type"] == "google_ad_manager"
         assert data["adapter_config"]["has_refresh_token"] is True
 
-    def test_update_tenant(self, client, api_key):
+    def test_update_tenant(self, client, api_key, test_tenant):
         """Test updating a tenant."""
         # First create a tenant
         create_response = client.post(
@@ -219,7 +255,7 @@ class TestSuperAdminAPIIntegration:
         assert updated_data["adapter_config"]["gam_network_code"] == "987654321"
         assert updated_data["adapter_config"]["gam_company_id"] == "updated_company"
 
-    def test_soft_delete_tenant(self, client, api_key):
+    def test_soft_delete_tenant(self, client, api_key, test_tenant):
         """Test soft deleting a tenant."""
         # First create a tenant
         create_response = client.post(

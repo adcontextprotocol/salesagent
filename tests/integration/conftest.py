@@ -268,8 +268,9 @@ def mcp_server():
 
 
 @pytest.fixture
-def test_admin_app():
+def test_admin_app(integration_db):
     """Provide a test Admin UI app with real database."""
+    # integration_db ensures database tables are created
     from admin_ui import app
 
     app.config["TESTING"] = True
