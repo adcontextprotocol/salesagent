@@ -1,5 +1,5 @@
 # from .xandr import XandrAdapter  # Temporarily disabled - needs schema updates
-from .base import AdServerAdapter
+from .base import AdServerAdapter as AdServerAdapter
 from .creative_engine import CreativeEngineAdapter
 from .google_ad_manager import GoogleAdManager as GAMAdapter
 from .kevel import Kevel as KevelAdapter

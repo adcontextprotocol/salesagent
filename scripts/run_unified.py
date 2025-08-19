@@ -2,7 +2,6 @@
 """Run the unified AdCP server with Admin UI."""
 
 import os
-import sys
 
 # Set unified mode
 os.environ["ADCP_UNIFIED_MODE"] = "1"
@@ -18,6 +17,6 @@ if __name__ == "__main__":
     print(f"Admin UI: http://localhost:{port}/admin/")
     print(f"MCP Interface: http://localhost:{port}/mcp/")
     print(f"Tenant Admin: http://localhost:{port}/tenant/{{tenant_id}}/admin/")
-    print(f"Tenant MCP: Use x-adcp-tenant header or subdomain")
+    print("Tenant MCP: Use x-adcp-tenant header or subdomain")
 
     mcp.run(transport="http", host=host, port=port)

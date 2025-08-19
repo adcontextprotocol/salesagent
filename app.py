@@ -71,7 +71,7 @@ class TenantAdminMiddleware:
             if path.startswith("/tenant/") and "/admin" in path:
                 parts = path.split("/")
                 if len(parts) >= 4 and parts[3] == "admin":
-                    tenant_id = parts[2]
+                    parts[2]
                     # Rewrite path to route to Flask admin
                     admin_path = "/".join(parts[2:])  # Keep tenant/id/admin/...
                     scope["path"] = f"/admin/{admin_path}"

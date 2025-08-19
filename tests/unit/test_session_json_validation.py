@@ -35,7 +35,7 @@ def test_db():
     # Update SessionLocal for tests
     from database_session import db_session
 
-    TestSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+    _ = sessionmaker(autocommit=False, autoflush=False, bind=engine)
     db_session.configure(bind=engine)
 
     yield engine
@@ -88,7 +88,7 @@ class TestSessionManagement:
 
         # Use as context manager
         with TestManager() as manager:
-            tenant = manager.create_tenant("test2", "Test 2")
+            _ = manager.create_tenant("test2", "Test 2")
             # Commit happens automatically on exit
 
         # Verify creation

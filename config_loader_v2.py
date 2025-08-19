@@ -30,7 +30,7 @@ def get_default_tenant() -> dict[str, Any] | None:
             query = (
                 session.query(Tenant, AdapterConfig)
                 .outerjoin(AdapterConfig, Tenant.tenant_id == AdapterConfig.tenant_id)
-                .filter(Tenant.is_active == True)
+                .filter(Tenant.is_active)
                 .order_by((Tenant.tenant_id == "default").desc(), Tenant.created_at)
                 .first()
             )

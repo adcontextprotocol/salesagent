@@ -11,7 +11,7 @@ def get_tokens():
         print("\n🔑 TENANT TOKENS\n" + "=" * 50)
 
         # Get tenants
-        tenants = session.query(Tenant).filter(Tenant.is_active == True).all()
+        tenants = session.query(Tenant).filter(Tenant.is_active).all()
 
         for tenant in tenants:
             print(f"\n📍 Tenant: {tenant.name}")

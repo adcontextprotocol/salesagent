@@ -25,7 +25,7 @@ def init_db(exit_on_error=False):
         if tenant_count == 0:
             # No tenants exist - create a default one for simple use case
             admin_token = secrets.token_urlsafe(32)
-            api_token = secrets.token_urlsafe(32)
+            secrets.token_urlsafe(32)
 
             # Create default tenant
             default_tenant = Tenant(

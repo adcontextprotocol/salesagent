@@ -111,7 +111,7 @@ def main():
         found_length = None
 
         # Search for this column definition
-        for root, dirs, files in os.walk("."):
+        for root, _dirs, files in os.walk("."):
             if any(skip in root for skip in [".git", "__pycache__", ".venv", "alembic/versions"]):
                 continue
 

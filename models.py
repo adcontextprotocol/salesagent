@@ -31,7 +31,7 @@ class Tenant(Base, JSONValidatorMixin):
     __tablename__ = "tenants"
 
     tenant_id = Column(String(50), primary_key=True)
-    name = Column(String(255), nullable=False)
+    name = Column(String(200), nullable=False)
     subdomain = Column(String(100), unique=True, nullable=False)
     created_at = Column(DateTime, nullable=False, server_default=func.now())
     updated_at = Column(DateTime, nullable=False, server_default=func.now(), onupdate=func.now())
@@ -78,7 +78,7 @@ class CreativeFormat(Base):
 
     format_id = Column(String(50), primary_key=True)
     tenant_id = Column(String(50), ForeignKey("tenants.tenant_id", ondelete="CASCADE"), nullable=True)
-    name = Column(String(255), nullable=False)
+    name = Column(String(200), nullable=False)
     type = Column(String(20), nullable=False)
     description = Column(Text)
     width = Column(Integer)
@@ -114,7 +114,7 @@ class Product(Base, JSONValidatorMixin):
         primary_key=True,
     )
     product_id = Column(String(100), primary_key=True)
-    name = Column(String(255), nullable=False)
+    name = Column(String(200), nullable=False)
     description = Column(Text)
     formats = Column(JSON, nullable=False)  # JSONB in PostgreSQL
     targeting_template = Column(JSON, nullable=False)  # JSONB in PostgreSQL
@@ -141,8 +141,8 @@ class Principal(Base, JSONValidatorMixin):
         ForeignKey("tenants.tenant_id", ondelete="CASCADE"),
         primary_key=True,
     )
-    principal_id = Column(String(100), primary_key=True)
-    name = Column(String(255), nullable=False)
+    principal_id = Column(String(50), primary_key=True)
+    name = Column(String(200), nullable=False)
     platform_mappings = Column(JSON, nullable=False)  # JSONB in PostgreSQL
     access_token = Column(String(255), unique=True, nullable=False)
     created_at = Column(DateTime, server_default=func.now())
@@ -163,7 +163,7 @@ class User(Base):
     user_id = Column(String(50), primary_key=True)
     tenant_id = Column(String(50), ForeignKey("tenants.tenant_id", ondelete="CASCADE"), nullable=False)
     email = Column(String(255), unique=True, nullable=False)
-    name = Column(String(255), nullable=False)
+    name = Column(String(200), nullable=False)
     role = Column(String(20), nullable=False)
     google_id = Column(String(255))
     created_at = Column(DateTime, server_default=func.now())
@@ -186,7 +186,7 @@ class MediaBuy(Base):
 
     media_buy_id = Column(String(100), primary_key=True)
     tenant_id = Column(String(50), ForeignKey("tenants.tenant_id", ondelete="CASCADE"), nullable=False)
-    principal_id = Column(String(100), nullable=False)
+    principal_id = Column(String(50), nullable=False)
     order_name = Column(String(255), nullable=False)
     advertiser_name = Column(String(255), nullable=False)
     campaign_objective = Column(String(100))
@@ -194,7 +194,7 @@ class MediaBuy(Base):
     budget = Column(DECIMAL(15, 2))
     start_date = Column(Date, nullable=False)
     end_date = Column(Date, nullable=False)
-    status = Column(String(50), nullable=False, default="draft")
+    status = Column(String(20), nullable=False, default="draft")
     created_at = Column(DateTime, server_default=func.now())
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
     approved_at = Column(DateTime)
@@ -236,7 +236,7 @@ class Task(Base):
     task_type = Column(String(50), nullable=False)
     title = Column(String(255), nullable=False, default="")
     description = Column(Text)
-    status = Column(String(50), nullable=False, default="pending")
+    status = Column(String(20), nullable=False, default="pending")
     assigned_to = Column(String(255))
     due_date = Column(DateTime)
     completed_at = Column(DateTime)
@@ -256,7 +256,7 @@ class HumanTask(Base):
 
     task_id = Column(String(100), primary_key=True)
     media_buy_id = Column(String(100))
-    status = Column(String(50), nullable=False, default="pending")
+    status = Column(String(20), nullable=False, default="pending")
     task_metadata = Column(Text)
 
 
@@ -268,7 +268,7 @@ class AuditLog(Base):
     timestamp = Column(DateTime, server_default=func.now())
     operation = Column(String(100), nullable=False)
     principal_name = Column(String(255))
-    principal_id = Column(String(100))
+    principal_id = Column(String(50))
     adapter_id = Column(String(50))
     success = Column(Boolean, nullable=False)
     error_message = Column(Text)
@@ -340,7 +340,7 @@ class GAMInventory(Base):
         String(30), nullable=False
     )  # 'ad_unit', 'placement', 'label', 'custom_targeting_key', 'custom_targeting_value'
     inventory_id = Column(String(50), nullable=False)  # GAM ID
-    name = Column(String(255), nullable=False)
+    name = Column(String(200), nullable=False)
     path = Column(JSON)  # Array of path components for ad units
     status = Column(String(20), nullable=False)
     inventory_metadata = Column(JSON)  # Full inventory details
@@ -394,7 +394,7 @@ class GAMOrder(Base):
     id = Column(Integer, primary_key=True)
     tenant_id = Column(String(50), ForeignKey("tenants.tenant_id", ondelete="CASCADE"), nullable=False)
     order_id = Column(String(50), nullable=False)  # GAM Order ID
-    name = Column(String(255), nullable=False)
+    name = Column(String(200), nullable=False)
     advertiser_id = Column(String(50), nullable=True)
     advertiser_name = Column(String(255), nullable=True)
     agency_id = Column(String(50), nullable=True)
@@ -403,7 +403,7 @@ class GAMOrder(Base):
     trafficker_name = Column(String(255), nullable=True)
     salesperson_id = Column(String(50), nullable=True)
     salesperson_name = Column(String(255), nullable=True)
-    status = Column(String(30), nullable=False)  # DRAFT, PENDING_APPROVAL, APPROVED, PAUSED, CANCELED, DELETED
+    status = Column(String(20), nullable=False)  # DRAFT, PENDING_APPROVAL, APPROVED, PAUSED, CANCELED, DELETED
     start_date = Column(DateTime, nullable=True)
     end_date = Column(DateTime, nullable=True)
     unlimited_end_date = Column(Boolean, nullable=False, default=False)
@@ -447,8 +447,8 @@ class GAMLineItem(Base):
     tenant_id = Column(String(50), ForeignKey("tenants.tenant_id", ondelete="CASCADE"), nullable=False)
     line_item_id = Column(String(50), nullable=False)  # GAM Line Item ID
     order_id = Column(String(50), nullable=False)  # GAM Order ID
-    name = Column(String(255), nullable=False)
-    status = Column(String(30), nullable=False)  # DRAFT, PENDING_APPROVAL, APPROVED, PAUSED, ARCHIVED, CANCELED
+    name = Column(String(200), nullable=False)
+    status = Column(String(20), nullable=False)  # DRAFT, PENDING_APPROVAL, APPROVED, PAUSED, ARCHIVED, CANCELED
     line_item_type = Column(String(30), nullable=False)  # STANDARD, SPONSORSHIP, NETWORK, HOUSE, etc.
     priority = Column(Integer, nullable=True)
     start_date = Column(DateTime, nullable=True)
@@ -553,7 +553,7 @@ class Context(Base):
 
     context_id = Column(String(100), primary_key=True)
     tenant_id = Column(String(50), ForeignKey("tenants.tenant_id", ondelete="CASCADE"), nullable=False)
-    principal_id = Column(String(100), nullable=False)
+    principal_id = Column(String(50), nullable=False)
 
     # Simple conversation tracking
     conversation_history = Column(JSON, nullable=False, default=list)  # Clarifications and refinements only

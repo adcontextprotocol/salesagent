@@ -150,7 +150,7 @@ class FoundationalFormatsManager:
         # Validate dimension modifications
         if "dimensions" in modifications:
             base_dims = base_format.specs.get("base_dimensions", {})
-            for platform, dims in modifications["dimensions"].items():
+            for platform, _dims in modifications["dimensions"].items():
                 if platform not in base_dims and platform not in ["desktop", "tablet", "mobile"]:
                     errors.append(f"Unknown platform: {platform}")
 

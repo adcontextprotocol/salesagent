@@ -434,7 +434,7 @@ class XandrAdapter(AdServerAdapter):
                 io["state"] = "active" if updates.status == "active" else "inactive"
 
             # Update IO
-            update_response = self._make_request("PUT", f"/insertion-order?id={io_id}", {"insertion-order": io})
+            self._make_request("PUT", f"/insertion-order?id={io_id}", {"insertion-order": io})
 
             return MediaBuy(
                 media_buy_id=media_buy_id, platform_id=io_id, order_name=io["name"], status=io["state"], details=None

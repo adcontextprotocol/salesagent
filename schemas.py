@@ -652,12 +652,6 @@ class AssetStatus(BaseModel):
     status: str
 
 
-class CheckMediaBuyStatusResponse(BaseModel):
-    media_buy_id: str
-    status: str
-    last_updated: datetime | None = None
-
-
 class UpdateMediaBuyResponse(BaseModel):
     status: str
     implementation_date: datetime | None = None

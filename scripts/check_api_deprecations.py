@@ -62,7 +62,7 @@ def check_file(filepath: str) -> list[str]:
         tree = ast.parse(content)
         deprecated_calls = find_deprecated_calls(tree, filepath)
 
-        for api_name, line_no, usage_type in deprecated_calls:
+        for api_name, line_no, _usage_type in deprecated_calls:
             api_info = DEPRECATED_APIS[api_name]
 
             # Check if there's a TODO comment near this usage
@@ -121,7 +121,7 @@ def main():
     all_issues = []
 
     # Check Python files in adapters directory
-    for root, dirs, files in os.walk("adapters"):
+    for root, _dirs, files in os.walk("adapters"):
         for file in files:
             if file.endswith(".py"):
                 filepath = os.path.join(root, file)

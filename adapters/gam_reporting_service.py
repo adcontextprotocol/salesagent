@@ -49,6 +49,7 @@ class GAMReportingService:
         """
         self.client = gam_client
         self.report_service = self.client.GetService("ReportService")
+        # TODO: Replace deprecated GetDataDownloader with ReportService method
         self.report_downloader = self.client.GetDataDownloader()
 
         # Get network timezone from GAM if not provided
@@ -574,9 +575,9 @@ class GAMReportingService:
         avg_ecpm = (total_spend / total_impressions * 1000) if total_impressions > 0 else 0.0
 
         # Count unique entities
-        unique_advertisers = len(set(row["advertiser_id"] for row in data if row["advertiser_id"]))
-        unique_orders = len(set(row["order_id"] for row in data if row["order_id"]))
-        unique_line_items = len(set(row["line_item_id"] for row in data if row["line_item_id"]))
+        unique_advertisers = len({row["advertiser_id"] for row in data if row["advertiser_id"]})
+        unique_orders = len({row["order_id"] for row in data if row["order_id"]})
+        unique_line_items = len({row["line_item_id"] for row in data if row["line_item_id"]})
 
         return {
             "total_impressions": total_impressions,
@@ -838,7 +839,7 @@ class GAMReportingService:
             "metrics": metrics,
             "ad_units": sorted_ad_units,
             "advertisers": advertiser_names,  # Include advertiser name mapping
-            "countries": sorted(list(all_countries)),  # Include all countries for filter
+            "countries": sorted(all_countries),  # Include all countries for filter
             "raw_data": filtered_data,  # Include full data for filters
             "total_ad_units": len(sorted_ad_units),
             "filtered_by_country": country,

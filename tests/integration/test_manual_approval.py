@@ -180,7 +180,7 @@ async def main():
     await asyncio.sleep(1)
 
     # Review pending tasks
-    tasks = await review_pending_tasks()
+    await review_pending_tasks()
 
     # Demonstrate approval workflow
     if create_task_id:
