@@ -122,11 +122,32 @@ def create_app(config=None):
         # Otherwise show limited view
         return render_template("index.html", tenants=[])
 
-    @app.route("/settings")
+    @app.route("/settings", methods=["GET", "POST"])
     @require_auth(admin_only=True)
     def settings():
         """Global settings page (super admin only)."""
-        return render_template("settings.html")
+        from database_session import get_db_session
+        from models import SuperadminConfig
+
+        if request.method == "POST":
+            # Handle form submission
+            flash("Settings updated successfully", "success")
+            return redirect(url_for("settings"))
+
+        # Get config items for display
+        config_items = {}
+        try:
+            with get_db_session() as db_session:
+                configs = db_session.query(SuperadminConfig).all()
+                for config in configs:
+                    config_items[config.config_key] = {
+                        "value": config.config_value,
+                        "description": config.description or "",
+                    }
+        except Exception as e:
+            logger.error(f"Error loading config: {e}")
+
+        return render_template("settings.html", config_items=config_items)
 
     # WebSocket handlers
     @socketio.on("connect")

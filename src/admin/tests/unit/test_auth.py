@@ -110,22 +110,67 @@ class TestAuthUtilities:
         mock_session = MagicMock()
         mock_get_db_session.return_value.__enter__.return_value = mock_session
 
-        # Mock user record
-        mock_user = Mock()
-        mock_user.is_admin = True
-        mock_user.is_active = True
-        mock_session.query.return_value.filter_by.return_value.first.return_value = mock_user
+        # Create mock for SuperadminConfig query that always returns None
+        mock_superadmin_query = MagicMock()
+        mock_superadmin_query.filter_by.return_value.first.return_value = None
 
-        # Test admin check
+        # Test 1: User is admin
+        mock_user_admin = Mock()
+        mock_user_admin.is_admin = True
+        mock_user_admin.is_active = True
+
+        mock_user_query_admin = MagicMock()
+        mock_user_query_admin.filter_by.return_value.filter_by.return_value.first.return_value = mock_user_admin
+
+        def query_side_effect_admin(model):
+            if hasattr(model, "__name__"):
+                if model.__name__ == "SuperadminConfig":
+                    return mock_superadmin_query
+                elif model.__name__ == "User":
+                    return mock_user_query_admin
+            return mock_user_query_admin
+
+        mock_session.query.side_effect = query_side_effect_admin
         assert is_tenant_admin("admin@tenant.com", "tenant_123")
 
-        # Test non-admin
-        mock_user.is_admin = False
+        # Test 2: User is not admin
+        mock_user_not_admin = Mock()
+        mock_user_not_admin.is_admin = False
+        mock_user_not_admin.is_active = True
+
+        mock_user_query_not_admin = MagicMock()
+        # When is_admin=False, the filter_by chain should return no results (None)
+        mock_user_query_not_admin.filter_by.return_value.filter_by.return_value.first.return_value = None
+
+        def query_side_effect_not_admin(model):
+            if hasattr(model, "__name__"):
+                if model.__name__ == "SuperadminConfig":
+                    return mock_superadmin_query
+                elif model.__name__ == "User":
+                    return mock_user_query_not_admin
+            return mock_user_query_not_admin
+
+        mock_session.query.side_effect = query_side_effect_not_admin
         assert not is_tenant_admin("user@tenant.com", "tenant_123")
 
-        # Test inactive user
-        mock_user.is_admin = True
-        mock_user.is_active = False
+        # Test 3: User is inactive
+        mock_user_inactive = Mock()
+        mock_user_inactive.is_admin = True
+        mock_user_inactive.is_active = False
+
+        mock_user_query_inactive = MagicMock()
+        # When is_active=False, the filter_by chain should return no results (None)
+        mock_user_query_inactive.filter_by.return_value.filter_by.return_value.first.return_value = None
+
+        def query_side_effect_inactive(model):
+            if hasattr(model, "__name__"):
+                if model.__name__ == "SuperadminConfig":
+                    return mock_superadmin_query
+                elif model.__name__ == "User":
+                    return mock_user_query_inactive
+            return mock_user_query_inactive
+
+        mock_session.query.side_effect = query_side_effect_inactive
         assert not is_tenant_admin("admin@tenant.com", "tenant_123")
 
 

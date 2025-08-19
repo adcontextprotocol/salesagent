@@ -124,6 +124,17 @@ class TestAuthDecorators:
         app = Flask(__name__)
         app.config["SECRET_KEY"] = "test"
 
+        # Add a dummy login route so url_for("auth.login") works
+        from flask import Blueprint
+
+        auth_bp = Blueprint("auth", __name__)
+
+        @auth_bp.route("/login")
+        def login():
+            return "Login page"
+
+        app.register_blueprint(auth_bp)
+
         @app.route("/protected")
         @require_auth()
         def protected():
