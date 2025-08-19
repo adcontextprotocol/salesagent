@@ -1,4 +1,5 @@
 import json
+import logging
 import os
 import time
 import uuid
@@ -15,7 +16,10 @@ from adapters.kevel import Kevel
 from adapters.mock_ad_server import MockAdServer as MockAdServerAdapter
 from adapters.mock_creative_engine import MockCreativeEngine
 from adapters.triton_digital import TritonDigital
-from audit_logger import get_audit_logger, logger
+from audit_logger import get_audit_logger
+
+logger = logging.getLogger(__name__)
+import schemas
 from config_loader import (
     get_current_tenant,
     load_config,
@@ -24,7 +28,8 @@ from config_loader import (
 from context_manager import get_context_manager
 from database_session import get_db_session
 from init_database import init_db
-from models import AdapterConfig, MediaBuy, Principal, Product, Task, Tenant
+from models import AdapterConfig, MediaBuy, Product, Task, Tenant
+from models import Principal as ModelPrincipal
 from policy_check_service import PolicyCheckService, PolicyStatus
 from product_catalog_providers.factory import get_product_catalog_provider
 from schemas import *
@@ -80,9 +85,7 @@ def get_principal_from_token(token: str, tenant_id: str) -> str | None:
 
     # Use standardized session management
     with get_db_session() as session:
-        from models import Principal
-
-        principal = session.query(Principal).filter_by(access_token=token, tenant_id=tenant_id).first()
+        principal = session.query(ModelPrincipal).filter_by(access_token=token, tenant_id=tenant_id).first()
 
         return principal.principal_id if principal else None
 
@@ -159,7 +162,9 @@ def get_principal_adapter_mapping(principal_id: str) -> dict[str, Any]:
     """Get the platform mappings for a principal."""
     tenant = get_current_tenant()
     with get_db_session() as session:
-        principal = session.query(Principal).filter_by(principal_id=principal_id, tenant_id=tenant["tenant_id"]).first()
+        principal = (
+            session.query(ModelPrincipal).filter_by(principal_id=principal_id, tenant_id=tenant["tenant_id"]).first()
+        )
         return principal.platform_mappings if principal else {}
 
 
@@ -167,7 +172,9 @@ def get_principal_object(principal_id: str) -> schemas.Principal | None:
     """Get a Principal object for the given principal_id."""
     tenant = get_current_tenant()
     with get_db_session() as session:
-        principal = session.query(Principal).filter_by(principal_id=principal_id, tenant_id=tenant["tenant_id"]).first()
+        principal = (
+            session.query(ModelPrincipal).filter_by(principal_id=principal_id, tenant_id=tenant["tenant_id"]).first()
+        )
 
         if principal:
             return schemas.Principal(
@@ -366,10 +373,10 @@ def log_tool_activity(context: Context, tool_name: str, start_time: float = None
 
         if principal_id:
             with get_db_session() as session:
-                from models import Principal
-
                 principal = (
-                    session.query(Principal).filter_by(principal_id=principal_id, tenant_id=tenant["tenant_id"]).first()
+                    session.query(ModelPrincipal)
+                    .filter_by(principal_id=principal_id, tenant_id=tenant["tenant_id"])
+                    .first()
                 )
                 if principal:
                     principal_name = principal.name
@@ -862,10 +869,10 @@ def create_media_buy(req: CreateMediaBuyRequest, context: Context) -> CreateMedi
     try:
         principal_name = "Unknown"
         with get_db_session() as session:
-            from models import Principal
-
             principal = (
-                session.query(Principal).filter_by(principal_id=principal_id, tenant_id=tenant["tenant_id"]).first()
+                session.query(ModelPrincipal)
+                .filter_by(principal_id=principal_id, tenant_id=tenant["tenant_id"])
+                .first()
             )
             if principal:
                 principal_name = principal.name

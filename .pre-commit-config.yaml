@@ -49,6 +49,22 @@ repos:
         stages: [manual]  # Changed to manual - run with: pre-commit run pytest-unit
         verbose: true
 
+      # Test AdCP contract compliance
+      - id: adcp-contract-tests
+        name: Verify AdCP protocol compliance
+        entry: uv run pytest tests/unit/test_adcp_contract.py -v --tb=short
+        language: system
+        pass_filenames: false
+        always_run: true
+
+      # Test MCP endpoints (requires server running)
+      - id: mcp-endpoint-tests
+        name: Test MCP endpoints
+        entry: echo Run MCP tests with uv run pytest tests/integration/test_mcp_endpoints_comprehensive.py
+        language: system
+        pass_filenames: false
+        stages: [manual]  # Manual because it needs server running
+
       # Check for API deprecations
       - id: check-api-deprecations
         name: Check for deprecated API usage

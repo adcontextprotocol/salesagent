@@ -807,6 +807,7 @@ def create_inventory_endpoints(app):
             principal = Principal(
                 principal_id="system",
                 name="System",
+                access_token="system_token",  # Required field
                 platform_mappings={"gam_advertiser_id": adapter_config.gam_company_id or "system"},
             )
 

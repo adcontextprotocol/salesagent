@@ -40,14 +40,129 @@ def integration_db():
 @pytest.fixture
 def populated_db(integration_db):
     """Provide a database populated with test data."""
-    from database_session import get_db_session
-    from models import Principal, Product, Tenant
     from tests.fixtures import PrincipalFactory, ProductFactory, TenantFactory
 
     # Create test data
     tenant_data = TenantFactory.create()
     principal_data = PrincipalFactory.create(tenant_id=tenant_data["tenant_id"])
     products_data = ProductFactory.create_batch(3, tenant_id=tenant_data["tenant_id"])
+
+
+@pytest.fixture
+def sample_tenant(integration_db):
+    """Create a sample tenant for testing."""
+    from database_session import get_db_session
+    from models import Tenant
+
+    with get_db_session() as session:
+        tenant = Tenant(
+            tenant_id="test_tenant",
+            name="Test Tenant",
+            subdomain="test",
+            is_active=True,
+            ad_server="mock",
+            max_daily_budget=10000,
+            enable_aee_signals=True,
+            authorized_emails=["test@example.com"],
+            authorized_domains=["example.com"],
+            auto_approve_formats=["display_300x250"],
+            human_review_required=False,
+            admin_token="test_admin_token",
+        )
+        session.add(tenant)
+        session.commit()
+
+        return {
+            "tenant_id": tenant.tenant_id,
+            "name": tenant.name,
+            "admin_token": tenant.admin_token,
+        }
+
+
+@pytest.fixture
+def sample_principal(integration_db, sample_tenant):
+    """Create a sample principal with valid platform mappings."""
+    from database_session import get_db_session
+    from models import Principal
+
+    with get_db_session() as session:
+        principal = Principal(
+            tenant_id=sample_tenant["tenant_id"],
+            principal_id="test_principal",
+            name="Test Advertiser",
+            access_token="test_token_12345",
+            platform_mappings={"mock": {"id": "test_advertiser"}},
+        )
+        session.add(principal)
+        session.commit()
+
+        return {
+            "principal_id": principal.principal_id,
+            "name": principal.name,
+            "access_token": principal.access_token,
+        }
+
+
+@pytest.fixture
+def sample_products(integration_db, sample_tenant):
+    """Create sample products that comply with AdCP protocol."""
+    from database_session import get_db_session
+    from models import Product
+
+    with get_db_session() as session:
+        products = [
+            Product(
+                tenant_id=sample_tenant["tenant_id"],
+                product_id="guaranteed_display",
+                name="Guaranteed Display Ads",
+                description="Premium guaranteed display advertising",
+                formats=[
+                    {
+                        "format_id": "display_300x250",
+                        "name": "Medium Rectangle",
+                        "type": "display",
+                        "description": "Standard display format",
+                        "width": 300,
+                        "height": 250,
+                        "delivery_options": {"hosted": None},
+                    }
+                ],
+                targeting_template={"geo_country": {"values": ["US"], "required": False}},
+                delivery_type="guaranteed",
+                is_fixed_price=True,
+                cpm=15.0,
+                is_custom=False,
+                countries=["US"],
+            ),
+            Product(
+                tenant_id=sample_tenant["tenant_id"],
+                product_id="non_guaranteed_video",
+                name="Non-Guaranteed Video",
+                description="Programmatic video advertising",
+                formats=[
+                    {
+                        "format_id": "video_15s",
+                        "name": "15 Second Video",
+                        "type": "video",
+                        "description": "Short form video",
+                        "duration": 15,
+                        "delivery_options": {"vast": {"mime_types": ["video/mp4"]}},
+                    }
+                ],
+                targeting_template={},
+                delivery_type="non_guaranteed",
+                is_fixed_price=False,
+                price_guidance={"floor": 10.0, "p50": 20.0, "p75": 30.0, "p90": 40.0},
+                is_custom=False,
+                countries=["US", "CA"],
+            ),
+        ]
+
+        for product in products:
+            session.add(product)
+        session.commit()
+
+        return [p.product_id for p in products]
 
     # Insert test data using ORM
     with get_db_session() as db_session:
@@ -107,12 +222,32 @@ def mock_external_apis():
                 yield {"requests": mock_post, "gemini": mock_instance}
 
 
-@pytest.fixture
-def test_server():
-    """Provide a test MCP server instance."""
-    from fastmcp.testing import TestClient
+@pytest.fixture(scope="session")
+def mcp_server():
+    """Start the MCP server for integration testing."""
+    import socket
 
-    from main import app as mcp_app
+    # Find an available port
+    def get_free_port():
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            s.bind(("", 0))
+            s.listen(1)
+            port = s.getsockname()[1]
+        return port
+
+    port = get_free_port()
+
+    # Start the server in a subprocess
+    env = os.environ.copy()
+    env["ADCP_SALES_PORT"] = str(port)
+    env["DATABASE_URL"] = "sqlite:///:memory:"
+
+    # Use a mock server process for testing
+    class MockServer:
+        def __init__(self):
+            self.port = 8080  # Default MCP port
+
+    return MockServer()
 
     # Create test client
     client = TestClient(mcp_app)

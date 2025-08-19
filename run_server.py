@@ -3,8 +3,6 @@
 
 import os
 
-import uvicorn
-
 from database import init_db
 
 # Initialize database first (exit on error since this is the main process)
@@ -20,4 +18,4 @@ if __name__ == "__main__":
     print(f"🌐 Starting MCP server on {host}:{port}")
 
     # Start the MCP server
-    uvicorn.run(mcp.get_asgi_app(), host=host, port=port, log_level="info")
+    mcp.run(transport="http", host=host, port=port)

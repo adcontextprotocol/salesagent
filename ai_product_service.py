@@ -98,7 +98,7 @@ class AIProductConfigurationService:
                     principal_id="ai_config_temp",
                     name="AI Configuration Service",
                     access_token="ai_config_token",
-                    platform_mappings={},
+                    platform_mappings={"mock": {"id": "system"}},  # Default mock mapping
                 )
             else:
                 from schemas import Principal
