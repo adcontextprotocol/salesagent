@@ -103,7 +103,7 @@ class TestGAMLineItemViewer:
         mock_adapter.config = json.dumps({"network_code": "123456", "advertiser_id": "789"})
 
         # Setup complex mocking for the database session
-        with patch("admin_ui.db_session") as mock_db_session:
+        with patch("database_session.db_session") as mock_db_session:
             # Mock for GAM line items and orders
             mock_gam_line_item = MagicMock()
             mock_gam_line_item.line_item_id = 5834526917
@@ -261,7 +261,7 @@ def test_view_line_item_page(test_admin_app):
     mock_tenant.name = "Test Publisher"
     mock_tenant.subdomain = "test"
 
-    with patch("admin_ui.db_session") as mock_db_session:
+    with patch("database_session.db_session") as mock_db_session:
         mock_query = MagicMock()
         mock_query.filter_by.return_value.first.return_value = mock_tenant
         mock_db_session.query.return_value = mock_query
