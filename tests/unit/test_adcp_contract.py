@@ -12,7 +12,7 @@ from decimal import Decimal
 
 import pytest
 
-from models import Principal as PrincipalModel
+from models import Principal as PrincipalModel  # noqa: validate-model-imports - Need both for contract test
 from models import Product as ProductModel
 from schemas import (
     CreateMediaBuyRequest,

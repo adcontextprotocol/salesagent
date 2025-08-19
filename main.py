@@ -28,11 +28,16 @@ from config_loader import (
 from context_manager import get_context_manager
 from database_session import get_db_session
 from init_database import init_db
-from models import AdapterConfig, MediaBuy, Product, Task, Tenant
+from models import AdapterConfig, MediaBuy, Task, Tenant
+from models import HumanTask as ModelHumanTask
 from models import Principal as ModelPrincipal
+from models import Product as ModelProduct
 from policy_check_service import PolicyCheckService, PolicyStatus
 from product_catalog_providers.factory import get_product_catalog_provider
 from schemas import *
+
+# CRITICAL: Re-import models AFTER wildcard to prevent collision
+# The wildcard import overwrites Product, Principal, HumanTask
 from slack_notifier import get_slack_notifier
 
 # Initialize Rich console
@@ -934,9 +939,7 @@ def check_media_buy_status(req: CheckMediaBuyStatusRequest, context: Context) ->
 
         # Check for any pending human tasks
         with get_db_session() as session:
-            from models import HumanTask
-
-            pending_task = session.query(HumanTask).filter_by(media_buy_id=media_buy_id, status="pending").first()
+            pending_task = session.query(ModelHumanTask).filter_by(media_buy_id=media_buy_id, status="pending").first()
 
             if pending_task:
                 status = "pending_manual"
@@ -2606,7 +2609,7 @@ def get_product_catalog() -> list[schemas.Product]:
     tenant = get_current_tenant()
 
     with get_db_session() as session:
-        products = session.query(Product).filter_by(tenant_id=tenant["tenant_id"]).all()
+        products = session.query(ModelProduct).filter_by(tenant_id=tenant["tenant_id"]).all()
 
         loaded_products = []
         for product in products:
