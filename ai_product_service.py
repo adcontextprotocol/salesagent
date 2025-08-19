@@ -85,8 +85,6 @@ class AIProductConfigurationService:
             if not tenant:
                 raise ValueError(f"Tenant {tenant_id} not found")
 
-            ad_server = tenant.ad_server
-
             # Get a principal for this tenant (use first available)
             principal_model = db_session.query(PrincipalModel).filter_by(tenant_id=tenant_id).first()
 
@@ -124,11 +122,39 @@ class AIProductConfigurationService:
             adapter_config_row = db_session.query(AdapterConfig).filter_by(tenant_id=tenant_id).first()
             adapter_config = {}
             if adapter_config_row:
-                # Convert ORM object to dict
-                adapter_config = {
-                    "adapter_type": adapter_config_row.adapter_type,
-                    "config": json.loads(adapter_config_row.config) if adapter_config_row.config else {},
-                }
+                # Build config from individual fields based on adapter type
+                adapter_config = {"adapter_type": adapter_config_row.adapter_type, "enabled": True}
+
+                if adapter_config_row.adapter_type == "mock":
+                    adapter_config["dry_run"] = adapter_config_row.mock_dry_run or False
+
+                elif adapter_config_row.adapter_type == "google_ad_manager":
+                    adapter_config.update(
+                        {
+                            "network_code": adapter_config_row.gam_network_code,
+                            "refresh_token": adapter_config_row.gam_refresh_token,
+                            "company_id": adapter_config_row.gam_company_id,
+                            "trafficker_id": adapter_config_row.gam_trafficker_id,
+                            "manual_approval_required": adapter_config_row.gam_manual_approval_required or False,
+                        }
+                    )
+
+                elif adapter_config_row.adapter_type == "kevel":
+                    adapter_config.update(
+                        {
+                            "network_id": adapter_config_row.kevel_network_id,
+                            "api_key": adapter_config_row.kevel_api_key,
+                            "manual_approval_required": adapter_config_row.kevel_manual_approval_required or False,
+                        }
+                    )
+
+                elif adapter_config_row.adapter_type == "triton":
+                    adapter_config.update(
+                        {
+                            "station_id": adapter_config_row.triton_station_id,
+                            "api_key": adapter_config_row.triton_api_key,
+                        }
+                    )
 
         # Create adapter instance
         adapter = adapter_class(
@@ -156,7 +182,7 @@ class AIProductConfigurationService:
         with get_db_session() as db_session:
             formats_query = (
                 db_session.query(CreativeFormat)
-                .filter((CreativeFormat.tenant_id == None) | (CreativeFormat.tenant_id == tenant_id))
+                .filter((CreativeFormat.tenant_id is None) | (CreativeFormat.tenant_id == tenant_id))
                 .order_by(CreativeFormat.is_standard.desc(), CreativeFormat.type, CreativeFormat.name)
             )
 
@@ -271,22 +297,7 @@ class AIProductConfigurationService:
         # Analyze inventory first
         inventory_analysis = self._analyze_inventory_for_product(description, inventory)
 
-        # Prepare context for AI
-        context = {
-            "description": {
-                "name": description.name,
-                "external": description.external_description,
-                "internal": description.internal_details,
-            },
-            "available_inventory": {
-                "placements": inventory.placements,
-                "ad_units": inventory.ad_units,
-                "targeting": inventory.targeting_options,
-            },
-            "creative_formats": creative_formats,
-            "adapter": adapter_type,
-            "analysis": inventory_analysis,
-        }
+        # Prepare context for AI (used in prompt generation below)
 
         prompt = f"""
         You are an expert ad operations specialist. Create an optimal product configuration

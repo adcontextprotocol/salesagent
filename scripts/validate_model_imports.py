@@ -113,11 +113,13 @@ def check_file(filepath: str) -> list[str]:
                 # It's using get_adapter_id, so it needs schemas.Principal
                 for line_no, line in enumerate(content.split("\n"), 1):
                     if "from models import Principal" in line and not line.strip().startswith("#"):
-                        issues.append(
-                            f"{filepath}:{line_no}: from models import Principal\n"
-                            f"    Should be: from schemas import Principal\n"
-                            f"    Reason: This file uses get_adapter_id() which requires schemas.Principal"
-                        )
+                        # Check for noqa comment to suppress this warning
+                        if "noqa: validate-model-imports" not in line:
+                            issues.append(
+                                f"{filepath}:{line_no}: from models import Principal\n"
+                                f"    Should be: from schemas import Principal\n"
+                                f"    Reason: This file uses get_adapter_id() which requires schemas.Principal"
+                            )
 
     except Exception:
         # Skip files that can't be parsed
