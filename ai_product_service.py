@@ -78,12 +78,20 @@ class AIProductConfigurationService:
     async def _fetch_ad_server_inventory(self, tenant_id: str, adapter_type: str) -> AdServerInventory:
         """Fetch available inventory from ad server."""
 
+        # Validate tenant_id to prevent injection
+        import re
+
+        if not tenant_id or not re.match(r"^[a-zA-Z0-9_-]+$", tenant_id) or len(tenant_id) > 100:
+            logger.error(f"Invalid tenant_id format: {tenant_id}")
+            return AdServerInventory(ad_units=[], targeting_keys=[], formats=[])
+
         # Get adapter configuration and principal
         with get_db_session() as db_session:
             # Get tenant ad server
             tenant = db_session.query(Tenant).filter_by(tenant_id=tenant_id).first()
             if not tenant:
-                raise ValueError(f"Tenant {tenant_id} not found")
+                logger.error(f"Tenant {tenant_id} not found")
+                return AdServerInventory(ad_units=[], targeting_keys=[], formats=[])
 
             # Get a principal for this tenant (use first available)
             principal_model = db_session.query(PrincipalModel).filter_by(tenant_id=tenant_id).first()
@@ -103,7 +111,18 @@ class AIProductConfigurationService:
 
                 mappings = principal_model.platform_mappings
                 if isinstance(mappings, str):
-                    mappings = json.loads(mappings)
+                    try:
+                        mappings = json.loads(mappings)
+                        if not isinstance(mappings, dict):
+                            logger.warning(
+                                f"Invalid platform mappings for principal {principal_model.principal_id}: not a dict"
+                            )
+                            mappings = {}
+                    except (json.JSONDecodeError, TypeError) as e:
+                        logger.warning(
+                            f"Failed to parse platform mappings for principal {principal_model.principal_id}: {e}"
+                        )
+                        mappings = {}
                 principal = Principal(
                     principal_id=principal_model.principal_id,
                     name=principal_model.name,
@@ -165,7 +184,11 @@ class AIProductConfigurationService:
         )
 
         # Fetch inventory from adapter
-        inventory_data = await adapter.get_available_inventory()
+        try:
+            inventory_data = await adapter.get_available_inventory()
+        except Exception as e:
+            logger.error(f"Failed to fetch inventory from {adapter_type}: {e}")
+            return AdServerInventory(ad_units=[], targeting_keys=[], formats=[])
 
         return AdServerInventory(
             placements=inventory_data.get("placements", []),
