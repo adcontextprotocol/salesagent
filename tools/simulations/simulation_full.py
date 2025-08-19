@@ -61,8 +61,10 @@ class FullLifecycleSimulation:
             # Dry run logs are now shown by adapters during execution
             # await self._show_dry_run_logs()
 
-    async def _call_tool(self, tool_name: str, params: dict = {}) -> dict:
+    async def _call_tool(self, tool_name: str, params: dict = None) -> dict:
         """Call a tool and return structured content."""
+        if params is None:
+            params = {}
         try:
             result = await self.client.call_tool(tool_name, params)
             return result.structured_content if hasattr(result, "structured_content") else {}

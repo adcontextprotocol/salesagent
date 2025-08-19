@@ -40,7 +40,9 @@ class CustomAuthSimulation:
                 return
             await self._phase_2_verify_access()
 
-    async def _step(self, title: str, tool_name: str, params: dict = {}) -> dict:
+    async def _step(self, title: str, tool_name: str, params: dict = None) -> dict:
+        if params is None:
+            params = {}
         console.print(f"\n[bold cyan]{title}[/bold cyan]")
         try:
             result = await self.client.call_tool(tool_name, params)

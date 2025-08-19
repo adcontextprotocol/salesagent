@@ -197,8 +197,8 @@ def main():
         print(f"  Description: {fmt.description}")
 
     # Create publisher extensions
-    nytimes_formats = create_nytimes_extensions(manager)
-    yahoo_formats = create_yahoo_extensions(manager)
+    create_nytimes_extensions(manager)
+    create_yahoo_extensions(manager)
 
     # Demonstrate compatibility checking
     demonstrate_compatibility_check(manager)

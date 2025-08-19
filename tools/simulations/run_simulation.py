@@ -69,7 +69,7 @@ class SimulationRunner:
                 # Create .adcp subdirectory as expected by the app
                 adcp_dir = os.path.join(self.temp_dir, ".adcp")
                 os.makedirs(adcp_dir, exist_ok=True)
-                test_db_path = os.path.join(adcp_dir, "adcp.db")
+                os.path.join(adcp_dir, "adcp.db")
 
                 console.print(f"📊 Creating test database in {self.temp_dir}...")
 
@@ -111,7 +111,7 @@ class SimulationRunner:
 
             # Wait for server to start
             max_attempts = 30
-            for i in range(max_attempts):
+            for _i in range(max_attempts):
                 try:
                     with socket.create_connection(("127.0.0.1", self.port), timeout=1):
                         console.print(f"[green]✓ Server started successfully on port {self.port}[/green]")

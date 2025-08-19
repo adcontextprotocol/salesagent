@@ -44,8 +44,8 @@ def populated_db(integration_db):
 
     # Create test data
     tenant_data = TenantFactory.create()
-    principal_data = PrincipalFactory.create(tenant_id=tenant_data["tenant_id"])
-    products_data = ProductFactory.create_batch(3, tenant_id=tenant_data["tenant_id"])
+    PrincipalFactory.create(tenant_id=tenant_data["tenant_id"])
+    ProductFactory.create_batch(3, tenant_id=tenant_data["tenant_id"])
 
 
 @pytest.fixture

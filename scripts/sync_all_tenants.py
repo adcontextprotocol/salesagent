@@ -33,7 +33,7 @@ def sync_all_gam_tenants():
             .join(AdapterConfig, Tenant.tenant_id == AdapterConfig.tenant_id)
             .filter(
                 Tenant.ad_server == "google_ad_manager",
-                Tenant.is_active == True,
+                Tenant.is_active,
                 AdapterConfig.gam_network_code.isnot(None),
                 AdapterConfig.gam_refresh_token.isnot(None),
             )
@@ -47,7 +47,7 @@ def sync_all_gam_tenants():
     logger.info(f"Found {len(tenants)} GAM tenants to sync")
 
     # Sync each tenant
-    for tenant, adapter_config in tenants:
+    for tenant, _adapter_config in tenants:
         tenant_id = tenant.tenant_id
         tenant_name = tenant.name
 

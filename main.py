@@ -70,7 +70,7 @@ def safe_parse_json_field(field_value, field_name="field", default=None):
         except (json.JSONDecodeError, TypeError) as e:
             logger.warning(f"Invalid JSON in {field_name}: {e}")
             return default if default is not None else {}
-    elif isinstance(field_value, (dict, list)):
+    elif isinstance(field_value, dict | list):
         return field_value
     else:
         logger.warning(f"Unexpected type for {field_name}: {type(field_value)}")

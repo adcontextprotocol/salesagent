@@ -57,7 +57,7 @@ class FixtureGenerator:
 
     def generate_complete_scenario(self, name: str = "Test Scenario") -> dict:
         """Generate a complete test scenario."""
-        builder = TestDataBuilder()
+        TestDataBuilder()
 
         # Create tenant
         tenant = TenantFactory.create(name=f"{name} Publisher", subdomain=name.lower().replace(" ", "-"))

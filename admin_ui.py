@@ -4899,7 +4899,7 @@ def get_creative_format(tenant_id, format_id):
             db_session.query(CreativeFormat)
             .filter(
                 CreativeFormat.format_id == format_id,
-                or_(CreativeFormat.tenant_id == tenant_id, CreativeFormat.is_standard == True),
+                or_(CreativeFormat.tenant_id == tenant_id, CreativeFormat.is_standard),
             )
             .first()
         )
@@ -4951,7 +4951,7 @@ def edit_creative_format_page(tenant_id, format_id):
             db_session.query(CreativeFormat)
             .filter(
                 CreativeFormat.format_id == format_id,
-                or_(CreativeFormat.tenant_id == tenant_id, CreativeFormat.is_standard == True),
+                or_(CreativeFormat.tenant_id == tenant_id, CreativeFormat.is_standard),
             )
             .first()
         )
@@ -5522,9 +5522,8 @@ def create_products_bulk(tenant_id):
                     print(f"Creating product: {product_id} - {product.get('name')}")
 
                     # Build price guidance
-                    price_guidance = None
                     if product.get("price_guidance"):
-                        price_guidance = json.dumps(product["price_guidance"])
+                        json.dumps(product["price_guidance"])
 
                     # Determine if fixed price based on whether CPM is provided
                     is_fixed_price = product.get("cpm") is not None
@@ -6493,7 +6492,7 @@ def mcp_test():
         principal_objs = (
             db_session.query(Principal)
             .join(Tenant)
-            .filter(Tenant.is_active == True)
+            .filter(Tenant.is_active)
             .order_by(Tenant.name, Principal.name)
             .all()
         )

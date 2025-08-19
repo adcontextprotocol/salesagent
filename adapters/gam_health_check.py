@@ -355,7 +355,7 @@ class GAMHealthChecker:
 
             for service_name in services_to_test:
                 try:
-                    service = self.client.GetService(service_name)
+                    self.client.GetService(service_name)
                     # Just getting the service is enough to verify it's available
                     service_status[service_name] = "available"
                 except Exception as e:

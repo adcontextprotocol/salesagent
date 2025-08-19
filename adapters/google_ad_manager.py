@@ -92,7 +92,7 @@ class GoogleAdManager(AdServerAdapter):
             # Fallback to old method for backward compatibility
             if self.refresh_token:
                 # Use OAuth with refresh token
-                oauth2_credentials = self._get_oauth_credentials()
+                self._get_oauth_credentials()
             else:
                 # Use service account (legacy)
                 _ = google.oauth2.service_account.Credentials.from_service_account_file(
@@ -806,6 +806,7 @@ class GoogleAdManager(AdServerAdapter):
             )
 
         report_service = self.client.GetService("ReportService")
+        # TODO: Replace deprecated GetDataDownloader with ReportService method
         report_downloader = self.client.GetDataDownloader()
 
         report_job = {
@@ -1107,7 +1108,7 @@ class GoogleAdManager(AdServerAdapter):
                     widths = request.form.getlist("placeholder_width[]")
                     heights = request.form.getlist("placeholder_height[]")
                     counts = request.form.getlist("placeholder_count[]")
-                    is_natives = request.form.getlist("placeholder_is_native[]")
+                    request.form.getlist("placeholder_is_native[]")
 
                     creative_placeholders = []
                     for i in range(len(widths)):

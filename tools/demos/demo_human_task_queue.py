@@ -159,8 +159,8 @@ async def main():
     console.print(Panel.fit("[bold blue]Human-in-the-Loop Task Queue Test[/bold blue]"))
 
     # Create test tasks
-    creative_task_id = await test_creative_approval_task()
-    permission_task_id = await test_permission_exception_task()
+    await test_creative_approval_task()
+    await test_permission_exception_task()
 
     # Wait a moment for tasks to be created
     await asyncio.sleep(1)

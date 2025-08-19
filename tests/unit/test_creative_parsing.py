@@ -95,7 +95,7 @@ async def parse_example_directory(example_dir: Path) -> dict[str, Any]:
             expected_data = load_expected_output(expected_file)
 
             # Parse with the service
-            extractor = CreativeFormatExtractor()
+            _ = CreativeFormatExtractor()
             # Mock the URL since we're testing with local files
             source_url = expected_data["formats"][0].get("source_url", "") if expected_data["formats"] else ""
 

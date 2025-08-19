@@ -127,7 +127,7 @@ class TestAIProductService:
         """Test AI product creation from description."""
         # Mock environment variable
         with patch.dict("os.environ", {"GEMINI_API_KEY": "test_key"}):
-            service = AIProductConfigurationService()
+            AIProductConfigurationService()
 
             # Mock database and adapter
             with patch("ai_product_service.get_db_session") as mock_db:

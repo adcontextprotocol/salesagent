@@ -104,9 +104,9 @@ def test_country_breakdown():
 
     # Verify data types
     assert isinstance(first_country["impressions"], int)
-    assert isinstance(first_country["spend"], (int, float))
-    assert isinstance(first_country["avg_cpm"], (int, float))
-    assert isinstance(first_country["ctr"], (int, float))
+    assert isinstance(first_country["spend"], int | float)
+    assert isinstance(first_country["avg_cpm"], int | float)
+    assert isinstance(first_country["ctr"], int | float)
 
 
 @pytest.mark.requires_db
@@ -135,8 +135,8 @@ def test_ad_unit_breakdown():
 
     # Verify data types
     assert isinstance(first_ad_unit["impressions"], int)
-    assert isinstance(first_ad_unit["spend"], (int, float))
-    assert isinstance(first_ad_unit["avg_cpm"], (int, float))
+    assert isinstance(first_ad_unit["spend"], int | float)
+    assert isinstance(first_ad_unit["avg_cpm"], int | float)
     assert isinstance(first_ad_unit["countries"], dict)
 
     # Verify country breakdown within ad unit

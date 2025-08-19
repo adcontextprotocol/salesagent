@@ -218,7 +218,7 @@ async def get_products(
     final_products = []
 
     # Remove targeting_template from products before returning
-    for score, product in matched_products[:5]:
+    for _score, product in matched_products[:5]:
         product_copy = product.copy()
         product_copy.pop("targeting_template", None)
         final_products.append(product_copy)

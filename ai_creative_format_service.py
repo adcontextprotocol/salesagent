@@ -565,7 +565,7 @@ class AICreativeFormatService:
     async def _parse_standard_formats_html(self, html: str, base_url: str) -> list[FormatSpecification]:
         """Parse standard formats from HTML page."""
         formats = []
-        soup = BeautifulSoup(html, "html.parser")
+        BeautifulSoup(html, "html.parser")
 
         # Use AI to parse the page structure
         prompt = f"""

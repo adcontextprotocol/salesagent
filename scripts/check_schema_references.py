@@ -74,7 +74,7 @@ def check_file(filepath: str) -> list[str]:
 
         # Quick string check first
         has_potential_issues = False
-        for table, columns in REMOVED_COLUMNS.items():
+        for _table, columns in REMOVED_COLUMNS.items():
             for column in columns:
                 if column in content:
                     has_potential_issues = True

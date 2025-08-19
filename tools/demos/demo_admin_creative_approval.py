@@ -131,7 +131,7 @@ async def approve_creatives(server_url: str, creative_ids: list):
 
     async with client:
         # Approve first two creatives
-        for i, creative_id in enumerate(creative_ids[:2]):
+        for _i, creative_id in enumerate(creative_ids[:2]):
             console.print(f"Approving creative: {creative_id}")
             result = await client.call_tool(
                 "approve_creative",
