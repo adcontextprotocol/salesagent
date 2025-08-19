@@ -161,7 +161,7 @@ def require_auth(admin_only=False):
                 return f(*args, **kwargs)
 
             if "user" not in session:
-                return redirect(url_for("login"))
+                return redirect(url_for("auth.login"))
 
             # Store user in g for access in view functions
             g.user = session["user"]
@@ -197,7 +197,7 @@ def require_tenant_access(api_mode=False):
             if "user" not in session:
                 if api_mode:
                     return jsonify({"error": "Authentication required"}), 401
-                return redirect(url_for("login"))
+                return redirect(url_for("auth.login"))
 
             email = session["user"]
 

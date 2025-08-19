@@ -157,7 +157,7 @@ def google_callback():
                     session["tenant_name"] = tenant.name
                     session["is_super_admin"] = True
                     flash(f"Welcome {user.get('name', email)}! (Super Admin)", "success")
-                    return redirect(url_for("tenant_dashboard", tenant_id=tenant_id))
+                    return redirect(url_for("tenants.dashboard", tenant_id=tenant_id))
 
                 # Check if user has access to this tenant
                 user_record = db_session.query(User).filter_by(email=email, tenant_id=tenant_id, is_active=True).first()
@@ -167,7 +167,7 @@ def google_callback():
                     session["tenant_name"] = tenant.name
                     session["is_tenant_admin"] = user_record.is_admin
                     flash(f"Welcome {user.get('name', email)}!", "success")
-                    return redirect(url_for("tenant_dashboard", tenant_id=tenant_id))
+                    return redirect(url_for("tenants.dashboard", tenant_id=tenant_id))
                 else:
                     flash("You don't have access to this tenant", "error")
                     session.clear()
@@ -196,7 +196,7 @@ def google_callback():
                     session["tenant_name"] = tenant.name
                     session["is_tenant_admin"] = user.is_admin
                     flash(f"Welcome {user.name or email}!", "success")
-                    return redirect(url_for("tenant_dashboard", tenant_id=tenant.tenant_id))
+                    return redirect(url_for("tenants.dashboard", tenant_id=tenant.tenant_id))
                 else:
                     # Multiple tenants - let user choose
                     session["available_tenants"] = [
@@ -232,7 +232,7 @@ def select_tenant():
                 session["is_tenant_admin"] = tenant["is_admin"]
                 session.pop("available_tenants", None)  # Clean up
                 flash(f"Welcome to {tenant['name']}!", "success")
-                return redirect(url_for("tenant_dashboard", tenant_id=tenant_id))
+                return redirect(url_for("tenants.dashboard", tenant_id=tenant_id))
 
         flash("Invalid tenant selection", "error")
         return redirect(url_for("auth.select_tenant"))
@@ -288,7 +288,7 @@ def test_auth():
 
         if tenant_id:
             session["test_tenant_id"] = tenant_id
-            return redirect(url_for("tenant_dashboard", tenant_id=tenant_id))
+            return redirect(url_for("tenants.dashboard", tenant_id=tenant_id))
         else:
             return redirect(url_for("index"))
 
