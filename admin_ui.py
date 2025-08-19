@@ -6299,9 +6299,14 @@ def register_adapter_routes():
         print("Starting adapter route registration...")
         # Get all enabled adapters across all tenants
         with get_db_session() as db_session:
-            tenants_with_adapters = (
-                db_session.query(Tenant.tenant_id, Tenant.ad_server).filter(Tenant.ad_server.isnot(None)).all()
-            )
+            try:
+                tenants_with_adapters = (
+                    db_session.query(Tenant.tenant_id, Tenant.ad_server).filter(Tenant.ad_server.isnot(None)).all()
+                )
+            except Exception as e:
+                # Database might not be initialized yet (e.g., during testing)
+                print(f"Database not ready for adapter registration: {e}")
+                return
 
             registered_adapters = set()
             for tenant_id, ad_server in tenants_with_adapters:

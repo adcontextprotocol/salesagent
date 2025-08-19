@@ -11,7 +11,7 @@ from models import AdapterConfig, Tenant
 
 
 @pytest.fixture
-def ai_tenant_with_adapter(db_session):
+def ai_tenant_with_adapter(integration_db):
     """Create a tenant with adapter configuration."""
     from datetime import UTC, datetime
 
@@ -102,7 +102,7 @@ async def test_ai_product_with_adapter_config(ai_tenant_with_adapter):
 
 
 @pytest.mark.asyncio
-async def test_ai_product_with_gam_adapter(db_session):
+async def test_ai_product_with_gam_adapter(integration_db):
     """Test AI product service with Google Ad Manager adapter config."""
     with get_db_session() as session:
         # Create tenant with GAM adapter
@@ -165,7 +165,7 @@ async def test_ai_product_with_gam_adapter(db_session):
             assert call_kwargs["config"]["manual_approval_required"] is True
 
 
-def test_adapter_config_has_no_config_column(db_session):
+def test_adapter_config_has_no_config_column(integration_db):
     """Verify AdapterConfig model doesn't have a config column."""
     from models import AdapterConfig
 

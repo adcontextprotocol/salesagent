@@ -210,10 +210,11 @@ class TestProductAPIs:
     """Test the Flask API endpoints - requires database."""
 
     @pytest.fixture
-    def client(self):
-        """Create test client."""
+    def client(self, integration_db):
+        """Create test client with database."""
         app.config["TESTING"] = True
         app.config["SECRET_KEY"] = "test_secret"
+        app.config["WTF_CSRF_ENABLED"] = False  # Disable CSRF for testing
 
         with app.test_client() as client:
             with app.app_context():
@@ -227,14 +228,35 @@ class TestProductAPIs:
             sess["email"] = "test@example.com"
             sess["role"] = "super_admin"
             sess["tenant_id"] = "test_tenant"
+        return client
 
-    def test_product_suggestions_api(self, client, auth_session):
+    def test_product_suggestions_api(self, client, auth_session, integration_db):
         """Test product suggestions API endpoint."""
-        with (
-            patch("default_products.get_industry_specific_products") as mock_products,
-            patch("admin_ui.get_db_session") as mock_db,
-        ):
-            # Mock the products returned
+        # Create a real tenant in the database with unique ID
+        import uuid
+        from datetime import UTC, datetime
+
+        from database_session import get_db_session
+        from models import Tenant
+
+        tenant_id = f"test_tenant_{uuid.uuid4().hex[:8]}"
+
+        with get_db_session() as session:
+            tenant = Tenant(
+                tenant_id=tenant_id,
+                name="Test Tenant",
+                subdomain=f"test_{uuid.uuid4().hex[:8]}",  # Unique subdomain
+                is_active=True,
+                ad_server="mock",
+                authorized_emails=["test@example.com"],
+                created_at=datetime.now(UTC),
+                updated_at=datetime.now(UTC),
+            )
+            session.add(tenant)
+            session.commit()
+
+        # Mock only the product templates, use real database
+        with patch("default_products.get_industry_specific_products") as mock_products:
             mock_products.return_value = [
                 {
                     "product_id": "test_product",
@@ -245,15 +267,8 @@ class TestProductAPIs:
                 }
             ]
 
-            # Mock database connection for existing products check
-            mock_conn = Mock()
-            mock_cursor = Mock()
-            mock_cursor.fetchall.return_value = []  # No existing products
-            mock_conn.execute.return_value = mock_cursor
-            mock_db.return_value = mock_conn
-
             # Test with industry filter
-            response = client.get("/api/tenant/test_tenant/products/suggestions?industry=news")
+            response = client.get(f"/api/tenant/{tenant_id}/products/suggestions?industry=news")
             if response.status_code != 200:
                 print(f"Response: {response.status_code}")
                 print(f"Data: {response.data}")
@@ -264,36 +279,85 @@ class TestProductAPIs:
             assert data["total_count"] > 0
             assert data["criteria"]["industry"] == "news"
 
-    def test_bulk_product_upload_csv(self, client, auth_session):
+    def test_bulk_product_upload_csv(self, client, auth_session, integration_db):
         """Test CSV bulk upload."""
-        csv_data = """name,product_id,formats,delivery_type,cpm
-Test Product,test_prod,"display_300x250,display_728x90",guaranteed,15.0
+        # Create tenant first with unique ID
+        import uuid
+        from datetime import UTC, datetime
+
+        from database_session import get_db_session
+        from models import Tenant
+
+        tenant_id = f"test_tenant_{uuid.uuid4().hex[:8]}"
+
+        with get_db_session() as session:
+            tenant = Tenant(
+                tenant_id=tenant_id,
+                name="Test Tenant",
+                subdomain=f"test_{uuid.uuid4().hex[:8]}",  # Unique subdomain
+                is_active=True,
+                ad_server="mock",
+                authorized_emails=["test@example.com"],
+                created_at=datetime.now(UTC),
+                updated_at=datetime.now(UTC),
+            )
+            session.add(tenant)
+            session.commit()
+
+        csv_data = """name,product_id,formats,delivery_type,cpm,is_fixed_price,targeting_template
+Test Product,test_prod,"[""display_300x250"",""display_728x90""]",guaranteed,15.0,true,"{}"
 """
         from io import BytesIO
 
-        with patch("admin_ui.get_db_session") as mock_db:
-            mock_conn = Mock()
-            # Mock cursor for execute.fetchone() and other queries
-            mock_cursor = Mock()
-            mock_cursor.fetchone.return_value = None  # No existing product
-            mock_conn.execute.return_value = mock_cursor
-            mock_conn.commit.return_value = None
-            mock_db.return_value = mock_conn
+        # Create proper file upload data
+        data = {"file": (BytesIO(csv_data.encode()), "products.csv")}
 
-            # Create proper file upload data
-            data = {"file": (BytesIO(csv_data.encode()), "products.csv")}
+        response = client.post(
+            f"/tenant/{tenant_id}/products/bulk/upload", data=data, content_type="multipart/form-data"
+        )
 
-            response = client.post(
-                "/tenant/test_tenant/products/bulk/upload", data=data, content_type="multipart/form-data"
-            )
+        print(f"Response status: {response.status_code}")
+        print(f"Response data: {response.data}")
 
-            assert response.status_code == 200
-            result = json.loads(response.data)
-            assert result["success"] is True
-            assert result["created"] == 1
+        if response.status_code != 200:
+            print(f"Expected 200, got {response.status_code}")
+            print(f"Response content: {response.get_data(as_text=True)}")
 
-    def test_quick_create_products_api(self, client, auth_session):
+        assert response.status_code == 200
+        result = json.loads(response.data)
+        print(f"Result: {result}")
+
+        if not result.get("success"):
+            print(f"API call failed: {result}")
+
+        assert result["success"] is True
+        assert result["created"] == 1
+
+    def test_quick_create_products_api(self, client, auth_session, integration_db):
         """Test quick create API."""
+        # Create tenant first with unique ID
+        import uuid
+        from datetime import UTC, datetime
+
+        from database_session import get_db_session
+        from models import Tenant
+
+        tenant_id = f"test_tenant_{uuid.uuid4().hex[:8]}"
+
+        with get_db_session() as session:
+            tenant = Tenant(
+                tenant_id=tenant_id,
+                name="Test Tenant",
+                subdomain=f"test_{uuid.uuid4().hex[:8]}",  # Unique subdomain
+                is_active=True,
+                ad_server="mock",
+                authorized_emails=["test@example.com"],
+                created_at=datetime.now(UTC),
+                updated_at=datetime.now(UTC),
+            )
+            session.add(tenant)
+            session.commit()
+
         with patch("default_products.get_default_products") as mock_products:
             mock_products.return_value = [
                 {
@@ -305,22 +369,14 @@ Test Product,test_prod,"display_300x250,display_728x90",guaranteed,15.0
                 }
             ]
 
-            with patch("admin_ui.get_db_session") as mock_db:
-                mock_conn = Mock()
-                mock_cursor = Mock()
-                mock_cursor.fetchone.return_value = None  # Product doesn't exist
-                mock_conn.execute.return_value = mock_cursor
-                mock_conn.commit.return_value = None
-                mock_db.return_value = mock_conn
+            response = client.post(
+                f"/api/tenant/{tenant_id}/products/quick-create", json={"product_ids": ["run_of_site_display"]}
+            )
 
-                response = client.post(
-                    "/api/tenant/test_tenant/products/quick-create", json={"product_ids": ["run_of_site_display"]}
-                )
-
-                assert response.status_code == 200
-                data = json.loads(response.data)
-                assert data["success"] is True
-                assert "run_of_site_display" in data["created"]
+            assert response.status_code == 200
+            data = json.loads(response.data)
+            assert data["success"] is True
+            assert "run_of_site_display" in data["created"]
 
 
 def test_ai_integration():

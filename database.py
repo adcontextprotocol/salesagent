@@ -15,9 +15,11 @@ def init_db(exit_on_error=False):
         exit_on_error: If True, exit process on migration error. If False, raise exception.
                       Default False for test compatibility.
     """
-    # Run migrations first - this creates all tables
-    print("Applying database migrations...")
-    run_migrations(exit_on_error=exit_on_error)
+    # Skip migrations if requested (for testing)
+    if os.environ.get("SKIP_MIGRATIONS") != "true":
+        # Run migrations first - this creates all tables
+        print("Applying database migrations...")
+        run_migrations(exit_on_error=exit_on_error)
 
     # Check if we need to create a default tenant
     with get_db_session() as db_session:

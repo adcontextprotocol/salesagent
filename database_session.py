@@ -26,6 +26,11 @@ logger = logging.getLogger(__name__)
 db_session = scoped_session(SessionLocal)
 
 
+def get_engine():
+    """Get the current database engine."""
+    return engine
+
+
 @contextmanager
 def get_db_session() -> Generator[Session, None, None]:
     """
