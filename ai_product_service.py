@@ -203,9 +203,11 @@ class AIProductConfigurationService:
         from models import CreativeFormat
 
         with get_db_session() as db_session:
+            from sqlalchemy import or_
+
             formats_query = (
                 db_session.query(CreativeFormat)
-                .filter((CreativeFormat.tenant_id is None) | (CreativeFormat.tenant_id == tenant_id))
+                .filter(or_(CreativeFormat.tenant_id.is_(None), CreativeFormat.tenant_id == tenant_id))
                 .order_by(CreativeFormat.is_standard.desc(), CreativeFormat.type, CreativeFormat.name)
             )
 

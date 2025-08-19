@@ -30,6 +30,7 @@ def integration_db():
     # Create the database without running migrations
     # (migrations are for production, tests create tables directly)
     from sqlalchemy import create_engine
+    from sqlalchemy.orm import scoped_session, sessionmaker
 
     from models import Base
 
@@ -38,14 +39,26 @@ def integration_db():
     # Create all tables directly (no migrations)
     Base.metadata.create_all(bind=engine)
 
-    # Initialize with default data (but skip migrations)
-    os.environ["SKIP_MIGRATIONS"] = "true"
-    from database import init_db
+    # Update the global database session to point to the test database
+    # This is necessary because many parts of the code use the global db_session
+    import database_session
 
-    init_db()
-    del os.environ["SKIP_MIGRATIONS"]
+    # Save the original values
+    original_engine = database_session.engine
+    original_session_local = database_session.SessionLocal
+    original_db_session = database_session.db_session
+
+    # Replace with test database
+    database_session.engine = engine
+    database_session.SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+    database_session.db_session = scoped_session(database_session.SessionLocal)
 
     yield db_path
+
+    # Restore original database session
+    database_session.engine = original_engine
+    database_session.SessionLocal = original_session_local
+    database_session.db_session = original_db_session
 
     # Cleanup
     engine.dispose()
