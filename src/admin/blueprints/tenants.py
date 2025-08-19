@@ -8,9 +8,9 @@ from datetime import UTC, datetime
 
 from flask import Blueprint, flash, jsonify, redirect, render_template, request, url_for
 
-from admin.utils import get_tenant_config_from_db, require_tenant_access
 from database_session import get_db_session
 from models import AdapterConfig, MediaBuy, Principal, Product, Tenant, User
+from src.admin.utils import get_tenant_config_from_db, require_tenant_access
 from validation import sanitize_form_data, validate_form_data
 
 logger = logging.getLogger(__name__)

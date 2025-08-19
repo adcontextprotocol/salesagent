@@ -7,12 +7,12 @@ import secrets
 from flask import Flask, redirect, render_template, request, session, url_for
 from flask_socketio import SocketIO, join_room
 
-from admin.blueprints.auth import auth_bp, init_oauth
-from admin.blueprints.products import products_bp
-from admin.blueprints.tenants import tenants_bp
-from admin.utils import is_super_admin, require_auth
 from database_session import get_db_session
 from models import Tenant
+from src.admin.blueprints.auth import auth_bp, init_oauth
+from src.admin.blueprints.products import products_bp
+from src.admin.blueprints.tenants import tenants_bp
+from src.admin.utils import is_super_admin, require_auth
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -43,7 +43,7 @@ class ProxyFix:
 
 def create_app(config=None):
     """Create and configure the Flask application."""
-    app = Flask(__name__, template_folder="../templates", static_folder="../static")
+    app = Flask(__name__, template_folder="../../templates", static_folder="../../static")
 
     # Configuration
     app.secret_key = os.environ.get("FLASK_SECRET_KEY", secrets.token_hex(32))

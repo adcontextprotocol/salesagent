@@ -9,11 +9,11 @@ from datetime import UTC, datetime
 
 from flask import Blueprint, flash, jsonify, redirect, render_template, request, url_for
 
-from admin.utils import require_tenant_access
 from ai_product_service import AIProductConfigurationService
 from database_session import get_db_session
 from default_products import get_default_products, get_industry_specific_products
 from models import Product, Tenant
+from src.admin.utils import require_tenant_access
 from validation import sanitize_form_data, validate_form_data
 
 logger = logging.getLogger(__name__)

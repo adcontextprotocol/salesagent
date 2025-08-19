@@ -4,7 +4,7 @@
 import logging
 import os
 
-from admin.app import create_app
+from src.admin.app import create_app
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")

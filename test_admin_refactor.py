@@ -10,11 +10,11 @@ def test_imports():
     print("Testing module imports...")
 
     modules_to_test = [
-        ("admin.utils", "Utilities module"),
-        ("admin.blueprints.auth", "Authentication blueprint"),
-        ("admin.blueprints.tenants", "Tenants blueprint"),
-        ("admin.blueprints.products", "Products blueprint"),
-        ("admin.app", "Application factory"),
+        ("src.admin.utils", "Utilities module"),
+        ("src.admin.blueprints.auth", "Authentication blueprint"),
+        ("src.admin.blueprints.tenants", "Tenants blueprint"),
+        ("src.admin.blueprints.products", "Products blueprint"),
+        ("src.admin.app", "Application factory"),
     ]
 
     failed = []
@@ -38,7 +38,7 @@ def test_app_creation():
     print("\nTesting app creation...")
 
     try:
-        from admin.app import create_app
+        from src.admin.app import create_app
 
         app, socketio = create_app()
 
@@ -76,7 +76,7 @@ def test_blueprint_routes():
     print("\nTesting blueprint routes...")
 
     try:
-        from admin.app import create_app
+        from src.admin.app import create_app
 
         app, _ = create_app()
 
