@@ -23,15 +23,25 @@ src/
     ├── __init__.py             # Module initialization
     ├── app.py                  # Flask application factory
     ├── utils.py                # Shared utility functions
-    └── blueprints/
+    ├── blueprints/
+    │   ├── __init__.py
+    │   ├── auth.py             # Authentication & OAuth (400 lines)
+    │   ├── tenants.py          # Tenant management (350 lines)
+    │   ├── products.py         # Product management (300 lines)
+    │   ├── gam.py              # Google Ad Manager integration (planned)
+    │   ├── creative_formats.py # Creative format management (planned)
+    │   ├── policy.py           # Policy management (planned)
+    │   └── workflows.py        # Workflow management (planned)
+    └── tests/                  # Co-located tests with the module
         ├── __init__.py
-        ├── auth.py             # Authentication & OAuth (400 lines)
-        ├── tenants.py          # Tenant management (350 lines)
-        ├── products.py         # Product management (300 lines)
-        ├── gam.py              # Google Ad Manager integration (planned)
-        ├── creative_formats.py # Creative format management (planned)
-        ├── policy.py           # Policy management (planned)
-        └── workflows.py        # Workflow management (planned)
+        ├── conftest.py         # Shared test fixtures
+        ├── unit/               # Unit tests for each component
+        │   ├── __init__.py
+        │   ├── test_auth.py    # Auth blueprint tests
+        │   └── test_utils.py   # Utilities tests
+        └── integration/        # Integration tests
+            ├── __init__.py
+            └── test_admin_app.py # Full app integration tests
 ```
 
 ## Migration Status
