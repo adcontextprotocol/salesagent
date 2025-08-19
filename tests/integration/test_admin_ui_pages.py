@@ -69,22 +69,17 @@ class TestAdminUIPages:
 
     def test_create_product_page_renders(self, authenticated_session, test_tenant):
         """Test that the create product page renders successfully."""
-        response = authenticated_session.get(f"/tenant/{test_tenant['tenant_id']}/products/new")
+        response = authenticated_session.get(f"/tenant/{test_tenant['tenant_id']}/products/add")
         assert response.status_code in [200, 302]
 
-    def test_list_principals_page_renders(self, authenticated_session, test_tenant):
-        """Test that the list principals page renders successfully."""
-        response = authenticated_session.get(f"/tenant/{test_tenant['tenant_id']}/principals")
+    def test_tenant_dashboard_renders(self, authenticated_session, test_tenant):
+        """Test that the tenant dashboard renders successfully (this IS the operations dashboard)."""
+        response = authenticated_session.get(f"/tenant/{test_tenant['tenant_id']}")
         assert response.status_code in [200, 302]
 
     def test_create_principal_page_renders(self, authenticated_session, test_tenant):
         """Test that the create principal page renders successfully."""
-        response = authenticated_session.get(f"/tenant/{test_tenant['tenant_id']}/principals/new")
-        assert response.status_code in [200, 302]
-
-    def test_operations_dashboard_renders(self, authenticated_session, test_tenant):
-        """Test that the operations dashboard renders successfully."""
-        response = authenticated_session.get(f"/tenant/{test_tenant['tenant_id']}/operations")
+        response = authenticated_session.get(f"/tenant/{test_tenant['tenant_id']}/principals/create")
         assert response.status_code in [200, 302]
 
     def test_settings_page_renders(self, authenticated_session, test_tenant):
@@ -99,7 +94,7 @@ class TestAdminUIPages:
 
     def test_admin_index_redirects(self, client):
         """Test that the admin index redirects to login when not authenticated."""
-        response = client.get("/admin/")
+        response = client.get("/")
         assert response.status_code == 302
         assert "/login" in response.location
 

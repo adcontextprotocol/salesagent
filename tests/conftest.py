@@ -21,8 +21,9 @@ sys.path.insert(0, str(project_root))
 os.environ["ADCP_TESTING"] = "true"
 
 # Only set DATABASE_URL if not already set (allows CI to override)
+# Use in-memory database by default to avoid test pollution
 if "DATABASE_URL" not in os.environ:
-    os.environ["DATABASE_URL"] = "sqlite:///test.db"
+    os.environ["DATABASE_URL"] = "sqlite:///:memory:"
 
 # Set default test environment variables
 os.environ.setdefault("GEMINI_API_KEY", "test_key_for_mocking")
@@ -78,6 +79,7 @@ def mock_db_with_data(mock_db):
 @pytest.fixture
 def test_db_path():
     """Provide a temporary test database path."""
+    # Create a unique temporary file for each test
     with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as f:
         db_path = f.name
 
@@ -85,12 +87,19 @@ def test_db_path():
 
     # Cleanup
     if os.path.exists(db_path):
-        os.unlink(db_path)
+        try:
+            os.unlink(db_path)
+        except Exception:
+            pass  # Ignore cleanup errors
 
 
 @pytest.fixture
 def db_session(test_db_path):
-    """Provide a test database session."""
+    """Provide a test database session with isolated data."""
+    # Save original DATABASE_URL
+    original_url = os.environ.get("DATABASE_URL")
+
+    # Use temporary database for this test
     os.environ["DATABASE_URL"] = f"sqlite:///{test_db_path}"
 
     # Initialize database
@@ -107,6 +116,12 @@ def db_session(test_db_path):
 
     # Cleanup
     conn.close()
+
+    # Restore original DATABASE_URL
+    if original_url:
+        os.environ["DATABASE_URL"] = original_url
+    else:
+        os.environ["DATABASE_URL"] = "sqlite:///:memory:"
 
 
 # ============================================================================

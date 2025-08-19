@@ -4,37 +4,68 @@ Integration test specific fixtures.
 These fixtures are for tests that require database and service integration.
 """
 
-import json
 import os
 from unittest.mock import MagicMock, patch
 
 import pytest
 
 
-@pytest.fixture(scope="module")
+@pytest.fixture(scope="function")  # Changed to function scope for better isolation
 def integration_db():
-    """Provide a shared database for integration tests."""
+    """Provide an isolated database for each integration test."""
+    import tempfile
 
-    # Use in-memory SQLite for testing (temporary until full PostgreSQL migration)
-    # This creates tables using SQLAlchemy ORM
-    os.environ["DATABASE_URL"] = "sqlite:///:memory:"
+    # Save original DATABASE_URL
+    original_url = os.environ.get("DATABASE_URL")
+    original_db_type = os.environ.get("DB_TYPE")
+
+    # Create a temporary database file for this test
+    with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as f:
+        db_path = f.name
+
+    # Use temporary file for testing to ensure isolation
+    os.environ["DATABASE_URL"] = f"sqlite:///{db_path}"
     os.environ["DB_TYPE"] = "sqlite"  # Explicitly set DB type
 
-    # Initialize database tables using SQLAlchemy
-    from database_session import engine
+    # Create the database without running migrations
+    # (migrations are for production, tests create tables directly)
+    from sqlalchemy import create_engine
+
     from models import Base
 
-    # Create all tables
+    engine = create_engine(f"sqlite:///{db_path}")
+
+    # Create all tables directly (no migrations)
     Base.metadata.create_all(bind=engine)
 
-    # Initialize with default data
+    # Initialize with default data (but skip migrations)
+    os.environ["SKIP_MIGRATIONS"] = "true"
     from database import init_db
 
     init_db()
+    del os.environ["SKIP_MIGRATIONS"]
 
-    yield "memory"
+    yield db_path
 
-    # Cleanup is automatic with in-memory database
+    # Cleanup
+    engine.dispose()
+
+    # Restore original environment
+    if original_url:
+        os.environ["DATABASE_URL"] = original_url
+    else:
+        del os.environ["DATABASE_URL"]
+
+    if original_db_type:
+        os.environ["DB_TYPE"] = original_db_type
+    elif "DB_TYPE" in os.environ:
+        del os.environ["DB_TYPE"]
+
+    # Remove temporary file
+    try:
+        os.unlink(db_path)
+    except Exception:
+        pass  # Ignore cleanup errors
 
 
 @pytest.fixture
@@ -51,7 +82,7 @@ def populated_db(integration_db):
 @pytest.fixture
 def sample_tenant(integration_db):
     """Create a sample tenant for testing."""
-    from datetime import datetime
+    from datetime import UTC, datetime
 
     from database_session import get_db_session
     from models import Tenant
@@ -91,7 +122,7 @@ def sample_principal(integration_db, sample_tenant):
     from models import Principal
 
     with get_db_session() as session:
-        from datetime import datetime
+        from datetime import UTC, datetime
 
         now = datetime.now(UTC)
         principal = Principal(
@@ -172,53 +203,6 @@ def sample_products(integration_db, sample_tenant):
         session.commit()
 
         return [p.product_id for p in products]
-
-    # Insert test data using ORM
-    with get_db_session() as db_session:
-        # Create tenant
-        from datetime import datetime
-
-        now = datetime.now(UTC)
-        tenant = Tenant(
-            tenant_id=tenant_data["tenant_id"],
-            name=tenant_data["name"],
-            subdomain=tenant_data["subdomain"],
-            config=json.dumps({}),
-            is_active=tenant_data["is_active"],
-            created_at=now,
-            updated_at=now,
-        )
-        db_session.add(tenant)
-
-        # Create principal
-        principal = Principal(
-            tenant_id=principal_data["tenant_id"],
-            principal_id=principal_data["principal_id"],
-            name=principal_data["name"],
-            access_token=principal_data["access_token"],
-            platform_mappings=principal_data["platform_mappings"],
-            created_at=now,
-        )
-        db_session.add(principal)
-
-        # Create products
-        for product_data in products_data:
-            product = Product(
-                tenant_id=product_data["tenant_id"],
-                product_id=product_data["product_id"],
-                name=product_data["name"],
-                formats=product_data["formats"],
-                targeting_template=product_data["targeting_template"],
-            )
-            db_session.add(product)
-
-        db_session.commit()
-
-    yield {
-        "tenant": tenant_data,
-        "principal": principal_data,
-        "products": products_data,
-    }
 
 
 @pytest.fixture
