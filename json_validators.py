@@ -50,7 +50,7 @@ class CreativeFormatModel(BaseModel):
     format_id: str = Field(..., min_length=1)
     name: str = Field(..., min_length=1)
     type: str = Field(..., pattern="^(display|video|audio|native)$")
-    description: str = Field(..., min_length=1)
+    description: str | None = Field(None, min_length=1)
     width: int | None = Field(None, gt=0)
     height: int | None = Field(None, gt=0)
     duration: int | None = Field(None, gt=0)
