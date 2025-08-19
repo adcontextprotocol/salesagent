@@ -5254,29 +5254,88 @@ def quick_create_products(tenant_id):
                         errors.append(f"Product already exists: {product_id}")
                         continue
 
+                    # Convert format IDs to format objects
+                    raw_formats = template.get("formats", [])
+                    format_objects = []
+
+                    for fmt in raw_formats:
+                        if isinstance(fmt, str):
+                            # Convert string format ID to format object
+                            # For basic display formats, create minimal format objects
+                            if fmt.startswith("display_"):
+                                # Extract dimensions from format ID like "display_300x250"
+                                try:
+                                    dimensions = fmt.replace("display_", "")
+                                    width, height = map(int, dimensions.split("x"))
+                                    format_obj = {
+                                        "format_id": fmt,
+                                        "name": f"{width}x{height} Display",
+                                        "type": "display",
+                                        "width": width,
+                                        "height": height,
+                                        "delivery_options": {"hosted": None},
+                                    }
+                                except ValueError:
+                                    # If we can't parse dimensions, create a basic format
+                                    format_obj = {
+                                        "format_id": fmt,
+                                        "name": fmt.replace("_", " ").title(),
+                                        "type": "display",
+                                        "delivery_options": {"hosted": None},
+                                    }
+                            elif fmt.startswith("video_"):
+                                # Extract duration from format ID like "video_15s"
+                                try:
+                                    duration_str = fmt.replace("video_", "").replace("s", "")
+                                    duration = int(duration_str)
+                                    format_obj = {
+                                        "format_id": fmt,
+                                        "name": f"{duration} Second Video",
+                                        "type": "video",
+                                        "duration": duration,
+                                        "delivery_options": {"vast": {"mime_types": ["video/mp4"]}},
+                                    }
+                                except ValueError:
+                                    format_obj = {
+                                        "format_id": fmt,
+                                        "name": fmt.replace("_", " ").title(),
+                                        "type": "video",
+                                        "delivery_options": {"vast": {"mime_types": ["video/mp4"]}},
+                                    }
+                            else:
+                                # Generic format
+                                format_obj = {
+                                    "format_id": fmt,
+                                    "name": fmt.replace("_", " ").title(),
+                                    "type": "display",  # Default to display
+                                    "delivery_options": {"hosted": None},
+                                }
+                            format_objects.append(format_obj)
+                        else:
+                            # Already a format object
+                            format_objects.append(fmt)
+
                     # Insert product
+                    # Calculate is_fixed_price based on delivery_type and cpm
+                    is_fixed_price = (
+                        template.get("delivery_type", "guaranteed") == "guaranteed" and template.get("cpm") is not None
+                    )
+
                     new_product = Product(
                         product_id=template["product_id"],
                         tenant_id=tenant_id,
                         name=template["name"],
                         description=template.get("description", ""),
-                        creative_formats=json.dumps(template.get("formats", [])),
+                        formats=format_objects,  # Use converted format objects
                         delivery_type=template.get("delivery_type", "guaranteed"),
+                        is_fixed_price=is_fixed_price,
                         cpm=template.get("cpm"),
-                        price_guidance_min=(
-                            template.get("price_guidance", {}).get("min") if not template.get("cpm") else None
-                        ),
-                        price_guidance_max=(
-                            template.get("price_guidance", {}).get("max") if not template.get("cpm") else None
-                        ),
-                        countries=json.dumps(template.get("countries")) if template.get("countries") else None,
-                        targeting_template=json.dumps(template.get("targeting_template", {})),
-                        implementation_config=json.dumps(template.get("implementation_config", {})),
-                        created_at=datetime.now().isoformat(),
-                        updated_at=datetime.now().isoformat(),
+                        price_guidance=template.get("price_guidance"),  # Use price_guidance, not separate min/max
+                        countries=template.get("countries"),  # Pass as Python object, not JSON string
+                        targeting_template=template.get("targeting_template", {}),  # Pass as Python object
+                        implementation_config=template.get("implementation_config", {}),  # Pass as Python object
                     )
                     db_session.add(new_product)
-
                     created.append(product_id)
 
                 except Exception as e:
