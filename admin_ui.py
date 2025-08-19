@@ -3877,11 +3877,32 @@ def add_product(tenant_id):
                 else:
                     # Regular form submission
                     product_id = request.form.get("product_id") or request.form["name"].lower().replace(" ", "_")
-                    formats = request.form.getlist("formats")
+                    format_ids = request.form.getlist("formats")
                     name = request.form.get("name")
                     description = request.form.get("description")
                     targeting_template = {}
                     implementation_config = {}
+
+                    # Convert format IDs to full format objects
+                    formats = []
+                    if format_ids:
+                        with get_db_session() as format_session:
+                            for format_id in format_ids:
+                                cf = format_session.query(CreativeFormat).filter_by(format_id=format_id).first()
+                                if cf:
+                                    format_obj = {
+                                        "format_id": cf.format_id,
+                                        "name": cf.name,
+                                        "type": cf.type,
+                                        "description": cf.description or f"{cf.type} format",
+                                    }
+                                    if cf.width:
+                                        format_obj["width"] = cf.width
+                                    if cf.height:
+                                        format_obj["height"] = cf.height
+                                    if cf.duration_seconds:
+                                        format_obj["duration"] = cf.duration_seconds
+                                    formats.append(format_obj)
 
                     # Build implementation config based on adapter
                     tenant_config = get_tenant_config_from_db(tenant_id)
@@ -3920,19 +3941,20 @@ def add_product(tenant_id):
                         is_fixed_price = delivery_type == "guaranteed"
 
                     # Insert product
+                    # NOTE: Do NOT use json.dumps() - SQLAlchemy handles JSON serialization for JSONB columns
                     new_product = Product(
                         tenant_id=tenant_id,
                         product_id=product_id,
                         name=name,
                         description=description,
-                        formats=json.dumps(formats),
-                        targeting_template=json.dumps(targeting_template),
+                        formats=formats,  # Pass as Python object, not JSON string
+                        targeting_template=targeting_template,  # Pass as Python object
                         delivery_type=delivery_type,
                         is_fixed_price=is_fixed_price,
                         cpm=cpm,
-                        price_guidance=json.dumps(price_guidance),
-                        countries=json.dumps(countries),
-                        implementation_config=json.dumps(implementation_config),
+                        price_guidance=price_guidance,  # Pass as Python object
+                        countries=countries,  # Pass as Python object
+                        implementation_config=implementation_config,  # Pass as Python object
                     )
                     db_session.add(new_product)
                     db_session.commit()
