@@ -4,7 +4,7 @@ This test file ensures all MCP tools work correctly with proper authentication
 and data validation. It tests the actual server endpoints, not mocks.
 """
 
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from fastmcp.client import Client
@@ -20,8 +20,11 @@ class TestMCPEndpointsComprehensive:
     @pytest.fixture(autouse=True)
     def setup_test_data(self, integration_db):
         """Create test data for MCP tests."""
+        from datetime import datetime
+
         with get_db_session() as session:
             # Create test tenant
+            now = datetime.now(UTC)
             tenant = Tenant(
                 tenant_id="test_mcp",
                 name="Test MCP Tenant",
@@ -35,6 +38,8 @@ class TestMCPEndpointsComprehensive:
                 auto_approve_formats=["display_300x250"],
                 human_review_required=False,
                 admin_token="test_admin_token",
+                created_at=now,
+                updated_at=now,
             )
             session.add(tenant)
 
@@ -45,6 +50,7 @@ class TestMCPEndpointsComprehensive:
                 name="Test Principal",
                 access_token="test_mcp_token_12345",
                 platform_mappings={"mock": {"id": "test_advertiser"}},
+                created_at=now,
             )
             session.add(principal)
 

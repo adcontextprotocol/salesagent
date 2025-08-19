@@ -13,13 +13,18 @@ from models import AdapterConfig, Tenant
 @pytest.fixture
 def ai_tenant_with_adapter(db_session):
     """Create a tenant with adapter configuration."""
+    from datetime import UTC, datetime
+
     with get_db_session() as session:
         # Create tenant
+        now = datetime.now(UTC)
         tenant = Tenant(
             tenant_id="test_ai_tenant",
             name="Test AI Tenant",
             ad_server="mock",
             authorized_emails=["test@example.com"],
+            created_at=now,
+            updated_at=now,
         )
         session.add(tenant)
 
@@ -101,11 +106,16 @@ async def test_ai_product_with_gam_adapter(db_session):
     """Test AI product service with Google Ad Manager adapter config."""
     with get_db_session() as session:
         # Create tenant with GAM adapter
+        from datetime import UTC, datetime
+
+        now = datetime.now(UTC)
         tenant = Tenant(
             tenant_id="gam_tenant",
             name="GAM Tenant",
             ad_server="google_ad_manager",
             authorized_emails=["test@example.com"],
+            created_at=now,
+            updated_at=now,
         )
         session.add(tenant)
 

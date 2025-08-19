@@ -26,6 +26,9 @@ def test_tenant():
         session.commit()
 
         # Create test tenant
+        from datetime import UTC, datetime
+
+        now = datetime.now(UTC)
         tenant = Tenant(
             tenant_id="test_product_tenant",
             name="Test Product Tenant",
@@ -36,6 +39,8 @@ def test_tenant():
             auto_approve_formats=["display_300x250"],
             human_review_required=False,
             billing_plan="basic",
+            created_at=now,
+            updated_at=now,
         )
         session.add(tenant)
         session.commit()
