@@ -9,9 +9,9 @@ from asgiref.wsgi import WsgiToAsgi
 sys.path.insert(0, os.path.dirname(__file__))
 
 # Import app without running the module-level code
-import admin_ui
+from src.admin.app import create_app
 
-app = admin_ui.app
+app, _ = create_app()
 
 # Create ASGI app
 asgi_app = WsgiToAsgi(app)

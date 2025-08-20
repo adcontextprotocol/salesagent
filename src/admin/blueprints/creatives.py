@@ -5,7 +5,21 @@ import logging
 import uuid
 from datetime import UTC, datetime
 
-from creative_formats import discover_creative_formats_from_url, parse_creative_spec
+# TODO: Missing module - these functions need to be implemented
+# from creative_formats import discover_creative_formats_from_url, parse_creative_spec
+
+
+# Placeholder implementations for missing functions
+def parse_creative_spec(url):
+    """Parse creative specification from URL - placeholder implementation."""
+    return {"success": False, "error": "Creative format parsing not yet implemented", "url": url}
+
+
+def discover_creative_formats_from_url(url):
+    """Discover creative formats from URL - placeholder implementation."""
+    return []
+
+
 from flask import Blueprint, flash, jsonify, redirect, render_template, request, url_for
 from sqlalchemy import or_
 

@@ -5,7 +5,9 @@ These tests ensure that admin UI pages render without errors after database sche
 
 import pytest
 
-from admin_ui import app
+from src.admin.app import create_app
+
+app, _ = create_app()
 from tests.fixtures import TenantFactory
 
 

@@ -31,8 +31,9 @@ def test_health_routes_in_refactored_app():
 
 def test_health_routes_in_original_app():
     """Test that health routes still work in original app for comparison."""
-    from admin_ui import app
+    from src.admin.app import create_app
 
+    app, _ = create_app()
     client = app.test_client()
 
     # Test simple health endpoint

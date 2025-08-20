@@ -15,12 +15,10 @@ os.environ["ADCP_AUTH_TEST_MODE"] = "true"
 def app():
     """Create and configure a test Flask application."""
     # Reload admin_ui to pick up the test mode environment variable
-    import importlib
 
-    import admin_ui
+    from src.admin.app import create_app
 
-    importlib.reload(admin_ui)
-    from admin_ui import app as flask_app
+    flask_app, _ = create_app()
 
     flask_app.config["TESTING"] = True
     flask_app.config["SECRET_KEY"] = "test_secret_key"

@@ -9,7 +9,9 @@ from unittest.mock import Mock, patch
 
 import pytest
 
-from admin_ui import app
+from src.admin.app import create_app
+
+app, _ = create_app()
 
 # Import modules to test
 from ai_product_service import AdServerInventory, AIProductConfigurationService, ProductDescription

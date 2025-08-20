@@ -35,8 +35,9 @@ def setup_test_db():
 @pytest.fixture
 def app(setup_test_db):
     """Create test Flask app."""
-    from admin_ui import app as flask_app
+    from src.admin.app import create_app
 
+    flask_app, _ = create_app()
     flask_app.config["TESTING"] = True
     flask_app.config["SECRET_KEY"] = "test_secret"
     return flask_app
