@@ -325,51 +325,126 @@ def validate_gam_user_response(user):
 
 
 def get_custom_targeting_mappings(tenant_id=None):
-    """Get custom targeting key mappings for a tenant."""
-    mappings = {}
+    """Get custom targeting key and value mappings for a tenant.
+
+    Returns tuple of (key_mappings, value_mappings) dicts.
+    """
+    # Default mappings for header bidding (common across many publishers)
+    key_mappings = {
+        "13748922": "hb_pb",
+        "14095946": "hb_source",
+        "14094596": "hb_format",
+    }
+
+    value_mappings = {
+        "448589710493": "0.01",
+        "448946107548": "freestar",
+        "448946356517": "prebid",
+        "448946353802": "video",
+    }
 
     if tenant_id:
         try:
             with get_db_session() as db_session:
                 tenant = db_session.query(Tenant).filter_by(tenant_id=tenant_id).first()
                 # TODO: Custom targeting mappings should be stored in a dedicated table or column
-                # For now, return empty mappings since the features_config column was removed
+                # For now, return default mappings
                 if tenant:
-                    pass  # No custom targeting mappings in current schema
+                    pass  # Could override with tenant-specific mappings
         except Exception as e:
             logger.error(f"Error getting custom targeting mappings: {e}")
 
-    return mappings
+    return key_mappings, value_mappings
 
 
 def translate_custom_targeting(custom_targeting_node, tenant_id=None):
-    """Translate GAM custom targeting to human-readable format."""
+    """Translate GAM custom targeting structure to readable format."""
     if not custom_targeting_node:
-        return {}
+        return None
 
-    # Get tenant-specific mappings
-    mappings = get_custom_targeting_mappings(tenant_id)
+    # Get mappings (could be tenant-specific in future)
+    key_mappings, value_mappings = get_custom_targeting_mappings(tenant_id)
 
-    result = {}
+    def translate_node(node):
+        if not node:
+            return None
 
-    # Handle children (nested targeting)
-    if hasattr(custom_targeting_node, "children") and custom_targeting_node.children:
-        for child in custom_targeting_node.children:
-            child_result = translate_custom_targeting(child, tenant_id)
-            result.update(child_result)
+        if isinstance(node, dict):
+            # Handle dict-based nodes (from tests/API)
+            if "logicalOperator" in node:
+                # This is a group node with AND/OR logic
+                operator = node["logicalOperator"].lower()
+                children = []
+                if "children" in node and node["children"]:
+                    for child in node["children"]:
+                        translated_child = translate_node(child)
+                        if translated_child:
+                            children.append(translated_child)
 
-    # Handle direct attributes
-    if hasattr(custom_targeting_node, "keyId") and hasattr(custom_targeting_node, "valueIds"):
-        key_id = str(custom_targeting_node.keyId)
+                if len(children) == 1:
+                    return children[0]
+                elif len(children) > 1:
+                    return {operator: children}
+                return None
 
-        # Use mapping if available, otherwise use the ID
-        key_name = mappings.get(key_id, f"custom_key_{key_id}")
+            elif "keyId" in node:
+                # This is a key-value targeting node
+                key_id = str(node["keyId"])
+                key_name = key_mappings.get(key_id, f"key_{key_id}")
 
-        # Get the operator (default to "equals" if not specified)
-        operator = getattr(custom_targeting_node, "operator", "IS")
+                operator = node.get("operator", "IS")
+                value_ids = node.get("valueIds", [])
 
-        # Store value IDs
-        if custom_targeting_node.valueIds:
-            result[key_name] = {"operator": operator, "values": list(custom_targeting_node.valueIds)}
+                # Translate value IDs to names
+                values = []
+                for value_id in value_ids:
+                    value_name = value_mappings.get(str(value_id), str(value_id))
+                    values.append(value_name)
 
-    return result
+                if operator == "IS":
+                    return {"key": key_name, "in": values}
+                elif operator == "IS_NOT":
+                    return {"key": key_name, "not_in": values}
+                else:
+                    return {"key": key_name, "operator": operator, "values": values}
+
+        elif hasattr(node, "logicalOperator"):
+            # Handle SOAP/object-based nodes (from GAM)
+            operator = node.logicalOperator.lower()
+            children = []
+            if hasattr(node, "children") and node.children:
+                for child in node.children:
+                    translated_child = translate_node(child)
+                    if translated_child:
+                        children.append(translated_child)
+
+            if len(children) == 1:
+                return children[0]
+            elif len(children) > 1:
+                return {operator: children}
+            return None
+
+        elif hasattr(node, "keyId"):
+            # This is a SOAP key-value targeting node
+            key_id = str(node.keyId)
+            key_name = key_mappings.get(key_id, f"key_{key_id}")
+
+            operator = getattr(node, "operator", "IS")
+            value_ids = getattr(node, "valueIds", [])
+
+            # Translate value IDs to names
+            values = []
+            for value_id in value_ids:
+                value_name = value_mappings.get(str(value_id), str(value_id))
+                values.append(value_name)
+
+            if operator == "IS":
+                return {"key": key_name, "in": values}
+            elif operator == "IS_NOT":
+                return {"key": key_name, "not_in": values}
+            else:
+                return {"key": key_name, "operator": operator, "values": values}
+
+        return None
+
+    return translate_node(custom_targeting_node)
