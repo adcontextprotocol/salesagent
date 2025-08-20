@@ -286,13 +286,21 @@ class TestOAuthCallback:
         }
 
         # Mock both auth checks to return False
+        # Mock database session that returns no users
+        mock_db_session = MagicMock()
+        mock_query = MagicMock()
+        mock_query.query.return_value.join.return_value.filter.return_value.all.return_value = []
+        mock_db_session.query = mock_query.query
+        mock_db_session.__enter__ = MagicMock(return_value=mock_db_session)
+        mock_db_session.__exit__ = MagicMock(return_value=None)
+
         with patch("src.admin.utils.is_super_admin", return_value=False):
-            with patch("src.admin.utils.is_tenant_admin", return_value=False):
+            with patch("src.admin.blueprints.auth.get_db_session", return_value=mock_db_session):
                 response = client.get("/auth/google/callback")
 
-                # Should show login page with error
-                assert response.status_code == 200
-                assert b"not authorized" in response.data
+                # Should redirect to login with error
+                assert response.status_code == 302
+                assert "/login" in response.location
 
     def test_tenant_google_callback_with_user_in_db(self, client, mock_google_oauth, mock_db, mock_db_session):
         """Test tenant-specific OAuth callback for user in database."""
