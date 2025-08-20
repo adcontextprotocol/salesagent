@@ -1,13 +1,14 @@
 """Inventory and orders management blueprint."""
 
+import json
 import logging
 
 from flask import Blueprint, jsonify, render_template, request, session
 from sqlalchemy import func
 
 from database_session import get_db_session
-from models import GAMOrder, MediaBuy, Tenant
-from src.admin.utils import require_auth, require_tenant_access
+from models import GAMInventory, GAMOrder, MediaBuy, Principal, Tenant
+from src.admin.utils import get_tenant_config_from_db, require_auth, require_tenant_access
 
 logger = logging.getLogger(__name__)
 
@@ -226,4 +227,144 @@ def get_order_details(tenant_id, order_id):
 
     except Exception as e:
         logger.error(f"Error getting order details: {e}", exc_info=True)
+        return jsonify({"error": str(e)}), 500
+
+
+@inventory_bp.route("/tenant/<tenant_id>/check-inventory-sync")
+@require_auth()
+def check_inventory_sync(tenant_id):
+    """Check if GAM inventory has been synced for this tenant."""
+    # Check access
+    if session.get("role") != "super_admin" and session.get("tenant_id") != tenant_id:
+        return jsonify({"error": "Access denied"}), 403
+
+    try:
+        with get_db_session() as db_session:
+            # Count inventory items
+            inventory_count = db_session.query(GAMInventory).filter_by(tenant_id=tenant_id).count()
+
+            has_inventory = inventory_count > 0
+
+            # Get last sync time if available
+            last_sync = None
+            if has_inventory:
+                latest = (
+                    db_session.query(GAMInventory)
+                    .filter(GAMInventory.tenant_id == tenant_id)
+                    .order_by(GAMInventory.created_at.desc())
+                    .first()
+                )
+                if latest and latest.created_at:
+                    last_sync = latest.created_at.isoformat()
+
+            return jsonify(
+                {
+                    "has_inventory": has_inventory,
+                    "inventory_count": inventory_count,
+                    "last_sync": last_sync,
+                }
+            )
+
+    except Exception as e:
+        logger.error(f"Error checking inventory sync: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
+@inventory_bp.route("/tenant/<tenant_id>/analyze-ad-server")
+@require_auth()
+def analyze_ad_server_inventory(tenant_id):
+    """Analyze ad server to discover audiences, formats, and placements."""
+    # Check access
+    if session.get("role") == "viewer":
+        return jsonify({"error": "Access denied"}), 403
+
+    if session.get("role") == "tenant_admin" and session.get("tenant_id") != tenant_id:
+        return jsonify({"error": "Access denied"}), 403
+
+    try:
+        # Get tenant config to determine adapter
+        config = get_tenant_config_from_db(tenant_id)
+        if not config:
+            return jsonify({"error": "Tenant not found"}), 404
+
+        # Find enabled adapter
+        adapter_type = None
+        adapter_config = None
+        for adapter, cfg in config.get("adapters", {}).items():
+            if cfg.get("enabled"):
+                adapter_type = adapter
+                adapter_config = cfg
+                break
+
+        if not adapter_type:
+            # Return mock data if no adapter configured
+            return jsonify(
+                {
+                    "audiences": [
+                        {
+                            "id": "tech_enthusiasts",
+                            "name": "Tech Enthusiasts",
+                            "size": 1200000,
+                        },
+                        {"id": "sports_fans", "name": "Sports Fans", "size": 800000},
+                    ],
+                    "formats": [],
+                    "placements": [
+                        {
+                            "id": "homepage_hero",
+                            "name": "Homepage Hero",
+                            "sizes": ["970x250", "728x90"],
+                        }
+                    ],
+                }
+            )
+
+        # Get a principal for API calls
+        with get_db_session() as db_session:
+            principal_obj = db_session.query(Principal).filter_by(tenant_id=tenant_id).first()
+
+            if not principal_obj:
+                return jsonify({"error": "No principal found for tenant"}), 404
+
+            # Create principal object
+            from schemas import Principal as PrincipalSchema
+
+            mappings = (
+                principal_obj.platform_mappings
+                if isinstance(principal_obj.platform_mappings, dict)
+                else json.loads(principal_obj.platform_mappings)
+            )
+            principal = PrincipalSchema(
+                tenant_id=tenant_id,
+                principal_id=principal_obj.principal_id,
+                name=principal_obj.name,
+                access_token=principal_obj.access_token,
+                platform_mappings=mappings,
+            )
+
+        # Get adapter instance
+        from adapters import get_adapter
+
+        adapter = get_adapter(adapter_type, principal, config=config, dry_run=False)
+
+        # Mock analysis (real adapters would implement actual discovery)
+        analysis = {
+            "audiences": [
+                {"id": "auto_intenders", "name": "Auto Intenders", "size": 500000},
+                {"id": "travel_enthusiasts", "name": "Travel Enthusiasts", "size": 750000},
+            ],
+            "formats": [
+                {"id": "display_728x90", "name": "Leaderboard", "dimensions": "728x90"},
+                {"id": "display_300x250", "name": "Medium Rectangle", "dimensions": "300x250"},
+            ],
+            "placements": [
+                {"id": "homepage_top", "name": "Homepage Top", "formats": ["display_728x90"]},
+                {"id": "article_sidebar", "name": "Article Sidebar", "formats": ["display_300x250"]},
+            ],
+        }
+
+        return jsonify(analysis)
+
+    except Exception as e:
+        logger.error(f"Error analyzing ad server: {e}")
         return jsonify({"error": str(e)}), 500

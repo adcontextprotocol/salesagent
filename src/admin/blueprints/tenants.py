@@ -289,6 +289,44 @@ def test_slack(tenant_id):
         return jsonify({"success": False, "error": "Internal server error"}), 500
 
 
+@tenants_bp.route("/<tenant_id>/update", methods=["POST"])
+@require_auth()
+def update_tenant(tenant_id):
+    """Update tenant configuration."""
+    # Check access based on role
+    if session.get("role") == "viewer":
+        return "Access denied. Viewers cannot update configuration.", 403
+
+    # Check if user is trying to update another tenant
+    if session.get("role") in ["admin", "manager", "tenant_admin"] and session.get("tenant_id") != tenant_id:
+        return "Access denied. You can only update your own tenant.", 403
+
+    with get_db_session() as db_session:
+        try:
+            # Get form data for individual fields
+            max_daily_budget = request.form.get("max_daily_budget", type=int)
+            enable_aee_signals = request.form.get("enable_aee_signals") == "true"
+            human_review_required = request.form.get("human_review_required") == "true"
+
+            # Find and update tenant
+            tenant = db_session.query(Tenant).filter_by(tenant_id=tenant_id).first()
+            if tenant:
+                tenant.max_daily_budget = max_daily_budget
+                tenant.enable_aee_signals = enable_aee_signals
+                tenant.human_review_required = human_review_required
+                tenant.updated_at = datetime.now().isoformat()
+
+                db_session.commit()
+                flash("Configuration updated successfully", "success")
+            else:
+                flash("Tenant not found", "error")
+
+            return redirect(url_for("tenants.dashboard", tenant_id=tenant_id))
+        except Exception as e:
+            flash(f"Error updating configuration: {str(e)}", "error")
+            return redirect(url_for("tenants.dashboard", tenant_id=tenant_id))
+
+
 @tenants_bp.route("/<tenant_id>/users")
 @require_tenant_access()
 def list_users(tenant_id):
