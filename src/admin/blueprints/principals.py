@@ -27,7 +27,7 @@ def list_principals(tenant_id):
             tenant = db_session.query(Tenant).filter_by(tenant_id=tenant_id).first()
             if not tenant:
                 flash("Tenant not found", "error")
-                return redirect(url_for("index"))
+                return redirect(url_for("core.index"))
 
             principals = db_session.query(Principal).filter_by(tenant_id=tenant_id).order_by(Principal.name).all()
 
@@ -64,7 +64,7 @@ def list_principals(tenant_id):
     except Exception as e:
         logger.error(f"Error listing principals: {e}", exc_info=True)
         flash("Error loading advertisers", "error")
-        return redirect(url_for("index"))
+        return redirect(url_for("core.index"))
 
 
 @principals_bp.route("/principals/create", methods=["GET", "POST"])
@@ -77,7 +77,7 @@ def create_principal(tenant_id):
             tenant = db_session.query(Tenant).filter_by(tenant_id=tenant_id).first()
             if not tenant:
                 flash("Tenant not found", "error")
-                return redirect(url_for("index"))
+                return redirect(url_for("core.index"))
 
             # Check if GAM is configured
             from src.admin.utils import get_tenant_config_from_db

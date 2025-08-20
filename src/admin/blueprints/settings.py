@@ -88,7 +88,7 @@ def tenant_settings(tenant_id, section=None):
         tenant = db_session.query(Tenant).filter_by(tenant_id=tenant_id).first()
         if not tenant:
             flash("Tenant not found", "error")
-            return redirect(url_for("index"))
+            return redirect(url_for("core.index"))
 
         # Get tenant configuration
         config = get_tenant_config_from_db(tenant_id)
@@ -152,7 +152,7 @@ def update_general(tenant_id):
             tenant = db_session.query(Tenant).filter_by(tenant_id=tenant_id).first()
             if not tenant:
                 flash("Tenant not found", "error")
-                return redirect(url_for("index"))
+                return redirect(url_for("core.index"))
 
             tenant.name = tenant_name
             tenant.updated_at = datetime.now(UTC)
@@ -181,7 +181,7 @@ def update_adapter(tenant_id):
             tenant = db_session.query(Tenant).filter_by(tenant_id=tenant_id).first()
             if not tenant:
                 flash("Tenant not found", "error")
-                return redirect(url_for("index"))
+                return redirect(url_for("core.index"))
 
             # Get current config
             if tenant.adapter_config:
@@ -238,7 +238,7 @@ def update_slack(tenant_id):
             tenant = db_session.query(Tenant).filter_by(tenant_id=tenant_id).first()
             if not tenant:
                 flash("Tenant not found", "error")
-                return redirect(url_for("index"))
+                return redirect(url_for("core.index"))
 
             # Update Slack webhook
             tenant.slack_webhook_url = webhook_url

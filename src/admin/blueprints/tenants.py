@@ -29,7 +29,7 @@ def dashboard(tenant_id):
             tenant = db_session.query(Tenant).filter_by(tenant_id=tenant_id).first()
             if not tenant:
                 flash("Tenant not found", "error")
-                return redirect(url_for("index"))
+                return redirect(url_for("core.index"))
 
             # Get stats
             active_campaigns = db_session.query(MediaBuy).filter_by(tenant_id=tenant_id, status="active").count()
@@ -122,7 +122,7 @@ def dashboard(tenant_id):
     except Exception as e:
         logger.error(f"Error loading tenant dashboard: {e}", exc_info=True)
         flash("Error loading dashboard", "error")
-        return redirect(url_for("index"))
+        return redirect(url_for("core.index"))
 
 
 @tenants_bp.route("/<tenant_id>/settings")
@@ -135,7 +135,7 @@ def settings(tenant_id, section=None):
             tenant = db_session.query(Tenant).filter_by(tenant_id=tenant_id).first()
             if not tenant:
                 flash("Tenant not found", "error")
-                return redirect(url_for("index"))
+                return redirect(url_for("core.index"))
 
             # Get adapter config
             adapter_config = None
@@ -182,7 +182,7 @@ def update(tenant_id):
             tenant = db_session.query(Tenant).filter_by(tenant_id=tenant_id).first()
             if not tenant:
                 flash("Tenant not found", "error")
-                return redirect(url_for("index"))
+                return redirect(url_for("core.index"))
 
             # Update tenant
             tenant.name = form_data.get("name", tenant.name)
@@ -213,7 +213,7 @@ def update_slack(tenant_id):
             tenant = db_session.query(Tenant).filter_by(tenant_id=tenant_id).first()
             if not tenant:
                 flash("Tenant not found", "error")
-                return redirect(url_for("index"))
+                return redirect(url_for("core.index"))
 
             # Update Slack webhook
             tenant.slack_webhook_url = webhook_url if webhook_url else None
@@ -336,7 +336,7 @@ def list_users(tenant_id):
             tenant = db_session.query(Tenant).filter_by(tenant_id=tenant_id).first()
             if not tenant:
                 flash("Tenant not found", "error")
-                return redirect(url_for("index"))
+                return redirect(url_for("core.index"))
 
             users = (
                 db_session.query(User).filter_by(tenant_id=tenant_id).order_by(User.is_admin.desc(), User.email).all()
@@ -514,7 +514,7 @@ def create_principal(tenant_id):
             tenant = db_session.query(Tenant).filter_by(tenant_id=tenant_id).first()
             if not tenant:
                 flash("Tenant not found", "error")
-                return redirect(url_for("index"))
+                return redirect(url_for("core.index"))
 
             # Check if GAM is enabled
             gam_enabled = False

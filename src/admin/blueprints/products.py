@@ -31,7 +31,7 @@ def list_products(tenant_id):
             tenant = db_session.query(Tenant).filter_by(tenant_id=tenant_id).first()
             if not tenant:
                 flash("Tenant not found", "error")
-                return redirect(url_for("index"))
+                return redirect(url_for("core.index"))
 
             products = db_session.query(Product).filter_by(tenant_id=tenant_id).order_by(Product.name).all()
 
@@ -447,7 +447,7 @@ def setup_wizard(tenant_id):
         tenant = db_session.query(Tenant).filter_by(tenant_id=tenant_id).first()
         if not tenant:
             flash("Tenant not found", "error")
-            return redirect(url_for("index"))
+            return redirect(url_for("core.index"))
 
         # Check if tenant already has products
         product_count = db_session.query(Product).filter_by(tenant_id=tenant_id).count()
