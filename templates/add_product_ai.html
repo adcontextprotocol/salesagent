@@ -35,8 +35,8 @@
 
             <div style="margin-top: 2rem;">
                 <button type="submit" class="btn btn-primary">Analyze with AI</button>
-                <a href="{{ url_for('list_products', tenant_id=tenant_id) }}" class="btn btn-secondary">Cancel</a>
-                <a href="{{ url_for('add_product', tenant_id=tenant_id) }}" class="btn btn-secondary">Use Manual Form</a>
+                <a href="{{ url_for('products.list_products', tenant_id=tenant_id) }}" class="btn btn-secondary">Cancel</a>
+                <a href="{{ url_for('products.add_product', tenant_id=tenant_id) }}" class="btn btn-secondary">Use Manual Form</a>
             </div>
         </form>
     </div>
@@ -52,7 +52,7 @@
             <!-- Configuration preview will be inserted here -->
         </div>
 
-        <form id="final-product-form" method="POST" action="{{ url_for('add_product', tenant_id=tenant_id) }}">
+        <form id="final-product-form" method="POST" action="{{ url_for('products.add_product', tenant_id=tenant_id) }}">
             <input type="hidden" id="final-config" name="ai_config">
 
             <h4>Review & Adjust</h4>
@@ -195,7 +195,7 @@ document.getElementById('product-description-form').addEventListener('submit', a
     };
 
     try {
-        const response = await fetch(`{{ url_for('analyze_product_ai', tenant_id=tenant_id) }}`, {
+        const response = await fetch(`{{ url_for('products.analyze_product_ai', tenant_id=tenant_id) }}`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
