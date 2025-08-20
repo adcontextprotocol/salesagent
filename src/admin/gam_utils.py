@@ -85,6 +85,11 @@ def convert_line_item_to_product_json(line_item, creatives):
                     if hasattr(location, "type") and location.type == "COUNTRY":
                         if hasattr(location, "countryCode"):
                             countries.add(location.countryCode)
+                        elif hasattr(location, "displayName"):
+                            # Try to map display name to country code
+                            country_map = {"United States": "US", "Canada": "CA", "United Kingdom": "GB"}
+                            if location.displayName in country_map:
+                                countries.add(country_map[location.displayName])
                 product["countries"] = list(countries)
 
         # Day part targeting
