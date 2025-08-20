@@ -7,7 +7,7 @@ import os
 import secrets
 import traceback
 import uuid
-from datetime import UTC, datetime
+from datetime import datetime
 from functools import wraps
 
 from authlib.integrations.flask_client import OAuth
@@ -15,7 +15,6 @@ from flask import (
     Blueprint,
     Flask,
     abort,
-    flash,
     g,
     jsonify,
     redirect,
@@ -30,21 +29,11 @@ from flask_socketio import SocketIO, emit, join_room, leave_room
 from database_session import get_db_session
 from models import (
     AdapterConfig,
-    AuditLog,
     CreativeFormat,
-    MediaBuy,
     Principal,
     Product,
     SuperadminConfig,
     Tenant,
-    User,
-    WorkflowStep,
-)
-from validation import (
-    FormValidator,
-    sanitize_form_data,
-    validate_form_data,
-    validate_gam_config,
 )
 
 
@@ -127,34 +116,44 @@ try:
     from src.admin.blueprints.api import api_bp as refactored_api_bp
     from src.admin.blueprints.auth import auth_bp as refactored_auth_bp
     from src.admin.blueprints.auth import init_oauth
+    from src.admin.blueprints.core import core_bp as refactored_core_bp
     from src.admin.blueprints.creatives import creatives_bp as refactored_creatives_bp
     from src.admin.blueprints.gam import gam_bp as refactored_gam_bp
+    from src.admin.blueprints.inventory import inventory_bp as refactored_inventory_bp
     from src.admin.blueprints.mcp_test import mcp_test_bp as refactored_mcp_test_bp
     from src.admin.blueprints.operations import operations_bp as refactored_operations_bp
     from src.admin.blueprints.policy import policy_bp as refactored_policy_bp
+    from src.admin.blueprints.principals import principals_bp as refactored_principals_bp
     from src.admin.blueprints.products import products_bp as refactored_products_bp
     from src.admin.blueprints.settings import settings_bp as refactored_settings_bp
     from src.admin.blueprints.tenants import tenants_bp as refactored_tenants_bp
+    from src.admin.blueprints.users import users_bp as refactored_users_bp
 
     # Initialize OAuth
     init_oauth(app)
 
     # Register blueprints with appropriate prefixes
+    app.register_blueprint(refactored_core_bp)  # Core routes like /, /health, /create_tenant
     app.register_blueprint(refactored_auth_bp)  # No prefix - auth routes are at root
     app.register_blueprint(refactored_api_bp, url_prefix="/api", name="api_refactored")
     app.register_blueprint(refactored_tenants_bp, url_prefix="/tenant", name="tenants")
     app.register_blueprint(
         refactored_products_bp, url_prefix="/tenant/<tenant_id>/products", name="products_refactored"
     )
+    app.register_blueprint(
+        refactored_principals_bp, url_prefix="/tenant/<tenant_id>/principals", name="principals_refactored"
+    )
+    app.register_blueprint(refactored_users_bp, url_prefix="/tenant/<tenant_id>/users", name="users_refactored")
     app.register_blueprint(refactored_gam_bp, name="gam_refactored")
+    app.register_blueprint(
+        refactored_inventory_bp
+    )  # Has its own routing for /tenant/<tenant_id>/targeting, /inventory, /orders
     app.register_blueprint(refactored_operations_bp, url_prefix="/tenant/<tenant_id>", name="operations_refactored")
     app.register_blueprint(
         refactored_creatives_bp, url_prefix="/tenant/<tenant_id>/creative-formats", name="creatives_refactored"
     )
     app.register_blueprint(refactored_policy_bp, url_prefix="/tenant/<tenant_id>/policy", name="policy_refactored")
-    app.register_blueprint(
-        refactored_settings_bp, url_prefix="/tenant/<tenant_id>/settings", name="settings_refactored"
-    )
+    app.register_blueprint(refactored_settings_bp, name="settings_refactored")  # Settings has its own routing
     app.register_blueprint(refactored_adapters_bp, url_prefix="/tenant/<tenant_id>", name="adapters_refactored")
     app.register_blueprint(refactored_mcp_test_bp, name="mcp_test_refactored")
 
@@ -776,186 +775,192 @@ def require_tenant_access(api_mode=False):
         return redirect(url_for("auth.login") + "?error=Tenant+ID+required+for+non-super-admin+test+users")
 
     # Verify tenant exists
-    with get_db_session() as db_session:
-        tenant = db_session.query(Tenant).filter_by(tenant_id=tenant_id, is_active=True).first()
-
-        if not tenant:
-            return redirect(url_for("auth.login") + "?error=Invalid+tenant+ID")
-
-        # Set up session for tenant user
-        session["authenticated"] = True
-        session["role"] = test_user["role"]
-        session["user_id"] = f"test_{email}"  # Fake user ID for testing
-        session["tenant_id"] = tenant_id
-        session["tenant_name"] = tenant.name
-        session["email"] = email
-        session["username"] = test_user["name"]
-
-        return redirect(url_for("tenant_dashboard", tenant_id=tenant_id))
-
-    # MIGRATED to blueprint
-    # @app.route("/test/login")
-    # def test_login_form():
-    """Show test login form for automated testing."""
-    if not TEST_MODE_ENABLED:
-        return "Test mode is not enabled", 404
-
-    return """
-    <!DOCTYPE html>
-    <html>
-    <head>
-        <title>Test Login - AdCP Admin</title>
-        <style>
-            body { font-family: Arial, sans-serif; background: #f5f5f5; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
-            .container { background: white; padding: 2rem; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); width: 400px; }
-            .warning { background: #ff9800; color: white; padding: 1rem; margin: -2rem -2rem 2rem -2rem; border-radius: 8px 8px 0 0; text-align: center; }
-            h1 { color: #333; margin: 0 0 1.5rem 0; }
-            .form-group { margin-bottom: 1rem; }
-            label { display: block; margin-bottom: 0.5rem; color: #555; }
-            input, select { width: 100%; padding: 0.5rem; border: 1px solid #ddd; border-radius: 4px; }
-            button { background: #4285f4; color: white; border: none; padding: 0.75rem 1.5rem; border-radius: 4px; cursor: pointer; width: 100%; }
-            button:hover { background: #357ae8; }
-            .test-users { margin-top: 2rem; padding: 1rem; background: #f9f9f9; border-radius: 4px; }
-            .test-users h3 { margin-top: 0; }
-            .test-users code { background: #eee; padding: 0.2rem 0.4rem; border-radius: 3px; }
-        </style>
-    </head>
-    <body>
-        <div class="container">
-            <div class="warning">⚠️ TEST MODE - NOT FOR PRODUCTION USE</div>
-            <h1>Test Login</h1>
-            <form method="POST" action="/test/auth">
-                <div class="form-group">
-                    <label>Email:</label>
-                    <select name="email" required>
-                        <option value="">Select a test user...</option>
-                        <option value="test_super_admin@example.com">Test Super Admin</option>
-                        <option value="test_tenant_admin@example.com">Test Tenant Admin</option>
-                        <option value="test_tenant_user@example.com">Test Tenant User</option>
-                    </select>
-                </div>
-                <div class="form-group">
-                    <label>Password:</label>
-                    <input type="password" name="password" placeholder="test123" required>
-                </div>
-                <div class="form-group">
-                    <label>Tenant ID (optional, required for tenant users):</label>
-                    <input type="text" name="tenant_id" placeholder="e.g., tenant_abc123">
-                </div>
-                <button type="submit">Test Login</button>
-            </form>
-            <div class="test-users">
-                <h3>Available Test Users:</h3>
-                <ul>
-                    <li><code>test_super_admin@example.com</code> - Full admin access</li>
-                    <li><code>test_tenant_admin@example.com</code> - Tenant admin (requires tenant_id)</li>
-                    <li><code>test_tenant_user@example.com</code> - Tenant user (requires tenant_id)</li>
-                </ul>
-                <p>All test users use password: <code>test123</code></p>
-            </div>
-        </div>
-    </body>
-    </html>
-    """
 
 
-# Route removed - using tenant_dashboard as the main route now
+#    with get_db_session() as db_session:
+#        tenant = db_session.query(Tenant).filter_by(tenant_id=tenant_id, is_active=True).first()
+#
+#        if not tenant:
+#            return redirect(url_for("auth.login") + "?error=Invalid+tenant+ID")
+#
+#        # Set up session for tenant user
+#        session["authenticated"] = True
+#        session["role"] = test_user["role"]
+#        session["user_id"] = f"test_{email}"  # Fake user ID for testing
+#        session["tenant_id"] = tenant_id
+#        session["tenant_name"] = tenant.name
+#        session["email"] = email
+#        session["username"] = test_user["name"]
+#
+#        return redirect(url_for("tenant_dashboard", tenant_id=tenant_id))
+#
+#    # MIGRATED to blueprint
+#    # @app.route("/test/login")
+#    # def test_login_form():
+#    """Show test login form for automated testing."""
+#    if not TEST_MODE_ENABLED:
+#        return "Test mode is not enabled", 404
+#
+#    return """
+#    <!DOCTYPE html>
+#    <html>
+#    <head>
+#        <title>Test Login - AdCP Admin</title>
+#        <style>
+#            body { font-family: Arial, sans-serif; background: #f5f5f5; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
+#            .container { background: white; padding: 2rem; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); width: 400px; }
+#            .warning { background: #ff9800; color: white; padding: 1rem; margin: -2rem -2rem 2rem -2rem; border-radius: 8px 8px 0 0; text-align: center; }
+#            h1 { color: #333; margin: 0 0 1.5rem 0; }
+#            .form-group { margin-bottom: 1rem; }
+#            label { display: block; margin-bottom: 0.5rem; color: #555; }
+#            input, select { width: 100%; padding: 0.5rem; border: 1px solid #ddd; border-radius: 4px; }
+#            button { background: #4285f4; color: white; border: none; padding: 0.75rem 1.5rem; border-radius: 4px; cursor: pointer; width: 100%; }
+#            button:hover { background: #357ae8; }
+#            .test-users { margin-top: 2rem; padding: 1rem; background: #f9f9f9; border-radius: 4px; }
+#            .test-users h3 { margin-top: 0; }
+#            .test-users code { background: #eee; padding: 0.2rem 0.4rem; border-radius: 3px; }
+#        </style>
+#    </head>
+#    <body>
+#        <div class="container">
+#            <div class="warning">⚠️ TEST MODE - NOT FOR PRODUCTION USE</div>
+#            <h1>Test Login</h1>
+#            <form method="POST" action="/test/auth">
+#                <div class="form-group">
+#                    <label>Email:</label>
+#                    <select name="email" required>
+#                        <option value="">Select a test user...</option>
+#                        <option value="test_super_admin@example.com">Test Super Admin</option>
+#                        <option value="test_tenant_admin@example.com">Test Tenant Admin</option>
+#                        <option value="test_tenant_user@example.com">Test Tenant User</option>
+#                    </select>
+#                </div>
+#                <div class="form-group">
+#                    <label>Password:</label>
+#                    <input type="password" name="password" placeholder="test123" required>
+#                </div>
+#                <div class="form-group">
+#                    <label>Tenant ID (optional, required for tenant users):</label>
+#                    <input type="text" name="tenant_id" placeholder="e.g., tenant_abc123">
+#                </div>
+#                <button type="submit">Test Login</button>
+#            </form>
+#            <div class="test-users">
+#                <h3>Available Test Users:</h3>
+#                <ul>
+#                    <li><code>test_super_admin@example.com</code> - Full admin access</li>
+#                    <li><code>test_tenant_admin@example.com</code> - Tenant admin (requires tenant_id)</li>
+#                    <li><code>test_tenant_user@example.com</code> - Tenant user (requires tenant_id)</li>
+#                </ul>
+#                <p>All test users use password: <code>test123</code></p>
+#            </div>
+#        </div>
+#    </body>
+#    </html>
+#    """
+#
+#
+## Route removed - using tenant_dashboard as the main route now
+#
+#
+## MIGRATING: This simple health check will be handled by a direct route
+## Keeping it active for now as it doesn't conflict with blueprints
+## MIGRATED: Moved to src/admin/blueprints/core.py
+## @app.route("/health")
+## def health():
+#    """Health check endpoint for monitoring."""
+#    return "OK", 200
+#
+#
+## MIGRATED: Moved to src/admin/blueprints/core.py
+## @app.route("/")
+## @require_auth()
+## def index():
+#    """Dashboard showing all tenants (super admin) or redirect to tenant page (tenant admin)."""
+#    # Tenant admins should go directly to their tenant page
+#    if session.get("role") == "tenant_admin":
+#        return redirect(url_for("tenant_dashboard", tenant_id=session.get("tenant_id")))
+#
+#    # Super admins see all tenants
+#    with get_db_session() as db_session:
+#        tenant_objects = db_session.query(Tenant).order_by(Tenant.created_at.desc()).all()
+#
+#        tenants = []
+#        for tenant in tenant_objects:
+#            # Convert datetime if it's a string
+#            created_at = tenant.created_at
+#            if isinstance(created_at, str):
+#                try:
+#                    created_at = datetime.fromisoformat(created_at.replace("T", " "))
+#                except:
+#                    pass
+#
+#            tenants.append(
+#                {
+#                    "tenant_id": tenant.tenant_id,
+#                    "name": tenant.name,
+#                    "subdomain": tenant.subdomain,
+#                    "is_active": tenant.is_active,
+#                    "created_at": created_at,
+#                }
+#            )
+#
+#        return render_template("index.html", tenants=tenants)
+#
+#
+## MIGRATED: Moved to src/admin/blueprints/settings.py
+## @app.route("/settings")
+## @require_auth(admin_only=True)
+## def settings():
+##     """Superadmin settings page."""
+#     with get_db_session() as db_session:
+#         # Get all superadmin config values
+#         config_objects = db_session.query(SuperadminConfig).order_by(SuperadminConfig.config_key).all()
+#
+#         config_items = {}
+#         for config in config_objects:
+#             config_items[config.config_key] = {
+#                 "value": config.config_value if config.config_value else "",
+#                 "description": config.description if config.description else "",
+#             }
+#
+#         return render_template("settings.html", config_items=config_items)
 
 
-# MIGRATING: This simple health check will be handled by a direct route
-# Keeping it active for now as it doesn't conflict with blueprints
-@app.route("/health")
-def health():
-    """Health check endpoint for monitoring."""
-    return "OK", 200
-
-
-@app.route("/")
-@require_auth()
-def index():
-    """Dashboard showing all tenants (super admin) or redirect to tenant page (tenant admin)."""
-    # Tenant admins should go directly to their tenant page
-    if session.get("role") == "tenant_admin":
-        return redirect(url_for("tenant_dashboard", tenant_id=session.get("tenant_id")))
-
-    # Super admins see all tenants
-    with get_db_session() as db_session:
-        tenant_objects = db_session.query(Tenant).order_by(Tenant.created_at.desc()).all()
-
-        tenants = []
-        for tenant in tenant_objects:
-            # Convert datetime if it's a string
-            created_at = tenant.created_at
-            if isinstance(created_at, str):
-                try:
-                    created_at = datetime.fromisoformat(created_at.replace("T", " "))
-                except:
-                    pass
-
-            tenants.append(
-                {
-                    "tenant_id": tenant.tenant_id,
-                    "name": tenant.name,
-                    "subdomain": tenant.subdomain,
-                    "is_active": tenant.is_active,
-                    "created_at": created_at,
-                }
-            )
-
-        return render_template("index.html", tenants=tenants)
-
-
-@app.route("/settings")
-@require_auth(admin_only=True)
-def settings():
-    """Superadmin settings page."""
-    with get_db_session() as db_session:
-        # Get all superadmin config values
-        config_objects = db_session.query(SuperadminConfig).order_by(SuperadminConfig.config_key).all()
-
-        config_items = {}
-        for config in config_objects:
-            config_items[config.config_key] = {
-                "value": config.config_value if config.config_value else "",
-                "description": config.description if config.description else "",
-            }
-
-        return render_template("settings.html", config_items=config_items)
-
-
-@app.route("/settings/update", methods=["POST"])
-@require_auth(admin_only=True)
-def update_settings():
-    """Update superadmin settings."""
-    with get_db_session() as db_session:
-        try:
-            # Update GAM OAuth settings
-            gam_client_id = request.form.get("gam_oauth_client_id", "").strip()
-            gam_client_secret = request.form.get("gam_oauth_client_secret", "").strip()
-
-            # Update GAM client ID
-            client_id_config = db_session.query(SuperadminConfig).filter_by(config_key="gam_oauth_client_id").first()
-            if client_id_config:
-                client_id_config.config_value = gam_client_id
-                client_id_config.updated_at = datetime.now()
-                client_id_config.updated_by = session.get("email")
-
-            # Update GAM client secret
-            client_secret_config = (
-                db_session.query(SuperadminConfig).filter_by(config_key="gam_oauth_client_secret").first()
-            )
-            if client_secret_config:
-                client_secret_config.config_value = gam_client_secret
-                client_secret_config.updated_at = datetime.now()
-                client_secret_config.updated_by = session.get("email")
-
-            db_session.commit()
-            flash("Settings updated successfully", "success")
-
-        except Exception as e:
-            flash(f"Error updating settings: {str(e)}", "error")
-
-    return redirect(url_for("settings"))
+# MIGRATED: Moved to src/admin/blueprints/settings.py
+# @app.route("/settings/update", methods=["POST"])
+# @require_auth(admin_only=True)
+# def update_settings():
+#     """Update superadmin settings."""
+#     with get_db_session() as db_session:
+#         try:
+#             # Update GAM OAuth settings
+#             gam_client_id = request.form.get("gam_oauth_client_id", "").strip()
+#             gam_client_secret = request.form.get("gam_oauth_client_secret", "").strip()
+#
+#             # Update GAM client ID
+#             client_id_config = db_session.query(SuperadminConfig).filter_by(config_key="gam_oauth_client_id").first()
+#             if client_id_config:
+#                 client_id_config.config_value = gam_client_id
+#                 client_id_config.updated_at = datetime.now()
+#                 client_id_config.updated_by = session.get("email")
+#
+#             # Update GAM client secret
+#             client_secret_config = (
+#                 db_session.query(SuperadminConfig).filter_by(config_key="gam_oauth_client_secret").first()
+#             )
+#             if client_secret_config:
+#                 client_secret_config.config_value = gam_client_secret
+#                 client_secret_config.updated_at = datetime.now()
+#                 client_secret_config.updated_by = session.get("email")
+#
+#             db_session.commit()
+#             flash("Settings updated successfully", "success")
+#
+#         except Exception as e:
+#             flash(f"Error updating settings: {str(e)}", "error")
+#
+#     return redirect(url_for("settings"))
 
 
 @app.route("/tenant/<tenant_id>/update", methods=["POST"])
@@ -970,1111 +975,1132 @@ def update_tenant(tenant_id):
     if session.get("role") in ["admin", "manager", "tenant_admin"] and session.get("tenant_id") != tenant_id:
         return "Access denied. You can only update your own tenant.", 403
 
-    with get_db_session() as db_session:
-        try:
-            # Get form data for individual fields
-            max_daily_budget = request.form.get("max_daily_budget", type=int)
-            enable_aee_signals = request.form.get("enable_aee_signals") == "true"
-            human_review_required = request.form.get("human_review_required") == "true"
-
-            # Find and update tenant
-            tenant = db_session.query(Tenant).filter_by(tenant_id=tenant_id).first()
-            if tenant:
-                tenant.max_daily_budget = max_daily_budget
-                tenant.enable_aee_signals = enable_aee_signals
-                tenant.human_review_required = human_review_required
-                tenant.updated_at = datetime.now().isoformat()
-
-                db_session.commit()
-                flash("Configuration updated successfully", "success")
-            else:
-                flash("Tenant not found", "error")
-
-            return redirect(url_for("tenant_dashboard", tenant_id=tenant_id))
-        except Exception as e:
-            flash(f"Error updating configuration: {str(e)}", "error")
-            return redirect(url_for("tenant_dashboard", tenant_id=tenant_id))
-
-
-@app.route("/tenant/<tenant_id>/update_slack", methods=["POST"])
-@require_auth()
-def update_slack(tenant_id):
-    """Update Slack webhook configuration."""
-    # Check if tenant admin is trying to update another tenant
-    if session.get("role") == "tenant_admin" and session.get("tenant_id") != tenant_id:
-        return "Access denied", 403
-
-    try:
-        # Validate webhook URLs
-        form_data = {
-            "slack_webhook_url": request.form.get("slack_webhook_url", "").strip(),
-            "slack_audit_webhook_url": request.form.get("slack_audit_webhook_url", "").strip(),
-        }
-
-        # Sanitize form data
-        form_data = sanitize_form_data(form_data)
-
-        # Validate
-        validators = {
-            "slack_webhook_url": [FormValidator.validate_webhook_url],
-            "slack_audit_webhook_url": [FormValidator.validate_webhook_url],
-        }
-
-        errors = validate_form_data(form_data, validators)
-        if errors:
-            for field, error in errors.items():
-                flash(f"{field}: {error}", "error")
-            return redirect(url_for("tenant_dashboard", tenant_id=tenant_id))
-
-        with get_db_session() as db_session:
-            slack_webhook = form_data["slack_webhook_url"]
-            audit_webhook = form_data["slack_audit_webhook_url"]
-
-            # Find and update tenant
-            tenant = db_session.query(Tenant).filter_by(tenant_id=tenant_id).first()
-            if tenant:
-                tenant.slack_webhook_url = slack_webhook if slack_webhook else None
-                tenant.slack_audit_webhook_url = audit_webhook if audit_webhook else None
-                tenant.updated_at = datetime.now().isoformat()
-                db_session.commit()
-
-        flash("Slack configuration updated successfully", "success")
-        return redirect(url_for("tenant_dashboard", tenant_id=tenant_id))
-    except Exception as e:
-        pass  # Context manager handles cleanup
-        return f"Error: {e}", 400
-
-
-@app.route("/tenant/<tenant_id>/test_slack", methods=["POST"])
-@require_auth()
-def test_slack(tenant_id):
-    """Test Slack webhook."""
-    # Check if tenant admin is trying to test another tenant
-    if session.get("role") == "tenant_admin" and session.get("tenant_id") != tenant_id:
-        return jsonify({"success": False, "error": "Access denied"}), 403
-
-    try:
-        data = request.get_json()
-        webhook_url = data.get("webhook_url")
-
-        if not webhook_url:
-            return jsonify({"success": False, "error": "No webhook URL provided"})
-
-        # Send test message
-        from datetime import datetime
-
-        import requests
-
-        test_message = {
-            "text": "🎉 Test message from AdCP Sales Agent",
-            "blocks": [
-                {
-                    "type": "header",
-                    "text": {
-                        "type": "plain_text",
-                        "text": "✅ Slack Integration Test Successful!",
-                    },
-                },
-                {
-                    "type": "section",
-                    "text": {
-                        "type": "mrkdwn",
-                        "text": f"This is a test message from tenant *{tenant_id}*\n\nYour Slack integration is working correctly!",
-                    },
-                },
-                {
-                    "type": "context",
-                    "elements": [
-                        {
-                            "type": "mrkdwn",
-                            "text": f"Sent at {datetime.now(UTC).strftime('%Y-%m-%d %H:%M:%S UTC')}",
-                        }
-                    ],
-                },
-            ],
-        }
-
-        response = requests.post(webhook_url, json=test_message, timeout=10)
-
-        if response.status_code == 200:
-            return jsonify({"success": True})
-        else:
-            return jsonify(
-                {
-                    "success": False,
-                    "error": f"Slack returned status {response.status_code}",
-                }
-            )
-
-    except requests.exceptions.Timeout:
-        return jsonify({"success": False, "error": "Request timed out"})
-    except requests.exceptions.RequestException as e:
-        return jsonify({"success": False, "error": str(e)})
-    except Exception as e:
-        return jsonify({"success": False, "error": str(e)})
-
-
-@app.route("/create_tenant", methods=["GET", "POST"])
-@require_auth(admin_only=True)
-def create_tenant():
-    """Create a new tenant (super admin only) - basic setup only."""
-    if request.method == "POST":
-        try:
-            tenant_name = request.form.get("name")
-            tenant_id = request.form.get("tenant_id") or tenant_name.lower().replace(" ", "_")
-            subdomain = request.form.get("subdomain") or tenant_id
-
-            app.logger.info(f"Creating tenant: name={tenant_name}, id={tenant_id}, subdomain={subdomain}")
-
-            # Parse authorization lists
-            authorized_emails = [
-                email.strip() for email in request.form.get("authorized_emails", "").split(",") if email.strip()
-            ]
-            authorized_domains = [
-                domain.strip() for domain in request.form.get("authorized_domains", "").split(",") if domain.strip()
-            ]
-
-            # Build minimal config for unmigrated fields
-            config = {"setup_complete": False}  # Flag to track if tenant has completed setup
-
-            with get_db_session() as session:
-                # Create tenant with new fields (config column removed)
-                new_tenant = Tenant(
-                    tenant_id=tenant_id,
-                    name=tenant_name,
-                    subdomain=subdomain,
-                    created_at=datetime.now(),
-                    updated_at=datetime.now(),
-                    is_active=True,
-                    ad_server=None,  # ad_server - set during setup
-                    max_daily_budget=10000,  # max_daily_budget
-                    enable_aee_signals=True,  # enable_aee_signals
-                    authorized_emails=authorized_emails,  # authorized_emails
-                    authorized_domains=authorized_domains,  # authorized_domains
-                    auto_approve_formats=[],  # auto_approve_formats
-                    human_review_required=True,  # human_review_required
-                    admin_token=config.get("admin_token", f"admin_{tenant_id}_{secrets.token_hex(16)}"),  # admin_token
-                )
-                session.add(new_tenant)
-
-                app.logger.info(f"Tenant {tenant_id} inserted successfully")
-
-                # Create admin principal with access token
-                admin_token = secrets.token_urlsafe(32)
-                new_principal = Principal(
-                    tenant_id=tenant_id,
-                    principal_id=f"{tenant_id}_admin",
-                    name=f"{tenant_name} Admin",
-                    platform_mappings={"mock": {"id": "system"}},  # Default mock mapping
-                    access_token=admin_token,
-                )
-                session.add(new_principal)
-
-                session.commit()
-
-            flash(
-                f'Tenant "{tenant_name}" created successfully! The publisher should log in and start with the Ad Server Setup tab to complete configuration.',
-                "success",
-            )
-            return redirect(url_for("tenant_dashboard", tenant_id=tenant_id))
-
-        except Exception as e:
-            app.logger.error(f"Error creating tenant: {str(e)}")
-            app.logger.error(traceback.format_exc())
-            return render_template("create_tenant.html", error=str(e))
-
-    return render_template("create_tenant.html")
-
-
-# New Dashboard Routes (v2)
-# MIGRATED to tenants blueprint
-# @app.route("/tenant/<tenant_id>")
-# @tenants_bp.route("/dashboard/<tenant_id>")
-# @require_auth()
-"""def tenant_dashboard(tenant_id):
-    # Show new operational dashboard for tenant.
-    # Check access
-    if session.get("role") == "tenant_admin" and session.get("tenant_id") != tenant_id:
-        return "Access denied. You can only view your own tenant.", 403
-
-    with get_db_session() as db_session:
-        # Get tenant basic info
-        tenant_obj = db_session.query(Tenant).filter_by(tenant_id=tenant_id).first()
-        if not tenant_obj:
-            return "Tenant not found", 404
-
-        tenant = {
-            "tenant_id": tenant_obj.tenant_id,
-            "name": tenant_obj.name,
-            "subdomain": tenant_obj.subdomain,
-            "is_active": tenant_obj.is_active,
-            "ad_server": tenant_obj.ad_server,
-        }
-
-        # Get metrics
-        metrics = {}
-
-        # Use SQLAlchemy for date arithmetic
-        from datetime import timedelta
-
-        from sqlalchemy import func
-
-        now = datetime.now(UTC)
-        date_30_days_ago = now - timedelta(days=30)
-        date_60_days_ago = now - timedelta(days=60)
-        date_7_days_ago = now - timedelta(days=7)
-
-        # Total revenue (30 days) - using actual budget column
-        total_revenue = (
-            db_session.query(func.coalesce(func.sum(MediaBuy.budget), 0))
-            .filter(
-                MediaBuy.tenant_id == tenant_id,
-                MediaBuy.status.in_(["active", "completed"]),
-                MediaBuy.created_at >= date_30_days_ago,
-            )
-            .scalar()
-        )
-        metrics["total_revenue"] = float(total_revenue) if total_revenue else 0.0
-
-        # Revenue change vs previous period
-        prev_revenue = (
-            db_session.query(func.coalesce(func.sum(MediaBuy.budget), 0))
-            .filter(
-                MediaBuy.tenant_id == tenant_id,
-                MediaBuy.status.in_(["active", "completed"]),
-                MediaBuy.created_at >= date_60_days_ago,
-                MediaBuy.created_at < date_30_days_ago,
-            )
-            .scalar()
-        )
-        prev_revenue = float(prev_revenue) if prev_revenue else 0.0
-
-        if prev_revenue > 0:
-            metrics["revenue_change"] = ((metrics["total_revenue"] - prev_revenue) / prev_revenue) * 100
-        else:
-            metrics["revenue_change"] = 0
-
-        # Add absolute value for display
-        metrics["revenue_change_abs"] = abs(metrics["revenue_change"])
-
-        # Active media buys
-        metrics["active_buys"] = db_session.query(MediaBuy).filter_by(tenant_id=tenant_id, status="active").count()
-
-        # Pending media buys
-        metrics["pending_buys"] = db_session.query(MediaBuy).filter_by(tenant_id=tenant_id, status="pending").count()
-
-        # Open tasks - workflow_steps doesn't have tenant_id, so just set to 0
-        metrics["open_tasks"] = 0
-
-        # Overdue tasks - workflow_steps doesn't have tenant_id, so just set to 0
-        metrics["overdue_tasks"] = 0
-
-        # Active advertisers (principals with activity in last 30 days)
-        metrics["active_advertisers"] = (
-            db_session.query(func.count(func.distinct(MediaBuy.principal_id)))
-            .filter(MediaBuy.tenant_id == tenant_id, MediaBuy.created_at >= date_30_days_ago)
-            .scalar()
-            or 0
-        )
-
-        # Total advertisers
-        metrics["total_advertisers"] = db_session.query(Principal).filter_by(tenant_id=tenant_id).count()
-
-        # Get recent media buys
-        recent_buys = (
-            db_session.query(MediaBuy)
-            .filter_by(tenant_id=tenant_id)
-            .order_by(MediaBuy.created_at.desc())
-            .limit(10)
-            .all()
-        )
-
-        recent_media_buys = []
-        for buy in recent_buys:
-            # Calculate relative time
-            created_at = buy.created_at
-            if not isinstance(created_at, datetime):
-                created_at = datetime.fromisoformat(str(created_at).replace("Z", "+00:00"))
-            if created_at.tzinfo is None:
-                created_at = created_at.replace(tzinfo=UTC)
-
-            delta = now - created_at
-
-            if delta.days > 0:
-                relative_time = f"{delta.days}d ago"
-            elif delta.seconds > 3600:
-                relative_time = f"{delta.seconds // 3600}h ago"
-            else:
-                relative_time = f"{delta.seconds // 60}m ago"
-
-            recent_media_buys.append(
-                {
-                    "media_buy_id": buy.media_buy_id,
-                    "principal_id": buy.principal_id,
-                    "advertiser_name": buy.advertiser_name or "Unknown",
-                    "status": buy.status,
-                    "budget": buy.budget,
-                    "spend": 0,  # TODO: Calculate actual spend
-                    "created_at_relative": relative_time,
-                }
-            )
-
-        # Get product count
-        product_count = db_session.query(Product).filter_by(tenant_id=tenant_id).count()
-
-        # Get pending tasks - workflow_steps doesn't have tenant_id, so return empty list
-        pending_tasks = []
-
-        # Chart data for revenue by advertiser (last 7 days)
-        chart_results = (
-            db_session.query(MediaBuy.advertiser_name, func.sum(MediaBuy.budget).label("revenue"))
-            .filter(
-                MediaBuy.tenant_id == tenant_id,
-                MediaBuy.created_at >= date_7_days_ago,
-                MediaBuy.status.in_(["active", "completed"]),
-            )
-            .group_by(MediaBuy.advertiser_name)
-            .order_by(func.sum(MediaBuy.budget).desc())
-            .limit(10)
-            .all()
-        )
-
-        chart_labels = []
-        chart_data = []
-        for advertiser_name, revenue in chart_results:
-            chart_labels.append(advertiser_name or "Unknown")
-            chart_data.append(float(revenue) if revenue else 0.0)
-
-        # Get admin port from environment
-        admin_port = os.environ.get("ADMIN_UI_PORT", "8001")
-
-        return render_template(
-            "tenant_dashboard.html",
-            tenant=tenant,
-            metrics=metrics,
-            recent_media_buys=recent_media_buys,
-            product_count=product_count,
-            pending_tasks=pending_tasks,
-            chart_labels=chart_labels,
-            chart_data=chart_data,
-            admin_port=admin_port,
-        )
-"""
-
-
-@app.route("/tenant/<tenant_id>/settings")
-@app.route("/tenant/<tenant_id>/settings/<section>")
-@require_auth()
-def tenant_settings(tenant_id, section=None):
-    """Show tenant settings page."""
-    # Check access
-    if session.get("role") == "tenant_admin" and session.get("tenant_id") != tenant_id:
-        return "Access denied. You can only view your own tenant.", 403
-
-    with get_db_session() as db_session:
-        # Get full tenant info
-        tenant_obj = db_session.query(Tenant).filter_by(tenant_id=tenant_id).first()
-        if not tenant_obj:
-            return "Tenant not found", 404
-
-        # Convert to dict for template compatibility
-        tenant = {
-            "tenant_id": tenant_obj.tenant_id,
-            "name": tenant_obj.name,
-            "subdomain": tenant_obj.subdomain,
-            "is_active": tenant_obj.is_active,
-            "ad_server": tenant_obj.ad_server,
-            "max_daily_budget": tenant_obj.max_daily_budget,
-            "enable_aee_signals": tenant_obj.enable_aee_signals,
-            "authorized_emails": tenant_obj.authorized_emails,
-            "authorized_domains": tenant_obj.authorized_domains,
-            "auto_approve_formats": tenant_obj.auto_approve_formats,
-            "human_review_required": tenant_obj.human_review_required,
-            "admin_token": tenant_obj.admin_token,
-        }
-
-        # Add active_adapter as alias for ad_server for template compatibility
-        tenant["active_adapter"] = tenant.get("ad_server")
-
-        # Parse JSON fields
-        if tenant.get("authorized_emails"):
-            tenant["authorized_emails"] = (
-                json.loads(tenant["authorized_emails"])
-                if isinstance(tenant["authorized_emails"], str)
-                else tenant["authorized_emails"]
-            )
-        if tenant.get("authorized_domains"):
-            tenant["authorized_domains"] = (
-                json.loads(tenant["authorized_domains"])
-                if isinstance(tenant["authorized_domains"], str)
-                else tenant["authorized_domains"]
-            )
-
-        # Get adapter config from adapter_config table
-        adapter_config = {}
-        if tenant.get("ad_server"):
-            from models import AdapterConfig
-
-            adapter_obj = (
-                db_session.query(AdapterConfig).filter_by(tenant_id=tenant_id, adapter_type=tenant["ad_server"]).first()
-            )
-
-            if adapter_obj:
-                # Convert row to dict based on adapter type
-                if tenant["ad_server"] == "google_ad_manager":
-                    adapter_config = {
-                        "network_code": adapter_obj.gam_network_code,
-                        "refresh_token": adapter_obj.gam_refresh_token,
-                        "company_id": adapter_obj.gam_company_id,
-                        "trafficker_id": adapter_obj.gam_trafficker_id,
-                        "manual_approval_required": adapter_obj.gam_manual_approval_required,
-                    }
-                elif tenant["ad_server"] == "mock":
-                    adapter_config = {"dry_run": adapter_obj.mock_dry_run}
-                # Add other adapters as needed
-
-        # Get counts
-        product_count = db_session.query(Product).filter_by(tenant_id=tenant_id).count()
-
-        # Products don't have is_active column - all products are considered active
-        active_products = product_count
-        draft_products = 0
-
-        advertiser_count = db_session.query(Principal).filter_by(tenant_id=tenant_id).count()
-
-        # Get active advertisers (principals with activity in last 30 days)
-        from datetime import timedelta
-
-        from sqlalchemy import func
-
-        date_30_days_ago = datetime.now(UTC) - timedelta(days=30)
-        active_advertisers = (
-            db_session.query(func.count(func.distinct(MediaBuy.principal_id)))
-            .filter(MediaBuy.tenant_id == tenant_id, MediaBuy.created_at >= date_30_days_ago)
-            .scalar()
-            or 0
-        )
-
-        # Get creative formats (auto_approve column doesn't exist, default to 0)
-        from sqlalchemy import or_
-
-        from models import CreativeFormat
-
-        formats = (
-            db_session.query(CreativeFormat)
-            .filter(
-                or_(
-                    CreativeFormat.tenant_id == tenant_id,
-                    CreativeFormat.tenant_id is None,
-                )
-            )
-            .order_by(CreativeFormat.name)
-            .all()
-        )
-
-        creative_formats = []
-        for fmt in formats:
-            creative_formats.append(
-                {
-                    "id": fmt.format_id,
-                    "name": fmt.name,
-                    "dimensions": f"{fmt.width}x{fmt.height}" if fmt.width and fmt.height else "Variable",
-                    "auto_approve": 0,  # Default to 0 as column doesn't exist
-                }
-            )
-
-        # Format config as JSON for advanced editing
-        tenant["config_json"] = "{}"
-
-        # Get last sync time if GAM
-        last_sync_time = None
-        if tenant.get("ad_server") == "google_ad_manager":
-            try:
-                from models import GamInventorySync
-
-                latest_sync = (
-                    db_session.query(func.max(GamInventorySync.sync_completed_at))
-                    .filter_by(tenant_id=tenant_id)
-                    .scalar()
-                )
-
-                if latest_sync:
-                    if isinstance(latest_sync, str):
-                        last_sync = datetime.fromisoformat(latest_sync.replace("Z", "+00:00"))
-                    else:
-                        last_sync = latest_sync
-
-                    if last_sync.tzinfo is None:
-                        last_sync = last_sync.replace(tzinfo=UTC)
-
-                    now = datetime.now(UTC)
-                    delta = now - last_sync
-                    if delta.days > 0:
-                        last_sync_time = f"{delta.days} days ago"
-                    elif delta.seconds > 3600:
-                        last_sync_time = f"{delta.seconds // 3600} hours ago"
-                    else:
-                        last_sync_time = f"{delta.seconds // 60} minutes ago"
-            except:
-                # Table might not exist yet
-                last_sync_time = None
-
-        # Get admin port from environment
-        admin_port = os.environ.get("ADMIN_UI_PORT", "8001")
-
-        return render_template(
-            "tenant_settings.html",
-            tenant=tenant,
-            adapter_config=adapter_config,
-            product_count=product_count,
-            active_products=active_products,
-            draft_products=draft_products,
-            advertiser_count=advertiser_count,
-            active_advertisers=active_advertisers,
-            creative_formats=creative_formats,
-            last_sync_time=last_sync_time,
-            admin_port=admin_port,
-            section=section,
-        )
-
-
-# MIGRATING: Moved to src/admin/blueprints/api.py
-# This route is now handled by the refactored API blueprint
-# @app.route("/api/tenant/<tenant_id>/revenue-chart")
-# @require_auth()
-# def revenue_chart_api(tenant_id):
-#     """API endpoint for revenue chart data."""
-#     period = request.args.get("period", "7d")
-#
-#     # Parse period
-#     if period == "7d":
-#         days = 7
-#     elif period == "30d":
-#         days = 30
-#     elif period == "90d":
-#         days = 90
-#     else:
-#         days = 7
-#
-#     with get_db_session() as db_session:
-#         from datetime import timedelta
-#
-#         from sqlalchemy import func
-#
-#         # Calculate date range
-#         date_start = datetime.now(UTC) - timedelta(days=days)
-#
-#         # Query revenue by principal
-#         results = (
-#             db_session.query(Principal.name, func.sum(MediaBuy.budget).label("revenue"))
-#             .join(
-#                 MediaBuy,
-#                 (MediaBuy.principal_id == Principal.principal_id) & (MediaBuy.tenant_id == Principal.tenant_id),
-#             )
-#             .filter(
-#                 MediaBuy.tenant_id == tenant_id,
-#                 MediaBuy.created_at >= date_start,
-#                 MediaBuy.status.in_(["active", "completed"]),
-#             )
-#             .group_by(Principal.name)
-#             .order_by(func.sum(MediaBuy.budget).desc())
-#             .limit(10)
-#             .all()
-#         )
-#
-#         labels = []
-#         values = []
-#         for name, revenue in results:
-#             labels.append(name or "Unknown")
-#             values.append(float(revenue) if revenue else 0.0)
-#
-#         return jsonify({"labels": labels, "values": values})
-
-
-# Settings form handlers
-@app.route("/tenant/<tenant_id>/settings/general", methods=["POST"])
-@require_auth()
-def update_general_settings(tenant_id):
-    """Update general tenant settings."""
+    #    with get_db_session() as db_session:
+    #        try:
+    #            # Get form data for individual fields
+    #            max_daily_budget = request.form.get("max_daily_budget", type=int)
+    #            enable_aee_signals = request.form.get("enable_aee_signals") == "true"
+    #            human_review_required = request.form.get("human_review_required") == "true"
+    #
+    #            # Find and update tenant
+    #            tenant = db_session.query(Tenant).filter_by(tenant_id=tenant_id).first()
+    #            if tenant:
+    #                tenant.max_daily_budget = max_daily_budget
+    #                tenant.enable_aee_signals = enable_aee_signals
+    #                tenant.human_review_required = human_review_required
+    #                tenant.updated_at = datetime.now().isoformat()
+    #
+    #                db_session.commit()
+    #                flash("Configuration updated successfully", "success")
+    #            else:
+    #                flash("Tenant not found", "error")
+    #
+    #            return redirect(url_for("tenant_dashboard", tenant_id=tenant_id))
+    #        except Exception as e:
+    #            flash(f"Error updating configuration: {str(e)}", "error")
+    #            return redirect(url_for("tenant_dashboard", tenant_id=tenant_id))
+    #
+    #
+    # @app.route("/tenant/<tenant_id>/update_slack", methods=["POST"])
+    # @require_auth()
+    # def update_slack(tenant_id):
+    #    """Update Slack webhook configuration."""
+    #    # Check if tenant admin is trying to update another tenant
+    #    if session.get("role") == "tenant_admin" and session.get("tenant_id") != tenant_id:
+    #        return "Access denied", 403
+    #
+    #    try:
+    #        # Validate webhook URLs
+    #        form_data = {
+    #            "slack_webhook_url": request.form.get("slack_webhook_url", "").strip(),
+    #            "slack_audit_webhook_url": request.form.get("slack_audit_webhook_url", "").strip(),
+    #        }
+    #
+    #        # Sanitize form data
+    #        form_data = sanitize_form_data(form_data)
+    #
+    #        # Validate
+    #        validators = {
+    #            "slack_webhook_url": [FormValidator.validate_webhook_url],
+    #            "slack_audit_webhook_url": [FormValidator.validate_webhook_url],
+    #        }
+    #
+    #        errors = validate_form_data(form_data, validators)
+    #        if errors:
+    #            for field, error in errors.items():
+    #                flash(f"{field}: {error}", "error")
+    #            return redirect(url_for("tenant_dashboard", tenant_id=tenant_id))
+    #
+    #        with get_db_session() as db_session:
+    #            slack_webhook = form_data["slack_webhook_url"]
+    #            audit_webhook = form_data["slack_audit_webhook_url"]
+    #
+    #            # Find and update tenant
+    #            tenant = db_session.query(Tenant).filter_by(tenant_id=tenant_id).first()
+    #            if tenant:
+    #                tenant.slack_webhook_url = slack_webhook if slack_webhook else None
+    #                tenant.slack_audit_webhook_url = audit_webhook if audit_webhook else None
+    #                tenant.updated_at = datetime.now().isoformat()
+    #                db_session.commit()
+    #
+    #        flash("Slack configuration updated successfully", "success")
+    #        return redirect(url_for("tenant_dashboard", tenant_id=tenant_id))
+    #    except Exception as e:
+    #        pass  # Context manager handles cleanup
+    #        return f"Error: {e}", 400
+    #
+    #
+    # @app.route("/tenant/<tenant_id>/test_slack", methods=["POST"])
+    # @require_auth()
+    # def test_slack(tenant_id):
+    #    """Test Slack webhook."""
+    #    # Check if tenant admin is trying to test another tenant
+    #    if session.get("role") == "tenant_admin" and session.get("tenant_id") != tenant_id:
+    #        return jsonify({"success": False, "error": "Access denied"}), 403
+    #
+    #    try:
+    #        data = request.get_json()
+    #        webhook_url = data.get("webhook_url")
+    #
+    #        if not webhook_url:
+    #            return jsonify({"success": False, "error": "No webhook URL provided"})
+    #
+    #        # Send test message
+    #        from datetime import datetime
+    #
+    #        import requests
+    #
+    #        test_message = {
+    #            "text": "🎉 Test message from AdCP Sales Agent",
+    #            "blocks": [
+    #                {
+    #                    "type": "header",
+    #                    "text": {
+    #                        "type": "plain_text",
+    #                        "text": "✅ Slack Integration Test Successful!",
+    #                    },
+    #                },
+    #                {
+    #                    "type": "section",
+    #                    "text": {
+    #                        "type": "mrkdwn",
+    #                        "text": f"This is a test message from tenant *{tenant_id}*\n\nYour Slack integration is working correctly!",
+    #                    },
+    #                },
+    #                {
+    #                    "type": "context",
+    #                    "elements": [
+    #                        {
+    #                            "type": "mrkdwn",
+    #                            "text": f"Sent at {datetime.now(UTC).strftime('%Y-%m-%d %H:%M:%S UTC')}",
+    #                        }
+    #                    ],
+    #                },
+    #            ],
+    #        }
+    #
+    #        response = requests.post(webhook_url, json=test_message, timeout=10)
+    #
+    #        if response.status_code == 200:
+    #            return jsonify({"success": True})
+    #        else:
+    #            return jsonify(
+    #                {
+    #                    "success": False,
+    #                    "error": f"Slack returned status {response.status_code}",
+    #                }
+    #            )
+    #
+    #    except requests.exceptions.Timeout:
+    #        return jsonify({"success": False, "error": "Request timed out"})
+    #    except requests.exceptions.RequestException as e:
+    #        return jsonify({"success": False, "error": str(e)})
+    #    except Exception as e:
+    #        return jsonify({"success": False, "error": str(e)})
+    #
+    #
+    ## MIGRATED: Moved to src/admin/blueprints/core.py
+    ## @app.route("/create_tenant", methods=["GET", "POST"])
+    ## @require_auth(admin_only=True)
+    ## def create_tenant():
+    #    """Create a new tenant (super admin only) - basic setup only."""
+    #    if request.method == "POST":
+    #        try:
+    #            tenant_name = request.form.get("name")
+    #            tenant_id = request.form.get("tenant_id") or tenant_name.lower().replace(" ", "_")
+    #            subdomain = request.form.get("subdomain") or tenant_id
+    #
+    #            app.logger.info(f"Creating tenant: name={tenant_name}, id={tenant_id}, subdomain={subdomain}")
+    #
+    #            # Parse authorization lists
+    #            authorized_emails = [
+    #                email.strip() for email in request.form.get("authorized_emails", "").split(",") if email.strip()
+    #            ]
+    #            authorized_domains = [
+    #                domain.strip() for domain in request.form.get("authorized_domains", "").split(",") if domain.strip()
+    #            ]
+    #
+    #            # Build minimal config for unmigrated fields
+    #            config = {"setup_complete": False}  # Flag to track if tenant has completed setup
+    #
+    #            with get_db_session() as session:
+    #                # Create tenant with new fields (config column removed)
+    #                new_tenant = Tenant(
+    #                    tenant_id=tenant_id,
+    #                    name=tenant_name,
+    #                    subdomain=subdomain,
+    #                    created_at=datetime.now(),
+    #                    updated_at=datetime.now(),
+    #                    is_active=True,
+    #                    ad_server=None,  # ad_server - set during setup
+    #                    max_daily_budget=10000,  # max_daily_budget
+    #                    enable_aee_signals=True,  # enable_aee_signals
+    #                    authorized_emails=authorized_emails,  # authorized_emails
+    #                    authorized_domains=authorized_domains,  # authorized_domains
+    #                    auto_approve_formats=[],  # auto_approve_formats
+    #                    human_review_required=True,  # human_review_required
+    #                    admin_token=config.get("admin_token", f"admin_{tenant_id}_{secrets.token_hex(16)}"),  # admin_token
+    #                )
+    #                session.add(new_tenant)
+    #
+    #                app.logger.info(f"Tenant {tenant_id} inserted successfully")
+    #
+    #                # Create admin principal with access token
+    #                admin_token = secrets.token_urlsafe(32)
+    #                new_principal = Principal(
+    #                    tenant_id=tenant_id,
+    #                    principal_id=f"{tenant_id}_admin",
+    #                    name=f"{tenant_name} Admin",
+    #                    platform_mappings={"mock": {"id": "system"}},  # Default mock mapping
+    #                    access_token=admin_token,
+    #                )
+    #                session.add(new_principal)
+    #
+    #                session.commit()
+    #
+    #            flash(
+    #                f'Tenant "{tenant_name}" created successfully! The publisher should log in and start with the Ad Server Setup tab to complete configuration.',
+    #                "success",
+    #            )
+    #            return redirect(url_for("tenant_dashboard", tenant_id=tenant_id))
+    #
+    #        except Exception as e:
+    #            app.logger.error(f"Error creating tenant: {str(e)}")
+    #            app.logger.error(traceback.format_exc())
+    #            return render_template("create_tenant.html", error=str(e))
+    #
+    #    return render_template("create_tenant.html")
+    #
+    #
+    ## New Dashboard Routes (v2)
+    ## MIGRATED to tenants blueprint
+    ## @app.route("/tenant/<tenant_id>")
+    ## @tenants_bp.route("/dashboard/<tenant_id>")
+    ## @require_auth()
+    # """def tenant_dashboard(tenant_id):
+    #    # Show new operational dashboard for tenant.
+    #    # Check access
+    #    if session.get("role") == "tenant_admin" and session.get("tenant_id") != tenant_id:
+    #        return "Access denied. You can only view your own tenant.", 403
+    #
+    #    with get_db_session() as db_session:
+    #        # Get tenant basic info
+    #        tenant_obj = db_session.query(Tenant).filter_by(tenant_id=tenant_id).first()
+    #        if not tenant_obj:
+    #            return "Tenant not found", 404
+    #
+    #        tenant = {
+    #            "tenant_id": tenant_obj.tenant_id,
+    #            "name": tenant_obj.name,
+    #            "subdomain": tenant_obj.subdomain,
+    #            "is_active": tenant_obj.is_active,
+    #            "ad_server": tenant_obj.ad_server,
+    #        }
+    #
+    #        # Get metrics
+    #        metrics = {}
+    #
+    #        # Use SQLAlchemy for date arithmetic
+    #        from datetime import timedelta
+    #
+    #        from sqlalchemy import func
+    #
+    #        now = datetime.now(UTC)
+    #        date_30_days_ago = now - timedelta(days=30)
+    #        date_60_days_ago = now - timedelta(days=60)
+    #        date_7_days_ago = now - timedelta(days=7)
+    #
+    #        # Total revenue (30 days) - using actual budget column
+    #        total_revenue = (
+    #            db_session.query(func.coalesce(func.sum(MediaBuy.budget), 0))
+    #            .filter(
+    #                MediaBuy.tenant_id == tenant_id,
+    #                MediaBuy.status.in_(["active", "completed"]),
+    #                MediaBuy.created_at >= date_30_days_ago,
+    #            )
+    #            .scalar()
+    #        )
+    #        metrics["total_revenue"] = float(total_revenue) if total_revenue else 0.0
+    #
+    #        # Revenue change vs previous period
+    #        prev_revenue = (
+    #            db_session.query(func.coalesce(func.sum(MediaBuy.budget), 0))
+    #            .filter(
+    #                MediaBuy.tenant_id == tenant_id,
+    #                MediaBuy.status.in_(["active", "completed"]),
+    #                MediaBuy.created_at >= date_60_days_ago,
+    #                MediaBuy.created_at < date_30_days_ago,
+    #            )
+    #            .scalar()
+    #        )
+    #        prev_revenue = float(prev_revenue) if prev_revenue else 0.0
+    #
+    #        if prev_revenue > 0:
+    #            metrics["revenue_change"] = ((metrics["total_revenue"] - prev_revenue) / prev_revenue) * 100
+    #        else:
+    #            metrics["revenue_change"] = 0
+    #
+    #        # Add absolute value for display
+    #        metrics["revenue_change_abs"] = abs(metrics["revenue_change"])
+    #
+    #        # Active media buys
+    #        metrics["active_buys"] = db_session.query(MediaBuy).filter_by(tenant_id=tenant_id, status="active").count()
+    #
+    #        # Pending media buys
+    #        metrics["pending_buys"] = db_session.query(MediaBuy).filter_by(tenant_id=tenant_id, status="pending").count()
+    #
+    #        # Open tasks - workflow_steps doesn't have tenant_id, so just set to 0
+    #        metrics["open_tasks"] = 0
+    #
+    #        # Overdue tasks - workflow_steps doesn't have tenant_id, so just set to 0
+    #        metrics["overdue_tasks"] = 0
+    #
+    #        # Active advertisers (principals with activity in last 30 days)
+    #        metrics["active_advertisers"] = (
+    #            db_session.query(func.count(func.distinct(MediaBuy.principal_id)))
+    #            .filter(MediaBuy.tenant_id == tenant_id, MediaBuy.created_at >= date_30_days_ago)
+    #            .scalar()
+    #            or 0
+    #        )
+    #
+    #        # Total advertisers
+    #        metrics["total_advertisers"] = db_session.query(Principal).filter_by(tenant_id=tenant_id).count()
+    #
+    #        # Get recent media buys
+    #        recent_buys = (
+    #            db_session.query(MediaBuy)
+    #            .filter_by(tenant_id=tenant_id)
+    #            .order_by(MediaBuy.created_at.desc())
+    #            .limit(10)
+    #            .all()
+    #        )
+    #
+    #        recent_media_buys = []
+    #        for buy in recent_buys:
+    #            # Calculate relative time
+    #            created_at = buy.created_at
+    #            if not isinstance(created_at, datetime):
+    #                created_at = datetime.fromisoformat(str(created_at).replace("Z", "+00:00"))
+    #            if created_at.tzinfo is None:
+    #                created_at = created_at.replace(tzinfo=UTC)
+    #
+    #            delta = now - created_at
+    #
+    #            if delta.days > 0:
+    #                relative_time = f"{delta.days}d ago"
+    #            elif delta.seconds > 3600:
+    #                relative_time = f"{delta.seconds // 3600}h ago"
+    #            else:
+    #                relative_time = f"{delta.seconds // 60}m ago"
+    #
+    #            recent_media_buys.append(
+    #                {
+    #                    "media_buy_id": buy.media_buy_id,
+    #                    "principal_id": buy.principal_id,
+    #                    "advertiser_name": buy.advertiser_name or "Unknown",
+    #                    "status": buy.status,
+    #                    "budget": buy.budget,
+    #                    "spend": 0,  # TODO: Calculate actual spend
+    #                    "created_at_relative": relative_time,
+    #                }
+    #            )
+    #
+    #        # Get product count
+    #        product_count = db_session.query(Product).filter_by(tenant_id=tenant_id).count()
+    #
+    #        # Get pending tasks - workflow_steps doesn't have tenant_id, so return empty list
+    #        pending_tasks = []
+    #
+    #        # Chart data for revenue by advertiser (last 7 days)
+    #        chart_results = (
+    #            db_session.query(MediaBuy.advertiser_name, func.sum(MediaBuy.budget).label("revenue"))
+    #            .filter(
+    #                MediaBuy.tenant_id == tenant_id,
+    #                MediaBuy.created_at >= date_7_days_ago,
+    #                MediaBuy.status.in_(["active", "completed"]),
+    #            )
+    #            .group_by(MediaBuy.advertiser_name)
+    #            .order_by(func.sum(MediaBuy.budget).desc())
+    #            .limit(10)
+    #            .all()
+    #        )
+    #
+    #        chart_labels = []
+    #        chart_data = []
+    #        for advertiser_name, revenue in chart_results:
+    #            chart_labels.append(advertiser_name or "Unknown")
+    #            chart_data.append(float(revenue) if revenue else 0.0)
+    #
+    #        # Get admin port from environment
+    #        admin_port = os.environ.get("ADMIN_UI_PORT", "8001")
+    #
+    #        return render_template(
+    #            "tenant_dashboard.html",
+    #            tenant=tenant,
+    #            metrics=metrics,
+    #            recent_media_buys=recent_media_buys,
+    #            product_count=product_count,
+    #            pending_tasks=pending_tasks,
+    #            chart_labels=chart_labels,
+    #            chart_data=chart_data,
+    #            admin_port=admin_port,
+    #        )
+    # """
+    #
+    #
+    ## MIGRATED: Moved to src/admin/blueprints/settings.py
+    ## @app.route("/tenant/<tenant_id>/settings")
+    ## @app.route("/tenant/<tenant_id>/settings/<section>")
+    ## @require_auth()
+    ## def tenant_settings(tenant_id, section=None):
+    ##     """Show tenant settings page."""
+    #     # FUNCTION BODY COMMENTED OUT - SEE src/admin/blueprints/settings.py
+    #     pass
+    #     """
+    #     Original function body moved to settings blueprint
+    #     # Check access
+    #     if session.get("role") == "tenant_admin" and session.get("tenant_id") != tenant_id:
+    #         return "Access denied. You can only view your own tenant.", 403
+
+    #    with get_db_session() as db_session:
+    #        # Get full tenant info
+    #        tenant_obj = db_session.query(Tenant).filter_by(tenant_id=tenant_id).first()
+    #        if not tenant_obj:
+    #            return "Tenant not found", 404
+    #
+    #        # Convert to dict for template compatibility
+    #        tenant = {
+    #            "tenant_id": tenant_obj.tenant_id,
+    #            "name": tenant_obj.name,
+    #            "subdomain": tenant_obj.subdomain,
+    #            "is_active": tenant_obj.is_active,
+    #            "ad_server": tenant_obj.ad_server,
+    #            "max_daily_budget": tenant_obj.max_daily_budget,
+    #            "enable_aee_signals": tenant_obj.enable_aee_signals,
+    #            "authorized_emails": tenant_obj.authorized_emails,
+    #            "authorized_domains": tenant_obj.authorized_domains,
+    #            "auto_approve_formats": tenant_obj.auto_approve_formats,
+    #            "human_review_required": tenant_obj.human_review_required,
+    #            "admin_token": tenant_obj.admin_token,
+    #        }
+    #
+    #        # Add active_adapter as alias for ad_server for template compatibility
+    #        tenant["active_adapter"] = tenant.get("ad_server")
+    #
+    #        # Parse JSON fields
+    #        if tenant.get("authorized_emails"):
+    #            tenant["authorized_emails"] = (
+    #                json.loads(tenant["authorized_emails"])
+    #                if isinstance(tenant["authorized_emails"], str)
+    #                else tenant["authorized_emails"]
+    #            )
+    #        if tenant.get("authorized_domains"):
+    #            tenant["authorized_domains"] = (
+    #                json.loads(tenant["authorized_domains"])
+    #                if isinstance(tenant["authorized_domains"], str)
+    #                else tenant["authorized_domains"]
+    #            )
+    #
+    #        # Get adapter config from adapter_config table
+    #        adapter_config = {}
+    #        if tenant.get("ad_server"):
+    #            from models import AdapterConfig
+    #
+    #            adapter_obj = (
+    #                db_session.query(AdapterConfig).filter_by(tenant_id=tenant_id, adapter_type=tenant["ad_server"]).first()
+    #            )
+    #
+    #            if adapter_obj:
+    #                # Convert row to dict based on adapter type
+    #                if tenant["ad_server"] == "google_ad_manager":
+    #                    adapter_config = {
+    #                        "network_code": adapter_obj.gam_network_code,
+    #                        "refresh_token": adapter_obj.gam_refresh_token,
+    #                        "company_id": adapter_obj.gam_company_id,
+    #                        "trafficker_id": adapter_obj.gam_trafficker_id,
+    #                        "manual_approval_required": adapter_obj.gam_manual_approval_required,
+    #                    }
+    #                elif tenant["ad_server"] == "mock":
+    #                    adapter_config = {"dry_run": adapter_obj.mock_dry_run}
+    #                # Add other adapters as needed
+    #
+    #        # Get counts
+    #        product_count = db_session.query(Product).filter_by(tenant_id=tenant_id).count()
+    #
+    #        # Products don't have is_active column - all products are considered active
+    #        active_products = product_count
+    #        draft_products = 0
+    #
+    #        advertiser_count = db_session.query(Principal).filter_by(tenant_id=tenant_id).count()
+    #
+    #        # Get active advertisers (principals with activity in last 30 days)
+    #        from datetime import timedelta
+    #
+    #        from sqlalchemy import func
+    #
+    #        date_30_days_ago = datetime.now(UTC) - timedelta(days=30)
+    #        active_advertisers = (
+    #            db_session.query(func.count(func.distinct(MediaBuy.principal_id)))
+    #            .filter(MediaBuy.tenant_id == tenant_id, MediaBuy.created_at >= date_30_days_ago)
+    #            .scalar()
+    #            or 0
+    #        )
+    #
+    #        # Get creative formats (auto_approve column doesn't exist, default to 0)
+    #        from sqlalchemy import or_
+    #
+    #        from models import CreativeFormat
+    #
+    #        formats = (
+    #            db_session.query(CreativeFormat)
+    #            .filter(
+    #                or_(
+    #                    CreativeFormat.tenant_id == tenant_id,
+    #                    CreativeFormat.tenant_id is None,
+    #                )
+    #            )
+    #            .order_by(CreativeFormat.name)
+    #            .all()
+    #        )
+    #
+    #        creative_formats = []
+    #        for fmt in formats:
+    #            creative_formats.append(
+    #                {
+    #                    "id": fmt.format_id,
+    #                    "name": fmt.name,
+    #                    "dimensions": f"{fmt.width}x{fmt.height}" if fmt.width and fmt.height else "Variable",
+    #                    "auto_approve": 0,  # Default to 0 as column doesn't exist
+    #                }
+    #            )
+    #
+    #        # Format config as JSON for advanced editing
+    #        tenant["config_json"] = "{}"
+    #
+    #        # Get last sync time if GAM
+    #        last_sync_time = None
+    #        if tenant.get("ad_server") == "google_ad_manager":
+    #            try:
+    #                from models import GamInventorySync
+    #
+    #                latest_sync = (
+    #                    db_session.query(func.max(GamInventorySync.sync_completed_at))
+    #                    .filter_by(tenant_id=tenant_id)
+    #                    .scalar()
+    #                )
+    #
+    #                if latest_sync:
+    #                    if isinstance(latest_sync, str):
+    #                        last_sync = datetime.fromisoformat(latest_sync.replace("Z", "+00:00"))
+    #                    else:
+    #                        last_sync = latest_sync
+    #
+    #                    if last_sync.tzinfo is None:
+    #                        last_sync = last_sync.replace(tzinfo=UTC)
+    #
+    #                    now = datetime.now(UTC)
+    #                    delta = now - last_sync
+    #                    if delta.days > 0:
+    #                        last_sync_time = f"{delta.days} days ago"
+    #                    elif delta.seconds > 3600:
+    #                        last_sync_time = f"{delta.seconds // 3600} hours ago"
+    #                    else:
+    #                        last_sync_time = f"{delta.seconds // 60} minutes ago"
+    #            except:
+    #                # Table might not exist yet
+    #                last_sync_time = None
+    #
+    #        # Get admin port from environment
+    #        admin_port = os.environ.get("ADMIN_UI_PORT", "8001")
+    #
+    #        return render_template(
+    #            "tenant_settings.html",
+    #            tenant=tenant,
+    #            adapter_config=adapter_config,
+    #            product_count=product_count,
+    #            active_products=active_products,
+    #            draft_products=draft_products,
+    #            advertiser_count=advertiser_count,
+    #            active_advertisers=active_advertisers,
+    #            creative_formats=creative_formats,
+    #            last_sync_time=last_sync_time,
+    #            admin_port=admin_port,
+    #            section=section,
+    #        )
+    #    """
+    #
+    #
+    ## MIGRATING: Moved to src/admin/blueprints/api.py
+    ## This route is now handled by the refactored API blueprint
+    ## @app.route("/api/tenant/<tenant_id>/revenue-chart")
+    ## @require_auth()
+    ## def revenue_chart_api(tenant_id):
+    ##     """API endpoint for revenue chart data."""
+    #     period = request.args.get("period", "7d")
+    #
+    #     # Parse period
+    #     if period == "7d":
+    #         days = 7
+    #     elif period == "30d":
+    #         days = 30
+    #     elif period == "90d":
+    #         days = 90
+    #     else:
+    #         days = 7
+    #
+    #     with get_db_session() as db_session:
+    #         from datetime import timedelta
+    #
+    #         from sqlalchemy import func
+    #
+    #         # Calculate date range
+    #         date_start = datetime.now(UTC) - timedelta(days=days)
+    #
+    #         # Query revenue by principal
+    #         results = (
+    #             db_session.query(Principal.name, func.sum(MediaBuy.budget).label("revenue"))
+    #             .join(
+    #                 MediaBuy,
+    #                 (MediaBuy.principal_id == Principal.principal_id) & (MediaBuy.tenant_id == Principal.tenant_id),
+    #             )
+    #             .filter(
+    #                 MediaBuy.tenant_id == tenant_id,
+    #                 MediaBuy.created_at >= date_start,
+    #                 MediaBuy.status.in_(["active", "completed"]),
+    #             )
+    #             .group_by(Principal.name)
+    #             .order_by(func.sum(MediaBuy.budget).desc())
+    #             .limit(10)
+    #             .all()
+    #         )
+    #
+    #         labels = []
+    #         values = []
+    #         for name, revenue in results:
+    #             labels.append(name or "Unknown")
+    #             values.append(float(revenue) if revenue else 0.0)
+    #
+    #         return jsonify({"labels": labels, "values": values})
+
+    # Settings form handlers
+    # MIGRATED: Moved to src/admin/blueprints/settings.py
+    # @app.route("/tenant/<tenant_id>/settings/general", methods=["POST"])
+    # @require_auth()
+    # def update_general_settings(tenant_id):
+    #     """Update general tenant settings."""
+    #     # FUNCTION BODY COMMENTED OUT - SEE src/admin/blueprints/
+    #     """ Rest of function body commented out - see blueprints
     if session.get("role") == "viewer":
         return "Access denied", 403
 
-    with get_db_session() as db_session:
-        # Update tenant
-        tenant = db_session.query(Tenant).filter_by(tenant_id=tenant_id).first()
-        if tenant:
-            tenant.name = request.form.get("name")
-            tenant.max_daily_budget = request.form.get("max_daily_budget", type=float)
-            tenant.enable_aee_signals = "enable_aee_signals" in request.form
-            tenant.human_review_required = "human_review_required" in request.form
-            db_session.commit()
-
-    flash("General settings updated successfully", "success")
-    return redirect(url_for("tenant_settings", tenant_id=tenant_id, section="general"))
-
-
-@app.route("/tenant/<tenant_id>/settings/adapter", methods=["POST"])
-@require_auth()
-def update_adapter_settings(tenant_id):
-    """Update the active adapter for a tenant."""
-    if session.get("role") == "viewer":
-        return "Access denied", 403
-
-    # Check tenant access
-    if session.get("role") == "tenant_admin" and session.get("tenant_id") != tenant_id:
-        return "Access denied. You can only modify your own tenant.", 403
-
-    try:
-        data = request.get_json()
-        new_adapter = data.get("adapter")
-
-        # Validate adapter choice
-        valid_adapters = ["mock", "google_ad_manager", "kevel", "triton", "xandr"]
-        if new_adapter not in valid_adapters:
-            return f"Invalid adapter: {new_adapter}", 400
-
-        with get_db_session() as db_session:
-            # Update the tenant's active adapter
-            tenant = db_session.query(Tenant).filter_by(tenant_id=tenant_id).first()
-            if tenant:
-                tenant.ad_server = new_adapter
-                db_session.commit()
-            else:
-                return f"Tenant {tenant_id} not found", 404
-
-        app.logger.info(f"Tenant {tenant_id} switched adapter to {new_adapter}")
-        return "Adapter updated successfully", 200
-
-    except Exception as e:
-        app.logger.error(f"Error updating adapter for tenant {tenant_id}: {e}")
-        return f"Error updating adapter: {str(e)}", 500
-
-
-# MIGRATING: Moved to src/admin/blueprints/api.py
-# This route is now handled by the refactored API blueprint
-# @app.route("/api/oauth/status", methods=["GET"])
-# @require_auth()
-# def oauth_status():
-#     """Check if OAuth credentials are properly configured for GAM."""
-#     try:
-#         # Check for GAM OAuth credentials in superadmin_config table (as per original implementation)
-#         with get_db_session() as db_session:
-#             client_id_row = (
-#                 db_session.query(SuperadminConfig.config_value).filter_by(config_key="gam_oauth_client_id").first()
-#             )
-#
-#             client_secret_row = (
-#                 db_session.query(SuperadminConfig.config_value).filter_by(config_key="gam_oauth_client_secret").first()
-#             )
-#
-#         if client_id_row and client_id_row[0] and client_secret_row and client_secret_row[0]:
-#             # Credentials exist in database
-#             client_id = client_id_row[0]
-#             return jsonify(
-#                 {
-#                     "configured": True,
-#                     "client_id_prefix": client_id[:20] if len(client_id) > 20 else client_id,
-#                     "has_secret": True,
-#                     "source": "database",
-#                 }
-#             )
-#         else:
-#             # No credentials found in database
-#             return jsonify(
-#                 {
-#                     "configured": False,
-#                     "error": "GAM OAuth credentials not configured in superadmin settings.",
-#                     "help": "Super admins can configure GAM OAuth credentials in the superadmin settings page.",
-#                 }
-#             )
-#
-#     except Exception as e:
-#         app.logger.error(f"Error checking OAuth status: {e}")
-#         return (
-#             jsonify(
-#                 {
-#                     "configured": False,
-#                     "error": f"Error checking OAuth configuration: {str(e)}",
-#                 }
-#             ),
-#             500,
-#         )
-
-
-@app.route("/tenant/<tenant_id>/gam/detect-network", methods=["POST"])
-@require_auth()
-def detect_gam_network(tenant_id):
-    """Auto-detect GAM network code from refresh token."""
-    if session.get("role") == "viewer":
-        return jsonify({"success": False, "error": "Access denied"}), 403
-
-    # Check tenant access
-    if session.get("role") == "tenant_admin" and session.get("tenant_id") != tenant_id:
-        return jsonify({"success": False, "error": "Access denied"}), 403
-
-    try:
-        data = request.get_json()
-        refresh_token = data.get("refresh_token")
-
-        if not refresh_token:
-            return jsonify({"success": False, "error": "Refresh token required"}), 400
-
-        # Create a temporary GAM client with just the refresh token
-        from googleads import ad_manager, oauth2
-
-        # Get OAuth credentials from superadmin_config table (as per original implementation)
-        with get_db_session() as db_session:
-            # Get GAM OAuth client credentials from superadmin config
-            client_id_row = (
-                db_session.query(SuperadminConfig.config_value).filter_by(config_key="gam_oauth_client_id").first()
-            )
-
-            client_secret_row = (
-                db_session.query(SuperadminConfig.config_value).filter_by(config_key="gam_oauth_client_secret").first()
-            )
-
-            if not client_id_row or not client_id_row[0]:
-                return (
-                    jsonify(
-                        {
-                            "success": False,
-                            "error": "GAM OAuth Client ID not configured. Please configure it in superadmin settings.",
-                        }
-                    ),
-                    500,
-                )
-
-            if not client_secret_row or not client_secret_row[0]:
-                return (
-                    jsonify(
-                        {
-                            "success": False,
-                            "error": "GAM OAuth Client Secret not configured. Please configure it in superadmin settings.",
-                        }
-                    ),
-                    500,
-                )
-
-            client_id = client_id_row[0]
-            client_secret = client_secret_row[0]
-
-        # Create OAuth2 client with refresh token
-        oauth2_client = oauth2.GoogleRefreshTokenClient(
-            client_id=client_id,
-            client_secret=client_secret,
-            refresh_token=refresh_token,
-        )
-
-        # Test if credentials are valid
-        try:
-            oauth2_client.Refresh()
-        except Exception as e:
-            return (
-                jsonify({"success": False, "error": f"Invalid refresh token: {str(e)}"}),
-                400,
-            )
-
-        # Create GAM client
-        client = ad_manager.AdManagerClient(oauth2_client, "AdCP-Sales-Agent")
-
-        # Get network service and retrieve network info
-        network_service = client.GetService("NetworkService", version="v202408")
-
-        try:
-            # Try getAllNetworks first (doesn't require network_code)
-            try:
-                all_networks = network_service.getAllNetworks()
-                if all_networks and len(all_networks) > 0:
-                    # Use the first network (most users have access to only one)
-                    network = all_networks[0]
-
-                    # Validate network response structure
-                    is_valid, error_msg = validate_gam_network_response(network)
-                    if not is_valid:
-                        app.logger.error(f"Invalid GAM network response: {error_msg}")
-                        return (
-                            jsonify(
-                                {
-                                    "success": False,
-                                    "error": f"Invalid network response from GAM: {error_msg}",
-                                }
-                            ),
-                            500,
-                        )
-
-                    # Also get the current user ID to use as trafficker_id
-                    trafficker_id = None
-                    try:
-                        # Set the network code in the client so we can get user info
-                        client.network_code = str(network["networkCode"])
-                        user_service = client.GetService("UserService", version="v202408")
-                        current_user = user_service.getCurrentUser()
-
-                        if current_user:
-                            # Validate user response
-                            is_valid, error_msg = validate_gam_user_response(current_user)
-                            if is_valid:
-                                trafficker_id = str(current_user["id"])
-                                app.logger.info(f"Detected current user ID: {trafficker_id}")
-                            else:
-                                app.logger.warning(f"Invalid user response: {error_msg}")
-                    except Exception as e:
-                        app.logger.warning(f"Could not get current user: {e}")
-
-                    return jsonify(
-                        {
-                            "success": True,
-                            "network_code": str(network["networkCode"]),
-                            "network_name": network["displayName"],
-                            "network_id": str(network["id"]),
-                            "network_count": len(all_networks),
-                            "trafficker_id": trafficker_id,
-                        }
-                    )
-            except AttributeError:
-                # getAllNetworks might not be available in this GAM version
-                pass
-
-            # If getAllNetworks didn't work, we can't get the network without a network_code
-            return (
-                jsonify(
-                    {
-                        "success": False,
-                        "error": "Unable to retrieve network information. The getAllNetworks() API is not available and getCurrentNetwork() requires a network code.",
-                    }
-                ),
-                400,
-            )
-
-        except Exception as e:
-            app.logger.error(f"Failed to get network info: {e}")
-            return (
-                jsonify(
-                    {
-                        "success": False,
-                        "error": f"Failed to retrieve network information: {str(e)}",
-                    }
-                ),
-                500,
-            )
-
-    except Exception as e:
-        app.logger.error(f"Error detecting GAM network for tenant {tenant_id}: {e}")
-        return (
-            jsonify({"success": False, "error": f"Error detecting network: {str(e)}"}),
-            500,
-        )
-
-
-@app.route("/tenant/<tenant_id>/gam/configure", methods=["POST"])
-@require_auth()
-def configure_gam(tenant_id):
-    """Save GAM configuration for a tenant."""
-    if session.get("role") == "viewer":
-        return jsonify({"success": False, "error": "Access denied"}), 403
-
-    # Check tenant access
-    if session.get("role") == "tenant_admin" and session.get("tenant_id") != tenant_id:
-        return jsonify({"success": False, "error": "Access denied"}), 403
-
-    try:
-        data = request.get_json()
-
-        # Validate GAM configuration data
-        validation_errors = validate_gam_config(data)
-        if validation_errors:
-            return jsonify({"success": False, "errors": validation_errors}), 400
-
-        # Sanitize input data
-        network_code = str(data.get("network_code", "")).strip() if data.get("network_code") else None
-        refresh_token = data.get("refresh_token", "").strip()
-        trafficker_id = str(data.get("trafficker_id", "")).strip() if data.get("trafficker_id") else None
-
-        # Log what we received (without exposing sensitive token)
-        app.logger.info(
-            f"GAM config save - network_code: {network_code}, trafficker_id: {trafficker_id}, token_length: {len(refresh_token)}"
-        )
-
-        # If network code or trafficker_id not provided, try to auto-detect them
-        # But for now, let's just log a warning
-        if not trafficker_id:
-            app.logger.warning(f"No trafficker_id provided for tenant {tenant_id}")
-
-        with get_db_session() as db_session:
-            try:
-                # Check if ANY adapter config exists for this tenant
-                existing_config = db_session.query(AdapterConfig).filter_by(tenant_id=tenant_id).first()
-
-                if existing_config:
-                    # Check if it's already GAM config
-                    if existing_config.adapter_type == "google_ad_manager":
-                        # Update existing GAM config
-                        existing_config.gam_network_code = network_code
-                        existing_config.gam_refresh_token = refresh_token
-                        existing_config.gam_trafficker_id = trafficker_id
-                        existing_config.updated_at = datetime.utcnow()
-                    else:
-                        # Different adapter type exists, need to replace it
-                        # First delete the old config
-                        db_session.delete(existing_config)
-                        # Then insert new GAM config
-                        new_config = AdapterConfig(
-                            tenant_id=tenant_id,
-                            adapter_type="google_ad_manager",
-                            gam_network_code=network_code,
-                            gam_refresh_token=refresh_token,
-                            gam_trafficker_id=trafficker_id,
-                            created_at=datetime.utcnow(),
-                            updated_at=datetime.utcnow(),
-                        )
-                        db_session.add(new_config)
-                else:
-                    # No existing config, insert new one
-                    new_config = AdapterConfig(
-                        tenant_id=tenant_id,
-                        adapter_type="google_ad_manager",
-                        gam_network_code=network_code,
-                        gam_refresh_token=refresh_token,
-                        gam_trafficker_id=trafficker_id,
-                        created_at=datetime.utcnow(),
-                        updated_at=datetime.utcnow(),
-                    )
-                    db_session.add(new_config)
-
-                # Always update the tenant's active adapter to GAM when configuring GAM
-                tenant = db_session.query(Tenant).filter_by(tenant_id=tenant_id).first()
-                if tenant:
-                    tenant.ad_server = "google_ad_manager"
-
-                db_session.commit()
-            except Exception:
-                db_session.rollback()
-                raise
-
-        app.logger.info(f"GAM configuration saved for tenant {tenant_id}")
-        return jsonify(
-            {
-                "success": True,
-                "message": "GAM configuration saved successfully",
-                "network_code": network_code,
-            }
-        )
-
-    except Exception as e:
-        app.logger.error(f"Error saving GAM config for tenant {tenant_id}: {e}")
-        return (
-            jsonify({"success": False, "error": f"Error saving configuration: {str(e)}"}),
-            500,
-        )
-
-
-@app.route("/tenant/<tenant_id>/settings/slack", methods=["POST"])
-@require_auth()
-def update_slack_settings(tenant_id):
-    """Update Slack integration settings."""
-    if session.get("role") == "viewer":
-        return "Access denied", 403
-
-    with get_db_session() as db_session:
-        tenant = db_session.query(Tenant).filter_by(tenant_id=tenant_id).first()
-        if tenant:
-            tenant.slack_webhook_url = request.form.get("slack_webhook_url")
-            tenant.slack_audit_webhook_url = request.form.get("slack_audit_webhook_url")
-            db_session.commit()
-
-    flash("Slack settings updated successfully", "success")
-    return redirect(url_for("tenant_settings", tenant_id=tenant_id, section="integrations"))
-
-
-# Targeting Browser Route
-@app.route("/tenant/<tenant_id>/targeting")
-@require_auth()
-def targeting_browser(tenant_id):
-    """Display targeting browser page."""
-    # Check access
-    if session.get("role") != "super_admin" and session.get("tenant_id") != tenant_id:
-        return "Access denied", 403
-
-    with get_db_session() as db_session:
-        tenant = db_session.query(Tenant).filter_by(tenant_id=tenant_id).first()
-        row = (tenant.tenant_id, tenant.name) if tenant else None
-        if not row:
-            return "Tenant not found", 404
-
-    tenant = {"tenant_id": row[0], "name": row[1]}
-    # Context manager handles cleanup
-
-    return render_template(
-        "targeting_browser_simple.html",
-        tenant=tenant,
-        tenant_id=tenant_id,
-        tenant_name=row[1],
-    )
-
-
-# Inventory Browser Route
-@app.route("/tenant/<tenant_id>/inventory")
-@require_auth()
-def inventory_browser(tenant_id):
-    """Display inventory browser page."""
-    # Check access
-    if session.get("role") != "super_admin" and session.get("tenant_id") != tenant_id:
-        return "Access denied", 403
-
-    with get_db_session() as db_session:
-        tenant = db_session.query(Tenant).filter_by(tenant_id=tenant_id).first()
-        row = (tenant.tenant_id, tenant.name) if tenant else None
-        if not row:
-            return "Tenant not found", 404
-
-    tenant = {"tenant_id": row[0], "name": row[1]}
-
-    # Get inventory type from query param
-    inventory_type = request.args.get("type", "all")
-
-    # Context manager handles cleanup
-
-    return render_template(
-        "inventory_browser.html",
-        tenant=tenant,
-        tenant_id=tenant_id,
-        tenant_name=row[1],
-        inventory_type=inventory_type,
-    )
-
-
-# Orders Browser Route
-@app.route("/tenant/<tenant_id>/orders")
-@require_auth()
-def orders_browser(tenant_id):
-    """Display GAM orders browser page."""
+    #    with get_db_session() as db_session:
+    #        # Update tenant
+    #        tenant = db_session.query(Tenant).filter_by(tenant_id=tenant_id).first()
+    #        if tenant:
+    #            tenant.name = request.form.get("name")
+    #            tenant.max_daily_budget = request.form.get("max_daily_budget", type=float)
+    #            tenant.enable_aee_signals = "enable_aee_signals" in request.form
+    #            tenant.human_review_required = "human_review_required" in request.form
+    #            db_session.commit()
+    #
+    #    flash("General settings updated successfully", "success")
+    #    return redirect(url_for("tenant_settings", tenant_id=tenant_id, section="general"))
+    #    """
+    #
+    #
+    ## MIGRATED: Moved to src/admin/blueprints/settings.py
+    ## @app.route("/tenant/<tenant_id>/settings/adapter", methods=["POST"])
+    ## @require_auth()
+    ## def update_adapter_settings(tenant_id):
+    ##     """Update the active adapter for a tenant."""
+    ##     # FUNCTION BODY COMMENTED OUT - SEE src/admin/blueprints/
+    ##     """ Rest of function body commented out - see blueprints
+    #    if session.get("role") == "viewer":
+    #        return "Access denied", 403
+    #
+    #    # Check tenant access
+    #    if session.get("role") == "tenant_admin" and session.get("tenant_id") != tenant_id:
+    #        return "Access denied. You can only modify your own tenant.", 403
+    #
+    #    try:
+    #        data = request.get_json()
+    #        new_adapter = data.get("adapter")
+    #
+    #        # Validate adapter choice
+    #        valid_adapters = ["mock", "google_ad_manager", "kevel", "triton", "xandr"]
+    #        if new_adapter not in valid_adapters:
+    #            return f"Invalid adapter: {new_adapter}", 400
+    #
+    #        with get_db_session() as db_session:
+    #            # Update the tenant's active adapter
+    #            tenant = db_session.query(Tenant).filter_by(tenant_id=tenant_id).first()
+    #            if tenant:
+    #                tenant.ad_server = new_adapter
+    #                db_session.commit()
+    #            else:
+    #                return f"Tenant {tenant_id} not found", 404
+    #
+    #        app.logger.info(f"Tenant {tenant_id} switched adapter to {new_adapter}")
+    #        return "Adapter updated successfully", 200
+    #
+    #    except Exception as e:
+    #        app.logger.error(f"Error updating adapter for tenant {tenant_id}: {e}")
+    #        return f"Error updating adapter: {str(e)}", 500
+    #    """
+    #
+    #
+    ## MIGRATING: Moved to src/admin/blueprints/api.py
+    ## This route is now handled by the refactored API blueprint
+    ## @app.route("/api/oauth/status", methods=["GET"])
+    ## @require_auth()
+    ## def oauth_status():
+    ##     """Check if OAuth credentials are properly configured for GAM."""
+    ##     try:
+    ##         # Check for GAM OAuth credentials in superadmin_config table (as per original implementation)
+    ##         with get_db_session() as db_session:
+    ##             client_id_row = (
+    ##                 db_session.query(SuperadminConfig.config_value).filter_by(config_key="gam_oauth_client_id").first()
+    ##             )
+    ##
+    ##             client_secret_row = (
+    ##                 db_session.query(SuperadminConfig.config_value).filter_by(config_key="gam_oauth_client_secret").first()
+    ##             )
+    ##
+    ##         if client_id_row and client_id_row[0] and client_secret_row and client_secret_row[0]:
+    ##             # Credentials exist in database
+    ##             client_id = client_id_row[0]
+    ##             return jsonify(
+    ##                 {
+    ##                     "configured": True,
+    ##                     "client_id_prefix": client_id[:20] if len(client_id) > 20 else client_id,
+    ##                     "has_secret": True,
+    ##                     "source": "database",
+    ##                 }
+    ##             )
+    ##         else:
+    ##             # No credentials found in database
+    ##             return jsonify(
+    ##                 {
+    ##                     "configured": False,
+    ##                     "error": "GAM OAuth credentials not configured in superadmin settings.",
+    ##                     "help": "Super admins can configure GAM OAuth credentials in the superadmin settings page.",
+    ##                 }
+    ##             )
+    ##
+    ##     except Exception as e:
+    ##         app.logger.error(f"Error checking OAuth status: {e}")
+    ##         return (
+    ##             jsonify(
+    ##                 {
+    ##                     "configured": False,
+    ##                     "error": f"Error checking OAuth configuration: {str(e)}",
+    ##                 }
+    ##             ),
+    ##             500,
+    ##         )
+    #
+    #
+    ## MIGRATED: Moved to src/admin/blueprints/gam.py
+    ## @app.route("/tenant/<tenant_id>/gam/detect-network", methods=["POST"])
+    ## @require_auth()
+    ## def detect_gam_network(tenant_id):
+    #    """Auto-detect GAM network code from refresh token."""
+    #    if session.get("role") == "viewer":
+    #        return jsonify({"success": False, "error": "Access denied"}), 403
+    #
+    #    # Check tenant access
+    #    if session.get("role") == "tenant_admin" and session.get("tenant_id") != tenant_id:
+    #        return jsonify({"success": False, "error": "Access denied"}), 403
+    #
+    #    try:
+    #        data = request.get_json()
+    #        refresh_token = data.get("refresh_token")
+    #
+    #        if not refresh_token:
+    #            return jsonify({"success": False, "error": "Refresh token required"}), 400
+    #
+    #        # Create a temporary GAM client with just the refresh token
+    #        from googleads import ad_manager, oauth2
+    #
+    #        # Get OAuth credentials from superadmin_config table (as per original implementation)
+    #        with get_db_session() as db_session:
+    #            # Get GAM OAuth client credentials from superadmin config
+    #            client_id_row = (
+    #                db_session.query(SuperadminConfig.config_value).filter_by(config_key="gam_oauth_client_id").first()
+    #            )
+    #
+    #            client_secret_row = (
+    #                db_session.query(SuperadminConfig.config_value).filter_by(config_key="gam_oauth_client_secret").first()
+    #            )
+    #
+    #            if not client_id_row or not client_id_row[0]:
+    #                return (
+    #                    jsonify(
+    #                        {
+    #                            "success": False,
+    #                            "error": "GAM OAuth Client ID not configured. Please configure it in superadmin settings.",
+    #                        }
+    #                    ),
+    #                    500,
+    #                )
+    #
+    #            if not client_secret_row or not client_secret_row[0]:
+    #                return (
+    #                    jsonify(
+    #                        {
+    #                            "success": False,
+    #                            "error": "GAM OAuth Client Secret not configured. Please configure it in superadmin settings.",
+    #                        }
+    #                    ),
+    #                    500,
+    #                )
+    #
+    #            client_id = client_id_row[0]
+    #            client_secret = client_secret_row[0]
+    #
+    #        # Create OAuth2 client with refresh token
+    #        oauth2_client = oauth2.GoogleRefreshTokenClient(
+    #            client_id=client_id,
+    #            client_secret=client_secret,
+    #            refresh_token=refresh_token,
+    #        )
+    #
+    #        # Test if credentials are valid
+    #        try:
+    #            oauth2_client.Refresh()
+    #        except Exception as e:
+    #            return (
+    #                jsonify({"success": False, "error": f"Invalid refresh token: {str(e)}"}),
+    #                400,
+    #            )
+    #
+    #        # Create GAM client
+    #        client = ad_manager.AdManagerClient(oauth2_client, "AdCP-Sales-Agent")
+    #
+    #        # Get network service and retrieve network info
+    #        network_service = client.GetService("NetworkService", version="v202408")
+    #
+    #        try:
+    #            # Try getAllNetworks first (doesn't require network_code)
+    #            try:
+    #                all_networks = network_service.getAllNetworks()
+    #                if all_networks and len(all_networks) > 0:
+    #                    # Use the first network (most users have access to only one)
+    #                    network = all_networks[0]
+    #
+    #                    # Validate network response structure
+    #                    is_valid, error_msg = validate_gam_network_response(network)
+    #                    if not is_valid:
+    #                        app.logger.error(f"Invalid GAM network response: {error_msg}")
+    #                        return (
+    #                            jsonify(
+    #                                {
+    #                                    "success": False,
+    #                                    "error": f"Invalid network response from GAM: {error_msg}",
+    #                                }
+    #                            ),
+    #                            500,
+    #                        )
+    #
+    #                    # Also get the current user ID to use as trafficker_id
+    #                    trafficker_id = None
+    #                    try:
+    #                        # Set the network code in the client so we can get user info
+    #                        client.network_code = str(network["networkCode"])
+    #                        user_service = client.GetService("UserService", version="v202408")
+    #                        current_user = user_service.getCurrentUser()
+    #
+    #                        if current_user:
+    #                            # Validate user response
+    #                            is_valid, error_msg = validate_gam_user_response(current_user)
+    #                            if is_valid:
+    #                                trafficker_id = str(current_user["id"])
+    #                                app.logger.info(f"Detected current user ID: {trafficker_id}")
+    #                            else:
+    #                                app.logger.warning(f"Invalid user response: {error_msg}")
+    #                    except Exception as e:
+    #                        app.logger.warning(f"Could not get current user: {e}")
+    #
+    #                    return jsonify(
+    #                        {
+    #                            "success": True,
+    #                            "network_code": str(network["networkCode"]),
+    #                            "network_name": network["displayName"],
+    #                            "network_id": str(network["id"]),
+    #                            "network_count": len(all_networks),
+    #                            "trafficker_id": trafficker_id,
+    #                        }
+    #                    )
+    #            except AttributeError:
+    #                # getAllNetworks might not be available in this GAM version
+    #                pass
+    #
+    #            # If getAllNetworks didn't work, we can't get the network without a network_code
+    #            return (
+    #                jsonify(
+    #                    {
+    #                        "success": False,
+    #                        "error": "Unable to retrieve network information. The getAllNetworks() API is not available and getCurrentNetwork() requires a network code.",
+    #                    }
+    #                ),
+    #                400,
+    #            )
+    #
+    #        except Exception as e:
+    #            app.logger.error(f"Failed to get network info: {e}")
+    #            return (
+    #                jsonify(
+    #                    {
+    #                        "success": False,
+    #                        "error": f"Failed to retrieve network information: {str(e)}",
+    #                    }
+    #                ),
+    #                500,
+    #            )
+    #
+    #    except Exception as e:
+    #        app.logger.error(f"Error detecting GAM network for tenant {tenant_id}: {e}")
+    #        return (
+    #            jsonify({"success": False, "error": f"Error detecting network: {str(e)}"}),
+    #            500,
+    #        )
+    #
+    #
+    ## MIGRATED: Moved to src/admin/blueprints/gam.py
+    ## @app.route("/tenant/<tenant_id>/gam/configure", methods=["POST"])
+    ## @require_auth()
+    ## def configure_gam(tenant_id):
+    #    """Save GAM configuration for a tenant."""
+    #    if session.get("role") == "viewer":
+    #        return jsonify({"success": False, "error": "Access denied"}), 403
+    #
+    #    # Check tenant access
+    #    if session.get("role") == "tenant_admin" and session.get("tenant_id") != tenant_id:
+    #        return jsonify({"success": False, "error": "Access denied"}), 403
+    #
+    #    try:
+    #        data = request.get_json()
+    #
+    #        # Validate GAM configuration data
+    #        validation_errors = validate_gam_config(data)
+    #        if validation_errors:
+    #            return jsonify({"success": False, "errors": validation_errors}), 400
+    #
+    #        # Sanitize input data
+    #        network_code = str(data.get("network_code", "")).strip() if data.get("network_code") else None
+    #        refresh_token = data.get("refresh_token", "").strip()
+    #        trafficker_id = str(data.get("trafficker_id", "")).strip() if data.get("trafficker_id") else None
+    #
+    #        # Log what we received (without exposing sensitive token)
+    #        app.logger.info(
+    #            f"GAM config save - network_code: {network_code}, trafficker_id: {trafficker_id}, token_length: {len(refresh_token)}"
+    #        )
+    #
+    #        # If network code or trafficker_id not provided, try to auto-detect them
+    #        # But for now, let's just log a warning
+    #        if not trafficker_id:
+    #            app.logger.warning(f"No trafficker_id provided for tenant {tenant_id}")
+    #
+    #        with get_db_session() as db_session:
+    #            try:
+    #                # Check if ANY adapter config exists for this tenant
+    #                existing_config = db_session.query(AdapterConfig).filter_by(tenant_id=tenant_id).first()
+    #
+    #                if existing_config:
+    #                    # Check if it's already GAM config
+    #                    if existing_config.adapter_type == "google_ad_manager":
+    #                        # Update existing GAM config
+    #                        existing_config.gam_network_code = network_code
+    #                        existing_config.gam_refresh_token = refresh_token
+    #                        existing_config.gam_trafficker_id = trafficker_id
+    #                        existing_config.updated_at = datetime.utcnow()
+    #                    else:
+    #                        # Different adapter type exists, need to replace it
+    #                        # First delete the old config
+    #                        db_session.delete(existing_config)
+    #                        # Then insert new GAM config
+    #                        new_config = AdapterConfig(
+    #                            tenant_id=tenant_id,
+    #                            adapter_type="google_ad_manager",
+    #                            gam_network_code=network_code,
+    #                            gam_refresh_token=refresh_token,
+    #                            gam_trafficker_id=trafficker_id,
+    #                            created_at=datetime.utcnow(),
+    #                            updated_at=datetime.utcnow(),
+    #                        )
+    #                        db_session.add(new_config)
+    #                else:
+    #                    # No existing config, insert new one
+    #                    new_config = AdapterConfig(
+    #                        tenant_id=tenant_id,
+    #                        adapter_type="google_ad_manager",
+    #                        gam_network_code=network_code,
+    #                        gam_refresh_token=refresh_token,
+    #                        gam_trafficker_id=trafficker_id,
+    #                        created_at=datetime.utcnow(),
+    #                        updated_at=datetime.utcnow(),
+    #                    )
+    #                    db_session.add(new_config)
+    #
+    #                # Always update the tenant's active adapter to GAM when configuring GAM
+    #                tenant = db_session.query(Tenant).filter_by(tenant_id=tenant_id).first()
+    #                if tenant:
+    #                    tenant.ad_server = "google_ad_manager"
+    #
+    #                db_session.commit()
+    #            except Exception:
+    #                db_session.rollback()
+    #                raise
+    #
+    #        app.logger.info(f"GAM configuration saved for tenant {tenant_id}")
+    #        return jsonify(
+    #            {
+    #                "success": True,
+    #                "message": "GAM configuration saved successfully",
+    #                "network_code": network_code,
+    #            }
+    #        )
+    #
+    #    except Exception as e:
+    #        app.logger.error(f"Error saving GAM config for tenant {tenant_id}: {e}")
+    #        return (
+    #            jsonify({"success": False, "error": f"Error saving configuration: {str(e)}"}),
+    #            500,
+    #        )
+    #
+    #
+    ## MIGRATED: Moved to src/admin/blueprints/settings.py
+    ## @app.route("/tenant/<tenant_id>/settings/slack", methods=["POST"])
+    ## @require_auth()
+    ## def update_slack_settings(tenant_id):
+    ##     """Update Slack integration settings."""
+    ##     # FUNCTION BODY COMMENTED OUT - SEE src/admin/blueprints/
+    ##     """ Rest of function body commented out - see blueprints
+    #    if session.get("role") == "viewer":
+    #        return "Access denied", 403
+    #
+    #    with get_db_session() as db_session:
+    #        tenant = db_session.query(Tenant).filter_by(tenant_id=tenant_id).first()
+    #        if tenant:
+    #            tenant.slack_webhook_url = request.form.get("slack_webhook_url")
+    #            tenant.slack_audit_webhook_url = request.form.get("slack_audit_webhook_url")
+    #            db_session.commit()
+    #
+    #    flash("Slack settings updated successfully", "success")
+    #    return redirect(url_for("tenant_settings", tenant_id=tenant_id, section="integrations"))
+    #    """
+    #
+    #
+    ## Targeting Browser Route
+    # @app.route("/tenant/<tenant_id>/targeting")
+    # @require_auth()
+    # def targeting_browser(tenant_id):
+    #    """Display targeting browser page."""
+    #    # Check access
+    #    if session.get("role") != "super_admin" and session.get("tenant_id") != tenant_id:
+    #        return "Access denied", 403
+    #
+    #    with get_db_session() as db_session:
+    #        tenant = db_session.query(Tenant).filter_by(tenant_id=tenant_id).first()
+    #        row = (tenant.tenant_id, tenant.name) if tenant else None
+    #        if not row:
+    #            return "Tenant not found", 404
+    #
+    #    tenant = {"tenant_id": row[0], "name": row[1]}
+    #    # Context manager handles cleanup
+    #
+    #    return render_template(
+    #        "targeting_browser_simple.html",
+    #        tenant=tenant,
+    #        tenant_id=tenant_id,
+    #        tenant_name=row[1],
+    #    )
+    #
+    #
+    ## Inventory Browser Route
+    # @app.route("/tenant/<tenant_id>/inventory")
+    # @require_auth()
+    # def inventory_browser(tenant_id):
+    #    """Display inventory browser page."""
     # Check access
     if session.get("role") != "super_admin" and session.get("tenant_id") != tenant_id:
         return "Access denied", 403
 
-    with get_db_session() as db_session:
-        tenant = db_session.query(Tenant).filter_by(tenant_id=tenant_id).first()
-        if not tenant:
-            return "Tenant not found", 404
+    #    with get_db_session() as db_session:
+    #        tenant = db_session.query(Tenant).filter_by(tenant_id=tenant_id).first()
+    #        row = (tenant.tenant_id, tenant.name) if tenant else None
+    #        if not row:
+    #            return "Tenant not found", 404
+    #
+    #    tenant = {"tenant_id": row[0], "name": row[1]}
+    #
+    #    # Get inventory type from query param
+    #    inventory_type = request.args.get("type", "all")
+    #
+    #    # Context manager handles cleanup
+    #
+    #    return render_template(
+    #        "inventory_browser.html",
+    #        tenant=tenant,
+    #        tenant_id=tenant_id,
+    #        tenant_name=row[1],
+    #        inventory_type=inventory_type,
+    #    )
+    #
+    #
+    ## Orders Browser Route
+    # @app.route("/tenant/<tenant_id>/orders")
+    # @require_auth()
+    # def orders_browser(tenant_id):
+    #    """Display GAM orders browser page."""
+    # Check access
+    if session.get("role") != "super_admin" and session.get("tenant_id") != tenant_id:
+        return "Access denied", 403
 
-        tenant_name = tenant.name
-
-        # Get API key for API calls
-        api_key_row = db_session.query(SuperadminConfig.config_value).filter_by(config_key="api_key").first()
-        api_key = api_key_row[0] if api_key_row else ""
-
-        return render_template(
-            "orders_browser.html",
-            tenant_id=tenant_id,
-            tenant_name=tenant_name,
-            api_key=api_key,
-        )
-
-
-@app.route("/api/tenant/<tenant_id>/sync/orders", methods=["POST"])
-@require_auth()
-def sync_orders_endpoint(tenant_id):
-    """Sync orders and line items from GAM - Session authenticated version."""
+    #    with get_db_session() as db_session:
+    #        tenant = db_session.query(Tenant).filter_by(tenant_id=tenant_id).first()
+    #        if not tenant:
+    #            return "Tenant not found", 404
+    #
+    #        tenant_name = tenant.name
+    #
+    #        # Get API key for API calls
+    #        api_key_row = db_session.query(SuperadminConfig.config_value).filter_by(config_key="api_key").first()
+    #        api_key = api_key_row[0] if api_key_row else ""
+    #
+    #        return render_template(
+    #            "orders_browser.html",
+    #            tenant_id=tenant_id,
+    #            tenant_name=tenant_name,
+    #            api_key=api_key,
+    #        )
+    #
+    #
+    ## MIGRATED: Moved to src/admin/blueprints/inventory.py
+    ## @app.route("/api/tenant/<tenant_id>/sync/orders", methods=["POST"])
+    ## @require_auth()
+    ## def sync_orders_endpoint(tenant_id):
+    #    """Sync orders and line items from GAM - Session authenticated version."""
     # Check access
     if session.get("role") != "super_admin" and session.get("tenant_id") != tenant_id:
         return jsonify({"error": "Access denied"}), 403
@@ -2134,808 +2160,810 @@ def gam_reporting_dashboard(tenant_id):
         return "Access denied", 403
 
     # Get tenant and check if it's using GAM
-    with get_db_session() as db_session:
-        tenant_obj = db_session.query(Tenant).filter_by(tenant_id=tenant_id).first()
-
-        if not tenant_obj:
-            return "Tenant not found", 404
-
-        # Convert to dict for template compatibility
-        tenant = {
-            "tenant_id": tenant_obj.tenant_id,
-            "name": tenant_obj.name,
-            "ad_server": tenant_obj.ad_server,
-            "subdomain": tenant_obj.subdomain,
-            "is_active": tenant_obj.is_active,
-        }
-
-        # Check if tenant is using Google Ad Manager
-        if tenant_obj.ad_server != "google_ad_manager":
-            return (
-                render_template(
-                    "error.html",
-                    error_title="GAM Reporting Not Available",
-                    error_message=f"This tenant is currently using {tenant_obj.ad_server or 'no ad server'}. GAM Reporting is only available for tenants using Google Ad Manager.",
-                    back_url=f"/tenant/{tenant_id}",
-                ),
-                400,
-            )
-
-        return render_template("gam_reporting.html", tenant=tenant)
-
-
-# Sync Status API for Admin UI
-@app.route("/api/tenant/<tenant_id>/sync/status")
-@require_auth()
-def get_tenant_sync_status(tenant_id):
-    """Get sync status for a tenant."""
+    #    with get_db_session() as db_session:
+    #        tenant_obj = db_session.query(Tenant).filter_by(tenant_id=tenant_id).first()
+    #
+    #        if not tenant_obj:
+    #            return "Tenant not found", 404
+    #
+    #        # Convert to dict for template compatibility
+    #        tenant = {
+    #            "tenant_id": tenant_obj.tenant_id,
+    #            "name": tenant_obj.name,
+    #            "ad_server": tenant_obj.ad_server,
+    #            "subdomain": tenant_obj.subdomain,
+    #            "is_active": tenant_obj.is_active,
+    #        }
+    #
+    #        # Check if tenant is using Google Ad Manager
+    #        if tenant_obj.ad_server != "google_ad_manager":
+    #            return (
+    #                render_template(
+    #                    "error.html",
+    #                    error_title="GAM Reporting Not Available",
+    #                    error_message=f"This tenant is currently using {tenant_obj.ad_server or 'no ad server'}. GAM Reporting is only available for tenants using Google Ad Manager.",
+    #                    back_url=f"/tenant/{tenant_id}",
+    #                ),
+    #                400,
+    #            )
+    #
+    #        return render_template("gam_reporting.html", tenant=tenant)
+    #
+    #
+    ## Sync Status API for Admin UI
+    # @app.route("/api/tenant/<tenant_id>/sync/status")
+    # @require_auth()
+    # def get_tenant_sync_status(tenant_id):
+    #    """Get sync status for a tenant."""
     # Verify tenant access
     if session.get("role") != "super_admin" and session.get("tenant_id") != tenant_id:
         return jsonify({"error": "Access denied"}), 403
 
-    with get_db_session() as db_session:
-        # Check if tenant exists and uses GAM
-        tenant = db_session.query(Tenant).filter_by(tenant_id=tenant_id).first()
-
-        if not tenant:
-            return jsonify({"error": "Tenant not found"}), 404
-
-        if tenant.ad_server != "google_ad_manager":
-            return jsonify({"error": "Sync only available for GAM tenants"}), 400
-
-        # Get latest sync job
-        from sqlalchemy import case, func
-
-        from models import GamInventory, SyncJob
-
-        sync_job = (
-            db_session.query(SyncJob.started_at, SyncJob.status, SyncJob.summary)
-            .filter_by(tenant_id=tenant_id)
-            .order_by(SyncJob.started_at.desc())
-            .first()
-        )
-
-        # Get inventory counts
-        counts_query = (
-            db_session.query(
-                func.count(case((GamInventory.inventory_type == "ad_unit", 1))).label("ad_units"),
-                func.count(case((GamInventory.inventory_type == "custom_targeting_key", 1))).label(
-                    "custom_targeting_keys"
-                ),
-                func.count(case((GamInventory.inventory_type == "custom_targeting_value", 1))).label(
-                    "custom_targeting_values"
-                ),
-                func.count(GamInventory.id).label("total"),
-            )
-            .filter_by(tenant_id=tenant_id)
-            .first()
-        )
-
-        counts = counts_query if counts_query else None
-
-    response = {
-        "last_sync": None,
-        "sync_running": False,
-        "item_count": counts.total if counts else 0,
-        "breakdown": None,
-    }
-
-    if sync_job:
-        response["last_sync"] = sync_job.started_at
-        response["sync_running"] = sync_job.status == "running"
-
-        if counts and counts.total > 0:
-            response["breakdown"] = {
-                "ad_units": counts.ad_units,
-                "custom_targeting_keys": counts.custom_targeting_keys,
-                "custom_targeting_values": counts.custom_targeting_values,
-            }
-
-    return jsonify(response)
-
-
-# Trigger Sync API for Admin UI
-@app.route("/api/tenant/<tenant_id>/sync/trigger", methods=["POST"])
-@require_auth()
-def trigger_tenant_sync(tenant_id):
-    """Trigger a sync for a GAM tenant."""
-    # Verify tenant access
-    if session.get("role") != "super_admin":
-        return jsonify({"error": "Only super admins can trigger sync"}), 403
-
-    with get_db_session() as db_session:
-        # Check if tenant exists and uses GAM
-        tenant = db_session.query(Tenant).filter_by(tenant_id=tenant_id).first()
-
-        if not tenant:
-            return jsonify({"error": "Tenant not found"}), 404
-
-        if tenant.ad_server != "google_ad_manager":
-            return jsonify({"error": "Sync only available for GAM tenants"}), 400
-
-        try:
-            # Create a new sync job
-            import uuid
-            from datetime import datetime
-
-            from models import SyncJob
-
-            sync_id = str(uuid.uuid4())
-            new_sync_job = SyncJob(
-                sync_id=sync_id,
-                tenant_id=tenant_id,
-                adapter_type="google_ad_manager",
-                sync_type="manual",
-                status="pending",
-                started_at=datetime.utcnow(),
-                triggered_by="admin_ui",
-            )
-            db_session.add(new_sync_job)
-            db_session.commit()
-
-            # Note: In a real implementation, this would trigger an async job
-            # For now, we'll just mark it as pending and let the background worker handle it
-
-            return jsonify(
-                {
-                    "success": True,
-                    "sync_id": sync_id,
-                    "message": "Sync job queued successfully",
-                }
-            )
-
-        except Exception as e:
-            db_session.rollback()
-            app.logger.error(f"Error triggering sync for tenant {tenant_id}: {str(e)}")
-            return jsonify({"error": "Failed to trigger sync", "details": str(e)}), 500
-
-
-@app.route("/api/tenant/<tenant_id>/orders", methods=["GET"])
-@require_auth()
-def get_tenant_orders_session(tenant_id):
-    """Get orders for a tenant - Session authenticated version."""
-    # Check access
-    if session.get("role") != "super_admin" and session.get("tenant_id") != tenant_id:
-        return jsonify({"error": "Access denied"}), 403
-
-    try:
-        from sqlalchemy import func
-
-        from gam_orders_service import db_session
-        from models import GAMLineItem, GAMOrder
-
-        # Remove any existing session to start fresh
-        try:
-            db_session.remove()
-        except Exception:
-            pass  # Session might not exist yet
-
-        # Get query parameters
-        search = request.args.get("search")
-        status = request.args.get("status")
-        advertiser_id = request.args.get("advertiser_id")
-        has_line_items = request.args.get("has_line_items")
-
-        # Query orders from database
-        query = db_session.query(GAMOrder).filter(GAMOrder.tenant_id == tenant_id)
-
-        if search:
-            query = query.filter((GAMOrder.name.ilike(f"%{search}%")) | (GAMOrder.order_id.ilike(f"%{search}%")))
-
-        if status:
-            query = query.filter(GAMOrder.status == status)
-
-        if advertiser_id:
-            query = query.filter(GAMOrder.advertiser_id == advertiser_id)
-
-        # Filter by has_line_items using exists subquery
-        if has_line_items == "true":
-            query = query.filter(
-                db_session.query(GAMLineItem)
-                .filter(
-                    GAMLineItem.tenant_id == tenant_id,
-                    GAMLineItem.order_id == GAMOrder.order_id,
-                )
-                .exists()
-            )
-        elif has_line_items == "false":
-            query = query.filter(
-                ~db_session.query(GAMLineItem)
-                .filter(
-                    GAMLineItem.tenant_id == tenant_id,
-                    GAMLineItem.order_id == GAMOrder.order_id,
-                )
-                .exists()
-            )
-
-        # Order by last modified
-        query = query.order_by(GAMOrder.last_modified_date.desc())
-
-        orders = query.all()
-
-        # Get line item counts and stats for all orders in one query
-        line_item_stats = (
-            db_session.query(
-                GAMLineItem.order_id,
-                func.count(GAMLineItem.id).label("count"),
-                func.sum(GAMLineItem.stats_impressions).label("total_impressions"),
-                func.sum(GAMLineItem.stats_clicks).label("total_clicks"),
-            )
-            .filter(
-                GAMLineItem.tenant_id == tenant_id,
-                GAMLineItem.order_id.in_([o.order_id for o in orders]) if orders else [],
-            )
-            .group_by(GAMLineItem.order_id)
-            .all()
-        )
-
-        # Convert to dict for easy lookup
-        stats_dict = {
-            row.order_id: {
-                "count": row.count,
-                "impressions": row.total_impressions or 0,
-                "clicks": row.total_clicks or 0,
-            }
-            for row in line_item_stats
-        }
-
-        # Convert to dict
-        result = {
-            "orders": [
-                {
-                    "order_id": o.order_id,
-                    "name": o.name,
-                    "advertiser_id": o.advertiser_id,
-                    "advertiser_name": o.advertiser_name,
-                    "status": o.status,
-                    "start_date": o.start_date.isoformat() if o.start_date else None,
-                    "end_date": o.end_date.isoformat() if o.end_date else None,
-                    "line_item_count": stats_dict.get(o.order_id, {}).get("count", 0),
-                    "total_impressions_delivered": stats_dict.get(o.order_id, {}).get("impressions", 0),
-                    "total_clicks_delivered": stats_dict.get(o.order_id, {}).get("clicks", 0),
-                    "last_modified_date": o.last_modified_date.isoformat() if o.last_modified_date else None,
-                }
-                for o in orders
-            ],
-            "total": len(orders),
-        }
-
-        return jsonify(result)
-
-    except Exception as e:
-        app.logger.error(f"Error fetching orders: {str(e)}")
-        try:
-            db_session.rollback()
-        except Exception:
-            pass  # Session might be in invalid state
-        return jsonify({"error": str(e)}), 500
-    finally:
-        try:
-            db_session.remove()
-        except Exception:
-            pass  # Ensure cleanup doesn't fail
-
-
-@app.route("/api/tenant/<tenant_id>/orders/<order_id>", methods=["GET"])
-@require_auth()
-def get_order_details_session(tenant_id, order_id):
-    """Get order details - Session authenticated version."""
-    # Check access
-    if session.get("role") != "super_admin" and session.get("tenant_id") != tenant_id:
-        return jsonify({"error": "Access denied"}), 403
-
-    try:
-        from gam_orders_service import db_session
-        from models import GAMLineItem, GAMOrder
-
-        db_session.remove()
-
-        # Get order
-        order = (
-            db_session.query(GAMOrder).filter(GAMOrder.tenant_id == tenant_id, GAMOrder.order_id == order_id).first()
-        )
-
-        if not order:
-            return jsonify({"error": "Order not found"}), 404
-
-        # Get line items
-        line_items = (
-            db_session.query(GAMLineItem)
-            .filter(GAMLineItem.tenant_id == tenant_id, GAMLineItem.order_id == order_id)
-            .all()
-        )
-
-        # Calculate delivery metrics
-        total_impressions_delivered = sum(li.stats_impressions or 0 for li in line_items)
-        total_impressions_goal = sum(
-            li.primary_goal_units or 0 for li in line_items if li.primary_goal_type == "IMPRESSIONS"
-        )
-        total_clicks_goal = sum(li.primary_goal_units or 0 for li in line_items if li.primary_goal_type == "CLICKS")
-
-        result = {
-            "order": {
-                "order_id": order.order_id,
-                "name": order.name,
-                "advertiser_id": order.advertiser_id,
-                "advertiser_name": order.advertiser_name,
-                "agency_id": order.agency_id,
-                "agency_name": order.agency_name,
-                "trafficker_id": order.trafficker_id,
-                "trafficker_name": order.trafficker_name,
-                "salesperson_id": order.salesperson_id,
-                "salesperson_name": order.salesperson_name,
-                "status": order.status,
-                "start_date": order.start_date.isoformat() if order.start_date else None,
-                "end_date": order.end_date.isoformat() if order.end_date else None,
-                "unlimited_end_date": order.unlimited_end_date,
-                "total_budget": order.total_budget,
-                "currency_code": order.currency_code or "USD",
-                "external_order_id": order.external_order_id,
-                "po_number": order.po_number,
-                "notes": order.notes,
-                "last_modified_date": order.last_modified_date.isoformat() if order.last_modified_date else None,
-                "total_impressions_delivered": total_impressions_delivered,
-                "total_clicks_delivered": sum(li.stats_clicks or 0 for li in line_items),
-                "delivery_metrics": {
-                    "total_impressions_delivered": total_impressions_delivered,
-                    "total_impressions_goal": total_impressions_goal,
-                    "total_clicks_delivered": sum(li.stats_clicks or 0 for li in line_items),
-                    "total_clicks_goal": total_clicks_goal,
-                },
-            },
-            "line_items": [
-                {
-                    "line_item_id": li.line_item_id,
-                    "name": li.name,
-                    "status": li.status,
-                    "line_item_type": li.line_item_type,
-                    "priority": li.priority,
-                    "primary_goal_type": li.primary_goal_type,
-                    "primary_goal_units": li.primary_goal_units,
-                    "stats_impressions": li.stats_impressions or 0,
-                    "stats_clicks": li.stats_clicks or 0,
-                    "impressions_delivered": li.stats_impressions or 0,  # Keep for backward compatibility
-                    "clicks_delivered": li.stats_clicks or 0,  # Keep for backward compatibility
-                    "cost_per_unit": (
-                        float(li.cost_per_unit) / 1000000 if li.cost_per_unit else None
-                    ),  # Convert from micros to dollars
-                    "delivery_percentage": (
-                        (li.stats_impressions / li.primary_goal_units * 100)
-                        if li.primary_goal_units and li.primary_goal_units > 0
-                        else 0
-                    ),
-                    "start_date": li.start_date.isoformat() if li.start_date else None,
-                    "end_date": li.end_date.isoformat() if li.end_date else None,
-                }
-                for li in line_items
-            ],
-        }
-
-        return jsonify(result)
-
-    except Exception as e:
-        app.logger.error(f"Error fetching order details: {str(e)}")
-        return jsonify({"error": str(e)}), 500
-    finally:
-        db_session.remove()
-
-
-# Workflows Dashboard Route
-@app.route("/tenant/<tenant_id>/workflows")
-@require_auth()
-def workflows_dashboard(tenant_id):
-    """Display workflows dashboard with media buys, workflow steps, and audit logs."""
+    #    with get_db_session() as db_session:
+    #        # Check if tenant exists and uses GAM
+    #        tenant = db_session.query(Tenant).filter_by(tenant_id=tenant_id).first()
+    #
+    #        if not tenant:
+    #            return jsonify({"error": "Tenant not found"}), 404
+    #
+    #        if tenant.ad_server != "google_ad_manager":
+    #            return jsonify({"error": "Sync only available for GAM tenants"}), 400
+    #
+    #        # Get latest sync job
+    #        from sqlalchemy import case, func
+    #
+    #        from models import GamInventory, SyncJob
+    #
+    #        sync_job = (
+    #            db_session.query(SyncJob.started_at, SyncJob.status, SyncJob.summary)
+    #            .filter_by(tenant_id=tenant_id)
+    #            .order_by(SyncJob.started_at.desc())
+    #            .first()
+    #        )
+    #
+    #        # Get inventory counts
+    #        counts_query = (
+    #            db_session.query(
+    #                func.count(case((GamInventory.inventory_type == "ad_unit", 1))).label("ad_units"),
+    #                func.count(case((GamInventory.inventory_type == "custom_targeting_key", 1))).label(
+    #                    "custom_targeting_keys"
+    #                ),
+    #                func.count(case((GamInventory.inventory_type == "custom_targeting_value", 1))).label(
+    #                    "custom_targeting_values"
+    #                ),
+    #                func.count(GamInventory.id).label("total"),
+    #            )
+    #            .filter_by(tenant_id=tenant_id)
+    #            .first()
+    #        )
+    #
+    #        counts = counts_query if counts_query else None
+    #
+    #    response = {
+    #        "last_sync": None,
+    #        "sync_running": False,
+    #        "item_count": counts.total if counts else 0,
+    #        "breakdown": None,
+    #    }
+    #
+    #    if sync_job:
+    #        response["last_sync"] = sync_job.started_at
+    #        response["sync_running"] = sync_job.status == "running"
+    #
+    #        if counts and counts.total > 0:
+    #            response["breakdown"] = {
+    #                "ad_units": counts.ad_units,
+    #                "custom_targeting_keys": counts.custom_targeting_keys,
+    #                "custom_targeting_values": counts.custom_targeting_values,
+    #            }
+    #
+    #    return jsonify(response)
+    #
+    #
+    ## Trigger Sync API for Admin UI
+    # @app.route("/api/tenant/<tenant_id>/sync/trigger", methods=["POST"])
+    # @require_auth()
+    # def trigger_tenant_sync(tenant_id):
+    #    """Trigger a sync for a GAM tenant."""
+    #    # Verify tenant access
+    #    if session.get("role") != "super_admin":
+    #        return jsonify({"error": "Only super admins can trigger sync"}), 403
+    #
+    #    with get_db_session() as db_session:
+    #        # Check if tenant exists and uses GAM
+    #        tenant = db_session.query(Tenant).filter_by(tenant_id=tenant_id).first()
+    #
+    #        if not tenant:
+    #            return jsonify({"error": "Tenant not found"}), 404
+    #
+    #        if tenant.ad_server != "google_ad_manager":
+    #            return jsonify({"error": "Sync only available for GAM tenants"}), 400
+    #
+    #        try:
+    #            # Create a new sync job
+    #            import uuid
+    #            from datetime import datetime
+    #
+    #            from models import SyncJob
+    #
+    #            sync_id = str(uuid.uuid4())
+    #            new_sync_job = SyncJob(
+    #                sync_id=sync_id,
+    #                tenant_id=tenant_id,
+    #                adapter_type="google_ad_manager",
+    #                sync_type="manual",
+    #                status="pending",
+    #                started_at=datetime.utcnow(),
+    #                triggered_by="admin_ui",
+    #            )
+    #            db_session.add(new_sync_job)
+    #            db_session.commit()
+    #
+    #            # Note: In a real implementation, this would trigger an async job
+    #            # For now, we'll just mark it as pending and let the background worker handle it
+    #
+    #            return jsonify(
+    #                {
+    #                    "success": True,
+    #                    "sync_id": sync_id,
+    #                    "message": "Sync job queued successfully",
+    #                }
+    #            )
+    #
+    #        except Exception as e:
+    #            db_session.rollback()
+    #            app.logger.error(f"Error triggering sync for tenant {tenant_id}: {str(e)}")
+    #            return jsonify({"error": "Failed to trigger sync", "details": str(e)}), 500
+    #
+    #
+    ## MIGRATED: Moved to src/admin/blueprints/inventory.py
+    ## @app.route("/api/tenant/<tenant_id>/orders", methods=["GET"])
+    ## @require_auth()
+    ## def get_tenant_orders_session(tenant_id):
+    #    """Get orders for a tenant - Session authenticated version."""
+    #    # Check access
+    #    if session.get("role") != "super_admin" and session.get("tenant_id") != tenant_id:
+    #        return jsonify({"error": "Access denied"}), 403
+    #
+    #    try:
+    #        from sqlalchemy import func
+    #
+    #        from gam_orders_service import db_session
+    #        from models import GAMLineItem, GAMOrder
+    #
+    #        # Remove any existing session to start fresh
+    #        try:
+    #            db_session.remove()
+    #        except Exception:
+    #            pass  # Session might not exist yet
+    #
+    #        # Get query parameters
+    #        search = request.args.get("search")
+    #        status = request.args.get("status")
+    #        advertiser_id = request.args.get("advertiser_id")
+    #        has_line_items = request.args.get("has_line_items")
+    #
+    #        # Query orders from database
+    #        query = db_session.query(GAMOrder).filter(GAMOrder.tenant_id == tenant_id)
+    #
+    #        if search:
+    #            query = query.filter((GAMOrder.name.ilike(f"%{search}%")) | (GAMOrder.order_id.ilike(f"%{search}%")))
+    #
+    #        if status:
+    #            query = query.filter(GAMOrder.status == status)
+    #
+    #        if advertiser_id:
+    #            query = query.filter(GAMOrder.advertiser_id == advertiser_id)
+    #
+    #        # Filter by has_line_items using exists subquery
+    #        if has_line_items == "true":
+    #            query = query.filter(
+    #                db_session.query(GAMLineItem)
+    #                .filter(
+    #                    GAMLineItem.tenant_id == tenant_id,
+    #                    GAMLineItem.order_id == GAMOrder.order_id,
+    #                )
+    #                .exists()
+    #            )
+    #        elif has_line_items == "false":
+    #            query = query.filter(
+    #                ~db_session.query(GAMLineItem)
+    #                .filter(
+    #                    GAMLineItem.tenant_id == tenant_id,
+    #                    GAMLineItem.order_id == GAMOrder.order_id,
+    #                )
+    #                .exists()
+    #            )
+    #
+    #        # Order by last modified
+    #        query = query.order_by(GAMOrder.last_modified_date.desc())
+    #
+    #        orders = query.all()
+    #
+    #        # Get line item counts and stats for all orders in one query
+    #        line_item_stats = (
+    #            db_session.query(
+    #                GAMLineItem.order_id,
+    #                func.count(GAMLineItem.id).label("count"),
+    #                func.sum(GAMLineItem.stats_impressions).label("total_impressions"),
+    #                func.sum(GAMLineItem.stats_clicks).label("total_clicks"),
+    #            )
+    #            .filter(
+    #                GAMLineItem.tenant_id == tenant_id,
+    #                GAMLineItem.order_id.in_([o.order_id for o in orders]) if orders else [],
+    #            )
+    #            .group_by(GAMLineItem.order_id)
+    #            .all()
+    #        )
+    #
+    #        # Convert to dict for easy lookup
+    #        stats_dict = {
+    #            row.order_id: {
+    #                "count": row.count,
+    #                "impressions": row.total_impressions or 0,
+    #                "clicks": row.total_clicks or 0,
+    #            }
+    #            for row in line_item_stats
+    #        }
+    #
+    #        # Convert to dict
+    #        result = {
+    #            "orders": [
+    #                {
+    #                    "order_id": o.order_id,
+    #                    "name": o.name,
+    #                    "advertiser_id": o.advertiser_id,
+    #                    "advertiser_name": o.advertiser_name,
+    #                    "status": o.status,
+    #                    "start_date": o.start_date.isoformat() if o.start_date else None,
+    #                    "end_date": o.end_date.isoformat() if o.end_date else None,
+    #                    "line_item_count": stats_dict.get(o.order_id, {}).get("count", 0),
+    #                    "total_impressions_delivered": stats_dict.get(o.order_id, {}).get("impressions", 0),
+    #                    "total_clicks_delivered": stats_dict.get(o.order_id, {}).get("clicks", 0),
+    #                    "last_modified_date": o.last_modified_date.isoformat() if o.last_modified_date else None,
+    #                }
+    #                for o in orders
+    #            ],
+    #            "total": len(orders),
+    #        }
+    #
+    #        return jsonify(result)
+    #
+    #    except Exception as e:
+    #        app.logger.error(f"Error fetching orders: {str(e)}")
+    #        try:
+    #            db_session.rollback()
+    #        except Exception:
+    #            pass  # Session might be in invalid state
+    #        return jsonify({"error": str(e)}), 500
+    #    finally:
+    #        try:
+    #            db_session.remove()
+    #        except Exception:
+    #            pass  # Ensure cleanup doesn't fail
+    #
+    #
+    ## MIGRATED: Moved to src/admin/blueprints/inventory.py
+    ## @app.route("/api/tenant/<tenant_id>/orders/<order_id>", methods=["GET"])
+    ## @require_auth()
+    ## def get_order_details_session(tenant_id, order_id):
+    #    """Get order details - Session authenticated version."""
+    #    # Check access
+    #    if session.get("role") != "super_admin" and session.get("tenant_id") != tenant_id:
+    #        return jsonify({"error": "Access denied"}), 403
+    #
+    #    try:
+    #        from gam_orders_service import db_session
+    #        from models import GAMLineItem, GAMOrder
+    #
+    #        db_session.remove()
+    #
+    #        # Get order
+    #        order = (
+    #            db_session.query(GAMOrder).filter(GAMOrder.tenant_id == tenant_id, GAMOrder.order_id == order_id).first()
+    #        )
+    #
+    #        if not order:
+    #            return jsonify({"error": "Order not found"}), 404
+    #
+    #        # Get line items
+    #        line_items = (
+    #            db_session.query(GAMLineItem)
+    #            .filter(GAMLineItem.tenant_id == tenant_id, GAMLineItem.order_id == order_id)
+    #            .all()
+    #        )
+    #
+    #        # Calculate delivery metrics
+    #        total_impressions_delivered = sum(li.stats_impressions or 0 for li in line_items)
+    #        total_impressions_goal = sum(
+    #            li.primary_goal_units or 0 for li in line_items if li.primary_goal_type == "IMPRESSIONS"
+    #        )
+    #        total_clicks_goal = sum(li.primary_goal_units or 0 for li in line_items if li.primary_goal_type == "CLICKS")
+    #
+    #        result = {
+    #            "order": {
+    #                "order_id": order.order_id,
+    #                "name": order.name,
+    #                "advertiser_id": order.advertiser_id,
+    #                "advertiser_name": order.advertiser_name,
+    #                "agency_id": order.agency_id,
+    #                "agency_name": order.agency_name,
+    #                "trafficker_id": order.trafficker_id,
+    #                "trafficker_name": order.trafficker_name,
+    #                "salesperson_id": order.salesperson_id,
+    #                "salesperson_name": order.salesperson_name,
+    #                "status": order.status,
+    #                "start_date": order.start_date.isoformat() if order.start_date else None,
+    #                "end_date": order.end_date.isoformat() if order.end_date else None,
+    #                "unlimited_end_date": order.unlimited_end_date,
+    #                "total_budget": order.total_budget,
+    #                "currency_code": order.currency_code or "USD",
+    #                "external_order_id": order.external_order_id,
+    #                "po_number": order.po_number,
+    #                "notes": order.notes,
+    #                "last_modified_date": order.last_modified_date.isoformat() if order.last_modified_date else None,
+    #                "total_impressions_delivered": total_impressions_delivered,
+    #                "total_clicks_delivered": sum(li.stats_clicks or 0 for li in line_items),
+    #                "delivery_metrics": {
+    #                    "total_impressions_delivered": total_impressions_delivered,
+    #                    "total_impressions_goal": total_impressions_goal,
+    #                    "total_clicks_delivered": sum(li.stats_clicks or 0 for li in line_items),
+    #                    "total_clicks_goal": total_clicks_goal,
+    #                },
+    #            },
+    #            "line_items": [
+    #                {
+    #                    "line_item_id": li.line_item_id,
+    #                    "name": li.name,
+    #                    "status": li.status,
+    #                    "line_item_type": li.line_item_type,
+    #                    "priority": li.priority,
+    #                    "primary_goal_type": li.primary_goal_type,
+    #                    "primary_goal_units": li.primary_goal_units,
+    #                    "stats_impressions": li.stats_impressions or 0,
+    #                    "stats_clicks": li.stats_clicks or 0,
+    #                    "impressions_delivered": li.stats_impressions or 0,  # Keep for backward compatibility
+    #                    "clicks_delivered": li.stats_clicks or 0,  # Keep for backward compatibility
+    #                    "cost_per_unit": (
+    #                        float(li.cost_per_unit) / 1000000 if li.cost_per_unit else None
+    #                    ),  # Convert from micros to dollars
+    #                    "delivery_percentage": (
+    #                        (li.stats_impressions / li.primary_goal_units * 100)
+    #                        if li.primary_goal_units and li.primary_goal_units > 0
+    #                        else 0
+    #                    ),
+    #                    "start_date": li.start_date.isoformat() if li.start_date else None,
+    #                    "end_date": li.end_date.isoformat() if li.end_date else None,
+    #                }
+    #                for li in line_items
+    #            ],
+    #        }
+    #
+    #        return jsonify(result)
+    #
+    #    except Exception as e:
+    #        app.logger.error(f"Error fetching order details: {str(e)}")
+    #        return jsonify({"error": str(e)}), 500
+    #    finally:
+    #        db_session.remove()
+    #
+    #
+    ## Workflows Dashboard Route
+    # @app.route("/tenant/<tenant_id>/workflows")
+    # @require_auth()
+    # def workflows_dashboard(tenant_id):
+    #    """Display workflows dashboard with media buys, workflow steps, and audit logs."""
+    #    # Verify tenant access
+    #    if session.get("role") != "super_admin" and session.get("tenant_id") != tenant_id:
+    #        return "Access denied", 403
+    #
+    #    # Get tenant
+    #    with get_db_session() as db_session:
+    #        tenant_obj = db_session.query(Tenant).filter_by(tenant_id=tenant_id).first()
+    #
+    #        if not tenant_obj:
+    #            return "Tenant not found", 404
+    #
+    #        # Convert to dict for template compatibility
+    #        config = tenant_obj.config
+    #        if isinstance(config, str):
+    #            config = json.loads(config)
+    #
+    #        tenant = {
+    #            "tenant_id": tenant_obj.tenant_id,
+    #            "name": tenant_obj.name,
+    #            "subdomain": tenant_obj.subdomain,
+    #            "config": config,
+    #            "created_at": tenant_obj.created_at,
+    #            "updated_at": tenant_obj.updated_at,
+    #            "is_active": tenant_obj.is_active,
+    #        }
+    #
+    #    # Get summary statistics
+    #    from datetime import datetime
+    #
+    #    today = datetime.now().date()
+    #
+    #    # Active media buys count
+    #    active_buys_cursor = conn.execute(
+    #        """
+    #        SELECT COUNT(*) FROM media_buys
+    #        WHERE tenant_id = ? AND status = 'active'
+    #    """,
+    #        (tenant_id,),
+    #    )
+    #    result = active_buys_cursor.fetchone()
+    #    active_buys = result[0] if result else 0
+    #
+    #    # Pending workflow steps count (tasks table was replaced by workflow system)
+    #    try:
+    #        pending_tasks_cursor = conn.execute(
+    #            """
+    #            SELECT COUNT(*) FROM workflow_steps
+    #            WHERE tenant_id = ? AND status = 'pending'
+    #        """,
+    #            (tenant_id,),
+    #        )
+    #        result = pending_tasks_cursor.fetchone()
+    #        pending_tasks = result[0] if result else 0
+    #    except:
+    #        pending_tasks = 0
+    #
+    #    # Completed today count
+    #    try:
+    #        completed_today_cursor = conn.execute(
+    #            """
+    #            SELECT COUNT(*) FROM workflow_steps
+    #            WHERE tenant_id = ? AND status = 'completed'
+    #            AND DATE(completed_at) = DATE(?)
+    #        """,
+    #            (tenant_id, today.isoformat()),
+    #        )
+    #        result = completed_today_cursor.fetchone()
+    #        completed_today = result[0] if result else 0
+    #    except:
+    #        completed_today = 0
+    #
+    #    # Total active spend
+    #    total_spend_cursor = conn.execute(
+    #        """
+    #        SELECT SUM(budget) FROM media_buys
+    #        WHERE tenant_id = ? AND status = 'active'
+    #    """,
+    #        (tenant_id,),
+    #    )
+    #    result = total_spend_cursor.fetchone()
+    #    total_spend = (result[0] if result else 0) or 0
+    #
+    #    summary = {
+    #        "active_buys": active_buys,
+    #        "pending_tasks": pending_tasks,
+    #        "completed_today": completed_today,
+    #        "total_spend": total_spend,
+    #    }
+    #
+    #    # Get media buys
+    #    media_buys_cursor = conn.execute(
+    #        """
+    #        SELECT * FROM media_buys
+    #        WHERE tenant_id = ?
+    #        ORDER BY created_at DESC
+    #        LIMIT 100
+    #    """,
+    #        (tenant_id,),
+    #    )
+    #
+    #    media_buys = []
+    #    for row in media_buys_cursor:
+    #        # Handle datetime fields - PostgreSQL returns datetime objects, SQLite returns strings
+    #        created_at = row[11]
+    #        if created_at and isinstance(created_at, str):
+    #            created_at = datetime.fromisoformat(created_at)
+    #
+    #        updated_at = row[12]
+    #        if updated_at and isinstance(updated_at, str):
+    #            updated_at = datetime.fromisoformat(updated_at)
+    #
+    #        approved_at = row[13]
+    #        if approved_at and isinstance(approved_at, str):
+    #            approved_at = datetime.fromisoformat(approved_at)
+    #
+    #        media_buys.append(
+    #            {
+    #                "media_buy_id": row[0],
+    #                "tenant_id": row[1],
+    #                "principal_id": row[2],
+    #                "order_name": row[3],
+    #                "advertiser_name": row[4],
+    #                "campaign_objective": row[5],
+    #                "kpi_goal": row[6],
+    #                "budget": row[7],
+    #                "start_date": row[8],
+    #                "end_date": row[9],
+    #                "status": row[10],
+    #                "created_at": created_at,
+    #                "updated_at": updated_at,
+    #                "approved_at": approved_at,
+    #                "approved_by": row[14],
+    #            }
+    #        )
+    #
+    #    # Get workflow steps (tasks table was replaced by workflow system)
+    #    try:
+    #        tasks_cursor = conn.execute(
+    #            """
+    #            SELECT * FROM workflow_steps
+    #            WHERE tenant_id = ?
+    #            ORDER BY created_at DESC
+    #            LIMIT 100
+    #        """,
+    #            (tenant_id,),
+    #        )
+    #    except:
+    #        tasks_cursor = []
+    #
+    #    tasks = []
+    #    for row in tasks_cursor:
+    #        # Handle datetime fields - PostgreSQL returns datetime objects, SQLite returns strings
+    #        due_date = row[8]
+    #        if due_date and isinstance(due_date, str):
+    #            due_date = datetime.fromisoformat(due_date)
+    #
+    #        completed_at = row[9]
+    #        if completed_at and isinstance(completed_at, str):
+    #            completed_at = datetime.fromisoformat(completed_at)
+    #
+    #        created_at = row[12]
+    #        if created_at and isinstance(created_at, str):
+    #            created_at = datetime.fromisoformat(created_at)
+    #
+    #        is_overdue = False
+    #        if due_date and row[6] == "pending":
+    #            is_overdue = due_date < datetime.now()
+    #
+    #        # Handle metadata - PostgreSQL returns dict, SQLite returns string
+    #        metadata = row[11]
+    #        if metadata and isinstance(metadata, str):
+    #            metadata = json.loads(metadata)
+    #        elif not metadata:
+    #            metadata = {}
+    #
+    #        tasks.append(
+    #            {
+    #                "task_id": row[0],
+    #                "tenant_id": row[1],
+    #                "media_buy_id": row[2],
+    #                "task_type": row[3],
+    #                "title": row[4],
+    #                "description": row[5],
+    #                "status": row[6],
+    #                "assigned_to": row[7],
+    #                "due_date": due_date,
+    #                "completed_at": completed_at,
+    #                "completed_by": row[10],
+    #                "metadata": metadata,
+    #                "created_at": created_at,
+    #                "is_overdue": is_overdue,
+    #            }
+    #        )
+    #
+    #    # Get audit logs
+    #    audit_logs_cursor = conn.execute(
+    #        """
+    #        SELECT * FROM audit_logs
+    #        WHERE tenant_id = ?
+    #        ORDER BY timestamp DESC
+    #        LIMIT 100
+    #    """,
+    #        (tenant_id,),
+    #    )
+    #
+    #    audit_logs = []
+    #    for row in audit_logs_cursor:
+    #        # Handle datetime fields - PostgreSQL returns datetime objects, SQLite returns strings
+    #        timestamp = row[2]
+    #        if timestamp and isinstance(timestamp, str):
+    #            timestamp = datetime.fromisoformat(timestamp)
+    #
+    #        audit_logs.append(
+    #            {
+    #                "log_id": row[0],
+    #                "tenant_id": row[1],
+    #                "timestamp": timestamp,
+    #                "operation": row[3],
+    #                "principal_name": row[4],
+    #                "principal_id": row[5],
+    #                "adapter_id": row[6],
+    #                "success": row[7],
+    #                "error_message": row[8],
+    #                "details": row[9],
+    #            }
+    #        )
+    #
+    #    # Context manager handles cleanup
+    #
+    #    return render_template(
+    #        "workflows.html",
+    #        tenant=tenant,
+    #        summary=summary,
+    #        media_buys=media_buys,
+    #        tasks=tasks,
+    #        audit_logs=audit_logs,
+    #    )
+    #
+    #
+    # @app.route("/tenant/<tenant_id>/media-buy/<media_buy_id>/approve")
+    # @require_auth()
+    # def media_buy_approval(tenant_id, media_buy_id):
+    #    """Display media buy approval page with details and dry-run preview."""
     # Verify tenant access
     if session.get("role") != "super_admin" and session.get("tenant_id") != tenant_id:
         return "Access denied", 403
 
-    # Get tenant
-    with get_db_session() as db_session:
-        tenant_obj = db_session.query(Tenant).filter_by(tenant_id=tenant_id).first()
-
-        if not tenant_obj:
-            return "Tenant not found", 404
-
-        # Convert to dict for template compatibility
-        config = tenant_obj.config
-        if isinstance(config, str):
-            config = json.loads(config)
-
-        tenant = {
-            "tenant_id": tenant_obj.tenant_id,
-            "name": tenant_obj.name,
-            "subdomain": tenant_obj.subdomain,
-            "config": config,
-            "created_at": tenant_obj.created_at,
-            "updated_at": tenant_obj.updated_at,
-            "is_active": tenant_obj.is_active,
-        }
-
-    # Get summary statistics
-    from datetime import datetime
-
-    today = datetime.now().date()
-
-    # Active media buys count
-    active_buys_cursor = conn.execute(
-        """
-        SELECT COUNT(*) FROM media_buys
-        WHERE tenant_id = ? AND status = 'active'
-    """,
-        (tenant_id,),
-    )
-    result = active_buys_cursor.fetchone()
-    active_buys = result[0] if result else 0
-
-    # Pending workflow steps count (tasks table was replaced by workflow system)
-    try:
-        pending_tasks_cursor = conn.execute(
-            """
-            SELECT COUNT(*) FROM workflow_steps
-            WHERE tenant_id = ? AND status = 'pending'
-        """,
-            (tenant_id,),
-        )
-        result = pending_tasks_cursor.fetchone()
-        pending_tasks = result[0] if result else 0
-    except:
-        pending_tasks = 0
-
-    # Completed today count
-    try:
-        completed_today_cursor = conn.execute(
-            """
-            SELECT COUNT(*) FROM workflow_steps
-            WHERE tenant_id = ? AND status = 'completed'
-            AND DATE(completed_at) = DATE(?)
-        """,
-            (tenant_id, today.isoformat()),
-        )
-        result = completed_today_cursor.fetchone()
-        completed_today = result[0] if result else 0
-    except:
-        completed_today = 0
-
-    # Total active spend
-    total_spend_cursor = conn.execute(
-        """
-        SELECT SUM(budget) FROM media_buys
-        WHERE tenant_id = ? AND status = 'active'
-    """,
-        (tenant_id,),
-    )
-    result = total_spend_cursor.fetchone()
-    total_spend = (result[0] if result else 0) or 0
-
-    summary = {
-        "active_buys": active_buys,
-        "pending_tasks": pending_tasks,
-        "completed_today": completed_today,
-        "total_spend": total_spend,
-    }
-
-    # Get media buys
-    media_buys_cursor = conn.execute(
-        """
-        SELECT * FROM media_buys
-        WHERE tenant_id = ?
-        ORDER BY created_at DESC
-        LIMIT 100
-    """,
-        (tenant_id,),
-    )
-
-    media_buys = []
-    for row in media_buys_cursor:
-        # Handle datetime fields - PostgreSQL returns datetime objects, SQLite returns strings
-        created_at = row[11]
-        if created_at and isinstance(created_at, str):
-            created_at = datetime.fromisoformat(created_at)
-
-        updated_at = row[12]
-        if updated_at and isinstance(updated_at, str):
-            updated_at = datetime.fromisoformat(updated_at)
-
-        approved_at = row[13]
-        if approved_at and isinstance(approved_at, str):
-            approved_at = datetime.fromisoformat(approved_at)
-
-        media_buys.append(
-            {
-                "media_buy_id": row[0],
-                "tenant_id": row[1],
-                "principal_id": row[2],
-                "order_name": row[3],
-                "advertiser_name": row[4],
-                "campaign_objective": row[5],
-                "kpi_goal": row[6],
-                "budget": row[7],
-                "start_date": row[8],
-                "end_date": row[9],
-                "status": row[10],
-                "created_at": created_at,
-                "updated_at": updated_at,
-                "approved_at": approved_at,
-                "approved_by": row[14],
-            }
-        )
-
-    # Get workflow steps (tasks table was replaced by workflow system)
-    try:
-        tasks_cursor = conn.execute(
-            """
-            SELECT * FROM workflow_steps
-            WHERE tenant_id = ?
-            ORDER BY created_at DESC
-            LIMIT 100
-        """,
-            (tenant_id,),
-        )
-    except:
-        tasks_cursor = []
-
-    tasks = []
-    for row in tasks_cursor:
-        # Handle datetime fields - PostgreSQL returns datetime objects, SQLite returns strings
-        due_date = row[8]
-        if due_date and isinstance(due_date, str):
-            due_date = datetime.fromisoformat(due_date)
-
-        completed_at = row[9]
-        if completed_at and isinstance(completed_at, str):
-            completed_at = datetime.fromisoformat(completed_at)
-
-        created_at = row[12]
-        if created_at and isinstance(created_at, str):
-            created_at = datetime.fromisoformat(created_at)
-
-        is_overdue = False
-        if due_date and row[6] == "pending":
-            is_overdue = due_date < datetime.now()
-
-        # Handle metadata - PostgreSQL returns dict, SQLite returns string
-        metadata = row[11]
-        if metadata and isinstance(metadata, str):
-            metadata = json.loads(metadata)
-        elif not metadata:
-            metadata = {}
-
-        tasks.append(
-            {
-                "task_id": row[0],
-                "tenant_id": row[1],
-                "media_buy_id": row[2],
-                "task_type": row[3],
-                "title": row[4],
-                "description": row[5],
-                "status": row[6],
-                "assigned_to": row[7],
-                "due_date": due_date,
-                "completed_at": completed_at,
-                "completed_by": row[10],
-                "metadata": metadata,
-                "created_at": created_at,
-                "is_overdue": is_overdue,
-            }
-        )
-
-    # Get audit logs
-    audit_logs_cursor = conn.execute(
-        """
-        SELECT * FROM audit_logs
-        WHERE tenant_id = ?
-        ORDER BY timestamp DESC
-        LIMIT 100
-    """,
-        (tenant_id,),
-    )
-
-    audit_logs = []
-    for row in audit_logs_cursor:
-        # Handle datetime fields - PostgreSQL returns datetime objects, SQLite returns strings
-        timestamp = row[2]
-        if timestamp and isinstance(timestamp, str):
-            timestamp = datetime.fromisoformat(timestamp)
-
-        audit_logs.append(
-            {
-                "log_id": row[0],
-                "tenant_id": row[1],
-                "timestamp": timestamp,
-                "operation": row[3],
-                "principal_name": row[4],
-                "principal_id": row[5],
-                "adapter_id": row[6],
-                "success": row[7],
-                "error_message": row[8],
-                "details": row[9],
-            }
-        )
-
-    # Context manager handles cleanup
-
-    return render_template(
-        "workflows.html",
-        tenant=tenant,
-        summary=summary,
-        media_buys=media_buys,
-        tasks=tasks,
-        audit_logs=audit_logs,
-    )
-
-
-@app.route("/tenant/<tenant_id>/media-buy/<media_buy_id>/approve")
-@require_auth()
-def media_buy_approval(tenant_id, media_buy_id):
-    """Display media buy approval page with details and dry-run preview."""
-    # Verify tenant access
-    if session.get("role") != "super_admin" and session.get("tenant_id") != tenant_id:
-        return "Access denied", 403
-
-    with get_db_session() as db_session:
-        # Get the media buy details
-        buy_obj = db_session.query(MediaBuy).filter_by(tenant_id=tenant_id, media_buy_id=media_buy_id).first()
-
-        if not buy_obj:
-            return "Media buy not found", 404
-
-        # Parse the media buy
-        from datetime import datetime
-
-        media_buy = {
-            "media_buy_id": buy_obj.media_buy_id,
-            "tenant_id": buy_obj.tenant_id,
-            "principal_id": buy_obj.principal_id,
-            "order_name": buy_obj.order_name,
-            "advertiser_name": buy_obj.advertiser_name,
-            "campaign_objective": buy_obj.campaign_objective,
-            "kpi_goal": buy_obj.kpi_goal,
-            "budget": buy_obj.budget,
-            "start_date": buy_obj.start_date,
-            "end_date": buy_obj.end_date,
-            "status": buy_obj.status,
-            "created_at": (
-                buy_obj.created_at
-                if not isinstance(buy_obj.created_at, str)
-                else datetime.fromisoformat(buy_obj.created_at)
-            ),
-            "raw_request": (
-                json.loads(buy_obj.raw_request)
-                if buy_obj.raw_request and isinstance(buy_obj.raw_request, str)
-                else buy_row[15]
-            ),
-            "context_id": buy_row[16] if len(buy_row) > 16 else None,
-        }
-
-    # Get associated human task if exists
-    task_cursor = conn.execute(
-        """
-        SELECT * FROM human_tasks
-        WHERE media_buy_id = ? AND status = 'pending'
-        ORDER BY created_at DESC LIMIT 1
-    """,
-        (media_buy_id,),
-    )
-
-    task_row = task_cursor.fetchone()
-    human_task = None
-    if task_row:
-        context_data = task_row[8]
-        if context_data and isinstance(context_data, str):
-            context_data = json.loads(context_data)
-
-        human_task = {
-            "task_id": task_row[0],
-            "task_type": task_row[3],
-            "priority": task_row[4],
-            "status": task_row[5],
-            "operation": task_row[6],
-            "error_detail": task_row[7],
-            "context_data": context_data or {},
-        }
-
-    # Get the principal details for adapter info
-    principal_cursor = conn.execute(
-        """
-        SELECT * FROM principals
-        WHERE tenant_id = ? AND principal_id = ?
-    """,
-        (tenant_id, media_buy["principal_id"]),
-    )
-
-    principal_row = principal_cursor.fetchone()
-    principal = None
-    if principal_row:
-        platform_mappings = principal_row[3]
-        if isinstance(platform_mappings, str):
-            platform_mappings = json.loads(platform_mappings)
-
-        principal = {
-            "principal_id": principal_row[0],
-            "name": principal_row[2],
-            "platform_mappings": platform_mappings,
-        }
-
-    # Get the products in this media buy
-    products = []
-    if media_buy["raw_request"] and "product_ids" in media_buy["raw_request"]:
-        product_ids = media_buy["raw_request"]["product_ids"]
-        for product_id in product_ids:
-            prod_cursor = conn.execute(
-                """
-                SELECT * FROM products
-                WHERE tenant_id = ? AND product_id = ?
-            """,
-                (tenant_id, product_id),
-            )
-            prod_row = prod_cursor.fetchone()
-            if prod_row:
-                formats = prod_row[3]
-                # Debug logging
-                app.logger.info(f"Product {product_id} formats value: {formats!r}, type: {type(formats)}")
-
-                if formats and isinstance(formats, str) and formats.strip():
-                    try:
-                        formats = json.loads(formats)
-                    except json.JSONDecodeError as e:
-                        app.logger.error(f"Failed to parse formats for {product_id}: {e}")
-                        formats = []
-                elif not formats or (isinstance(formats, str) and not formats.strip()):
-                    formats = []
-
-                targeting_template = prod_row[4]
-                if targeting_template and isinstance(targeting_template, str) and targeting_template.strip():
-                    try:
-                        targeting_template = json.loads(targeting_template)
-                    except json.JSONDecodeError as e:
-                        app.logger.error(f"Failed to parse targeting_template for {product_id}: {e}")
-                        targeting_template = {}
-                elif not targeting_template or (isinstance(targeting_template, str) and not targeting_template.strip()):
-                    targeting_template = {}
-
-                implementation_config = prod_row[11] if len(prod_row) > 11 else None
-                if implementation_config and isinstance(implementation_config, str) and implementation_config.strip():
-                    try:
-                        implementation_config = json.loads(implementation_config)
-                    except json.JSONDecodeError as e:
-                        app.logger.error(f"Failed to parse implementation_config for {product_id}: {e}")
-                        implementation_config = {}
-                elif not implementation_config or (
-                    isinstance(implementation_config, str) and not implementation_config.strip()
-                ):
-                    implementation_config = {}
-
-                products.append(
-                    {
-                        "product_id": prod_row[0],
-                        "name": prod_row[2],
-                        "formats": formats,
-                        "targeting_template": targeting_template,
-                        "pricing_model": prod_row[5],
-                        "base_price": prod_row[6],
-                        "min_spend": prod_row[7],
-                        "implementation_config": implementation_config,
-                    }
-                )
-
-    # Prepare dry-run preview (simulate what would happen in GAM)
-    dry_run_preview = generate_dry_run_preview(media_buy, products, principal, human_task)
-
-    # Context manager handles cleanup
-
-    return render_template(
-        "media_buy_approval.html",
-        tenant_id=tenant_id,
-        media_buy=media_buy,
-        human_task=human_task,
-        principal=principal,
-        products=products,
-        dry_run_preview=dry_run_preview,
-    )
-
-
-def generate_dry_run_preview(media_buy, products, principal, human_task):
-    """Generate a dry-run preview of what would be created in GAM."""
+    #    with get_db_session() as db_session:
+    #        # Get the media buy details
+    #        buy_obj = db_session.query(MediaBuy).filter_by(tenant_id=tenant_id, media_buy_id=media_buy_id).first()
+    #
+    #        if not buy_obj:
+    #            return "Media buy not found", 404
+    #
+    #        # Parse the media buy
+    #        from datetime import datetime
+    #
+    #        media_buy = {
+    #            "media_buy_id": buy_obj.media_buy_id,
+    #            "tenant_id": buy_obj.tenant_id,
+    #            "principal_id": buy_obj.principal_id,
+    #            "order_name": buy_obj.order_name,
+    #            "advertiser_name": buy_obj.advertiser_name,
+    #            "campaign_objective": buy_obj.campaign_objective,
+    #            "kpi_goal": buy_obj.kpi_goal,
+    #            "budget": buy_obj.budget,
+    #            "start_date": buy_obj.start_date,
+    #            "end_date": buy_obj.end_date,
+    #            "status": buy_obj.status,
+    #            "created_at": (
+    #                buy_obj.created_at
+    #                if not isinstance(buy_obj.created_at, str)
+    #                else datetime.fromisoformat(buy_obj.created_at)
+    #            ),
+    #            "raw_request": (
+    #                json.loads(buy_obj.raw_request)
+    #                if buy_obj.raw_request and isinstance(buy_obj.raw_request, str)
+    #                else buy_row[15]
+    #            ),
+    #            "context_id": buy_row[16] if len(buy_row) > 16 else None,
+    #        }
+    #
+    #    # Get associated human task if exists
+    #    task_cursor = conn.execute(
+    #        """
+    #        SELECT * FROM human_tasks
+    #        WHERE media_buy_id = ? AND status = 'pending'
+    #        ORDER BY created_at DESC LIMIT 1
+    #    """,
+    #        (media_buy_id,),
+    #    )
+    #
+    #    task_row = task_cursor.fetchone()
+    #    human_task = None
+    #    if task_row:
+    #        context_data = task_row[8]
+    #        if context_data and isinstance(context_data, str):
+    #            context_data = json.loads(context_data)
+    #
+    #        human_task = {
+    #            "task_id": task_row[0],
+    #            "task_type": task_row[3],
+    #            "priority": task_row[4],
+    #            "status": task_row[5],
+    #            "operation": task_row[6],
+    #            "error_detail": task_row[7],
+    #            "context_data": context_data or {},
+    #        }
+    #
+    #    # Get the principal details for adapter info
+    #    principal_cursor = conn.execute(
+    #        """
+    #        SELECT * FROM principals
+    #        WHERE tenant_id = ? AND principal_id = ?
+    #    """,
+    #        (tenant_id, media_buy["principal_id"]),
+    #    )
+    #
+    #    principal_row = principal_cursor.fetchone()
+    #    principal = None
+    #    if principal_row:
+    #        platform_mappings = principal_row[3]
+    #        if isinstance(platform_mappings, str):
+    #            platform_mappings = json.loads(platform_mappings)
+    #
+    #        principal = {
+    #            "principal_id": principal_row[0],
+    #            "name": principal_row[2],
+    #            "platform_mappings": platform_mappings,
+    #        }
+    #
+    #    # Get the products in this media buy
+    #    products = []
+    #    if media_buy["raw_request"] and "product_ids" in media_buy["raw_request"]:
+    #        product_ids = media_buy["raw_request"]["product_ids"]
+    #        for product_id in product_ids:
+    #            prod_cursor = conn.execute(
+    #                """
+    #                SELECT * FROM products
+    #                WHERE tenant_id = ? AND product_id = ?
+    #            """,
+    #                (tenant_id, product_id),
+    #            )
+    #            prod_row = prod_cursor.fetchone()
+    #            if prod_row:
+    #                formats = prod_row[3]
+    #                # Debug logging
+    #                app.logger.info(f"Product {product_id} formats value: {formats!r}, type: {type(formats)}")
+    #
+    #                if formats and isinstance(formats, str) and formats.strip():
+    #                    try:
+    #                        formats = json.loads(formats)
+    #                    except json.JSONDecodeError as e:
+    #                        app.logger.error(f"Failed to parse formats for {product_id}: {e}")
+    #                        formats = []
+    #                elif not formats or (isinstance(formats, str) and not formats.strip()):
+    #                    formats = []
+    #
+    #                targeting_template = prod_row[4]
+    #                if targeting_template and isinstance(targeting_template, str) and targeting_template.strip():
+    #                    try:
+    #                        targeting_template = json.loads(targeting_template)
+    #                    except json.JSONDecodeError as e:
+    #                        app.logger.error(f"Failed to parse targeting_template for {product_id}: {e}")
+    #                        targeting_template = {}
+    #                elif not targeting_template or (isinstance(targeting_template, str) and not targeting_template.strip()):
+    #                    targeting_template = {}
+    #
+    #                implementation_config = prod_row[11] if len(prod_row) > 11 else None
+    #                if implementation_config and isinstance(implementation_config, str) and implementation_config.strip():
+    #                    try:
+    #                        implementation_config = json.loads(implementation_config)
+    #                    except json.JSONDecodeError as e:
+    #                        app.logger.error(f"Failed to parse implementation_config for {product_id}: {e}")
+    #                        implementation_config = {}
+    #                elif not implementation_config or (
+    #                    isinstance(implementation_config, str) and not implementation_config.strip()
+    #                ):
+    #                    implementation_config = {}
+    #
+    #                products.append(
+    #                    {
+    #                        "product_id": prod_row[0],
+    #                        "name": prod_row[2],
+    #                        "formats": formats,
+    #                        "targeting_template": targeting_template,
+    #                        "pricing_model": prod_row[5],
+    #                        "base_price": prod_row[6],
+    #                        "min_spend": prod_row[7],
+    #                        "implementation_config": implementation_config,
+    #                    }
+    #                )
+    #
+    #    # Prepare dry-run preview (simulate what would happen in GAM)
+    #    dry_run_preview = generate_dry_run_preview(media_buy, products, principal, human_task)
+    #
+    #    # Context manager handles cleanup
+    #
+    #    return render_template(
+    #        "media_buy_approval.html",
+    #        tenant_id=tenant_id,
+    #        media_buy=media_buy,
+    #        human_task=human_task,
+    #        principal=principal,
+    #        products=products,
+    #        dry_run_preview=dry_run_preview,
+    #    )
+    #
+    #
+    # def generate_dry_run_preview(media_buy, products, principal, human_task):
+    #    """Generate a dry-run preview of what would be created in GAM."""
     preview = {
         "order": {
             "name": media_buy["order_name"],
@@ -2987,34 +3015,34 @@ def generate_dry_run_preview(media_buy, products, principal, human_task):
     if session.get("role") == "tenant_admin" and session.get("tenant_id") != tenant_id:
         return "Access denied", 403
 
-    with get_db_session() as db_session:
-        user_list = db_session.query(User).filter_by(tenant_id=tenant_id).order_by(User.created_at.desc()).all()
-
-        users = []
-        for user_obj in user_list:
-            users.append(
-                {
-                    "user_id": user_obj.user_id,
-                    "email": user_obj.email,
-                    "name": user_obj.name,
-                    "role": user_obj.role,
-                    "created_at": user_obj.created_at,
-                    "last_login": user_obj.last_login,
-                    "is_active": user_obj.is_active,
-                }
-            )
-
-        # Get tenant name
-        tenant = db_session.query(Tenant).filter_by(tenant_id=tenant_id).first()
-        tenant_name = tenant.name if tenant else "Unknown Tenant"
-
-        return render_template("users.html", users=users, tenant_id=tenant_id, tenant_name=tenant_name)
-
-    # MIGRATED to users_bp.add_user
-    # @app.route("/tenant/<tenant_id>/users/add", methods=["POST"])
-    # @require_auth()
-    # def add_user(tenant_id):
-    """Add a new user to a tenant."""
+    #    with get_db_session() as db_session:
+    #        user_list = db_session.query(User).filter_by(tenant_id=tenant_id).order_by(User.created_at.desc()).all()
+    #
+    #        users = []
+    #        for user_obj in user_list:
+    #            users.append(
+    #                {
+    #                    "user_id": user_obj.user_id,
+    #                    "email": user_obj.email,
+    #                    "name": user_obj.name,
+    #                    "role": user_obj.role,
+    #                    "created_at": user_obj.created_at,
+    #                    "last_login": user_obj.last_login,
+    #                    "is_active": user_obj.is_active,
+    #                }
+    #            )
+    #
+    #        # Get tenant name
+    #        tenant = db_session.query(Tenant).filter_by(tenant_id=tenant_id).first()
+    #        tenant_name = tenant.name if tenant else "Unknown Tenant"
+    #
+    #        return render_template("users.html", users=users, tenant_id=tenant_id, tenant_name=tenant_name)
+    #
+    #    # MIGRATED to users_bp.add_user
+    #    # @app.route("/tenant/<tenant_id>/users/add", methods=["POST"])
+    #    # @require_auth()
+    #    # def add_user(tenant_id):
+    #    """Add a new user to a tenant."""
     # Check access - only admins can add users
     if session.get("role") == "viewer":
         return "Access denied", 403
@@ -3022,391 +3050,391 @@ def generate_dry_run_preview(media_buy, products, principal, human_task):
     if session.get("role") == "tenant_admin" and session.get("tenant_id") != tenant_id:
         return "Access denied", 403
 
-    with get_db_session() as db_session:
-        try:
-            user_id = f"user_{uuid.uuid4().hex[:8]}"
-            email = request.form.get("email")
-            name = request.form.get("name")
-            role = request.form.get("role", "viewer")
-
-            # Validate role
-            if role not in ["admin", "manager", "viewer"]:
-                return "Invalid role", 400
-
-            # Check if email already exists
-            existing_user = db_session.query(User).filter_by(email=email).first()
-            if existing_user:
-                return "User with this email already exists", 400
-
-            # Create new user
-            new_user = User(
-                user_id=user_id,
-                tenant_id=tenant_id,
-                email=email,
-                name=name,
-                role=role,
-                created_at=datetime.now(),
-                is_active=True,
-            )
-            db_session.add(new_user)
-            db_session.commit()
-
-            return redirect(url_for("list_users", tenant_id=tenant_id))
-        except Exception as e:
-            db_session.rollback()
-            return f"Error: {e}", 400
-
-    # MIGRATED to users_bp.toggle_user
-    # @app.route("/tenant/<tenant_id>/users/<user_id>/toggle", methods=["POST"])
+    #    with get_db_session() as db_session:
+    #        try:
+    #            user_id = f"user_{uuid.uuid4().hex[:8]}"
+    #            email = request.form.get("email")
+    #            name = request.form.get("name")
+    #            role = request.form.get("role", "viewer")
+    #
+    #            # Validate role
+    #            if role not in ["admin", "manager", "viewer"]:
+    #                return "Invalid role", 400
+    #
+    #            # Check if email already exists
+    #            existing_user = db_session.query(User).filter_by(email=email).first()
+    #            if existing_user:
+    #                return "User with this email already exists", 400
+    #
+    #            # Create new user
+    #            new_user = User(
+    #                user_id=user_id,
+    #                tenant_id=tenant_id,
+    #                email=email,
+    #                name=name,
+    #                role=role,
+    #                created_at=datetime.now(),
+    #                is_active=True,
+    #            )
+    #            db_session.add(new_user)
+    #            db_session.commit()
+    #
+    #            return redirect(url_for("list_users", tenant_id=tenant_id))
+    #        except Exception as e:
+    #            db_session.rollback()
+    #            return f"Error: {e}", 400
+    #
+    #    # MIGRATED to users_bp.toggle_user
+    #    # @app.route("/tenant/<tenant_id>/users/<user_id>/toggle", methods=["POST"])
+    #    # @require_auth()
+    #    # def toggle_user(tenant_id, user_id):
+    #    """Enable/disable a user."""
+    #    # Check access - only admins can toggle users
+    #    if session.get("role") != "super_admin":
+    #        if session.get("role") != "tenant_admin" or session.get("tenant_id") != tenant_id:
+    #            return "Access denied", 403
+    #
+    #    with get_db_session() as db_session:
+    #        try:
+    #            # Toggle the is_active status
+    #            user = db_session.query(User).filter_by(user_id=user_id, tenant_id=tenant_id).first()
+    #
+    #            if user:
+    #                user.is_active = not user.is_active
+    #                db_session.commit()
+    #
+    #            return redirect(url_for("list_users", tenant_id=tenant_id))
+    #        except Exception as e:
+    #            db_session.rollback()
+    #            return f"Error: {e}", 400
+    #
+    #    # MIGRATED to users_bp.update_role
+    #    # @app.route("/tenant/<tenant_id>/users/<user_id>/update_role", methods=["POST"])
+    #    # @require_auth()
+    #    # def update_user_role(tenant_id, user_id):
+    #    """Update a user's role."""
+    #    # Check access - only admins can update roles
+    #    if session.get("role") != "super_admin":
+    #        if session.get("role") != "tenant_admin" or session.get("tenant_id") != tenant_id:
+    #            return "Access denied", 403
+    #
+    #    with get_db_session() as db_session:
+    #        try:
+    #            new_role = request.form.get("role")
+    #
+    #            # Validate role
+    #            if new_role not in ["admin", "manager", "viewer"]:
+    #                return "Invalid role", 400
+    #
+    #            db_session.query(User).filter_by(user_id=user_id, tenant_id=tenant_id).update({"role": new_role})
+    #
+    #            db_session.commit()
+    #
+    #            return redirect(url_for("list_users", tenant_id=tenant_id))
+    #        except Exception as e:
+    #            db_session.rollback()
+    #            return f"Error: {e}", 400
+    #
+    #    # MIGRATED to principals_bp.update_mappings
+    #    # @app.route("/tenant/<tenant_id>/principal/<principal_id>/update_mappings", methods=["POST"])
+    #    # @require_auth()
+    #    # def update_principal_mappings(tenant_id, principal_id):
+    #    """Update principal platform mappings."""
+    #    # Check access - only admins and managers can update mappings
+    #    if session.get("role") == "viewer":
+    #        return "Access denied", 403
+    #
+    #    if session.get("role") in ["admin", "manager", "tenant_admin"] and session.get("tenant_id") != tenant_id:
+    #        return "Access denied", 403
+    #
+    #    with get_db_session() as db_session:
+    #        try:
+    #            # Get the form data for platform mappings
+    #            mappings = {}
+    #
+    #            # Check for common ad server mappings
+    #            if request.form.get("gam_advertiser_id"):
+    #                mappings["gam"] = {
+    #                    "advertiser_id": request.form.get("gam_advertiser_id"),
+    #                    "network_id": request.form.get("gam_network_id", ""),
+    #                }
+    #
+    #            if request.form.get("kevel_advertiser_id"):
+    #                mappings["kevel"] = {"advertiser_id": request.form.get("kevel_advertiser_id")}
+    #
+    #            if request.form.get("triton_advertiser_id"):
+    #                mappings["triton"] = {"advertiser_id": request.form.get("triton_advertiser_id")}
+    #
+    #            # Update the principal
+    #            db_session.query(Principal).filter_by(tenant_id=tenant_id, principal_id=principal_id).update(
+    #                {"platform_mappings": json.dumps(mappings)}
+    #            )
+    #
+    #            db_session.commit()
+    #
+    #            return redirect(url_for("tenant_dashboard", tenant_id=tenant_id) + "#principals")
+    #        except Exception as e:
+    #            db_session.rollback()
+    #            return f"Error: {e}", 400
+    #
+    #
+    # @app.route("/tenant/<tenant_id>/adapter/<adapter_name>/inventory_schema", methods=["GET"])
     # @require_auth()
-    # def toggle_user(tenant_id, user_id):
-    """Enable/disable a user."""
-    # Check access - only admins can toggle users
-    if session.get("role") != "super_admin":
-        if session.get("role") != "tenant_admin" or session.get("tenant_id") != tenant_id:
-            return "Access denied", 403
-
-    with get_db_session() as db_session:
-        try:
-            # Toggle the is_active status
-            user = db_session.query(User).filter_by(user_id=user_id, tenant_id=tenant_id).first()
-
-            if user:
-                user.is_active = not user.is_active
-                db_session.commit()
-
-            return redirect(url_for("list_users", tenant_id=tenant_id))
-        except Exception as e:
-            db_session.rollback()
-            return f"Error: {e}", 400
-
-    # MIGRATED to users_bp.update_role
-    # @app.route("/tenant/<tenant_id>/users/<user_id>/update_role", methods=["POST"])
+    # def get_adapter_inventory_schema(tenant_id, adapter_name):
+    #    """Get the inventory configuration schema for a specific adapter."""
+    #    # Check access
+    #    if session.get("role") != "super_admin" and session.get("tenant_id") != tenant_id:
+    #        return jsonify({"error": "Access denied"}), 403
+    #
+    #    try:
+    #        # Get tenant config to instantiate adapter
+    #        config_data = get_tenant_config_from_db(tenant_id)
+    #        if not config_data:
+    #            return jsonify({"error": "Tenant not found"}), 404
+    #        # PostgreSQL returns JSONB as dict, SQLite returns string
+    #        tenant_config = config_data if isinstance(config_data, dict) else json.loads(config_data)
+    #        adapter_config = tenant_config.get("adapters", {}).get(adapter_name, {})
+    #
+    #        if not adapter_config.get("enabled"):
+    #            return jsonify({"error": f"Adapter {adapter_name} is not enabled"}), 400
+    #
+    #        # Import the Pydantic Principal schema for dummy principal
+    #        from schemas import Principal as PrincipalSchema
+    #
+    #        # Create a dummy principal for schema retrieval
+    #        dummy_principal = PrincipalSchema(
+    #            tenant_id=tenant_id,
+    #            principal_id="schema_query",
+    #            name="Schema Query",
+    #            access_token="",
+    #            platform_mappings={"mock": {"id": "system"}},  # Provide valid mapping
+    #        )
+    #
+    #        # Import the adapter dynamically
+    #        if adapter_name == "google_ad_manager":
+    #            from adapters.google_ad_manager import GoogleAdManager
+    #
+    #            adapter = GoogleAdManager(adapter_config, dummy_principal, dry_run=True, tenant_id=tenant_id)
+    #        elif adapter_name == "mock":
+    #            from adapters.mock_ad_server import MockAdServer
+    #
+    #            adapter = MockAdServer(adapter_config, dummy_principal, dry_run=True, tenant_id=tenant_id)
+    #        elif adapter_name == "kevel":
+    #            from adapters.kevel import KevelAdapter
+    #
+    #            adapter = KevelAdapter(adapter_config, dummy_principal, dry_run=True, tenant_id=tenant_id)
+    #        elif adapter_name == "triton":
+    #            from adapters.triton_digital import TritonDigitalAdapter
+    #
+    #            adapter = TritonDigitalAdapter(adapter_config, dummy_principal, dry_run=True, tenant_id=tenant_id)
+    #        else:
+    #            return jsonify({"error": f"Unknown adapter: {adapter_name}"}), 400
+    #
+    #        # Get the inventory schema
+    #        schema = adapter.get_inventory_config_schema()
+    #
+    #        # Context manager handles cleanup
+    #        return jsonify(schema)
+    #
+    #    except Exception as e:
+    #        return jsonify({"error": str(e)}), 500
+    #
+    #
+    # @app.route("/tenant/<tenant_id>/setup_adapter", methods=["POST"])
     # @require_auth()
-    # def update_user_role(tenant_id, user_id):
-    """Update a user's role."""
-    # Check access - only admins can update roles
-    if session.get("role") != "super_admin":
-        if session.get("role") != "tenant_admin" or session.get("tenant_id") != tenant_id:
-            return "Access denied", 403
+    # def setup_adapter(tenant_id):
+    #    """Setup or update ad server adapter configuration."""
+    #    # Check access - only admins can setup adapters
+    #    if session.get("role") in ["viewer", "manager"]:
+    #        return "Access denied. Admin privileges required.", 403
+    #
+    #    if session.get("role") in ["admin", "tenant_admin"] and session.get("tenant_id") != tenant_id:
+    #        return "Access denied.", 403
+    #
+    #    with get_db_session() as db_session:
+    #        try:
+    #            # Get adapter type
+    #            adapter_type = request.form.get("adapter")
+    #            adapter_type_map = {
+    #                "mock": "mock",
+    #                "gam": "google_ad_manager",
+    #                "kevel": "kevel",
+    #                "triton": "triton",
+    #            }
+    #
+    #            if adapter_type not in adapter_type_map:
+    #                return "Invalid adapter type", 400
+    #
+    #            mapped_adapter = adapter_type_map[adapter_type]
+    #
+    #            # Update tenant's ad_server field
+    #            db_session.query(Tenant).filter_by(tenant_id=tenant_id).update(
+    #                {"ad_server": mapped_adapter, "updated_at": datetime.now()}
+    #            )
+    #
+    #            # Delete any existing adapter config
+    #            db_session.query(AdapterConfig).filter_by(tenant_id=tenant_id).delete()
+    #
+    #            # Insert new adapter configuration
+    #            if adapter_type == "mock":
+    #                adapter_config = AdapterConfig(tenant_id=tenant_id, adapter_type=mapped_adapter, mock_dry_run=False)
+    #                db_session.add(adapter_config)
+    #
+    #            elif adapter_type == "gam":
+    #                # Log the form data for debugging
+    #                app.logger.info(f"GAM setup for tenant {tenant_id}")
+    #                app.logger.info(
+    #                    f"Form data: network_code={request.form.get('network_code')}, "
+    #                    f"trafficker_id={request.form.get('trafficker_id')}"
+    #                )
+    #
+    #                adapter_config = AdapterConfig(
+    #                    tenant_id=tenant_id,
+    #                    adapter_type=mapped_adapter,
+    #                    gam_network_code=request.form.get("network_code"),
+    #                    gam_refresh_token=request.form.get("refresh_token"),
+    #                    gam_company_id=None,  # company_id is now per-principal, not per-tenant
+    #                    gam_trafficker_id=request.form.get("trafficker_id"),
+    #                    gam_manual_approval_required=False,
+    #                )
+    #                db_session.add(adapter_config)
+    #
+    #            elif adapter_type == "kevel":
+    #                adapter_config = AdapterConfig(
+    #                    tenant_id=tenant_id,
+    #                    adapter_type=mapped_adapter,
+    #                    kevel_network_id=request.form.get("network_id"),
+    #                    kevel_api_key=request.form.get("api_key"),
+    #                    kevel_manual_approval_required=False,
+    #                )
+    #                db_session.add(adapter_config)
+    #
+    #            elif adapter_type == "triton":
+    #                adapter_config = AdapterConfig(
+    #                    tenant_id=tenant_id,
+    #                    adapter_type=mapped_adapter,
+    #                    triton_station_id=request.form.get("station_id"),
+    #                    triton_api_key=request.form.get("api_key"),
+    #                )
+    #                db_session.add(adapter_config)
+    #
+    #            db_session.commit()
+    #
+    #            flash("Ad server configuration updated successfully!", "success")
+    #            return redirect(url_for("tenant_dashboard", tenant_id=tenant_id) + "#adserver")
+    #        except Exception as e:
+    #            db_session.rollback()
+    #            flash(f"Error updating adapter configuration: {str(e)}", "error")
+    #            return redirect(url_for("tenant_dashboard", tenant_id=tenant_id) + "#adserver")
+    #
+    #    # MIGRATED to principals_bp.create_principal
+    #    # @app.route("/tenant/<tenant_id>/principals/create", methods=["GET", "POST"])
+    #    # @require_auth()
+    #    # def create_principal(tenant_id):
+    #    """Create a new principal for a tenant."""
+    #    # Check access - only admins can create principals
+    #    if session.get("role") in ["viewer"]:
+    #        return "Access denied. Admin or manager privileges required.", 403
+    #
+    #    if session.get("role") in ["admin", "manager", "tenant_admin"] and session.get("tenant_id") != tenant_id:
+    #        return "Access denied.", 403
+    #
+    #    # Check if tenant has GAM configured
+    #    with get_db_session() as db_session:
+    #        adapter_config = db_session.query(AdapterConfig).filter_by(tenant_id=tenant_id).first()
+    #        has_gam = adapter_config and adapter_config.adapter_type == "google_ad_manager"
+    #
+    #    if request.method == "POST":
+    #        # Validate form data
+    #        form_data = {
+    #            "principal_id": request.form.get("principal_id", "").strip(),
+    #            "name": request.form.get("name", "").strip(),
+    #            "gam_advertiser_id": request.form.get("gam_advertiser_id", "").strip() if has_gam else None,
+    #        }
+    #
+    #        # Sanitize
+    #        form_data = sanitize_form_data(form_data)
+    #
+    #        # Validate
+    #        validators = {
+    #            "principal_id": [FormValidator.validate_principal_id],
+    #            "name": [
+    #                lambda v: FormValidator.validate_required(v, "Principal name"),
+    #                lambda v: FormValidator.validate_length(v, min_length=3, max_length=100, field_name="Principal name"),
+    #            ],
+    #        }
+    #
+    #        # If GAM is configured, advertiser ID is required
+    #        if has_gam:
+    #            validators["gam_advertiser_id"] = [lambda v: FormValidator.validate_required(v, "GAM Advertiser")]
+    #
+    #        errors = validate_form_data(form_data, validators)
+    #        if errors:
+    #            return render_template(
+    #                "create_principal.html",
+    #                tenant_id=tenant_id,
+    #                errors=errors,
+    #                form_data=form_data,
+    #                has_gam=has_gam,
+    #            )
+    #
+    #        with get_db_session() as db_session:
+    #            try:
+    #                principal_id = form_data["principal_id"]
+    #                name = form_data["name"]
+    #
+    #                # Generate a secure access token
+    #                access_token = secrets.token_urlsafe(32)
+    #
+    #                # Build platform mappings
+    #                platform_mappings = {}
+    #                if has_gam and form_data.get("gam_advertiser_id"):
+    #                    # Use google_ad_manager as the platform key
+    #                    platform_mappings["google_ad_manager"] = {"advertiser_id": form_data["gam_advertiser_id"]}
+    #                else:
+    #                    # Default to mock if no GAM
+    #                    platform_mappings["mock"] = {"id": "system"}
+    #
+    #                # Create the principal
+    #                new_principal = Principal(
+    #                    tenant_id=tenant_id,
+    #                    principal_id=principal_id,
+    #                    name=name,
+    #                    platform_mappings=platform_mappings,
+    #                    access_token=access_token,
+    #                )
+    #                db_session.add(new_principal)
+    #                db_session.commit()
+    #
+    #                return redirect(url_for("tenant_dashboard", tenant_id=tenant_id) + "#principals")
+    #            except Exception as e:
+    #                db_session.rollback()
+    #                return render_template(
+    #                    "create_principal.html",
+    #                    tenant_id=tenant_id,
+    #                    error=str(e),
+    #                    has_gam=has_gam,
+    #                )
+    #
+    #    return render_template("create_principal.html", tenant_id=tenant_id, has_gam=has_gam)
+    #
+    #
+    ## MIGRATING: Moved to src/admin/blueprints/api.py
+    ## This route is now handled by the refactored API blueprint
+    ## @app.route("/api/health")
+    ## def api_health():
+    ##     """API health check endpoint."""
+    #     try:
+    #         with get_db_session() as db_session:
+    #             db_session.execute(text("SELECT 1"))
+    #             return jsonify({"status": "healthy"})
+    #     except:
+    #         return jsonify({"status": "unhealthy"}), 500
 
-    with get_db_session() as db_session:
-        try:
-            new_role = request.form.get("role")
-
-            # Validate role
-            if new_role not in ["admin", "manager", "viewer"]:
-                return "Invalid role", 400
-
-            db_session.query(User).filter_by(user_id=user_id, tenant_id=tenant_id).update({"role": new_role})
-
-            db_session.commit()
-
-            return redirect(url_for("list_users", tenant_id=tenant_id))
-        except Exception as e:
-            db_session.rollback()
-            return f"Error: {e}", 400
-
-    # MIGRATED to principals_bp.update_mappings
-    # @app.route("/tenant/<tenant_id>/principal/<principal_id>/update_mappings", methods=["POST"])
+    # MIGRATED: Moved to src/admin/blueprints/api.py
+    # @app.route("/api/gam/test-connection", methods=["POST"])
     # @require_auth()
-    # def update_principal_mappings(tenant_id, principal_id):
-    """Update principal platform mappings."""
-    # Check access - only admins and managers can update mappings
-    if session.get("role") == "viewer":
-        return "Access denied", 403
-
-    if session.get("role") in ["admin", "manager", "tenant_admin"] and session.get("tenant_id") != tenant_id:
-        return "Access denied", 403
-
-    with get_db_session() as db_session:
-        try:
-            # Get the form data for platform mappings
-            mappings = {}
-
-            # Check for common ad server mappings
-            if request.form.get("gam_advertiser_id"):
-                mappings["gam"] = {
-                    "advertiser_id": request.form.get("gam_advertiser_id"),
-                    "network_id": request.form.get("gam_network_id", ""),
-                }
-
-            if request.form.get("kevel_advertiser_id"):
-                mappings["kevel"] = {"advertiser_id": request.form.get("kevel_advertiser_id")}
-
-            if request.form.get("triton_advertiser_id"):
-                mappings["triton"] = {"advertiser_id": request.form.get("triton_advertiser_id")}
-
-            # Update the principal
-            db_session.query(Principal).filter_by(tenant_id=tenant_id, principal_id=principal_id).update(
-                {"platform_mappings": json.dumps(mappings)}
-            )
-
-            db_session.commit()
-
-            return redirect(url_for("tenant_dashboard", tenant_id=tenant_id) + "#principals")
-        except Exception as e:
-            db_session.rollback()
-            return f"Error: {e}", 400
-
-
-@app.route("/tenant/<tenant_id>/adapter/<adapter_name>/inventory_schema", methods=["GET"])
-@require_auth()
-def get_adapter_inventory_schema(tenant_id, adapter_name):
-    """Get the inventory configuration schema for a specific adapter."""
-    # Check access
-    if session.get("role") != "super_admin" and session.get("tenant_id") != tenant_id:
-        return jsonify({"error": "Access denied"}), 403
-
-    try:
-        # Get tenant config to instantiate adapter
-        config_data = get_tenant_config_from_db(tenant_id)
-        if not config_data:
-            return jsonify({"error": "Tenant not found"}), 404
-        # PostgreSQL returns JSONB as dict, SQLite returns string
-        tenant_config = config_data if isinstance(config_data, dict) else json.loads(config_data)
-        adapter_config = tenant_config.get("adapters", {}).get(adapter_name, {})
-
-        if not adapter_config.get("enabled"):
-            return jsonify({"error": f"Adapter {adapter_name} is not enabled"}), 400
-
-        # Import the Pydantic Principal schema for dummy principal
-        from schemas import Principal as PrincipalSchema
-
-        # Create a dummy principal for schema retrieval
-        dummy_principal = PrincipalSchema(
-            tenant_id=tenant_id,
-            principal_id="schema_query",
-            name="Schema Query",
-            access_token="",
-            platform_mappings={"mock": {"id": "system"}},  # Provide valid mapping
-        )
-
-        # Import the adapter dynamically
-        if adapter_name == "google_ad_manager":
-            from adapters.google_ad_manager import GoogleAdManager
-
-            adapter = GoogleAdManager(adapter_config, dummy_principal, dry_run=True, tenant_id=tenant_id)
-        elif adapter_name == "mock":
-            from adapters.mock_ad_server import MockAdServer
-
-            adapter = MockAdServer(adapter_config, dummy_principal, dry_run=True, tenant_id=tenant_id)
-        elif adapter_name == "kevel":
-            from adapters.kevel import KevelAdapter
-
-            adapter = KevelAdapter(adapter_config, dummy_principal, dry_run=True, tenant_id=tenant_id)
-        elif adapter_name == "triton":
-            from adapters.triton_digital import TritonDigitalAdapter
-
-            adapter = TritonDigitalAdapter(adapter_config, dummy_principal, dry_run=True, tenant_id=tenant_id)
-        else:
-            return jsonify({"error": f"Unknown adapter: {adapter_name}"}), 400
-
-        # Get the inventory schema
-        schema = adapter.get_inventory_config_schema()
-
-        # Context manager handles cleanup
-        return jsonify(schema)
-
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
-
-
-@app.route("/tenant/<tenant_id>/setup_adapter", methods=["POST"])
-@require_auth()
-def setup_adapter(tenant_id):
-    """Setup or update ad server adapter configuration."""
-    # Check access - only admins can setup adapters
-    if session.get("role") in ["viewer", "manager"]:
-        return "Access denied. Admin privileges required.", 403
-
-    if session.get("role") in ["admin", "tenant_admin"] and session.get("tenant_id") != tenant_id:
-        return "Access denied.", 403
-
-    with get_db_session() as db_session:
-        try:
-            # Get adapter type
-            adapter_type = request.form.get("adapter")
-            adapter_type_map = {
-                "mock": "mock",
-                "gam": "google_ad_manager",
-                "kevel": "kevel",
-                "triton": "triton",
-            }
-
-            if adapter_type not in adapter_type_map:
-                return "Invalid adapter type", 400
-
-            mapped_adapter = adapter_type_map[adapter_type]
-
-            # Update tenant's ad_server field
-            db_session.query(Tenant).filter_by(tenant_id=tenant_id).update(
-                {"ad_server": mapped_adapter, "updated_at": datetime.now()}
-            )
-
-            # Delete any existing adapter config
-            db_session.query(AdapterConfig).filter_by(tenant_id=tenant_id).delete()
-
-            # Insert new adapter configuration
-            if adapter_type == "mock":
-                adapter_config = AdapterConfig(tenant_id=tenant_id, adapter_type=mapped_adapter, mock_dry_run=False)
-                db_session.add(adapter_config)
-
-            elif adapter_type == "gam":
-                # Log the form data for debugging
-                app.logger.info(f"GAM setup for tenant {tenant_id}")
-                app.logger.info(
-                    f"Form data: network_code={request.form.get('network_code')}, "
-                    f"trafficker_id={request.form.get('trafficker_id')}"
-                )
-
-                adapter_config = AdapterConfig(
-                    tenant_id=tenant_id,
-                    adapter_type=mapped_adapter,
-                    gam_network_code=request.form.get("network_code"),
-                    gam_refresh_token=request.form.get("refresh_token"),
-                    gam_company_id=None,  # company_id is now per-principal, not per-tenant
-                    gam_trafficker_id=request.form.get("trafficker_id"),
-                    gam_manual_approval_required=False,
-                )
-                db_session.add(adapter_config)
-
-            elif adapter_type == "kevel":
-                adapter_config = AdapterConfig(
-                    tenant_id=tenant_id,
-                    adapter_type=mapped_adapter,
-                    kevel_network_id=request.form.get("network_id"),
-                    kevel_api_key=request.form.get("api_key"),
-                    kevel_manual_approval_required=False,
-                )
-                db_session.add(adapter_config)
-
-            elif adapter_type == "triton":
-                adapter_config = AdapterConfig(
-                    tenant_id=tenant_id,
-                    adapter_type=mapped_adapter,
-                    triton_station_id=request.form.get("station_id"),
-                    triton_api_key=request.form.get("api_key"),
-                )
-                db_session.add(adapter_config)
-
-            db_session.commit()
-
-            flash("Ad server configuration updated successfully!", "success")
-            return redirect(url_for("tenant_dashboard", tenant_id=tenant_id) + "#adserver")
-        except Exception as e:
-            db_session.rollback()
-            flash(f"Error updating adapter configuration: {str(e)}", "error")
-            return redirect(url_for("tenant_dashboard", tenant_id=tenant_id) + "#adserver")
-
-    # MIGRATED to principals_bp.create_principal
-    # @app.route("/tenant/<tenant_id>/principals/create", methods=["GET", "POST"])
-    # @require_auth()
-    # def create_principal(tenant_id):
-    """Create a new principal for a tenant."""
-    # Check access - only admins can create principals
-    if session.get("role") in ["viewer"]:
-        return "Access denied. Admin or manager privileges required.", 403
-
-    if session.get("role") in ["admin", "manager", "tenant_admin"] and session.get("tenant_id") != tenant_id:
-        return "Access denied.", 403
-
-    # Check if tenant has GAM configured
-    with get_db_session() as db_session:
-        adapter_config = db_session.query(AdapterConfig).filter_by(tenant_id=tenant_id).first()
-        has_gam = adapter_config and adapter_config.adapter_type == "google_ad_manager"
-
-    if request.method == "POST":
-        # Validate form data
-        form_data = {
-            "principal_id": request.form.get("principal_id", "").strip(),
-            "name": request.form.get("name", "").strip(),
-            "gam_advertiser_id": request.form.get("gam_advertiser_id", "").strip() if has_gam else None,
-        }
-
-        # Sanitize
-        form_data = sanitize_form_data(form_data)
-
-        # Validate
-        validators = {
-            "principal_id": [FormValidator.validate_principal_id],
-            "name": [
-                lambda v: FormValidator.validate_required(v, "Principal name"),
-                lambda v: FormValidator.validate_length(v, min_length=3, max_length=100, field_name="Principal name"),
-            ],
-        }
-
-        # If GAM is configured, advertiser ID is required
-        if has_gam:
-            validators["gam_advertiser_id"] = [lambda v: FormValidator.validate_required(v, "GAM Advertiser")]
-
-        errors = validate_form_data(form_data, validators)
-        if errors:
-            return render_template(
-                "create_principal.html",
-                tenant_id=tenant_id,
-                errors=errors,
-                form_data=form_data,
-                has_gam=has_gam,
-            )
-
-        with get_db_session() as db_session:
-            try:
-                principal_id = form_data["principal_id"]
-                name = form_data["name"]
-
-                # Generate a secure access token
-                access_token = secrets.token_urlsafe(32)
-
-                # Build platform mappings
-                platform_mappings = {}
-                if has_gam and form_data.get("gam_advertiser_id"):
-                    # Use google_ad_manager as the platform key
-                    platform_mappings["google_ad_manager"] = {"advertiser_id": form_data["gam_advertiser_id"]}
-                else:
-                    # Default to mock if no GAM
-                    platform_mappings["mock"] = {"id": "system"}
-
-                # Create the principal
-                new_principal = Principal(
-                    tenant_id=tenant_id,
-                    principal_id=principal_id,
-                    name=name,
-                    platform_mappings=platform_mappings,
-                    access_token=access_token,
-                )
-                db_session.add(new_principal)
-                db_session.commit()
-
-                return redirect(url_for("tenant_dashboard", tenant_id=tenant_id) + "#principals")
-            except Exception as e:
-                db_session.rollback()
-                return render_template(
-                    "create_principal.html",
-                    tenant_id=tenant_id,
-                    error=str(e),
-                    has_gam=has_gam,
-                )
-
-    return render_template("create_principal.html", tenant_id=tenant_id, has_gam=has_gam)
-
-
-# MIGRATING: Moved to src/admin/blueprints/api.py
-# This route is now handled by the refactored API blueprint
-# @app.route("/api/health")
-# def api_health():
-#     """API health check endpoint."""
-#     try:
-#         with get_db_session() as db_session:
-#             db_session.execute(text("SELECT 1"))
-#             return jsonify({"status": "healthy"})
-#     except:
-#         return jsonify({"status": "unhealthy"}), 500
-
-
-@app.route("/api/gam/test-connection", methods=["POST"])
-@require_auth()
-def test_gam_connection():
+    # def test_gam_connection():
     """Test GAM connection with refresh token and fetch available resources."""
     try:
         refresh_token = request.json.get("refresh_token")
@@ -3700,311 +3728,311 @@ def send_static(path):
     if session.get("role") != "super_admin" and session.get("tenant_id") != tenant_id:
         return "Access denied", 403
 
-    with get_db_session() as db_session:
-        # Get tenant
-        tenant = db_session.query(Tenant).filter_by(tenant_id=tenant_id).first()
-        if not tenant:
-            return "Tenant not found", 404
-        tenant_name = tenant.name
-
-        # Get tenant config
-        tenant_config = get_tenant_config_from_db(tenant_id)
-
-    # Get active adapter from config
-    active_adapter = None
-    if tenant_config and "adapters" in tenant_config:
-        for adapter_name, adapter_config in tenant_config["adapters"].items():
-            if adapter_config.get("enabled"):
-                active_adapter = adapter_name
-                break
-
-    # Get active adapter and its UI endpoint
-    adapter_ui_endpoint = None
-    if active_adapter:
-        # Import the Pydantic Principal schema for dummy principal
-        from schemas import Principal as PrincipalSchema
-
-        # Create dummy principal to get UI endpoint
-        dummy_principal = PrincipalSchema(
-            tenant_id=tenant_id,
-            principal_id="ui_query",
-            name="UI Query",
-            access_token="",
-            platform_mappings={"mock": {"id": "system"}},  # Provide valid mapping
-        )
-
-        # Get adapter configuration from adapter_config table
-        adapter_config = db_session.query(AdapterConfig).filter_by(tenant_id=tenant_id).first()
-
-        try:
-            if active_adapter == "google_ad_manager":
-                from adapters.google_ad_manager import GoogleAdManager
-
-                config = {
-                    "enabled": True,
-                    "network_code": adapter_config.gam_network_code if adapter_config else None,
-                    "refresh_token": adapter_config.gam_refresh_token if adapter_config else None,
-                }
-                adapter = GoogleAdManager(config, dummy_principal, dry_run=True, tenant_id=tenant_id)
-                adapter_ui_endpoint = adapter.get_config_ui_endpoint()
-            elif active_adapter == "mock":
-                from adapters.mock_ad_server import MockAdServer
-
-                config = {
-                    "enabled": True,
-                    "dry_run": adapter_config.mock_dry_run if adapter_config else False,
-                }
-                adapter = MockAdServer(config, dummy_principal, dry_run=True, tenant_id=tenant_id)
-                adapter_ui_endpoint = adapter.get_config_ui_endpoint()
-            # Add other adapters as needed
-        except Exception as e:
-            app.logger.error(f"Error getting adapter UI endpoint: {e}")
-            pass
-
-        # Get products
-        product_objs = db_session.query(Product).filter_by(tenant_id=tenant_id).order_by(Product.product_id).all()
-
-        products = []
-        for prod in product_objs:
-            # Parse price_guidance if it's a JSON string
-            price_guidance = prod.price_guidance
-            if isinstance(price_guidance, str):
-                try:
-                    import json
-
-                    price_guidance = json.loads(price_guidance)
-                except (json.JSONDecodeError, TypeError):
-                    price_guidance = None
-
-            products.append(
-                {
-                    "product_id": prod.product_id,
-                    "name": prod.name,
-                    "description": prod.description,
-                    "formats": prod.formats if prod.formats else [],
-                    "delivery_type": prod.delivery_type,
-                    "is_fixed_price": prod.is_fixed_price,
-                    "cpm": prod.cpm,
-                    "price_guidance": price_guidance,
-                    "is_custom": prod.is_custom,
-                    "expires_at": prod.expires_at,
-                    "countries": prod.countries,
-                }
-            )
-
-        return render_template(
-            "products.html",
-            tenant_id=tenant_id,
-            tenant_name=tenant_name,
-            products=products,
-            adapter_ui_endpoint=adapter_ui_endpoint,
-        )
-
-    # MIGRATED to products_bp.edit_product
-    # @app.route("/tenant/<tenant_id>/products/<product_id>/edit", methods=["GET", "POST"])
-    # @require_auth()
-    # def edit_product_basic(tenant_id, product_id):
-    """Edit basic product details."""
+    #    with get_db_session() as db_session:
+    #        # Get tenant
+    #        tenant = db_session.query(Tenant).filter_by(tenant_id=tenant_id).first()
+    #        if not tenant:
+    #            return "Tenant not found", 404
+    #        tenant_name = tenant.name
+    #
+    #        # Get tenant config
+    #        tenant_config = get_tenant_config_from_db(tenant_id)
+    #
+    #    # Get active adapter from config
+    #    active_adapter = None
+    #    if tenant_config and "adapters" in tenant_config:
+    #        for adapter_name, adapter_config in tenant_config["adapters"].items():
+    #            if adapter_config.get("enabled"):
+    #                active_adapter = adapter_name
+    #                break
+    #
+    #    # Get active adapter and its UI endpoint
+    #    adapter_ui_endpoint = None
+    #    if active_adapter:
+    #        # Import the Pydantic Principal schema for dummy principal
+    #        from schemas import Principal as PrincipalSchema
+    #
+    #        # Create dummy principal to get UI endpoint
+    #        dummy_principal = PrincipalSchema(
+    #            tenant_id=tenant_id,
+    #            principal_id="ui_query",
+    #            name="UI Query",
+    #            access_token="",
+    #            platform_mappings={"mock": {"id": "system"}},  # Provide valid mapping
+    #        )
+    #
+    #        # Get adapter configuration from adapter_config table
+    #        adapter_config = db_session.query(AdapterConfig).filter_by(tenant_id=tenant_id).first()
+    #
+    #        try:
+    #            if active_adapter == "google_ad_manager":
+    #                from adapters.google_ad_manager import GoogleAdManager
+    #
+    #                config = {
+    #                    "enabled": True,
+    #                    "network_code": adapter_config.gam_network_code if adapter_config else None,
+    #                    "refresh_token": adapter_config.gam_refresh_token if adapter_config else None,
+    #                }
+    #                adapter = GoogleAdManager(config, dummy_principal, dry_run=True, tenant_id=tenant_id)
+    #                adapter_ui_endpoint = adapter.get_config_ui_endpoint()
+    #            elif active_adapter == "mock":
+    #                from adapters.mock_ad_server import MockAdServer
+    #
+    #                config = {
+    #                    "enabled": True,
+    #                    "dry_run": adapter_config.mock_dry_run if adapter_config else False,
+    #                }
+    #                adapter = MockAdServer(config, dummy_principal, dry_run=True, tenant_id=tenant_id)
+    #                adapter_ui_endpoint = adapter.get_config_ui_endpoint()
+    #            # Add other adapters as needed
+    #        except Exception as e:
+    #            app.logger.error(f"Error getting adapter UI endpoint: {e}")
+    #            pass
+    #
+    #        # Get products
+    #        product_objs = db_session.query(Product).filter_by(tenant_id=tenant_id).order_by(Product.product_id).all()
+    #
+    #        products = []
+    #        for prod in product_objs:
+    #            # Parse price_guidance if it's a JSON string
+    #            price_guidance = prod.price_guidance
+    #            if isinstance(price_guidance, str):
+    #                try:
+    #                    import json
+    #
+    #                    price_guidance = json.loads(price_guidance)
+    #                except (json.JSONDecodeError, TypeError):
+    #                    price_guidance = None
+    #
+    #            products.append(
+    #                {
+    #                    "product_id": prod.product_id,
+    #                    "name": prod.name,
+    #                    "description": prod.description,
+    #                    "formats": prod.formats if prod.formats else [],
+    #                    "delivery_type": prod.delivery_type,
+    #                    "is_fixed_price": prod.is_fixed_price,
+    #                    "cpm": prod.cpm,
+    #                    "price_guidance": price_guidance,
+    #                    "is_custom": prod.is_custom,
+    #                    "expires_at": prod.expires_at,
+    #                    "countries": prod.countries,
+    #                }
+    #            )
+    #
+    #        return render_template(
+    #            "products.html",
+    #            tenant_id=tenant_id,
+    #            tenant_name=tenant_name,
+    #            products=products,
+    #            adapter_ui_endpoint=adapter_ui_endpoint,
+    #        )
+    #
+    #    # MIGRATED to products_bp.edit_product
+    #    # @app.route("/tenant/<tenant_id>/products/<product_id>/edit", methods=["GET", "POST"])
+    #    # @require_auth()
+    #    # def edit_product_basic(tenant_id, product_id):
+    #    """Edit basic product details."""
     # Check access
     if session.get("role") != "super_admin" and session.get("tenant_id") != tenant_id:
         return "Access denied", 403
 
-    with get_db_session() as db_session:
-        if request.method == "POST":
-            try:
-                # Update product basic details
-                product = db_session.query(Product).filter_by(tenant_id=tenant_id, product_id=product_id).first()
-
-                if product:
-                    product.name = request.form["name"]
-                    product.description = request.form.get("description", "")
-                    product.delivery_type = request.form.get("delivery_type", "guaranteed")
-                    product.is_fixed_price = request.form.get("delivery_type") == "guaranteed"
-                    product.cpm = (
-                        float(request.form.get("cpm", 0)) if request.form.get("delivery_type") == "guaranteed" else None
-                    )
-                    product.price_guidance = (
-                        json.dumps(
-                            {
-                                "min_cpm": float(request.form.get("price_guidance_min", 0)),
-                                "max_cpm": float(request.form.get("price_guidance_max", 0)),
-                            }
-                        )
-                        if request.form.get("delivery_type") != "guaranteed"
-                        else None
-                    )
-
-                    db_session.commit()
-                    return redirect(url_for("list_products", tenant_id=tenant_id))
-                else:
-                    return render_template(
-                        "edit_product.html", tenant_id=tenant_id, product=None, error="Product not found"
-                    )
-
-            except Exception as e:
-                db_session.rollback()
-                return render_template("edit_product.html", tenant_id=tenant_id, product=None, error=str(e))
-
-        # GET request - load product
-        product_data = db_session.query(Product).filter_by(tenant_id=tenant_id, product_id=product_id).first()
-
-        if not product_data:
-            return "Product not found", 404
-
-        # Handle PostgreSQL (returns objects) vs SQLite (returns JSON strings)
-        formats = (
-            product_data.formats if isinstance(product_data.formats, list) else json.loads(product_data.formats or "[]")
-        )
-        price_guidance = (
-            product_data.price_guidance
-            if isinstance(product_data.price_guidance, dict)
-            else json.loads(product_data.price_guidance or "{}")
-        )
-
-        product = {
-            "product_id": product_data.product_id,
-            "name": product_data.name,
-            "description": product_data.description,
-            "formats": formats,
-            "delivery_type": product_data.delivery_type,
-            "is_fixed_price": product_data.is_fixed_price,
-            "cpm": product_data.cpm,
-            "price_guidance": price_guidance,
-        }
-
-        return render_template("edit_product.html", tenant_id=tenant_id, product=product)
-
-    # MIGRATED to products_bp.add_product
-    # @app.route("/tenant/<tenant_id>/products/add", methods=["GET", "POST"])
-    # @require_auth()
-    # def add_product(tenant_id):
-    """Add a new product."""
+    #    with get_db_session() as db_session:
+    #        if request.method == "POST":
+    #            try:
+    #                # Update product basic details
+    #                product = db_session.query(Product).filter_by(tenant_id=tenant_id, product_id=product_id).first()
+    #
+    #                if product:
+    #                    product.name = request.form["name"]
+    #                    product.description = request.form.get("description", "")
+    #                    product.delivery_type = request.form.get("delivery_type", "guaranteed")
+    #                    product.is_fixed_price = request.form.get("delivery_type") == "guaranteed"
+    #                    product.cpm = (
+    #                        float(request.form.get("cpm", 0)) if request.form.get("delivery_type") == "guaranteed" else None
+    #                    )
+    #                    product.price_guidance = (
+    #                        json.dumps(
+    #                            {
+    #                                "min_cpm": float(request.form.get("price_guidance_min", 0)),
+    #                                "max_cpm": float(request.form.get("price_guidance_max", 0)),
+    #                            }
+    #                        )
+    #                        if request.form.get("delivery_type") != "guaranteed"
+    #                        else None
+    #                    )
+    #
+    #                    db_session.commit()
+    #                    return redirect(url_for("list_products", tenant_id=tenant_id))
+    #                else:
+    #                    return render_template(
+    #                        "edit_product.html", tenant_id=tenant_id, product=None, error="Product not found"
+    #                    )
+    #
+    #            except Exception as e:
+    #                db_session.rollback()
+    #                return render_template("edit_product.html", tenant_id=tenant_id, product=None, error=str(e))
+    #
+    #        # GET request - load product
+    #        product_data = db_session.query(Product).filter_by(tenant_id=tenant_id, product_id=product_id).first()
+    #
+    #        if not product_data:
+    #            return "Product not found", 404
+    #
+    #        # Handle PostgreSQL (returns objects) vs SQLite (returns JSON strings)
+    #        formats = (
+    #            product_data.formats if isinstance(product_data.formats, list) else json.loads(product_data.formats or "[]")
+    #        )
+    #        price_guidance = (
+    #            product_data.price_guidance
+    #            if isinstance(product_data.price_guidance, dict)
+    #            else json.loads(product_data.price_guidance or "{}")
+    #        )
+    #
+    #        product = {
+    #            "product_id": product_data.product_id,
+    #            "name": product_data.name,
+    #            "description": product_data.description,
+    #            "formats": formats,
+    #            "delivery_type": product_data.delivery_type,
+    #            "is_fixed_price": product_data.is_fixed_price,
+    #            "cpm": product_data.cpm,
+    #            "price_guidance": price_guidance,
+    #        }
+    #
+    #        return render_template("edit_product.html", tenant_id=tenant_id, product=product)
+    #
+    #    # MIGRATED to products_bp.add_product
+    #    # @app.route("/tenant/<tenant_id>/products/add", methods=["GET", "POST"])
+    #    # @require_auth()
+    #    # def add_product(tenant_id):
+    #    """Add a new product."""
     # Check access
     if session.get("role") != "super_admin" and session.get("tenant_id") != tenant_id:
         return "Access denied", 403
 
-    with get_db_session() as db_session:
-        if request.method == "POST":
-            try:
-                # Check if this is from AI form
-                ai_config = request.form.get("ai_config")
-                if ai_config:
-                    # Parse AI-generated configuration
-                    config = json.loads(ai_config)
-                    product_id = request.form.get("product_id") or config.get("product_id")
-                    formats = config.get("formats", [])
-                    delivery_type = config.get("delivery_type", "guaranteed")
-                    cpm = config.get("cpm")
-                    price_guidance = config.get("price_guidance")
-                    countries = config.get("countries")
-                    targeting_template = config.get("targeting_template", {})
-                    implementation_config = config.get("implementation_config", {})
-
-                    # Get name and description from form
-                    name = request.form.get("name")
-                    description = request.form.get("description")
-                else:
-                    # Regular form submission
-                    product_id = request.form.get("product_id") or request.form["name"].lower().replace(" ", "_")
-                    format_ids = request.form.getlist("formats")
-                    name = request.form.get("name")
-                    description = request.form.get("description")
-                    targeting_template = {}
-                    implementation_config = {}
-
-                    # Convert format IDs to full format objects
-                    formats = []
-                    if format_ids:
-                        with get_db_session() as format_session:
-                            for format_id in format_ids:
-                                cf = format_session.query(CreativeFormat).filter_by(format_id=format_id).first()
-                                if cf:
-                                    format_obj = {
-                                        "format_id": cf.format_id,
-                                        "name": cf.name,
-                                        "type": cf.type,
-                                        "description": cf.description or f"{cf.type} format",
-                                    }
-                                    if cf.width:
-                                        format_obj["width"] = cf.width
-                                    if cf.height:
-                                        format_obj["height"] = cf.height
-                                    if cf.duration_seconds:
-                                        format_obj["duration"] = cf.duration_seconds
-                                    formats.append(format_obj)
-
-                    # Build implementation config based on adapter
-                    tenant_config = get_tenant_config_from_db(tenant_id)
-                    if not tenant_config:
-                        return jsonify({"error": "Tenant not found"}), 404
-
-                    # Handle regular form submission fields if not from AI
-                    if not ai_config:
-                        # Get selected countries
-                        countries = request.form.getlist("countries")
-                        # If "ALL" is selected or no countries selected, set to None (all countries)
-                        if "ALL" in countries or not countries:
-                            countries = None
-
-                        # Determine pricing based on delivery type
-                        delivery_type = request.form.get("delivery_type", "guaranteed")
-                        is_fixed_price = delivery_type == "guaranteed"
-
-                        # Handle CPM and price guidance
-                        cpm = None
-                        price_guidance = None
-
-                        if is_fixed_price:
-                            cpm = float(request.form.get("cpm", 5.0))
-                        else:
-                            # Non-guaranteed: use price guidance
-                            min_cpm = request.form.get("price_guidance_min")
-                            max_cpm = request.form.get("price_guidance_max")
-                            if min_cpm and max_cpm:
-                                price_guidance = {
-                                    "min_cpm": float(min_cpm),
-                                    "max_cpm": float(max_cpm),
-                                }
-                    else:
-                        # AI config already has these values
-                        is_fixed_price = delivery_type == "guaranteed"
-
-                    # Insert product
-                    # NOTE: Do NOT use json.dumps() - SQLAlchemy handles JSON serialization for JSONB columns
-                    new_product = Product(
-                        tenant_id=tenant_id,
-                        product_id=product_id,
-                        name=name,
-                        description=description,
-                        formats=formats,  # Pass as Python object, not JSON string
-                        targeting_template=targeting_template,  # Pass as Python object
-                        delivery_type=delivery_type,
-                        is_fixed_price=is_fixed_price,
-                        cpm=cpm,
-                        price_guidance=price_guidance,  # Pass as Python object
-                        countries=countries,  # Pass as Python object
-                        implementation_config=implementation_config,  # Pass as Python object
-                    )
-                    db_session.add(new_product)
-                    db_session.commit()
-
-                    return redirect(url_for("list_products", tenant_id=tenant_id))
-
-            except Exception as e:
-                db_session.rollback()
-                # Get available formats
-                formats = get_creative_formats()
-                return render_template("add_product.html", tenant_id=tenant_id, error=str(e), formats=formats)
-
-        # GET request - show form
-        formats = get_creative_formats()
-        return render_template("add_product.html", tenant_id=tenant_id, formats=formats)
-
-    # MIGRATED to products_bp.add_product_ai_form
-    # @app.route("/tenant/<tenant_id>/products/add/ai", methods=["GET"])
-    # @require_auth()
-    # def add_product_ai_form(tenant_id):
-    """Show AI-assisted product creation form."""
+    #    with get_db_session() as db_session:
+    #        if request.method == "POST":
+    #            try:
+    #                # Check if this is from AI form
+    #                ai_config = request.form.get("ai_config")
+    #                if ai_config:
+    #                    # Parse AI-generated configuration
+    #                    config = json.loads(ai_config)
+    #                    product_id = request.form.get("product_id") or config.get("product_id")
+    #                    formats = config.get("formats", [])
+    #                    delivery_type = config.get("delivery_type", "guaranteed")
+    #                    cpm = config.get("cpm")
+    #                    price_guidance = config.get("price_guidance")
+    #                    countries = config.get("countries")
+    #                    targeting_template = config.get("targeting_template", {})
+    #                    implementation_config = config.get("implementation_config", {})
+    #
+    #                    # Get name and description from form
+    #                    name = request.form.get("name")
+    #                    description = request.form.get("description")
+    #                else:
+    #                    # Regular form submission
+    #                    product_id = request.form.get("product_id") or request.form["name"].lower().replace(" ", "_")
+    #                    format_ids = request.form.getlist("formats")
+    #                    name = request.form.get("name")
+    #                    description = request.form.get("description")
+    #                    targeting_template = {}
+    #                    implementation_config = {}
+    #
+    #                    # Convert format IDs to full format objects
+    #                    formats = []
+    #                    if format_ids:
+    #                        with get_db_session() as format_session:
+    #                            for format_id in format_ids:
+    #                                cf = format_session.query(CreativeFormat).filter_by(format_id=format_id).first()
+    #                                if cf:
+    #                                    format_obj = {
+    #                                        "format_id": cf.format_id,
+    #                                        "name": cf.name,
+    #                                        "type": cf.type,
+    #                                        "description": cf.description or f"{cf.type} format",
+    #                                    }
+    #                                    if cf.width:
+    #                                        format_obj["width"] = cf.width
+    #                                    if cf.height:
+    #                                        format_obj["height"] = cf.height
+    #                                    if cf.duration_seconds:
+    #                                        format_obj["duration"] = cf.duration_seconds
+    #                                    formats.append(format_obj)
+    #
+    #                    # Build implementation config based on adapter
+    #                    tenant_config = get_tenant_config_from_db(tenant_id)
+    #                    if not tenant_config:
+    #                        return jsonify({"error": "Tenant not found"}), 404
+    #
+    #                    # Handle regular form submission fields if not from AI
+    #                    if not ai_config:
+    #                        # Get selected countries
+    #                        countries = request.form.getlist("countries")
+    #                        # If "ALL" is selected or no countries selected, set to None (all countries)
+    #                        if "ALL" in countries or not countries:
+    #                            countries = None
+    #
+    #                        # Determine pricing based on delivery type
+    #                        delivery_type = request.form.get("delivery_type", "guaranteed")
+    #                        is_fixed_price = delivery_type == "guaranteed"
+    #
+    #                        # Handle CPM and price guidance
+    #                        cpm = None
+    #                        price_guidance = None
+    #
+    #                        if is_fixed_price:
+    #                            cpm = float(request.form.get("cpm", 5.0))
+    #                        else:
+    #                            # Non-guaranteed: use price guidance
+    #                            min_cpm = request.form.get("price_guidance_min")
+    #                            max_cpm = request.form.get("price_guidance_max")
+    #                            if min_cpm and max_cpm:
+    #                                price_guidance = {
+    #                                    "min_cpm": float(min_cpm),
+    #                                    "max_cpm": float(max_cpm),
+    #                                }
+    #                    else:
+    #                        # AI config already has these values
+    #                        is_fixed_price = delivery_type == "guaranteed"
+    #
+    #                    # Insert product
+    #                    # NOTE: Do NOT use json.dumps() - SQLAlchemy handles JSON serialization for JSONB columns
+    #                    new_product = Product(
+    #                        tenant_id=tenant_id,
+    #                        product_id=product_id,
+    #                        name=name,
+    #                        description=description,
+    #                        formats=formats,  # Pass as Python object, not JSON string
+    #                        targeting_template=targeting_template,  # Pass as Python object
+    #                        delivery_type=delivery_type,
+    #                        is_fixed_price=is_fixed_price,
+    #                        cpm=cpm,
+    #                        price_guidance=price_guidance,  # Pass as Python object
+    #                        countries=countries,  # Pass as Python object
+    #                        implementation_config=implementation_config,  # Pass as Python object
+    #                    )
+    #                    db_session.add(new_product)
+    #                    db_session.commit()
+    #
+    #                    return redirect(url_for("list_products", tenant_id=tenant_id))
+    #
+    #            except Exception as e:
+    #                db_session.rollback()
+    #                # Get available formats
+    #                formats = get_creative_formats()
+    #                return render_template("add_product.html", tenant_id=tenant_id, error=str(e), formats=formats)
+    #
+    #        # GET request - show form
+    #        formats = get_creative_formats()
+    #        return render_template("add_product.html", tenant_id=tenant_id, formats=formats)
+    #
+    #    # MIGRATED to products_bp.add_product_ai_form
+    #    # @app.route("/tenant/<tenant_id>/products/add/ai", methods=["GET"])
+    #    # @require_auth()
+    #    # def add_product_ai_form(tenant_id):
+    #    """Show AI-assisted product creation form."""
     # Check access
     if session.get("role") != "super_admin" and session.get("tenant_id") != tenant_id:
         return "Access denied", 403
@@ -4328,110 +4356,110 @@ def policy_settings(tenant_id):
     if session.get("role") == "tenant_admin" and session.get("tenant_id") != tenant_id:
         return "Access denied", 403
 
-    with get_db_session() as db_session:
-        # Get tenant info
-        tenant = db_session.query(Tenant).filter_by(tenant_id=tenant_id).first()
-        if not tenant:
-            return "Tenant not found", 404
-
-        tenant_name = tenant.name
-
-        # Get tenant config using helper function
-        config = get_tenant_config_from_db(tenant_id)
-        if not config:
-            return "Tenant config not found", 404
-
-        # Define default policies that all publishers start with
-        default_policies = {
-            "enabled": True,
-            "require_manual_review": False,
-            "default_prohibited_categories": [
-                "illegal_content",
-                "hate_speech",
-                "violence",
-                "adult_content",
-                "misleading_health_claims",
-                "financial_scams",
-            ],
-            "default_prohibited_tactics": [
-                "targeting_children_under_13",
-                "discriminatory_targeting",
-                "deceptive_claims",
-                "impersonation",
-                "privacy_violations",
-            ],
-            "prohibited_advertisers": [],
-            "prohibited_categories": [],
-            "prohibited_tactics": [],
-        }
-
-        # Get tenant policy settings, using defaults where not specified
-        tenant_policies = config.get("policy_settings", {})
-        policy_settings = default_policies.copy()
-        policy_settings.update(tenant_policies)
-
-        # Get recent policy checks from audit log
-        audit_logs = (
-            db_session.query(AuditLog)
-            .filter_by(tenant_id=tenant_id, operation="policy_check")
-            .order_by(AuditLog.timestamp.desc())
-            .limit(20)
-            .all()
-        )
-
-        recent_checks = []
-        for log in audit_logs:
-            details = json.loads(log.details) if log.details else {}
-            recent_checks.append(
-                {
-                    "timestamp": log.timestamp,
-                    "principal_id": log.principal_id,
-                    "success": log.success,
-                    "status": details.get("policy_status", "unknown"),
-                    "brief": details.get("brief", ""),
-                    "reason": details.get("reason", ""),
-                }
-            )
-
-        # Get pending policy review tasks
-        # Query workflow steps instead of tasks (tasks table was removed)
-        pending_reviews = []
-        try:
-            workflow_steps = (
-                db_session.query(WorkflowStep)
-                .filter_by(tenant_id=tenant_id, step_type="policy_review", status="pending")
-                .order_by(WorkflowStep.created_at.desc())
-                .all()
-            )
-
-            for step in workflow_steps:
-                details = json.loads(step.data) if step.data else {}
-                pending_reviews.append(
-                    {
-                        "task_id": step.step_id,
-                        "created_at": step.created_at,
-                        "brief": details.get("brief", ""),
-                        "advertiser": details.get("promoted_offering", ""),
-                    }
-                )
-        except:
-            # WorkflowStep table might not exist
-            pass
-
-    return render_template(
-        "policy_settings_comprehensive.html",
-        tenant_id=tenant_id,
-        tenant_name=tenant_name,
-        policy_settings=policy_settings,
-        recent_checks=recent_checks,
-        pending_reviews=pending_reviews,
-    )
-
-
-@app.route("/tenant/<tenant_id>/policy/update", methods=["POST"])
-@require_auth()
-def update_policy_settings(tenant_id):
-    """Update policy settings for the tenant."""
+    #    with get_db_session() as db_session:
+    #        # Get tenant info
+    #        tenant = db_session.query(Tenant).filter_by(tenant_id=tenant_id).first()
+    #        if not tenant:
+    #            return "Tenant not found", 404
+    #
+    #        tenant_name = tenant.name
+    #
+    #        # Get tenant config using helper function
+    #        config = get_tenant_config_from_db(tenant_id)
+    #        if not config:
+    #            return "Tenant config not found", 404
+    #
+    #        # Define default policies that all publishers start with
+    #        default_policies = {
+    #            "enabled": True,
+    #            "require_manual_review": False,
+    #            "default_prohibited_categories": [
+    #                "illegal_content",
+    #                "hate_speech",
+    #                "violence",
+    #                "adult_content",
+    #                "misleading_health_claims",
+    #                "financial_scams",
+    #            ],
+    #            "default_prohibited_tactics": [
+    #                "targeting_children_under_13",
+    #                "discriminatory_targeting",
+    #                "deceptive_claims",
+    #                "impersonation",
+    #                "privacy_violations",
+    #            ],
+    #            "prohibited_advertisers": [],
+    #            "prohibited_categories": [],
+    #            "prohibited_tactics": [],
+    #        }
+    #
+    #        # Get tenant policy settings, using defaults where not specified
+    #        tenant_policies = config.get("policy_settings", {})
+    #        policy_settings = default_policies.copy()
+    #        policy_settings.update(tenant_policies)
+    #
+    #        # Get recent policy checks from audit log
+    #        audit_logs = (
+    #            db_session.query(AuditLog)
+    #            .filter_by(tenant_id=tenant_id, operation="policy_check")
+    #            .order_by(AuditLog.timestamp.desc())
+    #            .limit(20)
+    #            .all()
+    #        )
+    #
+    #        recent_checks = []
+    #        for log in audit_logs:
+    #            details = json.loads(log.details) if log.details else {}
+    #            recent_checks.append(
+    #                {
+    #                    "timestamp": log.timestamp,
+    #                    "principal_id": log.principal_id,
+    #                    "success": log.success,
+    #                    "status": details.get("policy_status", "unknown"),
+    #                    "brief": details.get("brief", ""),
+    #                    "reason": details.get("reason", ""),
+    #                }
+    #            )
+    #
+    #        # Get pending policy review tasks
+    #        # Query workflow steps instead of tasks (tasks table was removed)
+    #        pending_reviews = []
+    #        try:
+    #            workflow_steps = (
+    #                db_session.query(WorkflowStep)
+    #                .filter_by(tenant_id=tenant_id, step_type="policy_review", status="pending")
+    #                .order_by(WorkflowStep.created_at.desc())
+    #                .all()
+    #            )
+    #
+    #            for step in workflow_steps:
+    #                details = json.loads(step.data) if step.data else {}
+    #                pending_reviews.append(
+    #                    {
+    #                        "task_id": step.step_id,
+    #                        "created_at": step.created_at,
+    #                        "brief": details.get("brief", ""),
+    #                        "advertiser": details.get("promoted_offering", ""),
+    #                    }
+    #                )
+    #        except:
+    #            # WorkflowStep table might not exist
+    #            pass
+    #
+    #    return render_template(
+    #        "policy_settings_comprehensive.html",
+    #        tenant_id=tenant_id,
+    #        tenant_name=tenant_name,
+    #        policy_settings=policy_settings,
+    #        recent_checks=recent_checks,
+    #        pending_reviews=pending_reviews,
+    #    )
+    #
+    #
+    # @app.route("/tenant/<tenant_id>/policy/update", methods=["POST"])
+    # @require_auth()
+    # def update_policy_settings(tenant_id):
+    #    """Update policy settings for the tenant."""
     # Check access - only admins can update policy
     if session.get("role") not in ["super_admin", "tenant_admin"]:
         return "Access denied", 403
@@ -4515,180 +4543,180 @@ def review_policy_task(tenant_id, task_id):
     if session.get("role") == "tenant_admin" and session.get("tenant_id") != tenant_id:
         return "Access denied", 403
 
-    with get_db_session() as db_session:
-        if request.method == "POST":
-            try:
-                action = request.form.get("action")
-                review_notes = request.form.get("review_notes", "")
-
-                if action not in ["approve", "reject"]:
-                    return "Invalid action", 400
-
-                # Update task status
-                new_status = "approved" if action == "approve" else "rejected"
-
-                # Get workflow step details (tasks table was replaced by workflow system)
-                try:
-                    workflow_step = (
-                        db_session.query(WorkflowStep).filter_by(tenant_id=tenant_id, step_id=task_id).first()
-                    )
-                except:
-                    workflow_step = None
-
-                if not workflow_step:
-                    return "Task not found", 404
-
-                details = json.loads(workflow_step.data) if workflow_step.data else {}
-                details["review_notes"] = review_notes
-                details["reviewed_by"] = session.get("email", "unknown")
-                details["reviewed_at"] = datetime.utcnow().isoformat()
-
-                # Update workflow step instead of task
-                workflow_step.status = new_status
-                workflow_step.data = json.dumps(details)
-                workflow_step.completed_at = datetime.utcnow()
-
-                # Log the review
-                audit_log = AuditLog(
-                    tenant_id=tenant_id,
-                    operation="policy_review",
-                    principal_id=details.get("principal_id"),
-                    success=True,
-                    details=json.dumps(
-                        {
-                            "task_id": task_id,
-                            "action": action,
-                            "reviewer": session.get("email", "unknown"),
-                        }
-                    ),
-                    timestamp=datetime.utcnow().isoformat(),
-                )
-                db_session.add(audit_log)
-                db_session.commit()
-
-                return redirect(url_for("policy_settings", tenant_id=tenant_id))
-
-            except Exception as e:
-                return f"Error: {e}", 400
-
-        # GET: Show review form
-        # Query workflow steps instead of tasks
-        try:
-            result = (
-                db_session.query(WorkflowStep.created_at, WorkflowStep.data, Tenant.name)
-                .join(Tenant, WorkflowStep.tenant_id == Tenant.tenant_id)
-                .filter(
-                    WorkflowStep.tenant_id == tenant_id,
-                    WorkflowStep.step_id == task_id,
-                    WorkflowStep.step_type == "policy_review",
-                )
-                .first()
-            )
-        except:
-            result = None
-
-        if not result:
-            return "Task not found", 404
-
-        created_at, details_str, tenant_name = result
-        details = json.loads(details_str) if details_str else {}
-
-    return render_template(
-        "policy_review.html",
-        tenant_id=tenant_id,
-        tenant_name=tenant_name,
-        task_id=task_id,
-        created_at=created_at,
-        details=details,
-    )
-
-
-def get_creative_formats():
-    """Get all creative formats from the database."""
-    with get_db_session() as db_session:
-        creative_formats = (
-            db_session.query(CreativeFormat)
-            .filter_by(is_standard=True)
-            .order_by(CreativeFormat.type, CreativeFormat.name)
-            .all()
-        )
-
-        formats = []
-        for cf in creative_formats:
-            format_info = {
-                "format_id": cf.format_id,
-                "name": cf.name,
-                "type": cf.type,
-                "description": cf.description,
-            }
-            if cf.width and cf.height:  # width and height for display
-                format_info["dimensions"] = f"{cf.width}x{cf.height}"
-            elif cf.duration_seconds:  # duration for video
-                format_info["duration"] = f"{cf.duration_seconds}s"
-            formats.append(format_info)
-
-        return formats
-
-    # Creative Format Management Routes
-    # MIGRATED to creatives_bp.index
-    # @app.route("/tenant/<tenant_id>/creative-formats")
-    # @require_auth()
-    # def list_creative_formats(tenant_id):
-    """List creative formats (both standard and custom)."""
-    # Check access
-    if session.get("role") != "super_admin" and session.get("tenant_id") != tenant_id:
-        return "Access denied", 403
-
-    with get_db_session() as db_session:
-        # Get tenant name
-        tenant = db_session.query(Tenant).filter_by(tenant_id=tenant_id).first()
-        if not tenant:
-            return "Tenant not found", 404
-
-        tenant_name = tenant.name
-
-        # Get all formats (standard + custom for this tenant)
-        from sqlalchemy import or_
-
-        creative_formats = (
-            db_session.query(CreativeFormat)
-            .filter(or_(CreativeFormat.tenant_id.is_(None), CreativeFormat.tenant_id == tenant_id))
-            .order_by(CreativeFormat.is_standard.desc(), CreativeFormat.type, CreativeFormat.name)
-            .all()
-        )
-
-        formats = []
-        for cf in creative_formats:
-            format_info = {
-                "format_id": cf.format_id,
-                "name": cf.name,
-                "type": cf.type,
-                "description": cf.description,
-                "is_standard": cf.is_standard,
-                "source_url": cf.source_url,
-                "created_at": cf.created_at,
-            }
-
-            # Add dimensions or duration
-            if cf.width and cf.height:  # width and height
-                format_info["dimensions"] = f"{cf.width}x{cf.height}"
-            elif cf.duration_seconds:  # duration
-                format_info["duration"] = f"{cf.duration_seconds}s"
-
-            formats.append(format_info)
-
-    return render_template(
-        "creative_formats.html",
-        tenant_id=tenant_id,
-        tenant_name=tenant_name,
-        formats=formats,
-    )
-
-    # MIGRATED to creatives_bp.add_ai
-    # @app.route("/tenant/<tenant_id>/creative-formats/add/ai", methods=["GET"])
-    # @require_auth()
-    # def add_creative_format_ai(tenant_id):
-    """Show AI-assisted creative format discovery form."""
+    #    with get_db_session() as db_session:
+    #        if request.method == "POST":
+    #            try:
+    #                action = request.form.get("action")
+    #                review_notes = request.form.get("review_notes", "")
+    #
+    #                if action not in ["approve", "reject"]:
+    #                    return "Invalid action", 400
+    #
+    #                # Update task status
+    #                new_status = "approved" if action == "approve" else "rejected"
+    #
+    #                # Get workflow step details (tasks table was replaced by workflow system)
+    #                try:
+    #                    workflow_step = (
+    #                        db_session.query(WorkflowStep).filter_by(tenant_id=tenant_id, step_id=task_id).first()
+    #                    )
+    #                except:
+    #                    workflow_step = None
+    #
+    #                if not workflow_step:
+    #                    return "Task not found", 404
+    #
+    #                details = json.loads(workflow_step.data) if workflow_step.data else {}
+    #                details["review_notes"] = review_notes
+    #                details["reviewed_by"] = session.get("email", "unknown")
+    #                details["reviewed_at"] = datetime.utcnow().isoformat()
+    #
+    #                # Update workflow step instead of task
+    #                workflow_step.status = new_status
+    #                workflow_step.data = json.dumps(details)
+    #                workflow_step.completed_at = datetime.utcnow()
+    #
+    #                # Log the review
+    #                audit_log = AuditLog(
+    #                    tenant_id=tenant_id,
+    #                    operation="policy_review",
+    #                    principal_id=details.get("principal_id"),
+    #                    success=True,
+    #                    details=json.dumps(
+    #                        {
+    #                            "task_id": task_id,
+    #                            "action": action,
+    #                            "reviewer": session.get("email", "unknown"),
+    #                        }
+    #                    ),
+    #                    timestamp=datetime.utcnow().isoformat(),
+    #                )
+    #                db_session.add(audit_log)
+    #                db_session.commit()
+    #
+    #                return redirect(url_for("policy_settings", tenant_id=tenant_id))
+    #
+    #            except Exception as e:
+    #                return f"Error: {e}", 400
+    #
+    #        # GET: Show review form
+    #        # Query workflow steps instead of tasks
+    #        try:
+    #            result = (
+    #                db_session.query(WorkflowStep.created_at, WorkflowStep.data, Tenant.name)
+    #                .join(Tenant, WorkflowStep.tenant_id == Tenant.tenant_id)
+    #                .filter(
+    #                    WorkflowStep.tenant_id == tenant_id,
+    #                    WorkflowStep.step_id == task_id,
+    #                    WorkflowStep.step_type == "policy_review",
+    #                )
+    #                .first()
+    #            )
+    #        except:
+    #            result = None
+    #
+    #        if not result:
+    #            return "Task not found", 404
+    #
+    #        created_at, details_str, tenant_name = result
+    #        details = json.loads(details_str) if details_str else {}
+    #
+    #    return render_template(
+    #        "policy_review.html",
+    #        tenant_id=tenant_id,
+    #        tenant_name=tenant_name,
+    #        task_id=task_id,
+    #        created_at=created_at,
+    #        details=details,
+    #    )
+    #
+    #
+    # def get_creative_formats():
+    #    """Get all creative formats from the database."""
+    #    with get_db_session() as db_session:
+    #        creative_formats = (
+    #            db_session.query(CreativeFormat)
+    #            .filter_by(is_standard=True)
+    #            .order_by(CreativeFormat.type, CreativeFormat.name)
+    #            .all()
+    #        )
+    #
+    #        formats = []
+    #        for cf in creative_formats:
+    #            format_info = {
+    #                "format_id": cf.format_id,
+    #                "name": cf.name,
+    #                "type": cf.type,
+    #                "description": cf.description,
+    #            }
+    #            if cf.width and cf.height:  # width and height for display
+    #                format_info["dimensions"] = f"{cf.width}x{cf.height}"
+    #            elif cf.duration_seconds:  # duration for video
+    #                format_info["duration"] = f"{cf.duration_seconds}s"
+    #            formats.append(format_info)
+    #
+    #        return formats
+    #
+    #    # Creative Format Management Routes
+    #    # MIGRATED to creatives_bp.index
+    #    # @app.route("/tenant/<tenant_id>/creative-formats")
+    #    # @require_auth()
+    #    # def list_creative_formats(tenant_id):
+    #    """List creative formats (both standard and custom)."""
+    #    # Check access
+    #    if session.get("role") != "super_admin" and session.get("tenant_id") != tenant_id:
+    #        return "Access denied", 403
+    #
+    #    with get_db_session() as db_session:
+    #        # Get tenant name
+    #        tenant = db_session.query(Tenant).filter_by(tenant_id=tenant_id).first()
+    #        if not tenant:
+    #            return "Tenant not found", 404
+    #
+    #        tenant_name = tenant.name
+    #
+    #        # Get all formats (standard + custom for this tenant)
+    #        from sqlalchemy import or_
+    #
+    #        creative_formats = (
+    #            db_session.query(CreativeFormat)
+    #            .filter(or_(CreativeFormat.tenant_id.is_(None), CreativeFormat.tenant_id == tenant_id))
+    #            .order_by(CreativeFormat.is_standard.desc(), CreativeFormat.type, CreativeFormat.name)
+    #            .all()
+    #        )
+    #
+    #        formats = []
+    #        for cf in creative_formats:
+    #            format_info = {
+    #                "format_id": cf.format_id,
+    #                "name": cf.name,
+    #                "type": cf.type,
+    #                "description": cf.description,
+    #                "is_standard": cf.is_standard,
+    #                "source_url": cf.source_url,
+    #                "created_at": cf.created_at,
+    #            }
+    #
+    #            # Add dimensions or duration
+    #            if cf.width and cf.height:  # width and height
+    #                format_info["dimensions"] = f"{cf.width}x{cf.height}"
+    #            elif cf.duration_seconds:  # duration
+    #                format_info["duration"] = f"{cf.duration_seconds}s"
+    #
+    #            formats.append(format_info)
+    #
+    #    return render_template(
+    #        "creative_formats.html",
+    #        tenant_id=tenant_id,
+    #        tenant_name=tenant_name,
+    #        formats=formats,
+    #    )
+    #
+    #    # MIGRATED to creatives_bp.add_ai
+    #    # @app.route("/tenant/<tenant_id>/creative-formats/add/ai", methods=["GET"])
+    #    # @require_auth()
+    #    # def add_creative_format_ai(tenant_id):
+    #    """Show AI-assisted creative format discovery form."""
     # Check access
     if session.get("role") != "super_admin" and session.get("tenant_id") != tenant_id:
         return "Access denied", 403
@@ -4928,109 +4956,109 @@ def get_creative_formats():
     if session.get("role") != "super_admin" and session.get("tenant_id") != tenant_id:
         abort(403)
 
-    with get_db_session() as db_session:
-        from sqlalchemy import or_
-
-        creative_format = (
-            db_session.query(CreativeFormat)
-            .filter(
-                CreativeFormat.format_id == format_id,
-                or_(CreativeFormat.tenant_id == tenant_id, CreativeFormat.is_standard),
-            )
-            .first()
-        )
-
-        if not creative_format:
-            abort(404)
-
-        # Convert to dict
-        format_dict = {
-            "format_id": creative_format.format_id,
-            "name": creative_format.name,
-            "type": creative_format.type,
-            "description": creative_format.description,
-            "width": creative_format.width,
-            "height": creative_format.height,
-            "duration_seconds": creative_format.duration_seconds,
-            "max_file_size_kb": creative_format.max_file_size_kb,
-            "specs": creative_format.specs,
-            "is_standard": creative_format.is_standard,
-            "source_url": creative_format.source_url,
-        }
-        if format_dict["specs"]:
-            format_dict["specs"] = (
-                json.loads(format_dict["specs"]) if isinstance(format_dict["specs"], str) else format_dict["specs"]
-            )
-
-    return jsonify(format_dict)
-
-    # MIGRATED to creatives_bp.edit_format
-    # @app.route("/tenant/<tenant_id>/creative-formats/<format_id>/edit", methods=["GET"])
-    # @require_auth()
-    # def edit_creative_format_page(tenant_id, format_id):
-    """Display the edit creative format page."""
-    # Check access
-    if session.get("role") != "super_admin" and session.get("tenant_id") != tenant_id:
-        abort(403)
-
-    # Get tenant info
-    with get_db_session() as db_session:
-        tenant = db_session.query(Tenant).filter_by(tenant_id=tenant_id).first()
-
-        if not tenant:
-            abort(404)
-
-        # Get creative format
-        from sqlalchemy import or_
-
-        creative_format = (
-            db_session.query(CreativeFormat)
-            .filter(
-                CreativeFormat.format_id == format_id,
-                or_(CreativeFormat.tenant_id == tenant_id, CreativeFormat.is_standard),
-            )
-            .first()
-        )
-
-        if not creative_format:
-            abort(404)
-
-        # Don't allow editing standard formats
-        if creative_format.is_standard:
-            flash("Standard formats cannot be edited", "error")
-            return redirect(url_for("creative_formats", tenant_id=tenant_id))
-
-        # Convert to dict and parse specs
-        format_dict = {
-            "format_id": creative_format.format_id,
-            "name": creative_format.name,
-            "type": creative_format.type,
-            "description": creative_format.description,
-            "width": creative_format.width,
-            "height": creative_format.height,
-            "duration_seconds": creative_format.duration_seconds,
-            "max_file_size_kb": creative_format.max_file_size_kb,
-            "specs": creative_format.specs,
-            "is_standard": creative_format.is_standard,
-            "source_url": creative_format.source_url,
-        }
-        if format_dict["specs"]:
-            format_dict["specs"] = (
-                json.loads(format_dict["specs"]) if isinstance(format_dict["specs"], str) else format_dict["specs"]
-            )
-
-    return render_template(
-        "edit_creative_format.html",
-        tenant_id=tenant_id,
-        tenant_name=tenant.name,
-        format=format_dict,
-    )
-
-    # MIGRATED to creatives_bp.update_format
-    # @app.route("/tenant/<tenant_id>/creative-formats/<format_id>/update", methods=["POST"])
-    # @require_auth()
-    # def update_creative_format(tenant_id, format_id):
-    """Update a creative format."""
+    #    with get_db_session() as db_session:
+    #        from sqlalchemy import or_
+    #
+    #        creative_format = (
+    #            db_session.query(CreativeFormat)
+    #            .filter(
+    #                CreativeFormat.format_id == format_id,
+    #                or_(CreativeFormat.tenant_id == tenant_id, CreativeFormat.is_standard),
+    #            )
+    #            .first()
+    #        )
+    #
+    #        if not creative_format:
+    #            abort(404)
+    #
+    #        # Convert to dict
+    #        format_dict = {
+    #            "format_id": creative_format.format_id,
+    #            "name": creative_format.name,
+    #            "type": creative_format.type,
+    #            "description": creative_format.description,
+    #            "width": creative_format.width,
+    #            "height": creative_format.height,
+    #            "duration_seconds": creative_format.duration_seconds,
+    #            "max_file_size_kb": creative_format.max_file_size_kb,
+    #            "specs": creative_format.specs,
+    #            "is_standard": creative_format.is_standard,
+    #            "source_url": creative_format.source_url,
+    #        }
+    #        if format_dict["specs"]:
+    #            format_dict["specs"] = (
+    #                json.loads(format_dict["specs"]) if isinstance(format_dict["specs"], str) else format_dict["specs"]
+    #            )
+    #
+    #    return jsonify(format_dict)
+    #
+    #    # MIGRATED to creatives_bp.edit_format
+    #    # @app.route("/tenant/<tenant_id>/creative-formats/<format_id>/edit", methods=["GET"])
+    #    # @require_auth()
+    #    # def edit_creative_format_page(tenant_id, format_id):
+    #    """Display the edit creative format page."""
+    #    # Check access
+    #    if session.get("role") != "super_admin" and session.get("tenant_id") != tenant_id:
+    #        abort(403)
+    #
+    #    # Get tenant info
+    #    with get_db_session() as db_session:
+    #        tenant = db_session.query(Tenant).filter_by(tenant_id=tenant_id).first()
+    #
+    #        if not tenant:
+    #            abort(404)
+    #
+    #        # Get creative format
+    #        from sqlalchemy import or_
+    #
+    #        creative_format = (
+    #            db_session.query(CreativeFormat)
+    #            .filter(
+    #                CreativeFormat.format_id == format_id,
+    #                or_(CreativeFormat.tenant_id == tenant_id, CreativeFormat.is_standard),
+    #            )
+    #            .first()
+    #        )
+    #
+    #        if not creative_format:
+    #            abort(404)
+    #
+    #        # Don't allow editing standard formats
+    #        if creative_format.is_standard:
+    #            flash("Standard formats cannot be edited", "error")
+    #            return redirect(url_for("creative_formats", tenant_id=tenant_id))
+    #
+    #        # Convert to dict and parse specs
+    #        format_dict = {
+    #            "format_id": creative_format.format_id,
+    #            "name": creative_format.name,
+    #            "type": creative_format.type,
+    #            "description": creative_format.description,
+    #            "width": creative_format.width,
+    #            "height": creative_format.height,
+    #            "duration_seconds": creative_format.duration_seconds,
+    #            "max_file_size_kb": creative_format.max_file_size_kb,
+    #            "specs": creative_format.specs,
+    #            "is_standard": creative_format.is_standard,
+    #            "source_url": creative_format.source_url,
+    #        }
+    #        if format_dict["specs"]:
+    #            format_dict["specs"] = (
+    #                json.loads(format_dict["specs"]) if isinstance(format_dict["specs"], str) else format_dict["specs"]
+    #            )
+    #
+    #    return render_template(
+    #        "edit_creative_format.html",
+    #        tenant_id=tenant_id,
+    #        tenant_name=tenant.name,
+    #        format=format_dict,
+    #    )
+    #
+    #    # MIGRATED to creatives_bp.update_format
+    #    # @app.route("/tenant/<tenant_id>/creative-formats/<format_id>/update", methods=["POST"])
+    #    # @require_auth()
+    #    # def update_creative_format(tenant_id, format_id):
+    #    """Update a creative format."""
     # Check access
     if session.get("role") != "super_admin" and session.get("tenant_id") != tenant_id:
         return jsonify({"error": "Access denied"}), 403
@@ -5755,10 +5783,10 @@ def translate_custom_targeting(custom_targeting_node, tenant_id=None):
 
     return translate_node(custom_targeting_node)
 
-
-@app.route("/api/tenant/<tenant_id>/gam/custom-targeting-keys")
-@require_auth()
-def get_custom_targeting_keys(tenant_id):
+    # MIGRATED: Moved to src/admin/blueprints/gam.py
+    # @app.route("/api/tenant/<tenant_id>/gam/custom-targeting-keys")
+    # @require_auth()
+    # def get_custom_targeting_keys(tenant_id):
     """Fetch custom targeting keys and values for display."""
     try:
         # Get the mappings using the centralized function
@@ -5789,10 +5817,10 @@ def get_custom_targeting_keys(tenant_id):
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-
-@app.route("/api/tenant/<tenant_id>/gam/line-item/<line_item_id>")
-@require_auth()
-def get_gam_line_item(tenant_id, line_item_id):
+    # MIGRATED: Moved to src/admin/blueprints/gam.py
+    # @app.route("/api/tenant/<tenant_id>/gam/line-item/<line_item_id>")
+    # @require_auth()
+    # def get_gam_line_item(tenant_id, line_item_id):
     """Fetch detailed line item data from GAM."""
     try:
         # Validate tenant_id format
@@ -6126,39 +6154,39 @@ def get_gam_line_item(tenant_id, line_item_id):
         app.logger.error(f"Traceback: {traceback.format_exc()}")
         return jsonify({"error": str(e)}), 500
 
-
-@app.route("/tenant/<tenant_id>/gam/line-item/<line_item_id>")
-@require_auth()
-def view_gam_line_item(tenant_id, line_item_id):
+    # MIGRATED: Moved to src/admin/blueprints/gam.py
+    # @app.route("/tenant/<tenant_id>/gam/line-item/<line_item_id>")
+    # @require_auth()
+    # def view_gam_line_item(tenant_id, line_item_id):
     """View GAM line item details."""
-    with get_db_session() as db_session:
-        tenant = db_session.query(Tenant).filter_by(tenant_id=tenant_id).first()
-
-        if not tenant:
-            flash("Tenant not found", "danger")
-            return redirect(url_for("index"))
-
-        # Convert tenant to dict-like object for template
-        # Build config from individual columns
-        config = get_tenant_config_from_db(tenant_id)
-        tenant_dict = {
-            "tenant_id": tenant.tenant_id,
-            "name": tenant.name,
-            "subdomain": tenant.subdomain,
-            "config": json.dumps(config) if config else "{}",
-        }
-
-    return render_template(
-        "gam_line_item_viewer.html",
-        tenant=tenant_dict,
-        tenant_id=tenant_id,
-        line_item_id=line_item_id,
-        user_email=session.get("user_email", "Unknown"),
-    )
-
-
-def extract_targeting_overlay(targeting):
-    """Extract targeting overlay from GAM targeting object."""
+    #    with get_db_session() as db_session:
+    #        tenant = db_session.query(Tenant).filter_by(tenant_id=tenant_id).first()
+    #
+    #        if not tenant:
+    #            flash("Tenant not found", "danger")
+    #            return redirect(url_for("index"))
+    #
+    #        # Convert tenant to dict-like object for template
+    #        # Build config from individual columns
+    #        config = get_tenant_config_from_db(tenant_id)
+    #        tenant_dict = {
+    #            "tenant_id": tenant.tenant_id,
+    #            "name": tenant.name,
+    #            "subdomain": tenant.subdomain,
+    #            "config": json.dumps(config) if config else "{}",
+    #        }
+    #
+    #    return render_template(
+    #        "gam_line_item_viewer.html",
+    #        tenant=tenant_dict,
+    #        tenant_id=tenant_id,
+    #        line_item_id=line_item_id,
+    #        user_email=session.get("user_email", "Unknown"),
+    #    )
+    #
+    #
+    # def extract_targeting_overlay(targeting):
+    #    """Extract targeting overlay from GAM targeting object."""
     targeting_overlay = {}
 
     # Geographic targeting
@@ -6579,52 +6607,52 @@ if __name__ == "__main__":
 def mcp_test():
     """MCP protocol testing interface for super admins."""
     # Get all tenants and their principals
-    with get_db_session() as db_session:
-        # Get tenants
-        tenant_objs = db_session.query(Tenant).filter_by(is_active=True).order_by(Tenant.name).all()
-        tenants = []
-        for tenant in tenant_objs:
-            tenants.append(
-                {
-                    "tenant_id": tenant.tenant_id,
-                    "name": tenant.name,
-                    "subdomain": tenant.subdomain,
-                }
-            )
-
-        # Get all principals with their tenant info
-
-        principal_objs = (
-            db_session.query(Principal)
-            .join(Tenant)
-            .filter(Tenant.is_active)
-            .order_by(Tenant.name, Principal.name)
-            .all()
-        )
-        principals = []
-        for principal in principal_objs:
-            # Get the tenant name via relationship or separate query
-            tenant_name = db_session.query(Tenant.name).filter_by(tenant_id=principal.tenant_id).scalar()
-            principals.append(
-                {
-                    "principal_id": principal.principal_id,
-                    "name": principal.name,
-                    "tenant_id": principal.tenant_id,
-                    "access_token": principal.access_token,
-                    "tenant_name": tenant_name,
-                }
-            )
-
-    # Get server URL - use correct port from environment
-    server_port = int(os.environ.get("ADCP_SALES_PORT", 8005))
-    server_url = f"http://localhost:{server_port}/mcp/"
-
-    return render_template("mcp_test.html", tenants=tenants, principals=principals, server_url=server_url)
-
-
-@app.route("/api/mcp-test/call", methods=["POST"])
-def mcp_test_call():
-    """Make an MCP call using the official client."""
+    #    with get_db_session() as db_session:
+    #        # Get tenants
+    #        tenant_objs = db_session.query(Tenant).filter_by(is_active=True).order_by(Tenant.name).all()
+    #        tenants = []
+    #        for tenant in tenant_objs:
+    #            tenants.append(
+    #                {
+    #                    "tenant_id": tenant.tenant_id,
+    #                    "name": tenant.name,
+    #                    "subdomain": tenant.subdomain,
+    #                }
+    #            )
+    #
+    #        # Get all principals with their tenant info
+    #
+    #        principal_objs = (
+    #            db_session.query(Principal)
+    #            .join(Tenant)
+    #            .filter(Tenant.is_active)
+    #            .order_by(Tenant.name, Principal.name)
+    #            .all()
+    #        )
+    #        principals = []
+    #        for principal in principal_objs:
+    #            # Get the tenant name via relationship or separate query
+    #            tenant_name = db_session.query(Tenant.name).filter_by(tenant_id=principal.tenant_id).scalar()
+    #            principals.append(
+    #                {
+    #                    "principal_id": principal.principal_id,
+    #                    "name": principal.name,
+    #                    "tenant_id": principal.tenant_id,
+    #                    "access_token": principal.access_token,
+    #                    "tenant_name": tenant_name,
+    #                }
+    #            )
+    #
+    #    # Get server URL - use correct port from environment
+    #    server_port = int(os.environ.get("ADCP_SALES_PORT", 8005))
+    #    server_url = f"http://localhost:{server_port}/mcp/"
+    #
+    #    return render_template("mcp_test.html", tenants=tenants, principals=principals, server_url=server_url)
+    #
+    #
+    # @app.route("/api/mcp-test/call", methods=["POST"])
+    # def mcp_test_call():
+    #    """Make an MCP call using the official client."""
     # For debugging, temporarily allow unauthenticated access if a special header is present
     if request.headers.get("X-Debug-Mode") == "test":
         # Allow debugging without auth

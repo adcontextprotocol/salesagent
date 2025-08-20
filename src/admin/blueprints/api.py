@@ -404,3 +404,165 @@ def gam_get_advertisers():
     GAM advertiser fetching - implement in phase 2."""
     # Placeholder implementation
     return jsonify({"error": "Not yet implemented"}), 501
+
+
+@api_bp.route("/gam/test-connection", methods=["POST"])
+@require_auth()
+def test_gam_connection():
+    """Test GAM connection with refresh token and fetch available resources."""
+    try:
+        refresh_token = request.json.get("refresh_token")
+        if not refresh_token:
+            return jsonify({"error": "Refresh token is required"}), 400
+
+        # Get OAuth credentials from superadmin config
+        with get_db_session() as db_session:
+            configs = (
+                db_session.query(SuperadminConfig)
+                .filter(SuperadminConfig.config_key.in_(["gam_oauth_client_id", "gam_oauth_client_secret"]))
+                .all()
+            )
+
+            oauth_config = {}
+            for config in configs:
+                if config.config_key == "gam_oauth_client_id":
+                    oauth_config["client_id"] = config.config_value
+                elif config.config_key == "gam_oauth_client_secret":
+                    oauth_config["client_secret"] = config.config_value
+
+        if not oauth_config.get("client_id") or not oauth_config.get("client_secret"):
+            return (
+                jsonify({"error": "GAM OAuth credentials not configured in Settings"}),
+                400,
+            )
+
+        # Test by creating credentials and making a simple API call
+        from googleads import ad_manager, oauth2
+
+        # Create GoogleAds OAuth2 client with refresh token
+        oauth2_client = oauth2.GoogleRefreshTokenClient(
+            client_id=oauth_config["client_id"],
+            client_secret=oauth_config["client_secret"],
+            refresh_token=refresh_token,
+        )
+
+        # Test if credentials are valid by trying to refresh
+        try:
+            # This will attempt to refresh the token
+            oauth2_client.Refresh()
+        except Exception as e:
+            return jsonify({"error": f"Invalid refresh token: {str(e)}"}), 400
+
+        # Initialize GAM client to get network info
+        # Note: We don't need to specify network_code for getAllNetworks call
+        client = ad_manager.AdManagerClient(oauth2_client, "AdCP-Sales-Agent-Setup")
+
+        # Get network service
+        network_service = client.GetService("NetworkService", version="v202408")
+
+        # Get all networks user has access to
+        try:
+            # Try to get all networks first
+            logger.info("Attempting to call getAllNetworks()")
+            all_networks = network_service.getAllNetworks()
+            logger.info(f"getAllNetworks() returned: {all_networks}")
+            networks = []
+            if all_networks:
+                logger.info(f"Processing {len(all_networks)} networks")
+                for network in all_networks:
+                    logger.info(f"Network data: {network}")
+                    networks.append(
+                        {
+                            "id": network["id"],
+                            "displayName": network["displayName"],
+                            "networkCode": network["networkCode"],
+                        }
+                    )
+            else:
+                logger.info("getAllNetworks() returned empty/None")
+        except AttributeError as e:
+            # getAllNetworks might not be available, fall back to getCurrentNetwork
+            logger.info(f"getAllNetworks not available (AttributeError: {e}), falling back to getCurrentNetwork")
+            try:
+                current_network = network_service.getCurrentNetwork()
+                logger.info(f"getCurrentNetwork() returned: {current_network}")
+                networks = [
+                    {
+                        "id": current_network["id"],
+                        "displayName": current_network["displayName"],
+                        "networkCode": current_network["networkCode"],
+                    }
+                ]
+            except Exception as e:
+                logger.error(f"Failed to get network info: {e}")
+                networks = []
+        except Exception as e:
+            logger.error(f"Failed to get networks: {e}")
+            logger.exception("Full exception details:")
+            networks = []
+
+        result = {
+            "success": True,
+            "message": "Successfully connected to Google Ad Manager",
+            "networks": networks,
+        }
+
+        # If we got a network, fetch companies and users
+        if networks:
+            try:
+                # Reinitialize client with network code for subsequent calls
+                network_code = networks[0]["networkCode"]
+                logger.info(f"Reinitializing client with network code: {network_code}")
+
+                client = ad_manager.AdManagerClient(oauth2_client, "AdCP-Sales-Agent-Setup", network_code=network_code)
+
+                # Get company service for advertisers
+                company_service = client.GetService("CompanyService", version="v202408")
+
+                # Build a statement to get advertisers
+                from googleads import ad_manager as gam_utils
+
+                statement_builder = gam_utils.StatementBuilder()
+                statement_builder.Where("type = :type")
+                statement_builder.WithBindVariable("type", "ADVERTISER")
+                statement_builder.Limit(100)
+
+                # Get companies
+                logger.info("Calling getCompaniesByStatement for ADVERTISER companies")
+                response = company_service.getCompaniesByStatement(statement_builder.ToStatement())
+                logger.info(f"getCompaniesByStatement response: {response}")
+
+                companies = []
+                if response and hasattr(response, "results"):
+                    logger.info(f"Found {len(response.results)} companies")
+                    for company in response.results:
+                        logger.info(f"Company: id={company.id}, name={company.name}, type={company.type}")
+                        companies.append(
+                            {
+                                "id": company.id,
+                                "name": company.name,
+                                "type": company.type,
+                            }
+                        )
+                else:
+                    logger.info("No companies found in response")
+
+                result["companies"] = companies
+
+                # Get current user info
+                user_service = client.GetService("UserService", version="v202408")
+                current_user = user_service.getCurrentUser()
+                result["current_user"] = {
+                    "id": current_user.id,
+                    "name": current_user.name,
+                    "email": current_user.email,
+                }
+
+            except Exception as e:
+                # It's okay if we can't fetch companies/users
+                result["warning"] = f"Connected but couldn't fetch all resources: {str(e)}"
+
+        return jsonify(result)
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
