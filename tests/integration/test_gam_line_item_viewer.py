@@ -144,7 +144,7 @@ class TestGAMLineItemViewer:
             mock_db_session.remove = Mock()
 
             # Mock get_tenant_config_from_db to return GAM enabled config
-            with patch("admin_ui.get_tenant_config_from_db") as mock_get_config:
+            with patch("src.admin.utils.get_tenant_config_from_db") as mock_get_config:
                 mock_get_config.return_value = {
                     "adapters": {
                         "google_ad_manager": {
@@ -155,7 +155,7 @@ class TestGAMLineItemViewer:
                     }
                 }
 
-                with patch("admin_ui.get_db_session") as mock_get_session:
+                with patch("database_session.get_db_session") as mock_get_session:
                     # Create a proper mock session that returns a tenant
                     mock_session_ctx = MagicMock()
                     mock_query = MagicMock()
@@ -230,14 +230,14 @@ def test_get_gam_line_item_not_found(test_admin_app):
     mock_session.query.return_value = mock_query
 
     # Mock get_tenant_config_from_db
-    with patch("admin_ui.get_tenant_config_from_db") as mock_get_config:
+    with patch("src.admin.utils.get_tenant_config_from_db") as mock_get_config:
         mock_get_config.return_value = {
             "adapters": {
                 "google_ad_manager": {"enabled": True, "network_code": "123456", "refresh_token": "mock_refresh_token"}
             }
         }
 
-        with patch("admin_ui.get_db_session") as mock_get_session:
+        with patch("database_session.get_db_session") as mock_get_session:
             # Make get_db_session return a proper context manager
             mock_context = Mock()
             mock_context.__enter__ = Mock(return_value=mock_session)
@@ -257,7 +257,7 @@ def test_get_gam_line_item_unauthorized(test_admin_app):
     # Create mock SQLAlchemy session (should not be called)
     mock_session = Mock()
 
-    with patch("admin_ui.get_db_session") as mock_get_session:
+    with patch("database_session.get_db_session") as mock_get_session:
         # Make get_db_session return a proper context manager
         mock_context = Mock()
         mock_context.__enter__ = Mock(return_value=mock_session)
@@ -304,8 +304,8 @@ def test_view_line_item_page(test_admin_app):
         mock_db_session.query.return_value = mock_query
         mock_db_session.remove = Mock()
 
-        with patch("admin_ui.get_tenant_config_from_db", return_value={"ad_server": "google_ad_manager"}):
-            with patch("admin_ui.get_db_session") as mock_get_session:
+        with patch("src.admin.utils.get_tenant_config_from_db", return_value={"ad_server": "google_ad_manager"}):
+            with patch("database_session.get_db_session") as mock_get_session:
                 # Make get_db_session return a proper context manager
                 mock_context = Mock()
                 mock_context.__enter__ = Mock(return_value=mock_db_session)
