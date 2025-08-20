@@ -31,8 +31,18 @@ def superadmin_settings():
         gam_client_id = config_dict.get("gam_oauth_client_id", os.environ.get("GAM_OAUTH_CLIENT_ID", ""))
         gam_client_secret = config_dict.get("gam_oauth_client_secret", "")  # Don't show from env for security
 
+    # Format config_items as expected by template
+    config_items = {
+        "gam_oauth_client_id": {"value": gam_client_id, "description": "OAuth 2.0 Client ID from Google Cloud Console"},
+        "gam_oauth_client_secret": {
+            "value": gam_client_secret,
+            "description": "OAuth 2.0 Client Secret (stored securely)",
+        },
+    }
+
     return render_template(
         "settings.html",
+        config_items=config_items,
         gam_client_id=gam_client_id,
         gam_client_secret=gam_client_secret,
     )

@@ -55,7 +55,7 @@ def authenticated_client(client):
 @pytest.fixture
 def mock_db():
     """Mock database connection."""
-    with patch("admin_ui.get_db_session") as mock:
+    with patch("database_session.get_db_session") as mock:
         conn = MagicMock()
         cursor = MagicMock()
         conn.execute.return_value = cursor

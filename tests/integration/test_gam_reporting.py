@@ -54,7 +54,6 @@ def mock_db_connection():
     # Patch database session for ORM access
     with (
         patch("adapters.gam_reporting_api.get_db_session") as mock_api_session,
-        patch("admin_ui.get_db_session") as mock_ui_session,
         patch("database_session.get_db_session") as mock_db_config_session,
     ):
 
@@ -65,7 +64,7 @@ def mock_db_connection():
         mock_tenant.name = "Test Tenant"
 
         # Setup all mock sessions to work as context managers returning SQLAlchemy sessions
-        for mock_session in [mock_api_session, mock_ui_session, mock_db_config_session]:
+        for mock_session in [mock_api_session, mock_db_config_session]:
             # Create a mock SQLAlchemy session
             mock_session_instance = Mock()
 
@@ -326,7 +325,7 @@ class TestSyncStatusAPI:
     @pytest.mark.skip(reason="Complex mocking requirements - needs refactoring")
     def test_sync_status_success(self, authenticated_session):
         """Test successful sync status retrieval."""
-        with patch("admin_ui.get_db_session") as mock_conn:
+        with patch("database_session.get_db_session") as mock_conn:
             # Mock tenant query
             tenant_cursor = Mock()
             tenant_cursor.fetchone.return_value = {"ad_server": "google_ad_manager"}
@@ -364,7 +363,7 @@ class TestSyncStatusAPI:
 
     def test_trigger_sync_requires_super_admin(self, tenant_session):
         """Test that only super admins can trigger sync."""
-        with patch("admin_ui.get_db_session") as mock_conn:
+        with patch("database_session.get_db_session") as mock_conn:
             mock_cursor = Mock()
             mock_cursor.fetchone.return_value = {"ad_server": "google_ad_manager"}
             mock_conn.return_value.execute.return_value = mock_cursor
@@ -389,7 +388,7 @@ class TestReportingDashboard:
     @pytest.mark.skip(reason="Complex mocking requirements - needs refactoring")
     def test_dashboard_renders_for_gam_tenant(self, authenticated_session):
         """Test that dashboard renders for GAM tenants."""
-        with patch("admin_ui.get_db_session") as mock_conn:
+        with patch("database_session.get_db_session") as mock_conn:
             mock_cursor = Mock()
             mock_cursor.fetchone.return_value = {
                 "ad_server": "google_ad_manager",
@@ -406,7 +405,7 @@ class TestReportingDashboard:
 
     def test_dashboard_error_for_non_gam_tenant(self, authenticated_session):
         """Test that dashboard shows error for non-GAM tenants."""
-        with patch("admin_ui.get_db_session") as mock_conn:
+        with patch("database_session.get_db_session") as mock_conn:
             mock_cursor = Mock()
             mock_cursor.fetchone.return_value = {
                 "ad_server": "kevel",
