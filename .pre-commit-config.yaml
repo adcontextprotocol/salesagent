@@ -79,6 +79,14 @@ repos:
         language: system
         files: '\.py$'
 
+      # Validate template url_for calls
+      - id: template-url-validation
+        name: Validate template url_for calls
+        entry: uv run pytest tests/integration/test_template_url_validation.py::TestTemplateUrlValidation::test_all_template_url_for_calls_resolve -q
+        language: system
+        files: '\.html$'
+        pass_filenames: false
+
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v6.0.0
     hooks:

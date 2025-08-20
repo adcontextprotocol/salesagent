@@ -99,12 +99,24 @@ def admin_client(integration_db):
 
 
 @pytest.fixture
-def authenticated_admin_session(admin_client):
+def authenticated_admin_session(admin_client, integration_db):
     """Create an authenticated session for admin UI testing."""
+    # Set up super admin configuration in database
+    from database_session import get_db_session
+    from models import SuperadminConfig
+
+    with get_db_session() as db_session:
+        # Add super admin email configuration
+        email_config = SuperadminConfig(config_key="super_admin_emails", config_value="test@example.com")
+        db_session.add(email_config)
+        db_session.commit()
+
     with admin_client.session_transaction() as sess:
         sess["authenticated"] = True
         sess["role"] = "super_admin"
         sess["email"] = "test@example.com"
+        sess["user"] = "test@example.com"  # Blueprint expects this
+        sess["is_super_admin"] = True  # Blueprint sets this
     return admin_client
 
 

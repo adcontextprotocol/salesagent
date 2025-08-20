@@ -4,7 +4,7 @@ import logging
 import os
 import secrets
 
-from flask import Flask, redirect, render_template, request, session, url_for
+from flask import Flask, flash, redirect, render_template, request, session, url_for
 from flask_socketio import SocketIO, join_room
 
 from database_session import get_db_session
@@ -72,7 +72,7 @@ def create_app(config=None):
     app.socketio = socketio
 
     # Register blueprints
-    app.register_blueprint(auth_bp)
+    app.register_blueprint(auth_bp)  # No url_prefix - auth routes are at root
     app.register_blueprint(tenants_bp, url_prefix="/tenant")
     app.register_blueprint(products_bp, url_prefix="/tenant/<tenant_id>/products")
     app.register_blueprint(gam_bp)

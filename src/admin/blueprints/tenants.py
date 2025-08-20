@@ -72,20 +72,38 @@ def dashboard(tenant_id):
                 daily_buys = (
                     db_session.query(MediaBuy)
                     .filter_by(tenant_id=tenant_id)
-                    .filter(MediaBuy.flight_start_date <= date)
-                    .filter(MediaBuy.flight_end_date >= date)
+                    .filter(MediaBuy.start_date <= date)
+                    .filter(MediaBuy.end_date >= date)
                     .filter(MediaBuy.status.in_(["active", "completed"]))
                     .all()
                 )
 
                 daily_revenue = 0
                 for buy in daily_buys:
-                    if buy.flight_start_date and buy.flight_end_date:
-                        days_in_flight = (buy.flight_end_date - buy.flight_start_date).days + 1
+                    if buy.start_date and buy.end_date:
+                        days_in_flight = (buy.end_date - buy.start_date).days + 1
                         if days_in_flight > 0:
-                            daily_revenue += (buy.total_budget or 0) / days_in_flight
+                            daily_revenue += (buy.budget or 0) / days_in_flight
 
                 revenue_data.append({"date": date.isoformat(), "revenue": round(daily_revenue, 2)})
+
+            # Calculate revenue change (comparing last 7 days to previous 7 days)
+            last_week_revenue = sum(d["revenue"] for d in revenue_data[-7:])
+            previous_week_revenue = sum(d["revenue"] for d in revenue_data[-14:-7]) if len(revenue_data) >= 14 else 0
+            revenue_change = (
+                ((last_week_revenue - previous_week_revenue) / previous_week_revenue * 100)
+                if previous_week_revenue > 0
+                else 0
+            )
+
+            # Calculate metrics for the template
+            metrics = {
+                "total_revenue": total_spend_amount,
+                "active_buys": active_campaigns,
+                "pending_approvals": 0,  # Could be calculated from tasks if needed
+                "conversion_rate": 0.0,  # Could be calculated from actual data
+                "revenue_change": round(revenue_change, 1),
+            }
 
             return render_template(
                 "tenant_dashboard.html",
@@ -98,6 +116,7 @@ def dashboard(tenant_id):
                 recent_buys=recent_buys,
                 features=features,
                 revenue_data=json.dumps(revenue_data),
+                metrics=metrics,
             )
 
     except Exception as e:
