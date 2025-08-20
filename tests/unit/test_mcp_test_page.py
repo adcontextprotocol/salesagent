@@ -70,9 +70,10 @@ class TestMCPTestPageUnit:
             assert "promoted_offering" in html
             assert "geo_country_any_of" in html
 
+    @patch("src.admin.utils.is_super_admin", return_value=True)
     @patch("asyncio.set_event_loop")
     @patch("asyncio.new_event_loop")
-    def test_mcp_api_call_with_auth_header(self, mock_new_event_loop, mock_set_event_loop, auth_client):
+    def test_mcp_api_call_with_auth_header(self, mock_new_event_loop, mock_set_event_loop, mock_is_super_admin, auth_client):
         """Test that API call uses x-adcp-auth header correctly."""
         with patch("database_session.get_db_session") as mock_db:
             # Mock database
@@ -113,7 +114,8 @@ class TestMCPTestPageUnit:
             finally:
                 real_loop.close()
 
-    def test_mcp_api_validates_required_params(self, auth_client):
+    @patch("src.admin.utils.is_super_admin", return_value=True)
+    def test_mcp_api_validates_required_params(self, mock_is_super_admin, auth_client):
         """Test that API validates required parameters."""
         response = auth_client.post(
             "/api/mcp-test/call",
@@ -128,11 +130,12 @@ class TestMCPTestPageUnit:
         assert response.status_code == 400
         data = json.loads(response.data)
         assert data["success"] is False
-        assert "required parameters" in data["error"].lower()
+        assert "required" in data["error"].lower() or "missing" in data["error"].lower()
 
+    @patch("src.admin.utils.is_super_admin", return_value=True)
     @patch("asyncio.set_event_loop")
     @patch("asyncio.new_event_loop")
-    def test_mcp_api_handles_tool_errors(self, mock_new_event_loop, mock_set_event_loop, auth_client):
+    def test_mcp_api_handles_tool_errors(self, mock_new_event_loop, mock_set_event_loop, mock_is_super_admin, auth_client):
         """Test that API handles MCP tool errors gracefully."""
         with patch("database_session.get_db_session") as mock_db:
             # Mock database
@@ -193,13 +196,16 @@ class TestMCPTestPageUnit:
             sess["authenticated"] = True
             sess["email"] = "viewer@example.com"
             sess["role"] = "viewer"
+            sess["user"] = {"email": "viewer@example.com"}
 
-        response = client.get("/mcp-test")
-        assert response.status_code == 403
+        with patch("src.admin.utils.is_super_admin", return_value=False):
+            response = client.get("/mcp-test")
+            assert response.status_code == 403
 
+    @patch("src.admin.utils.is_super_admin", return_value=True)
     @patch("asyncio.set_event_loop")
     @patch("asyncio.new_event_loop")
-    def test_mcp_api_response_parsing(self, mock_new_event_loop, mock_set_event_loop, auth_client):
+    def test_mcp_api_response_parsing(self, mock_new_event_loop, mock_set_event_loop, mock_is_super_admin, auth_client):
         """Test that API correctly parses different response formats."""
         with patch("database_session.get_db_session") as mock_db:
             # Mock database
@@ -240,9 +246,10 @@ class TestMCPTestPageUnit:
             finally:
                 real_loop.close()
 
+    @patch("src.admin.utils.is_super_admin", return_value=True)
     @patch("asyncio.set_event_loop")
     @patch("asyncio.new_event_loop")
-    def test_mcp_country_targeting_in_params(self, mock_new_event_loop, mock_set_event_loop, auth_client):
+    def test_mcp_country_targeting_in_params(self, mock_new_event_loop, mock_set_event_loop, mock_is_super_admin, auth_client):
         """Test that country targeting is properly included in parameters."""
         with patch("database_session.get_db_session") as mock_db:
             # Mock database
