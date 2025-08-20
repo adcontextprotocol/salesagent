@@ -367,13 +367,13 @@ class TestGAMLineItemViewer:
         if "countries" in result:
             assert "US" in result["countries"] or len(result["countries"]) > 0
 
-        # Verify formats
+        # Verify formats - extract_creative_formats returns strings, not objects
         assert len(result["formats"]) == 1
-        assert result["formats"][0]["id"] == "display_300x250"
+        assert result["formats"][0] == "display_300x250"
 
-        # Verify implementation config
-        assert "gam" in result["implementation_config"]
-        assert result["implementation_config"]["gam"]["line_item_id"] == 7046143587
+        # Verify implementation config - structure changed to flat fields
+        assert "gam_line_item_id" in result["implementation_config"]
+        assert result["implementation_config"]["gam_line_item_id"] == 7046143587
 
     def test_xss_protection_in_display(self):
         """Test that XSS vulnerabilities are prevented in display functions."""
