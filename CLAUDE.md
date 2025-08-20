@@ -1557,6 +1557,176 @@ Before making ANY database or API changes:
    el.style.cssText = 'display: block !important; height: auto !important;';
    ```
 
+## Recent Debugging Learnings (CRITICAL)
+
+Based on multiple debugging sessions that revealed systemic issues, here are the key patterns and fixes:
+
+### 1. **Form Field Naming Mismatches (NEW)**
+⚠️ **CRITICAL**: Form field names in templates must match backend expectations exactly.
+
+**Common Issue**: "Required field" errors when the field is clearly filled
+```html
+<!-- Template has -->
+<input name="name" value="{{ tenant.name }}" required>
+
+<!-- But backend expects -->
+tenant_name = request.form.get("tenant_name", "")  # WRONG
+```
+
+**Solution Pattern**:
+```python
+# CORRECT - Match the form field name
+tenant_name = request.form.get("name", "").strip()
+
+# Always validate form submissions
+if not tenant_name:
+    flash("Tenant name is required", "error")
+    return redirect(...)
+```
+
+**Prevention**:
+- Use `scripts/check_form_mismatches.py` to validate form/backend consistency
+- Always check form field names when debugging "required field" errors
+- Follow naming convention: backend variable = form field name
+
+### 2. **Model Import Confusion (CONFIRMED)**
+⚠️ **CRITICAL**: Always import the correct model for your use case.
+
+```python
+# WRONG - SQLAlchemy model lacks business methods
+from models import Principal
+principal.get_adapter_id()  # AttributeError!
+
+# CORRECT - Pydantic model has business logic
+from schemas import Principal
+principal.get_adapter_id()  # Works correctly
+```
+
+**Usage Guidelines**:
+- `models.py` → Database queries, ORM operations
+- `schemas.py` → Business logic, API contracts, method calls
+
+### 3. **Missing Template Variables (CONFIRMED)**
+⚠️ **CRITICAL**: Template variables must be passed from route handlers.
+
+```python
+# WRONG - Template expects variables not passed
+return render_template("dashboard.html")  # Missing context
+
+# CORRECT - Pass all required template variables
+return render_template("dashboard.html",
+    tenant=tenant,
+    principals=principals,
+    media_buys=media_buys,
+    total_spend=total_spend
+)
+```
+
+**Debug Pattern**:
+1. Check template for `{{ variable }}` usage
+2. Verify all variables are passed in `render_template()`
+3. Use Jinja2 debugging: `{% if variable %}{{ variable }}{% else %}MISSING{% endif %}`
+
+### 4. **Database Session Management (CONFIRMED)**
+⚠️ **CRITICAL**: Always use proper session patterns.
+
+```python
+# WRONG - Can cause transaction errors, locks
+session = SessionLocal()  # Global session
+
+# CORRECT - Use context managers
+from database_session import get_db_session
+
+with get_db_session() as db_session:
+    tenant = db_session.query(Tenant).filter_by(tenant_id=tenant_id).first()
+    if tenant:
+        tenant.name = new_name
+        db_session.commit()  # Explicit commit required
+    # Automatic cleanup on context exit
+```
+
+### 5. **Migration Field References (CONFIRMED)**
+⚠️ **CRITICAL**: Check ALL code references before removing database columns.
+
+**Before removing any column**:
+```bash
+# ALWAYS run this first
+grep -r "column_name" . --include="*.py" | grep -v alembic
+
+# Check templates too
+grep -r "column_name" templates/
+```
+
+**Safe Migration Pattern**:
+1. Add new columns/fields
+2. Update all code to use new fields
+3. Test thoroughly
+4. Remove old columns in separate migration
+5. Never modify existing migration files after commit
+
+### 6. **Form Validation Debugging Workflow**
+
+When encountering form validation errors:
+
+1. **Check Browser Network Tab**:
+   - Verify POST data is being sent
+   - Confirm correct field names in request
+
+2. **Check Backend Route**:
+   ```python
+   # Add debugging
+   app.logger.info(f"Form data received: {dict(request.form)}")
+   ```
+
+3. **Validate Field Names**:
+   ```bash
+   # Run the form checker
+   uv run python scripts/check_form_mismatches.py
+   ```
+
+4. **Check Template**:
+   - Ensure form action matches route
+   - Verify method="POST"
+   - Confirm field names are correct
+
+### 7. **Template Error Prevention**
+⚠️ **Use validation tools to prevent template rendering errors**:
+
+```bash
+# Before making template changes
+uv run pytest tests/integration/test_template_url_validation.py
+
+# After route changes
+pre-commit run template-url-validation --all-files
+```
+
+### 8. **Database Schema Validation**
+⚠️ **Always validate schema changes against existing code**:
+
+```python
+# Check what columns exist
+from models import Tenant
+print([column.name for column in Tenant.__table__.columns])
+
+# Validate field names match model
+tenant = db_session.query(Tenant).first()
+print(vars(tenant))  # See actual field names
+```
+
+### 9. **Testing Pattern for Fixes**
+⚠️ **Always test the complete user workflow**:
+
+```bash
+# 1. Test the specific error case
+# 2. Test related functionality
+# 3. Test with both databases
+DATABASE_URL=sqlite:///test.db uv run python test_script.py
+DATABASE_URL=postgresql://... uv run python test_script.py
+
+# 4. Test in Docker environment
+docker-compose down && docker-compose up -d
+```
+
 ## Quick Reference: Common Fixes
 
 | Error | Fix |
@@ -1573,6 +1743,7 @@ Before making ANY database or API changes:
 | **Elements in DOM but invisible** | Parent has 0 width/height - add min dimensions |
 | **JavaScript `TypeError` on null** | Add null checks: `(value || '').method()` |
 | **API returns HTML not JSON** | Missing auth - add `credentials: 'same-origin'` |
+| **"Required field" error when field is filled** | Check form field name matches `request.form.get()` parameter |
 | **SQL Injection vulnerability** | Use parameterized queries, never string concatenation |
 | **Invalid input crashes API** | Add validation functions for all user inputs |
 | **Temp files not cleaned up** | Use try/finally blocks for resource cleanup |

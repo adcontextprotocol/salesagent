@@ -78,6 +78,14 @@ repos:
         files: '\.html$'
         pass_filenames: false
 
+      # Check for critical form field naming mismatches
+      - id: form-field-validation
+        name: Validate critical form field consistency
+        entry: python3 scripts/verify_form_field_fix.py
+        language: system
+        files: '(tenant_settings\.html|settings\.py)$'
+        pass_filenames: false
+
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v6.0.0
     hooks:
