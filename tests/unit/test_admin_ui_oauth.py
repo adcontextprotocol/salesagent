@@ -28,14 +28,16 @@ mock_session.__enter__ = MagicMock(return_value=mock_session)
 mock_session.__exit__ = MagicMock(return_value=None)
 
 with patch("database_session.get_db_session", return_value=mock_session):
-    with patch("admin_ui.get_db_session", return_value=mock_session):
+    with patch("src.admin.utils.get_db_session", return_value=mock_session):
         # Mock gam_inventory_service to avoid database initialization
         sys.modules["gam_inventory_service"] = MagicMock()
         sys.modules["gam_inventory_service"].get_db_session = MagicMock(return_value=mock_session)
 
-        # Now from src.admin.app import create_app
+        # Now import from src.admin.app
         from src.admin.app import create_app
-app, _ = create_app(), is_super_admin, is_tenant_admin
+        from src.admin.utils import is_super_admin, is_tenant_admin
+
+app, _ = create_app()
 
 
 @pytest.fixture
@@ -45,8 +47,8 @@ def client():
     app.config["SECRET_KEY"] = "test-secret-key"
 
     # Override OAuth config for testing
-    with patch("admin_ui.GOOGLE_CLIENT_ID", "test-client-id"):
-        with patch("admin_ui.GOOGLE_CLIENT_SECRET", "test-client-secret"):
+    with patch("src.admin.utils.GOOGLE_CLIENT_ID", "test-client-id"):
+        with patch("src.admin.utils.GOOGLE_CLIENT_SECRET", "test-client-secret"):
             with app.test_client() as client:
                 yield client
 
@@ -54,7 +56,7 @@ def client():
 @pytest.fixture
 def mock_db():
     """Mock database connection."""
-    with patch("admin_ui.get_db_session") as mock:
+    with patch("src.admin.utils.get_db_session") as mock:
         conn = MagicMock()
         mock.return_value = conn
         yield conn
@@ -64,7 +66,7 @@ def mock_db():
 def mock_db_session():
     """Mock database session for ORM queries."""
     # Need to patch both locations since blueprint imports directly
-    with patch("admin_ui.get_db_session") as mock1:
+    with patch("src.admin.utils.get_db_session") as mock1:
         with patch("database_session.get_db_session") as mock2:
             with patch("src.admin.blueprints.auth.get_db_session") as mock3:
                 mock_session = MagicMock()
@@ -86,7 +88,7 @@ def mock_google_oauth():
     mock_oauth.google = mock_google
 
     # Patch multiple locations where OAuth might be accessed
-    with patch("admin_ui.google", mock_google):
+    with patch("src.admin.blueprints.auth.google", mock_google):
         with patch.object(app, "oauth", mock_oauth, create=True):
             yield mock_google
 
@@ -156,7 +158,7 @@ class TestOAuthCallback:
         }
 
         # Mock is_super_admin to return True - patch all possible locations
-        with patch("admin_ui.is_super_admin", return_value=True):
+        with patch("src.admin.utils.is_super_admin", return_value=True):
             with patch("src.admin.utils.is_super_admin", return_value=True):
                 with patch("src.admin.blueprints.auth.is_super_admin", return_value=True):
                     response = client.get("/auth/google/callback")
@@ -196,7 +198,7 @@ class TestOAuthCallback:
         mock_db_session.query = mock_query.query
 
         # Mock is_super_admin to return False
-        with patch("admin_ui.is_super_admin", return_value=False):
+        with patch("src.admin.utils.is_super_admin", return_value=False):
             with patch("src.admin.utils.is_super_admin", return_value=False):
                 with patch("src.admin.blueprints.auth.is_super_admin", return_value=False):
                     response = client.get("/auth/google/callback")
@@ -221,8 +223,8 @@ class TestOAuthCallback:
 
         # Mock is_tenant_admin to return multiple tenants
         tenants = [("tenant-1", "Tenant One"), ("tenant-2", "Tenant Two")]
-        with patch("admin_ui.is_super_admin", return_value=False):
-            with patch("admin_ui.is_tenant_admin", return_value=tenants):
+        with patch("src.admin.utils.is_super_admin", return_value=False):
+            with patch("src.admin.utils.is_tenant_admin", return_value=tenants):
                 response = client.get("/auth/google/callback")
 
                 # Should show tenant selection page
@@ -245,8 +247,8 @@ class TestOAuthCallback:
         }
 
         # Mock both auth checks to return False
-        with patch("admin_ui.is_super_admin", return_value=False):
-            with patch("admin_ui.is_tenant_admin", return_value=False):
+        with patch("src.admin.utils.is_super_admin", return_value=False):
+            with patch("src.admin.utils.is_tenant_admin", return_value=False):
                 response = client.get("/auth/google/callback")
 
                 # Should show login page with error
@@ -316,7 +318,7 @@ class TestOAuthCallback:
         mock_db_session.commit = MagicMock()  # Mock the commit method
 
         # Mock is_tenant_admin with side_effect
-        with patch("admin_ui.is_tenant_admin", side_effect=mock_is_tenant_admin_func):
+        with patch("src.admin.utils.is_tenant_admin", side_effect=mock_is_tenant_admin_func):
             response = client.get("/auth/google/callback")
 
         # Should redirect to tenant detail
@@ -382,13 +384,13 @@ class TestHelperFunctions:
 
     def test_is_super_admin_email_list(self):
         """Test is_super_admin with email list."""
-        with patch("admin_ui.SUPER_ADMIN_EMAILS", ["admin@example.com"]):
+        with patch("src.admin.utils.SUPER_ADMIN_EMAILS", ["admin@example.com"]):
             assert is_super_admin("admin@example.com") is True
             assert is_super_admin("user@example.com") is False
 
     def test_is_super_admin_domain_list(self):
         """Test is_super_admin with domain list."""
-        with patch("admin_ui.SUPER_ADMIN_DOMAINS", ["example.com"]):
+        with patch("src.admin.utils.SUPER_ADMIN_DOMAINS", ["example.com"]):
             assert is_super_admin("anyone@example.com") is True
             assert is_super_admin("user@other.com") is False
 
@@ -609,7 +611,7 @@ class TestSessionManagement:
         mock_db.execute.return_value = cursor_tenant
 
         # Mock is_tenant_admin
-        with patch("admin_ui.is_tenant_admin", side_effect=mock_is_tenant_admin_func):
+        with patch("src.admin.utils.is_tenant_admin", side_effect=mock_is_tenant_admin_func):
             # Process callback through unified endpoint
             response = client.get("/auth/google/callback")
 
@@ -696,14 +698,14 @@ class TestOAuthErrorHandling:
         mock_db.execute.return_value = cursor_tenant
 
         # Mock is_tenant_admin to return empty list (no access)
-        with patch("admin_ui.is_tenant_admin", side_effect=mock_is_tenant_admin_func):
+        with patch("src.admin.utils.is_tenant_admin", side_effect=mock_is_tenant_admin_func):
             response = client.get("/auth/google/callback")
 
         # Should show login page with error
         assert response.status_code == 200
         assert b"not authorized" in response.data
 
-    @patch("admin_ui.get_db_session")
+    @patch("src.admin.utils.get_db_session")
     def test_tenant_root_authenticated_redirect(self, mock_get_db_session, client):
         """Test tenant root shows dashboard for authenticated users."""
         # Mock the ORM session
@@ -799,7 +801,7 @@ class TestOAuthErrorHandling:
             sess["email"] = "admin@tenant1.com"
 
         # Mock database for tenant lookup
-        with patch("admin_ui.get_db_session") as mock_conn:
+        with patch("src.admin.utils.get_db_session") as mock_conn:
             cursor = MagicMock()
             cursor.fetchone.return_value = ("Tenant 2",)
             mock_conn.return_value.execute.return_value = cursor

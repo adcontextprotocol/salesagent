@@ -19,7 +19,7 @@
             <p class="alternative-options">
                 Or you can:
                 <a href="{{ url_for('products.browse_templates', tenant_id=tenant_id) }}">browse templates</a> |
-                <a href="{{ url_for('products.bulk_product_upload_form', tenant_id=tenant_id) }}">bulk upload</a> |
+                <a href="{{ url_for('products.bulk_upload_form', tenant_id=tenant_id) }}">bulk upload</a> |
                 <a href="{{ url_for('products.add_product', tenant_id=tenant_id) }}">create manually</a>
             </p>
         </div>
@@ -31,7 +31,7 @@
         <div style="display: flex; gap: 0.5rem;">
             <a href="{{ url_for('tenants.dashboard', tenant_id=tenant_id) }}" class="btn btn-secondary">← Back to Home</a>
             <a href="{{ url_for('products.browse_templates', tenant_id=tenant_id) }}" class="btn btn-primary">Browse Templates</a>
-            <a href="{{ url_for('products.bulk_product_upload_form', tenant_id=tenant_id) }}" class="btn btn-secondary">Bulk Upload</a>
+            <a href="{{ url_for('products.bulk_upload_form', tenant_id=tenant_id) }}" class="btn btn-secondary">Bulk Upload</a>
             <a href="{{ url_for('products.add_product_ai_form', tenant_id=tenant_id) }}" class="btn btn-secondary">Add with AI</a>
             <a href="{{ url_for('products.add_product', tenant_id=tenant_id) }}" class="btn btn-secondary">Add Manually</a>
         </div>
@@ -101,7 +101,7 @@
                 </td>
                 <td>
                     <div style="display: flex; gap: 0.5rem;">
-                        <a href="{{ url_for('products.edit_product_basic', tenant_id=tenant_id, product_id=product.product_id) }}" class="btn btn-secondary btn-sm">Edit</a>
+                        <a href="{{ url_for('products.edit_product', tenant_id=tenant_id, product_id=product.product_id) }}" class="btn btn-secondary btn-sm">Edit</a>
                         {% if adapter_ui_endpoint %}
                         <a href="{{ adapter_ui_endpoint }}/{{ tenant_id }}/{{ product.product_id }}" class="btn btn-sm">Configure</a>
                         {% endif %}
