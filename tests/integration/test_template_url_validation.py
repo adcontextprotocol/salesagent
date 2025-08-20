@@ -91,9 +91,9 @@ class TestTemplateUrlValidation:
     def test_critical_admin_routes_exist(self):
         """Test that critical admin routes exist and are registered."""
         critical_routes = [
-            ("settings", "/settings"),  # Super admin settings
-            ("mcp_test", "/mcp-test"),  # MCP protocol test
-            ("index", "/"),  # Main dashboard
+            ("superadmin_settings.superadmin_settings", "/settings"),  # Super admin settings
+            ("core.mcp_test", "/mcp-test"),  # MCP protocol test
+            ("core.index", "/"),  # Main dashboard
             ("auth.login", "/login"),  # Login page
             ("auth.logout", "/logout"),  # Logout
             ("tenants.dashboard", "/tenant/<tenant_id>"),  # Tenant dashboard

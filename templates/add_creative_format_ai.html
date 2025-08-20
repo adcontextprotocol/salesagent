@@ -66,7 +66,7 @@
 
             <div style="margin-top: 2rem;">
                 <button type="submit" class="btn btn-primary">Discover Format</button>
-                <a href="{{ url_for('creatives.list_creative_formats', tenant_id=tenant_id) }}" class="btn btn-secondary">Cancel</a>
+                <a href="{{ url_for('creatives.index', tenant_id=tenant_id) }}" class="btn btn-secondary">Cancel</a>
             </div>
         </form>
     </div>
@@ -311,7 +311,7 @@ document.getElementById('format-discovery-form').addEventListener('submit', asyn
     }
 
     try {
-        const response = await fetch(`{{ url_for('creatives.analyze_creative_format', tenant_id=tenant_id) }}`, {
+        const response = await fetch(`{{ url_for('creatives.analyze', tenant_id=tenant_id) }}`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -390,16 +390,16 @@ document.getElementById('save-format-form').addEventListener('submit', async fun
     discoveredFormat.max_file_size_kb = parseInt(formData.get('max_file_size_kb')) || null;
 
     try {
-        const response = await fetch(`{{ url_for('creatives.save_creative_format', tenant_id=tenant_id) }}`, {
+        const response = await fetch(`{{ url_for('creatives.save', tenant_id=tenant_id) }}`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
             },
-            body: JSON.stringify({ format: discoveredFormat })
+            body: JSON.stringify(discoveredFormat)
         });
 
         if (response.ok) {
-            window.location.href = `{{ url_for('creatives.list_creative_formats', tenant_id=tenant_id) }}`;
+            window.location.href = `{{ url_for('creatives.index', tenant_id=tenant_id) }}`;
         } else {
             const error = await response.json();
             alert('Error: ' + (error.error || 'Failed to save format'));
