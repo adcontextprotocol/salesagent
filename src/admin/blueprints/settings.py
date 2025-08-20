@@ -143,7 +143,7 @@ def tenant_settings(tenant_id, section=None):
 def update_general(tenant_id):
     """Update general tenant settings."""
     try:
-        tenant_name = request.form.get("tenant_name", "").strip()
+        tenant_name = request.form.get("name", "").strip()
         if not tenant_name:
             flash("Tenant name is required", "error")
             return redirect(url_for("settings.tenant_settings", tenant_id=tenant_id, section="general"))
