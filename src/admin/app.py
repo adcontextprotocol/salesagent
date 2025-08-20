@@ -19,7 +19,7 @@ from src.admin.blueprints.operations import operations_bp
 from src.admin.blueprints.policy import policy_bp
 from src.admin.blueprints.principals import principals_bp
 from src.admin.blueprints.products import products_bp
-from src.admin.blueprints.settings import settings_bp
+from src.admin.blueprints.settings import settings_bp, superadmin_settings_bp
 from src.admin.blueprints.tenants import tenants_bp
 from src.admin.blueprints.users import users_bp
 
@@ -75,6 +75,7 @@ def create_app(config=None):
     # Register blueprints
     app.register_blueprint(core_bp)  # Core routes (/, /health, /static, /mcp-test)
     app.register_blueprint(auth_bp)  # No url_prefix - auth routes are at root
+    app.register_blueprint(superadmin_settings_bp)  # Superadmin settings at /settings
     app.register_blueprint(tenants_bp, url_prefix="/tenant")
     app.register_blueprint(products_bp, url_prefix="/tenant/<tenant_id>/products")
     app.register_blueprint(principals_bp, url_prefix="/tenant/<tenant_id>")

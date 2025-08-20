@@ -13,12 +13,13 @@ from src.admin.utils import get_tenant_config_from_db, require_auth, require_ten
 
 logger = logging.getLogger(__name__)
 
-# Create blueprint
+# Create blueprints - separate for superadmin and tenant settings
+superadmin_settings_bp = Blueprint("superadmin_settings", __name__)
 settings_bp = Blueprint("settings", __name__)
 
 
 # Superadmin settings routes
-@settings_bp.route("/settings")
+@superadmin_settings_bp.route("/settings")
 @require_auth(admin_only=True)
 def superadmin_settings():
     """Superadmin settings page."""
@@ -38,7 +39,7 @@ def superadmin_settings():
     )
 
 
-@settings_bp.route("/settings/update", methods=["POST"])
+@superadmin_settings_bp.route("/settings/update", methods=["POST"])
 @require_auth(admin_only=True)
 def update_superadmin_settings():
     """Update superadmin settings."""
@@ -75,7 +76,7 @@ def update_superadmin_settings():
             logger.error(f"Error updating settings: {e}", exc_info=True)
             flash(f"Error updating settings: {str(e)}", "error")
 
-    return redirect(url_for("settings.superadmin_settings"))
+    return redirect(url_for("superadmin_settings.superadmin_settings"))
 
 
 # Tenant settings routes
