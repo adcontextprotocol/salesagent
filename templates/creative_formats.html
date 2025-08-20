@@ -7,7 +7,7 @@
     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
         <h2>Creative Formats - {{ tenant_name }}</h2>
         <div style="display: flex; gap: 0.5rem;">
-            <a href="{{ url_for('tenants.dashboard', tenant_id=tenant_id) }}" class="btn btn-secondary">← Back to Home</a>
+            <a href="{{ url_for('tenant_dashboard', tenant_id=tenant_id) }}" class="btn btn-secondary">← Back to Home</a>
             {% if session.role == 'super_admin' %}
             <button onclick="syncStandardFormats()" class="btn btn-secondary">Sync Standard Formats</button>
             {% endif %}

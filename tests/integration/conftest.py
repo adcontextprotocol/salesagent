@@ -4,10 +4,17 @@ Integration test specific fixtures.
 These fixtures are for tests that require database and service integration.
 """
 
+import json
 import os
+from datetime import UTC, datetime
 from unittest.mock import MagicMock, patch
 
 import pytest
+
+from admin_ui import app as admin_app
+from database_session import get_db_session
+from models import Tenant
+from tests.fixtures import TenantFactory
 
 
 @pytest.fixture(scope="function")  # Changed to function scope for better isolation
@@ -79,6 +86,51 @@ def integration_db():
         os.unlink(db_path)
     except Exception:
         pass  # Ignore cleanup errors
+
+
+@pytest.fixture
+def admin_client(integration_db):
+    """Create test client for admin UI with proper configuration."""
+    admin_app.config["TESTING"] = True
+    admin_app.config["SECRET_KEY"] = "test-secret-key"
+    admin_app.config["PROPAGATE_EXCEPTIONS"] = True  # Critical for catching template errors
+    with admin_app.test_client() as client:
+        yield client
+
+
+@pytest.fixture
+def authenticated_admin_session(admin_client):
+    """Create an authenticated session for admin UI testing."""
+    with admin_client.session_transaction() as sess:
+        sess["authenticated"] = True
+        sess["role"] = "super_admin"
+        sess["email"] = "test@example.com"
+    return admin_client
+
+
+@pytest.fixture
+def test_tenant_with_data(integration_db):
+    """Create a test tenant in the database with proper configuration."""
+    tenant_data = TenantFactory.create()
+    now = datetime.now(UTC)
+
+    with get_db_session() as db_session:
+        tenant = Tenant(
+            tenant_id=tenant_data["tenant_id"],
+            name=tenant_data["name"],
+            subdomain=tenant_data["subdomain"],
+            is_active=tenant_data["is_active"],
+            ad_server="mock",
+            auto_approve_formats=json.dumps([]),
+            human_review_required=False,
+            policy_settings=json.dumps({}),
+            created_at=now,
+            updated_at=now,
+        )
+        db_session.add(tenant)
+        db_session.commit()
+
+    return tenant_data
 
 
 @pytest.fixture

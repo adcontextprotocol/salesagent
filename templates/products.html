@@ -29,7 +29,7 @@
     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
         <h2>Products - {{ tenant_name }}</h2>
         <div style="display: flex; gap: 0.5rem;">
-            <a href="{{ url_for('tenants.dashboard', tenant_id=tenant_id) }}" class="btn btn-secondary">← Back to Home</a>
+            <a href="{{ url_for('tenant_dashboard', tenant_id=tenant_id) }}" class="btn btn-secondary">← Back to Home</a>
             <a href="{{ url_for('browse_product_templates', tenant_id=tenant_id) }}" class="btn btn-primary">Browse Templates</a>
             <a href="{{ url_for('bulk_product_upload_form', tenant_id=tenant_id) }}" class="btn btn-secondary">Bulk Upload</a>
             <a href="{{ url_for('add_product_ai_form', tenant_id=tenant_id) }}" class="btn btn-secondary">Add with AI</a>
