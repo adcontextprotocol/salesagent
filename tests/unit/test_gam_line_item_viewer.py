@@ -315,8 +315,9 @@ class TestGAMLineItemViewer:
 
     def test_convert_line_item_to_product_json(self):
         """Test conversion of GAM line item to internal product JSON format."""
-        from src.admin.gam_utils import convert_line_item_to_product_json
         from types import SimpleNamespace
+
+        from src.admin.gam_utils import convert_line_item_to_product_json
 
         # Create an object with attributes instead of a dict
         line_item_dict = {
@@ -324,15 +325,19 @@ class TestGAMLineItemViewer:
             "name": "Test Line Item",
             "lineItemType": "STANDARD",
             "costType": "CPM",
-            "costPerUnit": SimpleNamespace(microAmount=4000000),
+            "costPerUnit": SimpleNamespace(microAmount=4000000000),  # $4 CPM = 4 billion micro
             "unitsBought": 1000000,
             "targeting": SimpleNamespace(
                 geoTargeting=SimpleNamespace(
                     targetedLocations=[SimpleNamespace(id=2840, type="COUNTRY", displayName="United States")]
                 ),
-                inventoryTargeting=SimpleNamespace(targetedAdUnits=[SimpleNamespace(adUnitId="12345", includeDescendants=True)]),
+                inventoryTargeting=SimpleNamespace(
+                    targetedAdUnits=[SimpleNamespace(adUnitId="12345", includeDescendants=True)]
+                ),
             ),
-            "creativePlaceholders": [SimpleNamespace(size=SimpleNamespace(width=300, height=250), expectedCreativeCount=1)],
+            "creativePlaceholders": [
+                SimpleNamespace(size=SimpleNamespace(width=300, height=250), expectedCreativeCount=1)
+            ],
         }
         line_item = SimpleNamespace(**line_item_dict)
 
@@ -342,7 +347,7 @@ class TestGAMLineItemViewer:
                 id=138524791074,
                 name="Test Creative",
                 size=SimpleNamespace(width=300, height=250),
-                **{"Creative.Type": "ImageCreative"}
+                **{"Creative.Type": "ImageCreative"},
             )
         ]
 
