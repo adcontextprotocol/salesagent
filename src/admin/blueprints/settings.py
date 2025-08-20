@@ -193,19 +193,25 @@ def update_general(tenant_id):
 def update_adapter(tenant_id):
     """Update the active adapter for a tenant."""
     try:
-        # Always expect JSON from our frontend
-        if not request.is_json:
-            return jsonify({"success": False, "error": "Invalid request format. Expected JSON."}), 400
-
-        new_adapter = request.json.get("adapter")
+        # Support both JSON (from our frontend) and form data (from tests)
+        if request.is_json:
+            new_adapter = request.json.get("adapter")
+        else:
+            new_adapter = request.form.get("adapter")
 
         if not new_adapter:
-            return jsonify({"success": False, "error": "No adapter selected"}), 400
+            if request.is_json:
+                return jsonify({"success": False, "error": "No adapter selected"}), 400
+            flash("No adapter selected", "error")
+            return redirect(url_for("settings.tenant_settings", tenant_id=tenant_id, section="adapter"))
 
         with get_db_session() as db_session:
             tenant = db_session.query(Tenant).filter_by(tenant_id=tenant_id).first()
             if not tenant:
-                return jsonify({"success": False, "error": "Tenant not found"}), 404
+                if request.is_json:
+                    return jsonify({"success": False, "error": "Tenant not found"}), 404
+                flash("Tenant not found", "error")
+                return redirect(url_for("core.index"))
 
             # Update or create adapter config
             adapter_config_obj = tenant.adapter_config
@@ -219,18 +225,25 @@ def update_adapter(tenant_id):
                 adapter_config_obj = AdapterConfig(tenant_id=tenant_id, adapter_type=new_adapter)
                 db_session.add(adapter_config_obj)
 
-            # Handle adapter-specific configuration (if provided in the JSON)
+            # Handle adapter-specific configuration
             if new_adapter == "google_ad_manager":
-                network_code = (
-                    request.json.get("gam_network_code", "").strip() if request.json.get("gam_network_code") else ""
-                )
-                manual_approval = request.json.get("gam_manual_approval", False)
+                if request.is_json:
+                    network_code = (
+                        request.json.get("gam_network_code", "").strip() if request.json.get("gam_network_code") else ""
+                    )
+                    manual_approval = request.json.get("gam_manual_approval", False)
+                else:
+                    network_code = request.form.get("gam_network_code", "").strip()
+                    manual_approval = request.form.get("gam_manual_approval") == "on"
 
                 if network_code:
                     adapter_config_obj.gam_network_code = network_code
                 adapter_config_obj.gam_manual_approval_required = manual_approval
             elif new_adapter == "mock":
-                dry_run = request.json.get("mock_dry_run", False)
+                if request.is_json:
+                    dry_run = request.json.get("mock_dry_run", False)
+                else:
+                    dry_run = request.form.get("mock_dry_run") == "on"
                 adapter_config_obj.mock_dry_run = dry_run
 
             # Update the tenant
@@ -238,11 +251,21 @@ def update_adapter(tenant_id):
             tenant.updated_at = datetime.now(UTC)
             db_session.commit()
 
-            return jsonify({"success": True, "message": f"Adapter changed to {new_adapter}"}), 200
+            # Return appropriate response based on request type
+            if request.is_json:
+                return jsonify({"success": True, "message": f"Adapter changed to {new_adapter}"}), 200
+
+            flash(f"Adapter changed to {new_adapter}", "success")
+            return redirect(url_for("settings.tenant_settings", tenant_id=tenant_id, section="adapter"))
 
     except Exception as e:
         logger.error(f"Error updating adapter: {e}", exc_info=True)
-        return jsonify({"success": False, "error": str(e)}), 400
+
+        if request.is_json:
+            return jsonify({"success": False, "error": str(e)}), 400
+
+        flash(f"Error updating adapter: {str(e)}", "error")
+        return redirect(url_for("settings.tenant_settings", tenant_id=tenant_id, section="adapter"))
 
 
 @settings_bp.route("/slack", methods=["POST"])
