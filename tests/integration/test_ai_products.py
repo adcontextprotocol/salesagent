@@ -228,6 +228,8 @@ class TestProductAPIs:
             sess["email"] = "test@example.com"
             sess["role"] = "super_admin"
             sess["tenant_id"] = "test_tenant"
+            # Add user dict for require_auth decorator
+            sess["user"] = {"email": "test@example.com", "role": "super_admin"}
         return client
 
     def test_product_suggestions_api(self, client, auth_session, integration_db):
@@ -267,8 +269,8 @@ class TestProductAPIs:
                 }
             ]
 
-            # Test with industry filter
-            response = client.get(f"/api/tenant/{tenant_id}/products/suggestions?industry=news")
+            # Test with industry filter (use auth_session, not client)
+            response = auth_session.get(f"/api/tenant/{tenant_id}/products/suggestions?industry=news")
             if response.status_code != 200:
                 print(f"Response: {response.status_code}")
                 print(f"Data: {response.data}")
