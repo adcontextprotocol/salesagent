@@ -30,8 +30,9 @@ class TestTenantDashboard:
         # Should NOT contain error messages
         assert b"Error loading dashboard" not in response.data
         assert b"AttributeError" not in response.data
-        assert b"500" not in response.data
+        # Don't check for "500" as it appears in Socket.IO config (reconnectionDelay: 5000)
         assert b"Internal Server Error" not in response.data
+        assert b"500 Internal" not in response.data  # More specific error check
 
     def test_dashboard_with_media_buys(self, authenticated_admin_session, integration_db):
         """Test dashboard loads correctly with media buys using correct field names."""
