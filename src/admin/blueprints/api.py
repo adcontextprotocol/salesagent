@@ -1,8 +1,11 @@
 """API management blueprint."""
 
+import asyncio
 import logging
 from datetime import UTC, datetime, timedelta
 
+from fastmcp.client import Client
+from fastmcp.client.transports import StreamableHttpTransport
 from flask import Blueprint, jsonify, request
 from sqlalchemy import func, text
 
