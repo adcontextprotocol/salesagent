@@ -6,7 +6,7 @@ from datetime import UTC, datetime
 from flask import Blueprint, flash, redirect, render_template, request, url_for
 
 from database_session import get_db_session
-from models import Tenant, TenantUser
+from models import Tenant, User
 from src.admin.utils import require_tenant_access
 
 logger = logging.getLogger(__name__)
@@ -25,7 +25,7 @@ def list_users(tenant_id):
             flash("Tenant not found", "error")
             return redirect(url_for("index"))
 
-        users = db_session.query(TenantUser).filter_by(tenant_id=tenant_id).order_by(TenantUser.email).all()
+        users = db_session.query(User).filter_by(tenant_id=tenant_id).order_by(User.email).all()
 
         users_list = []
         for user in users:
@@ -69,7 +69,7 @@ def add_user(tenant_id):
 
         with get_db_session() as db_session:
             # Check if user already exists
-            existing = db_session.query(TenantUser).filter_by(tenant_id=tenant_id, email=email).first()
+            existing = db_session.query(User).filter_by(tenant_id=tenant_id, email=email).first()
             if existing:
                 flash(f"User {email} already exists", "error")
                 return redirect(url_for("users.list_users", tenant_id=tenant_id))
@@ -77,7 +77,7 @@ def add_user(tenant_id):
             # Create new user
             import uuid
 
-            user = TenantUser(
+            user = User(
                 tenant_id=tenant_id,
                 user_id=f"user_{uuid.uuid4().hex[:8]}",
                 email=email,
@@ -104,7 +104,7 @@ def toggle_user(tenant_id, user_id):
     """Toggle user active status."""
     try:
         with get_db_session() as db_session:
-            user = db_session.query(TenantUser).filter_by(tenant_id=tenant_id, user_id=user_id).first()
+            user = db_session.query(User).filter_by(tenant_id=tenant_id, user_id=user_id).first()
             if not user:
                 flash("User not found", "error")
                 return redirect(url_for("users.list_users", tenant_id=tenant_id))
@@ -133,7 +133,7 @@ def update_role(tenant_id, user_id):
             return redirect(url_for("users.list_users", tenant_id=tenant_id))
 
         with get_db_session() as db_session:
-            user = db_session.query(TenantUser).filter_by(tenant_id=tenant_id, user_id=user_id).first()
+            user = db_session.query(User).filter_by(tenant_id=tenant_id, user_id=user_id).first()
             if not user:
                 flash("User not found", "error")
                 return redirect(url_for("users.list_users", tenant_id=tenant_id))

@@ -8,7 +8,7 @@ import pytest
 # Add parent directory to path for imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../.."))
 
-from admin_ui import get_custom_targeting_mappings, translate_custom_targeting
+from src.admin.utils import get_custom_targeting_mappings, translate_custom_targeting
 
 
 @pytest.mark.unit

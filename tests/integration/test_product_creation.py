@@ -2,7 +2,9 @@
 
 import pytest
 
-from admin_ui import app
+from src.admin.app import create_app
+
+app, _ = create_app()
 from database_session import get_db_session
 from models import Product, Tenant
 

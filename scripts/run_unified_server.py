@@ -10,7 +10,10 @@ from fastapi.responses import RedirectResponse
 from starlette.middleware.sessions import SessionMiddleware
 
 # Import admin UI
-from admin_ui import app as flask_admin_app
+from src.admin.app import create_app
+
+# Create Flask app
+flask_admin_app, _ = create_app()
 
 # Import and setup database
 from database import init_db

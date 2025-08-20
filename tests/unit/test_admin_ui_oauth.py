@@ -33,8 +33,9 @@ with patch("database_session.get_db_session", return_value=mock_session):
         sys.modules["gam_inventory_service"] = MagicMock()
         sys.modules["gam_inventory_service"].get_db_session = MagicMock(return_value=mock_session)
 
-        # Now import admin_ui
-        from admin_ui import app, is_super_admin, is_tenant_admin
+        # Now from src.admin.app import create_app
+        from src.admin.app import create_app
+app, _ = create_app(), is_super_admin, is_tenant_admin
 
 
 @pytest.fixture

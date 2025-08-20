@@ -2737,7 +2737,10 @@ if os.environ.get("ADCP_UNIFIED_MODE"):
     from fastapi.middleware.wsgi import WSGIMiddleware
     from fastapi.responses import RedirectResponse
 
-    from admin_ui import app as flask_admin_app
+    from src.admin.app import create_app
+
+    # Create Flask app and get the app instance
+    flask_admin_app, _ = create_app()
 
     # Create WSGI middleware for Flask app
     admin_wsgi = WSGIMiddleware(flask_admin_app)

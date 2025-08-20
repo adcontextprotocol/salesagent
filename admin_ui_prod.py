@@ -10,7 +10,10 @@ os.environ["FLASK_DEBUG"] = "0"
 os.environ["WERKZEUG_DEBUG_PIN"] = "off"
 
 # Import admin_ui module
-import admin_ui
+from src.admin.app import create_app
+
+# Create the Flask app
+app, _ = create_app()
 
 # Start the application directly without app.run()
 if __name__ == "__main__":
@@ -21,11 +24,11 @@ if __name__ == "__main__":
         from waitress import serve
 
         print(f"Starting Admin UI with Waitress on port {port}")
-        serve(admin_ui.app, host="0.0.0.0", port=port, threads=4)
+        serve(app, host="0.0.0.0", port=port, threads=4)
     except ImportError:
         # Use werkzeug directly to avoid Flask's app.run() issues
         from werkzeug.serving import make_server
 
         print(f"Starting Admin UI with Werkzeug on port {port}")
-        server = make_server("0.0.0.0", port, admin_ui.app, threaded=True)
+        server = make_server("0.0.0.0", port, app, threaded=True)
         server.serve_forever()

@@ -443,9 +443,9 @@ class MockAdServer(AdServerAdapter):
             # Import here to avoid circular imports
             from functools import wraps
 
-            from admin_ui import require_auth
             from database_session import get_db_session
             from models import Product
+            from src.admin.utils import require_auth
 
             # Apply auth decorator manually
             @require_auth()

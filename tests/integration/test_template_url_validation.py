@@ -11,7 +11,9 @@ import pytest
 from flask import url_for
 from werkzeug.routing.exceptions import BuildError
 
-from admin_ui import app as admin_app
+from src.admin.app import create_app
+
+admin_app, _ = create_app()
 
 
 @pytest.mark.integration

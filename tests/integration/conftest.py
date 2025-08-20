@@ -11,7 +11,9 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from admin_ui import app as admin_app
+from src.admin.app import create_app
+
+admin_app, _ = create_app()
 from database_session import get_db_session
 from models import Tenant
 from tests.fixtures import TenantFactory
@@ -335,8 +337,9 @@ def mcp_server():
 def test_admin_app(integration_db):
     """Provide a test Admin UI app with real database."""
     # integration_db ensures database tables are created
-    from admin_ui import app
+    from src.admin.app import create_app
 
+    app, _ = create_app()
     app.config["TESTING"] = True
     app.config["SECRET_KEY"] = "test-secret-key"
     app.config["WTF_CSRF_ENABLED"] = False

@@ -15,7 +15,10 @@ if "WERKZEUG_SERVER_FD" in os.environ:
 
 # Import and run the admin UI
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import admin_ui
+from src.admin.app import create_app
+
+# Create Flask app
+app, socketio = create_app()
 
 if __name__ == "__main__":
     # Get port from environment
@@ -27,8 +30,8 @@ if __name__ == "__main__":
         from waitress import serve
 
         print(f"Using waitress WSGI server on port {port}")
-        serve(admin_ui.app, host="0.0.0.0", port=port)
+        serve(app, host="0.0.0.0", port=port)
     except ImportError:
         # Fallback to Flask's built-in server
         print("Waitress not available, using Flask's built-in server")
-        admin_ui.app.run(host="0.0.0.0", port=port, debug=False, use_reloader=False)
+        app.run(host="0.0.0.0", port=port, debug=False, use_reloader=False)

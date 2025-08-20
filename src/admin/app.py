@@ -78,7 +78,7 @@ def create_app(config=None):
     app.register_blueprint(tenants_bp, url_prefix="/tenant")
     app.register_blueprint(products_bp, url_prefix="/tenant/<tenant_id>/products")
     app.register_blueprint(principals_bp, url_prefix="/tenant/<tenant_id>")
-    app.register_blueprint(users_bp, url_prefix="/tenant/<tenant_id>/users")
+    app.register_blueprint(users_bp)  # Already has url_prefix in blueprint
     app.register_blueprint(gam_bp)
     app.register_blueprint(operations_bp, url_prefix="/tenant/<tenant_id>")
     app.register_blueprint(creatives_bp, url_prefix="/tenant/<tenant_id>/creative-formats")

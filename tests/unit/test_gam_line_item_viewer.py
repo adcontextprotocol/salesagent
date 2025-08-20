@@ -97,7 +97,9 @@ class TestGAMLineItemViewer:
         mock_creative_response,
     ):
         """Test successful retrieval of GAM line item data."""
-        from admin_ui import app
+        from src.admin.app import create_app
+
+        app, _ = create_app()
 
         # Mock the tenant config to enable GAM
         mock_get_tenant_config.return_value = {
@@ -247,7 +249,9 @@ class TestGAMLineItemViewer:
     @patch("admin_ui.get_db_session")
     def test_line_item_id_validation(self, mock_db):
         """Test that line item ID validation works correctly."""
-        from admin_ui import app
+        from src.admin.app import create_app
+
+        app, _ = create_app()
 
         # Setup database mock
         mock_conn = Mock()
@@ -309,7 +313,7 @@ class TestGAMLineItemViewer:
 
     def test_convert_line_item_to_product_json(self):
         """Test conversion of GAM line item to internal product JSON format."""
-        from admin_ui import convert_line_item_to_product_json
+        from src.admin.gam_utils import convert_line_item_to_product_json
 
         line_item = {
             "id": 7046143587,

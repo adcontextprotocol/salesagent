@@ -292,8 +292,9 @@ def flask_app():
             mock_inv_session.close = MagicMock()
             mock_inv_session.remove = MagicMock()
 
-            from admin_ui import app
+            from src.admin.app import create_app
 
+            app, _ = create_app()
             app.config["TESTING"] = True
             app.config["SECRET_KEY"] = "test-secret-key"
             return app

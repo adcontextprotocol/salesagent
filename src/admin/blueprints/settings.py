@@ -79,8 +79,8 @@ def update_superadmin_settings():
 
 
 # Tenant settings routes
-@settings_bp.route("/tenant/<tenant_id>/settings")
-@settings_bp.route("/tenant/<tenant_id>/settings/<section>")
+@settings_bp.route("/")
+@settings_bp.route("/<section>")
 @require_tenant_access()
 def tenant_settings(tenant_id, section=None):
     """Show tenant settings page."""
@@ -138,7 +138,7 @@ def tenant_settings(tenant_id, section=None):
     )
 
 
-@settings_bp.route("/tenant/<tenant_id>/settings/general", methods=["POST"])
+@settings_bp.route("/general", methods=["POST"])
 @require_tenant_access()
 def update_general(tenant_id):
     """Update general tenant settings."""
@@ -167,7 +167,7 @@ def update_general(tenant_id):
     return redirect(url_for("settings.tenant_settings", tenant_id=tenant_id, section="general"))
 
 
-@settings_bp.route("/tenant/<tenant_id>/settings/adapter", methods=["POST"])
+@settings_bp.route("/adapter", methods=["POST"])
 @require_tenant_access()
 def update_adapter(tenant_id):
     """Update the active adapter for a tenant."""
@@ -227,7 +227,7 @@ def update_adapter(tenant_id):
     return redirect(url_for("settings.tenant_settings", tenant_id=tenant_id, section="adapter"))
 
 
-@settings_bp.route("/tenant/<tenant_id>/settings/slack", methods=["POST"])
+@settings_bp.route("/slack", methods=["POST"])
 @require_tenant_access()
 def update_slack(tenant_id):
     """Update Slack integration settings."""

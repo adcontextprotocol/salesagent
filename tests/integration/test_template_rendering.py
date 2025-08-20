@@ -13,7 +13,9 @@ from flask import url_for
 from jinja2 import TemplateRuntimeError
 from werkzeug.routing.exceptions import BuildError
 
-from admin_ui import app
+from src.admin.app import create_app
+
+app, _ = create_app()
 
 
 @pytest.mark.requires_db
@@ -81,7 +83,9 @@ class TestTemplateRendering:
 
     def test_critical_url_for_calls_resolve(self, authenticated_admin_session, test_tenant_with_data):
         """Test that critical url_for calls in templates resolve correctly."""
-        from admin_ui import app
+        from src.admin.app import create_app
+
+        app, _ = create_app()
 
         with app.test_request_context():
             # Test the specific routes used in products.html (updated for blueprints)

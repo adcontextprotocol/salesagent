@@ -14,8 +14,9 @@ class TestMCPTestPageUnit:
     @pytest.fixture
     def app(self):
         """Create Flask app for testing."""
-        from admin_ui import app
+        from src.admin.app import create_app
 
+        app, _ = create_app()
         app.config["TESTING"] = True
         app.config["SECRET_KEY"] = "test-secret-key"
         return app

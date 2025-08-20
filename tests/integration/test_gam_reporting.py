@@ -11,7 +11,9 @@ from unittest.mock import MagicMock, Mock, patch
 import pytest
 
 from adapters.gam_reporting_service import GAMReportingService
-from admin_ui import app
+from src.admin.app import create_app
+
+app, _ = create_app()
 
 
 @pytest.fixture
