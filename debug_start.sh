@@ -15,7 +15,7 @@ python run_server.py > /tmp/mcp_server.log 2>&1 &
 MCP_PID=$!
 
 echo "Starting Admin UI on port 8001..."
-python admin_ui_refactored_prod.py > /tmp/admin_ui.log 2>&1 &
+python -m src.admin.server > /tmp/admin_ui.log 2>&1 &
 ADMIN_PID=$!
 
 # Wait and check
