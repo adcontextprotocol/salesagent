@@ -96,14 +96,34 @@ def dashboard(tenant_id):
                 else 0
             )
 
+            # Calculate pending buys
+            pending_buys = db_session.query(MediaBuy).filter_by(tenant_id=tenant_id, status="pending").count()
+
+            # Calculate tasks metrics
+            open_tasks = 0  # Could be calculated from human_tasks table if needed
+            overdue_tasks = 0  # Could be calculated from human_tasks with due dates
+
+            # Calculate advertiser metrics
+            active_advertisers = db_session.query(Principal).filter_by(tenant_id=tenant_id).count()
+
             # Calculate metrics for the template
             metrics = {
                 "total_revenue": total_spend_amount,
                 "active_buys": active_campaigns,
+                "pending_buys": pending_buys,
                 "pending_approvals": 0,  # Could be calculated from tasks if needed
                 "conversion_rate": 0.0,  # Could be calculated from actual data
                 "revenue_change": round(revenue_change, 1),
+                "revenue_change_abs": round(abs(revenue_change), 1),  # Absolute value for display
+                "open_tasks": open_tasks,
+                "overdue_tasks": overdue_tasks,
+                "active_advertisers": active_advertisers,
+                "total_advertisers": active_advertisers,  # Same for now, could differentiate active vs total
             }
+
+            # Prepare chart data for template
+            chart_labels = [d["date"] for d in revenue_data]
+            chart_data = [d["revenue"] for d in revenue_data]
 
             return render_template(
                 "tenant_dashboard.html",
@@ -114,8 +134,11 @@ def dashboard(tenant_id):
                 principals_count=principals_count,
                 products_count=products_count,
                 recent_buys=recent_buys,
+                recent_media_buys=recent_buys,  # Template expects this name
                 features=features,
                 revenue_data=json.dumps(revenue_data),
+                chart_labels=chart_labels,
+                chart_data=chart_data,
                 metrics=metrics,
             )
 
