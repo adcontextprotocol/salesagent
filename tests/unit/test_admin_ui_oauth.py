@@ -224,20 +224,56 @@ class TestOAuthCallback:
             "userinfo": {"email": "user@example.com", "name": "Test User"}
         }
 
-        # Mock is_tenant_admin to return multiple tenants
-        tenants = [("tenant-1", "Tenant One"), ("tenant-2", "Tenant Two")]
+        # Mock database session for multiple tenants
+        mock_db_session = MagicMock()
+        mock_query = MagicMock()
+
+        # Create mock User and Tenant objects
+        mock_user1 = MagicMock()
+        mock_user1.email = "user@example.com"
+        mock_user1.is_admin = True
+        mock_user1.name = "Test User"
+
+        mock_user2 = MagicMock()
+        mock_user2.email = "user@example.com"
+        mock_user2.is_admin = False
+        mock_user2.name = "Test User"
+
+        mock_tenant1 = MagicMock()
+        mock_tenant1.tenant_id = "tenant-1"
+        mock_tenant1.name = "Tenant One"
+
+        mock_tenant2 = MagicMock()
+        mock_tenant2.tenant_id = "tenant-2"
+        mock_tenant2.name = "Tenant Two"
+
+        # Mock the query result for multiple tenants
+        mock_query.query.return_value.join.return_value.filter.return_value.all.return_value = [
+            (mock_user1, mock_tenant1),
+            (mock_user2, mock_tenant2),
+        ]
+        mock_db_session.query = mock_query.query
+
         with patch("src.admin.utils.is_super_admin", return_value=False):
-            with patch("src.admin.utils.is_tenant_admin", return_value=tenants):
+            with patch("src.admin.blueprints.auth.get_db_session", return_value=mock_db_session):
+                mock_db_session.__enter__ = MagicMock(return_value=mock_db_session)
+                mock_db_session.__exit__ = MagicMock(return_value=None)
+
                 response = client.get("/auth/google/callback")
 
-                # Should show tenant selection page
-                assert response.status_code == 200
-                assert b"Select Tenant" in response.data
+                # Should redirect to tenant selection page
+                assert response.status_code == 302
+                assert "/auth/select-tenant" in response.location
 
-                # Check session has pre-auth info
+                # Check session has available tenants
                 with client.session_transaction() as sess:
-                    assert sess.get("pre_auth_email") == "user@example.com"
-                    assert sess.get("available_tenants") == tenants
+                    assert sess.get("user") == "user@example.com"
+                    available_tenants = sess.get("available_tenants")
+                    assert available_tenants is not None
+                    assert len(available_tenants) == 2
+                    assert available_tenants[0]["tenant_id"] == "tenant-1"
+                    assert available_tenants[0]["name"] == "Tenant One"
+                    assert available_tenants[1]["tenant_id"] == "tenant-2"
 
     def test_google_callback_unauthorized_user(self, client, mock_google_oauth):
         """Test Google OAuth callback for unauthorized user."""

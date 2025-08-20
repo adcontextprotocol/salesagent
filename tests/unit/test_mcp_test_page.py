@@ -38,7 +38,7 @@ class TestMCPTestPageUnit:
 
     def test_mcp_test_page_template_rendering(self, auth_client):
         """Test that the MCP test page renders with correct elements."""
-        with patch("admin_ui.get_db_session") as mock_db:
+        with patch("database_session.get_db_session") as mock_db:
             # Mock database results
             mock_conn = MagicMock()
             mock_cursor = MagicMock()
@@ -72,7 +72,7 @@ class TestMCPTestPageUnit:
     @patch("asyncio.new_event_loop")
     def test_mcp_api_call_with_auth_header(self, mock_new_event_loop, mock_set_event_loop, auth_client):
         """Test that API call uses x-adcp-auth header correctly."""
-        with patch("admin_ui.get_db_session") as mock_db:
+        with patch("database_session.get_db_session") as mock_db:
             # Mock database
             mock_conn = MagicMock()
             mock_cursor = MagicMock()
@@ -132,7 +132,7 @@ class TestMCPTestPageUnit:
     @patch("asyncio.new_event_loop")
     def test_mcp_api_handles_tool_errors(self, mock_new_event_loop, mock_set_event_loop, auth_client):
         """Test that API handles MCP tool errors gracefully."""
-        with patch("admin_ui.get_db_session") as mock_db:
+        with patch("database_session.get_db_session") as mock_db:
             # Mock database
             mock_conn = MagicMock()
             mock_cursor = MagicMock()
@@ -199,7 +199,7 @@ class TestMCPTestPageUnit:
     @patch("asyncio.new_event_loop")
     def test_mcp_api_response_parsing(self, mock_new_event_loop, mock_set_event_loop, auth_client):
         """Test that API correctly parses different response formats."""
-        with patch("admin_ui.get_db_session") as mock_db:
+        with patch("database_session.get_db_session") as mock_db:
             # Mock database
             mock_conn = MagicMock()
             mock_cursor = MagicMock()
@@ -242,7 +242,7 @@ class TestMCPTestPageUnit:
     @patch("asyncio.new_event_loop")
     def test_mcp_country_targeting_in_params(self, mock_new_event_loop, mock_set_event_loop, auth_client):
         """Test that country targeting is properly included in parameters."""
-        with patch("admin_ui.get_db_session") as mock_db:
+        with patch("database_session.get_db_session") as mock_db:
             # Mock database
             mock_conn = MagicMock()
             mock_cursor = MagicMock()
