@@ -20,7 +20,6 @@ from flask import (
     redirect,
     render_template,
     request,
-    send_from_directory,
     session,
     url_for,
 )
@@ -776,204 +775,202 @@ def require_tenant_access(api_mode=False):
 
     # Verify tenant exists
 
+    #    with get_db_session() as db_session:
+    #        tenant = db_session.query(Tenant).filter_by(tenant_id=tenant_id, is_active=True).first()
+    #
+    #        if not tenant:
+    #            return redirect(url_for("auth.login") + "?error=Invalid+tenant+ID")
+    #
+    #        # Set up session for tenant user
+    #        session["authenticated"] = True
+    #        session["role"] = test_user["role"]
+    #        session["user_id"] = f"test_{email}"  # Fake user ID for testing
+    #        session["tenant_id"] = tenant_id
+    #        session["tenant_name"] = tenant.name
+    #        session["email"] = email
+    #        session["username"] = test_user["name"]
+    #
+    #        return redirect(url_for("tenant_dashboard", tenant_id=tenant_id))
+    #
+    #    # MIGRATED to blueprint
+    #    # @app.route("/test/login")
+    #    # def test_login_form():
+    #    """Show test login form for automated testing."""
+    #    if not TEST_MODE_ENABLED:
+    #        return "Test mode is not enabled", 404
+    #
+    #    return """
+    #    <!DOCTYPE html>
+    #    <html>
+    #    <head>
+    #        <title>Test Login - AdCP Admin</title>
+    #        <style>
+    #            body { font-family: Arial, sans-serif; background: #f5f5f5; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
+    #            .container { background: white; padding: 2rem; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); width: 400px; }
+    #            .warning { background: #ff9800; color: white; padding: 1rem; margin: -2rem -2rem 2rem -2rem; border-radius: 8px 8px 0 0; text-align: center; }
+    #            h1 { color: #333; margin: 0 0 1.5rem 0; }
+    #            .form-group { margin-bottom: 1rem; }
+    #            label { display: block; margin-bottom: 0.5rem; color: #555; }
+    #            input, select { width: 100%; padding: 0.5rem; border: 1px solid #ddd; border-radius: 4px; }
+    #            button { background: #4285f4; color: white; border: none; padding: 0.75rem 1.5rem; border-radius: 4px; cursor: pointer; width: 100%; }
+    #            button:hover { background: #357ae8; }
+    #            .test-users { margin-top: 2rem; padding: 1rem; background: #f9f9f9; border-radius: 4px; }
+    #            .test-users h3 { margin-top: 0; }
+    #            .test-users code { background: #eee; padding: 0.2rem 0.4rem; border-radius: 3px; }
+    #        </style>
+    #    </head>
+    #    <body>
+    #        <div class="container">
+    #            <div class="warning">⚠️ TEST MODE - NOT FOR PRODUCTION USE</div>
+    #            <h1>Test Login</h1>
+    #            <form method="POST" action="/test/auth">
+    #                <div class="form-group">
+    #                    <label>Email:</label>
+    #                    <select name="email" required>
+    #                        <option value="">Select a test user...</option>
+    #                        <option value="test_super_admin@example.com">Test Super Admin</option>
+    #                        <option value="test_tenant_admin@example.com">Test Tenant Admin</option>
+    #                        <option value="test_tenant_user@example.com">Test Tenant User</option>
+    #                    </select>
+    #                </div>
+    #                <div class="form-group">
+    #                    <label>Password:</label>
+    #                    <input type="password" name="password" placeholder="test123" required>
+    #                </div>
+    #                <div class="form-group">
+    #                    <label>Tenant ID (optional, required for tenant users):</label>
+    #                    <input type="text" name="tenant_id" placeholder="e.g., tenant_abc123">
+    #                </div>
+    #                <button type="submit">Test Login</button>
+    #            </form>
+    #            <div class="test-users">
+    #                <h3>Available Test Users:</h3>
+    #                <ul>
+    #                    <li><code>test_super_admin@example.com</code> - Full admin access</li>
+    #                    <li><code>test_tenant_admin@example.com</code> - Tenant admin (requires tenant_id)</li>
+    #                    <li><code>test_tenant_user@example.com</code> - Tenant user (requires tenant_id)</li>
+    #                </ul>
+    #                <p>All test users use password: <code>test123</code></p>
+    #            </div>
+    #        </div>
+    #    </body>
+    #    </html>
+    #    """
+    #
+    #
+    ## Route removed - using tenant_dashboard as the main route now
+    #
+    #
+    ## MIGRATING: This simple health check will be handled by a direct route
+    ## Keeping it active for now as it doesn't conflict with blueprints
+    ## MIGRATED: Moved to src/admin/blueprints/core.py
+    ## @app.route("/health")
+    ## def health():
+    #    """Health check endpoint for monitoring."""
+    #    return "OK", 200
+    #
+    #
+    ## MIGRATED: Moved to src/admin/blueprints/core.py
+    ## @app.route("/")
+    ## @require_auth()
+    ## def index():
+    #    """Dashboard showing all tenants (super admin) or redirect to tenant page (tenant admin)."""
+    #    # Tenant admins should go directly to their tenant page
+    #    if session.get("role") == "tenant_admin":
+    #        return redirect(url_for("tenant_dashboard", tenant_id=session.get("tenant_id")))
+    #
+    #    # Super admins see all tenants
+    #    with get_db_session() as db_session:
+    #        tenant_objects = db_session.query(Tenant).order_by(Tenant.created_at.desc()).all()
+    #
+    #        tenants = []
+    #        for tenant in tenant_objects:
+    #            # Convert datetime if it's a string
+    #            created_at = tenant.created_at
+    #            if isinstance(created_at, str):
+    #                try:
+    #                    created_at = datetime.fromisoformat(created_at.replace("T", " "))
+    #                except:
+    #                    pass
+    #
+    #            tenants.append(
+    #                {
+    #                    "tenant_id": tenant.tenant_id,
+    #                    "name": tenant.name,
+    #                    "subdomain": tenant.subdomain,
+    #                    "is_active": tenant.is_active,
+    #                    "created_at": created_at,
+    #                }
+    #            )
+    #
+    #        return render_template("index.html", tenants=tenants)
+    #
+    #
+    ## MIGRATED: Moved to src/admin/blueprints/settings.py
+    ## @app.route("/settings")
+    ## @require_auth(admin_only=True)
+    ## def settings():
+    ##     """Superadmin settings page."""
+    #     with get_db_session() as db_session:
+    #         # Get all superadmin config values
+    #         config_objects = db_session.query(SuperadminConfig).order_by(SuperadminConfig.config_key).all()
+    #
+    #         config_items = {}
+    #         for config in config_objects:
+    #             config_items[config.config_key] = {
+    #                 "value": config.config_value if config.config_value else "",
+    #                 "description": config.description if config.description else "",
+    #             }
+    #
+    #         return render_template("settings.html", config_items=config_items)
 
-#    with get_db_session() as db_session:
-#        tenant = db_session.query(Tenant).filter_by(tenant_id=tenant_id, is_active=True).first()
-#
-#        if not tenant:
-#            return redirect(url_for("auth.login") + "?error=Invalid+tenant+ID")
-#
-#        # Set up session for tenant user
-#        session["authenticated"] = True
-#        session["role"] = test_user["role"]
-#        session["user_id"] = f"test_{email}"  # Fake user ID for testing
-#        session["tenant_id"] = tenant_id
-#        session["tenant_name"] = tenant.name
-#        session["email"] = email
-#        session["username"] = test_user["name"]
-#
-#        return redirect(url_for("tenant_dashboard", tenant_id=tenant_id))
-#
-#    # MIGRATED to blueprint
-#    # @app.route("/test/login")
-#    # def test_login_form():
-#    """Show test login form for automated testing."""
-#    if not TEST_MODE_ENABLED:
-#        return "Test mode is not enabled", 404
-#
-#    return """
-#    <!DOCTYPE html>
-#    <html>
-#    <head>
-#        <title>Test Login - AdCP Admin</title>
-#        <style>
-#            body { font-family: Arial, sans-serif; background: #f5f5f5; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
-#            .container { background: white; padding: 2rem; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); width: 400px; }
-#            .warning { background: #ff9800; color: white; padding: 1rem; margin: -2rem -2rem 2rem -2rem; border-radius: 8px 8px 0 0; text-align: center; }
-#            h1 { color: #333; margin: 0 0 1.5rem 0; }
-#            .form-group { margin-bottom: 1rem; }
-#            label { display: block; margin-bottom: 0.5rem; color: #555; }
-#            input, select { width: 100%; padding: 0.5rem; border: 1px solid #ddd; border-radius: 4px; }
-#            button { background: #4285f4; color: white; border: none; padding: 0.75rem 1.5rem; border-radius: 4px; cursor: pointer; width: 100%; }
-#            button:hover { background: #357ae8; }
-#            .test-users { margin-top: 2rem; padding: 1rem; background: #f9f9f9; border-radius: 4px; }
-#            .test-users h3 { margin-top: 0; }
-#            .test-users code { background: #eee; padding: 0.2rem 0.4rem; border-radius: 3px; }
-#        </style>
-#    </head>
-#    <body>
-#        <div class="container">
-#            <div class="warning">⚠️ TEST MODE - NOT FOR PRODUCTION USE</div>
-#            <h1>Test Login</h1>
-#            <form method="POST" action="/test/auth">
-#                <div class="form-group">
-#                    <label>Email:</label>
-#                    <select name="email" required>
-#                        <option value="">Select a test user...</option>
-#                        <option value="test_super_admin@example.com">Test Super Admin</option>
-#                        <option value="test_tenant_admin@example.com">Test Tenant Admin</option>
-#                        <option value="test_tenant_user@example.com">Test Tenant User</option>
-#                    </select>
-#                </div>
-#                <div class="form-group">
-#                    <label>Password:</label>
-#                    <input type="password" name="password" placeholder="test123" required>
-#                </div>
-#                <div class="form-group">
-#                    <label>Tenant ID (optional, required for tenant users):</label>
-#                    <input type="text" name="tenant_id" placeholder="e.g., tenant_abc123">
-#                </div>
-#                <button type="submit">Test Login</button>
-#            </form>
-#            <div class="test-users">
-#                <h3>Available Test Users:</h3>
-#                <ul>
-#                    <li><code>test_super_admin@example.com</code> - Full admin access</li>
-#                    <li><code>test_tenant_admin@example.com</code> - Tenant admin (requires tenant_id)</li>
-#                    <li><code>test_tenant_user@example.com</code> - Tenant user (requires tenant_id)</li>
-#                </ul>
-#                <p>All test users use password: <code>test123</code></p>
-#            </div>
-#        </div>
-#    </body>
-#    </html>
-#    """
-#
-#
-## Route removed - using tenant_dashboard as the main route now
-#
-#
-## MIGRATING: This simple health check will be handled by a direct route
-## Keeping it active for now as it doesn't conflict with blueprints
-## MIGRATED: Moved to src/admin/blueprints/core.py
-## @app.route("/health")
-## def health():
-#    """Health check endpoint for monitoring."""
-#    return "OK", 200
-#
-#
-## MIGRATED: Moved to src/admin/blueprints/core.py
-## @app.route("/")
-## @require_auth()
-## def index():
-#    """Dashboard showing all tenants (super admin) or redirect to tenant page (tenant admin)."""
-#    # Tenant admins should go directly to their tenant page
-#    if session.get("role") == "tenant_admin":
-#        return redirect(url_for("tenant_dashboard", tenant_id=session.get("tenant_id")))
-#
-#    # Super admins see all tenants
-#    with get_db_session() as db_session:
-#        tenant_objects = db_session.query(Tenant).order_by(Tenant.created_at.desc()).all()
-#
-#        tenants = []
-#        for tenant in tenant_objects:
-#            # Convert datetime if it's a string
-#            created_at = tenant.created_at
-#            if isinstance(created_at, str):
-#                try:
-#                    created_at = datetime.fromisoformat(created_at.replace("T", " "))
-#                except:
-#                    pass
-#
-#            tenants.append(
-#                {
-#                    "tenant_id": tenant.tenant_id,
-#                    "name": tenant.name,
-#                    "subdomain": tenant.subdomain,
-#                    "is_active": tenant.is_active,
-#                    "created_at": created_at,
-#                }
-#            )
-#
-#        return render_template("index.html", tenants=tenants)
-#
-#
-## MIGRATED: Moved to src/admin/blueprints/settings.py
-## @app.route("/settings")
-## @require_auth(admin_only=True)
-## def settings():
-##     """Superadmin settings page."""
-#     with get_db_session() as db_session:
-#         # Get all superadmin config values
-#         config_objects = db_session.query(SuperadminConfig).order_by(SuperadminConfig.config_key).all()
-#
-#         config_items = {}
-#         for config in config_objects:
-#             config_items[config.config_key] = {
-#                 "value": config.config_value if config.config_value else "",
-#                 "description": config.description if config.description else "",
-#             }
-#
-#         return render_template("settings.html", config_items=config_items)
+    # MIGRATED: Moved to src/admin/blueprints/settings.py
+    # @app.route("/settings/update", methods=["POST"])
+    # @require_auth(admin_only=True)
+    # def update_settings():
+    #     """Update superadmin settings."""
+    #     with get_db_session() as db_session:
+    #         try:
+    #             # Update GAM OAuth settings
+    #             gam_client_id = request.form.get("gam_oauth_client_id", "").strip()
+    #             gam_client_secret = request.form.get("gam_oauth_client_secret", "").strip()
+    #
+    #             # Update GAM client ID
+    #             client_id_config = db_session.query(SuperadminConfig).filter_by(config_key="gam_oauth_client_id").first()
+    #             if client_id_config:
+    #                 client_id_config.config_value = gam_client_id
+    #                 client_id_config.updated_at = datetime.now()
+    #                 client_id_config.updated_by = session.get("email")
+    #
+    #             # Update GAM client secret
+    #             client_secret_config = (
+    #                 db_session.query(SuperadminConfig).filter_by(config_key="gam_oauth_client_secret").first()
+    #             )
+    #             if client_secret_config:
+    #                 client_secret_config.config_value = gam_client_secret
+    #                 client_secret_config.updated_at = datetime.now()
+    #                 client_secret_config.updated_by = session.get("email")
+    #
+    #             db_session.commit()
+    #             flash("Settings updated successfully", "success")
+    #
+    #         except Exception as e:
+    #             flash(f"Error updating settings: {str(e)}", "error")
+    #
+    #     return redirect(url_for("settings"))
 
-
-# MIGRATED: Moved to src/admin/blueprints/settings.py
-# @app.route("/settings/update", methods=["POST"])
-# @require_auth(admin_only=True)
-# def update_settings():
-#     """Update superadmin settings."""
-#     with get_db_session() as db_session:
-#         try:
-#             # Update GAM OAuth settings
-#             gam_client_id = request.form.get("gam_oauth_client_id", "").strip()
-#             gam_client_secret = request.form.get("gam_oauth_client_secret", "").strip()
-#
-#             # Update GAM client ID
-#             client_id_config = db_session.query(SuperadminConfig).filter_by(config_key="gam_oauth_client_id").first()
-#             if client_id_config:
-#                 client_id_config.config_value = gam_client_id
-#                 client_id_config.updated_at = datetime.now()
-#                 client_id_config.updated_by = session.get("email")
-#
-#             # Update GAM client secret
-#             client_secret_config = (
-#                 db_session.query(SuperadminConfig).filter_by(config_key="gam_oauth_client_secret").first()
-#             )
-#             if client_secret_config:
-#                 client_secret_config.config_value = gam_client_secret
-#                 client_secret_config.updated_at = datetime.now()
-#                 client_secret_config.updated_by = session.get("email")
-#
-#             db_session.commit()
-#             flash("Settings updated successfully", "success")
-#
-#         except Exception as e:
-#             flash(f"Error updating settings: {str(e)}", "error")
-#
-#     return redirect(url_for("settings"))
-
-
-@app.route("/tenant/<tenant_id>/update", methods=["POST"])
-@require_auth()
-def update_tenant(tenant_id):
-    """Update tenant configuration."""
-    # Check access based on role
-    if session.get("role") == "viewer":
-        return "Access denied. Viewers cannot update configuration.", 403
-
-    # Check if user is trying to update another tenant
-    if session.get("role") in ["admin", "manager", "tenant_admin"] and session.get("tenant_id") != tenant_id:
-        return "Access denied. You can only update your own tenant.", 403
+    # MIGRATED to tenants_bp.update_tenant
+    # @app.route("/tenant/<tenant_id>/update", methods=["POST"])
+    # @require_auth()
+    # def update_tenant(tenant_id):
+    #     """Update tenant configuration."""
+    #     # Check access based on role
+    #     if session.get("role") == "viewer":
+    #         return "Access denied. Viewers cannot update configuration.", 403
+    #
+    #     # Check if user is trying to update another tenant
+    #     if session.get("role") in ["admin", "manager", "tenant_admin"] and session.get("tenant_id") != tenant_id:
+    #         return "Access denied. You can only update your own tenant.", 403
 
     #    with get_db_session() as db_session:
     #        try:
@@ -2149,15 +2146,15 @@ def update_tenant(tenant_id):
     finally:
         db_session.remove()
 
-
-# GAM Reporting Route
-@app.route("/tenant/<tenant_id>/reporting")
-@require_auth()
-def gam_reporting_dashboard(tenant_id):
-    """Display GAM reporting dashboard."""
-    # Verify tenant access
-    if session.get("role") != "super_admin" and session.get("tenant_id") != tenant_id:
-        return "Access denied", 403
+    # GAM Reporting Route
+    # MIGRATED to operations_bp.reporting
+    # @app.route("/tenant/<tenant_id>/reporting")
+    # @require_auth()
+    # def gam_reporting_dashboard(tenant_id):
+    #     """Display GAM reporting dashboard."""
+    #     # Verify tenant access
+    #     if session.get("role") != "super_admin" and session.get("tenant_id") != tenant_id:
+    #         return "Access denied", 403
 
     # Get tenant and check if it's using GAM
     #    with get_db_session() as db_session:
@@ -3712,11 +3709,11 @@ def gam_reporting_dashboard(tenant_id):
             500,
         )
 
-
-@app.route("/static/<path:path>")
-def send_static(path):
-    """Serve static files."""
-    return send_from_directory("static", path)
+    # MIGRATED to core_bp.send_static
+    # @app.route("/static/<path:path>")
+    # def send_static(path):
+    #     """Serve static files."""
+    #     return send_from_directory("static", path)
 
     # Product Management Routes
     # MIGRATED to products_bp.list_products
@@ -4343,18 +4340,18 @@ def send_static(path):
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-
-# Policy Management Routes
-@app.route("/tenant/<tenant_id>/policy")
-@require_auth()
-def policy_settings(tenant_id):
-    """View and manage policy settings for the tenant."""
-    # Check access
-    if session.get("role") == "viewer":
-        return "Access denied", 403
-
-    if session.get("role") == "tenant_admin" and session.get("tenant_id") != tenant_id:
-        return "Access denied", 403
+    # Policy Management Routes
+    # MIGRATED to policy_bp.index
+    # @app.route("/tenant/<tenant_id>/policy")
+    # @require_auth()
+    # def policy_settings(tenant_id):
+    #     """View and manage policy settings for the tenant."""
+    #     # Check access
+    #     if session.get("role") == "viewer":
+    #         return "Access denied", 403
+    #
+    #     if session.get("role") == "tenant_admin" and session.get("tenant_id") != tenant_id:
+    #         return "Access denied", 403
 
     #    with get_db_session() as db_session:
     #        # Get tenant info
@@ -4460,88 +4457,90 @@ def policy_settings(tenant_id):
     # @require_auth()
     # def update_policy_settings(tenant_id):
     #    """Update policy settings for the tenant."""
-    # Check access - only admins can update policy
-    if session.get("role") not in ["super_admin", "tenant_admin"]:
-        return "Access denied", 403
+    # MIGRATED to policy_bp.update
+    # # Check access - only admins can update policy
+    # if session.get("role") not in ["super_admin", "tenant_admin"]:
+    #     return "Access denied", 403
+    #
+    # if session.get("role") == "tenant_admin" and session.get("tenant_id") != tenant_id:
+    #     return "Access denied", 403
+    #
+    # try:
+    #     # Get current config
+    #     config = get_tenant_config_from_db(tenant_id)
+    #     if not config:
+    #         return jsonify({"error": "Tenant not found"}), 404
+    #
+    #     # Parse the form data for lists
+    #     def parse_textarea_lines(field_name):
+    #         """Parse textarea input into list of non-empty lines."""
+    #         text = request.form.get(field_name, "")
+    #         return [line.strip() for line in text.strip().split("\n") if line.strip()]
+    #
+    #     # Update policy settings
+    #     policy_settings = {
+    #         "enabled": request.form.get("enabled") == "on",
+    #         "require_manual_review": request.form.get("require_manual_review") == "on",
+    #         "prohibited_advertisers": parse_textarea_lines("prohibited_advertisers"),
+    #         "prohibited_categories": parse_textarea_lines("prohibited_categories"),
+    #         "prohibited_tactics": parse_textarea_lines("prohibited_tactics"),
+    #         # Keep default policies (they don't change from form)
+    #         "default_prohibited_categories": config.get("policy_settings", {}).get(
+    #             "default_prohibited_categories",
+    #             [
+    #                 "illegal_content",
+    #                 "hate_speech",
+    #                 "violence",
+    #                 "adult_content",
+    #                 "misleading_health_claims",
+    #                 "financial_scams",
+    #             ],
+    #         ),
+    #         "default_prohibited_tactics": config.get("policy_settings", {}).get(
+    #             "default_prohibited_tactics",
+    #             [
+    #                 "targeting_children_under_13",
+    #                 "discriminatory_targeting",
+    #                 "deceptive_claims",
+    #                 "impersonation",
+    #                 "privacy_violations",
+    #             ],
+    #         ),
+    #     }
+    #
+    #     config["policy_settings"] = policy_settings
+    #
+    #     # Update database
+    #     with get_db_session() as db_session:
+    #         tenant = db_session.query(Tenant).filter_by(tenant_id=tenant_id).first()
+    #         if tenant:
+    #             tenant.policy_settings = json.dumps(policy_settings)
+    #             db_session.commit()
+    #
+    #     return redirect(url_for("policy_settings", tenant_id=tenant_id))
+    #
+    # except Exception as e:
+    #     return f"Error: {e}", 400
+    pass  # Function body commented out - see policy_bp.update
 
-    if session.get("role") == "tenant_admin" and session.get("tenant_id") != tenant_id:
-        return "Access denied", 403
+    # MIGRATED to policy_bp.rules
+    # @app.route("/tenant/<tenant_id>/policy/rules", methods=["GET", "POST"])
+    # @require_auth()
+    # def manage_policy_rules(tenant_id):
+    #     """Redirect old policy rules URL to new comprehensive policy settings page."""
+    #     return redirect(url_for("policy_settings", tenant_id=tenant_id))
 
-    try:
-        # Get current config
-        config = get_tenant_config_from_db(tenant_id)
-        if not config:
-            return jsonify({"error": "Tenant not found"}), 404
-
-        # Parse the form data for lists
-        def parse_textarea_lines(field_name):
-            """Parse textarea input into list of non-empty lines."""
-            text = request.form.get(field_name, "")
-            return [line.strip() for line in text.strip().split("\n") if line.strip()]
-
-        # Update policy settings
-        policy_settings = {
-            "enabled": request.form.get("enabled") == "on",
-            "require_manual_review": request.form.get("require_manual_review") == "on",
-            "prohibited_advertisers": parse_textarea_lines("prohibited_advertisers"),
-            "prohibited_categories": parse_textarea_lines("prohibited_categories"),
-            "prohibited_tactics": parse_textarea_lines("prohibited_tactics"),
-            # Keep default policies (they don't change from form)
-            "default_prohibited_categories": config.get("policy_settings", {}).get(
-                "default_prohibited_categories",
-                [
-                    "illegal_content",
-                    "hate_speech",
-                    "violence",
-                    "adult_content",
-                    "misleading_health_claims",
-                    "financial_scams",
-                ],
-            ),
-            "default_prohibited_tactics": config.get("policy_settings", {}).get(
-                "default_prohibited_tactics",
-                [
-                    "targeting_children_under_13",
-                    "discriminatory_targeting",
-                    "deceptive_claims",
-                    "impersonation",
-                    "privacy_violations",
-                ],
-            ),
-        }
-
-        config["policy_settings"] = policy_settings
-
-        # Update database
-        with get_db_session() as db_session:
-            tenant = db_session.query(Tenant).filter_by(tenant_id=tenant_id).first()
-            if tenant:
-                tenant.policy_settings = json.dumps(policy_settings)
-                db_session.commit()
-
-        return redirect(url_for("policy_settings", tenant_id=tenant_id))
-
-    except Exception as e:
-        return f"Error: {e}", 400
-
-
-@app.route("/tenant/<tenant_id>/policy/rules", methods=["GET", "POST"])
-@require_auth()
-def manage_policy_rules(tenant_id):
-    """Redirect old policy rules URL to new comprehensive policy settings page."""
-    return redirect(url_for("policy_settings", tenant_id=tenant_id))
-
-
-@app.route("/tenant/<tenant_id>/policy/review/<task_id>", methods=["GET", "POST"])
-@require_auth()
-def review_policy_task(tenant_id, task_id):
-    """Review and approve/reject a policy review task."""
-    # Check access
-    if session.get("role") == "viewer":
-        return "Access denied", 403
-
-    if session.get("role") == "tenant_admin" and session.get("tenant_id") != tenant_id:
-        return "Access denied", 403
+    # MIGRATED to policy_bp.review_task
+    # @app.route("/tenant/<tenant_id>/policy/review/<task_id>", methods=["GET", "POST"])
+    # @require_auth()
+    # def review_policy_task(tenant_id, task_id):
+    #     """Review and approve/reject a policy review task."""
+    #     # Check access
+    #     if session.get("role") == "viewer":
+    #         return "Access denied", 403
+    #
+    #     if session.get("role") == "tenant_admin" and session.get("tenant_id") != tenant_id:
+    #         return "Access denied", 403
 
     #    with get_db_session() as db_session:
     #        if request.method == "POST":
@@ -5429,12 +5428,12 @@ def review_policy_task(tenant_id, task_id):
 
     return render_template("product_setup_wizard.html", tenant_id=tenant_id)
 
-
-@app.route("/tenant/<tenant_id>/check-inventory-sync")
-@require_auth()
-def check_inventory_sync(tenant_id):
-    """Check if GAM inventory has been synced for this tenant."""
-    # Check access
+    # MIGRATED to inventory_bp.check_inventory_sync
+    # @app.route("/tenant/<tenant_id>/check-inventory-sync")
+    # @require_auth()
+    # def check_inventory_sync(tenant_id):
+    #     """Check if GAM inventory has been synced for this tenant."""
+    #     # Check access
     if session.get("role") == "viewer":
         return jsonify({"error": "Access denied"}), 403
 
@@ -5483,12 +5482,12 @@ def check_inventory_sync(tenant_id):
         app.logger.error(f"Error checking inventory sync: {e}")
         return jsonify({"error": str(e)}), 500
 
-
-@app.route("/tenant/<tenant_id>/analyze-ad-server")
-@require_auth()
-def analyze_ad_server_inventory(tenant_id):
-    """Analyze ad server to discover audiences, formats, and placements."""
-    # Check access
+    # MIGRATED to inventory_bp.analyze_ad_server_inventory
+    # @app.route("/tenant/<tenant_id>/analyze-ad-server")
+    # @require_auth()
+    # def analyze_ad_server_inventory(tenant_id):
+    #     """Analyze ad server to discover audiences, formats, and placements."""
+    #     # Check access
     if session.get("role") == "viewer":
         return jsonify({"error": "Access denied"}), 403
 
@@ -6599,13 +6598,13 @@ if __name__ == "__main__":
         print("4. Download the JSON file")
         exit(1)
 
-# ============== MCP Protocol Testing Routes (Super Admin Only) ==============
+    # ============== MCP Protocol Testing Routes (Super Admin Only) ==============
 
-
-@app.route("/mcp-test")
-@require_auth(admin_only=True)
-def mcp_test():
-    """MCP protocol testing interface for super admins."""
+    # MIGRATED to core_bp.mcp_test
+    # @app.route("/mcp-test")
+    # @require_auth(admin_only=True)
+    # def mcp_test():
+    #     """MCP protocol testing interface for super admins."""
     # Get all tenants and their principals
     #    with get_db_session() as db_session:
     #        # Get tenants
@@ -6654,167 +6653,167 @@ def mcp_test():
     # def mcp_test_call():
     #    """Make an MCP call using the official client."""
     # For debugging, temporarily allow unauthenticated access if a special header is present
-    if request.headers.get("X-Debug-Mode") == "test":
-        # Allow debugging without auth
-        pass
-    else:
-        # Check authentication manually for API endpoint to return JSON on failure
-        if not session.get("authenticated"):
-            return (
-                jsonify(
-                    {
-                        "success": False,
-                        "error": "Authentication required. Please login again.",
-                    }
-                ),
-                401,
-            )
-        if session.get("role") != "super_admin":
-            return (
-                jsonify({"success": False, "error": "Super admin access required."}),
-                403,
-            )
+    # if request.headers.get("X-Debug-Mode") == "test":
+    # Allow debugging without auth
+    # pass
+    # else:
+    #     # Check authentication manually for API endpoint to return JSON on failure
+    #     if not session.get("authenticated"):
+    #         return (
+    #             jsonify(
+    #                 {
+    #                     "success": False,
+    #                     "error": "Authentication required. Please login again.",
+    #                 }
+    #             ),
+    #             401,
+    #         )
+    #     if session.get("role") != "super_admin":
+    #         return (
+    #             jsonify({"success": False, "error": "Super admin access required."}),
+    #             403,
+    #         )
 
-    try:
-        import asyncio
+    # try:
+    #     import asyncio
+    #
+    #     from fastmcp.client import Client
+    #     from fastmcp.client.transports import StreamableHttpTransport
+    #
+    #     data = request.json
+    #     if not data:
+    #         return jsonify({"success": False, "error": "Invalid request data"}), 400
+    #
+    #     tool_name = data.get("tool")
+    #     tool_params = data.get("params", {})
+    #     access_token = data.get("access_token")
+    #     # If the server URL is localhost, replace with internal Docker service name
+    #     server_url = data.get("server_url", "http://adcp-server:8080/mcp/")
+    #     if "localhost:8005" in server_url:
+    #         server_url = server_url.replace("localhost:8005", "adcp-server:8080")
+    #     elif "localhost:8080" in server_url:
+    #         server_url = server_url.replace("localhost:8080", "adcp-server:8080")
+    #
+    #     if not tool_name or not access_token:
+    #         return (
+    #             jsonify(
+    #                 {
+    #                     "success": False,
+    #                     "error": "Missing required parameters: tool and access_token",
+    #                 }
+    #             ),
+    #             400,
+    #         )
 
-        from fastmcp.client import Client
-        from fastmcp.client.transports import StreamableHttpTransport
+    #     # Look up the tenant for this token
+    #     with get_db_session() as db_session:
+    #         principal = db_session.query(Principal.tenant_id).filter_by(access_token=access_token).first()
+    #
+    #         tenant_id = principal[0] if principal else "default"
 
-        data = request.json
-        if not data:
-            return jsonify({"success": False, "error": "Invalid request data"}), 400
+    # Set up headers for authentication
+    # Include tenant header for proper principal resolution
+    # headers = {"x-adcp-auth": access_token, "x-adcp-tenant": tenant_id}
 
-        tool_name = data.get("tool")
-        tool_params = data.get("params", {})
-        access_token = data.get("access_token")
-        # If the server URL is localhost, replace with internal Docker service name
-        server_url = data.get("server_url", "http://adcp-server:8080/mcp/")
-        if "localhost:8005" in server_url:
-            server_url = server_url.replace("localhost:8005", "adcp-server:8080")
-        elif "localhost:8080" in server_url:
-            server_url = server_url.replace("localhost:8080", "adcp-server:8080")
+    # Log for debugging
+    # app.logger.info(f"MCP Test Call - Tool: {tool_name}, Server: {server_url}, Token: {access_token[:20]}...")
 
-        if not tool_name or not access_token:
-            return (
-                jsonify(
-                    {
-                        "success": False,
-                        "error": "Missing required parameters: tool and access_token",
-                    }
-                ),
-                400,
-            )
+    # async def make_call():
+    # """Make the actual MCP call."""
+    # transport = StreamableHttpTransport(server_url, headers=headers)
 
-        # Look up the tenant for this token
-        with get_db_session() as db_session:
-            principal = db_session.query(Principal.tenant_id).filter_by(access_token=access_token).first()
+    # async with Client(transport) as client:
+    # try:
+    # Some tools expect params wrapped in 'req' key, others don't
+    # Tools without req parameter: get_targeting_capabilities
+    # tools_without_req = ["get_targeting_capabilities"]
 
-            tenant_id = principal[0] if principal else "default"
+    # if tool_name in tools_without_req:
+    # arguments = tool_params or {}
+    # else:
+    # Most tools have a single parameter named 'req'
+    # arguments = {"req": tool_params} if tool_params else {"req": {}}
 
-        # Set up headers for authentication
-        # Include tenant header for proper principal resolution
-        headers = {"x-adcp-auth": access_token, "x-adcp-tenant": tenant_id}
+    # app.logger.info(f"Calling tool {tool_name} with arguments: {arguments}")
+    # result = await client.call_tool(tool_name, arguments)
 
-        # Log for debugging
-        app.logger.info(f"MCP Test Call - Tool: {tool_name}, Server: {server_url}, Token: {access_token[:20]}...")
+    # Convert result to dict if it's a pydantic model or handle TextContent
+    # if hasattr(result, "model_dump"):
+    # return {"success": True, "result": result.model_dump()}
+    # else:
+    # Handle various FastMCP response types
+    # import json as json_module
 
-        async def make_call():
-            """Make the actual MCP call."""
-            transport = StreamableHttpTransport(server_url, headers=headers)
+    # Check if it's a CallToolResult object
+    # if hasattr(result, "structured_content"):
+    # Use the structured_content which is already parsed
+    # content = result.structured_content
+    # Remove implementation_config from products (security - proprietary data)
+    # if isinstance(content, dict) and "products" in content:
+    # for product in content.get("products", []):
+    # if isinstance(product, dict) and "implementation_config" in product:
+    # del product["implementation_config"]
+    # return {"success": True, "result": content}
+    # elif hasattr(result, "data") and hasattr(result.data, "model_dump"):
+    # Use the data field if it has model_dump
+    # return {"success": True, "result": result.data.model_dump()}
+    # elif hasattr(result, "content"):
+    # Handle content field which might be a list of TextContent
+    # if isinstance(result.content, list) and len(result.content) > 0:
+    # first_item = result.content[0]
+    # if hasattr(first_item, "text"):
+    # try:
+    # parsed_result = json_module.loads(first_item.text)
+    # return {
+    # "success": True,
+    # "result": parsed_result,
+    # }
+    # except:
+    # return {
+    # "success": True,
+    # "result": first_item.text,
+    # }
 
-            async with Client(transport) as client:
-                try:
-                    # Some tools expect params wrapped in 'req' key, others don't
-                    # Tools without req parameter: get_targeting_capabilities
-                    tools_without_req = ["get_targeting_capabilities"]
+    # Check if result itself has text attribute
+    # if hasattr(result, "text"):
+    # try:
+    # parsed_result = json_module.loads(result.text)
+    # return {"success": True, "result": parsed_result}
+    # except:
+    # return {"success": True, "result": result.text}
 
-                    if tool_name in tools_without_req:
-                        arguments = tool_params or {}
-                    else:
-                        # Most tools have a single parameter named 'req'
-                        arguments = {"req": tool_params} if tool_params else {"req": {}}
+    # Fallback to string representation
+    # return {"success": True, "result": str(result)}
 
-                    app.logger.info(f"Calling tool {tool_name} with arguments: {arguments}")
-                    result = await client.call_tool(tool_name, arguments)
+    # except Exception as e:
+    # app.logger.error(f"MCP call error: {str(e)}")
+    # return {
+    # "success": False,
+    # "error": str(e),
+    # "error_type": type(e).__name__,
+    # }
 
-                    # Convert result to dict if it's a pydantic model or handle TextContent
-                    if hasattr(result, "model_dump"):
-                        return {"success": True, "result": result.model_dump()}
-                    else:
-                        # Handle various FastMCP response types
-                        import json as json_module
+    # Run the async function
+    # loop = asyncio.new_event_loop()
+    # asyncio.set_event_loop(loop)
+    # try:
+    # result = loop.run_until_complete(make_call())
+    # return jsonify(result)
+    # except Exception as e:
+    # app.logger.error(f"Event loop error: {str(e)}")
+    # return (
+    # jsonify({"success": False, "error": f"Event loop error: {str(e)}"}),
+    # 500,
+    # )
+    # finally:
+    # loop.close()
 
-                        # Check if it's a CallToolResult object
-                        if hasattr(result, "structured_content"):
-                            # Use the structured_content which is already parsed
-                            content = result.structured_content
-                            # Remove implementation_config from products (security - proprietary data)
-                            if isinstance(content, dict) and "products" in content:
-                                for product in content.get("products", []):
-                                    if isinstance(product, dict) and "implementation_config" in product:
-                                        del product["implementation_config"]
-                            return {"success": True, "result": content}
-                        elif hasattr(result, "data") and hasattr(result.data, "model_dump"):
-                            # Use the data field if it has model_dump
-                            return {"success": True, "result": result.data.model_dump()}
-                        elif hasattr(result, "content"):
-                            # Handle content field which might be a list of TextContent
-                            if isinstance(result.content, list) and len(result.content) > 0:
-                                first_item = result.content[0]
-                                if hasattr(first_item, "text"):
-                                    try:
-                                        parsed_result = json_module.loads(first_item.text)
-                                        return {
-                                            "success": True,
-                                            "result": parsed_result,
-                                        }
-                                    except:
-                                        return {
-                                            "success": True,
-                                            "result": first_item.text,
-                                        }
-
-                        # Check if result itself has text attribute
-                        if hasattr(result, "text"):
-                            try:
-                                parsed_result = json_module.loads(result.text)
-                                return {"success": True, "result": parsed_result}
-                            except:
-                                return {"success": True, "result": result.text}
-
-                        # Fallback to string representation
-                        return {"success": True, "result": str(result)}
-
-                except Exception as e:
-                    app.logger.error(f"MCP call error: {str(e)}")
-                    return {
-                        "success": False,
-                        "error": str(e),
-                        "error_type": type(e).__name__,
-                    }
-
-        # Run the async function
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        try:
-            result = loop.run_until_complete(make_call())
-            return jsonify(result)
-        except Exception as e:
-            app.logger.error(f"Event loop error: {str(e)}")
-            return (
-                jsonify({"success": False, "error": f"Event loop error: {str(e)}"}),
-                500,
-            )
-        finally:
-            loop.close()
-
-    except ImportError as e:
-        app.logger.error(f"Import error in mcp_test_call: {str(e)}")
-        return jsonify({"success": False, "error": f"Import error: {str(e)}"}), 500
-    except Exception as e:
-        app.logger.error(f"Unexpected error in mcp_test_call: {str(e)}")
-        return jsonify({"success": False, "error": f"Unexpected error: {str(e)}"}), 500
+    # except ImportError as e:
+    # app.logger.error(f"Import error in mcp_test_call: {str(e)}")
+    # return jsonify({"success": False, "error": f"Import error: {str(e)}"}), 500
+    # except Exception as e:
+    # app.logger.error(f"Unexpected error in mcp_test_call: {str(e)}")
+    # return jsonify({"success": False, "error": f"Unexpected error: {str(e)}"}), 500
 
     # Run server
     port = int(os.environ.get("ADMIN_UI_PORT", 8001))  # Match OAuth redirect URI

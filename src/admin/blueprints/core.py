@@ -2,11 +2,12 @@
 
 import json
 import logging
+import os
 import secrets
 import string
 from datetime import UTC, datetime
 
-from flask import Blueprint, flash, redirect, render_template, request, session, url_for
+from flask import Blueprint, flash, redirect, render_template, request, send_from_directory, session, url_for
 from sqlalchemy import text
 
 from database_session import get_db_session
@@ -161,3 +162,56 @@ def create_tenant():
         logger.error(f"Error creating tenant: {e}", exc_info=True)
         flash(f"Error creating tenant: {str(e)}", "error")
         return render_template("create_tenant.html")
+
+
+@core_bp.route("/static/<path:path>")
+def send_static(path):
+    """Serve static files."""
+    return send_from_directory("static", path)
+
+
+@core_bp.route("/mcp-test")
+@require_auth(admin_only=True)
+def mcp_test():
+    """MCP protocol testing interface for super admins."""
+    # Get all tenants and their principals
+    with get_db_session() as db_session:
+        # Get tenants
+        tenant_objs = db_session.query(Tenant).filter_by(is_active=True).order_by(Tenant.name).all()
+        tenants = []
+        for tenant in tenant_objs:
+            tenants.append(
+                {
+                    "tenant_id": tenant.tenant_id,
+                    "name": tenant.name,
+                    "subdomain": tenant.subdomain,
+                }
+            )
+
+        # Get all principals with their tenant info
+        principal_objs = (
+            db_session.query(Principal)
+            .join(Tenant)
+            .filter(Tenant.is_active)
+            .order_by(Tenant.name, Principal.name)
+            .all()
+        )
+        principals = []
+        for principal in principal_objs:
+            # Get the tenant name via relationship or separate query
+            tenant_name = db_session.query(Tenant.name).filter_by(tenant_id=principal.tenant_id).scalar()
+            principals.append(
+                {
+                    "principal_id": principal.principal_id,
+                    "name": principal.name,
+                    "tenant_id": principal.tenant_id,
+                    "access_token": principal.access_token,
+                    "tenant_name": tenant_name,
+                }
+            )
+
+    # Get server URL - use correct port from environment
+    server_port = int(os.environ.get("ADCP_SALES_PORT", 8005))
+    server_url = f"http://localhost:{server_port}/mcp/"
+
+    return render_template("mcp_test.html", tenants=tenants, principals=principals, server_url=server_url)
