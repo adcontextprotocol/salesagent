@@ -87,10 +87,13 @@ def mock_google_oauth():
     mock_google = MagicMock()
     mock_oauth.google = mock_google
 
-    # Patch multiple locations where OAuth might be accessed
-    with patch("src.admin.blueprints.auth.google", mock_google):
-        with patch.object(app, "oauth", mock_oauth, create=True):
-            yield mock_google
+    # Set up the mock to return proper responses
+    mock_google.authorize_redirect.return_value = MagicMock()
+    mock_google.authorize_access_token.return_value = {"access_token": "test_token"}
+
+    # Patch the app's oauth attribute directly
+    with patch.object(app, "oauth", mock_oauth, create=True):
+        yield mock_google
 
 
 class TestOAuthLogin:
