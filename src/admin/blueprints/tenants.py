@@ -9,7 +9,7 @@ from datetime import UTC, datetime
 from flask import Blueprint, flash, jsonify, redirect, render_template, request, session, url_for
 
 from database_session import get_db_session
-from models import AdapterConfig, MediaBuy, Principal, Product, Tenant, User
+from models import MediaBuy, Principal, Product, Tenant, User
 from src.admin.utils import get_tenant_config_from_db, require_auth, require_tenant_access
 from validation import sanitize_form_data, validate_form_data
 
@@ -161,22 +161,19 @@ def settings(tenant_id, section=None):
                 return redirect(url_for("core.index"))
 
             # Get adapter config
-            adapter_config = None
-            if tenant.adapter_config:
-                adapter_config = AdapterConfig.model_validate_json(tenant.adapter_config)
+            adapter_config_obj = tenant.adapter_config
 
             # Get OAuth status for GAM
             oauth_configured = False
-            if adapter_config and adapter_config.google_ad_manager:
-                gam_config = adapter_config.google_ad_manager
-                oauth_configured = bool(gam_config.refresh_token)
+            if adapter_config_obj and adapter_config_obj.adapter_type == "google_ad_manager":
+                oauth_configured = bool(adapter_config_obj.gam_refresh_token)
 
             return render_template(
                 "tenant_settings.html",
                 tenant=tenant,
                 tenant_id=tenant_id,
                 section=section or "general",
-                adapter_config=adapter_config,
+                adapter_config=adapter_config_obj,
                 oauth_configured=oauth_configured,
             )
 
@@ -500,9 +497,9 @@ def create_principal(tenant_id):
                 # Get tenant to check adapter type
                 tenant = db_session.query(Tenant).filter_by(tenant_id=tenant_id).first()
                 if tenant and tenant.adapter_config:
-                    adapter_config = json.loads(tenant.adapter_config)
+                    adapter_config_obj = tenant.adapter_config
 
-                    if "google_ad_manager" in adapter_config and adapter_config["google_ad_manager"].get("enabled"):
+                    if adapter_config_obj.adapter_type == "google_ad_manager":
                         # Get GAM advertiser ID from form
                         gam_advertiser_id = form_data.get("gam_advertiser_id", "").strip()
                         if gam_advertiser_id:
@@ -542,9 +539,7 @@ def create_principal(tenant_id):
             # Check if GAM is enabled
             gam_enabled = False
             if tenant.adapter_config:
-                adapter_config = json.loads(tenant.adapter_config)
-                if "google_ad_manager" in adapter_config:
-                    gam_enabled = adapter_config["google_ad_manager"].get("enabled", False)
+                gam_enabled = tenant.adapter_config.adapter_type == "google_ad_manager"
 
             return render_template(
                 "create_principal.html",

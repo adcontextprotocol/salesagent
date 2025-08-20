@@ -328,12 +328,9 @@ def get_principal_reporting(tenant_id: str, principal_id: str):
             # Default to America/New_York if no config found
             network_timezone = "America/New_York"
         else:
-            import json
-
-            config_data = (
-                json.loads(adapter_config.config) if isinstance(adapter_config.config, str) else adapter_config.config
-            )
-            network_timezone = config_data.get("gam_network_timezone", "America/New_York")
+            # TODO: Add gam_network_timezone field to adapter_config table if timezone configuration is needed
+            # For now, use default timezone since config field no longer exists
+            network_timezone = "America/New_York"
 
         # Create reporting service
         reporting_service = GAMReportingService(gam_client, network_timezone)
@@ -603,12 +600,9 @@ def get_principal_summary(tenant_id: str, principal_id: str):
             # Default to America/New_York if no config found
             network_timezone = "America/New_York"
         else:
-            import json
-
-            config_data = (
-                json.loads(adapter_config.config) if isinstance(adapter_config.config, str) else adapter_config.config
-            )
-            network_timezone = config_data.get("gam_network_timezone", "America/New_York")
+            # TODO: Add gam_network_timezone field to adapter_config table if timezone configuration is needed
+            # For now, use default timezone since config field no longer exists
+            network_timezone = "America/New_York"
 
         # Create reporting service
         reporting_service = GAMReportingService(gam_client, network_timezone)
