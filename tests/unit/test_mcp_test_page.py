@@ -34,9 +34,11 @@ class TestMCPTestPageUnit:
             sess["email"] = "admin@example.com"
             sess["role"] = "super_admin"
             sess["name"] = "Test Admin"
+            sess["user"] = {"email": "admin@example.com", "name": "Test Admin"}
         return client
 
-    def test_mcp_test_page_template_rendering(self, auth_client):
+    @patch("src.admin.utils.is_super_admin", return_value=True)
+    def test_mcp_test_page_template_rendering(self, mock_is_super_admin, auth_client):
         """Test that the MCP test page renders with correct elements."""
         with patch("database_session.get_db_session") as mock_db:
             # Mock database results
