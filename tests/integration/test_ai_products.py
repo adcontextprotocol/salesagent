@@ -316,7 +316,7 @@ Test Product,test_prod,"[{""format_id"":""display_300x250"",""name"":""Medium Re
         # Create proper file upload data
         data = {"file": (BytesIO(csv_data.encode()), "products.csv")}
 
-        response = client.post(
+        response = auth_session.post(
             f"/tenant/{tenant_id}/products/bulk/upload", data=data, content_type="multipart/form-data"
         )
 

@@ -66,33 +66,37 @@ class TestAdminUIPages:
 
     def test_list_products_page_renders(self, authenticated_session, test_tenant):
         """Test that the list products page renders successfully."""
-        response = authenticated_session.get(f"/tenant/{test_tenant['tenant_id']}/products")
-        assert response.status_code in [200, 302]  # 302 for redirect to login if not authenticated
+        response = authenticated_session.get(f"/tenant/{test_tenant['tenant_id']}/products", follow_redirects=True)
+        assert response.status_code == 200
 
     def test_create_product_page_renders(self, authenticated_session, test_tenant):
         """Test that the create product page renders successfully."""
-        response = authenticated_session.get(f"/tenant/{test_tenant['tenant_id']}/products/add")
-        assert response.status_code in [200, 302]
+        response = authenticated_session.get(f"/tenant/{test_tenant['tenant_id']}/products/add", follow_redirects=True)
+        assert response.status_code == 200
 
     def test_tenant_dashboard_renders(self, authenticated_session, test_tenant):
         """Test that the tenant dashboard renders successfully (this IS the operations dashboard)."""
-        response = authenticated_session.get(f"/tenant/{test_tenant['tenant_id']}")
-        assert response.status_code in [200, 302]
+        response = authenticated_session.get(f"/tenant/{test_tenant['tenant_id']}", follow_redirects=True)
+        assert response.status_code == 200
 
     def test_create_principal_page_renders(self, authenticated_session, test_tenant):
         """Test that the create principal page renders successfully."""
-        response = authenticated_session.get(f"/tenant/{test_tenant['tenant_id']}/principals/create")
-        assert response.status_code in [200, 302]
+        response = authenticated_session.get(
+            f"/tenant/{test_tenant['tenant_id']}/principals/create", follow_redirects=True
+        )
+        assert response.status_code == 200
 
     def test_settings_page_renders(self, authenticated_session, test_tenant):
         """Test that the settings page renders successfully."""
-        response = authenticated_session.get(f"/tenant/{test_tenant['tenant_id']}/settings")
-        assert response.status_code in [200, 302]
+        response = authenticated_session.get(f"/tenant/{test_tenant['tenant_id']}/settings", follow_redirects=True)
+        assert response.status_code == 200
 
     def test_product_setup_wizard_page_renders(self, authenticated_session, test_tenant):
         """Test that the product setup wizard page renders successfully."""
-        response = authenticated_session.get(f"/tenant/{test_tenant['tenant_id']}/products/setup-wizard")
-        assert response.status_code in [200, 302]
+        response = authenticated_session.get(
+            f"/tenant/{test_tenant['tenant_id']}/products/setup-wizard", follow_redirects=True
+        )
+        assert response.status_code == 200
 
     def test_admin_index_redirects(self, client):
         """Test that the admin index redirects to login when not authenticated."""
@@ -109,4 +113,4 @@ class TestAdminUIPages:
     def test_404_for_unknown_tenant(self, authenticated_session):
         """Test that accessing an unknown tenant returns 404."""
         response = authenticated_session.get("/tenant/unknown_tenant/products")
-        assert response.status_code in [302, 404]  # 302 redirect to login or 404
+        assert response.status_code in [302, 308, 404]  # 302/308 redirect to login or 404
