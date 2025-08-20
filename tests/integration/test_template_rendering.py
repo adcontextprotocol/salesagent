@@ -99,7 +99,7 @@ class TestTemplateRendering:
             critical_routes = [
                 ("tenants.dashboard", {"tenant_id": test_tenant_with_data["tenant_id"]}),
                 ("products.add_product", {"tenant_id": test_tenant_with_data["tenant_id"]}),
-                ("products.browse_product_templates", {"tenant_id": test_tenant_with_data["tenant_id"]}),
+                ("products.browse_templates", {"tenant_id": test_tenant_with_data["tenant_id"]}),
                 ("products.bulk_product_upload_form", {"tenant_id": test_tenant_with_data["tenant_id"]}),
                 ("products.add_product_ai_form", {"tenant_id": test_tenant_with_data["tenant_id"]}),
                 ("products.list_products", {"tenant_id": test_tenant_with_data["tenant_id"]}),
