@@ -231,8 +231,8 @@ class MockAdServer(AdServerAdapter):
 
         # Calculate total budget from packages (CPM * impressions / 1000)
         total_budget = sum((p.cpm * p.impressions / 1000) for p in packages if p.delivery_type == "guaranteed")
-        # Use the request's total_budget if available, otherwise use calculated
-        total_budget = request.total_budget if request.total_budget else total_budget
+        # Use the request's budget if available, otherwise use calculated
+        total_budget = request.budget if request.budget else total_budget
 
         self.log(f"Creating media buy with ID: {media_buy_id}")
         self.log(f"Using template: {template_name} (priority: {template['priority']})")
