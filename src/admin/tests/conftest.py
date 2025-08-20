@@ -133,7 +133,7 @@ def mock_media_buy():
     media_buy.tenant_id = "test_tenant"
     media_buy.principal_id = "test_principal"
     media_buy.status = "active"
-    media_buy.total_budget = 5000.0
-    media_buy.flight_start_date = "2024-01-01"
-    media_buy.flight_end_date = "2024-01-31"
+    media_buy.budget = 5000.0
+    media_buy.start_date = "2024-01-01"
+    media_buy.end_date = "2024-01-31"
     return media_buy

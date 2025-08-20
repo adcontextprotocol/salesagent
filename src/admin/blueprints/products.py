@@ -335,3 +335,229 @@ def get_templates(tenant_id):
     except Exception as e:
         logger.error(f"Error getting templates: {e}", exc_info=True)
         return jsonify({"error": "Internal server error"}), 500
+
+
+@products_bp.route("/templates/browse", methods=["GET"])
+@require_tenant_access()
+def browse_templates(tenant_id):
+    """Browse and use product templates."""
+    from creative_formats import get_creative_formats
+
+    # Get all available templates
+    standard_templates = get_default_products()
+
+    # Get industry templates for different industries
+    industry_templates = {
+        "news": get_industry_specific_products("news"),
+        "sports": get_industry_specific_products("sports"),
+        "entertainment": get_industry_specific_products("entertainment"),
+        "ecommerce": get_industry_specific_products("ecommerce"),
+    }
+
+    # Filter out standard templates from industry lists
+    standard_ids = {t["product_id"] for t in standard_templates}
+    for industry in industry_templates:
+        industry_templates[industry] = [t for t in industry_templates[industry] if t["product_id"] not in standard_ids]
+
+    # Get creative formats for display
+    formats = get_creative_formats()
+
+    return render_template(
+        "product_templates.html",
+        tenant_id=tenant_id,
+        standard_templates=standard_templates,
+        industry_templates=industry_templates,
+        formats=formats,
+    )
+
+
+@products_bp.route("/templates/create", methods=["POST"])
+@require_tenant_access()
+def create_from_template(tenant_id):
+    """Create a product from a template."""
+    try:
+        data = request.get_json()
+        if not data:
+            return jsonify({"error": "Invalid request"}), 400
+
+        template_id = data.get("template_id")
+        if not template_id:
+            return jsonify({"error": "Template ID required"}), 400
+
+        # Get all available templates
+        all_templates = get_default_products()
+        # Add industry templates
+        for industry in ["news", "sports", "entertainment", "ecommerce"]:
+            all_templates.extend(get_industry_specific_products(industry))
+
+        # Find the template
+        template = None
+        for t in all_templates:
+            if t.get("product_id") == template_id:
+                template = t
+                break
+
+        if not template:
+            return jsonify({"error": "Template not found"}), 404
+
+        # Create product from template
+        with get_db_session() as db_session:
+            product_id = f"prod_{uuid.uuid4().hex[:8]}"
+
+            # Convert template to product
+            product = Product(
+                tenant_id=tenant_id,
+                product_id=product_id,
+                name=template.get("name"),
+                description=template.get("description"),
+                price_model=template.get("pricing", {}).get("model", "CPM"),
+                base_price=template.get("pricing", {}).get("base_price", 0),
+                currency=template.get("pricing", {}).get("currency", "USD"),
+                min_spend=template.get("pricing", {}).get("min_spend", 0),
+                formats=json.dumps(template.get("formats", [])),
+                countries=json.dumps(template.get("countries", [])),
+                targeting_template=json.dumps(template.get("targeting_template", {})),
+                delivery_type=template.get("delivery_type", "standard"),
+                status="active",
+                created_at=datetime.now(UTC),
+                updated_at=datetime.now(UTC),
+            )
+
+            db_session.add(product)
+            db_session.commit()
+
+            return jsonify(
+                {
+                    "success": True,
+                    "product_id": product_id,
+                    "message": f"Product '{template.get('name')}' created successfully",
+                }
+            )
+
+    except Exception as e:
+        logger.error(f"Error creating product from template: {e}", exc_info=True)
+        return jsonify({"error": "Failed to create product"}), 500
+
+
+@products_bp.route("/setup-wizard")
+@require_tenant_access()
+def setup_wizard(tenant_id):
+    """Show product setup wizard for new tenants."""
+    with get_db_session() as db_session:
+        tenant = db_session.query(Tenant).filter_by(tenant_id=tenant_id).first()
+        if not tenant:
+            flash("Tenant not found", "error")
+            return redirect(url_for("index"))
+
+        # Check if tenant already has products
+        product_count = db_session.query(Product).filter_by(tenant_id=tenant_id).count()
+
+        # Get industry from tenant config
+        from src.admin.utils import get_tenant_config_from_db
+
+        config = get_tenant_config_from_db(tenant_id)
+        tenant_industry = config.get("industry", "general")
+
+        # Get AI service
+        ai_service = AIProductConfigurationService()
+
+        # Get suggestions based on industry
+        suggestions = ai_service.get_product_suggestions(
+            industry=tenant_industry, include_standard=True, include_industry=True
+        )
+
+        # Get creative formats for display
+        from creative_formats import get_creative_formats
+
+        formats = get_creative_formats()
+
+        return render_template(
+            "product_setup_wizard.html",
+            tenant_id=tenant_id,
+            tenant_name=tenant.name,
+            tenant_industry=tenant_industry,
+            has_existing_products=product_count > 0,
+            suggestions=suggestions,
+            formats=formats,
+        )
+
+
+@products_bp.route("/create-bulk", methods=["POST"])
+@require_tenant_access()
+def create_bulk(tenant_id):
+    """Create multiple products from wizard suggestions."""
+    try:
+        data = request.get_json()
+        if not data:
+            return jsonify({"error": "Invalid request"}), 400
+
+        product_ids = data.get("product_ids", [])
+        if not product_ids:
+            return jsonify({"error": "No products selected"}), 400
+
+        # Get all available templates
+        all_templates = get_default_products()
+        # Add industry templates
+        for industry in ["news", "sports", "entertainment", "ecommerce"]:
+            all_templates.extend(get_industry_specific_products(industry))
+
+        created_products = []
+        errors = []
+
+        with get_db_session() as db_session:
+            for template_id in product_ids:
+                # Find the template
+                template = None
+                for t in all_templates:
+                    if t.get("product_id") == template_id:
+                        template = t
+                        break
+
+                if not template:
+                    errors.append(f"Template '{template_id}' not found")
+                    continue
+
+                try:
+                    # Create unique product ID
+                    product_id = f"prod_{uuid.uuid4().hex[:8]}"
+
+                    # Convert template to product
+                    product = Product(
+                        tenant_id=tenant_id,
+                        product_id=product_id,
+                        name=template.get("name"),
+                        description=template.get("description"),
+                        price_model=template.get("pricing", {}).get("model", "CPM"),
+                        base_price=template.get("pricing", {}).get("base_price", 0),
+                        currency=template.get("pricing", {}).get("currency", "USD"),
+                        min_spend=template.get("pricing", {}).get("min_spend", 0),
+                        formats=json.dumps(template.get("formats", [])),
+                        countries=json.dumps(template.get("countries", [])),
+                        targeting_template=json.dumps(template.get("targeting_template", {})),
+                        delivery_type=template.get("delivery_type", "standard"),
+                        status="active",
+                        created_at=datetime.now(UTC),
+                        updated_at=datetime.now(UTC),
+                    )
+
+                    db_session.add(product)
+                    created_products.append({"product_id": product_id, "name": template.get("name")})
+
+                except Exception as e:
+                    logger.error(f"Error creating product from template {template_id}: {e}")
+                    errors.append(f"Failed to create '{template.get('name', template_id)}': {str(e)}")
+
+            db_session.commit()
+
+        return jsonify(
+            {
+                "success": len(created_products) > 0,
+                "created": created_products,
+                "errors": errors,
+                "message": f"Created {len(created_products)} products successfully",
+            }
+        )
+
+    except Exception as e:
+        logger.error(f"Error creating bulk products: {e}", exc_info=True)
+        return jsonify({"error": "Failed to create products"}), 500

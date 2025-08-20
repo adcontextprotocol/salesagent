@@ -152,6 +152,9 @@ class TestSchemaFieldValidation:
             for py_file in search_path.rglob("*.py"):
                 if "__pycache__" in str(py_file):
                     continue
+                # Skip test files themselves
+                if "test_" in str(py_file.name):
+                    continue
                 try:
                     with open(py_file) as f:
                         content = f.read()

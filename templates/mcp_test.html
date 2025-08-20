@@ -238,9 +238,9 @@ function selectMethod(method) {
         }, null, 2),
         'create_media_buy': JSON.stringify({
             product_ids: ["product_1"],
-            total_budget: 1000.0,
-            flight_start_date: new Date().toISOString().split('T')[0],
-            flight_end_date: new Date(Date.now() + 30*24*60*60*1000).toISOString().split('T')[0],
+            budget: 1000.0,
+            start_date: new Date().toISOString().split('T')[0],
+            end_date: new Date(Date.now() + 30*24*60*60*1000).toISOString().split('T')[0],
             targeting_overlay: {
                 geo_country_any_of: ["US", "CA"],
                 device_type_any_of: ["desktop", "mobile"]
@@ -251,7 +251,7 @@ function selectMethod(method) {
         }, null, 2),
         'update_media_buy': JSON.stringify({
             media_buy_id: "mb_123",
-            total_budget: 2000.0,
+            budget: 2000.0,
             targeting_overlay: {
                 geo_country_any_of: ["US", "GB"]
             }

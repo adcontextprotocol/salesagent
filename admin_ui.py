@@ -3107,10 +3107,10 @@ def update_user_role(tenant_id, user_id):
             db_session.rollback()
             return f"Error: {e}", 400
 
-
-@app.route("/tenant/<tenant_id>/principal/<principal_id>/update_mappings", methods=["POST"])
-@require_auth()
-def update_principal_mappings(tenant_id, principal_id):
+    # MIGRATED to principals_bp.update_mappings
+    # @app.route("/tenant/<tenant_id>/principal/<principal_id>/update_mappings", methods=["POST"])
+    # @require_auth()
+    # def update_principal_mappings(tenant_id, principal_id):
     """Update principal platform mappings."""
     # Check access - only admins and managers can update mappings
     if session.get("role") == "viewer":
@@ -3299,10 +3299,10 @@ def setup_adapter(tenant_id):
             flash(f"Error updating adapter configuration: {str(e)}", "error")
             return redirect(url_for("tenant_dashboard", tenant_id=tenant_id) + "#adserver")
 
-
-@app.route("/tenant/<tenant_id>/principals/create", methods=["GET", "POST"])
-@require_auth()
-def create_principal(tenant_id):
+    # MIGRATED to principals_bp.create_principal
+    # @app.route("/tenant/<tenant_id>/principals/create", methods=["GET", "POST"])
+    # @require_auth()
+    # def create_principal(tenant_id):
     """Create a new principal for a tenant."""
     # Check access - only admins can create principals
     if session.get("role") in ["viewer"]:
@@ -3575,10 +3575,10 @@ def test_gam_connection():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-
-@app.route("/api/gam/get-advertisers", methods=["POST"])
-@require_auth()
-def get_gam_advertisers():
+    # MIGRATED to principals_bp.get_gam_advertisers
+    # @app.route("/api/gam/get-advertisers", methods=["POST"])
+    # @require_auth()
+    # def get_gam_advertisers():
     """Get list of advertisers from GAM for a tenant."""
     try:
         tenant_id = request.json.get("tenant_id")
@@ -3690,11 +3690,11 @@ def send_static(path):
     """Serve static files."""
     return send_from_directory("static", path)
 
-
-# Product Management Routes
-@app.route("/tenant/<tenant_id>/products")
-@require_auth()
-def list_products(tenant_id):
+    # Product Management Routes
+    # MIGRATED to products_bp.list_products
+    # @app.route("/tenant/<tenant_id>/products")
+    # @require_auth()
+    # def list_products(tenant_id):
     """List products for a tenant."""
     # Check access
     if session.get("role") != "super_admin" and session.get("tenant_id") != tenant_id:
@@ -3800,10 +3800,10 @@ def list_products(tenant_id):
             adapter_ui_endpoint=adapter_ui_endpoint,
         )
 
-
-@app.route("/tenant/<tenant_id>/products/<product_id>/edit", methods=["GET", "POST"])
-@require_auth()
-def edit_product_basic(tenant_id, product_id):
+    # MIGRATED to products_bp.edit_product
+    # @app.route("/tenant/<tenant_id>/products/<product_id>/edit", methods=["GET", "POST"])
+    # @require_auth()
+    # def edit_product_basic(tenant_id, product_id):
     """Edit basic product details."""
     # Check access
     if session.get("role") != "super_admin" and session.get("tenant_id") != tenant_id:
@@ -3874,10 +3874,10 @@ def edit_product_basic(tenant_id, product_id):
 
         return render_template("edit_product.html", tenant_id=tenant_id, product=product)
 
-
-@app.route("/tenant/<tenant_id>/products/add", methods=["GET", "POST"])
-@require_auth()
-def add_product(tenant_id):
+    # MIGRATED to products_bp.add_product
+    # @app.route("/tenant/<tenant_id>/products/add", methods=["GET", "POST"])
+    # @require_auth()
+    # def add_product(tenant_id):
     """Add a new product."""
     # Check access
     if session.get("role") != "super_admin" and session.get("tenant_id") != tenant_id:
@@ -4000,10 +4000,10 @@ def add_product(tenant_id):
         formats = get_creative_formats()
         return render_template("add_product.html", tenant_id=tenant_id, formats=formats)
 
-
-@app.route("/tenant/<tenant_id>/products/add/ai", methods=["GET"])
-@require_auth()
-def add_product_ai_form(tenant_id):
+    # MIGRATED to products_bp.add_product_ai_form
+    # @app.route("/tenant/<tenant_id>/products/add/ai", methods=["GET"])
+    # @require_auth()
+    # def add_product_ai_form(tenant_id):
     """Show AI-assisted product creation form."""
     # Check access
     if session.get("role") != "super_admin" and session.get("tenant_id") != tenant_id:
@@ -4011,10 +4011,10 @@ def add_product_ai_form(tenant_id):
 
     return render_template("add_product_ai.html", tenant_id=tenant_id)
 
-
-@app.route("/tenant/<tenant_id>/products/analyze_ai", methods=["POST"])
-@require_auth()
-def analyze_product_ai(tenant_id):
+    # MIGRATED to products_bp.analyze_product_ai
+    # @app.route("/tenant/<tenant_id>/products/analyze_ai", methods=["POST"])
+    # @require_auth()
+    # def analyze_product_ai(tenant_id):
     """Analyze product description with AI and return configuration."""
     # Check access
     if session.get("role") != "super_admin" and session.get("tenant_id") != tenant_id:
@@ -4045,10 +4045,10 @@ def analyze_product_ai(tenant_id):
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-
-@app.route("/tenant/<tenant_id>/products/bulk", methods=["GET"])
-@require_auth()
-def bulk_product_upload_form(tenant_id):
+    # MIGRATED to products_bp.bulk_upload_form
+    # @app.route("/tenant/<tenant_id>/products/bulk", methods=["GET"])
+    # @require_auth()
+    # def bulk_product_upload_form(tenant_id):
     """Show bulk product upload form."""
     # Check access
     if session.get("role") == "viewer":
@@ -4064,10 +4064,10 @@ def bulk_product_upload_form(tenant_id):
 
     return render_template("bulk_product_upload.html", tenant_id=tenant_id, templates=templates)
 
-
-@app.route("/tenant/<tenant_id>/products/bulk/upload", methods=["POST"])
-@require_auth()
-def bulk_product_upload(tenant_id):
+    # MIGRATED to products_bp.bulk_upload
+    # @app.route("/tenant/<tenant_id>/products/bulk/upload", methods=["POST"])
+    # @require_auth()
+    # def bulk_product_upload(tenant_id):
     """Process bulk product upload."""
     # Check access
     if session.get("role") == "viewer":
@@ -4182,10 +4182,10 @@ def bulk_product_upload(tenant_id):
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-
-@app.route("/tenant/<tenant_id>/products/templates", methods=["GET"])
-@require_auth()
-def get_product_templates(tenant_id):
+    # MIGRATED to products_bp.get_templates
+    # @app.route("/tenant/<tenant_id>/products/templates", methods=["GET"])
+    # @require_auth()
+    # def get_product_templates(tenant_id):
     """Get product templates for the tenant's industry."""
     try:
         from default_products import get_industry_specific_products
@@ -4206,10 +4206,10 @@ def get_product_templates(tenant_id):
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-
-@app.route("/tenant/<tenant_id>/products/templates/browse", methods=["GET"])
-@require_auth()
-def browse_product_templates(tenant_id):
+    # MIGRATED to products_bp.browse_templates
+    # @app.route("/tenant/<tenant_id>/products/templates/browse", methods=["GET"])
+    # @require_auth()
+    # def browse_product_templates(tenant_id):
     """Browse and use product templates."""
     # Check access
     if session.get("role") == "viewer":
@@ -4247,10 +4247,10 @@ def browse_product_templates(tenant_id):
         formats=formats,
     )
 
-
-@app.route("/tenant/<tenant_id>/products/templates/create", methods=["POST"])
-@require_auth()
-def create_from_template(tenant_id):
+    # MIGRATED to products_bp.create_from_template
+    # @app.route("/tenant/<tenant_id>/products/templates/create", methods=["POST"])
+    # @require_auth()
+    # def create_from_template(tenant_id):
     """Create a product from a template."""
     # Check access
     if session.get("role") == "viewer":
@@ -5123,276 +5123,274 @@ def delete_creative_format(tenant_id, format_id):
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+    # MIGRATING: Moved to src/admin/blueprints/api.py
+    # This route is now handled by the refactored API blueprint
+    # @app.route("/api/tenant/<tenant_id>/products/suggestions", methods=["GET"])
+    # @require_auth()
+    # def get_product_suggestions(tenant_id):
+    #     """API endpoint to get product suggestions based on industry and criteria."""
+    #     try:
+    #         from default_products import (
+    #             get_default_products,
+    #             get_industry_specific_products,
+    #         )
+    #
+    #         # Get query parameters
+    #        industry = request.args.get("industry")
+    #        include_standard = request.args.get("include_standard", "true").lower() == "true"
+    #        delivery_type = request.args.get("delivery_type")  # 'guaranteed', 'non_guaranteed', or None for all
+    #        max_cpm = request.args.get("max_cpm", type=float)
+    #        formats = request.args.getlist("formats")  # Can specify multiple format IDs
 
-# MIGRATING: Moved to src/admin/blueprints/api.py
-# This route is now handled by the refactored API blueprint
-# @app.route("/api/tenant/<tenant_id>/products/suggestions", methods=["GET"])
-# @require_auth()
-# def get_product_suggestions(tenant_id):
-#     """API endpoint to get product suggestions based on industry and criteria."""
-#     try:
-#         from default_products import (
-#             get_default_products,
-#             get_industry_specific_products,
-#         )
-#
-#         # Get query parameters
-#        industry = request.args.get("industry")
-#        include_standard = request.args.get("include_standard", "true").lower() == "true"
-#        delivery_type = request.args.get("delivery_type")  # 'guaranteed', 'non_guaranteed', or None for all
-#        max_cpm = request.args.get("max_cpm", type=float)
-#        formats = request.args.getlist("formats")  # Can specify multiple format IDs
+    #        # Get suggestions
+    #        suggestions = []
 
-#        # Get suggestions
-#        suggestions = []
+    #        # Get industry-specific products if industry specified
+    #        if industry:
+    #            industry_products = get_industry_specific_products(industry)
+    #            suggestions.extend(industry_products)
+    #        elif include_standard:
+    #            # If no industry specified but standard requested, get default products
+    #            suggestions.extend(get_default_products())
 
-#        # Get industry-specific products if industry specified
-#        if industry:
-#            industry_products = get_industry_specific_products(industry)
-#            suggestions.extend(industry_products)
-#        elif include_standard:
-#            # If no industry specified but standard requested, get default products
-#            suggestions.extend(get_default_products())
+    #        # Filter suggestions based on criteria
+    #        filtered_suggestions = []
+    #        for product in suggestions:
+    #            # Filter by delivery type
+    #            if delivery_type and product.get("delivery_type") != delivery_type:
+    #                continue
 
-#        # Filter suggestions based on criteria
-#        filtered_suggestions = []
-#        for product in suggestions:
-#            # Filter by delivery type
-#            if delivery_type and product.get("delivery_type") != delivery_type:
-#                continue
+    #            # Filter by max CPM
+    #            if max_cpm:
+    #                if product.get("cpm") and product["cpm"] > max_cpm:
+    #                    continue
+    #                elif product.get("price_guidance"):
+    #                    if product["price_guidance"]["min"] > max_cpm:
+    #                        continue
 
-#            # Filter by max CPM
-#            if max_cpm:
-#                if product.get("cpm") and product["cpm"] > max_cpm:
-#                    continue
-#                elif product.get("price_guidance"):
-#                    if product["price_guidance"]["min"] > max_cpm:
-#                        continue
+    #            # Filter by formats
+    #            if formats:
+    #                product_formats = set(product.get("formats", []))
+    #                requested_formats = set(formats)
+    #                if not product_formats.intersection(requested_formats):
+    #                    continue
 
-#            # Filter by formats
-#            if formats:
-#                product_formats = set(product.get("formats", []))
-#                requested_formats = set(formats)
-#                if not product_formats.intersection(requested_formats):
-#                    continue
+    #            filtered_suggestions.append(product)
 
-#            filtered_suggestions.append(product)
+    #        # Sort suggestions by relevance
+    #        # Prioritize: 1) Industry-specific, 2) Lower CPM, 3) More formats
+    #        def sort_key(product):
+    #            is_industry_specific = product["product_id"] not in [p["product_id"] for p in get_default_products()]
+    #            avg_cpm = (
+    #                product.get("cpm", 0)
+    #                or (product.get("price_guidance", {}).get("min", 0) + product.get("price_guidance", {}).get("max", 0))
+    #                / 2
+    #            )
+    #            format_count = len(product.get("formats", []))
+    #            return (-int(is_industry_specific), avg_cpm, -format_count)
 
-#        # Sort suggestions by relevance
-#        # Prioritize: 1) Industry-specific, 2) Lower CPM, 3) More formats
-#        def sort_key(product):
-#            is_industry_specific = product["product_id"] not in [p["product_id"] for p in get_default_products()]
-#            avg_cpm = (
-#                product.get("cpm", 0)
-#                or (product.get("price_guidance", {}).get("min", 0) + product.get("price_guidance", {}).get("max", 0))
-#                / 2
-#            )
-#            format_count = len(product.get("formats", []))
-#            return (-int(is_industry_specific), avg_cpm, -format_count)
+    #        filtered_suggestions.sort(key=sort_key)
 
-#        filtered_suggestions.sort(key=sort_key)
+    #        # Check existing products to mark which are already created
+    #        with get_db_session() as db_session:
+    #            existing_products = db_session.query(Product.product_id).filter_by(tenant_id=tenant_id).all()
+    #            existing_ids = {product[0] for product in existing_products}
 
-#        # Check existing products to mark which are already created
-#        with get_db_session() as db_session:
-#            existing_products = db_session.query(Product.product_id).filter_by(tenant_id=tenant_id).all()
-#            existing_ids = {product[0] for product in existing_products}
+    #        # Add metadata to suggestions
+    #        for suggestion in filtered_suggestions:
+    #            suggestion["already_exists"] = suggestion["product_id"] in existing_ids
+    #            suggestion["is_industry_specific"] = suggestion["product_id"] not in [
+    #                p["product_id"] for p in get_default_products()
+    #            ]
 
-#        # Add metadata to suggestions
-#        for suggestion in filtered_suggestions:
-#            suggestion["already_exists"] = suggestion["product_id"] in existing_ids
-#            suggestion["is_industry_specific"] = suggestion["product_id"] not in [
-#                p["product_id"] for p in get_default_products()
-#            ]
+    #            # Calculate match score (0-100)
+    #            score = 100
+    #            if delivery_type and suggestion.get("delivery_type") == delivery_type:
+    #                score += 20
+    #            if formats:
+    #                matching_formats = len(set(suggestion.get("formats", [])).intersection(set(formats)))
+    #                score += matching_formats * 10
+    #            if industry and suggestion["is_industry_specific"]:
+    #                score += 30
 
-#            # Calculate match score (0-100)
-#            score = 100
-#            if delivery_type and suggestion.get("delivery_type") == delivery_type:
-#                score += 20
-#            if formats:
-#                matching_formats = len(set(suggestion.get("formats", [])).intersection(set(formats)))
-#                score += matching_formats * 10
-#            if industry and suggestion["is_industry_specific"]:
-#                score += 30
+    #            suggestion["match_score"] = min(score, 100)
 
-#            suggestion["match_score"] = min(score, 100)
+    #        return jsonify(
+    #            {
+    #                "suggestions": filtered_suggestions,
+    #                "total_count": len(filtered_suggestions),
+    #                "criteria": {
+    #                    "industry": industry,
+    #                    "delivery_type": delivery_type,
+    #                    "max_cpm": max_cpm,
+    #                    "formats": formats,
+    #                },
+    #            }
+    #        )
 
-#        return jsonify(
-#            {
-#                "suggestions": filtered_suggestions,
-#                "total_count": len(filtered_suggestions),
-#                "criteria": {
-#                    "industry": industry,
-#                    "delivery_type": delivery_type,
-#                    "max_cpm": max_cpm,
-#                    "formats": formats,
-#                },
-#            }
-#        )
+    #
+    #     except Exception as e:
+    #         return jsonify({"error": str(e)}), 500
 
-#
-#     except Exception as e:
-#         return jsonify({"error": str(e)}), 500
+    # MIGRATING: /api/tenant/<tenant_id>/products/quick-create -> api_bp.quick_create_products
+    # @app.route("/api/tenant/<tenant_id>/products/quick-create", methods=["POST"])
+    # @require_auth()
+    # def quick_create_products(tenant_id):
+    #     """Quick create multiple products from suggestions."""
+    #     # Check access
+    #     if session.get("role") == "viewer":
+    #         return jsonify({"error": "Access denied"}), 403
 
+    #     if session.get("role") == "tenant_admin" and session.get("tenant_id") != tenant_id:
+    #         return jsonify({"error": "Access denied"}), 403
+    #
+    #     try:
+    #         data = request.get_json()
+    #         product_ids = data.get("product_ids", [])
 
-# MIGRATING: /api/tenant/<tenant_id>/products/quick-create -> api_bp.quick_create_products
-# @app.route("/api/tenant/<tenant_id>/products/quick-create", methods=["POST"])
-# @require_auth()
-# def quick_create_products(tenant_id):
-#     """Quick create multiple products from suggestions."""
-#     # Check access
-#     if session.get("role") == "viewer":
-#         return jsonify({"error": "Access denied"}), 403
+    #         if not product_ids:
+    #             return jsonify({"error": "No product IDs provided"}), 400
+    #
+    #         from default_products import (
+    #             get_default_products,
+    #             get_industry_specific_products,
+    #         )
+    #
+    #         # Get all available templates
+    #         all_templates = get_default_products()
+    #         # Add industry templates
+    #         for industry in ["news", "sports", "entertainment", "ecommerce"]:
+    #             all_templates.extend(get_industry_specific_products(industry))
+    #
+    #         # Create a map for quick lookup
+    #         template_map = {t["product_id"]: t for t in all_templates}
+    #
+    #         with get_db_session() as db_session:
+    #             created = []
+    #             errors = []
 
-#     if session.get("role") == "tenant_admin" and session.get("tenant_id") != tenant_id:
-#         return jsonify({"error": "Access denied"}), 403
-#
-#     try:
-#         data = request.get_json()
-#         product_ids = data.get("product_ids", [])
+    #
+    #             for product_id in product_ids:
+    #                 if product_id not in template_map:
+    #                     errors.append(f"Template not found: {product_id}")
+    #                     continue
+    #
+    #                 template = template_map[product_id]
+    #
+    #                 try:
+    #                     # Check if already exists
+    #                     existing_product = (
+    #                         db_session.query(Product).filter_by(tenant_id=tenant_id, product_id=product_id).first()
+    #                     )
+    #                     if existing_product:
+    #                         errors.append(f"Product already exists: {product_id}")
+    #                         continue
+    #
+    #                     # Convert format IDs to format objects
+    #                     raw_formats = template.get("formats", [])
+    #                     format_objects = []
+    #
+    #                     for fmt in raw_formats:
+    #                         if isinstance(fmt, str):
+    #                             # Convert string format ID to format object
+    #                             # For basic display formats, create minimal format objects
+    #                             if fmt.startswith("display_"):
+    #                                 # Extract dimensions from format ID like "display_300x250"
+    #                                 try:
+    #                                     dimensions = fmt.replace("display_", "")
+    #                                     width, height = map(int, dimensions.split("x"))
+    #                                     format_obj = {
+    #                                         "format_id": fmt,
+    #                                         "name": f"{width}x{height} Display",
+    #                                         "type": "display",
+    #                                         "width": width,
+    #                                         "height": height,
+    #                                         "delivery_options": {"hosted": None},
+    #                                     }
+    #                                 except ValueError:
+    #                                     # If we can't parse dimensions, create a basic format
+    #                                     format_obj = {
+    #                                         "format_id": fmt,
+    #                                         "name": fmt.replace("_", " ").title(),
+    #                                         "type": "display",
+    #                                         "delivery_options": {"hosted": None},
+    #                                     }
+    #                             elif fmt.startswith("video_"):
+    #                                 # Extract duration from format ID like "video_15s"
+    #                                 try:
+    #                                     duration_str = fmt.replace("video_", "").replace("s", "")
+    #                                     duration = int(duration_str)
+    #                                     format_obj = {
+    #                                         "format_id": fmt,
+    #                                         "name": f"{duration} Second Video",
+    #                                         "type": "video",
+    #                                         "duration": duration,
+    #                                         "delivery_options": {"vast": {"mime_types": ["video/mp4"]}},
+    #                                     }
+    #                                 except ValueError:
+    #                                     format_obj = {
+    #                                         "format_id": fmt,
+    #                                         "name": fmt.replace("_", " ").title(),
+    #                                         "type": "video",
+    #                                         "delivery_options": {"vast": {"mime_types": ["video/mp4"]}},
+    #                                     }
+    #                             else:
+    #                                 # Generic format
+    #                                 format_obj = {
+    #                                     "format_id": fmt,
+    #                                     "name": fmt.replace("_", " ").title(),
+    #                                     "type": "display",  # Default to display
+    #                                     "delivery_options": {"hosted": None},
+    #                                 }
+    #                             format_objects.append(format_obj)
+    #                         else:
+    #                             # Already a format object
+    #                             format_objects.append(fmt)
+    #
+    #                     # Insert product
+    #                     # Calculate is_fixed_price based on delivery_type and cpm
+    #                     is_fixed_price = (
+    #                         template.get("delivery_type", "guaranteed") == "guaranteed" and template.get("cpm") is not None
+    #                     )
+    #
+    #                     new_product = Product(
+    #                         product_id=template["product_id"],
+    #                         tenant_id=tenant_id,
+    #                         name=template["name"],
+    #                         description=template.get("description", ""),
+    #                         formats=format_objects,  # Use converted format objects
+    #                         delivery_type=template.get("delivery_type", "guaranteed"),
+    #                         is_fixed_price=is_fixed_price,
+    #                         cpm=template.get("cpm"),
+    #                         price_guidance=template.get("price_guidance"),  # Use price_guidance, not separate min/max
+    #                         countries=template.get("countries"),  # Pass as Python object, not JSON string
+    #                         targeting_template=template.get("targeting_template", {}),  # Pass as Python object
+    #                         implementation_config=template.get("implementation_config", {}),  # Pass as Python object
+    #                     )
+    #                     db_session.add(new_product)
+    #                     created.append(product_id)
+    #
+    #                 except Exception as e:
+    #                     errors.append(f"Failed to create {product_id}: {str(e)}")
+    #
+    #             db_session.commit()
+    #
+    #         return jsonify(
+    #             {
+    #                 "success": True,
+    #                 "created": created,
+    #                 "errors": errors,
+    #                 "created_count": len(created),
+    #             }
+    #         )
+    #
+    #     except Exception as e:
+    #         return jsonify({"error": str(e)}), 500
 
-#         if not product_ids:
-#             return jsonify({"error": "No product IDs provided"}), 400
-#
-#         from default_products import (
-#             get_default_products,
-#             get_industry_specific_products,
-#         )
-#
-#         # Get all available templates
-#         all_templates = get_default_products()
-#         # Add industry templates
-#         for industry in ["news", "sports", "entertainment", "ecommerce"]:
-#             all_templates.extend(get_industry_specific_products(industry))
-#
-#         # Create a map for quick lookup
-#         template_map = {t["product_id"]: t for t in all_templates}
-#
-#         with get_db_session() as db_session:
-#             created = []
-#             errors = []
-
-#
-#             for product_id in product_ids:
-#                 if product_id not in template_map:
-#                     errors.append(f"Template not found: {product_id}")
-#                     continue
-#
-#                 template = template_map[product_id]
-#
-#                 try:
-#                     # Check if already exists
-#                     existing_product = (
-#                         db_session.query(Product).filter_by(tenant_id=tenant_id, product_id=product_id).first()
-#                     )
-#                     if existing_product:
-#                         errors.append(f"Product already exists: {product_id}")
-#                         continue
-#
-#                     # Convert format IDs to format objects
-#                     raw_formats = template.get("formats", [])
-#                     format_objects = []
-#
-#                     for fmt in raw_formats:
-#                         if isinstance(fmt, str):
-#                             # Convert string format ID to format object
-#                             # For basic display formats, create minimal format objects
-#                             if fmt.startswith("display_"):
-#                                 # Extract dimensions from format ID like "display_300x250"
-#                                 try:
-#                                     dimensions = fmt.replace("display_", "")
-#                                     width, height = map(int, dimensions.split("x"))
-#                                     format_obj = {
-#                                         "format_id": fmt,
-#                                         "name": f"{width}x{height} Display",
-#                                         "type": "display",
-#                                         "width": width,
-#                                         "height": height,
-#                                         "delivery_options": {"hosted": None},
-#                                     }
-#                                 except ValueError:
-#                                     # If we can't parse dimensions, create a basic format
-#                                     format_obj = {
-#                                         "format_id": fmt,
-#                                         "name": fmt.replace("_", " ").title(),
-#                                         "type": "display",
-#                                         "delivery_options": {"hosted": None},
-#                                     }
-#                             elif fmt.startswith("video_"):
-#                                 # Extract duration from format ID like "video_15s"
-#                                 try:
-#                                     duration_str = fmt.replace("video_", "").replace("s", "")
-#                                     duration = int(duration_str)
-#                                     format_obj = {
-#                                         "format_id": fmt,
-#                                         "name": f"{duration} Second Video",
-#                                         "type": "video",
-#                                         "duration": duration,
-#                                         "delivery_options": {"vast": {"mime_types": ["video/mp4"]}},
-#                                     }
-#                                 except ValueError:
-#                                     format_obj = {
-#                                         "format_id": fmt,
-#                                         "name": fmt.replace("_", " ").title(),
-#                                         "type": "video",
-#                                         "delivery_options": {"vast": {"mime_types": ["video/mp4"]}},
-#                                     }
-#                             else:
-#                                 # Generic format
-#                                 format_obj = {
-#                                     "format_id": fmt,
-#                                     "name": fmt.replace("_", " ").title(),
-#                                     "type": "display",  # Default to display
-#                                     "delivery_options": {"hosted": None},
-#                                 }
-#                             format_objects.append(format_obj)
-#                         else:
-#                             # Already a format object
-#                             format_objects.append(fmt)
-#
-#                     # Insert product
-#                     # Calculate is_fixed_price based on delivery_type and cpm
-#                     is_fixed_price = (
-#                         template.get("delivery_type", "guaranteed") == "guaranteed" and template.get("cpm") is not None
-#                     )
-#
-#                     new_product = Product(
-#                         product_id=template["product_id"],
-#                         tenant_id=tenant_id,
-#                         name=template["name"],
-#                         description=template.get("description", ""),
-#                         formats=format_objects,  # Use converted format objects
-#                         delivery_type=template.get("delivery_type", "guaranteed"),
-#                         is_fixed_price=is_fixed_price,
-#                         cpm=template.get("cpm"),
-#                         price_guidance=template.get("price_guidance"),  # Use price_guidance, not separate min/max
-#                         countries=template.get("countries"),  # Pass as Python object, not JSON string
-#                         targeting_template=template.get("targeting_template", {}),  # Pass as Python object
-#                         implementation_config=template.get("implementation_config", {}),  # Pass as Python object
-#                     )
-#                     db_session.add(new_product)
-#                     created.append(product_id)
-#
-#                 except Exception as e:
-#                     errors.append(f"Failed to create {product_id}: {str(e)}")
-#
-#             db_session.commit()
-#
-#         return jsonify(
-#             {
-#                 "success": True,
-#                 "created": created,
-#                 "errors": errors,
-#                 "created_count": len(created),
-#             }
-#         )
-#
-#     except Exception as e:
-#         return jsonify({"error": str(e)}), 500
-
-
-@app.route("/tenant/<tenant_id>/products/setup-wizard")
-@require_auth()
-def product_setup_wizard(tenant_id):
+    # MIGRATED to products_bp.setup_wizard
+    # @app.route("/tenant/<tenant_id>/products/setup-wizard")
+    # @require_auth()
+    # def product_setup_wizard(tenant_id):
     """Show product setup wizard for new tenants."""
     # Check access
     if session.get("role") == "viewer":
@@ -5585,10 +5583,10 @@ def analyze_ad_server_inventory(tenant_id):
             }
         )
 
-
-@app.route("/tenant/<tenant_id>/products/create-bulk", methods=["POST"])
-@require_auth()
-def create_products_bulk(tenant_id):
+    # MIGRATED to products_bp.create_bulk
+    # @app.route("/tenant/<tenant_id>/products/create-bulk", methods=["POST"])
+    # @require_auth()
+    # def create_products_bulk(tenant_id):
     """Create multiple products from wizard suggestions."""
     # Check access
     if session.get("role") == "viewer":
