@@ -2977,11 +2977,11 @@ def generate_dry_run_preview(media_buy, products, principal, human_task):
 
     return preview
 
-
-# User Management Routes
-@app.route("/tenant/<tenant_id>/users")
-@require_auth()
-def list_users(tenant_id):
+    # User Management Routes
+    # MIGRATED to users_bp.list_users
+    # @app.route("/tenant/<tenant_id>/users")
+    # @require_auth()
+    # def list_users(tenant_id):
     """List users for a tenant."""
     # Check access
     if session.get("role") == "tenant_admin" and session.get("tenant_id") != tenant_id:
@@ -3010,10 +3010,10 @@ def list_users(tenant_id):
 
         return render_template("users.html", users=users, tenant_id=tenant_id, tenant_name=tenant_name)
 
-
-@app.route("/tenant/<tenant_id>/users/add", methods=["POST"])
-@require_auth()
-def add_user(tenant_id):
+    # MIGRATED to users_bp.add_user
+    # @app.route("/tenant/<tenant_id>/users/add", methods=["POST"])
+    # @require_auth()
+    # def add_user(tenant_id):
     """Add a new user to a tenant."""
     # Check access - only admins can add users
     if session.get("role") == "viewer":
@@ -3056,10 +3056,10 @@ def add_user(tenant_id):
             db_session.rollback()
             return f"Error: {e}", 400
 
-
-@app.route("/tenant/<tenant_id>/users/<user_id>/toggle", methods=["POST"])
-@require_auth()
-def toggle_user(tenant_id, user_id):
+    # MIGRATED to users_bp.toggle_user
+    # @app.route("/tenant/<tenant_id>/users/<user_id>/toggle", methods=["POST"])
+    # @require_auth()
+    # def toggle_user(tenant_id, user_id):
     """Enable/disable a user."""
     # Check access - only admins can toggle users
     if session.get("role") != "super_admin":
@@ -3080,10 +3080,10 @@ def toggle_user(tenant_id, user_id):
             db_session.rollback()
             return f"Error: {e}", 400
 
-
-@app.route("/tenant/<tenant_id>/users/<user_id>/update_role", methods=["POST"])
-@require_auth()
-def update_user_role(tenant_id, user_id):
+    # MIGRATED to users_bp.update_role
+    # @app.route("/tenant/<tenant_id>/users/<user_id>/update_role", methods=["POST"])
+    # @require_auth()
+    # def update_user_role(tenant_id, user_id):
     """Update a user's role."""
     # Check access - only admins can update roles
     if session.get("role") != "super_admin":

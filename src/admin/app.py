@@ -21,6 +21,7 @@ from src.admin.blueprints.principals import principals_bp
 from src.admin.blueprints.products import products_bp
 from src.admin.blueprints.settings import settings_bp
 from src.admin.blueprints.tenants import tenants_bp
+from src.admin.blueprints.users import users_bp
 from src.admin.utils import require_auth
 
 # Configure logging
@@ -77,6 +78,7 @@ def create_app(config=None):
     app.register_blueprint(tenants_bp, url_prefix="/tenant")
     app.register_blueprint(products_bp, url_prefix="/tenant/<tenant_id>/products")
     app.register_blueprint(principals_bp, url_prefix="/tenant/<tenant_id>")
+    app.register_blueprint(users_bp, url_prefix="/tenant/<tenant_id>/users")
     app.register_blueprint(gam_bp)
     app.register_blueprint(operations_bp, url_prefix="/tenant/<tenant_id>")
     app.register_blueprint(creatives_bp, url_prefix="/tenant/<tenant_id>/creative-formats")
