@@ -180,7 +180,7 @@ def google_callback():
             session["authenticated"] = True
             session["email"] = email
             flash(f"Welcome {user.get('name', email)}! (Super Admin)", "success")
-            return redirect(url_for("index"))
+            return redirect(url_for("core.index"))
 
         # Check if user is a tenant admin for any tenant
         with get_db_session() as db_session:
@@ -293,7 +293,7 @@ def test_auth():
             session["test_tenant_id"] = tenant_id
             return redirect(url_for("tenants.dashboard", tenant_id=tenant_id))
         else:
-            return redirect(url_for("index"))
+            return redirect(url_for("core.index"))
 
     flash("Invalid test credentials", "error")
     return redirect(request.referrer or url_for("auth.login"))

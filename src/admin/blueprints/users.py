@@ -23,7 +23,7 @@ def list_users(tenant_id):
         tenant = db_session.query(Tenant).filter_by(tenant_id=tenant_id).first()
         if not tenant:
             flash("Tenant not found", "error")
-            return redirect(url_for("index"))
+            return redirect(url_for("core.index"))
 
         users = db_session.query(User).filter_by(tenant_id=tenant_id).order_by(User.email).all()
 
