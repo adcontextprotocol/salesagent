@@ -30,23 +30,31 @@ def test_tenant_name_form_field_mapping():
 
     with app.test_request_context("/tenant/test123/settings/general", method="POST", data={"name": "Test Tenant Name"}):
 
-        # Mock the database session and tenant
-        with patch("src.admin.blueprints.settings.get_db_session") as mock_session:
-            with patch("src.admin.blueprints.settings.flash") as mock_flash:
-                with patch("src.admin.blueprints.settings.redirect") as mock_redirect:
+        # Mock the auth decorator to bypass authentication
+        with patch("src.admin.utils.require_tenant_access", lambda: lambda f: f):
+            # Mock the database session and tenant
+            with patch("src.admin.blueprints.settings.get_db_session") as mock_session:
+                with patch("src.admin.blueprints.settings.flash") as mock_flash:
+                    with patch("src.admin.blueprints.settings.redirect") as mock_redirect:
 
-                    # Set up mock objects
-                    mock_tenant = MagicMock()
-                    mock_db = MagicMock()
-                    mock_db.query.return_value.filter_by.return_value.first.return_value = mock_tenant
-                    mock_session.return_value.__enter__.return_value = mock_db
-                    mock_session.return_value.__exit__.return_value = None
+                        # Set up mock objects
+                        mock_tenant = MagicMock()
+                        mock_db = MagicMock()
+                        mock_db.query.return_value.filter_by.return_value.first.return_value = mock_tenant
+                        mock_session.return_value.__enter__.return_value = mock_db
+                        mock_session.return_value.__exit__.return_value = None
 
-                    # Set up session mock to simulate logged-in user
-                    with patch("src.admin.blueprints.settings.session", {"tenant_id": "test123"}):
+                        # Set up session mock to simulate logged-in user
+                        from flask import session
 
-                        # Call the function
-                        result = update_general("test123")
+                        with patch.dict(
+                            session,
+                            {"tenant_id": "test123", "user_email": "test@example.com", "role": "tenant_admin"},
+                            clear=False,
+                        ):
+
+                            # Call the function
+                            result = update_general("test123")
 
                         # Verify that the tenant name was set correctly
                         # This should NOT fail with "Tenant name is required"
@@ -77,7 +85,9 @@ def test_empty_tenant_name_validation():
         with patch("src.admin.blueprints.settings.get_db_session") as mock_session:
             with patch("src.admin.blueprints.settings.flash") as mock_flash:
                 with patch("src.admin.blueprints.settings.redirect") as mock_redirect:
-                    with patch("src.admin.blueprints.settings.session", {"tenant_id": "test123"}):
+                    from flask import session
+
+                    with patch.dict(session, {"tenant_id": "test123"}, clear=False):
 
                         # Call the function
                         result = update_general("test123")
@@ -106,7 +116,9 @@ def test_whitespace_only_tenant_name():
         with patch("src.admin.blueprints.settings.get_db_session") as mock_session:
             with patch("src.admin.blueprints.settings.flash") as mock_flash:
                 with patch("src.admin.blueprints.settings.redirect") as mock_redirect:
-                    with patch("src.admin.blueprints.settings.session", {"tenant_id": "test123"}):
+                    from flask import session
+
+                    with patch.dict(session, {"tenant_id": "test123"}, clear=False):
 
                         # Call the function
                         result = update_general("test123")
