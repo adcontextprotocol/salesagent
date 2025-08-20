@@ -13,7 +13,7 @@
             <p>Before you can use the Product Setup Wizard, you need to sync your ad server inventory.</p>
             <p>This allows the wizard to discover your available ad units, targeting options, and creative formats.</p>
             <div style="margin: 20px 0;">
-                <a href="{{ url_for('inventory_browser', tenant_id=tenant_id) }}" class="btn btn-primary">
+                <a href="{{ url_for('inventory.inventory_browser', tenant_id=tenant_id) }}" class="btn btn-primary">
                     Go to Inventory Manager →
                 </a>
             </div>
@@ -184,7 +184,7 @@
             </div>
 
             <div class="wizard-actions">
-                <a href="{{ url_for('list_products', tenant_id=tenant_id) }}" class="btn btn-primary">View Products</a>
+                <a href="{{ url_for('products.list_products', tenant_id=tenant_id) }}" class="btn btn-primary">View Products</a>
                 <button class="btn btn-secondary" onclick="startOver()">Create More Products</button>
             </div>
         </div>
@@ -679,7 +679,7 @@ async function analyzeAdServer() {
 
     // Fetch actual data from ad server
     try {
-        const response = await fetch(`{{ url_for('analyze_ad_server_inventory', tenant_id=tenant_id) }}`);
+        const response = await fetch(`{{ url_for('inventory.analyze_ad_server_inventory', tenant_id=tenant_id) }}`);
         adServerData = await response.json();
         console.log('Ad server data received:', adServerData);
 
@@ -692,7 +692,7 @@ async function analyzeAdServer() {
                     <p>${adServerData.error}</p>
                     <p>Please run the GAM inventory sync before using the Product Wizard:</p>
                     <ol>
-                        <li>Go to the <a href="{{ url_for('inventory_browser', tenant_id=tenant_id) }}">GAM Inventory</a> page</li>
+                        <li>Go to the <a href="{{ url_for('inventory.inventory_browser', tenant_id=tenant_id) }}">GAM Inventory</a> page</li>
                         <li>Click "Sync Inventory" to fetch the latest data from GAM</li>
                         <li>Return here after the sync completes</li>
                     </ol>
@@ -958,7 +958,7 @@ async function createSelectedProducts() {
         `<p>Creating ${productsToCreate.length} products...</p><div class="spinner"></div>`;
 
     try {
-        const response = await fetch(`{{ url_for('create_products_bulk', tenant_id=tenant_id) }}`, {
+        const response = await fetch(`{{ url_for('products.create_bulk', tenant_id=tenant_id) }}`, {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify({products: productsToCreate})
@@ -1036,7 +1036,7 @@ function togglePricingInputs(index) {
 document.addEventListener('DOMContentLoaded', async function() {
     // First, check if inventory has been synced
     try {
-        const response = await fetch(`{{ url_for('check_inventory_sync', tenant_id=tenant_id) }}`);
+        const response = await fetch(`{{ url_for('inventory.check_inventory_sync', tenant_id=tenant_id) }}`);
         const data = await response.json();
 
         if (!data.has_inventory) {

@@ -6,7 +6,7 @@
 <div class="card">
     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
         <h2>Product Templates</h2>
-        <a href="{{ url_for('list_products', tenant_id=tenant_id) }}" class="btn btn-secondary">← Back to Products</a>
+        <a href="{{ url_for('products.list_products', tenant_id=tenant_id) }}" class="btn btn-secondary">← Back to Products</a>
     </div>
 
     <div class="alert alert-info">
@@ -443,7 +443,7 @@ document.getElementById('customization-form').addEventListener('submit', async f
     }
 
     try {
-        const response = await fetch(`{{ url_for('create_from_template', tenant_id=tenant_id) }}`, {
+        const response = await fetch(`{{ url_for('products.create_from_template', tenant_id=tenant_id) }}`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',

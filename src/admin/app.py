@@ -4,16 +4,16 @@ import logging
 import os
 import secrets
 
-from flask import Flask, flash, redirect, render_template, request, session, url_for
+from flask import Flask, request
 from flask_socketio import SocketIO, join_room
 
-from database_session import get_db_session
-from models import Tenant
 from src.admin.blueprints.adapters import adapters_bp
 from src.admin.blueprints.api import api_bp
 from src.admin.blueprints.auth import auth_bp, init_oauth
+from src.admin.blueprints.core import core_bp
 from src.admin.blueprints.creatives import creatives_bp
 from src.admin.blueprints.gam import gam_bp
+from src.admin.blueprints.inventory import inventory_bp
 from src.admin.blueprints.mcp_test import mcp_test_bp
 from src.admin.blueprints.operations import operations_bp
 from src.admin.blueprints.policy import policy_bp
@@ -22,7 +22,6 @@ from src.admin.blueprints.products import products_bp
 from src.admin.blueprints.settings import settings_bp
 from src.admin.blueprints.tenants import tenants_bp
 from src.admin.blueprints.users import users_bp
-from src.admin.utils import require_auth
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -74,6 +73,7 @@ def create_app(config=None):
     app.socketio = socketio
 
     # Register blueprints
+    app.register_blueprint(core_bp)  # Core routes (/, /health, /static, /mcp-test)
     app.register_blueprint(auth_bp)  # No url_prefix - auth routes are at root
     app.register_blueprint(tenants_bp, url_prefix="/tenant")
     app.register_blueprint(products_bp, url_prefix="/tenant/<tenant_id>/products")
@@ -85,6 +85,7 @@ def create_app(config=None):
     app.register_blueprint(policy_bp, url_prefix="/tenant/<tenant_id>/policy")
     app.register_blueprint(settings_bp, url_prefix="/tenant/<tenant_id>/settings")
     app.register_blueprint(adapters_bp, url_prefix="/tenant/<tenant_id>")
+    app.register_blueprint(inventory_bp)  # Has its own internal routing
     app.register_blueprint(api_bp, url_prefix="/api")
     app.register_blueprint(mcp_test_bp)
 
@@ -112,77 +113,6 @@ def create_app(config=None):
 
     # Register adapter-specific routes
     register_adapter_routes(app)
-
-    # Core routes
-    @app.route("/health")
-    def health():
-        """Health check endpoint for monitoring."""
-        return "OK", 200
-
-    @app.route("/")
-    @require_auth()
-    def index():
-        """Dashboard showing all tenants (super admin) or redirect to tenant page (tenant admin)."""
-        from datetime import datetime
-
-        # Tenant admins should go directly to their tenant page
-        if session.get("role") == "tenant_admin":
-            return redirect(url_for("tenants.dashboard", tenant_id=session.get("tenant_id")))
-
-        # Super admins see all tenants
-        try:
-            with get_db_session() as db_session:
-                tenant_objects = db_session.query(Tenant).order_by(Tenant.created_at.desc()).all()
-                tenants = []
-                for tenant in tenant_objects:
-                    # Convert datetime if it's a string
-                    created_at = tenant.created_at
-                    if isinstance(created_at, str):
-                        try:
-                            created_at = datetime.fromisoformat(created_at.replace("T", " "))
-                        except Exception as e:
-                            logger.warning(f"Could not parse datetime {created_at}: {e}")
-                            pass
-                    tenants.append(
-                        {
-                            "tenant_id": tenant.tenant_id,
-                            "name": tenant.name,
-                            "subdomain": tenant.subdomain,
-                            "is_active": tenant.is_active,
-                            "created_at": created_at,
-                        }
-                    )
-                return render_template("index.html", tenants=tenants)
-        except Exception as e:
-            logger.error(f"Error loading tenants: {e}")
-            return render_template("error.html", error="Failed to load tenants"), 500
-
-    @app.route("/settings", methods=["GET", "POST"])
-    @require_auth(admin_only=True)
-    def settings():
-        """Global settings page (super admin only)."""
-        from database_session import get_db_session
-        from models import SuperadminConfig
-
-        if request.method == "POST":
-            # Handle form submission
-            flash("Settings updated successfully", "success")
-            return redirect(url_for("settings"))
-
-        # Get config items for display
-        config_items = {}
-        try:
-            with get_db_session() as db_session:
-                configs = db_session.query(SuperadminConfig).all()
-                for config in configs:
-                    config_items[config.config_key] = {
-                        "value": config.config_value,
-                        "description": config.description or "",
-                    }
-        except Exception as e:
-            logger.error(f"Error loading config: {e}")
-
-        return render_template("settings.html", config_items=config_items)
 
     # WebSocket handlers
     @socketio.on("connect")

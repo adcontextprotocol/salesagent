@@ -19,10 +19,10 @@ from validation import sanitize_form_data, validate_form_data
 logger = logging.getLogger(__name__)
 
 # Create Blueprint
-products_bp = Blueprint("products", __name__, url_prefix="/tenant/<tenant_id>/products")
+products_bp = Blueprint("products", __name__)
 
 
-@products_bp.route("")
+@products_bp.route("/")
 @require_tenant_access()
 def list_products(tenant_id):
     """List all products for a tenant."""
