@@ -69,7 +69,7 @@ class TestDashboardRoutes:
         assert response.status_code == 302  # Should redirect to login
         assert "/login" in response.location
 
-    @patch("admin_ui.get_db_session")
+    @patch("database_session.get_db_session")
     def test_dashboard_with_valid_tenant(self, mock_db, flask_client, mock_tenant):
         """Test dashboard loads with valid tenant."""
         # Mock database connection
@@ -118,7 +118,7 @@ class TestDashboardRoutes:
         # Should not error
         assert response.status_code != 500
 
-    @patch("admin_ui.get_db_session")
+    @patch("database_session.get_db_session")
     def test_dashboard_invalid_tenant(self, mock_get_session, flask_client):
         """Test dashboard with non-existent tenant."""
         # Mock database session using context manager
@@ -143,7 +143,7 @@ class TestDashboardRoutes:
 class TestDashboardMetrics:
     """Test dashboard metric calculations."""
 
-    @patch("admin_ui.get_db_session")
+    @patch("database_session.get_db_session")
     def test_revenue_calculation(self, mock_db, mock_media_buys):
         """Test revenue metrics are calculated correctly."""
         mock_session = MagicMock()
@@ -176,7 +176,7 @@ class TestDashboardMetrics:
 
         assert total_revenue == 5000.0
 
-    @patch("admin_ui.get_db_session")
+    @patch("database_session.get_db_session")
     def test_task_count_metrics(self, mock_db, mock_human_tasks):
         """Test task counting metrics."""
         mock_conn = MagicMock()
@@ -322,7 +322,7 @@ class TestDashboardErrorHandling:
 class TestSettingsPage:
     """Test the settings page functionality."""
 
-    @patch("admin_ui.get_db_session")
+    @patch("database_session.get_db_session")
     def test_settings_page_loads(self, mock_db, flask_client):
         """Test that settings page loads without error."""
         mock_conn = MagicMock()
