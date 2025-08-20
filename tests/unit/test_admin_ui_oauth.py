@@ -11,6 +11,7 @@ This test suite covers:
 """
 
 import json
+import os
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -46,11 +47,10 @@ def client():
     app.config["TESTING"] = True
     app.config["SECRET_KEY"] = "test-secret-key"
 
-    # Override OAuth config for testing
-    with patch("src.admin.utils.GOOGLE_CLIENT_ID", "test-client-id"):
-        with patch("src.admin.utils.GOOGLE_CLIENT_SECRET", "test-client-secret"):
-            with app.test_client() as client:
-                yield client
+    # Override OAuth config for testing via environment variables
+    with patch.dict(os.environ, {"GOOGLE_CLIENT_ID": "test-client-id", "GOOGLE_CLIENT_SECRET": "test-client-secret"}):
+        with app.test_client() as client:
+            yield client
 
 
 @pytest.fixture
