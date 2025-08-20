@@ -166,8 +166,15 @@ def require_auth(admin_only=False):
             # Store user in g for access in view functions
             g.user = session["user"]
 
+            # Handle both string email and dict user info formats for admin check
+            user_info = session["user"]
+            if isinstance(user_info, dict):
+                email = user_info.get("email", "")
+            else:
+                email = str(user_info)
+
             # Check admin requirement
-            if admin_only and not is_super_admin(session["user"]):
+            if admin_only and not is_super_admin(email):
                 abort(403)
 
             return f(*args, **kwargs)
@@ -199,7 +206,13 @@ def require_tenant_access(api_mode=False):
                     return jsonify({"error": "Authentication required"}), 401
                 return redirect(url_for("auth.login"))
 
-            email = session["user"]
+            user_info = session["user"]
+
+            # Handle both string email and dict user info formats
+            if isinstance(user_info, dict):
+                email = user_info.get("email", "")
+            else:
+                email = str(user_info)
 
             # Super admins have access to all tenants
             if is_super_admin(email):
@@ -222,6 +235,10 @@ def require_tenant_access(api_mode=False):
                     return f(tenant_id, *args, **kwargs)
 
             except Exception as e:
+                # Don't catch abort exceptions (they should propagate)
+                if hasattr(e, "code") and e.code in [403, 404]:
+                    raise
+
                 logger.error(f"Error checking tenant access: {e}")
                 if api_mode:
                     return jsonify({"error": "Internal server error"}), 500

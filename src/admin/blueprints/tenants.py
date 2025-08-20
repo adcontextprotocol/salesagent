@@ -40,7 +40,7 @@ def dashboard(tenant_id):
                 .filter(MediaBuy.status.in_(["active", "completed"]))
                 .all()
             )
-            total_spend_amount = sum(buy.total_budget or 0 for buy in total_spend)
+            total_spend_amount = sum(buy.budget or 0 for buy in total_spend)
 
             principals_count = db_session.query(Principal).filter_by(tenant_id=tenant_id).count()
 

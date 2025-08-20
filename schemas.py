@@ -507,9 +507,9 @@ class AdaptCreativeRequest(BaseModel):
 # --- Media Buy Lifecycle ---
 class CreateMediaBuyRequest(BaseModel):
     product_ids: list[str]
-    flight_start_date: date
-    flight_end_date: date
-    total_budget: float
+    start_date: date
+    end_date: date
+    budget: float
     targeting_overlay: Targeting | None = None
     po_number: str | None = None
     pacing: Literal["even", "asap", "daily_budget"] = "even"
@@ -518,6 +518,22 @@ class CreateMediaBuyRequest(BaseModel):
     # AEE signal requirements
     required_aee_signals: list[str] | None = None  # Required targeting signals
     enable_creative_macro: bool | None = False  # Enable AEE to provide creative_macro signal
+
+    # Backward compatibility properties for old field names
+    @property
+    def flight_start_date(self) -> date:
+        """Backward compatibility for old field name."""
+        return self.start_date
+
+    @property
+    def flight_end_date(self) -> date:
+        """Backward compatibility for old field name."""
+        return self.end_date
+
+    @property
+    def total_budget(self) -> float:
+        """Backward compatibility for old field name."""
+        return self.budget
 
 
 class CreateMediaBuyResponse(BaseModel):
@@ -549,7 +565,7 @@ class LegacyUpdateMediaBuyRequest(BaseModel):
     """Legacy update request - kept for backward compatibility."""
 
     media_buy_id: str
-    new_total_budget: float | None = None
+    new_budget: float | None = None
     new_targeting_overlay: Targeting | None = None
     creative_assignments: dict[str, list[str]] | None = None
 
@@ -703,7 +719,7 @@ class UpdateMediaBuyRequest(BaseModel):
     active: bool | None = None  # True to activate, False to pause entire campaign
     flight_start_date: date | None = None  # Change start date (if not started)
     flight_end_date: date | None = None  # Extend or shorten campaign
-    total_budget: float | None = None  # Update total budget
+    budget: float | None = None  # Update total budget
     targeting_overlay: Targeting | None = None  # Update global targeting
     pacing: Literal["even", "asap", "daily_budget"] | None = None
     daily_budget: float | None = None  # Daily spend cap across all packages
@@ -711,6 +727,24 @@ class UpdateMediaBuyRequest(BaseModel):
     packages: list[PackageUpdate] | None = None  # Package-specific updates (only these are affected)
     # Creative updates
     creatives: list[Creative] | None = None  # Add new creatives
+
+    # Backward compatibility properties
+    @property
+    def total_budget(self) -> float | None:
+        """Backward compatibility for old field name."""
+        return self.budget
+
+    @property
+    def start_date(self) -> date | None:
+        """Alias for consistency with CreateMediaBuyRequest."""
+        return self.flight_start_date
+
+    @property
+    def end_date(self) -> date | None:
+        """Alias for consistency with CreateMediaBuyRequest."""
+        return self.flight_end_date
+
+    # Legacy fields
     creative_assignments: dict[str, list[str]] | None = None  # Update creative-to-package mapping
     today: date | None = None  # For testing/simulation
 
