@@ -900,6 +900,26 @@ sqlite3 adcp_local.db "SELECT * FROM alembic_version;"
 psql $DATABASE_URL -c "SELECT * FROM alembic_version;"
 ```
 
+## CRITICAL: Database Field Name Changes
+
+### MediaBuy Model Field Names (MUST READ)
+The MediaBuy model underwent significant field renames. **Always use the correct field names:**
+
+| OLD (WRONG) | NEW (CORRECT) | Used In |
+|-------------|---------------|---------|
+| `flight_start_date` | `start_date` | MediaBuy model |
+| `flight_end_date` | `end_date` | MediaBuy model |
+| `total_budget` | `budget` | MediaBuy model |
+
+**Impact**: These field names are used throughout:
+- Templates (tenant_dashboard.html, operations.html)
+- API schemas (schemas.py)
+- Database queries
+- Tests
+- Admin UI routes
+
+**To check for issues**: Run `uv run pytest tests/integration/test_schema_field_validation.py`
+
 ## Database Access Patterns
 
 ### IMPORTANT: Standardized Database Access
@@ -1134,6 +1154,64 @@ curl -X POST -H "Cookie: session=YOUR_SESSION" \
 3. **Monitor logs** - `docker-compose logs -f` during debugging
 4. **Clean restart if needed** - `docker-compose down && docker-compose up -d`
 5. **Use volumes for development** - Mount code for hot reloading
+
+## Template Testing Guidelines (CRITICAL)
+
+### Preventing Template Rendering Errors
+
+**Problem**: Template rendering errors (like `BuildError` from `url_for()` calls) are often not caught by standard tests because Flask's test client doesn't propagate template exceptions by default.
+
+**Solution**: We have comprehensive template validation in place to catch these issues before they reach production.
+
+#### 1. Automatic Template Validation
+
+All templates are automatically validated on commit via pre-commit hooks:
+- **Hook**: `template-url-validation` in `.pre-commit-config.yaml`
+- **Test**: `tests/integration/test_template_url_validation.py`
+- **Coverage**: Every `url_for()` call in every template is validated
+
+#### 2. When Creating New Templates
+
+**ALWAYS** ensure:
+1. All `url_for()` calls use the correct endpoint names
+2. Blueprint routes use namespaced endpoints (e.g., `auth.login` not `login`)
+3. Form actions point to valid POST-accepting endpoints
+4. AJAX URLs in JavaScript are valid
+
+**Common Mistakes to Avoid**:
+- ❌ `url_for('update_settings')` when route is named `settings`
+- ❌ `url_for('tenant_dashboard')` when it's `tenants.dashboard`
+- ❌ `url_for('creative_formats')` when it's `list_creative_formats`
+- ❌ Missing blueprint namespace (e.g., `select_tenant` vs `auth.select_tenant`)
+
+#### 3. When Migrating Routes to Blueprints
+
+**Checklist**:
+1. ✅ Update all templates that reference the moved route
+2. ✅ Use blueprint namespace in `url_for()` calls
+3. ✅ Update both GET and POST form actions
+4. ✅ Check JavaScript/AJAX calls too
+5. ✅ Run template validation test: `uv run pytest tests/integration/test_template_url_validation.py`
+
+#### 4. Testing Templates Manually
+
+```bash
+# Run comprehensive template validation
+uv run pytest tests/integration/test_template_url_validation.py -v
+
+# Check specific template rendering
+uv run pytest tests/integration/test_template_rendering.py -v
+
+# Run pre-commit hook manually
+pre-commit run template-url-validation --all-files
+```
+
+#### 5. Adding Tests for New Templates
+
+When adding a new template with critical navigation:
+1. Add it to `test_template_rendering.py` if it's a key page
+2. Ensure form actions are covered in `test_form_actions_point_to_valid_endpoints`
+3. Add navigation links to `test_navigation_links_are_valid`
 
 ## Testing Checklist
 

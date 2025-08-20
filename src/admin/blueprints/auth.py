@@ -176,6 +176,9 @@ def google_callback():
         # Regular login flow - check if super admin
         if is_super_admin(email):
             session["is_super_admin"] = True
+            session["role"] = "super_admin"  # Set role for template checks
+            session["authenticated"] = True
+            session["email"] = email
             flash(f"Welcome {user.get('name', email)}! (Super Admin)", "success")
             return redirect(url_for("index"))
 

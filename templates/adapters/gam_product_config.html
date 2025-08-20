@@ -381,7 +381,7 @@
         <div style="margin-top: 2rem; display: flex; gap: 1rem;">
             <button type="submit" class="btn">Save Configuration</button>
             <button type="button" class="btn btn-secondary" onclick="validateConfig()">Validate</button>
-            <a href="{{ url_for('edit_product', tenant_id=tenant_id, product_id=product.product_id) }}"
+            <a href="{{ url_for('edit_product_basic', tenant_id=tenant_id, product_id=product.product_id) }}"
                class="btn btn-secondary">Cancel</a>
         </div>
     </form>

@@ -75,8 +75,10 @@ def mock_tenant():
     tenant.admin_token = "test_admin_token"
     tenant.slack_webhook_url = "https://hooks.slack.com/test"
     tenant.adapter_config = '{"mock": {"enabled": true}}'
-    tenant.features_config = '{"max_budget": 10000}'
-    tenant.creative_engine_config = '{"auto_approve": true}'
+    tenant.max_daily_budget = 10000
+    tenant.enable_aee_signals = True
+    tenant.auto_approve_formats = ["display_300x250"]
+    tenant.human_review_required = False
     tenant.policy_settings = '{"enabled": false}'
     return tenant
 

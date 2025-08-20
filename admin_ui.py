@@ -122,12 +122,43 @@ app.register_blueprint(gam_reporting_api)
 # Import refactored blueprints for gradual migration
 print("Loading refactored blueprints for gradual migration...")
 try:
+    # Import all blueprints
+    from src.admin.blueprints.adapters import adapters_bp as refactored_adapters_bp
     from src.admin.blueprints.api import api_bp as refactored_api_bp
+    from src.admin.blueprints.auth import auth_bp as refactored_auth_bp
+    from src.admin.blueprints.auth import init_oauth
+    from src.admin.blueprints.creatives import creatives_bp as refactored_creatives_bp
+    from src.admin.blueprints.gam import gam_bp as refactored_gam_bp
+    from src.admin.blueprints.mcp_test import mcp_test_bp as refactored_mcp_test_bp
+    from src.admin.blueprints.operations import operations_bp as refactored_operations_bp
+    from src.admin.blueprints.policy import policy_bp as refactored_policy_bp
+    from src.admin.blueprints.products import products_bp as refactored_products_bp
+    from src.admin.blueprints.settings import settings_bp as refactored_settings_bp
+    from src.admin.blueprints.tenants import tenants_bp as refactored_tenants_bp
 
-    # Once we comment out conflicting routes, we can use the original prefix
-    # For now, routes being migrated will be marked with MIGRATING comment
+    # Initialize OAuth
+    init_oauth(app)
+
+    # Register blueprints with appropriate prefixes
+    app.register_blueprint(refactored_auth_bp)  # No prefix - auth routes are at root
     app.register_blueprint(refactored_api_bp, url_prefix="/api", name="api_refactored")
-    print("✓ Registered refactored API blueprint")
+    app.register_blueprint(refactored_tenants_bp, url_prefix="/tenant", name="tenants")
+    app.register_blueprint(
+        refactored_products_bp, url_prefix="/tenant/<tenant_id>/products", name="products_refactored"
+    )
+    app.register_blueprint(refactored_gam_bp, name="gam_refactored")
+    app.register_blueprint(refactored_operations_bp, url_prefix="/tenant/<tenant_id>", name="operations_refactored")
+    app.register_blueprint(
+        refactored_creatives_bp, url_prefix="/tenant/<tenant_id>/creative-formats", name="creatives_refactored"
+    )
+    app.register_blueprint(refactored_policy_bp, url_prefix="/tenant/<tenant_id>/policy", name="policy_refactored")
+    app.register_blueprint(
+        refactored_settings_bp, url_prefix="/tenant/<tenant_id>/settings", name="settings_refactored"
+    )
+    app.register_blueprint(refactored_adapters_bp, url_prefix="/tenant/<tenant_id>", name="adapters_refactored")
+    app.register_blueprint(refactored_mcp_test_bp, name="mcp_test_refactored")
+
+    print("✓ Registered all refactored blueprints")
 except ImportError as e:
     print(f"Could not import refactored blueprints: {e}")
 
@@ -321,27 +352,28 @@ def get_tenant_config_from_db(tenant_id):
         return config
 
 
-def is_super_admin(email):
-    """Check if email is authorized as super admin."""
-    # Debug logging
-    app.logger.info(f"Checking super admin for email: {email}")
-    app.logger.info(f"SUPER_ADMIN_EMAILS: {SUPER_ADMIN_EMAILS}")
-    app.logger.info(f"SUPER_ADMIN_DOMAINS: {SUPER_ADMIN_DOMAINS}")
-
-    # Check explicit email list
-    if email in SUPER_ADMIN_EMAILS:
-        app.logger.info(f"Email {email} found in SUPER_ADMIN_EMAILS")
-        return True
-
-    # Check domain
-    domain = email.split("@")[1] if "@" in email else ""
-    app.logger.info(f"Email domain: {domain}")
-    if domain and domain in SUPER_ADMIN_DOMAINS:
-        app.logger.info(f"Domain {domain} found in SUPER_ADMIN_DOMAINS")
-        return True
-
-    app.logger.info(f"Email {email} is not a super admin")
-    return False
+# MIGRATED to src.admin.utils - using imported version
+# def is_super_admin(email):
+#     """Check if email is authorized as super admin."""
+#     # Debug logging
+#     app.logger.info(f"Checking super admin for email: {email}")
+#     app.logger.info(f"SUPER_ADMIN_EMAILS: {SUPER_ADMIN_EMAILS}")
+#     app.logger.info(f"SUPER_ADMIN_DOMAINS: {SUPER_ADMIN_DOMAINS}")
+#
+#     # Check explicit email list
+#     if email in SUPER_ADMIN_EMAILS:
+#         app.logger.info(f"Email {email} found in SUPER_ADMIN_EMAILS")
+#         return True
+#
+#     # Check domain
+#     domain = email.split("@")[1] if "@" in email else ""
+#     app.logger.info(f"Email domain: {domain}")
+#     if domain and domain in SUPER_ADMIN_DOMAINS:
+#         app.logger.info(f"Domain {domain} found in SUPER_ADMIN_DOMAINS")
+#         return True
+#
+#     app.logger.info(f"Email {email} is not a super admin")
+#     return False
 
 
 def is_tenant_admin(email, tenant_id=None):
@@ -400,8 +432,8 @@ def require_auth(admin_only=False):
                 # Check if we're in a tenant-specific route
                 tenant_id = kwargs.get("tenant_id") or session.get("tenant_id")
                 if tenant_id and not admin_only:
-                    return redirect(url_for("tenant_login", tenant_id=tenant_id))
-                return redirect(url_for("login"))
+                    return redirect(url_for("auth.tenant_login", tenant_id=tenant_id))
+                return redirect(url_for("auth.login"))
 
             # Check if super admin is required but user is tenant admin
             if admin_only and session.get("role") != "super_admin":
@@ -431,8 +463,8 @@ def require_tenant_access(api_mode=False):
                 session["next_url"] = request.url
                 tenant_id = kwargs.get("tenant_id") or session.get("tenant_id")
                 if tenant_id:
-                    return redirect(url_for("tenant_login", tenant_id=tenant_id))
-                return redirect(url_for("login"))
+                    return redirect(url_for("auth.tenant_login", tenant_id=tenant_id))
+                return redirect(url_for("auth.login"))
 
             # Get tenant_id from route
             tenant_id = kwargs.get("tenant_id")
@@ -454,16 +486,16 @@ def require_tenant_access(api_mode=False):
 
     return decorator
 
-
-@app.route("/login")
-@auth_bp.route("/login")
-def login():
+    # MIGRATED to blueprint
+    # @app.route("/login")
+    # @auth_bp.route("/login")
+    # def login():
     """Show login page for super admin."""
     return render_template("login.html", tenant_id=None, test_mode=TEST_MODE_ENABLED)
 
-
-@app.route("/tenant/<tenant_id>/login")
-def tenant_login(tenant_id):
+    # MIGRATED to blueprint
+    # @app.route("/tenant/<tenant_id>/login")
+    # def tenant_login(tenant_id):
     """Show login page for specific tenant."""
     # Verify tenant exists
     with get_db_session() as session:
@@ -479,277 +511,242 @@ def tenant_login(tenant_id):
             test_mode=TEST_MODE_ENABLED,
         )
 
+    # MIGRATED to blueprint
+    # @app.route("/auth/google")
+    # @auth_bp.route("/google_auth")
+    # def google_auth():
+    #     """Initiate Google OAuth flow for super admin."""
+    #     redirect_uri = url_for("google_callback", _external=True)
+    #     return google.authorize_redirect(redirect_uri)
 
-@app.route("/auth/google")
-@auth_bp.route("/google_auth")
-def google_auth():
-    """Initiate Google OAuth flow for super admin."""
-    redirect_uri = url_for("google_callback", _external=True)
-    return google.authorize_redirect(redirect_uri)
+    # MIGRATED to blueprint
+    # @app.route("/tenant/<tenant_id>/auth/google")
+    # @auth_bp.route("/tenant_google_auth/<tenant_id>")
+    # def tenant_google_auth(tenant_id):
+    #     """Initiate Google OAuth flow for specific tenant."""
+    #     # Store tenant_id in session for callback
+    #     session["oauth_tenant_id"] = tenant_id
+    #     # Use the centralized callback for all OAuth flows
+    #     redirect_uri = url_for("google_callback", _external=True)
+    #     return google.authorize_redirect(redirect_uri)
 
+    # MIGRATED to blueprint
+    # @app.route("/auth/google/callback")
+    # def google_callback():
+    #     """Handle Google OAuth callback for both super admin and tenant users."""
+    #     pass  # Migrated to auth blueprint
 
-@app.route("/tenant/<tenant_id>/auth/google")
-@auth_bp.route("/tenant_google_auth/<tenant_id>")
-def tenant_google_auth(tenant_id):
-    """Initiate Google OAuth flow for specific tenant."""
-    # Store tenant_id in session for callback
-    session["oauth_tenant_id"] = tenant_id
-    # Use the centralized callback for all OAuth flows
-    redirect_uri = url_for("google_callback", _external=True)
-    return google.authorize_redirect(redirect_uri)
+    #         email = user_info.get("email")
+    #         if not email:
+    #             oauth_tenant_id = session.pop("oauth_tenant_id", None)
+    #             return render_template(
+    #                 "login.html",
+    #                 error="No email address provided by Google",
+    #                 tenant_id=oauth_tenant_id,
+    #             )
+    #
+    #         app.logger.info(f"OAuth callback received email: {email}")
+    #
+    #         # Check if this is a tenant-specific login attempt
+    #         oauth_tenant_id = session.pop("oauth_tenant_id", None)
+    #
+    #         if oauth_tenant_id:
+    #             # Tenant-specific authentication flow
+    #             with get_db_session() as db_session:
+    #                 # First check if user is in the users table for this tenant
+    #                 user = (
+    #                     db_session.query(User)
+    #                     .join(Tenant)
+    #                     .filter(User.email == email, User.tenant_id == oauth_tenant_id)
+    #                     .first()
+    #                 )
+    #
+    #                 # Update last login if user exists
+    #                 if user:
+    #                     if not user.is_active:
+    #                         return render_template(
+    #                             "login.html",
+    #                             error="Your account has been disabled",
+    #                             tenant_id=oauth_tenant_id,
+    #                         )
+    #
+    #                     # Update last login and Google ID
+    #                     user.last_login = datetime.now().isoformat()
+    #                     user.google_id = user_info.get("sub")
+    #                     db_session.commit()
+    #
+    #                     # Get tenant info
+    #                     tenant = db_session.query(Tenant).filter_by(tenant_id=oauth_tenant_id).first()
+    #
+    #                     session["authenticated"] = True
+    #                     session["role"] = user.role  # Use actual user role from DB
+    #                     session["user_id"] = user.user_id
+    #                     session["tenant_id"] = oauth_tenant_id
+    #                     session["tenant_name"] = tenant.name if tenant else oauth_tenant_id
+    #                     session["email"] = email
+    #                     session["username"] = user.name or user_info.get("name", email)
+    #
+    #                     # Redirect to originally requested URL if stored
+    #                     next_url = session.pop("next_url", None)
+    #                     if next_url:
+    #                         return redirect(next_url)
+    #                     return redirect(url_for("tenant_dashboard", tenant_id=oauth_tenant_id))
+    #
+    #             # If not in users table, check legacy tenant admin config
+    #             if is_tenant_admin(email, oauth_tenant_id):
+    #                 # Get tenant name for session
+    #                 with get_db_session() as db_session:
+    #                     tenant = db_session.query(Tenant).filter_by(tenant_id=oauth_tenant_id).first()
+    #
+    #                     session["authenticated"] = True
+    #                     session["role"] = "tenant_admin"  # Legacy role
+    #                     session["tenant_id"] = oauth_tenant_id
+    #                     session["tenant_name"] = tenant.name if tenant else oauth_tenant_id
+    #                     session["email"] = email
+    #                     session["username"] = user_info.get("name", email)
+    #
+    #                     # Redirect to originally requested URL if stored
+    #                     next_url = session.pop("next_url", None)
+    #                     if next_url:
+    #                         return redirect(next_url)
+    #                     return redirect(url_for("tenant_dashboard", tenant_id=oauth_tenant_id))
+    #
+    #             # Check if super admin trying to access tenant
+    #             if is_super_admin(email):
+    #                 # Get tenant name for session
+    #                 with get_db_session() as db_session:
+    #                     tenant = db_session.query(Tenant).filter_by(tenant_id=oauth_tenant_id).first()
+    #
+    #                     session["authenticated"] = True
+    #                     session["role"] = "super_admin"
+    #                     session["email"] = email
+    #                     session["username"] = user_info.get("name", email)
+    #
+    #                     if tenant:
+    #                         session["tenant_name"] = tenant.name
+    #
+    #                     # Super admin can access any tenant
+    #                     # Redirect to originally requested URL if stored
+    #                     next_url = session.pop("next_url", None)
+    #                     if next_url:
+    #                         return redirect(next_url)
+    #                     return redirect(url_for("tenant_dashboard", tenant_id=oauth_tenant_id))
+    #
+    #             # Fall back to checking tenant config
+    #             config = get_tenant_config_from_db(oauth_tenant_id)
+    #
+    #             if config:
+    #                 # Check if user is authorized for this tenant
+    #                 authorized_emails = config.get("authorized_emails", [])
+    #                 authorized_domains = config.get("authorized_domains", [])
+    #
+    #                 domain = email.split("@")[1] if "@" in email else None
+    #
+    #                 if email in authorized_emails or (domain and domain in authorized_domains):
+    #                     session["authenticated"] = True
+    #                     session["role"] = "tenant_user"
+    #                     session["tenant_id"] = oauth_tenant_id
+    #                     session["email"] = email
+    #                     session["username"] = user_info.get("name", email)
+    #
+    #                     # Get tenant name
+    #                     with get_db_session() as db_session:
+    #                         tenant = db_session.query(Tenant).filter_by(tenant_id=oauth_tenant_id).first()
+    #
+    #                         if tenant:
+    #                             session["tenant_name"] = tenant.name
+    #
+    #                     # Redirect to originally requested URL if stored
+    #                     next_url = session.pop("next_url", None)
+    #                     if next_url:
+    #                         return redirect(next_url)
+    #                     return redirect(url_for("tenant_dashboard", tenant_id=oauth_tenant_id))
+    #
+    #             # Not authorized for this tenant
+    #             return render_template(
+    #                 "login.html",
+    #                 error=f"Email {email} is not authorized for this tenant",
+    #                 tenant_id=oauth_tenant_id,
+    #             )
+    #
+    #         # Standard super admin flow (no tenant_id in session)
+    #         # Check if super admin
+    #         if is_super_admin(email):
+    #             session["authenticated"] = True
+    #             session["role"] = "super_admin"
+    #             session["email"] = email
+    #             session["username"] = user_info.get("name", email)
+    #             # Redirect to originally requested URL if stored
+    #             next_url = session.pop("next_url", None)
+    #             if next_url:
+    #                 return redirect(next_url)
+    #             return redirect(url_for("index"))
+    #
+    #         # Check if tenant admin
+    #         tenant_access = is_tenant_admin(email)
+    #         if tenant_access:
+    #             if isinstance(tenant_access, list) and len(tenant_access) == 1:
+    #                 # Single tenant access
+    #                 tenant_id, tenant_name = tenant_access[0]
+    #                 session["authenticated"] = True
+    #                 session["role"] = "tenant_admin"
+    #                 session["tenant_id"] = tenant_id
+    #                 session["tenant_name"] = tenant_name
+    #                 session["email"] = email
+    #                 session["username"] = user_info.get("name", email)
+    #                 # Redirect to originally requested URL if stored
+    #                 next_url = session.pop("next_url", None)
+    #                 if next_url:
+    #                     return redirect(next_url)
+    #                 return redirect(url_for("tenant_dashboard", tenant_id=tenant_id))
+    #             elif isinstance(tenant_access, list) and len(tenant_access) > 1:
+    #                 # Multiple tenant access - let them choose
+    #                 session["pre_auth_email"] = email
+    #                 session["pre_auth_name"] = user_info.get("name", email)
+    #                 session["available_tenants"] = tenant_access
+    #                 return render_template("choose_tenant.html", tenants=tenant_access)
+    #
+    #         # Not authorized
+    #         return render_template(
+    #             "login.html",
+    #             error=f"Email {email} is not authorized to access this system",
+    #             tenant_id=None,
+    #         )
+    #
+    #     except Exception as e:
+    #         app.logger.error(f"OAuth callback error: {e}")
+    #         oauth_tenant_id = session.pop("oauth_tenant_id", None)
+    #         return render_template("login.html", error="Authentication failed", tenant_id=oauth_tenant_id)
+    #
+    # # End of disabled google_callback function
+    # Removed tenant-specific callback - now handled by the centralized callback
 
+    # MIGRATED to blueprint
+    # @app.route("/auth/select-tenant", methods=["POST"])
+    # def select_tenant():
+    #     """Handle tenant selection for users with multiple tenant access."""
+    #     pass  # Migrated to auth blueprint
+    # MIGRATED to blueprint
+    # @app.route("/logout")
+    # @auth_bp.route("/logout")
+    # def logout():
+    #     """Log out and clear session."""
+    #     # Save tenant_id before clearing session
+    #     tenant_id = session.get("tenant_id")
+    #     was_super_admin = session.get("role") == "super_admin"
+    #
+    #     session.clear()
+    #
+    #     # Redirect to appropriate login page
+    #     if was_super_admin or not tenant_id:
+    #         return redirect(url_for("auth.login"))
+    #     else:
+    #         return redirect(url_for("auth.tenant_login", tenant_id=tenant_id))
 
-@app.route("/auth/google/callback")
-def google_callback():
-    """Handle Google OAuth callback for both super admin and tenant users."""
-    try:
-        token = google.authorize_access_token()
-        user_info = token.get("userinfo")
-
-        if not user_info:
-            # Check if this was a tenant-specific login attempt
-            oauth_tenant_id = session.pop("oauth_tenant_id", None)
-            if oauth_tenant_id:
-                return redirect(url_for("tenant_login", tenant_id=oauth_tenant_id))
-            return redirect(url_for("login"))
-
-        email = user_info.get("email")
-        if not email:
-            oauth_tenant_id = session.pop("oauth_tenant_id", None)
-            return render_template(
-                "login.html",
-                error="No email address provided by Google",
-                tenant_id=oauth_tenant_id,
-            )
-
-        app.logger.info(f"OAuth callback received email: {email}")
-
-        # Check if this is a tenant-specific login attempt
-        oauth_tenant_id = session.pop("oauth_tenant_id", None)
-
-        if oauth_tenant_id:
-            # Tenant-specific authentication flow
-            with get_db_session() as db_session:
-                # First check if user is in the users table for this tenant
-                user = (
-                    db_session.query(User)
-                    .join(Tenant)
-                    .filter(User.email == email, User.tenant_id == oauth_tenant_id)
-                    .first()
-                )
-
-                # Update last login if user exists
-                if user:
-                    if not user.is_active:
-                        return render_template(
-                            "login.html",
-                            error="Your account has been disabled",
-                            tenant_id=oauth_tenant_id,
-                        )
-
-                    # Update last login and Google ID
-                    user.last_login = datetime.now().isoformat()
-                    user.google_id = user_info.get("sub")
-                    db_session.commit()
-
-                    # Get tenant info
-                    tenant = db_session.query(Tenant).filter_by(tenant_id=oauth_tenant_id).first()
-
-                    session["authenticated"] = True
-                    session["role"] = user.role  # Use actual user role from DB
-                    session["user_id"] = user.user_id
-                    session["tenant_id"] = oauth_tenant_id
-                    session["tenant_name"] = tenant.name if tenant else oauth_tenant_id
-                    session["email"] = email
-                    session["username"] = user.name or user_info.get("name", email)
-
-                    # Redirect to originally requested URL if stored
-                    next_url = session.pop("next_url", None)
-                    if next_url:
-                        return redirect(next_url)
-                    return redirect(url_for("tenant_dashboard", tenant_id=oauth_tenant_id))
-
-            # If not in users table, check legacy tenant admin config
-            if is_tenant_admin(email, oauth_tenant_id):
-                # Get tenant name for session
-                with get_db_session() as db_session:
-                    tenant = db_session.query(Tenant).filter_by(tenant_id=oauth_tenant_id).first()
-
-                    session["authenticated"] = True
-                    session["role"] = "tenant_admin"  # Legacy role
-                    session["tenant_id"] = oauth_tenant_id
-                    session["tenant_name"] = tenant.name if tenant else oauth_tenant_id
-                    session["email"] = email
-                    session["username"] = user_info.get("name", email)
-
-                    # Redirect to originally requested URL if stored
-                    next_url = session.pop("next_url", None)
-                    if next_url:
-                        return redirect(next_url)
-                    return redirect(url_for("tenant_dashboard", tenant_id=oauth_tenant_id))
-
-            # Check if super admin trying to access tenant
-            if is_super_admin(email):
-                # Get tenant name for session
-                with get_db_session() as db_session:
-                    tenant = db_session.query(Tenant).filter_by(tenant_id=oauth_tenant_id).first()
-
-                    session["authenticated"] = True
-                    session["role"] = "super_admin"
-                    session["email"] = email
-                    session["username"] = user_info.get("name", email)
-
-                    if tenant:
-                        session["tenant_name"] = tenant.name
-
-                    # Super admin can access any tenant
-                    # Redirect to originally requested URL if stored
-                    next_url = session.pop("next_url", None)
-                    if next_url:
-                        return redirect(next_url)
-                    return redirect(url_for("tenant_dashboard", tenant_id=oauth_tenant_id))
-
-            # Fall back to checking tenant config
-            config = get_tenant_config_from_db(oauth_tenant_id)
-
-            if config:
-                # Check if user is authorized for this tenant
-                authorized_emails = config.get("authorized_emails", [])
-                authorized_domains = config.get("authorized_domains", [])
-
-                domain = email.split("@")[1] if "@" in email else None
-
-                if email in authorized_emails or (domain and domain in authorized_domains):
-                    session["authenticated"] = True
-                    session["role"] = "tenant_user"
-                    session["tenant_id"] = oauth_tenant_id
-                    session["email"] = email
-                    session["username"] = user_info.get("name", email)
-
-                    # Get tenant name
-                    with get_db_session() as db_session:
-                        tenant = db_session.query(Tenant).filter_by(tenant_id=oauth_tenant_id).first()
-
-                        if tenant:
-                            session["tenant_name"] = tenant.name
-
-                    # Redirect to originally requested URL if stored
-                    next_url = session.pop("next_url", None)
-                    if next_url:
-                        return redirect(next_url)
-                    return redirect(url_for("tenant_dashboard", tenant_id=oauth_tenant_id))
-
-            # Not authorized for this tenant
-            return render_template(
-                "login.html",
-                error=f"Email {email} is not authorized for this tenant",
-                tenant_id=oauth_tenant_id,
-            )
-
-        # Standard super admin flow (no tenant_id in session)
-        # Check if super admin
-        if is_super_admin(email):
-            session["authenticated"] = True
-            session["role"] = "super_admin"
-            session["email"] = email
-            session["username"] = user_info.get("name", email)
-            # Redirect to originally requested URL if stored
-            next_url = session.pop("next_url", None)
-            if next_url:
-                return redirect(next_url)
-            return redirect(url_for("index"))
-
-        # Check if tenant admin
-        tenant_access = is_tenant_admin(email)
-        if tenant_access:
-            if isinstance(tenant_access, list) and len(tenant_access) == 1:
-                # Single tenant access
-                tenant_id, tenant_name = tenant_access[0]
-                session["authenticated"] = True
-                session["role"] = "tenant_admin"
-                session["tenant_id"] = tenant_id
-                session["tenant_name"] = tenant_name
-                session["email"] = email
-                session["username"] = user_info.get("name", email)
-                # Redirect to originally requested URL if stored
-                next_url = session.pop("next_url", None)
-                if next_url:
-                    return redirect(next_url)
-                return redirect(url_for("tenant_dashboard", tenant_id=tenant_id))
-            elif isinstance(tenant_access, list) and len(tenant_access) > 1:
-                # Multiple tenant access - let them choose
-                session["pre_auth_email"] = email
-                session["pre_auth_name"] = user_info.get("name", email)
-                session["available_tenants"] = tenant_access
-                return render_template("choose_tenant.html", tenants=tenant_access)
-
-        # Not authorized
-        return render_template(
-            "login.html",
-            error=f"Email {email} is not authorized to access this system",
-            tenant_id=None,
-        )
-
-    except Exception as e:
-        app.logger.error(f"OAuth callback error: {e}")
-        oauth_tenant_id = session.pop("oauth_tenant_id", None)
-        return render_template("login.html", error="Authentication failed", tenant_id=oauth_tenant_id)
-
-
-# Removed tenant-specific callback - now handled by the centralized callback
-
-
-@app.route("/auth/select-tenant", methods=["POST"])
-def select_tenant():
-    """Handle tenant selection for users with multiple tenant access."""
-    if not session.get("pre_auth_email"):
-        return redirect(url_for("login"))
-
-    tenant_id = request.form.get("tenant_id")
-    available_tenants = session.get("available_tenants", [])
-
-    # Verify the selected tenant is in the available list
-    selected_tenant = None
-    for tid, tname in available_tenants:
-        if tid == tenant_id:
-            selected_tenant = (tid, tname)
-            break
-
-    if not selected_tenant:
-        return "Invalid tenant selection", 400
-
-    # Set up session
-    session["authenticated"] = True
-    session["role"] = "tenant_admin"
-    session["tenant_id"] = selected_tenant[0]
-    session["tenant_name"] = selected_tenant[1]
-    session["email"] = session.pop("pre_auth_email")
-    session["username"] = session.pop("pre_auth_name")
-    session.pop("available_tenants", None)
-
-    return redirect(url_for("tenant_dashboard", tenant_id=selected_tenant[0]))
-
-
-@app.route("/logout")
-@auth_bp.route("/logout")
-def logout():
-    """Log out and clear session."""
-    # Save tenant_id before clearing session
-    tenant_id = session.get("tenant_id")
-    is_super_admin = session.get("role") == "super_admin"
-
-    session.clear()
-
-    # Redirect to appropriate login page
-    if is_super_admin or not tenant_id:
-        return redirect(url_for("login"))
-    else:
-        return redirect(url_for("tenant_login", tenant_id=tenant_id))
-
-
-# Test mode authentication routes - ONLY FOR AUTOMATED TESTING
-@app.route("/test/auth", methods=["POST"])
-def test_auth():
+    # Test mode authentication routes - ONLY FOR AUTOMATED TESTING
+    # MIGRATED to blueprint
+    # @app.route("/test/auth", methods=["POST"])
+    # def test_auth():
     """Test authentication endpoint - bypasses OAuth for automated testing."""
     if not TEST_MODE_ENABLED:
         return "Test mode is not enabled", 404
@@ -761,8 +758,8 @@ def test_auth():
     # Check test user credentials
     if email not in TEST_USERS or TEST_USERS[email]["password"] != password:
         if tenant_id:
-            return redirect(url_for("tenant_login", tenant_id=tenant_id) + "?error=Invalid+test+credentials")
-        return redirect(url_for("login") + "?error=Invalid+test+credentials")
+            return redirect(url_for("auth.tenant_login", tenant_id=tenant_id) + "?error=Invalid+test+credentials")
+        return redirect(url_for("auth.login") + "?error=Invalid+test+credentials")
 
     test_user = TEST_USERS[email]
 
@@ -776,14 +773,14 @@ def test_auth():
 
     # For tenant users, we need a tenant_id
     if not tenant_id:
-        return redirect(url_for("login") + "?error=Tenant+ID+required+for+non-super-admin+test+users")
+        return redirect(url_for("auth.login") + "?error=Tenant+ID+required+for+non-super-admin+test+users")
 
     # Verify tenant exists
     with get_db_session() as db_session:
         tenant = db_session.query(Tenant).filter_by(tenant_id=tenant_id, is_active=True).first()
 
         if not tenant:
-            return redirect(url_for("login") + "?error=Invalid+tenant+ID")
+            return redirect(url_for("auth.login") + "?error=Invalid+tenant+ID")
 
         # Set up session for tenant user
         session["authenticated"] = True
@@ -796,9 +793,9 @@ def test_auth():
 
         return redirect(url_for("tenant_dashboard", tenant_id=tenant_id))
 
-
-@app.route("/test/login")
-def test_login_form():
+    # MIGRATED to blueprint
+    # @app.route("/test/login")
+    # def test_login_form():
     """Show test login form for automated testing."""
     if not TEST_MODE_ENABLED:
         return "Test mode is not enabled", 404
@@ -1190,11 +1187,12 @@ def create_tenant():
 
 
 # New Dashboard Routes (v2)
-@app.route("/tenant/<tenant_id>")
-@tenants_bp.route("/dashboard/<tenant_id>")
-@require_auth()
-def tenant_dashboard(tenant_id):
-    """Show new operational dashboard for tenant."""
+# MIGRATED to tenants blueprint
+# @app.route("/tenant/<tenant_id>")
+# @tenants_bp.route("/dashboard/<tenant_id>")
+# @require_auth()
+"""def tenant_dashboard(tenant_id):
+    # Show new operational dashboard for tenant.
     # Check access
     if session.get("role") == "tenant_admin" and session.get("tenant_id") != tenant_id:
         return "Access denied. You can only view your own tenant.", 403
@@ -1361,6 +1359,7 @@ def tenant_dashboard(tenant_id):
             chart_data=chart_data,
             admin_port=admin_port,
         )
+"""
 
 
 @app.route("/tenant/<tenant_id>/settings")
@@ -6555,9 +6554,7 @@ def broadcast_activity_to_websocket(tenant_id: str, activity: dict):
 # In production, you might want to use a message queue or event system
 activity_feed.broadcast_to_websocket = broadcast_activity_to_websocket
 
-# Register blueprints at the end after all routes are defined
-app.register_blueprint(auth_bp, url_prefix="/auth")
-app.register_blueprint(tenants_bp, url_prefix="/tenants")
+# Blueprint registration moved to top of file with refactored imports
 
 if __name__ == "__main__":
     # Create templates directory

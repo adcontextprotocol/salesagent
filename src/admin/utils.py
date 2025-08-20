@@ -59,17 +59,17 @@ def get_tenant_config_from_db(tenant_id):
                 if adapter_config:
                     config["adapters"] = adapter_config
 
-            # Add features config
-            if tenant.features_config:
-                features_config = parse_json_config(tenant.features_config)
-                if features_config:
-                    config["features"] = features_config
+            # Build features config from individual columns
+            config["features"] = {
+                "max_daily_budget": tenant.max_daily_budget,
+                "enable_aee_signals": tenant.enable_aee_signals,
+            }
 
-            # Add creative engine config
-            if tenant.creative_engine_config:
-                creative_config = parse_json_config(tenant.creative_engine_config)
-                if creative_config:
-                    config["creative_engine"] = creative_config
+            # Build creative engine config from individual columns
+            config["creative_engine"] = {
+                "auto_approve_formats": tenant.auto_approve_formats or [],
+                "human_review_required": tenant.human_review_required,
+            }
 
             # Add policy settings
             if tenant.policy_settings:
@@ -282,10 +282,10 @@ def get_custom_targeting_mappings(tenant_id=None):
         try:
             with get_db_session() as db_session:
                 tenant = db_session.query(Tenant).filter_by(tenant_id=tenant_id).first()
-                if tenant and tenant.features_config:
-                    features = parse_json_config(tenant.features_config)
-                    if isinstance(features, dict) and "custom_targeting_mappings" in features:
-                        mappings = features["custom_targeting_mappings"]
+                # TODO: Custom targeting mappings should be stored in a dedicated table or column
+                # For now, return empty mappings since the features_config column was removed
+                if tenant:
+                    pass  # No custom targeting mappings in current schema
         except Exception as e:
             logger.error(f"Error getting custom targeting mappings: {e}")
 

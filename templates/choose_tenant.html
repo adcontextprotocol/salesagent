@@ -10,7 +10,7 @@
         Your email address has access to multiple tenants. Please select which one you'd like to manage:
     </p>
 
-    <form method="POST" action="{{ url_for('select_tenant') }}">
+    <form method="POST" action="{{ url_for('auth.select_tenant') }}">
         <div style="margin-bottom: 2rem;">
             {% for tenant_id, tenant_name in tenants %}
             <label style="display: block; padding: 1rem; margin-bottom: 0.5rem; border: 1px solid #ddd; border-radius: 4px; cursor: pointer;">

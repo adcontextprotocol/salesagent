@@ -33,9 +33,7 @@ def list_products(tenant_id):
                 flash("Tenant not found", "error")
                 return redirect(url_for("index"))
 
-            products = (
-                db_session.query(Product).filter_by(tenant_id=tenant_id).order_by(Product.created_at.desc()).all()
-            )
+            products = db_session.query(Product).filter_by(tenant_id=tenant_id).order_by(Product.name).all()
 
             # Convert products to dict format for template
             products_list = []
