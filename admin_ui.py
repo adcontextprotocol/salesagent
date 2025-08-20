@@ -4629,11 +4629,11 @@ def get_creative_formats():
 
         return formats
 
-
-# Creative Format Management Routes
-@app.route("/tenant/<tenant_id>/creative-formats")
-@require_auth()
-def list_creative_formats(tenant_id):
+    # Creative Format Management Routes
+    # MIGRATED to creatives_bp.index
+    # @app.route("/tenant/<tenant_id>/creative-formats")
+    # @require_auth()
+    # def list_creative_formats(tenant_id):
     """List creative formats (both standard and custom)."""
     # Check access
     if session.get("role") != "super_admin" and session.get("tenant_id") != tenant_id:
@@ -4684,10 +4684,10 @@ def list_creative_formats(tenant_id):
         formats=formats,
     )
 
-
-@app.route("/tenant/<tenant_id>/creative-formats/add/ai", methods=["GET"])
-@require_auth()
-def add_creative_format_ai(tenant_id):
+    # MIGRATED to creatives_bp.add_ai
+    # @app.route("/tenant/<tenant_id>/creative-formats/add/ai", methods=["GET"])
+    # @require_auth()
+    # def add_creative_format_ai(tenant_id):
     """Show AI-assisted creative format discovery form."""
     # Check access
     if session.get("role") != "super_admin" and session.get("tenant_id") != tenant_id:
@@ -4695,10 +4695,10 @@ def add_creative_format_ai(tenant_id):
 
     return render_template("add_creative_format_ai.html", tenant_id=tenant_id)
 
-
-@app.route("/tenant/<tenant_id>/creative-formats/analyze", methods=["POST"])
-@require_auth()
-def analyze_creative_format(tenant_id):
+    # MIGRATED to creatives_bp.analyze
+    # @app.route("/tenant/<tenant_id>/creative-formats/analyze", methods=["POST"])
+    # @require_auth()
+    # def analyze_creative_format(tenant_id):
     """Analyze creative format with AI."""
     # Check access
     if session.get("role") != "super_admin" and session.get("tenant_id") != tenant_id:
@@ -4730,10 +4730,10 @@ def analyze_creative_format(tenant_id):
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-
-@app.route("/tenant/<tenant_id>/creative-formats/save", methods=["POST"])
-@require_auth()
-def save_creative_format(tenant_id):
+    # MIGRATED to creatives_bp.save
+    # @app.route("/tenant/<tenant_id>/creative-formats/save", methods=["POST"])
+    # @require_auth()
+    # def save_creative_format(tenant_id):
     """Save a creative format to the database."""
     # Check access
     if session.get("role") != "super_admin" and session.get("tenant_id") != tenant_id:
@@ -4783,10 +4783,10 @@ def save_creative_format(tenant_id):
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-
-@app.route("/tenant/<tenant_id>/creative-formats/sync-standard", methods=["POST"])
-@require_auth()
-def sync_standard_formats(tenant_id):
+    # MIGRATED to creatives_bp.sync_standard
+    # @app.route("/tenant/<tenant_id>/creative-formats/sync-standard", methods=["POST"])
+    # @require_auth()
+    # def sync_standard_formats(tenant_id):
     """Sync standard formats from adcontextprotocol.org."""
     # Super admin only
     if session.get("role") != "super_admin":
@@ -4807,10 +4807,10 @@ def sync_standard_formats(tenant_id):
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-
-@app.route("/tenant/<tenant_id>/creative-formats/discover", methods=["POST"])
-@require_auth()
-def discover_formats_from_url(tenant_id):
+    # MIGRATED to creatives_bp.discover
+    # @app.route("/tenant/<tenant_id>/creative-formats/discover", methods=["POST"])
+    # @require_auth()
+    # def discover_formats_from_url(tenant_id):
     """Discover multiple creative formats from a URL."""
     # Check access
     if session.get("role") != "super_admin" and session.get("tenant_id") != tenant_id:
@@ -4857,10 +4857,10 @@ def discover_formats_from_url(tenant_id):
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-
-@app.route("/tenant/<tenant_id>/creative-formats/save-multiple", methods=["POST"])
-@require_auth()
-def save_discovered_formats(tenant_id):
+    # MIGRATED to creatives_bp.save_multiple
+    # @app.route("/tenant/<tenant_id>/creative-formats/save-multiple", methods=["POST"])
+    # @require_auth()
+    # def save_discovered_formats(tenant_id):
     """Save multiple discovered creative formats to the database."""
     # Check access
     if session.get("role") != "super_admin" and session.get("tenant_id") != tenant_id:
@@ -4919,10 +4919,10 @@ def save_discovered_formats(tenant_id):
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-
-@app.route("/tenant/<tenant_id>/creative-formats/<format_id>")
-@require_auth()
-def get_creative_format(tenant_id, format_id):
+    # MIGRATED to creatives_bp.get_format
+    # @app.route("/tenant/<tenant_id>/creative-formats/<format_id>")
+    # @require_auth()
+    # def get_creative_format(tenant_id, format_id):
     """Get a specific creative format for editing."""
     # Check access
     if session.get("role") != "super_admin" and session.get("tenant_id") != tenant_id:
@@ -4964,10 +4964,10 @@ def get_creative_format(tenant_id, format_id):
 
     return jsonify(format_dict)
 
-
-@app.route("/tenant/<tenant_id>/creative-formats/<format_id>/edit", methods=["GET"])
-@require_auth()
-def edit_creative_format_page(tenant_id, format_id):
+    # MIGRATED to creatives_bp.edit_format
+    # @app.route("/tenant/<tenant_id>/creative-formats/<format_id>/edit", methods=["GET"])
+    # @require_auth()
+    # def edit_creative_format_page(tenant_id, format_id):
     """Display the edit creative format page."""
     # Check access
     if session.get("role") != "super_admin" and session.get("tenant_id") != tenant_id:
@@ -5026,10 +5026,10 @@ def edit_creative_format_page(tenant_id, format_id):
         format=format_dict,
     )
 
-
-@app.route("/tenant/<tenant_id>/creative-formats/<format_id>/update", methods=["POST"])
-@require_auth()
-def update_creative_format(tenant_id, format_id):
+    # MIGRATED to creatives_bp.update_format
+    # @app.route("/tenant/<tenant_id>/creative-formats/<format_id>/update", methods=["POST"])
+    # @require_auth()
+    # def update_creative_format(tenant_id, format_id):
     """Update a creative format."""
     # Check access
     if session.get("role") != "super_admin" and session.get("tenant_id") != tenant_id:
@@ -5074,10 +5074,10 @@ def update_creative_format(tenant_id, format_id):
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-
-@app.route("/tenant/<tenant_id>/creative-formats/<format_id>/delete", methods=["POST"])
-@require_auth()
-def delete_creative_format(tenant_id, format_id):
+    # MIGRATED to creatives_bp.delete_format
+    # @app.route("/tenant/<tenant_id>/creative-formats/<format_id>/delete", methods=["POST"])
+    # @require_auth()
+    # def delete_creative_format(tenant_id, format_id):
     """Delete a creative format."""
     # Check access
     if session.get("role") != "super_admin" and session.get("tenant_id") != tenant_id:
