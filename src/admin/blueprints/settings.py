@@ -4,7 +4,7 @@ import logging
 import os
 from datetime import UTC, datetime
 
-from flask import Blueprint, flash, redirect, render_template, request, url_for
+from flask import Blueprint, flash, jsonify, redirect, render_template, request, url_for
 
 from database_session import get_db_session
 from models import SuperadminConfig, Tenant
@@ -143,7 +143,9 @@ def tenant_settings(tenant_id, section=None):
 def update_general(tenant_id):
     """Update general tenant settings."""
     try:
+        # Get the tenant name from the form field named "name"
         tenant_name = request.form.get("name", "").strip()
+
         if not tenant_name:
             flash("Tenant name is required", "error")
             return redirect(url_for("settings.tenant_settings", tenant_id=tenant_id, section="general"))
@@ -154,7 +156,26 @@ def update_general(tenant_id):
                 flash("Tenant not found", "error")
                 return redirect(url_for("core.index"))
 
+            # Update tenant with form data
             tenant.name = tenant_name
+
+            # Update other fields if they exist
+            if "max_daily_budget" in request.form:
+                try:
+                    tenant.max_daily_budget = int(request.form.get("max_daily_budget", 10000))
+                except ValueError:
+                    tenant.max_daily_budget = 10000
+
+            if "enable_aee_signals" in request.form:
+                tenant.enable_aee_signals = request.form.get("enable_aee_signals") == "on"
+            else:
+                tenant.enable_aee_signals = False
+
+            if "human_review_required" in request.form:
+                tenant.human_review_required = request.form.get("human_review_required") == "on"
+            else:
+                tenant.human_review_required = False
+
             tenant.updated_at = datetime.now(UTC)
             db_session.commit()
 
@@ -172,16 +193,19 @@ def update_general(tenant_id):
 def update_adapter(tenant_id):
     """Update the active adapter for a tenant."""
     try:
-        new_adapter = request.form.get("adapter")
+        # Always expect JSON from our frontend
+        if not request.is_json:
+            return jsonify({"success": False, "error": "Invalid request format. Expected JSON."}), 400
+
+        new_adapter = request.json.get("adapter")
+
         if not new_adapter:
-            flash("No adapter selected", "error")
-            return redirect(url_for("settings.tenant_settings", tenant_id=tenant_id, section="adapter"))
+            return jsonify({"success": False, "error": "No adapter selected"}), 400
 
         with get_db_session() as db_session:
             tenant = db_session.query(Tenant).filter_by(tenant_id=tenant_id).first()
             if not tenant:
-                flash("Tenant not found", "error")
-                return redirect(url_for("core.index"))
+                return jsonify({"success": False, "error": "Tenant not found"}), 404
 
             # Update or create adapter config
             adapter_config_obj = tenant.adapter_config
@@ -195,16 +219,18 @@ def update_adapter(tenant_id):
                 adapter_config_obj = AdapterConfig(tenant_id=tenant_id, adapter_type=new_adapter)
                 db_session.add(adapter_config_obj)
 
-            # Handle adapter-specific configuration
+            # Handle adapter-specific configuration (if provided in the JSON)
             if new_adapter == "google_ad_manager":
-                network_code = request.form.get("gam_network_code", "").strip()
+                network_code = (
+                    request.json.get("gam_network_code", "").strip() if request.json.get("gam_network_code") else ""
+                )
+                manual_approval = request.json.get("gam_manual_approval", False)
+
                 if network_code:
                     adapter_config_obj.gam_network_code = network_code
-
-                manual_approval = request.form.get("gam_manual_approval") == "on"
                 adapter_config_obj.gam_manual_approval_required = manual_approval
             elif new_adapter == "mock":
-                dry_run = request.form.get("mock_dry_run") == "on"
+                dry_run = request.json.get("mock_dry_run", False)
                 adapter_config_obj.mock_dry_run = dry_run
 
             # Update the tenant
@@ -212,13 +238,11 @@ def update_adapter(tenant_id):
             tenant.updated_at = datetime.now(UTC)
             db_session.commit()
 
-            flash(f"Adapter changed to {new_adapter}", "success")
+            return jsonify({"success": True, "message": f"Adapter changed to {new_adapter}"}), 200
 
     except Exception as e:
         logger.error(f"Error updating adapter: {e}", exc_info=True)
-        flash(f"Error updating adapter: {str(e)}", "error")
-
-    return redirect(url_for("settings.tenant_settings", tenant_id=tenant_id, section="adapter"))
+        return jsonify({"success": False, "error": str(e)}), 400
 
 
 @settings_bp.route("/slack", methods=["POST"])

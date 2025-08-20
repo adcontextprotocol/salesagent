@@ -391,15 +391,6 @@ def quick_create_products(tenant_id):
         return jsonify({"error": str(e)}), 500
 
 
-@api_bp.route("/gam/test-connection", methods=["POST"])
-@require_auth()
-def gam_test_connection():
-    """TODO: Extract implementation from admin_ui.py lines 3408-3578.
-    Complex GAM OAuth and API integration - implement in phase 2."""
-    # Placeholder implementation
-    return jsonify({"error": "Not yet implemented"}), 501
-
-
 @api_bp.route("/gam/get-advertisers", methods=["POST"])
 @require_auth()
 def gam_get_advertisers():
