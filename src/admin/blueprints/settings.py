@@ -1,6 +1,5 @@
 """Settings management blueprint."""
 
-import json
 import logging
 import os
 from datetime import UTC, datetime
@@ -184,37 +183,31 @@ def update_adapter(tenant_id):
                 flash("Tenant not found", "error")
                 return redirect(url_for("core.index"))
 
-            # Get current config
-            if tenant.adapter_config:
-                adapter_config = (
-                    json.loads(tenant.adapter_config)
-                    if isinstance(tenant.adapter_config, str)
-                    else tenant.adapter_config
-                )
+            # Update or create adapter config
+            adapter_config_obj = tenant.adapter_config
+            if adapter_config_obj:
+                # Update existing config
+                adapter_config_obj.adapter_type = new_adapter
             else:
-                adapter_config = {}
+                # Create new config
+                from models import AdapterConfig
 
-            # Disable all adapters
-            for adapter_name in adapter_config:
-                if isinstance(adapter_config[adapter_name], dict):
-                    adapter_config[adapter_name]["enabled"] = False
-
-            # Enable the selected adapter
-            if new_adapter not in adapter_config:
-                adapter_config[new_adapter] = {}
-            adapter_config[new_adapter]["enabled"] = True
+                adapter_config_obj = AdapterConfig(tenant_id=tenant_id, adapter_type=new_adapter)
+                db_session.add(adapter_config_obj)
 
             # Handle adapter-specific configuration
             if new_adapter == "google_ad_manager":
                 network_code = request.form.get("gam_network_code", "").strip()
                 if network_code:
-                    adapter_config[new_adapter]["network_code"] = network_code
+                    adapter_config_obj.gam_network_code = network_code
 
                 manual_approval = request.form.get("gam_manual_approval") == "on"
-                adapter_config[new_adapter]["manual_approval_required"] = manual_approval
+                adapter_config_obj.gam_manual_approval_required = manual_approval
+            elif new_adapter == "mock":
+                dry_run = request.form.get("mock_dry_run") == "on"
+                adapter_config_obj.mock_dry_run = dry_run
 
             # Update the tenant
-            tenant.adapter_config = json.dumps(adapter_config)
             tenant.ad_server = new_adapter
             tenant.updated_at = datetime.now(UTC)
             db_session.commit()

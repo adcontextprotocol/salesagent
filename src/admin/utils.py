@@ -53,11 +53,44 @@ def get_tenant_config_from_db(tenant_id):
                 "policy_settings": {},
             }
 
-            # Add adapter config if it exists
+            # Build adapter config from relationship
             if tenant.adapter_config:
-                adapter_config = parse_json_config(tenant.adapter_config)
-                if adapter_config:
-                    config["adapters"] = adapter_config
+                adapter_obj = tenant.adapter_config
+                adapter_type = adapter_obj.adapter_type
+
+                # Build the legacy JSON structure for backward compatibility
+                adapter_config = {adapter_type: {"enabled": True}}
+
+                # Add adapter-specific fields
+                if adapter_type == "google_ad_manager":
+                    if adapter_obj.gam_network_code:
+                        adapter_config[adapter_type]["network_code"] = adapter_obj.gam_network_code
+                    if adapter_obj.gam_refresh_token:
+                        adapter_config[adapter_type]["refresh_token"] = adapter_obj.gam_refresh_token
+                    if adapter_obj.gam_company_id:
+                        adapter_config[adapter_type]["company_id"] = adapter_obj.gam_company_id
+                    if adapter_obj.gam_trafficker_id:
+                        adapter_config[adapter_type]["trafficker_id"] = adapter_obj.gam_trafficker_id
+                    adapter_config[adapter_type]["manual_approval_required"] = (
+                        adapter_obj.gam_manual_approval_required or False
+                    )
+                elif adapter_type == "mock":
+                    adapter_config[adapter_type]["dry_run"] = adapter_obj.mock_dry_run or False
+                elif adapter_type == "kevel":
+                    if adapter_obj.kevel_network_id:
+                        adapter_config[adapter_type]["network_id"] = adapter_obj.kevel_network_id
+                    if adapter_obj.kevel_api_key:
+                        adapter_config[adapter_type]["api_key"] = adapter_obj.kevel_api_key
+                    adapter_config[adapter_type]["manual_approval_required"] = (
+                        adapter_obj.kevel_manual_approval_required or False
+                    )
+                elif adapter_type == "triton":
+                    if adapter_obj.triton_station_id:
+                        adapter_config[adapter_type]["station_id"] = adapter_obj.triton_station_id
+                    if adapter_obj.triton_api_key:
+                        adapter_config[adapter_type]["api_key"] = adapter_obj.triton_api_key
+
+                config["adapters"] = adapter_config
 
             # Build features config from individual columns
             config["features"] = {
