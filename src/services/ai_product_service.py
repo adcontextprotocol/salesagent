@@ -16,8 +16,8 @@ from dataclasses import dataclass
 from typing import Any
 
 import google.generativeai as genai
-from database_session import get_db_session
 
+from src.core.database.database_session import get_db_session
 from src.core.database.models import Principal as PrincipalModel
 from src.core.database.models import Tenant
 

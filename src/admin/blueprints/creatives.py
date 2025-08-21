@@ -20,11 +20,11 @@ def discover_creative_formats_from_url(url):
     return []
 
 
-from database_session import get_db_session
 from flask import Blueprint, flash, jsonify, redirect, render_template, request, url_for
 from sqlalchemy import or_
 
 from src.admin.utils import require_tenant_access
+from src.core.database.database_session import get_db_session
 from src.core.database.models import CreativeFormat, Tenant
 
 logger = logging.getLogger(__name__)

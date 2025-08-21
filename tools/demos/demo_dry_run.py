@@ -21,8 +21,8 @@ os.environ['ADCP_ADAPTER'] = '{adapter}'
 os.environ['ADCP_DRY_RUN'] = 'true'
 
 # Now import after setting env vars
-from main import get_principal_object, get_adapter
-from schemas import CreateMediaBuyRequest, MediaPackage
+from src.core.main import get_principal_object, get_adapter
+from src.core.schemas import CreateMediaBuyRequest, MediaPackage
 from datetime import date, datetime
 
 principal = get_principal_object('purina')

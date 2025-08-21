@@ -2,7 +2,8 @@ import random
 from datetime import datetime, timedelta
 from typing import Any
 
-from schemas import (
+from src.adapters.base import AdServerAdapter
+from src.core.schemas import (
     AdapterGetMediaBuyDeliveryResponse,
     AssetStatus,
     CheckMediaBuyStatusResponse,
@@ -14,8 +15,6 @@ from schemas import (
     ReportingPeriod,
     UpdateMediaBuyResponse,
 )
-
-from src.adapters.base import AdServerAdapter
 
 
 class MockAdServer(AdServerAdapter):

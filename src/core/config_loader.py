@@ -5,8 +5,7 @@ import os
 from contextvars import ContextVar
 from typing import Any
 
-from database_session import get_db_session
-
+from src.core.database.database_session import get_db_session
 from src.core.database.models import Tenant
 
 # Thread-safe tenant context

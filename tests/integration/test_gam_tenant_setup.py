@@ -271,9 +271,8 @@ class TestGAMTenantSetup:
         This ensures the adapter gracefully handles missing network codes
         during the configuration phase.
         """
-        from schemas import Principal
-
         from src.adapters.google_ad_manager import GoogleAdManager
+        from src.core.schemas import Principal
 
         # Create principal with GAM platform mapping
         principal = Principal(

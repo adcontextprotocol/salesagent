@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
 
-from schemas import Creative, CreativeStatus
+from src.core.schemas import Creative, CreativeStatus
 
 
 class CreativeEngineAdapter(ABC):

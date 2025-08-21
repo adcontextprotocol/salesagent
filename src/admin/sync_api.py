@@ -13,11 +13,11 @@ import secrets
 from datetime import UTC, datetime
 from functools import wraps
 
-from database_session import get_db_session
 from flask import Blueprint, jsonify, request
 from gam_inventory_service import GAMInventoryService
 from gam_inventory_service import db_session as gam_db_session
 
+from src.core.database.database_session import get_db_session
 from src.core.database.models import AdapterConfig, SuperadminConfig, SyncJob, Tenant
 
 logger = logging.getLogger(__name__)

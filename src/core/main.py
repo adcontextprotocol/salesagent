@@ -5,7 +5,6 @@ import time
 import uuid
 from datetime import date, datetime, timedelta
 
-from activity_feed import activity_feed
 from fastmcp import FastMCP
 from fastmcp.exceptions import ToolError
 from fastmcp.server.context import Context
@@ -17,13 +16,12 @@ from src.adapters.mock_ad_server import MockAdServer as MockAdServerAdapter
 from src.adapters.mock_creative_engine import MockCreativeEngine
 from src.adapters.triton_digital import TritonDigital
 from src.core.audit_logger import get_audit_logger
+from src.services.activity_feed import activity_feed
 
 logger = logging.getLogger(__name__)
-from init_database import init_db
-from policy_check_service import PolicyCheckService, PolicyStatus
-
 import src.core.schemas as schemas
 from product_catalog_providers.factory import get_product_catalog_provider
+from scripts.setup.init_database import init_db
 from src.core.config_loader import (
     get_current_tenant,
     load_config,
@@ -36,6 +34,7 @@ from src.core.database.models import HumanTask as ModelHumanTask
 from src.core.database.models import Principal as ModelPrincipal
 from src.core.database.models import Product as ModelProduct
 from src.core.schemas import *
+from src.services.policy_check_service import PolicyCheckService, PolicyStatus
 
 # CRITICAL: Re-import models AFTER wildcard to prevent collision
 # The wildcard import overwrites Product, Principal, HumanTask
