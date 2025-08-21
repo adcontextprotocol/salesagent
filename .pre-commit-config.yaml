@@ -9,6 +9,30 @@ repos:
         language: system
         pass_filenames: false
 
+      # Prevent skipping tests
+      - id: no-skip-tests
+        name: No @pytest.mark.skip decorators allowed
+        entry: sh -c 'if grep -r "@pytest\.mark\.skip" --include="test_*.py" tests/; then echo "❌ Found @pytest.mark.skip decorators! Tests must not be skipped."; exit 1; fi'
+        language: system
+        pass_filenames: false
+        always_run: true
+
+      # Prevent excessive mocking
+      - id: no-excessive-mocking
+        name: Prevent excessive mocking in tests
+        entry: sh -c 'for f in $(find tests -name "test_*.py" 2>/dev/null); do if [ -f "$f" ]; then count=$(grep -c "@patch\|MagicMock\|Mock()" "$f" 2>/dev/null || echo "0"); if [ "$count" -gt 10 ]; then echo "❌ Excessive mocking in $f ($count mocks). Consider integration tests instead."; exit 1; fi; fi; done'
+        language: system
+        pass_filenames: false
+        always_run: true
+
+      # Ensure smoke tests pass
+      - id: smoke-tests
+        name: Run smoke tests (critical paths)
+        entry: uv run pytest tests/smoke/ -v --tb=short -m smoke
+        language: system
+        pass_filenames: false
+        stages: [manual]  # Run with: pre-commit run smoke-tests
+
       # Validate migrations can run
       - id: test-migrations
         name: Test database migrations
