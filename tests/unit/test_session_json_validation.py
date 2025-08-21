@@ -9,15 +9,15 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 # Import our new utilities
-from database_session import DatabaseManager, get_db_session, get_or_404, get_or_create
-from json_validators import (
+from src.core.database.database_session import DatabaseManager, get_db_session, get_or_404, get_or_create
+from src.core.database.json_validators import (
     CommentModel,
     CreativeFormatModel,
     PlatformMappingModel,
     ensure_json_array,
     ensure_json_object,
 )
-from models import Base, Context, Principal, Product, Tenant, WorkflowStep
+from src.core.database.models import Base, Context, Principal, Product, Tenant, WorkflowStep
 
 
 # Test fixtures
@@ -33,7 +33,7 @@ def test_db():
     Base.metadata.create_all(engine)
 
     # Update SessionLocal for tests
-    from database_session import db_session
+    from src.core.database.database_session import db_session
 
     _ = sessionmaker(autocommit=False, autoflush=False, bind=engine)
     db_session.configure(bind=engine)

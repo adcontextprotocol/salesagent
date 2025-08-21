@@ -8,7 +8,7 @@ def test_adapter_config_has_no_config_column():
     ai_product_service.py was trying to access adapter_config_row.config
     which no longer exists.
     """
-    from models import AdapterConfig
+    from src.core.database.models import AdapterConfig
 
     # This test documents the schema change that caused the bug
     assert not hasattr(AdapterConfig, "config"), "AdapterConfig should not have a 'config' column"

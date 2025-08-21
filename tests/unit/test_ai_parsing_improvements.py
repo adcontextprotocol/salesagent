@@ -17,7 +17,7 @@ sys.path.append(str(Path(__file__).parent))
 
 # Test with mocked AI service
 @pytest.mark.ai
-@patch("ai_creative_format_service.genai.GenerativeModel")
+@patch("src.services.ai_creative_format_service.genai.GenerativeModel")
 async def test_parsing_examples(mock_genai_model):
     """Test parsing against all examples and compare results."""
     # Mock the model's generate_content method to return sample format data
@@ -46,7 +46,7 @@ async def test_parsing_examples(mock_genai_model):
     mock_model_instance.generate_content.return_value = mock_response
     mock_genai_model.return_value = mock_model_instance
 
-    from ai_creative_format_service import AICreativeFormatService
+    from src.services.ai_creative_format_service import AICreativeFormatService
 
     service = AICreativeFormatService()
 

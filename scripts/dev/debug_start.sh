@@ -7,11 +7,11 @@ env | grep -E "(SUPER_ADMIN|ADCP_|ADMIN_|DATABASE_URL)" | sort
 
 # Run migrations
 echo "Running migrations..."
-python migrate.py || echo "Migration failed, continuing..."
+python scripts/ops/migrate.py || echo "Migration failed, continuing..."
 
 # Start services with explicit logging
 echo "Starting MCP server on port 8080..."
-python run_server.py > /tmp/mcp_server.log 2>&1 &
+python scripts/run_server.py > /tmp/mcp_server.log 2>&1 &
 MCP_PID=$!
 
 echo "Starting Admin UI on port 8001..."
@@ -44,4 +44,4 @@ curl -s http://localhost:8001/health && echo " ✓ Admin UI health check OK" || 
 
 # Start proxy
 echo "Starting proxy on port 8000..."
-exec python fly-proxy.py
+exec python scripts/deploy/fly-proxy.py

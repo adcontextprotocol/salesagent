@@ -7,7 +7,7 @@ from fastmcp.client.transports import StreamableHttpTransport
 from rich.console import Console
 from rich.rule import Rule
 
-from schemas import *
+from src.core.schemas import *
 
 pytestmark = pytest.mark.unit
 

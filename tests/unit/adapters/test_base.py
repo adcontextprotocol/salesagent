@@ -1,9 +1,9 @@
 from datetime import datetime, timedelta
 
 import pytest
-from schemas import CreateMediaBuyRequest, MediaPackage, Principal
 
 from src.adapters.mock_ad_server import MockAdServer
+from src.core.schemas import CreateMediaBuyRequest, MediaPackage, Principal
 
 pytestmark = pytest.mark.unit
 
