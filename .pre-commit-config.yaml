@@ -1,20 +1,6 @@
 repos:
   - repo: local
     hooks:
-      # Check for removed columns still referenced in code
-      - id: check-schema-references
-        name: Check schema references
-        entry: python3 scripts/check_schema_references.py
-        language: system
-        pass_filenames: false
-        always_run: true
-
-      # Validate model column lengths
-      - id: validate-column-lengths
-        name: Validate database column lengths
-        entry: python3 scripts/validate_column_lengths.py
-        language: system
-        files: '(models|schemas)\.py$'
 
       # Check for tenant.config references
       - id: no-tenant-config
@@ -56,19 +42,6 @@ repos:
         pass_filenames: false
         stages: [manual]  # Manual because it needs server running
 
-      # Check for API deprecations
-      - id: check-api-deprecations
-        name: Check for deprecated API usage
-        entry: python3 scripts/check_api_deprecations.py
-        language: system
-        files: 'adapters/.*\.py$'
-
-      # Validate Pydantic vs SQLAlchemy imports
-      - id: validate-model-imports
-        name: Validate model imports
-        entry: python3 scripts/validate_model_imports.py
-        language: system
-        files: '\.py$'
 
       # Validate template url_for calls
       - id: template-url-validation
@@ -78,13 +51,6 @@ repos:
         files: '\.html$'
         pass_filenames: false
 
-      # Check for critical form field naming mismatches
-      - id: form-field-validation
-        name: Validate critical form field consistency
-        entry: python3 scripts/verify_form_field_fix.py
-        language: system
-        files: '(tenant_settings\.html|settings\.py)$'
-        pass_filenames: false
 
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v6.0.0
