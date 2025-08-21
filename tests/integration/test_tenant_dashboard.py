@@ -51,13 +51,13 @@ class TestTenantDashboard:
             )
             db_session.add(tenant)
 
-            # Create principal
+            # Create principal with valid platform mapping
             principal = Principal(
                 tenant_id="test_dashboard",
                 principal_id="test_principal",
                 name="Test Principal",
                 access_token="test_token",
-                platform_mappings={},  # Required field
+                platform_mappings={"mock": {"advertiser_id": "test_advertiser"}},  # Valid mapping
             )
             db_session.add(principal)
 
@@ -66,9 +66,11 @@ class TestTenantDashboard:
                 tenant_id="test_dashboard",
                 media_buy_id="test_buy_1",
                 principal_id="test_principal",
+                order_name="Test Order",  # Required field
                 advertiser_name="Test Advertiser",
                 status="active",
                 budget=5000.0,
+                raw_request={},  # Required field
                 # These are the CORRECT field names in the model
                 start_date=datetime.now().date(),
                 end_date=(datetime.now() + timedelta(days=30)).date(),
@@ -105,9 +107,11 @@ class TestTenantDashboard:
                     tenant_id="test_metrics",
                     media_buy_id=f"buy_{i}",
                     principal_id=f"principal_{i}",
+                    order_name=f"Order {i}",  # Required field
                     advertiser_name=f"Advertiser {i}",
                     status="active" if i < 2 else "completed",
                     budget=1000.0 * (i + 1),
+                    raw_request={},  # Required field
                     start_date=datetime.now().date(),
                     end_date=(datetime.now() + timedelta(days=30)).date(),
                 )
