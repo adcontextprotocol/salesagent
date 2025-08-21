@@ -258,7 +258,9 @@ def get_adapter(principal: Principal, dry_run: bool = False):
 
 
 # --- Initialization ---
-init_db()  # Tests will call with exit_on_error=False
+# Only initialize DB if not in test mode
+if not os.environ.get("PYTEST_CURRENT_TEST"):
+    init_db()  # Tests will call with exit_on_error=False
 
 # Try to load config, but use defaults if no tenant context available
 try:
