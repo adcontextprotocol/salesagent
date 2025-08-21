@@ -92,14 +92,14 @@ def create_app(config=None):
 
     # Import and register existing blueprints
     try:
-        from superadmin_api import superadmin_api
+        from src.admin.superadmin_api import superadmin_api
 
         app.register_blueprint(superadmin_api)
     except ImportError:
         logger.warning("superadmin_api blueprint not found")
 
     try:
-        from sync_api import sync_api
+        from src.admin.sync_api import sync_api
 
         app.register_blueprint(sync_api, url_prefix="/api/sync")
     except ImportError:

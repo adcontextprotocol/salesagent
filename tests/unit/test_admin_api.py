@@ -9,7 +9,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 from flask import Flask
 
-from superadmin_api import superadmin_api
+from src.admin.superadmin_api import superadmin_api
 
 pytestmark = pytest.mark.unit
 
