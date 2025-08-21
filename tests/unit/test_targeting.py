@@ -3,11 +3,11 @@
 
 
 import pytest
-
-from adapters.google_ad_manager import GoogleAdManager
-from adapters.kevel import Kevel
-from adapters.triton_digital import TritonDigital
 from schemas import Dayparting, DaypartSchedule, FrequencyCap, Principal, Targeting
+
+from src.adapters.google_ad_manager import GoogleAdManager
+from src.adapters.kevel import Kevel
+from src.adapters.triton_digital import TritonDigital
 
 pytestmark = pytest.mark.unit
 

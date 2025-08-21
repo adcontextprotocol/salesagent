@@ -34,13 +34,13 @@ RUN echo '#!/bin/bash\n\
 set -e\n\
 \n\
 # Run migrations\n\
-python migrate.py || echo "Migration failed, continuing..."\n\
+python scripts/ops/migrate.py || echo "Migration failed, continuing..."\n\
 \n\
 # Start services in background\n\
 echo "Starting MCP server on port 8080..."\n\
-python run_server.py > /tmp/mcp_server.log 2>&1 &\n\
+python scripts/run_server.py > /tmp/mcp_server.log 2>&1 &\n\
 echo "Starting Admin UI on port 8001..."\n\
-python admin_ui.py > /tmp/admin_ui.log 2>&1 &\n\
+python scripts/run_admin_ui.py > /tmp/admin_ui.log 2>&1 &\n\
 \n\
 # Wait for services to start\n\
 echo "Waiting for services to start..."\n\
@@ -52,7 +52,7 @@ ps aux | grep python\n\
 \n\
 # Start proxy\n\
 echo "Starting proxy on port 8000..."\n\
-exec python fly-proxy.py' > /app/start.sh && chmod +x /app/start.sh
+exec python scripts/deploy/fly-proxy.py' > /app/start.sh && chmod +x /app/start.sh
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
@@ -61,7 +61,7 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
 EXPOSE 8000
 
 # Copy debug script
-COPY debug_start.sh /app/debug_start.sh
+COPY scripts/dev/debug_start.sh /app/debug_start.sh
 RUN chmod +x /app/debug_start.sh
 
 CMD ["/app/debug_start.sh"]

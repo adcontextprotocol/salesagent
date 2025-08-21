@@ -1,7 +1,7 @@
 import os
 import secrets
 
-from migrate import run_migrations
+from scripts.ops.migrate import run_migrations
 from src.core.database.database_session import get_db_session
 from src.core.database.models import AdapterConfig, Principal, Product, Tenant
 
@@ -183,7 +183,7 @@ def init_db(exit_on_error=False):
 ║     • Purina: purina_token                                       ║
 ║                                                                  ║
 ║  💡 To create additional tenants:                                ║
-║     python setup_tenant.py "Publisher Name"                      ║
+║     python scripts/setup/setup_tenant.py "Publisher Name"        ║
 ║                                                                  ║
 ║  📚 To use with a different tenant:                              ║
 ║     http://[subdomain].localhost:8080                            ║
@@ -212,7 +212,7 @@ def init_db(exit_on_error=False):
 ║     3. Create principals for your advertisers                    ║
 ║                                                                  ║
 ║  💡 To create additional tenants:                                ║
-║     python setup_tenant.py "Publisher Name"                      ║
+║     python scripts/setup/setup_tenant.py "Publisher Name"        ║
 ║                                                                  ║
 ╚══════════════════════════════════════════════════════════════════╝
                 """

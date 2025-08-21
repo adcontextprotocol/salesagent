@@ -386,7 +386,7 @@ def validate_gam_response(response: Any, expected_fields: list[str]) -> None:
 
 # Example usage in GAM adapter:
 """
-from adapters.gam_error_handling import (
+from src.adapters.gam_error_handling import (
     with_retry, GAMOperationTracker, validate_gam_response,
     GAMError, GAMValidationError, RetryConfig
 )

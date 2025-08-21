@@ -15,7 +15,7 @@ from typing import Any
 from sqlalchemy import String, and_, create_engine, func, or_
 from sqlalchemy.orm import Session, scoped_session, sessionmaker
 
-from adapters.gam_inventory_discovery import (
+from src.adapters.gam_inventory_discovery import (
     GAMInventoryDiscovery,
 )
 from src.core.database.db_config import DatabaseConfig
@@ -771,7 +771,7 @@ def create_inventory_endpoints(app):
 
         try:
             # Get GAM client
-            from adapters.google_ad_manager import GoogleAdManager
+            from src.adapters.google_ad_manager import GoogleAdManager
             from src.core.database.models import AdapterConfig, Tenant
 
             tenant = db_session.query(Tenant).filter_by(tenant_id=tenant_id).first()

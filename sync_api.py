@@ -143,7 +143,7 @@ def trigger_sync(tenant_id: str):
             # Initialize GAM client
             from schemas import Principal
 
-            from adapters.google_ad_manager import GoogleAdManager
+            from src.adapters.google_ad_manager import GoogleAdManager
 
             # Create dummy principal for sync
             principal = Principal(
@@ -469,7 +469,7 @@ def sync_tenant_orders(tenant_id):
             from gam_orders_service import GAMOrdersService
             from schemas import Principal
 
-            from adapters.google_ad_manager import GoogleAdManager
+            from src.adapters.google_ad_manager import GoogleAdManager
 
             # Create dummy principal for sync
             principal = Principal(

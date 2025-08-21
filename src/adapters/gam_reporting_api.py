@@ -12,12 +12,12 @@ import re
 from functools import wraps
 
 import pytz
-from flask import Blueprint, jsonify, request, session
-
-from adapters.gam_reporting_service import GAMReportingService
 from database_session import get_db_session
+from flask import Blueprint, jsonify, request, session
 from gam_helper import get_ad_manager_client_for_tenant
 from models import Principal, Tenant
+
+from src.adapters.gam_reporting_service import GAMReportingService
 
 logger = logging.getLogger(__name__)
 

@@ -7,8 +7,8 @@ from datetime import datetime
 from database_session import get_db_session
 from flask import Blueprint, jsonify, render_template, request, session
 
-from adapters.gam_inventory_discovery import GAMInventoryDiscovery
-from adapters.gam_reporting_service import GAMReportingService
+from src.adapters.gam_inventory_discovery import GAMInventoryDiscovery
+from src.adapters.gam_reporting_service import GAMReportingService
 from src.admin.utils import require_tenant_access
 from src.core.database.models import GAMLineItem, GAMOrder, SuperadminConfig, Tenant
 

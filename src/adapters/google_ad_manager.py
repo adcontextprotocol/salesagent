@@ -22,9 +22,9 @@ from schemas import (
     UpdateMediaBuyResponse,
 )
 
-from adapters.base import AdServerAdapter, CreativeEngineAdapter
-from adapters.constants import REQUIRED_UPDATE_ACTIONS
-from adapters.gam_implementation_config_schema import GAMImplementationConfig
+from src.adapters.base import AdServerAdapter, CreativeEngineAdapter
+from src.adapters.constants import REQUIRED_UPDATE_ACTIONS
+from src.adapters.gam_implementation_config_schema import GAMImplementationConfig
 
 # Set up logger
 logger = logging.getLogger(__name__)

@@ -191,7 +191,7 @@ def update_mappings(tenant_id, principal_id):
 def get_gam_advertisers(tenant_id):
     """Get list of advertisers from GAM for a tenant."""
     try:
-        from adapters.google_ad_manager import GoogleAdManager
+        from src.adapters.google_ad_manager import GoogleAdManager
 
         # Get tenant configuration
         with get_db_session() as db_session:
