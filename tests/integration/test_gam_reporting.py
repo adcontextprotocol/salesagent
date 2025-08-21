@@ -10,7 +10,7 @@ from unittest.mock import MagicMock, Mock, patch
 
 import pytest
 
-from adapters.gam_reporting_service import GAMReportingService
+from src.adapters.gam_reporting_service import GAMReportingService
 from src.admin.app import create_app
 
 app, _ = create_app()

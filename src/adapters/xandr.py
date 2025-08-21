@@ -29,7 +29,7 @@ from schemas import (
     ReportingPeriod,
 )
 
-from adapters.base import AdServerAdapter
+from src.adapters.base import AdServerAdapter
 
 
 # Import the actual MediaBuy model for this adapter's incorrect usage

@@ -212,7 +212,7 @@ async def main():
 
         # Start AdCP Sales Agent
         print("🚀 Starting AdCP Sales Agent...")
-        adcp_proc = subprocess.Popen(["uv", "run", "python", "run_server.py"], env=os.environ.copy())
+        adcp_proc = subprocess.Popen(["uv", "run", "python", "scripts/run_server.py"], env=os.environ.copy())
 
         # Wait for it to start
         time.sleep(3)

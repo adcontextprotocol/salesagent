@@ -3,10 +3,10 @@ from datetime import datetime, timedelta
 from typing import Any
 
 import requests
-
-from adapters.base import AdServerAdapter, CreativeEngineAdapter
-from adapters.constants import REQUIRED_UPDATE_ACTIONS
 from schemas import *
+
+from src.adapters.base import AdServerAdapter, CreativeEngineAdapter
+from src.adapters.constants import REQUIRED_UPDATE_ACTIONS
 
 
 class Kevel(AdServerAdapter):

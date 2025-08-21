@@ -106,7 +106,7 @@ def create_app(config=None):
         logger.warning("sync_api blueprint not found")
 
     try:
-        from adapters.gam_reporting_api import gam_reporting_api
+        from src.adapters.gam_reporting_api import gam_reporting_api
 
         app.register_blueprint(gam_reporting_api)
     except ImportError:
@@ -141,8 +141,8 @@ def register_adapter_routes(app):
     """Register adapter-specific configuration routes."""
     try:
         # Import adapter modules that have UI routes
-        from adapters.google_ad_manager import GoogleAdManager
-        from adapters.mock_ad_server import MockAdServer
+        from src.adapters.google_ad_manager import GoogleAdManager
+        from src.adapters.mock_ad_server import MockAdServer
 
         # Register routes for each adapter that supports UI routes
         # Note: We skip instantiation errors since routes are optional

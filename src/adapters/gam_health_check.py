@@ -17,11 +17,11 @@ from typing import Any
 import google.oauth2.service_account
 from googleads import ad_manager
 
-from adapters.gam_error_handling import (
+from src.adapters.gam_error_handling import (
     GAMAuthenticationError,
     GAMConfigurationError,
 )
-from adapters.gam_logging import logger
+from src.adapters.gam_logging import logger
 
 
 class HealthStatus(Enum):

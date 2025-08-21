@@ -151,8 +151,8 @@ docker-compose logs -f
 ### Base Adapter Structure
 
 ```python
-from adapters.base import AdServerAdapter
-from schemas import *
+from src.adapters.base import AdServerAdapter
+from src.core.schemas import *
 
 class MyPlatformAdapter(AdServerAdapter):
     adapter_name = "myplatform"

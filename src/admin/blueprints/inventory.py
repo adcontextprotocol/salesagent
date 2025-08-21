@@ -117,7 +117,7 @@ def sync_orders(tenant_id):
                 return jsonify({"error": "GAM not configured for this tenant"}), 400
 
             # Import GAM sync functionality
-            from adapters.gam_order_sync import sync_gam_orders
+            from src.adapters.gam_order_sync import sync_gam_orders
 
             # Perform sync
             result = sync_gam_orders(

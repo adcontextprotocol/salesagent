@@ -2,9 +2,8 @@ from abc import ABC, abstractmethod
 from datetime import datetime
 from typing import Any
 
-from rich.console import Console
-
 from audit_logger import get_audit_logger
+from rich.console import Console
 from schemas import (
     AdapterGetMediaBuyDeliveryResponse,
     AssetStatus,

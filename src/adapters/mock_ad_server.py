@@ -15,7 +15,7 @@ from schemas import (
     UpdateMediaBuyResponse,
 )
 
-from adapters.base import AdServerAdapter
+from src.adapters.base import AdServerAdapter
 
 
 class MockAdServer(AdServerAdapter):

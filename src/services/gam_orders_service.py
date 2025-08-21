@@ -15,7 +15,7 @@ from typing import Any
 from sqlalchemy import create_engine, or_
 from sqlalchemy.orm import Session, joinedload, scoped_session, sessionmaker
 
-from adapters.gam_orders_discovery import GAMOrdersDiscovery, LineItem, Order
+from src.adapters.gam_orders_discovery import GAMOrdersDiscovery, LineItem, Order
 from src.core.database.db_config import DatabaseConfig
 from src.core.database.models import GAMLineItem, GAMOrder
 

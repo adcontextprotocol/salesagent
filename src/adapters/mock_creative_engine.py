@@ -1,8 +1,9 @@
 from datetime import datetime, timedelta
 from typing import Any
 
-from adapters.creative_engine import CreativeEngineAdapter
 from schemas import Creative, CreativeAdaptation, CreativeStatus
+
+from src.adapters.creative_engine import CreativeEngineAdapter
 
 
 class MockCreativeEngine(CreativeEngineAdapter):

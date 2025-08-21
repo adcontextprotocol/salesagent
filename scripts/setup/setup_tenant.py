@@ -107,7 +107,7 @@ Subdomain: {subdomain}
    python manage_tenant.py update {tenant_id} --key "features.max_daily_budget" --value 50000
 
 🚀 Start the server:
-   python run_server.py
+   python scripts/run_server.py
 """
     )
 
