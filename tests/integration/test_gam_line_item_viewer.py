@@ -268,8 +268,10 @@ def test_get_gam_line_item_unauthorized(test_admin_app):
 
         response = client.get("/tenant/test_tenant/gam/api/line-item/5834526917")
 
-        # Should redirect to login
-        assert response.status_code == 302
+        # API endpoints return 401 JSON instead of redirecting
+        assert response.status_code == 401
+        data = json.loads(response.data)
+        assert "error" in data
 
 
 def test_view_line_item_page(test_admin_app):

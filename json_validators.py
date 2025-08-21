@@ -166,8 +166,14 @@ class JSONValidatorMixin:
                 # Validate and normalize using Pydantic
                 validated = CreativeFormatModel(**fmt)
                 validated_formats.append(validated.model_dump(mode="json"))
+            elif isinstance(fmt, str):
+                # Accept simple format IDs as strings for backward compatibility
+                # Create a minimal format object
+                validated_formats.append(
+                    {"format_id": fmt, "name": fmt, "type": "display"}  # Use ID as name fallback  # Default type
+                )
             else:
-                raise ValueError("Each format must be a dictionary")
+                raise ValueError("Each format must be a dictionary or string")
 
         return validated_formats
 

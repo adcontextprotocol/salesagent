@@ -351,7 +351,7 @@ def test_list_products_json_parsing(client, test_tenant, integration_db):
         sess["role"] = "tenant_admin"
 
     # Get products list
-    response = client.get("/tenant/test_product_tenant/products")
+    response = client.get("/tenant/test_product_tenant/products/")
     assert response.status_code == 200
 
     # Check that the template receives properly formatted data

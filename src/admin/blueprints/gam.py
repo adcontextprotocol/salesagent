@@ -273,11 +273,23 @@ def configure_gam(tenant_id):
             if not tenant:
                 return jsonify({"success": False, "error": "Tenant not found"}), 404
 
-            # Parse existing config
-            # Update GAM configuration directly on tenant
-            tenant.gam_network_code = network_code
-            tenant.gam_refresh_token = refresh_token
-            # Note: trafficker_id would need a new column if we want to store it
+            # Get or create adapter config
+            from models import AdapterConfig
+
+            adapter_config = db_session.query(AdapterConfig).filter_by(tenant_id=tenant_id).first()
+
+            if not adapter_config:
+                adapter_config = AdapterConfig(tenant_id=tenant_id, adapter_type="google_ad_manager")
+                db_session.add(adapter_config)
+
+            # Update GAM configuration in adapter_config
+            adapter_config.gam_network_code = network_code
+            adapter_config.gam_refresh_token = refresh_token
+            adapter_config.gam_trafficker_id = trafficker_id
+
+            # Also update tenant's ad_server field
+            tenant.ad_server = "google_ad_manager"
+
             db_session.commit()
 
             logger.info(f"GAM configuration saved for tenant {tenant_id}")
@@ -313,13 +325,18 @@ def view_gam_line_item(tenant_id, line_item_id):
                 if not tenant:
                     return render_template("error.html", error="Tenant not found"), 404
 
-                if not tenant.gam_network_code or not tenant.gam_refresh_token:
+                # Get GAM configuration from adapter_config
+                from models import AdapterConfig
+
+                adapter_config = db_session.query(AdapterConfig).filter_by(tenant_id=tenant_id).first()
+
+                if not adapter_config or not adapter_config.gam_network_code or not adapter_config.gam_refresh_token:
                     return render_template("error.html", error="GAM not configured for this tenant"), 400
 
                 # Initialize GAM reporting service
                 reporting_service = GAMReportingService(
-                    network_code=tenant.gam_network_code,
-                    refresh_token=tenant.gam_refresh_token,
+                    network_code=adapter_config.gam_network_code,
+                    refresh_token=adapter_config.gam_refresh_token,
                 )
 
                 # Fetch line item details from GAM
@@ -368,8 +385,14 @@ def view_gam_line_item(tenant_id, line_item_id):
                     else None
                 )
 
+            # Get tenant for template
+            tenant_obj = db_session.query(Tenant).filter_by(tenant_id=tenant_id).first()
+            if not tenant_obj:
+                return render_template("error.html", error="Tenant not found"), 404
+
             return render_template(
-                "gam_line_item.html",
+                "gam_line_item_viewer.html",
+                tenant={"tenant_id": tenant_obj.tenant_id, "name": tenant_obj.name},
                 tenant_id=tenant_id,
                 line_item=line_item,
                 order=order,
@@ -392,13 +415,18 @@ def get_gam_custom_targeting_keys(tenant_id):
             if not tenant:
                 return jsonify({"error": "Tenant not found"}), 404
 
-            if not tenant.gam_network_code or not tenant.gam_refresh_token:
+            # Get GAM configuration from adapter_config
+            from models import AdapterConfig
+
+            adapter_config = db_session.query(AdapterConfig).filter_by(tenant_id=tenant_id).first()
+
+            if not adapter_config or not adapter_config.gam_network_code or not adapter_config.gam_refresh_token:
                 return jsonify({"error": "GAM not configured for this tenant"}), 400
 
             # Initialize GAM inventory discovery
             discovery = GAMInventoryDiscovery(
-                network_code=tenant.gam_network_code,
-                refresh_token=tenant.gam_refresh_token,
+                network_code=adapter_config.gam_network_code,
+                refresh_token=adapter_config.gam_refresh_token,
             )
 
             # Get custom targeting keys
@@ -427,13 +455,18 @@ def get_gam_line_item_api(tenant_id, line_item_id):
                 if not tenant:
                     return jsonify({"error": "Tenant not found"}), 404
 
-                if not tenant.gam_network_code or not tenant.gam_refresh_token:
+                # Get GAM configuration from adapter_config
+                from models import AdapterConfig
+
+                adapter_config = db_session.query(AdapterConfig).filter_by(tenant_id=tenant_id).first()
+
+                if not adapter_config or not adapter_config.gam_network_code or not adapter_config.gam_refresh_token:
                     return jsonify({"error": "GAM not configured for this tenant"}), 400
 
                 # Initialize GAM reporting service
                 reporting_service = GAMReportingService(
-                    network_code=tenant.gam_network_code,
-                    refresh_token=tenant.gam_refresh_token,
+                    network_code=adapter_config.gam_network_code,
+                    refresh_token=adapter_config.gam_refresh_token,
                 )
 
                 # Fetch line item details from GAM
