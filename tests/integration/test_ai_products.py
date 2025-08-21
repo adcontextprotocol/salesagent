@@ -223,8 +223,18 @@ class TestProductAPIs:
                 yield client
 
     @pytest.fixture
-    def auth_session(self, client):
-        """Create authenticated session."""
+    def auth_session(self, client, integration_db):
+        """Create authenticated session with proper super admin setup."""
+        from database_session import get_db_session
+        from models import SuperadminConfig
+
+        # Set up super admin in database
+        with get_db_session() as session:
+            # Add the test email as a super admin
+            email_config = SuperadminConfig(config_key="super_admin_emails", config_value="test@example.com")
+            session.add(email_config)
+            session.commit()
+
         with client.session_transaction() as sess:
             sess["authenticated"] = True  # Mark as authenticated
             sess["email"] = "test@example.com"
@@ -323,19 +333,17 @@ Test Product,test_prod,"[{""format_id"":""display_300x250"",""name"":""Medium Re
         print(f"Response status: {response.status_code}")
         print(f"Response data: {response.data}")
 
-        if response.status_code != 200:
-            print(f"Expected 200, got {response.status_code}")
-            print(f"Response content: {response.get_data(as_text=True)}")
+        # The web route returns a redirect on success
+        assert response.status_code == 302  # Redirect after successful upload
 
-        assert response.status_code == 200
-        result = json.loads(response.data)
-        print(f"Result: {result}")
+        # Verify the product was created by checking the database
+        with get_db_session() as session:
+            from models import Product
 
-        if not result.get("success"):
-            print(f"API call failed: {result}")
-
-        assert result["success"] is True
-        assert result["created"] == 1
+            product = session.query(Product).filter_by(tenant_id=tenant_id, product_id="test_prod").first()
+            assert product is not None
+            assert product.name == "Test Product"
+            assert product.cpm == 15.0
 
     def test_quick_create_products_api(self, client, auth_session, integration_db):
         """Test quick create API."""

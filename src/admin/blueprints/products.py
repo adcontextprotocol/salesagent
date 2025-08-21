@@ -254,19 +254,39 @@ def bulk_upload(tenant_id):
 
                 for row in csv_reader:
                     try:
+                        # Parse formats if it's a JSON string
+                        formats = row.get("formats", "[]")
+                        if isinstance(formats, str):
+                            try:
+                                formats = json.loads(formats)
+                            except:
+                                formats = []
+
+                        # Parse targeting_template if it's a JSON string
+                        targeting = row.get("targeting_template", "{}")
+                        if isinstance(targeting, str):
+                            try:
+                                targeting = json.loads(targeting)
+                            except:
+                                targeting = {}
+
                         product = Product(
-                            product_id=f"prod_{uuid.uuid4().hex[:8]}",
+                            product_id=row.get("product_id") or f"prod_{uuid.uuid4().hex[:8]}",
                             tenant_id=tenant_id,
                             name=row.get("name", ""),
                             description=row.get("description", ""),
-                            price_model=row.get("price_model", "cpm"),
-                            base_price=float(row.get("base_price", 0)),
-                            currency=row.get("currency", "USD"),
-                            min_spend=float(row.get("min_spend")) if row.get("min_spend") else None,
-                            formats=json.dumps(row.get("formats", "").split(",")),
-                            countries=json.dumps(row.get("countries", "").split(",")),
-                            created_at=datetime.now(UTC),
-                            updated_at=datetime.now(UTC),
+                            formats=formats,
+                            targeting_template=targeting,
+                            delivery_type=row.get("delivery_type", "standard"),
+                            is_fixed_price=(
+                                row.get("is_fixed_price", True)
+                                if isinstance(row.get("is_fixed_price"), bool)
+                                else str(row.get("is_fixed_price", "true")).lower() == "true"
+                            ),
+                            cpm=float(row.get("cpm", 0)) if row.get("cpm") else None,
+                            price_guidance=None,
+                            countries=None,
+                            implementation_config=None,
                         )
                         db_session.add(product)
                         created_count += 1
