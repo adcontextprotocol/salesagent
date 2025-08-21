@@ -14,16 +14,16 @@ import pytest
 
 from models import Principal as PrincipalModel  # noqa: validate-model-imports  # Need both for contract test
 from models import Product as ProductModel
-from schemas import (
+from src.core.schemas import (
     CreateMediaBuyRequest,
     Format,
     GetProductsRequest,
     GetProductsResponse,
 )
-from schemas import (
+from src.core.schemas import (
     Principal as PrincipalSchema,
 )
-from schemas import (
+from src.core.schemas import (
     Product as ProductSchema,
 )
 
