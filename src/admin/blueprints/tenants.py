@@ -128,9 +128,14 @@ def dashboard(tenant_id):
             # Transform recent_buys tuples to list of MediaBuy objects with extra properties
             recent_media_buys_list = []
             for media_buy, _principal in recent_buys:
-                # Add calculated/placeholder properties that template expects
-                media_buy.spend = 0  # Placeholder for actual spend
-                media_buy.created_at_relative = "Recently"  # Placeholder for relative time
+                # TODO: Calculate actual spend from delivery data when available
+                media_buy.spend = 0
+
+                # TODO: Calculate relative time properly with timezone handling
+                media_buy.created_at_relative = (
+                    media_buy.created_at.strftime("%Y-%m-%d") if media_buy.created_at else "Unknown"
+                )
+
                 recent_media_buys_list.append(media_buy)
 
             return render_template(
