@@ -241,8 +241,6 @@ def test_db(integration_db):
 class TestDashboardMetricsIntegration:
     """Test dashboard metrics with real database."""
 
-    @pytest.mark.skip(reason="Dashboard tests need SQLAlchemy 2.x migration - not critical for core functionality")
-    @pytest.mark.skip(reason="Dashboard tests need SQLAlchemy 2.x migration - not critical for core functionality")
     @pytest.mark.requires_db
     def test_revenue_metrics(self, test_db):
         """Test revenue calculation from database."""
@@ -265,7 +263,6 @@ class TestDashboardMetricsIntegration:
         # Should include active buy (5000) but not pending (3000) or old completed (2000)
         assert total_revenue == 5000.0
 
-    @pytest.mark.skip(reason="Dashboard tests need SQLAlchemy 2.x migration - not critical for core functionality")
     @pytest.mark.requires_db
     def test_revenue_change_calculation(self, test_db):
         """Test revenue change vs previous period."""
@@ -308,7 +305,6 @@ class TestDashboardMetricsIntegration:
         change = ((current - previous) / previous) * 100 if previous > 0 else 0
         assert change == 150.0  # 150% increase
 
-    @pytest.mark.skip(reason="Dashboard tests need SQLAlchemy 2.x migration - not critical for core functionality")
     @pytest.mark.requires_db
     def test_media_buy_counts(self, test_db):
         """Test counting active and pending media buys."""
@@ -335,7 +331,6 @@ class TestDashboardMetricsIntegration:
         pending = cursor.fetchone()[0]
         assert pending == 1
 
-    @pytest.mark.skip(reason="Dashboard tests need SQLAlchemy 2.x migration - not critical for core functionality")
     @pytest.mark.requires_db
     def test_advertiser_metrics(self, test_db):
         """Test advertiser counting."""
@@ -368,7 +363,6 @@ class TestDashboardMetricsIntegration:
 class TestDashboardDataRetrieval:
     """Test retrieving and formatting dashboard data."""
 
-    @pytest.mark.skip(reason="Dashboard tests need SQLAlchemy 2.x migration - not critical for core functionality")
     @pytest.mark.requires_db
     def test_recent_media_buys(self, test_db):
         """Test fetching recent media buys."""
@@ -399,7 +393,6 @@ class TestDashboardDataRetrieval:
         assert most_recent[3] == "pending"
         assert most_recent[4] == 3000.0
 
-    @pytest.mark.skip(reason="Dashboard tests need SQLAlchemy 2.x migration - not critical for core functionality")
     @pytest.mark.requires_db
     def test_revenue_by_advertiser_chart(self, test_db):
         """Test data for revenue chart."""
@@ -432,7 +425,6 @@ class TestDashboardDataRetrieval:
 class TestDashboardErrorCases:
     """Test dashboard behavior with edge cases."""
 
-    @pytest.mark.skip(reason="Dashboard tests need SQLAlchemy 2.x migration - not critical for core functionality")
     @pytest.mark.requires_db
     def test_empty_tenant_data(self, test_db):
         """Test dashboard with tenant that has no data."""
@@ -475,7 +467,6 @@ class TestDashboardErrorCases:
         test_db.execute("DELETE FROM tenants WHERE tenant_id = 'empty_tenant'")
         test_db.commit()
 
-    @pytest.mark.skip(reason="Dashboard tests need SQLAlchemy 2.x migration - not critical for core functionality")
     @pytest.mark.requires_db
     def test_null_budget_handling(self, test_db):
         """Test handling of NULL budget values."""
