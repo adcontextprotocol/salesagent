@@ -48,84 +48,10 @@ grep -r "revision = " alembic/versions/
 docker ps | grep postgres
 
 # Test connection
-docker exec postgres pg_isready
+docker exec -it postgres psql -U adcp_user adcp -c "SELECT 1;"
 
-# Check connection string
+# Check environment variable
 echo $DATABASE_URL
-```
-
-#### SQLite vs PostgreSQL Differences
-```python
-# Problem: PostgreSQL returns tuples
-# Solution: Use DictCursor
-from psycopg2.extras import DictCursor
-conn = psycopg2.connect(..., cursor_factory=DictCursor)
-
-# Problem: Boolean handling
-# SQLite: 0/1, PostgreSQL: true/false
-# Solution: Use SQLAlchemy Boolean type
-```
-
-### UI Issues
-
-#### Page Shows "Loading..." Forever
-```javascript
-// Check browser console for errors
-// Common causes:
-
-// 1. Missing Bootstrap CSS
-// Solution: Ensure base.html loads Bootstrap
-
-// 2. API returns HTML instead of JSON
-// Solution: Add credentials: 'same-origin' to fetch
-
-// 3. Elements have 0 dimensions
-// Solution: Add min-height/width to containers
-
-// 4. JavaScript null errors
-// Solution: Use defensive coding
-const value = (data?.field || 'default');
-```
-
-#### Missing Data in Admin UI
-```bash
-# Verify tenant_id in session
-# Check browser DevTools → Application → Cookies
-
-# Test API directly
-curl -H "Cookie: session=YOUR_SESSION" \
-  http://localhost:8001/api/tenant/TENANT_ID/products
-
-# Check audit logs for errors
-docker exec -it adcp-server python -c \
-  "from database_manager import DatabaseManager; \
-   db = DatabaseManager(); \
-   logs = db.get_audit_logs(limit=10); \
-   print(logs)"
-```
-
-### Adapter Errors
-
-#### GAM Integration Issues
-```python
-# Problem: 'DataDownloader' has no attribute 'new_filter_statement'
-# Solution: Use StatementBuilder (API changed)
-from googleads import ad_manager
-statement_builder = ad_manager.StatementBuilder(version='v202411')
-
-# Problem: SUDS objects don't support dict access
-# Solution: Serialize first
-from zeep.helpers import serialize_object
-data = serialize_object(suds_object)
-```
-
-#### Dry-Run Not Showing API Calls
-```bash
-# Enable dry-run mode
-python run_simulation.py --dry-run --adapter gam
-
-# Check adapter has dry_run logging
-# Look for: if self.dry_run: self.log(...)
 ```
 
 ### Docker Problems
@@ -134,68 +60,126 @@ python run_simulation.py --dry-run --adapter gam
 ```bash
 # Check logs
 docker-compose logs adcp-server
+docker-compose logs admin-ui
 
-# Common issues:
-# - Missing environment variables
-# - Port already in use
-# - Database not ready
-
-# Clean restart
+# Rebuild containers
 docker-compose down
+docker-compose build --no-cache
 docker-compose up -d
+
+# Check port conflicts
+lsof -i :8080
+lsof -i :8001
 ```
 
-#### Slow Build Times
+#### Permission Denied Errors
 ```bash
-# Use BuildKit caching
-export DOCKER_BUILDKIT=1
+# Fix volume permissions
+docker exec -it adcp-server chown -R $(id -u):$(id -g) /app
 
-# Check cache volumes exist
-docker volume ls | grep adcp_global
+# Or run with user ID
+docker-compose run --user $(id -u):$(id -g) adcp-server
+```
 
-# Clear cache if corrupted
-docker volume rm adcp_global_pip_cache
-docker volume rm adcp_global_uv_cache
+### GAM Integration Issues
+
+#### OAuth Token Invalid
+```bash
+# Refresh OAuth token
+python setup_tenant.py "Publisher" \
+  --adapter google_ad_manager \
+  --gam-network-code YOUR_CODE \
+  --gam-refresh-token NEW_TOKEN
+
+# Verify in database
+docker exec -it postgres psql -U adcp_user adcp -c \
+  "SELECT gam_refresh_token FROM adapter_configs;"
+```
+
+#### Network Code Mismatch
+```bash
+# Update network code
+docker exec -it postgres psql -U adcp_user adcp -c \
+  "UPDATE adapter_configs SET gam_network_code='123456' WHERE tenant_id='tenant_id';"
+```
+
+### MCP Server Issues
+
+#### "Tool not found" Error
+```bash
+# List available tools
+curl -X POST http://localhost:8080/mcp/ \
+  -H "x-adcp-auth: YOUR_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"method": "list_tools"}'
+
+# Check tool implementation
+grep -r "def get_products" main.py
+```
+
+#### SSE Connection Drops
+```bash
+# Check timeout settings
+# In docker-compose.yml, add:
+environment:
+  - ADCP_REQUEST_TIMEOUT=120
+  - ADCP_KEEPALIVE_INTERVAL=30
+```
+
+### Admin UI Issues
+
+#### Blank Page or 500 Error
+```bash
+# Check Flask logs
+docker-compose logs admin-ui | grep ERROR
+
+# Enable debug mode
+# In docker-compose.override.yml:
+environment:
+  - FLASK_DEBUG=1
+  - FLASK_ENV=development
+
+# Check templates
+docker exec -it admin-ui python -c \
+  "from admin_ui import app; app.jinja_env.compile('template.html')"
+```
+
+#### OAuth Redirect Loop
+```bash
+# Clear session cookies in browser
+# Or use incognito mode
+
+# Verify redirect URI in Google Console
+# Must match exactly: http://localhost:8001/auth/google/callback
+
+# Check session secret
+echo $FLASK_SECRET_KEY
 ```
 
 ### Performance Issues
 
-#### Slow API Responses
-```python
-# Check database queries
-# Enable query logging in PostgreSQL
+#### Slow Database Queries
+```bash
+# Check query performance
+docker exec -it postgres psql -U adcp_user adcp -c \
+  "EXPLAIN ANALYZE SELECT * FROM media_buys WHERE tenant_id='test';"
 
-# Add indexes for common queries
-CREATE INDEX idx_media_buys_tenant_status
-ON media_buys(tenant_id, status);
-
-# Use connection pooling
-from sqlalchemy.pool import QueuePool
-engine = create_engine(url, poolclass=QueuePool)
+# Add indexes if needed
+docker exec -it postgres psql -U adcp_user adcp -c \
+  "CREATE INDEX idx_media_buys_tenant ON media_buys(tenant_id);"
 ```
 
 #### High Memory Usage
 ```bash
-# Check container limits
+# Check container stats
 docker stats
 
-# Adjust in docker-compose.yml
-deploy:
-  resources:
-    limits:
-      memory: 2G
+# Limit memory in docker-compose.yml
+services:
+  adcp-server:
+    mem_limit: 512m
+    mem_reservation: 256m
 ```
-
-## Error Messages Reference
-
-### Database Errors
-
-| Error | Cause | Solution |
-|-------|-------|----------|
-| `value too long for type character varying` | Column too short | Increase column length in migration |
-| `current transaction is aborted` | Previous error in transaction | Use `db_session.remove()` before operations |
-| `'Principal' object has no attribute 'get_adapter_id'` | Wrong import | Import from `schemas`, not `models` |
-| `'Tenant' object has no attribute 'config'` | Column removed | Access new normalized columns |
 
 ### API Errors
 
@@ -205,43 +189,9 @@ deploy:
 | `404 Not Found` | Wrong endpoint | Check URL and method |
 | `500 Internal Error` | Server error | Check server logs |
 | `422 Validation Error` | Invalid request | Check request schema |
-| `400 Invalid ID format` | Malformed IDs | Ensure IDs match pattern: tenant/principal (alphanumeric+dash), numeric IDs (digits only) |
-| `400 Invalid timezone` | Unknown timezone | Use valid pytz timezone (e.g., 'America/New_York') |
+| `400 Invalid ID format` | Malformed IDs | Ensure IDs match pattern |
 
-## Debug Techniques
-
-### Enable Debug Logging
-
-```bash
-# In .env or docker-compose.override.yml
-LOG_LEVEL=DEBUG
-FLASK_DEBUG=1
-
-# Python logging
-import logging
-logging.basicConfig(level=logging.DEBUG)
-```
-
-### Test Individual Components
-
-```python
-# Test database connection
-from database_manager import DatabaseManager
-db = DatabaseManager()
-print(db.engine.url)
-
-# Test adapter
-from adapters.mock_ad_server import MockAdapter
-adapter = MockAdapter({}, principal)
-result = adapter.get_avails(request)
-
-# Test MCP client
-from fastmcp.client import Client
-client = Client(transport)
-result = await client.tools.get_products()
-```
-
-### Check System Health
+## Check System Health
 
 ```bash
 # Service health endpoints
@@ -259,7 +209,7 @@ docker inspect adcp-server | grep Health
 
 ### Resources
 
-1. **Documentation** - Check this guide first
+1. **Documentation** - Check `/docs` directory
 2. **GitHub Issues** - Search existing issues
 3. **Code Comments** - Read inline documentation
 4. **Test Files** - Examples of correct usage
@@ -274,64 +224,6 @@ When reporting issues, include:
 4. **Logs** - Relevant log entries
 5. **Configuration** - Sanitized config files
 
-### Test Failures
-
-#### Integration Test: 403 Forbidden
-```python
-# Problem: is_super_admin() check fails
-# Solution: Set up SuperadminConfig in database
-
-with get_db_session() as session:
-    email_config = SuperadminConfig(
-        config_key="super_admin_emails",
-        config_value="test@example.com"
-    )
-    session.add(email_config)
-    session.commit()
-```
-
-#### Integration Test: Missing Required Fields
-```python
-# Problem: platform_mappings validation error
-# Solution: Provide valid mapping, not empty dict
-principal = Principal(
-    platform_mappings={"mock": {"advertiser_id": "test"}}  # Valid
-)
-
-# Problem: MediaBuy missing order_name
-# Solution: Add all required fields
-media_buy = MediaBuy(
-    order_name="Test Order",  # Required
-    raw_request={},           # Required
-    # ... other fields
-)
-```
-
-#### Integration Test: Expecting JSON from Web Route
-```python
-# Problem: Web route returns 302, test expects JSON
-# Solution: Web routes redirect, API routes return JSON
-
-# For web routes, expect redirect
-assert response.status_code == 302
-
-# For API routes, expect JSON
-assert response.status_code == 200
-data = json.loads(response.data)
-```
-
-#### Test Markers Not Working
-```bash
-# Ensure markers are registered in pytest.ini
-# Tests with requires_server should be skipped in CI
-
-# Run without server tests
-pytest -m "not requires_server"
-
-# Check which tests are collected
-pytest --co -q -m "not requires_server"
-```
-
 ### Quick Fixes Checklist
 
 - [ ] Migrations run? `python migrate.py`
@@ -341,7 +233,3 @@ pytest --co -q -m "not requires_server"
 - [ ] Database accessible? Test connection
 - [ ] Logs show errors? `docker-compose logs`
 - [ ] Browser console errors? Check DevTools
-- [ ] API returning JSON? Not HTML login page?
-- [ ] Test database setup? Check `integration_db` fixture
-- [ ] SuperadminConfig in DB? For auth tests
-- [ ] Model required fields? Check schema
