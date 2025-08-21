@@ -14,8 +14,8 @@ import pytest
 from src.admin.app import create_app
 
 admin_app, _ = create_app()
-from database_session import get_db_session
-from models import Tenant
+from src.core.database.database_session import get_db_session
+from src.core.database.models import Tenant
 from tests.fixtures import TenantFactory
 
 
@@ -41,7 +41,7 @@ def integration_db():
     from sqlalchemy import create_engine
     from sqlalchemy.orm import scoped_session, sessionmaker
 
-    from models import Base
+    from src.core.database.models import Base
 
     engine = create_engine(f"sqlite:///{db_path}")
 
@@ -104,8 +104,8 @@ def admin_client(integration_db):
 def authenticated_admin_session(admin_client, integration_db):
     """Create an authenticated session for admin UI testing."""
     # Set up super admin configuration in database
-    from database_session import get_db_session
-    from models import SuperadminConfig
+    from src.core.database.database_session import get_db_session
+    from src.core.database.models import SuperadminConfig
 
     with get_db_session() as db_session:
         # Add super admin email configuration
@@ -163,8 +163,8 @@ def sample_tenant(integration_db):
     """Create a sample tenant for testing."""
     from datetime import UTC, datetime
 
-    from database_session import get_db_session
-    from models import Tenant
+    from src.core.database.database_session import get_db_session
+    from src.core.database.models import Tenant
 
     now = datetime.now(UTC)
     with get_db_session() as session:
@@ -197,8 +197,8 @@ def sample_tenant(integration_db):
 @pytest.fixture
 def sample_principal(integration_db, sample_tenant):
     """Create a sample principal with valid platform mappings."""
-    from database_session import get_db_session
-    from models import Principal
+    from src.core.database.database_session import get_db_session
+    from src.core.database.models import Principal
 
     with get_db_session() as session:
         from datetime import UTC, datetime
@@ -225,8 +225,8 @@ def sample_principal(integration_db, sample_tenant):
 @pytest.fixture
 def sample_products(integration_db, sample_tenant):
     """Create sample products that comply with AdCP protocol."""
-    from database_session import get_db_session
-    from models import Product
+    from src.core.database.database_session import get_db_session
+    from src.core.database.models import Product
 
     with get_db_session() as session:
         products = [
@@ -363,8 +363,8 @@ def authenticated_admin_client(test_admin_app):
 @pytest.fixture
 def test_media_buy_workflow(populated_db):
     """Provide complete media buy workflow test setup."""
-    from database_session import get_db_session
-    from models import Creative, MediaBuy
+    from src.core.database.database_session import get_db_session
+    from src.core.database.models import Creative, MediaBuy
     from tests.fixtures import CreativeFactory, MediaBuyFactory
 
     data = populated_db

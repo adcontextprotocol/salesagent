@@ -5,11 +5,11 @@ import logging
 import os
 
 from authlib.integrations.flask_client import OAuth
+from database_session import get_db_session
 from flask import Blueprint, abort, current_app, flash, redirect, render_template, request, session, url_for
 
-from database_session import get_db_session
-from models import Tenant, User
 from src.admin.utils import is_super_admin
+from src.core.database.models import Tenant, User
 
 logger = logging.getLogger(__name__)
 

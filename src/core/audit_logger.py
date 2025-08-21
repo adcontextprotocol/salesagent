@@ -16,7 +16,8 @@ from pathlib import Path
 from typing import Any
 
 from database_session import get_db_session
-from models import AuditLog
+
+from src.core.database.models import AuditLog
 
 # Create logs directory if it doesn't exist (for backup)
 LOG_DIR = Path("logs")
@@ -134,7 +135,7 @@ class AuditLogger:
             if tenant_id:
                 try:
                     with get_db_session() as db_session:
-                        from models import Tenant
+                        from src.core.database.models import Tenant
 
                         tenant = db_session.query(Tenant).filter_by(tenant_id=tenant_id).first()
                         if tenant:
@@ -235,7 +236,7 @@ class AuditLogger:
             if tenant_id:
                 try:
                     with get_db_session() as db_session:
-                        from models import Tenant
+                        from src.core.database.models import Tenant
 
                         tenant = db_session.query(Tenant).filter_by(tenant_id=tenant_id).first()
                         if tenant:

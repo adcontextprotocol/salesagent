@@ -4,10 +4,10 @@ import uuid
 from datetime import UTC, datetime
 from typing import Any
 
+from database_session import DatabaseManager
 from rich.console import Console
 
-from database_session import DatabaseManager
-from models import Context, ObjectWorkflowMapping, WorkflowStep
+from src.core.database.models import Context, ObjectWorkflowMapping, WorkflowStep
 
 console = Console()
 

@@ -15,7 +15,7 @@ import requests
 # Add parent directory to path for imports
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from db_config import get_db_connection
+from src.core.database.db_config import get_db_connection
 
 
 def get_superadmin_api_key():

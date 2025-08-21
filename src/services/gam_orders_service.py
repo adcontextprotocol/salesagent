@@ -16,8 +16,8 @@ from sqlalchemy import create_engine, or_
 from sqlalchemy.orm import Session, joinedload, scoped_session, sessionmaker
 
 from adapters.gam_orders_discovery import GAMOrdersDiscovery, LineItem, Order
-from db_config import DatabaseConfig
-from models import GAMLineItem, GAMOrder
+from src.core.database.db_config import DatabaseConfig
+from src.core.database.models import GAMLineItem, GAMOrder
 
 # Create database session factory
 engine = create_engine(DatabaseConfig.get_connection_string())

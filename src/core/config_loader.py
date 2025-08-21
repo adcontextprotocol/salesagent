@@ -6,7 +6,8 @@ from contextvars import ContextVar
 from typing import Any
 
 from database_session import get_db_session
-from models import Tenant
+
+from src.core.database.models import Tenant
 
 # Thread-safe tenant context
 current_tenant: ContextVar[dict[str, Any] | None] = ContextVar("current_tenant", default=None)

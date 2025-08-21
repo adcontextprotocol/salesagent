@@ -4,8 +4,9 @@ import secrets
 from datetime import datetime
 
 from database_session import get_db_session
-from migrate import run_migrations
 from models import AdapterConfig, Principal, Product, Tenant
+
+from migrate import run_migrations
 
 
 def init_db(exit_on_error=False):

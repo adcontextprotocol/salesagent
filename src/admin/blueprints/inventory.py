@@ -6,9 +6,9 @@ import logging
 from flask import Blueprint, jsonify, render_template, request, session
 from sqlalchemy import func
 
-from database_session import get_db_session
-from models import GAMInventory, GAMOrder, MediaBuy, Principal, Tenant
 from src.admin.utils import get_tenant_config_from_db, require_auth, require_tenant_access
+from src.core.database.database_session import get_db_session
+from src.core.database.models import GAMInventory, GAMOrder, MediaBuy, Principal, Tenant
 
 logger = logging.getLogger(__name__)
 

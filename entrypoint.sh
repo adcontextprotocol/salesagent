@@ -7,7 +7,7 @@ echo "🚀 Starting AdCP Sales Agent..."
 check_database_health() {
     echo "🔍 Checking database connectivity..."
     python -c "
-from db_config import get_db_connection
+from src.core.database.db_config import get_db_connection
 try:
     conn = get_db_connection()
     cursor = conn.execute('SELECT 1')
@@ -33,7 +33,7 @@ fi
 # Initialize database (safe - only creates data if tables are empty)
 echo "📦 Initializing database schema and default data..."
 echo "ℹ️  Note: init_db() is safe - it only creates tables (IF NOT EXISTS) and default tenant (if no tenants exist)"
-if ! python -c "from database import init_db; init_db(exit_on_error=True)"; then
+if ! python -c "from src.core.database.database import init_db; init_db(exit_on_error=True)"; then
     echo "❌ Database initialization failed"
     exit 1
 fi

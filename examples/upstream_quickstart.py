@@ -130,7 +130,7 @@ def start_upstream_server():
 
 async def configure_tenant_for_mcp():
     """Configure the default tenant to use the upstream MCP server."""
-    from db_config import get_db_connection
+    from src.core.database.db_config import get_db_connection
 
     print("🔧 Configuring tenant to use upstream catalog...")
 
@@ -199,7 +199,7 @@ async def main():
     print()
 
     # Initialize database
-    from database import init_db
+    from src.core.database.database import init_db
 
     init_db()
 

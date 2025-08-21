@@ -18,8 +18,8 @@ from sqlalchemy.orm import Session, scoped_session, sessionmaker
 from adapters.gam_inventory_discovery import (
     GAMInventoryDiscovery,
 )
-from db_config import DatabaseConfig
-from models import GAMInventory, Product, ProductInventoryMapping
+from src.core.database.db_config import DatabaseConfig
+from src.core.database.models import GAMInventory, Product, ProductInventoryMapping
 
 # Create database session factory
 engine = create_engine(DatabaseConfig.get_connection_string())
@@ -772,7 +772,7 @@ def create_inventory_endpoints(app):
         try:
             # Get GAM client
             from adapters.google_ad_manager import GoogleAdManager
-            from models import AdapterConfig, Tenant
+            from src.core.database.models import AdapterConfig, Tenant
 
             tenant = db_session.query(Tenant).filter_by(tenant_id=tenant_id).first()
             if not tenant:

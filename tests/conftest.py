@@ -103,12 +103,12 @@ def db_session(test_db_path):
     os.environ["DATABASE_URL"] = f"sqlite:///{test_db_path}"
 
     # Initialize database
-    from database import init_db
+    from src.core.database.database import init_db
 
     init_db()
 
     # Create session
-    from db_config import get_db_connection
+    from src.core.database.db_config import get_db_connection
 
     conn = get_db_connection()
 

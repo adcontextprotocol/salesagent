@@ -3,7 +3,7 @@
 
 import os
 
-from database import init_db
+from src.core.database.database import init_db
 
 # Initialize database first (exit on error since this is the main process)
 init_db(exit_on_error=True)

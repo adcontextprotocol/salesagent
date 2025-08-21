@@ -6,7 +6,6 @@ import uuid
 from datetime import date, datetime, timedelta
 
 from activity_feed import activity_feed
-from audit_logger import get_audit_logger
 from fastmcp import FastMCP
 from fastmcp.exceptions import ToolError
 from fastmcp.server.context import Context
@@ -17,29 +16,30 @@ from adapters.kevel import Kevel
 from adapters.mock_ad_server import MockAdServer as MockAdServerAdapter
 from adapters.mock_creative_engine import MockCreativeEngine
 from adapters.triton_digital import TritonDigital
+from src.core.audit_logger import get_audit_logger
 
 logger = logging.getLogger(__name__)
-import schemas
-from config_loader import (
+from policy_check_service import PolicyCheckService, PolicyStatus
+
+import src.core.schemas as schemas
+from init_database import init_db
+from product_catalog_providers.factory import get_product_catalog_provider
+from src.core.config_loader import (
     get_current_tenant,
     load_config,
     set_current_tenant,
 )
-from context_manager import get_context_manager
-from policy_check_service import PolicyCheckService, PolicyStatus
-from schemas import *
+from src.core.context_manager import get_context_manager
+from src.core.database.database_session import get_db_session
+from src.core.database.models import AdapterConfig, MediaBuy, Task, Tenant
+from src.core.database.models import HumanTask as ModelHumanTask
+from src.core.database.models import Principal as ModelPrincipal
+from src.core.database.models import Product as ModelProduct
+from src.core.schemas import *
 
 # CRITICAL: Re-import models AFTER wildcard to prevent collision
 # The wildcard import overwrites Product, Principal, HumanTask
-from slack_notifier import get_slack_notifier
-
-from database_session import get_db_session
-from init_database import init_db
-from models import AdapterConfig, MediaBuy, Task, Tenant
-from models import HumanTask as ModelHumanTask
-from models import Principal as ModelPrincipal
-from models import Product as ModelProduct
-from product_catalog_providers.factory import get_product_catalog_provider
+from src.services.slack_notifier import get_slack_notifier
 
 # Initialize Rich console
 console = Console()

@@ -3,7 +3,8 @@
 import json
 
 from database_session import get_db_session
-from models import CreativeFormat
+
+from src.core.database.models import CreativeFormat
 
 # Standard IAB display formats
 STANDARD_DISPLAY_FORMATS = [

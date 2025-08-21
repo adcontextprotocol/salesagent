@@ -9,7 +9,8 @@ import sys
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from database_session import get_db_session
-from models import AdapterConfig, SyncJob, Tenant
+
+from src.core.database.models import AdapterConfig, SyncJob, Tenant
 
 
 def check_all_tenants():

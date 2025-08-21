@@ -5,10 +5,10 @@ import os
 from typing import Any
 
 import google.generativeai as genai
-
 from database_session import get_db_session
-from models import Product as ProductModel
 from schemas import Product
+
+from src.core.database.models import Product as ProductModel
 
 from .base import ProductCatalogProvider
 

@@ -1,9 +1,9 @@
 import os
 import secrets
 
-from database_session import get_db_session
 from migrate import run_migrations
-from models import AdapterConfig, Principal, Product, Tenant
+from src.core.database.database_session import get_db_session
+from src.core.database.models import AdapterConfig, Principal, Product, Tenant
 
 
 def init_db(exit_on_error=False):
