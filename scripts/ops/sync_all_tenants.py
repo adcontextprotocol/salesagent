@@ -13,10 +13,9 @@ import requests
 # Add parent directory to path to import modules
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from database_session import get_db_session
-
+from src.admin.sync_api import initialize_superadmin_api_key
+from src.core.database.database_session import get_db_session
 from src.core.database.models import AdapterConfig, Tenant
-from sync_api import initialize_superadmin_api_key
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)

@@ -15,7 +15,7 @@ import requests
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 # Import the sync API functions directly
-from sync_api import get_superadmin_api_key, initialize_superadmin_api_key
+from src.admin.sync_api import get_superadmin_api_key, initialize_superadmin_api_key
 
 
 def main():
