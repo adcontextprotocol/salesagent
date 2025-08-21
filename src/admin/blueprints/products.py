@@ -5,7 +5,6 @@ import io
 import json
 import logging
 import uuid
-from datetime import UTC, datetime
 
 from flask import Blueprint, flash, jsonify, redirect, render_template, request, url_for
 
@@ -42,13 +41,21 @@ def list_products(tenant_id):
                     "product_id": product.product_id,
                     "name": product.name,
                     "description": product.description,
-                    "price_model": product.price_model,
-                    "base_price": product.base_price,
-                    "currency": product.currency,
-                    "min_spend": product.min_spend,
-                    "formats": json.loads(product.formats) if product.formats else [],
-                    "countries": json.loads(product.countries) if product.countries else [],
-                    "created_at": product.created_at,
+                    "delivery_type": product.delivery_type,
+                    "is_fixed_price": product.is_fixed_price,
+                    "cpm": product.cpm,
+                    "price_guidance": product.price_guidance,
+                    "formats": (
+                        product.formats
+                        if isinstance(product.formats, list)
+                        else json.loads(product.formats) if product.formats else []
+                    ),
+                    "countries": (
+                        product.countries
+                        if isinstance(product.countries, list)
+                        else json.loads(product.countries) if product.countries else []
+                    ),
+                    "created_at": product.created_at if hasattr(product, "created_at") else None,
                 }
                 products_list.append(product_dict)
 
@@ -80,30 +87,48 @@ def add_product(tenant_id):
                 return redirect(url_for("products.add_product", tenant_id=tenant_id))
 
             with get_db_session() as db_session:
-                # Parse formats and countries
-                formats = []
-                countries = []
+                # Parse formats - expecting multiple checkbox values
+                formats = request.form.getlist("formats")
+                if not formats:
+                    formats = []
 
-                if "formats" in form_data:
-                    formats = [f.strip() for f in form_data["formats"].split(",") if f.strip()]
+                # Parse countries - from multi-select
+                countries = request.form.getlist("countries")
+                if not countries or "ALL" in countries:
+                    countries = None  # None means all countries
 
-                if "countries" in form_data:
-                    countries = [c.strip().upper() for c in form_data["countries"].split(",") if c.strip()]
+                # Get pricing based on delivery type
+                delivery_type = form_data.get("delivery_type", "guaranteed")
+                cpm = None
+                price_guidance = None
 
-                # Create product
+                if delivery_type == "guaranteed":
+                    cpm = float(form_data.get("cpm", 0)) if form_data.get("cpm") else None
+                else:
+                    # Non-guaranteed - use price guidance
+                    price_min = (
+                        float(form_data.get("price_guidance_min", 0)) if form_data.get("price_guidance_min") else None
+                    )
+                    price_max = (
+                        float(form_data.get("price_guidance_max", 0)) if form_data.get("price_guidance_max") else None
+                    )
+                    if price_min and price_max:
+                        price_guidance = {"min": price_min, "max": price_max}
+
+                # Create product with correct fields matching the Product model
                 product = Product(
-                    product_id=f"prod_{uuid.uuid4().hex[:8]}",
+                    product_id=form_data.get("product_id") or f"prod_{uuid.uuid4().hex[:8]}",
                     tenant_id=tenant_id,
                     name=form_data["name"],
                     description=form_data.get("description", ""),
-                    price_model=form_data["price_model"],
-                    base_price=float(form_data["base_price"]),
-                    currency=form_data.get("currency", "USD"),
-                    min_spend=float(form_data["min_spend"]) if form_data.get("min_spend") else None,
-                    formats=json.dumps(formats),
-                    countries=json.dumps(countries),
-                    created_at=datetime.now(UTC),
-                    updated_at=datetime.now(UTC),
+                    formats=formats,  # List, not JSON string
+                    countries=countries,  # List or None
+                    delivery_type=delivery_type,
+                    is_fixed_price=(delivery_type == "guaranteed"),
+                    cpm=cpm,
+                    price_guidance=price_guidance,
+                    targeting_template={},  # Empty targeting template
+                    implementation_config=None,
                 )
                 db_session.add(product)
                 db_session.commit()
@@ -138,21 +163,32 @@ def edit_product(tenant_id, product_id):
                 # Update product
                 product.name = form_data.get("name", product.name)
                 product.description = form_data.get("description", product.description)
-                product.price_model = form_data.get("price_model", product.price_model)
-                product.base_price = float(form_data.get("base_price", product.base_price))
-                product.currency = form_data.get("currency", product.currency)
-                product.min_spend = float(form_data["min_spend"]) if form_data.get("min_spend") else None
+                product.delivery_type = form_data.get("delivery_type", product.delivery_type)
+                product.is_fixed_price = form_data.get("is_fixed_price", "true").lower() == "true"
+
+                # Update pricing based on delivery type
+                if product.is_fixed_price:
+                    product.cpm = float(form_data.get("cpm")) if form_data.get("cpm") else product.cpm
+                    product.price_guidance = None
+                else:
+                    product.cpm = None
+                    price_min = (
+                        float(form_data.get("price_guidance_min")) if form_data.get("price_guidance_min") else None
+                    )
+                    price_max = (
+                        float(form_data.get("price_guidance_max")) if form_data.get("price_guidance_max") else None
+                    )
+                    if price_min and price_max:
+                        product.price_guidance = {"min": price_min, "max": price_max}
 
                 # Update formats and countries
                 if "formats" in form_data:
                     formats = [f.strip() for f in form_data["formats"].split(",") if f.strip()]
-                    product.formats = json.dumps(formats)
+                    product.formats = formats
 
                 if "countries" in form_data:
                     countries = [c.strip().upper() for c in form_data["countries"].split(",") if c.strip()]
-                    product.countries = json.dumps(countries)
-
-                product.updated_at = datetime.now(UTC)
+                    product.countries = countries
                 db_session.commit()
 
                 flash(f"Product '{product.name}' updated successfully", "success")
@@ -163,12 +199,20 @@ def edit_product(tenant_id, product_id):
                 "product_id": product.product_id,
                 "name": product.name,
                 "description": product.description,
-                "price_model": product.price_model,
-                "base_price": product.base_price,
-                "currency": product.currency,
-                "min_spend": product.min_spend,
-                "formats": json.loads(product.formats) if product.formats else [],
-                "countries": json.loads(product.countries) if product.countries else [],
+                "delivery_type": product.delivery_type,
+                "is_fixed_price": product.is_fixed_price,
+                "cpm": product.cpm,
+                "price_guidance": product.price_guidance,
+                "formats": (
+                    product.formats
+                    if isinstance(product.formats, list)
+                    else json.loads(product.formats) if product.formats else []
+                ),
+                "countries": (
+                    product.countries
+                    if isinstance(product.countries, list)
+                    else json.loads(product.countries) if product.countries else []
+                ),
             }
 
             return render_template(
@@ -299,19 +343,43 @@ def bulk_upload(tenant_id):
 
                 for item in products_data:
                     try:
+                        # Parse formats from JSON
+                        formats = item.get("formats", [])
+                        if isinstance(formats, str):
+                            try:
+                                formats = json.loads(formats)
+                            except:
+                                formats = []
+
+                        # Parse targeting_template from JSON
+                        targeting = item.get("targeting_template", {})
+                        if isinstance(targeting, str):
+                            try:
+                                targeting = json.loads(targeting)
+                            except:
+                                targeting = {}
+
+                        # Parse countries
+                        countries = item.get("countries")
+                        if isinstance(countries, str):
+                            try:
+                                countries = json.loads(countries)
+                            except:
+                                countries = None
+
                         product = Product(
-                            product_id=f"prod_{uuid.uuid4().hex[:8]}",
+                            product_id=item.get("product_id") or f"prod_{uuid.uuid4().hex[:8]}",
                             tenant_id=tenant_id,
                             name=item.get("name", ""),
                             description=item.get("description", ""),
-                            price_model=item.get("price_model", "cpm"),
-                            base_price=float(item.get("base_price", 0)),
-                            currency=item.get("currency", "USD"),
-                            min_spend=float(item.get("min_spend")) if item.get("min_spend") else None,
-                            formats=json.dumps(item.get("formats", [])),
-                            countries=json.dumps(item.get("countries", [])),
-                            created_at=datetime.now(UTC),
-                            updated_at=datetime.now(UTC),
+                            formats=formats,
+                            targeting_template=targeting,
+                            delivery_type=item.get("delivery_type", "standard"),
+                            is_fixed_price=item.get("is_fixed_price", True),
+                            cpm=float(item.get("cpm", 0)) if item.get("cpm") else None,
+                            price_guidance=item.get("price_guidance"),
+                            countries=countries,
+                            implementation_config=item.get("implementation_config"),
                         )
                         db_session.add(product)
                         created_count += 1
@@ -428,17 +496,25 @@ def create_from_template(tenant_id):
                 product_id=product_id,
                 name=template.get("name"),
                 description=template.get("description"),
-                price_model=template.get("pricing", {}).get("model", "CPM"),
-                base_price=template.get("pricing", {}).get("base_price", 0),
-                currency=template.get("pricing", {}).get("currency", "USD"),
-                min_spend=template.get("pricing", {}).get("min_spend", 0),
-                formats=json.dumps(template.get("formats", [])),
-                countries=json.dumps(template.get("countries", [])),
-                targeting_template=json.dumps(template.get("targeting_template", {})),
+                formats=template.get("formats", []),
+                countries=template.get("countries"),
+                targeting_template=template.get("targeting_template", {}),
                 delivery_type=template.get("delivery_type", "standard"),
-                status="active",
-                created_at=datetime.now(UTC),
-                updated_at=datetime.now(UTC),
+                is_fixed_price=template.get("pricing", {}).get("model", "CPM") == "CPM",
+                cpm=(
+                    template.get("pricing", {}).get("base_price")
+                    if template.get("pricing", {}).get("model", "CPM") == "CPM"
+                    else None
+                ),
+                price_guidance=(
+                    {
+                        "min": template.get("pricing", {}).get("min_spend", 0),
+                        "max": template.get("pricing", {}).get("base_price", 0),
+                    }
+                    if template.get("pricing", {}).get("model", "CPM") != "CPM"
+                    else None
+                ),
+                implementation_config=None,
             )
 
             db_session.add(product)
@@ -545,17 +621,25 @@ def create_bulk(tenant_id):
                         product_id=product_id,
                         name=template.get("name"),
                         description=template.get("description"),
-                        price_model=template.get("pricing", {}).get("model", "CPM"),
-                        base_price=template.get("pricing", {}).get("base_price", 0),
-                        currency=template.get("pricing", {}).get("currency", "USD"),
-                        min_spend=template.get("pricing", {}).get("min_spend", 0),
-                        formats=json.dumps(template.get("formats", [])),
-                        countries=json.dumps(template.get("countries", [])),
-                        targeting_template=json.dumps(template.get("targeting_template", {})),
+                        formats=template.get("formats", []),
+                        countries=template.get("countries"),
+                        targeting_template=template.get("targeting_template", {}),
                         delivery_type=template.get("delivery_type", "standard"),
-                        status="active",
-                        created_at=datetime.now(UTC),
-                        updated_at=datetime.now(UTC),
+                        is_fixed_price=template.get("pricing", {}).get("model", "CPM") == "CPM",
+                        cpm=(
+                            template.get("pricing", {}).get("base_price")
+                            if template.get("pricing", {}).get("model", "CPM") == "CPM"
+                            else None
+                        ),
+                        price_guidance=(
+                            {
+                                "min": template.get("pricing", {}).get("min_spend", 0),
+                                "max": template.get("pricing", {}).get("base_price", 0),
+                            }
+                            if template.get("pricing", {}).get("model", "CPM") != "CPM"
+                            else None
+                        ),
+                        implementation_config=None,
                     )
 
                     db_session.add(product)

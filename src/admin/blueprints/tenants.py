@@ -125,6 +125,14 @@ def dashboard(tenant_id):
             chart_labels = [d["date"] for d in revenue_data]
             chart_data = [d["revenue"] for d in revenue_data]
 
+            # Transform recent_buys tuples to list of MediaBuy objects with extra properties
+            recent_media_buys_list = []
+            for media_buy, _principal in recent_buys:
+                # Add calculated/placeholder properties that template expects
+                media_buy.spend = 0  # Placeholder for actual spend
+                media_buy.created_at_relative = "Recently"  # Placeholder for relative time
+                recent_media_buys_list.append(media_buy)
+
             return render_template(
                 "tenant_dashboard.html",
                 tenant=tenant,
@@ -134,7 +142,7 @@ def dashboard(tenant_id):
                 principals_count=principals_count,
                 products_count=products_count,
                 recent_buys=recent_buys,
-                recent_media_buys=recent_buys,  # Template expects this name
+                recent_media_buys=recent_media_buys_list,  # Pass transformed list
                 features=features,
                 revenue_data=json.dumps(revenue_data),
                 chart_labels=chart_labels,

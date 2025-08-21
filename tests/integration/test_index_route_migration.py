@@ -29,16 +29,18 @@ def test_index_route_in_refactored_app():
 
     # Mock database response and super admin check
     with (
-        patch("database_session.get_db_session") as mock_db,
+        patch("src.admin.blueprints.core.get_db_session") as mock_db,
         patch("src.admin.utils.is_super_admin", return_value=True),
     ):
         mock_session = MagicMock()
+        from datetime import datetime
+
         mock_tenant = MagicMock()
         mock_tenant.tenant_id = "test_tenant"
         mock_tenant.name = "Test Tenant"
         mock_tenant.subdomain = "test"
         mock_tenant.is_active = True
-        mock_tenant.created_at = "2024-01-01T00:00:00"
+        mock_tenant.created_at = datetime(2024, 1, 1, 0, 0, 0)
 
         mock_session.query().order_by().all.return_value = [mock_tenant]
         mock_db().__enter__.return_value = mock_session

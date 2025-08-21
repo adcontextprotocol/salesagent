@@ -79,6 +79,10 @@ class TestTenantDashboard:
             db_session.add(media_buy)
             db_session.commit()
 
+        # Add tenant_id to session for tenant access
+        with authenticated_admin_session.session_transaction() as sess:
+            sess["tenant_id"] = "test_dashboard"
+
         # Access dashboard
         response = authenticated_admin_session.get("/tenant/test_dashboard")
 
@@ -169,23 +173,30 @@ class TestTenantDashboard:
         """Test that all dashboard-related routes are accessible without errors."""
         tenant_id = test_tenant_with_data["tenant_id"]
 
+        # Add tenant_id to session for tenant access
+        with authenticated_admin_session.session_transaction() as sess:
+            sess["tenant_id"] = tenant_id
+
         dashboard_routes = [
             f"/tenant/{tenant_id}",  # Main dashboard
-            f"/tenant/{tenant_id}/products",  # Products page
+            f"/tenant/{tenant_id}/products/",  # Products page (needs trailing slash)
             f"/tenant/{tenant_id}/principals",  # Principals/Advertisers page
-            f"/tenant/{tenant_id}/creative-formats",  # Creative formats
+            f"/tenant/{tenant_id}/creative-formats/",  # Creative formats (needs trailing slash)
             f"/tenant/{tenant_id}/settings",  # Tenant settings
         ]
 
         for route in dashboard_routes:
             response = authenticated_admin_session.get(route)
-            # Should either load (200) or redirect (302) but not error (500)
-            assert response.status_code in [200, 302], f"Route {route} failed with status {response.status_code}"
+            # Should either load (200) or redirect (302/308) but not error (500)
+            # 308 is a permanent redirect for missing trailing slash
+            assert response.status_code in [200, 302, 308], f"Route {route} failed with status {response.status_code}"
 
             # Should not contain error messages
             if response.status_code == 200:
                 assert b"AttributeError" not in response.data, f"Route {route} has AttributeError"
-                assert b"500" not in response.data or b"500px" in response.data, f"Route {route} shows 500 error"
+                # Check for actual 500 error messages, not just the number 500 (which appears in config)
+                assert b"500 Internal Server Error" not in response.data, f"Route {route} shows 500 error"
+                assert b"Error 500" not in response.data, f"Route {route} shows Error 500"
 
     def test_dashboard_with_empty_tenant(self, authenticated_admin_session, integration_db):
         """Test dashboard loads correctly for tenant with no data."""
