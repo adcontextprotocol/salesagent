@@ -57,6 +57,7 @@ class TestTenantDashboard:
                 principal_id="test_principal",
                 name="Test Principal",
                 access_token="test_token",
+                platform_mappings={},  # Required field
             )
             db_session.add(principal)
 

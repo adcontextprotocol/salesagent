@@ -37,8 +37,14 @@ class TestMCPTestPageUnit:
             sess["user"] = {"email": "admin@example.com", "name": "Test Admin"}
         return client
 
-    @patch("src.admin.utils.is_super_admin", return_value=True)
-    def test_mcp_test_page_template_rendering(self, mock_is_super_admin, auth_client):
+    @pytest.fixture(autouse=True)
+    def setup_mocks(self):
+        """Set up common mocks for all tests."""
+        # Mock is_super_admin to always return True for these tests
+        with patch("src.admin.utils.is_super_admin", return_value=True) as mock_admin:
+            yield mock_admin
+
+    def test_mcp_test_page_template_rendering(self, auth_client):
         """Test that the MCP test page renders with correct elements."""
         with patch("database_session.get_db_session") as mock_db:
             # Mock database results
@@ -70,12 +76,9 @@ class TestMCPTestPageUnit:
             assert "promoted_offering" in html
             assert "geo_country_any_of" in html
 
-    @patch("src.admin.utils.is_super_admin", return_value=True)
     @patch("asyncio.set_event_loop")
     @patch("asyncio.new_event_loop")
-    def test_mcp_api_call_with_auth_header(
-        self, mock_new_event_loop, mock_set_event_loop, mock_is_super_admin, auth_client
-    ):
+    def test_mcp_api_call_with_auth_header(self, mock_new_event_loop, mock_set_event_loop, auth_client):
         """Test that API call uses x-adcp-auth header correctly."""
         with patch("database_session.get_db_session") as mock_db:
             # Mock database
@@ -116,8 +119,7 @@ class TestMCPTestPageUnit:
             finally:
                 real_loop.close()
 
-    @patch("src.admin.utils.is_super_admin", return_value=True)
-    def test_mcp_api_validates_required_params(self, mock_is_super_admin, auth_client):
+    def test_mcp_api_validates_required_params(self, auth_client):
         """Test that API validates required parameters."""
         response = auth_client.post(
             "/api/mcp-test/call",
@@ -134,12 +136,9 @@ class TestMCPTestPageUnit:
         assert data["success"] is False
         assert "required" in data["error"].lower() or "missing" in data["error"].lower()
 
-    @patch("src.admin.utils.is_super_admin", return_value=True)
     @patch("asyncio.set_event_loop")
     @patch("asyncio.new_event_loop")
-    def test_mcp_api_handles_tool_errors(
-        self, mock_new_event_loop, mock_set_event_loop, mock_is_super_admin, auth_client
-    ):
+    def test_mcp_api_handles_tool_errors(self, mock_new_event_loop, mock_set_event_loop, auth_client):
         """Test that API handles MCP tool errors gracefully."""
         with patch("database_session.get_db_session") as mock_db:
             # Mock database
@@ -189,10 +188,9 @@ class TestMCPTestPageUnit:
         # For now, skip this test as the route returns "Not yet implemented" (501)
         pass
 
-    @patch("src.admin.utils.is_super_admin", return_value=True)
     @patch("asyncio.set_event_loop")
     @patch("asyncio.new_event_loop")
-    def test_mcp_api_response_parsing(self, mock_new_event_loop, mock_set_event_loop, mock_is_super_admin, auth_client):
+    def test_mcp_api_response_parsing(self, mock_new_event_loop, mock_set_event_loop, auth_client):
         """Test that API correctly parses different response formats."""
         with patch("database_session.get_db_session") as mock_db:
             # Mock database
@@ -234,12 +232,9 @@ class TestMCPTestPageUnit:
             finally:
                 real_loop.close()
 
-    @patch("src.admin.utils.is_super_admin", return_value=True)
     @patch("asyncio.set_event_loop")
     @patch("asyncio.new_event_loop")
-    def test_mcp_country_targeting_in_params(
-        self, mock_new_event_loop, mock_set_event_loop, mock_is_super_admin, auth_client
-    ):
+    def test_mcp_country_targeting_in_params(self, mock_new_event_loop, mock_set_event_loop, auth_client):
         """Test that country targeting is properly included in parameters."""
         with patch("database_session.get_db_session") as mock_db:
             # Mock database
