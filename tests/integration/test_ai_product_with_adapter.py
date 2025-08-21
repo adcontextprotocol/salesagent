@@ -4,10 +4,10 @@ import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-
 from ai_product_service import AIProductConfigurationService, ProductDescription
-from database_session import get_db_session
-from models import AdapterConfig, Tenant
+
+from src.core.database.database_session import get_db_session
+from src.core.database.models import AdapterConfig, Tenant
 
 
 @pytest.fixture

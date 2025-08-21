@@ -5,8 +5,8 @@ import pytest
 from src.admin.app import create_app
 
 app, _ = create_app()
-from database_session import get_db_session
-from models import Product, Tenant
+from src.core.database.database_session import get_db_session
+from src.core.database.models import Product, Tenant
 
 
 @pytest.fixture
