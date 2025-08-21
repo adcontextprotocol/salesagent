@@ -25,7 +25,7 @@ check_database_health
 
 # Run database migrations
 echo "📦 Running database migrations..."
-if ! python migrate.py; then
+if ! python scripts/ops/migrate.py; then
     echo "❌ Database migration failed"
     exit 1
 fi
@@ -40,4 +40,4 @@ fi
 
 # Start both servers
 echo "🌐 Starting servers..."
-exec bash debug_start.sh
+exec bash scripts/dev/debug_start.sh

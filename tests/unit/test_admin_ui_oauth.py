@@ -28,7 +28,7 @@ mock_session.query.return_value.filter_by.return_value.all.return_value = []
 mock_session.__enter__ = MagicMock(return_value=mock_session)
 mock_session.__exit__ = MagicMock(return_value=None)
 
-with patch("database_session.get_db_session", return_value=mock_session):
+with patch("src.core.database.database_session.get_db_session", return_value=mock_session):
     with patch("src.admin.utils.get_db_session", return_value=mock_session):
         # Mock gam_inventory_service to avoid database initialization
         sys.modules["gam_inventory_service"] = MagicMock()
@@ -67,7 +67,7 @@ def mock_db_session():
     """Mock database session for ORM queries."""
     # Need to patch both locations since blueprint imports directly
     with patch("src.admin.utils.get_db_session") as mock1:
-        with patch("database_session.get_db_session") as mock2:
+        with patch("src.core.database.database_session.get_db_session") as mock2:
             with patch("src.admin.blueprints.auth.get_db_session") as mock3:
                 mock_session = MagicMock()
                 mock_context = MagicMock()
@@ -395,7 +395,7 @@ class TestAuthorizationDecorators:
         mock_session = MagicMock()
         mock_session.query.return_value.order_by.return_value.all.return_value = []  # No tenants
         mock_core_db.return_value.__enter__.return_value = mock_session
-        
+
         with client.session_transaction() as sess:
             sess["authenticated"] = True
             sess["role"] = "super_admin"
@@ -443,16 +443,16 @@ class TestHelperFunctions:
         # Mock database session and SuperadminConfig query
         mock_session = MagicMock()
         mock_get_db.return_value.__enter__.return_value = mock_session
-        
+
         # Mock email config
         mock_email_config = MagicMock()
         mock_email_config.config_value = "admin@example.com"
-        
+
         # Mock query for emails
         mock_session.query.return_value.filter_by.side_effect = lambda **kwargs: (
             MagicMock(first=lambda: mock_email_config if kwargs.get("config_key") == "super_admin_emails" else None)
         )
-        
+
         assert is_super_admin("admin@example.com") is True
         assert is_super_admin("user@example.com") is False
 
@@ -462,11 +462,11 @@ class TestHelperFunctions:
         # Mock database session and SuperadminConfig query
         mock_session = MagicMock()
         mock_get_db.return_value.__enter__.return_value = mock_session
-        
+
         # Mock domain config
         mock_domain_config = MagicMock()
         mock_domain_config.config_value = "example.com"
-        
+
         # Mock query - return None for emails, domain config for domains
         def mock_filter_by(**kwargs):
             if kwargs.get("config_key") == "super_admin_emails":
@@ -474,9 +474,9 @@ class TestHelperFunctions:
             elif kwargs.get("config_key") == "super_admin_domains":
                 return MagicMock(first=lambda: mock_domain_config)
             return MagicMock(first=lambda: None)
-        
+
         mock_session.query.return_value.filter_by.side_effect = mock_filter_by
-        
+
         assert is_super_admin("anyone@example.com") is True
         assert is_super_admin("user@other.com") is False
 
@@ -487,27 +487,27 @@ class TestHelperFunctions:
         # Mock database session
         mock_session = MagicMock()
         mock_get_db.return_value.__enter__.return_value = mock_session
-        
+
         # Create mock query that chains filter_by calls
         mock_query = MagicMock()
         mock_session.query.return_value = mock_query
-        
+
         # We need to handle chained filter_by calls
         # First filter_by gets email, is_active, is_admin
         # Second filter_by (if tenant_id provided) gets tenant_id
-        
+
         def create_mock_result(should_exist):
             """Create a mock query result."""
             result = MagicMock()
             result.first.return_value = MagicMock() if should_exist else None
             return result
-        
+
         # Track the filter chain to determine final result
         def mock_first_filter(**kwargs):
             email = kwargs.get("email", "").lower()
             # Create a second mock that handles the tenant_id filter
             second_mock = MagicMock()
-            
+
             def mock_second_filter(**kwargs2):
                 tenant_id = kwargs2.get("tenant_id")
                 # Determine if this combo should exist
@@ -517,18 +517,18 @@ class TestHelperFunctions:
                     return create_mock_result(True)
                 else:
                     return create_mock_result(False)
-            
+
             second_mock.filter_by = mock_second_filter
             return second_mock
-        
+
         mock_query.filter_by = mock_first_filter
-        
+
         # Test authorized email
         assert is_tenant_admin("user@example.com", "test-tenant") is True
-        
+
         # Test another authorized user
         assert is_tenant_admin("anyone@allowed.com", "test-tenant") is True
-        
+
         # Test unauthorized
         assert is_tenant_admin("other@other.com", "test-tenant") is False
 
@@ -539,20 +539,20 @@ class TestHelperFunctions:
         # Mock database session
         mock_session = MagicMock()
         mock_get_db.return_value.__enter__.return_value = mock_session
-        
+
         # Mock user query - when no tenant_id is provided, it just checks if user is admin anywhere
         mock_query = MagicMock()
         mock_session.query.return_value = mock_query
-        
+
         # Mock filter_by to return a user object (meaning they are an admin somewhere)
         mock_filter_result = MagicMock()
         mock_filter_result.first.return_value = MagicMock()  # User exists as admin
         mock_query.filter_by.return_value = mock_filter_result
-        
+
         # User is an admin somewhere
         result = is_tenant_admin("user@example.com")
         assert result is True
-        
+
         # Now test with a user who is not an admin anywhere
         mock_filter_result.first.return_value = None  # User doesn't exist as admin
         result = is_tenant_admin("notadmin@example.com")
@@ -565,18 +565,18 @@ class TestHelperFunctions:
         # Mock database session
         mock_session = MagicMock()
         mock_get_db.return_value.__enter__.return_value = mock_session
-        
+
         # Mock user query - no user found for this tenant
         mock_query = MagicMock()
         mock_session.query.return_value = mock_query
-        
+
         # Mock filter_by chain - when checking for inactive tenant, return None
         mock_first_filter = MagicMock()
         mock_second_filter = MagicMock()
         mock_second_filter.first.return_value = None  # No user found
         mock_first_filter.filter_by.return_value = mock_second_filter
         mock_query.filter_by.return_value = mock_first_filter
-        
+
         assert is_tenant_admin("user@example.com", "inactive-tenant") is False
 
     @patch("src.admin.utils.is_super_admin", return_value=False)
@@ -586,24 +586,24 @@ class TestHelperFunctions:
         # Mock database session
         mock_session = MagicMock()
         mock_get_db.return_value.__enter__.return_value = mock_session
-        
+
         # Mock user query
         mock_query = MagicMock()
         mock_session.query.return_value = mock_query
-        
+
         # First test - user is an admin for this tenant
         mock_filter1 = MagicMock()
         mock_filter2 = MagicMock()
         mock_filter2.first.return_value = MagicMock()  # User exists
         mock_filter1.filter_by.return_value = mock_filter2
         mock_query.filter_by.return_value = mock_filter1
-        
+
         assert is_tenant_admin("user@example.com", "test-tenant") is True
-        
+
         # Second test - user is not an admin for this tenant
         mock_filter2.first.return_value = None  # User doesn't exist
         assert is_tenant_admin("other@example.com", "test-tenant") is False
-        
+
         # Third test - checking without tenant_id
         mock_query.filter_by.return_value.first.return_value = None
         assert is_tenant_admin("notadmin@example.com") is False

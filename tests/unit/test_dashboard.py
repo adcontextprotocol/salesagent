@@ -69,7 +69,7 @@ class TestDashboardRoutes:
         assert response.status_code == 302  # Should redirect to login
         assert "/login" in response.location
 
-    @patch("database_session.get_db_session")
+    @patch("src.core.database.database_session.get_db_session")
     def test_dashboard_with_valid_tenant(self, mock_db, flask_client, mock_tenant):
         """Test dashboard loads with valid tenant."""
         # Mock database connection
@@ -118,7 +118,7 @@ class TestDashboardRoutes:
         # Should not error
         assert response.status_code != 500
 
-    @patch("database_session.get_db_session")
+    @patch("src.core.database.database_session.get_db_session")
     def test_dashboard_invalid_tenant(self, mock_get_session, flask_client):
         """Test dashboard with non-existent tenant."""
         # Mock database session using context manager
@@ -143,7 +143,7 @@ class TestDashboardRoutes:
 class TestDashboardMetrics:
     """Test dashboard metric calculations."""
 
-    @patch("database_session.get_db_session")
+    @patch("src.core.database.database_session.get_db_session")
     def test_revenue_calculation(self, mock_db, mock_media_buys):
         """Test revenue metrics are calculated correctly."""
         mock_session = MagicMock()
@@ -168,7 +168,7 @@ class TestDashboardMetrics:
         mock_filter.all.return_value = [mock_buy1, mock_buy2]
 
         # Calculate total revenue from active media buys
-        from models import MediaBuy
+        from src.core.database.models import MediaBuy
 
         with mock_db() as session:
             active_buys = session.query(MediaBuy).filter_by(status="active").all()
@@ -176,7 +176,7 @@ class TestDashboardMetrics:
 
         assert total_revenue == 5000.0
 
-    @patch("database_session.get_db_session")
+    @patch("src.core.database.database_session.get_db_session")
     def test_task_count_metrics(self, mock_db, mock_human_tasks):
         """Test task counting metrics."""
         mock_conn = MagicMock()
@@ -286,14 +286,14 @@ class TestDashboardDataTransformation:
 class TestDashboardErrorHandling:
     """Test error handling in dashboard."""
 
-    @patch("database_session.get_db_session")
+    @patch("src.core.database.database_session.get_db_session")
     def test_database_connection_error(self, mock_get_db_session):
         """Test handling of database connection errors."""
         # Simulate connection failure by raising an exception
         mock_get_db_session.side_effect = Exception("Database connection failed")
 
         # Test that database errors are handled gracefully
-        from database_session import get_db_session
+        from src.core.database.database_session import get_db_session
 
         with pytest.raises(Exception) as exc_info:
             with get_db_session() as session:
@@ -322,7 +322,7 @@ class TestDashboardErrorHandling:
 class TestSettingsPage:
     """Test the settings page functionality."""
 
-    @patch("database_session.get_db_session")
+    @patch("src.core.database.database_session.get_db_session")
     def test_settings_page_loads(self, mock_db, flask_client):
         """Test that settings page loads without error."""
         mock_conn = MagicMock()

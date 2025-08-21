@@ -18,7 +18,7 @@ pytestmark = pytest.mark.unit
 # Add parent directory to path for imports
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from ai_creative_format_service import AICreativeFormatService
+from src.services.ai_creative_format_service import AICreativeFormatService
 
 
 def load_expected_output(file_path: str) -> dict[str, Any]:
