@@ -8,7 +8,8 @@ inserts them into the creative_formats table.
 
 from database_session import get_db_session
 from foundational_formats import FoundationalFormatsManager
-from models import CreativeFormat, Tenant
+
+from src.core.database.models import CreativeFormat, Tenant
 
 
 def populate_foundational_formats():

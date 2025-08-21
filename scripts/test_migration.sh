@@ -127,7 +127,7 @@ if [ "$FULL_WORKFLOW" = true ]; then
     run_test "schema integrity check" "python -c \"
 import sys
 sys.path.append('.')
-from db_config import get_db_connection
+from src.core.database.db_config import get_db_connection
 from models import Base, Tenant, GAMInventory
 from sqlalchemy import inspect
 
@@ -187,7 +187,7 @@ async def test_sync():
     service = GAMInventoryService()
     # Verify service can access database
     from sqlalchemy.orm import sessionmaker
-    from db_config import engine
+    from src.core.database.db_config import engine
     SessionLocal = sessionmaker(bind=engine)
     with SessionLocal() as db:
         # Just verify we can query
@@ -217,7 +217,7 @@ if [ "$TEST_PERFORMANCE" = true ]; then
     # Test query performance
     run_test "query performance" "python -c \"
 import time
-from db_config import get_db_connection
+from src.core.database.db_config import get_db_connection
 
 with get_db_connection() as db:
     # Test inventory query performance

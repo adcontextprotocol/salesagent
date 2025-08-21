@@ -16,7 +16,11 @@ def fix_test_file(filepath):
     original_content = content
 
     # Replace get_db_connection imports
-    content = re.sub(r"from db_config import get_db_connection", "from database_session import get_db_session", content)
+    content = re.sub(
+        r"from src.core.database.db_config import get_db_connection",
+        "from src.core.database.database_session import get_db_session",
+        content,
+    )
 
     # Replace patches of get_db_connection
     content = re.sub(

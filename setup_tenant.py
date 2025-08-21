@@ -8,8 +8,8 @@ import argparse
 import secrets
 import sys
 
-from database_session import get_db_session
-from models import AdapterConfig, Tenant
+from src.core.database.database_session import get_db_session
+from src.core.database.models import AdapterConfig, Tenant
 
 
 def create_tenant(args):

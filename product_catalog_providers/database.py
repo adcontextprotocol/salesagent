@@ -5,8 +5,9 @@ import logging
 from typing import Any
 
 from database_session import get_db_session
-from models import Product as ProductModel
 from schemas import Product
+
+from src.core.database.models import Product as ProductModel
 
 from .base import ProductCatalogProvider
 

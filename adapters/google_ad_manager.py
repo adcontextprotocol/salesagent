@@ -7,10 +7,6 @@ from typing import Any
 
 import google.oauth2.service_account
 from flask import Flask, flash, redirect, render_template, request, url_for
-
-from adapters.base import AdServerAdapter, CreativeEngineAdapter
-from adapters.constants import REQUIRED_UPDATE_ACTIONS
-from adapters.gam_implementation_config_schema import GAMImplementationConfig
 from schemas import (
     AdapterGetMediaBuyDeliveryResponse,
     AssetStatus,
@@ -25,6 +21,10 @@ from schemas import (
     ReportingPeriod,
     UpdateMediaBuyResponse,
 )
+
+from adapters.base import AdServerAdapter, CreativeEngineAdapter
+from adapters.constants import REQUIRED_UPDATE_ACTIONS
+from adapters.gam_implementation_config_schema import GAMImplementationConfig
 
 # Set up logger
 logger = logging.getLogger(__name__)
@@ -108,10 +108,10 @@ class GoogleAdManager(AdServerAdapter):
 
     def _get_oauth_credentials(self):
         """Get OAuth credentials using refresh token and superadmin config."""
+        from database_session import get_db_session
         from googleads import oauth2
 
-        from database_session import get_db_session
-        from models import SuperadminConfig
+        from src.core.database.models import SuperadminConfig
 
         # Get OAuth client credentials from superadmin config
         with get_db_session() as db_session:
@@ -381,7 +381,8 @@ class GoogleAdManager(AdServerAdapter):
         """Creates a new Order and associated LineItems in Google Ad Manager."""
         # Get products to access implementation_config
         from database_session import get_db_session
-        from models import Product
+
+        from src.core.database.models import Product
 
         # Create a map of package_id to product for easy lookup
         products_map = {}
@@ -1054,7 +1055,8 @@ class GoogleAdManager(AdServerAdapter):
         def gam_product_config(tenant_id, product_id):
             # Get tenant and product
             from database_session import get_db_session
-            from models import AdapterConfig, Product, Tenant
+
+            from src.core.database.models import AdapterConfig, Product, Tenant
 
             with get_db_session() as db_session:
                 tenant = db_session.query(Tenant).filter_by(tenant_id=tenant_id).first()
@@ -1247,8 +1249,8 @@ class GoogleAdManager(AdServerAdapter):
             from sqlalchemy import and_, create_engine
             from sqlalchemy.orm import sessionmaker
 
-            from db_config import DatabaseConfig
-            from models import GAMInventory
+            from src.core.database.db_config import DatabaseConfig
+            from src.core.database.models import GAMInventory
 
             # Create database session
             engine = create_engine(DatabaseConfig.get_connection_string())

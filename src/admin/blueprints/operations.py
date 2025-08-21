@@ -41,10 +41,10 @@ def orders(tenant_id, **kwargs):
 def reporting(tenant_id):
     """Display GAM reporting dashboard."""
     # Import needed for this function
+    from database_session import get_db_session
     from flask import render_template, session
 
-    from database_session import get_db_session
-    from models import Tenant
+    from src.core.database.models import Tenant
 
     # Verify tenant access
     if session.get("role") != "super_admin" and session.get("tenant_id") != tenant_id:

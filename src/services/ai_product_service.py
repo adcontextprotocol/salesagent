@@ -16,10 +16,10 @@ from dataclasses import dataclass
 from typing import Any
 
 import google.generativeai as genai
-
 from database_session import get_db_session
-from models import Principal as PrincipalModel
-from models import Tenant
+
+from src.core.database.models import Principal as PrincipalModel
+from src.core.database.models import Tenant
 
 logger = logging.getLogger(__name__)
 
@@ -132,7 +132,7 @@ class AIProductConfigurationService:
 
         # Get adapter instance
         from adapters import get_adapter_class
-        from models import AdapterConfig
+        from src.core.database.models import AdapterConfig
 
         adapter_class = get_adapter_class(adapter_type)
 
@@ -200,7 +200,7 @@ class AIProductConfigurationService:
 
     def _get_available_formats(self, tenant_id: str) -> list[dict[str, Any]]:
         """Get all available creative formats (standard + custom for tenant)."""
-        from models import CreativeFormat
+        from src.core.database.models import CreativeFormat
 
         with get_db_session() as db_session:
             from sqlalchemy import or_

@@ -18,9 +18,9 @@ from typing import Any
 import aiohttp
 import google.generativeai as genai
 from bs4 import BeautifulSoup
-
 from database_session import get_db_session
-from models import CreativeFormat
+
+from src.core.database.models import CreativeFormat
 
 logger = logging.getLogger(__name__)
 

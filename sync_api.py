@@ -13,12 +13,12 @@ import secrets
 from datetime import UTC, datetime
 from functools import wraps
 
-from flask import Blueprint, jsonify, request
-
 from database_session import get_db_session
+from flask import Blueprint, jsonify, request
 from gam_inventory_service import GAMInventoryService
 from gam_inventory_service import db_session as gam_db_session
-from models import AdapterConfig, SuperadminConfig, SyncJob, Tenant
+
+from src.core.database.models import AdapterConfig, SuperadminConfig, SyncJob, Tenant
 
 logger = logging.getLogger(__name__)
 
@@ -141,8 +141,9 @@ def trigger_sync(tenant_id: str):
             db_session.commit()
 
             # Initialize GAM client
-            from adapters.google_ad_manager import GoogleAdManager
             from schemas import Principal
+
+            from adapters.google_ad_manager import GoogleAdManager
 
             # Create dummy principal for sync
             principal = Principal(
@@ -465,9 +466,10 @@ def sync_tenant_orders(tenant_id):
 
         try:
             # Initialize GAM client
-            from adapters.google_ad_manager import GoogleAdManager
             from gam_orders_service import GAMOrdersService
             from schemas import Principal
+
+            from adapters.google_ad_manager import GoogleAdManager
 
             # Create dummy principal for sync
             principal = Principal(

@@ -2,8 +2,8 @@
 """Quick script to get tokens from the database."""
 
 
-from database_session import get_db_session
-from models import Principal, Tenant
+from src.core.database.database_session import get_db_session
+from src.core.database.models import Principal, Tenant
 
 
 def get_tokens():

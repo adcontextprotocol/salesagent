@@ -2,10 +2,10 @@
 
 import logging
 
+from database_session import get_db_session
 from googleads import ad_manager, oauth2
 
-from database_session import get_db_session
-from models import AdapterConfig, SuperadminConfig, Tenant
+from src.core.database.models import AdapterConfig, SuperadminConfig, Tenant
 
 logger = logging.getLogger(__name__)
 

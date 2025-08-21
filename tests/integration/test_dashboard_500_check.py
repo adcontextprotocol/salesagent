@@ -4,7 +4,7 @@ import os
 
 import pytest
 
-from database import init_db
+from src.core.database.database import init_db
 
 # Enable test mode
 os.environ["ADCP_AUTH_TEST_MODE"] = "true"

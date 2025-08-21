@@ -13,7 +13,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session, scoped_session, sessionmaker
 
-from db_config import DatabaseConfig
+from src.core.database.db_config import DatabaseConfig
 
 # Create engine and session factory
 engine = create_engine(DatabaseConfig.get_connection_string())

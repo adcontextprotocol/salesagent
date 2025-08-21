@@ -9,8 +9,18 @@ from functools import wraps
 
 from flask import Blueprint, jsonify, request
 
-from database_session import get_db_session
-from models import AdapterConfig, AuditLog, MediaBuy, Principal, Product, SuperadminConfig, Task, Tenant, User
+from src.core.database.database_session import get_db_session
+from src.core.database.models import (
+    AdapterConfig,
+    AuditLog,
+    MediaBuy,
+    Principal,
+    Product,
+    SuperadminConfig,
+    Task,
+    Tenant,
+    User,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -56,9 +66,8 @@ def health_check():
 @require_superadmin_api_key
 def list_tenants():
     """List all tenants."""
-    from sqlalchemy import func
-
     from models import AdapterConfig
+    from sqlalchemy import func
 
     with get_db_session() as db_session:
         try:

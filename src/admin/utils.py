@@ -7,8 +7,8 @@ from functools import wraps
 
 from flask import abort, g, jsonify, redirect, session, url_for
 
-from database_session import get_db_session
-from models import SuperadminConfig, Tenant, User
+from src.core.database.database_session import get_db_session
+from src.core.database.models import SuperadminConfig, Tenant, User
 
 logger = logging.getLogger(__name__)
 

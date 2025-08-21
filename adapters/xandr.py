@@ -10,8 +10,6 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import requests
-
-from adapters.base import AdServerAdapter
 from schemas import (
     CreateMediaBuyRequest,
     CreateMediaBuyResponse,
@@ -30,6 +28,8 @@ from schemas import (
     Product,
     ReportingPeriod,
 )
+
+from adapters.base import AdServerAdapter
 
 
 # Import the actual MediaBuy model for this adapter's incorrect usage
@@ -134,7 +134,8 @@ class XandrAdapter(AdServerAdapter):
         import uuid
 
         from database_session import get_db_session
-        from models import Task, Tenant
+
+        from src.core.database.models import Task, Tenant
 
         task_id = f"task_{uuid.uuid4().hex[:8]}"
 

@@ -2,7 +2,6 @@ import random
 from datetime import datetime, timedelta
 from typing import Any
 
-from adapters.base import AdServerAdapter
 from schemas import (
     AdapterGetMediaBuyDeliveryResponse,
     AssetStatus,
@@ -15,6 +14,8 @@ from schemas import (
     ReportingPeriod,
     UpdateMediaBuyResponse,
 )
+
+from adapters.base import AdServerAdapter
 
 
 class MockAdServer(AdServerAdapter):
@@ -444,8 +445,9 @@ class MockAdServer(AdServerAdapter):
             from functools import wraps
 
             from database_session import get_db_session
-            from models import Product
+
             from src.admin.utils import require_auth
+            from src.core.database.models import Product
 
             # Apply auth decorator manually
             @require_auth()
