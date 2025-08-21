@@ -116,8 +116,9 @@ def test_api_endpoints():
     """Test the Flask API endpoints."""
     print("\n\n=== Testing API Endpoints ===\n")
 
-    from admin_ui import app
+    from src.admin.app import create_app
 
+    app, _ = create_app()
     app.config["TESTING"] = True
 
     with app.test_client() as client:

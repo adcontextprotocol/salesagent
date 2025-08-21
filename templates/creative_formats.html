@@ -7,12 +7,12 @@
     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
         <h2>Creative Formats - {{ tenant_name }}</h2>
         <div style="display: flex; gap: 0.5rem;">
-            <a href="{{ url_for('tenant_dashboard', tenant_id=tenant_id) }}" class="btn btn-secondary">← Back to Home</a>
+            <a href="{{ url_for('tenants.dashboard', tenant_id=tenant_id) }}" class="btn btn-secondary">← Back to Home</a>
             {% if session.role == 'super_admin' %}
             <button onclick="syncStandardFormats()" class="btn btn-secondary">Sync Standard Formats</button>
             {% endif %}
             <button onclick="showDiscoverFromUrlModal()" class="btn btn-primary">Discover from URL</button>
-            <a href="{{ url_for('add_creative_format_ai', tenant_id=tenant_id) }}" class="btn btn-secondary">Add with AI</a>
+            <a href="{{ url_for('creatives.add_ai', tenant_id=tenant_id) }}" class="btn btn-secondary">Add with AI</a>
         </div>
     </div>
 
@@ -86,7 +86,7 @@
     {% else %}
     <div style="text-align: center; padding: 2rem; background: #f9f9f9; border-radius: 4px;">
         <p style="color: #666;">No custom formats defined yet.</p>
-        <a href="{{ url_for('add_creative_format_ai', tenant_id=tenant_id) }}" class="btn">Create Your First Custom Format</a>
+        <a href="{{ url_for('creatives.add_ai', tenant_id=tenant_id) }}" class="btn">Create Your First Custom Format</a>
     </div>
     {% endif %}
 </div>
@@ -320,7 +320,7 @@ async function syncStandardFormats() {
     }
 
     try {
-        const response = await fetch(`{{ url_for('sync_standard_formats', tenant_id=tenant_id) }}`, {
+        const response = await fetch(`{{ url_for('creatives.sync_standard', tenant_id=tenant_id) }}`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',

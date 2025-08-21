@@ -274,8 +274,8 @@ def tenant_admin_session(sample_tenant):
 @pytest.fixture
 def flask_app():
     """Provide Flask test app."""
-    # Mock database before importing admin_ui
-    with patch("admin_ui.get_db_session") as mock_get_session:
+    # Mock database before importing admin app
+    with patch("database_session.get_db_session") as mock_get_session:
         mock_session = MagicMock()
         mock_session.query.return_value.filter_by.return_value.first.return_value = None
         mock_session.query.return_value.filter_by.return_value.all.return_value = []
@@ -292,8 +292,9 @@ def flask_app():
             mock_inv_session.close = MagicMock()
             mock_inv_session.remove = MagicMock()
 
-            from admin_ui import app
+            from src.admin.app import create_app
 
+            app, _ = create_app()
             app.config["TESTING"] = True
             app.config["SECRET_KEY"] = "test-secret-key"
             return app

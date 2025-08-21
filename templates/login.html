@@ -32,9 +32,9 @@
 
     <div style="margin: 2rem 0;">
         {% if tenant_id %}
-        <a href="{{ url_for('tenant_google_auth', tenant_id=tenant_id) }}" class="btn" style="display: inline-flex; align-items: center; padding: 0.75rem 1.5rem; font-size: 16px;">
+        <a href="{{ url_for('auth.tenant_google_auth', tenant_id=tenant_id) }}" class="btn" style="display: inline-flex; align-items: center; padding: 0.75rem 1.5rem; font-size: 16px;">
         {% else %}
-        <a href="{{ url_for('google_auth') }}" class="btn" style="display: inline-flex; align-items: center; padding: 0.75rem 1.5rem; font-size: 16px;">
+        <a href="{{ url_for('auth.google_auth') }}" class="btn" style="display: inline-flex; align-items: center; padding: 0.75rem 1.5rem; font-size: 16px;">
         {% endif %}
             <svg width="18" height="18" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" style="margin-right: 8px;">
                 <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/>
@@ -50,7 +50,7 @@
     {% if test_mode %}
     <div style="margin: 2rem 0; padding: 2rem 0; border-top: 1px solid #ddd;">
         <h3 style="margin-bottom: 1rem;">Test Mode Login</h3>
-        <form method="POST" action="{{ url_for('test_auth') }}" style="text-align: left;">
+        <form method="POST" action="{{ url_for('auth.test_auth') }}" style="text-align: left;">
             {% if tenant_id %}
             <input type="hidden" name="tenant_id" value="{{ tenant_id }}">
             {% endif %}

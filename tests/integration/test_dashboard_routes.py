@@ -10,17 +10,19 @@ import pytest
 # Enable test mode for these tests
 os.environ["ADCP_AUTH_TEST_MODE"] = "true"
 
+# Mark all tests in this module as requiring database
+pytestmark = pytest.mark.requires_db
+
 
 @pytest.fixture
-def app():
+def app(integration_db):
     """Create and configure a test Flask application."""
+    # integration_db ensures database tables are created
     # Reload admin_ui to pick up the test mode environment variable
-    import importlib
 
-    import admin_ui
+    from src.admin.app import create_app
 
-    importlib.reload(admin_ui)
-    from admin_ui import app as flask_app
+    flask_app, _ = create_app()
 
     flask_app.config["TESTING"] = True
     flask_app.config["SECRET_KEY"] = "test_secret_key"
@@ -34,7 +36,31 @@ def client(app):
 
 
 @pytest.fixture
-def authenticated_client(client):
+def test_tenant(integration_db):
+    """Create a test tenant in the database."""
+    from datetime import UTC, datetime
+
+    from database_session import get_db_session
+    from models import Tenant
+
+    with get_db_session() as session:
+        tenant = Tenant(
+            tenant_id="default",
+            name="Default Tenant",
+            subdomain="default",
+            is_active=True,
+            ad_server="mock",
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
+            authorized_emails=["test@example.com"],
+        )
+        session.add(tenant)
+        session.commit()
+        return {"tenant_id": "default", "name": "Default Tenant"}
+
+
+@pytest.fixture
+def authenticated_client(client, test_tenant):
     """Create an authenticated test client."""
     # Authenticate using test mode (expects form data, not JSON)
     auth_data = {
@@ -57,7 +83,7 @@ def authenticated_client(client):
 @pytest.fixture
 def mock_db():
     """Mock database connection."""
-    with patch("admin_ui.get_db_session") as mock:
+    with patch("database_session.get_db_session") as mock:
         conn = MagicMock()
         cursor = MagicMock()
         conn.execute.return_value = cursor

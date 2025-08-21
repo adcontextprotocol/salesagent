@@ -203,11 +203,12 @@ class MediaBuy(Base):
     context_id = Column(String(100), nullable=True)  # Link to context if created through A2A protocol
 
     # Relationships
-    tenant = relationship("Tenant", back_populates="media_buys")
+    tenant = relationship("Tenant", back_populates="media_buys", overlaps="media_buys")
     principal = relationship(
         "Principal",
         foreign_keys=[tenant_id, principal_id],
         primaryjoin="and_(MediaBuy.tenant_id==Principal.tenant_id, MediaBuy.principal_id==Principal.principal_id)",
+        overlaps="media_buys,tenant",
     )
     # Removed tasks and context relationships - using ObjectWorkflowMapping instead
 
@@ -504,6 +505,7 @@ class GAMLineItem(Base):
         back_populates="line_items",
         foreign_keys=[tenant_id, order_id],
         primaryjoin="and_(GAMLineItem.tenant_id==GAMOrder.tenant_id, GAMLineItem.order_id==GAMOrder.order_id)",
+        overlaps="tenant",
     )
 
     __table_args__ = (
@@ -566,6 +568,7 @@ class Context(Base):
         "Principal",
         foreign_keys=[tenant_id, principal_id],
         primaryjoin="and_(Context.tenant_id==Principal.tenant_id, Context.principal_id==Principal.principal_id)",
+        overlaps="tenant",
     )
     # Direct object relationships removed - using ObjectWorkflowMapping instead
     workflow_steps = relationship("WorkflowStep", back_populates="context", cascade="all, delete-orphan")

@@ -20,4 +20,4 @@ python migrate.py
 
 # Start the admin UI
 echo "🌐 Starting Admin UI..."
-exec python admin_ui.py
+exec python -m src.admin.server

@@ -30,7 +30,7 @@ services:
     # volumes:
     #   - ./templates:/app/templates
     #   - ./static:/app/static
-    #   - ./admin_ui.py:/app/admin_ui.py
+    #   - ./src/admin:/app/src/admin
 
     # Expose Flask debugger port
     # ports:

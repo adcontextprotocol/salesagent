@@ -23,7 +23,7 @@ async def test_unified_delivery_single_buy(sample_principal, sample_media_buy_re
     async with client:
         # Test single media buy query
         result = await client.call_tool(
-            "get_media_buy_delivery", {"media_buy_ids": ["test_buy_123"], "today": date.today().isoformat()}
+            "get_media_buy_delivery", {"req": {"media_buy_ids": ["test_buy_123"], "today": date.today().isoformat()}}
         )
 
         assert "deliveries" in result, "Response missing 'deliveries' array"
@@ -42,7 +42,7 @@ async def test_unified_delivery_multiple_buys(sample_principal):
     async with client:
         result = await client.call_tool(
             "get_media_buy_delivery",
-            {"media_buy_ids": ["test_buy_123", "test_buy_456"], "today": date.today().isoformat()},
+            {"req": {"media_buy_ids": ["test_buy_123", "test_buy_456"], "today": date.today().isoformat()}},
         )
 
         assert "deliveries" in result
@@ -60,7 +60,7 @@ async def test_unified_delivery_active_filter(sample_principal):
 
     async with client:
         # Default filter should be 'active'
-        result = await client.call_tool("get_media_buy_delivery", {"today": date.today().isoformat()})
+        result = await client.call_tool("get_media_buy_delivery", {"req": {"today": date.today().isoformat()}})
 
         assert "deliveries" in result
         assert isinstance(result["deliveries"], list)
@@ -77,7 +77,7 @@ async def test_unified_delivery_all_filter(sample_principal):
 
     async with client:
         result = await client.call_tool(
-            "get_media_buy_delivery", {"status_filter": "all", "today": date.today().isoformat()}
+            "get_media_buy_delivery", {"req": {"status_filter": "all", "today": date.today().isoformat()}}
         )
 
         assert "deliveries" in result
@@ -100,7 +100,7 @@ async def test_unified_delivery_completed_filter(sample_principal):
 
     async with client:
         result = await client.call_tool(
-            "get_media_buy_delivery", {"status_filter": "completed", "today": date.today().isoformat()}
+            "get_media_buy_delivery", {"req": {"status_filter": "completed", "today": date.today().isoformat()}}
         )
 
         assert "deliveries" in result

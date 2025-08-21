@@ -67,6 +67,7 @@ def authenticated_client(test_admin_app):
         sess["authenticated"] = True
         sess["tenant_id"] = "test_tenant"
         sess["role"] = "tenant_admin"
+        sess["user"] = {"email": "admin@test.com", "role": "tenant_admin"}
 
     return client
 
@@ -144,7 +145,7 @@ class TestGAMLineItemViewer:
             mock_db_session.remove = Mock()
 
             # Mock get_tenant_config_from_db to return GAM enabled config
-            with patch("admin_ui.get_tenant_config_from_db") as mock_get_config:
+            with patch("src.admin.utils.get_tenant_config_from_db") as mock_get_config:
                 mock_get_config.return_value = {
                     "adapters": {
                         "google_ad_manager": {
@@ -155,7 +156,7 @@ class TestGAMLineItemViewer:
                     }
                 }
 
-                with patch("admin_ui.get_db_session") as mock_get_session:
+                with patch("database_session.get_db_session") as mock_get_session:
                     # Create a proper mock session that returns a tenant
                     mock_session_ctx = MagicMock()
                     mock_query = MagicMock()
@@ -216,6 +217,7 @@ def test_get_gam_line_item_not_found(test_admin_app):
         sess["authenticated"] = True
         sess["tenant_id"] = "test_tenant"
         sess["role"] = "tenant_admin"
+        sess["user"] = {"email": "admin@test.com", "role": "tenant_admin"}
 
     # Create mock SQLAlchemy session
     mock_session = Mock()
@@ -230,14 +232,14 @@ def test_get_gam_line_item_not_found(test_admin_app):
     mock_session.query.return_value = mock_query
 
     # Mock get_tenant_config_from_db
-    with patch("admin_ui.get_tenant_config_from_db") as mock_get_config:
+    with patch("src.admin.utils.get_tenant_config_from_db") as mock_get_config:
         mock_get_config.return_value = {
             "adapters": {
                 "google_ad_manager": {"enabled": True, "network_code": "123456", "refresh_token": "mock_refresh_token"}
             }
         }
 
-        with patch("admin_ui.get_db_session") as mock_get_session:
+        with patch("database_session.get_db_session") as mock_get_session:
             # Make get_db_session return a proper context manager
             mock_context = Mock()
             mock_context.__enter__ = Mock(return_value=mock_session)
@@ -257,18 +259,19 @@ def test_get_gam_line_item_unauthorized(test_admin_app):
     # Create mock SQLAlchemy session (should not be called)
     mock_session = Mock()
 
-    with patch("admin_ui.get_db_session") as mock_get_session:
+    with patch("database_session.get_db_session") as mock_get_session:
         # Make get_db_session return a proper context manager
         mock_context = Mock()
         mock_context.__enter__ = Mock(return_value=mock_session)
         mock_context.__exit__ = Mock(return_value=None)
         mock_get_session.return_value = mock_context
 
-        response = client.get("/api/tenant/test_tenant/gam/line-item/5834526917")
+        response = client.get("/tenant/test_tenant/gam/api/line-item/5834526917")
 
-        # Should redirect to login
-        assert response.status_code == 302
-        assert "/login" in response.location
+        # API endpoints return 401 JSON instead of redirecting
+        assert response.status_code == 401
+        data = json.loads(response.data)
+        assert "error" in data
 
 
 def test_view_line_item_page(test_admin_app):
@@ -279,6 +282,7 @@ def test_view_line_item_page(test_admin_app):
         sess["authenticated"] = True
         sess["tenant_id"] = "test_tenant"
         sess["role"] = "tenant_admin"
+        sess["user"] = {"email": "admin@test.com", "role": "tenant_admin"}
 
     # Create mock database connection
     mock_db_connection = Mock()
@@ -304,8 +308,8 @@ def test_view_line_item_page(test_admin_app):
         mock_db_session.query.return_value = mock_query
         mock_db_session.remove = Mock()
 
-        with patch("admin_ui.get_tenant_config_from_db", return_value={"ad_server": "google_ad_manager"}):
-            with patch("admin_ui.get_db_session") as mock_get_session:
+        with patch("src.admin.utils.get_tenant_config_from_db", return_value={"ad_server": "google_ad_manager"}):
+            with patch("database_session.get_db_session") as mock_get_session:
                 # Make get_db_session return a proper context manager
                 mock_context = Mock()
                 mock_context.__enter__ = Mock(return_value=mock_db_session)

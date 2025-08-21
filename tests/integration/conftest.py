@@ -4,10 +4,19 @@ Integration test specific fixtures.
 These fixtures are for tests that require database and service integration.
 """
 
+import json
 import os
+from datetime import UTC, datetime
 from unittest.mock import MagicMock, patch
 
 import pytest
+
+from src.admin.app import create_app
+
+admin_app, _ = create_app()
+from database_session import get_db_session
+from models import Tenant
+from tests.fixtures import TenantFactory
 
 
 @pytest.fixture(scope="function")  # Changed to function scope for better isolation
@@ -79,6 +88,63 @@ def integration_db():
         os.unlink(db_path)
     except Exception:
         pass  # Ignore cleanup errors
+
+
+@pytest.fixture
+def admin_client(integration_db):
+    """Create test client for admin UI with proper configuration."""
+    admin_app.config["TESTING"] = True
+    admin_app.config["SECRET_KEY"] = "test-secret-key"
+    admin_app.config["PROPAGATE_EXCEPTIONS"] = True  # Critical for catching template errors
+    with admin_app.test_client() as client:
+        yield client
+
+
+@pytest.fixture
+def authenticated_admin_session(admin_client, integration_db):
+    """Create an authenticated session for admin UI testing."""
+    # Set up super admin configuration in database
+    from database_session import get_db_session
+    from models import SuperadminConfig
+
+    with get_db_session() as db_session:
+        # Add super admin email configuration
+        email_config = SuperadminConfig(config_key="super_admin_emails", config_value="test@example.com")
+        db_session.add(email_config)
+        db_session.commit()
+
+    with admin_client.session_transaction() as sess:
+        sess["authenticated"] = True
+        sess["role"] = "super_admin"
+        sess["email"] = "test@example.com"
+        sess["user"] = {"email": "test@example.com", "role": "super_admin"}  # Required by require_auth decorator
+        sess["is_super_admin"] = True  # Blueprint sets this
+    return admin_client
+
+
+@pytest.fixture
+def test_tenant_with_data(integration_db):
+    """Create a test tenant in the database with proper configuration."""
+    tenant_data = TenantFactory.create()
+    now = datetime.now(UTC)
+
+    with get_db_session() as db_session:
+        tenant = Tenant(
+            tenant_id=tenant_data["tenant_id"],
+            name=tenant_data["name"],
+            subdomain=tenant_data["subdomain"],
+            is_active=tenant_data["is_active"],
+            ad_server="mock",
+            auto_approve_formats=json.dumps([]),
+            human_review_required=False,
+            policy_settings=json.dumps({}),
+            created_at=now,
+            updated_at=now,
+        )
+        db_session.add(tenant)
+        db_session.commit()
+
+    return tenant_data
 
 
 @pytest.fixture
@@ -271,8 +337,9 @@ def mcp_server():
 def test_admin_app(integration_db):
     """Provide a test Admin UI app with real database."""
     # integration_db ensures database tables are created
-    from admin_ui import app
+    from src.admin.app import create_app
 
+    app, _ = create_app()
     app.config["TESTING"] = True
     app.config["SECRET_KEY"] = "test-secret-key"
     app.config["WTF_CSRF_ENABLED"] = False
