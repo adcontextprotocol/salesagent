@@ -517,6 +517,60 @@ Tests run automatically on push/PR via GitHub Actions:
    uv run pytest -k "test_my_feature"
    ```
 
+### Integration Test Authentication Patterns
+
+When writing integration tests that require authentication:
+
+#### 1. **Setting Up Super Admin Access**
+```python
+@pytest.fixture
+def auth_session(self, client, integration_db):
+    """Create authenticated session with proper super admin setup."""
+    from models import SuperadminConfig
+    from database_session import get_db_session
+
+    # Set up super admin in database
+    with get_db_session() as session:
+        email_config = SuperadminConfig(
+            config_key="super_admin_emails",
+            config_value="test@example.com"
+        )
+        session.add(email_config)
+        session.commit()
+
+    with client.session_transaction() as sess:
+        sess["authenticated"] = True
+        sess["email"] = "test@example.com"
+        sess["role"] = "super_admin"
+        sess["user"] = {"email": "test@example.com", "role": "super_admin"}
+    return client
+```
+
+#### 2. **Common Authentication Issues and Fixes**
+- **403 Forbidden**: Usually means `is_super_admin()` check failed - ensure SuperadminConfig is set up
+- **302 Redirect**: Routes may redirect on success instead of returning JSON
+- **Missing session["user"]**: The `require_auth` decorator expects both `authenticated` and `user` in session
+
+#### 3. **Model Field Requirements**
+```python
+# Principal requires valid platform_mappings
+principal = Principal(
+    platform_mappings={"mock": {"advertiser_id": "test"}},  # NOT empty dict
+)
+
+# MediaBuy requires order_name and raw_request
+media_buy = MediaBuy(
+    order_name="Test Order",  # Required
+    raw_request={},           # Required
+    # ... other fields
+)
+```
+
+#### 4. **Web Routes vs API Routes**
+- Web routes (e.g., `/tenant/{id}/products/bulk/upload`) return redirects (302) on success
+- API routes (e.g., `/api/tenant/{id}/products`) return JSON
+- Test accordingly - don't expect JSON from web routes
+
 ### UI Testing with Test Mode
 
 When testing the Admin UI without dealing with OAuth:
@@ -1747,6 +1801,12 @@ docker-compose down && docker-compose up -d
 | **SQL Injection vulnerability** | Use parameterized queries, never string concatenation |
 | **Invalid input crashes API** | Add validation functions for all user inputs |
 | **Temp files not cleaned up** | Use try/finally blocks for resource cleanup |
+| **Test: 403 Forbidden in integration test** | Add SuperadminConfig to database in fixture |
+| **Test: `platform_mappings` validation error** | Use `{"mock": {"advertiser_id": "test"}}` not `{}` |
+| **Test: MediaBuy missing required fields** | Add `order_name` and `raw_request` fields |
+| **Test: Expecting JSON from web route** | Web routes return 302 redirects, not JSON |
+| **Test: `session["user"]` not found** | Add `sess["user"] = {"email": "...", "role": "..."}` |
+| **Test: Blueprint endpoint not found** | Check actual blueprint route names (e.g., `bulk_upload_form` not `bulk_product_upload_form`) |
 
 ### Known Issues
 

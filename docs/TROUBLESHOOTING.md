@@ -274,6 +274,64 @@ When reporting issues, include:
 4. **Logs** - Relevant log entries
 5. **Configuration** - Sanitized config files
 
+### Test Failures
+
+#### Integration Test: 403 Forbidden
+```python
+# Problem: is_super_admin() check fails
+# Solution: Set up SuperadminConfig in database
+
+with get_db_session() as session:
+    email_config = SuperadminConfig(
+        config_key="super_admin_emails",
+        config_value="test@example.com"
+    )
+    session.add(email_config)
+    session.commit()
+```
+
+#### Integration Test: Missing Required Fields
+```python
+# Problem: platform_mappings validation error
+# Solution: Provide valid mapping, not empty dict
+principal = Principal(
+    platform_mappings={"mock": {"advertiser_id": "test"}}  # Valid
+)
+
+# Problem: MediaBuy missing order_name
+# Solution: Add all required fields
+media_buy = MediaBuy(
+    order_name="Test Order",  # Required
+    raw_request={},           # Required
+    # ... other fields
+)
+```
+
+#### Integration Test: Expecting JSON from Web Route
+```python
+# Problem: Web route returns 302, test expects JSON
+# Solution: Web routes redirect, API routes return JSON
+
+# For web routes, expect redirect
+assert response.status_code == 302
+
+# For API routes, expect JSON
+assert response.status_code == 200
+data = json.loads(response.data)
+```
+
+#### Test Markers Not Working
+```bash
+# Ensure markers are registered in pytest.ini
+# Tests with requires_server should be skipped in CI
+
+# Run without server tests
+pytest -m "not requires_server"
+
+# Check which tests are collected
+pytest --co -q -m "not requires_server"
+```
+
 ### Quick Fixes Checklist
 
 - [ ] Migrations run? `python migrate.py`
@@ -284,3 +342,6 @@ When reporting issues, include:
 - [ ] Logs show errors? `docker-compose logs`
 - [ ] Browser console errors? Check DevTools
 - [ ] API returning JSON? Not HTML login page?
+- [ ] Test database setup? Check `integration_db` fixture
+- [ ] SuperadminConfig in DB? For auth tests
+- [ ] Model required fields? Check schema
