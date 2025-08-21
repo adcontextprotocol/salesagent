@@ -10,7 +10,7 @@ from pathlib import Path
 import pytest
 from sqlalchemy import inspect
 
-from models import MediaBuy, Product, Tenant
+from src.core.database.models import MediaBuy, Product, Tenant
 
 
 @pytest.mark.integration

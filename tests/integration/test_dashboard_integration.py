@@ -5,7 +5,7 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
-from database_session import DatabaseConfig
+from src.core.database.database_session import DatabaseConfig
 
 
 def get_placeholder():
@@ -29,9 +29,8 @@ def test_db(integration_db):
     # Tables are already created by integration_db fixture
     # No need to call init_db() which expects existing tables
 
-    from sqlalchemy import text
-
     from database_session import get_engine
+    from sqlalchemy import text
 
     engine = get_engine()
     conn = engine.connect()
