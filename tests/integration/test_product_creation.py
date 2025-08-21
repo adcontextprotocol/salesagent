@@ -96,8 +96,25 @@ def test_tenant(integration_db):
 
 
 @pytest.mark.requires_db
-def test_add_product_json_encoding(client, test_tenant):
+def test_add_product_json_encoding(client, test_tenant, integration_db):
     """Test that product creation properly handles JSON fields without double encoding."""
+
+    # Set up user in database for tenant access
+    import uuid
+
+    from models import User
+
+    with get_db_session() as session:
+        user = User(
+            user_id=str(uuid.uuid4()),
+            email="test@example.com",
+            name="Test User",
+            tenant_id="test_product_tenant",
+            role="admin",
+            is_active=True,
+        )
+        session.add(user)
+        session.commit()
 
     # Mock the session to be a tenant admin
     with client.session_transaction() as sess:
@@ -174,8 +191,28 @@ def test_add_product_json_encoding(client, test_tenant):
 
 
 @pytest.mark.requires_db
-def test_add_product_empty_json_fields(client, test_tenant):
+def test_add_product_empty_json_fields(client, test_tenant, integration_db):
     """Test product creation with empty JSON fields."""
+
+    # Set up user in database for tenant access
+    import uuid
+
+    from models import User
+
+    with get_db_session() as session:
+        # Check if user already exists
+        existing = session.query(User).filter_by(email="test@example.com").first()
+        if not existing:
+            user = User(
+                user_id=str(uuid.uuid4()),
+                email="test@example.com",
+                name="Test User",
+                tenant_id="test_product_tenant",
+                role="admin",
+                is_active=True,
+            )
+            session.add(user)
+            session.commit()
 
     with client.session_transaction() as sess:
         sess["authenticated"] = True
@@ -259,8 +296,28 @@ def test_add_product_postgresql_validation(client, test_tenant):
 
 
 @pytest.mark.requires_db
-def test_list_products_json_parsing(client, test_tenant):
+def test_list_products_json_parsing(client, test_tenant, integration_db):
     """Test that list products endpoint properly handles JSON fields."""
+
+    # Set up user in database for tenant access
+    import uuid
+
+    from models import User
+
+    with get_db_session() as session:
+        # Check if user already exists
+        existing = session.query(User).filter_by(email="test@example.com").first()
+        if not existing:
+            user = User(
+                user_id=str(uuid.uuid4()),
+                email="test@example.com",
+                name="Test User",
+                tenant_id="test_product_tenant",
+                role="admin",
+                is_active=True,
+            )
+            session.add(user)
+            session.commit()
 
     # Create a product with JSON fields
     with get_db_session() as session:

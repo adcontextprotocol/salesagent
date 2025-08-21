@@ -22,11 +22,16 @@ def test_index_route_in_refactored_app():
 
     # Test with super admin auth
     with client.session_transaction() as sess:
-        sess["user"] = "admin@example.com"
+        sess["user"] = {"email": "admin@example.com", "role": "super_admin"}
         sess["role"] = "super_admin"
+        sess["authenticated"] = True
+        sess["email"] = "admin@example.com"
 
-    # Mock database response
-    with patch("src.admin.app.get_db_session") as mock_db:
+    # Mock database response and super admin check
+    with (
+        patch("database_session.get_db_session") as mock_db,
+        patch("src.admin.utils.is_super_admin", return_value=True),
+    ):
         mock_session = MagicMock()
         mock_tenant = MagicMock()
         mock_tenant.tenant_id = "test_tenant"
@@ -44,9 +49,11 @@ def test_index_route_in_refactored_app():
 
     # Test with tenant admin (should redirect to tenant dashboard)
     with client.session_transaction() as sess:
-        sess["user"] = "user@example.com"
+        sess["user"] = {"email": "user@example.com", "role": "tenant_admin"}
         sess["role"] = "tenant_admin"
         sess["tenant_id"] = "test_tenant"
+        sess["authenticated"] = True
+        sess["email"] = "user@example.com"
 
     response = client.get("/")
     assert response.status_code == 302

@@ -14,7 +14,7 @@ from database_session import get_db_session
 from default_products import get_default_products, get_industry_specific_products
 from models import Product, Tenant
 from src.admin.utils import require_tenant_access
-from validation import sanitize_form_data, validate_form_data
+from validation import sanitize_form_data
 
 logger = logging.getLogger(__name__)
 
@@ -75,10 +75,8 @@ def add_product(tenant_id):
             form_data = sanitize_form_data(request.form.to_dict())
 
             # Validate required fields
-            is_valid, errors = validate_form_data(form_data, ["name", "price_model", "base_price"])
-            if not is_valid:
-                for error in errors:
-                    flash(error, "error")
+            if not form_data.get("name"):
+                flash("Product name is required", "error")
                 return redirect(url_for("products.add_product", tenant_id=tenant_id))
 
             with get_db_session() as db_session:

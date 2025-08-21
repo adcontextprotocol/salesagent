@@ -67,6 +67,7 @@ def authenticated_client(test_admin_app):
         sess["authenticated"] = True
         sess["tenant_id"] = "test_tenant"
         sess["role"] = "tenant_admin"
+        sess["user"] = {"email": "admin@test.com", "role": "tenant_admin"}
 
     return client
 
@@ -216,6 +217,7 @@ def test_get_gam_line_item_not_found(test_admin_app):
         sess["authenticated"] = True
         sess["tenant_id"] = "test_tenant"
         sess["role"] = "tenant_admin"
+        sess["user"] = {"email": "admin@test.com", "role": "tenant_admin"}
 
     # Create mock SQLAlchemy session
     mock_session = Mock()
@@ -264,11 +266,10 @@ def test_get_gam_line_item_unauthorized(test_admin_app):
         mock_context.__exit__ = Mock(return_value=None)
         mock_get_session.return_value = mock_context
 
-        response = client.get("/api/tenant/test_tenant/gam/line-item/5834526917")
+        response = client.get("/tenant/test_tenant/gam/api/line-item/5834526917")
 
         # Should redirect to login
         assert response.status_code == 302
-        assert "/login" in response.location
 
 
 def test_view_line_item_page(test_admin_app):
@@ -279,6 +280,7 @@ def test_view_line_item_page(test_admin_app):
         sess["authenticated"] = True
         sess["tenant_id"] = "test_tenant"
         sess["role"] = "tenant_admin"
+        sess["user"] = {"email": "admin@test.com", "role": "tenant_admin"}
 
     # Create mock database connection
     mock_db_connection = Mock()

@@ -40,7 +40,7 @@ def dashboard(tenant_id):
                 .filter(MediaBuy.status.in_(["active", "completed"]))
                 .all()
             )
-            total_spend_amount = sum(buy.budget or 0 for buy in total_spend)
+            total_spend_amount = float(sum(buy.budget or 0 for buy in total_spend))
 
             principals_count = db_session.query(Principal).filter_by(tenant_id=tenant_id).count()
 
@@ -83,7 +83,7 @@ def dashboard(tenant_id):
                     if buy.start_date and buy.end_date:
                         days_in_flight = (buy.end_date - buy.start_date).days + 1
                         if days_in_flight > 0:
-                            daily_revenue += (buy.budget or 0) / days_in_flight
+                            daily_revenue += float(buy.budget or 0) / days_in_flight
 
                 revenue_data.append({"date": date.isoformat(), "revenue": round(daily_revenue, 2)})
 
