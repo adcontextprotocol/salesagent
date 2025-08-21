@@ -155,20 +155,29 @@ class TestNoSkippedTests:
 
     @pytest.mark.smoke
     def test_no_skip_decorators(self):
-        """Test that no test files contain @pytest.mark.skip."""
+        """Test that no test files contain skip decorators."""
         import subprocess
 
+        # Build the pattern in parts to avoid matching ourselves
+        skip_pattern = "@pytest" + ".mark" + ".skip"
         result = subprocess.run(
-            ["grep", "-r", "@pytest.mark.skip", "tests/"],
+            ["grep", "-r", skip_pattern, "tests/"],
             cwd="/Users/brianokelley/Developer/salesagent/.conductor/kigali",
             capture_output=True,
             text=True,
         )
 
-        # Filter out legitimate uses (like in smoke tests that check for running servers)
+        # Filter out legitimate uses
         if result.returncode == 0:
             lines = result.stdout.split("\n")
-            bad_lines = [line for line in lines if line and "pytest.skip(" not in line]  # Allow runtime skips
+            bad_lines = [
+                line
+                for line in lines
+                if line
+                and "pytest.skip(" not in line  # Allow runtime skips
+                and "skip_pattern" not in line  # Exclude this test file
+                and "test_no_skip" not in line  # Exclude this test
+            ]
             assert len(bad_lines) == 0, f"Found skip decorators:\n{chr(10).join(bad_lines[:5])}"
 
 

@@ -17,6 +17,9 @@ import pytest
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
+# Import database fixtures for all tests
+from tests.conftest_db import *  # noqa: F401,F403
+
 # Set testing environment
 os.environ["ADCP_TESTING"] = "true"
 
