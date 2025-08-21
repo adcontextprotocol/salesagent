@@ -314,6 +314,60 @@ class TestFeatureName:
 6. **Keep tests focused** - one assertion per test when possible
 7. **Use descriptive names** that explain what is being tested
 
+### Integration Test Authentication
+
+When writing integration tests that need authentication:
+
+```python
+@pytest.fixture
+def auth_session(self, client, integration_db):
+    """Create authenticated session with super admin access."""
+    from models import SuperadminConfig
+    from database_session import get_db_session
+
+    # Set up super admin in database
+    with get_db_session() as session:
+        email_config = SuperadminConfig(
+            config_key="super_admin_emails",
+            config_value="test@example.com"
+        )
+        session.add(email_config)
+        session.commit()
+
+    # Set up session
+    with client.session_transaction() as sess:
+        sess["authenticated"] = True
+        sess["email"] = "test@example.com"
+        sess["role"] = "super_admin"
+        sess["user"] = {"email": "test@example.com", "role": "super_admin"}
+
+    return client
+```
+
+**Common Issues:**
+- **403 Forbidden**: Missing SuperadminConfig in database
+- **302 Redirect**: Web routes redirect on success (not JSON)
+- **Missing session["user"]**: `require_auth` needs both `authenticated` and `user`
+
+### Model Requirements in Tests
+
+```python
+# Principal needs valid platform_mappings
+principal = Principal(
+    tenant_id="test",
+    principal_id="test_principal",
+    platform_mappings={"mock": {"advertiser_id": "test"}},  # NOT empty dict
+)
+
+# MediaBuy needs order_name and raw_request
+media_buy = MediaBuy(
+    media_buy_id="test_buy",
+    order_name="Test Order",  # Required
+    raw_request={},           # Required
+    # ... other fields
+)
+```
+
 ## CI/CD Pipeline
 
 Tests run automatically on push/PR via GitHub Actions:

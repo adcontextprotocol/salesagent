@@ -318,7 +318,7 @@ function downloadJSONTemplate() {
 
 async function loadIndustryTemplates() {
     try {
-        const response = await fetch(`{{ url_for('get_product_templates', tenant_id=tenant_id) }}`);
+        const response = await fetch(`{{ url_for('products.get_templates', tenant_id=tenant_id) }}`);
         const data = await response.json();
 
         if (data.templates) {
@@ -347,7 +347,7 @@ function importSelectedTemplates() {
 
 async function uploadProducts(products) {
     try {
-        const response = await fetch(`{{ url_for('bulk_product_upload', tenant_id=tenant_id) }}`, {
+        const response = await fetch(`{{ url_for('products.bulk_upload', tenant_id=tenant_id) }}`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -404,7 +404,7 @@ function displayResults(result) {
         // Redirect to products list after 3 seconds
         if (result.created > 0) {
             setTimeout(() => {
-                window.location.href = `{{ url_for('list_products', tenant_id=tenant_id) }}`;
+                window.location.href = `{{ url_for('products.list_products', tenant_id=tenant_id) }}`;
             }, 3000);
         }
     }
@@ -418,7 +418,7 @@ document.getElementById('csv-upload-form').addEventListener('submit', async func
     formData.append('file', document.getElementById('csv-file').files[0]);
 
     try {
-        const response = await fetch(`{{ url_for('bulk_product_upload', tenant_id=tenant_id) }}`, {
+        const response = await fetch(`{{ url_for('products.bulk_upload', tenant_id=tenant_id) }}`, {
             method: 'POST',
             body: formData
         });
@@ -439,7 +439,7 @@ document.getElementById('json-upload-form').addEventListener('submit', async fun
     formData.append('file', document.getElementById('json-file').files[0]);
 
     try {
-        const response = await fetch(`{{ url_for('bulk_product_upload', tenant_id=tenant_id) }}`, {
+        const response = await fetch(`{{ url_for('products.bulk_upload', tenant_id=tenant_id) }}`, {
             method: 'POST',
             body: formData
         });

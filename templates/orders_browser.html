@@ -226,7 +226,7 @@ function displayOrders(orders) {
                 <td>${progressBar}</td>
                 <td>${formatDate(order.start_date)}</td>
                 <td>${order.unlimited_end_date ? 'Unlimited' : formatDate(order.end_date)}</td>
-                <td>${formatCurrency(order.total_budget, order.currency_code)}</td>
+                <td>${formatCurrency(order.budget || order.total_budget, order.currency_code)}</td>
                 <td>
                     <button class="btn btn-sm btn-outline-primary" onclick="viewOrderDetails('${order.order_id}')">
                         <i class="bi bi-eye"></i> View
@@ -334,7 +334,7 @@ function displayOrderDetails(order) {
                     <tr><th>Order Status:</th><td><span class="badge bg-${getStatusColor(order.status)}">${order.status}</span></td></tr>
                     <tr><th>Delivery Status:</th><td><span class="badge bg-${getDeliveryStatusColor(deliveryStatus)}">${formatDeliveryStatus(deliveryStatus)}</span></td></tr>
                     <tr><th>PO Number:</th><td>${order.po_number || order.external_order_id || '-'}</td></tr>
-                    <tr><th>Total Budget:</th><td>${formatCurrency(order.total_budget, order.currency_code)}</td></tr>
+                    <tr><th>Total Budget:</th><td>${formatCurrency(order.budget || order.total_budget, order.currency_code)}</td></tr>
                 </table>
             </div>
             <div class="col-md-6">

@@ -445,11 +445,12 @@
                             <small>Maximum daily spend limit across all campaigns</small>
                         </div>
 
+                        <!-- Min campaign budget field removed - not in model -->
                         <div class="form-group">
-                            <label for="min_campaign_budget">Minimum Campaign Budget</label>
-                            <input type="number" id="min_campaign_budget" name="min_campaign_budget"
-                                   value="{{ tenant.min_campaign_budget or 500 }}" min="0" step="100">
-                            <small>Minimum budget required for new campaigns</small>
+                            <label for="billing_plan">Billing Plan</label>
+                            <input type="text" id="billing_plan" name="billing_plan"
+                                   value="{{ tenant.billing_plan or 'standard' }}" readonly>
+                            <small>Contact support to change billing plan</small>
                         </div>
                     </div>
                 </div>
@@ -468,11 +469,7 @@
                         <label for="human_review_required">Require Human Review for Creatives</label>
                     </div>
 
-                    <div class="checkbox-group">
-                        <input type="checkbox" id="auto_approve_trusted" name="auto_approve_trusted"
-                               {% if tenant.auto_approve_trusted %}checked{% endif %}>
-                        <label for="auto_approve_trusted">Auto-approve creatives from trusted advertisers</label>
-                    </div>
+                    <!-- Auto-approve trusted field removed - not in model -->
                 </div>
 
                 <div class="button-group">

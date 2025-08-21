@@ -55,8 +55,9 @@ def ui_client(ui_test_mode):
 
         # Mock GAM inventory service
         with patch("gam_inventory_service.get_db_connection", return_value=mock_db):
-            from admin_ui import app
+            from src.admin.app import create_app
 
+            app, _ = create_app()
             app.config["TESTING"] = True
             app.config["SECRET_KEY"] = "test-secret-key"
             app.config["WTF_CSRF_ENABLED"] = False

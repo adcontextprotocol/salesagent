@@ -9,12 +9,13 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.wsgi import WSGIMiddleware
 from fastapi.responses import RedirectResponse
 
-# Import admin UI Flask app
-from admin_ui import app as flask_admin_app
 from database import init_db
 
 # Import the MCP server
 from main import mcp
+
+# Import admin UI Flask app
+from src.admin.app import create_app
 
 
 @asynccontextmanager
@@ -23,6 +24,9 @@ async def lifespan(app: FastAPI):
     init_db(exit_on_error=True)  # Exit on error in production
     yield
 
+
+# Create the Flask app
+flask_admin_app, _ = create_app()
 
 # Create the main FastAPI app
 app = FastAPI(title="AdCP Sales Agent", description="Unified server for Admin UI and MCP interface", lifespan=lifespan)

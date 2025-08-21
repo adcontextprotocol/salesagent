@@ -41,9 +41,9 @@ def test_mock_ad_server_create_media_buy(sample_packages):
     # CreateMediaBuyRequest now uses product_ids, not selected_packages
     request = CreateMediaBuyRequest(
         product_ids=["pkg_1"],
-        flight_start_date=start_time.date(),
-        flight_end_date=end_time.date(),
-        total_budget=5000.0,
+        start_date=start_time.date(),
+        end_date=end_time.date(),
+        budget=5000.0,
         targeting_overlay={},  # Empty targeting
         po_number="PO-12345",
     )
