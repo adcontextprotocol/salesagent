@@ -22,7 +22,7 @@ from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 
-from json_validators import JSONValidatorMixin
+from src.core.json_validators import JSONValidatorMixin
 
 Base = declarative_base()
 
