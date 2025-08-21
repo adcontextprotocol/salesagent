@@ -117,7 +117,7 @@ def authenticated_admin_session(admin_client, integration_db):
         sess["authenticated"] = True
         sess["role"] = "super_admin"
         sess["email"] = "test@example.com"
-        sess["user"] = "test@example.com"  # Blueprint expects this
+        sess["user"] = {"email": "test@example.com", "role": "super_admin"}  # Required by require_auth decorator
         sess["is_super_admin"] = True  # Blueprint sets this
     return admin_client
 
