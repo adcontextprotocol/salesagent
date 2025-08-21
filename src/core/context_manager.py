@@ -4,9 +4,9 @@ import uuid
 from datetime import UTC, datetime
 from typing import Any
 
-from database_session import DatabaseManager
 from rich.console import Console
 
+from src.core.database.database_session import DatabaseManager
 from src.core.database.models import Context, ObjectWorkflowMapping, WorkflowStep
 
 console = Console()

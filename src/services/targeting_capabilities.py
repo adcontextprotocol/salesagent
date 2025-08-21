@@ -7,7 +7,7 @@ This is critical for AEE (Ad Effectiveness Engine) integration.
 
 from typing import Any
 
-from schemas import TargetingCapability
+from src.core.schemas import TargetingCapability
 
 # Define targeting capabilities for the platform
 TARGETING_CAPABILITIES: dict[str, TargetingCapability] = {

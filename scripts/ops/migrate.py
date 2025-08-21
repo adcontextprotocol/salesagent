@@ -14,11 +14,12 @@ def run_migrations(exit_on_error=True):
     Args:
         exit_on_error: If True, exit the process on error. If False, raise exception.
     """
-    # Get the directory containing this script
+    # Get the project root directory (two levels up from scripts/ops/)
     script_dir = Path(__file__).parent
+    project_root = script_dir.parent.parent
 
-    # Path to alembic.ini
-    alembic_ini_path = script_dir / "alembic.ini"
+    # Path to alembic.ini in project root
+    alembic_ini_path = project_root / "alembic.ini"
 
     # Create Alembic configuration
     alembic_cfg = Config(str(alembic_ini_path))
@@ -39,7 +40,8 @@ def run_migrations(exit_on_error=True):
 def check_migration_status():
     """Check current migration status."""
     script_dir = Path(__file__).parent
-    alembic_ini_path = script_dir / "alembic.ini"
+    project_root = script_dir.parent.parent
+    alembic_ini_path = project_root / "alembic.ini"
     alembic_cfg = Config(str(alembic_ini_path))
 
     try:

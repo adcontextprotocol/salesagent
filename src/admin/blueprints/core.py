@@ -7,11 +7,11 @@ import secrets
 import string
 from datetime import UTC, datetime
 
-from database_session import get_db_session
 from flask import Blueprint, flash, redirect, render_template, request, send_from_directory, session, url_for
 from sqlalchemy import text
 
 from src.admin.utils import require_auth
+from src.core.database.database_session import get_db_session
 from src.core.database.models import Principal, Tenant
 
 logger = logging.getLogger(__name__)

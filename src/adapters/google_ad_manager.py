@@ -7,7 +7,11 @@ from typing import Any
 
 import google.oauth2.service_account
 from flask import Flask, flash, redirect, render_template, request, url_for
-from schemas import (
+
+from src.adapters.base import AdServerAdapter, CreativeEngineAdapter
+from src.adapters.constants import REQUIRED_UPDATE_ACTIONS
+from src.adapters.gam_implementation_config_schema import GAMImplementationConfig
+from src.core.schemas import (
     AdapterGetMediaBuyDeliveryResponse,
     AssetStatus,
     CheckMediaBuyStatusResponse,
@@ -21,10 +25,6 @@ from schemas import (
     ReportingPeriod,
     UpdateMediaBuyResponse,
 )
-
-from src.adapters.base import AdServerAdapter, CreativeEngineAdapter
-from src.adapters.constants import REQUIRED_UPDATE_ACTIONS
-from src.adapters.gam_implementation_config_schema import GAMImplementationConfig
 
 # Set up logger
 logger = logging.getLogger(__name__)

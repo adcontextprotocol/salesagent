@@ -15,8 +15,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from database_session import get_db_session
-
+from src.core.database.database_session import get_db_session
 from src.core.database.models import AuditLog
 
 # Create logs directory if it doesn't exist (for backup)

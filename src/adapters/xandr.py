@@ -10,7 +10,9 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import requests
-from schemas import (
+
+from src.adapters.base import AdServerAdapter
+from src.core.schemas import (
     CreateMediaBuyRequest,
     CreateMediaBuyResponse,
     CreativeAsset,
@@ -28,8 +30,6 @@ from schemas import (
     Product,
     ReportingPeriod,
 )
-
-from src.adapters.base import AdServerAdapter
 
 
 # Import the actual MediaBuy model for this adapter's incorrect usage
