@@ -8,7 +8,7 @@ from pathlib import Path
 # Add the project root to the path
 sys.path.insert(0, str(Path(__file__).parent))
 
-from adcp_agent.agent import ConversationAnalyzer, ProductRanker, get_products_direct
+from src.adk.adcp_agent.agent import ConversationAnalyzer, ProductRanker, get_products_direct
 
 
 async def test_direct_calls():
