@@ -93,5 +93,32 @@ services:
       timeout: 10s
       retries: 3
 
+  # ADK Agent with Context-Aware Recommendations
+  adk-agent:
+    build: .
+    ports:
+      - "${ADK_WEB_PORT:-8091}:8091"  # ADK Web UI
+    environment:
+      # Database configuration (for direct tool calls)
+      DATABASE_URL: postgresql://adcp_user:secure_password_change_me@postgres:5432/adcp?sslmode=disable
+      ADCP_AUTH_TOKEN: test-token-1234  # Default token for testing
+
+      # Google AI for LLM
+      GEMINI_API_KEY: ${GEMINI_API_KEY}
+
+      # Logging
+      LOG_LEVEL: info
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8091/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+    # Run ADK web interface by default
+    command: [".venv/bin/adk", "web", "adcp_agent", "--host", "0.0.0.0", "--port", "8091"]
+
 volumes:
   postgres_data:
