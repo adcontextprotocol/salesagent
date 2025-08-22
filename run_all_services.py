@@ -57,7 +57,7 @@ def run_mcp_server():
     env = os.environ.copy()
     env["ADCP_SALES_PORT"] = "8080"
     proc = subprocess.Popen(
-        [sys.executable, "main.py"],
+        [sys.executable, "run_server.py"],
         env=env,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
@@ -76,8 +76,9 @@ def run_admin_ui():
     print("Starting Admin UI on port 8001...")
     env = os.environ.copy()
     env["ADMIN_UI_PORT"] = "8001"
+    env["PYTHONPATH"] = "/app"
     proc = subprocess.Popen(
-        [sys.executable, "admin_ui.py"],
+        [sys.executable, "src/admin/server.py"],
         env=env,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
@@ -112,6 +113,29 @@ def run_adk_agent():
     print("ADK agent stopped")
 
 
+def run_nginx():
+    """Run nginx as reverse proxy."""
+    print("Starting nginx reverse proxy on port 8000...")
+
+    # Create nginx directories if they don't exist
+    os.makedirs("/var/log/nginx", exist_ok=True)
+    os.makedirs("/var/run", exist_ok=True)
+
+    # Start nginx
+    proc = subprocess.Popen(
+        ["nginx", "-g", "daemon off;"],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+    )
+    processes.append(proc)
+
+    # Monitor the process output
+    for line in iter(proc.stdout.readline, b""):
+        if line:
+            print(f"[Nginx] {line.decode().rstrip()}")
+    print("Nginx stopped")
+
+
 def main():
     """Main entry point to run all services."""
     print("=" * 60)
@@ -143,10 +167,18 @@ def main():
     adk_thread.start()
     threads.append(adk_thread)
 
-    print("\n✅ All services started:")
-    print("  - MCP Server: http://localhost:8080")
-    print("  - Admin UI: http://localhost:8001")
-    print("  - ADK Agent: http://localhost:8091")
+    # Give services time to start before nginx
+    time.sleep(5)
+
+    # Nginx reverse proxy thread
+    nginx_thread = threading.Thread(target=run_nginx, daemon=True)
+    nginx_thread.start()
+    threads.append(nginx_thread)
+
+    print("\n✅ All services started with unified routing:")
+    print("  - MCP Server: http://localhost:8000/mcp")
+    print("  - Admin UI: http://localhost:8000/admin")
+    print("  - ADK Agent: http://localhost:8000/a2a")
     print("\nPress Ctrl+C to stop all services")
 
     # Keep the main thread alive

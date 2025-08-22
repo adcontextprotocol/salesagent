@@ -38,6 +38,6 @@ if ! python -c "from database import init_db; init_db(exit_on_error=True)"; then
     exit 1
 fi
 
-# Start both servers
-echo "🌐 Starting servers..."
-exec bash debug_start.sh
+# Start all services (MCP, Admin UI, ADK)
+echo "🌐 Starting all services..."
+exec python run_all_services.py

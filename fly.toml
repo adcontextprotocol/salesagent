@@ -9,9 +9,9 @@ primary_region = "iad"
 [build]
   dockerfile = "Dockerfile.fly"
 
-# MCP Server
+# Single unified service exposed via nginx
 [[services]]
-  internal_port = 8080
+  internal_port = 8000
   protocol = "tcp"
   auto_stop_machines = "stop"
   auto_start_machines = true
@@ -23,51 +23,11 @@ primary_region = "iad"
     soft_limit = 80
 
   [[services.ports]]
-    port = 8080
-    handlers = ["http"]
-
-  [[services.http_checks]]
-    interval = "30s"
-    grace_period = "60s"
-    method = "GET"
-    path = "/health"
-    protocol = "http"
-    timeout = "10s"
-
-# Admin UI
-[[services]]
-  internal_port = 8001
-  protocol = "tcp"
-
-  [services.concurrency]
-    type = "connections"
-    hard_limit = 100
-    soft_limit = 80
+    port = 443
+    handlers = ["http", "tls"]
 
   [[services.ports]]
-    port = 8001
-    handlers = ["http"]
-
-  [[services.http_checks]]
-    interval = "30s"
-    grace_period = "60s"
-    method = "GET"
-    path = "/health"
-    protocol = "http"
-    timeout = "10s"
-
-# ADK Agent Web
-[[services]]
-  internal_port = 8091
-  protocol = "tcp"
-
-  [services.concurrency]
-    type = "connections"
-    hard_limit = 100
-    soft_limit = 80
-
-  [[services.ports]]
-    port = 8091
+    port = 80
     handlers = ["http"]
 
   [[services.http_checks]]
