@@ -3,7 +3,7 @@ import secrets
 
 from scripts.ops.migrate import run_migrations
 from src.core.database.database_session import get_db_session
-from src.core.database.models import AdapterConfig, Principal, Product, Tenant
+from src.core.database.models import AdapterConfig, Principal, Product, SuperadminConfig, Tenant
 
 
 def init_db(exit_on_error=False):
@@ -19,6 +19,45 @@ def init_db(exit_on_error=False):
 
     # Now populate default data if needed
     with get_db_session() as session:
+        # Initialize super admin configuration from environment variables
+        super_admin_emails = os.environ.get("SUPER_ADMIN_EMAILS", "")
+        if super_admin_emails:
+            # Check if config exists
+            existing_config = session.query(SuperadminConfig).filter_by(config_key="super_admin_emails").first()
+            if not existing_config:
+                # Create new config
+                config = SuperadminConfig(
+                    config_key="super_admin_emails",
+                    config_value=super_admin_emails,
+                    description="Super admin email addresses",
+                )
+                session.add(config)
+                session.commit()
+                print(f"✅ Initialized super admin emails: {super_admin_emails}")
+            else:
+                # Update existing config if environment variable is set
+                existing_config.config_value = super_admin_emails
+                session.commit()
+                print(f"✅ Updated super admin emails: {super_admin_emails}")
+        
+        # Similarly for super admin domains
+        super_admin_domains = os.environ.get("SUPER_ADMIN_DOMAINS", "")
+        if super_admin_domains:
+            existing_config = session.query(SuperadminConfig).filter_by(config_key="super_admin_domains").first()
+            if not existing_config:
+                config = SuperadminConfig(
+                    config_key="super_admin_domains",
+                    config_value=super_admin_domains,
+                    description="Super admin email domains",
+                )
+                session.add(config)
+                session.commit()
+                print(f"✅ Initialized super admin domains: {super_admin_domains}")
+            else:
+                existing_config.config_value = super_admin_domains
+                session.commit()
+                print(f"✅ Updated super admin domains: {super_admin_domains}")
+        
         # Check if we need to create a default tenant
         tenant_count = session.query(Tenant).count()
 
