@@ -14,8 +14,12 @@ from src.admin.app import create_app
 app, _ = create_app()
 
 # Import modules to test
-from ai_product_service import AdServerInventory, AIProductConfigurationService, ProductDescription
-from default_products import create_default_products_for_tenant, get_default_products, get_industry_specific_products
+from src.services.ai_product_service import AdServerInventory, AIProductConfigurationService, ProductDescription
+from src.services.default_products import (
+    create_default_products_for_tenant,
+    get_default_products,
+    get_industry_specific_products,
+)
 
 pytestmark = pytest.mark.integration
 

@@ -10,14 +10,14 @@ from sqlalchemy.orm import sessionmaker
 
 # Import our new utilities
 from src.core.database.database_session import DatabaseManager, get_db_session, get_or_404, get_or_create
-from src.core.database.json_validators import (
+from src.core.database.models import Base, Context, Principal, Product, Tenant, WorkflowStep
+from src.core.json_validators import (
     CommentModel,
     CreativeFormatModel,
     PlatformMappingModel,
     ensure_json_array,
     ensure_json_object,
 )
-from src.core.database.models import Base, Context, Principal, Product, Tenant, WorkflowStep
 
 
 # Test fixtures

@@ -34,7 +34,7 @@ def test_simplified_context():
         Base.metadata.create_all(engine)
 
         # Update the global db_session to use our test database
-        from src.core.database.database_session import db_session
+        from database_session import db_session
 
         db_session.configure(bind=engine)
 
