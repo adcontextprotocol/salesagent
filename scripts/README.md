@@ -1,67 +1,111 @@
 # AdCP Scripts
 
-This directory contains utility scripts for testing and managing the AdCP Sales Agent.
+This directory contains utility scripts for testing, development, deployment, and operations of the AdCP Sales Agent.
 
-## Sync API Testing
+## Directory Structure
 
-### test_sync_api.py
-A comprehensive Python test script that demonstrates all sync API functionality:
-- Retrieves the superadmin API key
-- Lists all GAM-enabled tenants
-- Triggers a sync
-- Monitors sync progress
-- Shows sync history
+### `/setup/` - Setup and Initialization Scripts
+- `setup_tenant.py` - Create new publisher/tenant
+- `init_database.py` - Initialize database with schema
+- `init_database_ci.py` - Initialize database for CI testing
+- `populate_creative_formats.py` - Populate creative format data
+- `populate_foundational_formats.py` - Populate foundational creative formats
+- `setup_hooks.sh` - Setup git hooks for development
+- `setup_conductor_workspace.sh` - Setup Conductor workspace
+- `create_scribd_tenant.sh` - Create Scribd-specific tenant
 
+### `/dev/` - Development and Testing Scripts
+- `run_all_tests.sh` - Run comprehensive test suite
+- `test_with_real_auth.sh` - Test with real authentication
+- `check_ci.py` - Check CI configuration
+- `check_ports.py` - Check port availability
+- `manage_conductor_ports.py` - Manage Conductor port allocation
+- `debug_start.sh` - Start services in debug mode
+- `start_admin_ui.sh` - Start admin UI separately
+- `cleanup_conductor_workspace.sh` - Clean up Conductor workspace
+- `docker-compose-safe.sh` - Safe Docker Compose operations
+- `fix_test_mocks.py` - Fix test mocking issues
+- `test_migration.sh` - Test database migrations
+
+### `/ops/` - Operations and Management Scripts
+- `migrate.py` - Run database migrations
+- `manage_auth.py` - Manage authentication tokens
+- `get_tokens.py` - Retrieve access tokens
+- `gam_helper.py` - Google Ad Manager helper utilities
+- `check_tenants.py` - Check tenant health
+- `sync_all_tenants.py` - Sync all GAM tenants (cron job)
+- `sync_api_curl_examples.sh` - API testing with curl
+
+### `/deploy/` - Deployment Scripts
+- `entrypoint.sh` - Main Docker container entrypoint
+- `entrypoint_admin.sh` - Admin UI container entrypoint
+- `fly-proxy.py` - Fly.io proxy configuration
+- `fly-set-secrets.sh` - Set secrets for Fly.io deployment
+
+### Root Level Scripts
+- `run_server.py` - Main MCP server runner
+- `run_admin_ui.py` - Admin UI runner
+- `run_tests.py` - Test runner
+
+## Common Usage Patterns
+
+### Setting Up a New Environment
 ```bash
-# Run the test (make sure the server is running first)
-./test_sync_api.py
+# 1. Setup the workspace
+scripts/setup/setup_conductor_workspace.sh
 
-# Or with Python directly
-python test_sync_api.py
+# 2. Initialize database
+python scripts/setup/init_database.py
+
+# 3. Create a tenant
+python scripts/setup/setup_tenant.py "Publisher Name" \
+  --adapter google_ad_manager \
+  --gam-network-code 123456
+
+# 4. Populate creative formats
+python scripts/setup/populate_foundational_formats.py
 ```
 
-### sync_api_curl_examples.sh
-Simple curl-based examples for quick API testing:
-- Shows exact curl commands
-- Can be used for debugging or integration testing
-- Requires `jq` for JSON formatting
-
+### Development Workflow
 ```bash
-# Run the examples
-./sync_api_curl_examples.sh
+# Run tests
+scripts/dev/run_all_tests.sh
 
-# Or source it to get the commands
-source sync_api_curl_examples.sh
+# Start server in debug mode
+scripts/dev/debug_start.sh
+
+# Check for port conflicts
+python scripts/dev/check_ports.py
+
+# Clean up workspace
+scripts/dev/cleanup_conductor_workspace.sh
 ```
 
-## Cron Job Scripts
-
-### sync_all_tenants.py
-Production script designed to be run by cron:
-- Syncs all active GAM tenants
-- Uses the superadmin API key for authentication
-- Logs results and handles errors gracefully
-
+### Operations and Maintenance
 ```bash
-# Run manually
-python sync_all_tenants.py
+# Run migrations
+python scripts/ops/migrate.py
 
-# Typically run by cron every 6 hours
-# See ../crontab for schedule
+# Check tenant health
+python scripts/ops/check_tenants.py
+
+# Sync all tenants (typically run by cron)
+python scripts/ops/sync_all_tenants.py
+
+# Get tokens for debugging
+python scripts/ops/get_tokens.py
 ```
 
-## Other Utilities
+### Deployment
+```bash
+# Deploy to Fly.io
+scripts/deploy/fly-set-secrets.sh
 
-### update_oauth_redirect_uri.py
-Updates Google OAuth redirect URIs for different deployment environments.
+# Or use Docker locally
+docker-compose up -d
+```
 
-### validate_column_lengths.py
-Validates database column lengths to prevent truncation errors.
-
-### check_schema_references.py
-Checks for references to removed database columns.
-
-## Testing Without UI
+## API Testing Without UI
 
 The sync API allows complete testing without UI interaction:
 

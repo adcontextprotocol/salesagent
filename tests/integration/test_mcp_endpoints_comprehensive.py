@@ -10,13 +10,10 @@ import pytest
 from fastmcp.client import Client
 from fastmcp.client.transports import StreamableHttpTransport
 
-from database_session import get_db_session
-from models import Principal, Product, Tenant
+from src.core.database.database_session import get_db_session
+from src.core.database.models import Principal, Product, Tenant
 
 
-@pytest.mark.skip(
-    reason="MCP server integration tests require complex server setup - core functionality tested elsewhere"
-)
 class TestMCPEndpointsComprehensive:
     """Comprehensive tests for all MCP endpoints."""
 

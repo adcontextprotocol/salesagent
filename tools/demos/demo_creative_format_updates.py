@@ -10,11 +10,10 @@ from pathlib import Path
 # Add parent directory to path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
-from foundational_formats import FoundationalFormatsManager
-
 # creative_format_converter doesn't exist - skip this import
 # from creative_format_converter import convert_legacy_format_to_assets
-from schemas import Asset, DeliveryOptions, Format
+from src.core.schemas import Asset, DeliveryOptions, Format
+from src.services.foundational_formats import FoundationalFormatsManager
 
 
 def test_foundational_formats():

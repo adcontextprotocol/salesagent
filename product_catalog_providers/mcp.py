@@ -6,7 +6,7 @@ from typing import Any
 from fastmcp.client import Client
 from fastmcp.client.transports import StreamableHttpTransport
 
-from schemas import Product
+from src.core.schemas import Product
 
 from .base import ProductCatalogProvider
 

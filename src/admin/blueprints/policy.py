@@ -5,10 +5,10 @@ import logging
 
 from flask import Blueprint, jsonify, redirect, render_template, request, session, url_for
 
-from audit_logger import AuditLogger
-from database_session import get_db_session
-from models import AuditLog, Tenant, WorkflowStep
 from src.admin.utils import get_tenant_config_from_db, require_auth
+from src.core.audit_logger import AuditLogger
+from src.core.database.database_session import get_db_session
+from src.core.database.models import AuditLog, Tenant, WorkflowStep
 
 logger = logging.getLogger(__name__)
 

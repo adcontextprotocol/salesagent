@@ -14,8 +14,8 @@ The AdCP Sales Agent uses **SQLAlchemy ORM** for database operations. As of Issu
 
 ### For ORM Operations (PREFERRED)
 ```python
-from database_session import get_db_session
-from models import Tenant, Principal
+from src.core.database.database_session import get_db_session
+from src.core.database.models import Tenant, Principal
 
 # CORRECT - Automatic cleanup, thread-safe
 with get_db_session() as session:
@@ -28,7 +28,7 @@ with get_db_session() as session:
 
 ### For Raw SQL Operations (When ORM Not Available)
 ```python
-from db_config import get_db_connection
+from src.core.database.db_config import get_db_connection
 
 # CORRECT - Using context manager
 with get_db_connection() as conn:
