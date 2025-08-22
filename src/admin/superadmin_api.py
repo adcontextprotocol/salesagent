@@ -66,7 +66,7 @@ def health_check():
 @require_superadmin_api_key
 def list_tenants():
     """List all tenants."""
-    from models import AdapterConfig
+    from src.core.database.models import AdapterConfig
     from sqlalchemy import func
 
     with get_db_session() as db_session:
@@ -115,7 +115,7 @@ def list_tenants():
 def create_tenant():
     """Create a new tenant."""
 
-    from models import AdapterConfig
+    from src.core.database.models import AdapterConfig
 
     with get_db_session() as db_session:
         try:
