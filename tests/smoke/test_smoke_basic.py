@@ -195,7 +195,6 @@ class TestCodeQuality:
     """Test code quality standards."""
 
     @pytest.mark.smoke
-    @pytest.mark.skip(reason="Overly aggressive pattern matching - needs refinement")
     def test_no_hardcoded_credentials(self):
         """Test that no hardcoded credentials exist in code."""
         import subprocess
