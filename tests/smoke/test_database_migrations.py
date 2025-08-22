@@ -26,7 +26,7 @@ class TestMigrationSafety:
             # Run migrations
             result = subprocess.run(
                 ["python3", "scripts/ops/migrate.py"],
-                cwd="/Users/brianokelley/Developer/salesagent/.conductor/richmond",
+                cwd=".",
                 env=env,
                 capture_output=True,
                 text=True,
@@ -62,7 +62,7 @@ class TestMigrationSafety:
             # Run migrations first time
             result1 = subprocess.run(
                 ["python3", "scripts/ops/migrate.py"],
-                cwd="/Users/brianokelley/Developer/salesagent/.conductor/richmond",
+                cwd=".",
                 env=env,
                 capture_output=True,
                 text=True,
@@ -73,7 +73,7 @@ class TestMigrationSafety:
             # Run migrations second time - should be idempotent
             result2 = subprocess.run(
                 ["python3", "scripts/ops/migrate.py"],
-                cwd="/Users/brianokelley/Developer/salesagent/.conductor/richmond",
+                cwd=".",
                 env=env,
                 capture_output=True,
                 text=True,
@@ -104,7 +104,7 @@ class TestMigrationSafety:
             # Run initial migration
             result = subprocess.run(
                 ["python3", "scripts/ops/migrate.py"],
-                cwd="/Users/brianokelley/Developer/salesagent/.conductor/richmond",
+                cwd=".",
                 env=env,
                 capture_output=True,
                 text=True,
@@ -129,7 +129,7 @@ class TestMigrationSafety:
             # Run migrations again (simulating a new migration)
             result = subprocess.run(
                 ["python3", "scripts/ops/migrate.py"],
-                cwd="/Users/brianokelley/Developer/salesagent/.conductor/richmond",
+                cwd=".",
                 env=env,
                 capture_output=True,
                 text=True,
@@ -165,7 +165,7 @@ class TestMigrationVersioning:
             # Run migrations
             subprocess.run(
                 ["python3", "scripts/ops/migrate.py"],
-                cwd="/Users/brianokelley/Developer/salesagent/.conductor/richmond",
+                cwd=".",
                 env=env,
                 capture_output=True,
                 timeout=30,
@@ -192,11 +192,11 @@ class TestMigrationVersioning:
     @pytest.mark.smoke
     def test_migrations_directory_exists(self):
         """Test that migrations directory and files exist."""
-        migrations_dir = Path("/Users/brianokelley/Developer/salesagent/.conductor/richmond/alembic")
+        migrations_dir = Path("alembic")
         assert migrations_dir.exists(), "Migrations directory does not exist"
 
         # Check for alembic.ini
-        alembic_ini = Path("/Users/brianokelley/Developer/salesagent/.conductor/richmond/alembic.ini")
+        alembic_ini = Path("alembic.ini")
         assert alembic_ini.exists(), "alembic.ini not found"
 
         # Check for versions directory
@@ -224,7 +224,7 @@ class TestDatabaseCompatibility:
 
             result = subprocess.run(
                 ["python3", "scripts/ops/migrate.py"],
-                cwd="/Users/brianokelley/Developer/salesagent/.conductor/richmond",
+                cwd=".",
                 env=env,
                 capture_output=True,
                 text=True,
@@ -269,7 +269,7 @@ class TestDatabaseCompatibility:
 
             subprocess.run(
                 ["python3", "scripts/ops/migrate.py"],
-                cwd="/Users/brianokelley/Developer/salesagent/.conductor/richmond",
+                cwd=".",
                 env=env,
                 capture_output=True,
                 timeout=30,
@@ -339,7 +339,7 @@ class TestMigrationRollback:
             # Migration might fail due to existing alembic_version, but should handle it
             result = subprocess.run(
                 ["python3", "scripts/ops/migrate.py"],
-                cwd="/Users/brianokelley/Developer/salesagent/.conductor/richmond",
+                cwd=".",
                 env=env,
                 capture_output=True,
                 text=True,

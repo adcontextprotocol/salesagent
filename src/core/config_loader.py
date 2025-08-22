@@ -43,17 +43,31 @@ def get_default_tenant() -> dict[str, Any] | None:
                     "ad_server": tenant.ad_server,
                     "max_daily_budget": tenant.max_daily_budget,
                     "enable_aee_signals": tenant.enable_aee_signals,
-                    "authorized_emails": json.loads(tenant.authorized_emails) if tenant.authorized_emails else [],
-                    "authorized_domains": json.loads(tenant.authorized_domains) if tenant.authorized_domains else [],
+                    "authorized_emails": (
+                        json.loads(tenant.authorized_emails)
+                        if tenant.authorized_emails and isinstance(tenant.authorized_emails, str)
+                        else tenant.authorized_emails if tenant.authorized_emails else []
+                    ),
+                    "authorized_domains": (
+                        json.loads(tenant.authorized_domains)
+                        if tenant.authorized_domains and isinstance(tenant.authorized_domains, str)
+                        else tenant.authorized_domains if tenant.authorized_domains else []
+                    ),
                     "slack_webhook_url": tenant.slack_webhook_url,
                     "admin_token": tenant.admin_token,
                     "auto_approve_formats": (
-                        json.loads(tenant.auto_approve_formats) if tenant.auto_approve_formats else []
+                        json.loads(tenant.auto_approve_formats)
+                        if tenant.auto_approve_formats and isinstance(tenant.auto_approve_formats, str)
+                        else tenant.auto_approve_formats if tenant.auto_approve_formats else []
                     ),
                     "human_review_required": tenant.human_review_required,
                     "slack_audit_webhook_url": tenant.slack_audit_webhook_url,
                     "hitl_webhook_url": tenant.hitl_webhook_url,
-                    "policy_settings": json.loads(tenant.policy_settings) if tenant.policy_settings else None,
+                    "policy_settings": (
+                        json.loads(tenant.policy_settings)
+                        if tenant.policy_settings and isinstance(tenant.policy_settings, str)
+                        else tenant.policy_settings if tenant.policy_settings else None
+                    ),
                 }
             return None
     except Exception as e:
