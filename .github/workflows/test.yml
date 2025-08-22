@@ -51,7 +51,7 @@ jobs:
 
     - name: Run smoke tests
       env:
-        DATABASE_URL: sqlite:///:memory:
+        DATABASE_URL: "sqlite:///:memory:"
         GEMINI_API_KEY: test_key
         PYTEST_CURRENT_TEST: true
         ADCP_TESTING: true

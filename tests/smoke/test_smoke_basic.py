@@ -127,7 +127,7 @@ class TestProjectStructure:
     @pytest.mark.smoke
     def test_critical_files_exist(self):
         """Test that critical files exist."""
-        base_dir = Path("/Users/brianokelley/Developer/salesagent/.conductor/richmond")
+        base_dir = Path(__file__).parent.parent.parent
 
         critical_files = [
             "src/core/main.py",
@@ -149,7 +149,7 @@ class TestProjectStructure:
     @pytest.mark.smoke
     def test_migrations_directory_exists(self):
         """Test that migrations directory exists."""
-        migrations_dir = Path("/Users/brianokelley/Developer/salesagent/.conductor/richmond/alembic")
+        migrations_dir = Path(__file__).parent.parent.parent / "alembic"
         assert migrations_dir.exists(), "Migrations directory missing"
 
         versions_dir = migrations_dir / "versions"
@@ -166,9 +166,10 @@ class TestNoSkippedTests:
 
         # Build the pattern in parts to avoid matching ourselves
         skip_pattern = "@pytest" + ".mark" + ".skip"
+        test_dir = Path(__file__).parent.parent.parent
         result = subprocess.run(
             ["grep", "-r", skip_pattern, "tests/"],
-            cwd="/Users/brianokelley/Developer/salesagent/.conductor/richmond",
+            cwd=str(test_dir),
             capture_output=True,
             text=True,
         )
@@ -207,10 +208,11 @@ class TestCodeQuality:
             "token.*=.*[\"'][a-zA-Z0-9_-]{16,}[\"']",  # Tokens usually longer
         ]
 
+        test_dir = Path(__file__).parent.parent.parent
         for pattern in patterns:
             result = subprocess.run(
                 ["grep", "-r", "-E", pattern, "--include=*.py", "."],
-                cwd="/Users/brianokelley/Developer/salesagent/.conductor/richmond",
+                cwd=str(test_dir),
                 capture_output=True,
                 text=True,
             )

@@ -132,7 +132,7 @@ def oauth_status():
 def get_product_suggestions(tenant_id):
     """API endpoint to get product suggestions based on industry and criteria."""
     try:
-        from default_products import (
+        from src.services.default_products import (
             get_default_products,
             get_industry_specific_products,
         )
@@ -255,7 +255,7 @@ def quick_create_products(tenant_id):
         if not product_ids:
             return jsonify({"error": "No product IDs provided"}), 400
 
-        from default_products import (
+        from src.services.default_products import (
             get_default_products,
             get_industry_specific_products,
         )

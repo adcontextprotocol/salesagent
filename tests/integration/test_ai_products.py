@@ -274,7 +274,7 @@ class TestProductAPIs:
             session.commit()
 
         # Mock only the product templates, use real database
-        with patch("default_products.get_industry_specific_products") as mock_products:
+        with patch("src.services.default_products.get_industry_specific_products") as mock_products:
             mock_products.return_value = [
                 {
                     "product_id": "test_product",
@@ -374,7 +374,7 @@ Test Product,test_prod,"[{""format_id"":""display_300x250"",""name"":""Medium Re
             session.add(tenant)
             session.commit()
 
-        with patch("default_products.get_default_products") as mock_products:
+        with patch("src.services.default_products.get_default_products") as mock_products:
             mock_products.return_value = [
                 {
                     "product_id": "run_of_site_display",
@@ -416,7 +416,7 @@ def test_ai_integration():
 
         # Mock the database parts
         with patch("src.services.ai_product_service.get_db_session"):
-            with patch("adapters.get_adapter_class"):
+            with patch("src.adapters.get_adapter_class"):
                 # This will fail but we just want to verify the model is working
                 try:
                     await service.create_product_from_description(
