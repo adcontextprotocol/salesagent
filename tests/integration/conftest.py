@@ -104,8 +104,8 @@ def admin_client(integration_db):
 def authenticated_admin_session(admin_client, integration_db):
     """Create an authenticated session for admin UI testing."""
     # Set up super admin configuration in database
-    from src.core.database.database_session import get_db_session
-    from src.core.database.models import SuperadminConfig
+    from database_session import get_db_session
+    from models import SuperadminConfig
 
     with get_db_session() as db_session:
         # Add super admin email configuration
@@ -163,8 +163,8 @@ def sample_tenant(integration_db):
     """Create a sample tenant for testing."""
     from datetime import UTC, datetime
 
-    from src.core.database.database_session import get_db_session
-    from src.core.database.models import Tenant
+    from database_session import get_db_session
+    from models import Tenant
 
     now = datetime.now(UTC)
     with get_db_session() as session:
@@ -197,8 +197,8 @@ def sample_tenant(integration_db):
 @pytest.fixture
 def sample_principal(integration_db, sample_tenant):
     """Create a sample principal with valid platform mappings."""
-    from src.core.database.database_session import get_db_session
-    from src.core.database.models import Principal
+    from database_session import get_db_session
+    from models import Principal
 
     with get_db_session() as session:
         from datetime import UTC, datetime
@@ -225,8 +225,8 @@ def sample_principal(integration_db, sample_tenant):
 @pytest.fixture
 def sample_products(integration_db, sample_tenant):
     """Create sample products that comply with AdCP protocol."""
-    from src.core.database.database_session import get_db_session
-    from src.core.database.models import Product
+    from database_session import get_db_session
+    from models import Product
 
     with get_db_session() as session:
         products = [
@@ -325,7 +325,7 @@ def mcp_server():
         def __init__(self):
             self.port = 8080  # Default MCP port
 
-    return MockServer()
+    yield MockServer()
 
     # Create test client
     client = TestClient(mcp_app)

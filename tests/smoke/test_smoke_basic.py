@@ -11,23 +11,22 @@ class TestCriticalImports:
     @pytest.mark.smoke
     def test_main_module_imports(self):
         """Test that main.py can be imported."""
-        import main
+        from src.core import main
 
         assert hasattr(main, "mcp")
 
     @pytest.mark.smoke
     def test_schemas_import(self):
         """Test that schemas module imports correctly."""
-        import schemas
+        from src.core import schemas
 
-        assert hasattr(schemas, "MediaBuyRequest")
+        assert hasattr(schemas, "CreateMediaBuyRequest")
         assert hasattr(schemas, "Product")
 
     @pytest.mark.smoke
     def test_database_module_imports(self):
         """Test that database modules import."""
-        import database_session
-        import models
+        from src.core.database import database_session, models
 
         assert hasattr(database_session, "get_db_session")
         assert hasattr(models, "MediaBuy")
@@ -35,8 +34,8 @@ class TestCriticalImports:
     @pytest.mark.smoke
     def test_adapter_imports(self):
         """Test that adapters can be imported."""
-        from adapters.base import AdServerAdapter
-        from adapters.mock_ad_server import MockAdServer
+        from src.adapters.base import AdServerAdapter
+        from src.adapters.mock_ad_server import MockAdServer
 
         assert issubclass(MockAdServer, AdServerAdapter)
 
@@ -47,7 +46,7 @@ class TestDatabaseSchema:
     @pytest.mark.smoke
     def test_models_have_required_fields(self):
         """Test that models have required fields."""
-        from models import MediaBuy, Principal, Product, Tenant
+        from src.core.database.models import MediaBuy, Principal, Product, Tenant
 
         # Test MediaBuy has critical fields
         assert hasattr(MediaBuy, "media_buy_id")
@@ -74,7 +73,7 @@ class TestConfiguration:
     @pytest.mark.smoke
     def test_config_loader_works(self):
         """Test that config loader can be imported and used."""
-        from config_loader import load_config
+        from src.core.config_loader import load_config
 
         # Should not raise an error
         config = load_config()
@@ -87,7 +86,7 @@ class TestCriticalPaths:
     @pytest.mark.smoke
     def test_principal_auth_logic(self):
         """Test principal authentication logic exists."""
-        from main import get_principal_from_token
+        from src.core.main import get_principal_from_token
 
         # Function should exist and be callable
         assert callable(get_principal_from_token)
@@ -95,8 +94,8 @@ class TestCriticalPaths:
     @pytest.mark.smoke
     def test_adapter_factory_pattern(self):
         """Test adapter factory pattern works."""
-        from adapters.mock_ad_server import MockAdServer
-        from schemas import Principal
+        from src.adapters.mock_ad_server import MockAdServer
+        from src.core.schemas import Principal
 
         # Create a test principal
         principal = Principal(principal_id="test", name="Test", adapter_mappings={})
@@ -108,7 +107,7 @@ class TestCriticalPaths:
     @pytest.mark.smoke
     def test_audit_logger_exists(self):
         """Test audit logger can be imported."""
-        from audit_logger import get_audit_logger
+        from src.core.audit_logger import get_audit_logger
 
         logger = get_audit_logger()
         assert logger is not None
@@ -121,17 +120,17 @@ class TestProjectStructure:
     @pytest.mark.smoke
     def test_critical_files_exist(self):
         """Test that critical files exist."""
-        base_dir = Path("/Users/brianokelley/Developer/salesagent/.conductor/kigali")
+        base_dir = Path("/Users/brianokelley/Developer/salesagent/.conductor/richmond")
 
         critical_files = [
-            "main.py",
-            "schemas.py",
-            "models.py",
-            "database_session.py",
-            "config_loader.py",
-            "audit_logger.py",
-            "adapters/base.py",
-            "adapters/mock_ad_server.py",
+            "src/core/main.py",
+            "src/core/schemas.py",
+            "src/core/database/models.py",
+            "src/core/database/database_session.py",
+            "src/core/config_loader.py",
+            "src/core/audit_logger.py",
+            "src/adapters/base.py",
+            "src/adapters/mock_ad_server.py",
             "pytest.ini",
             ".pre-commit-config.yaml",
         ]
@@ -143,7 +142,7 @@ class TestProjectStructure:
     @pytest.mark.smoke
     def test_migrations_directory_exists(self):
         """Test that migrations directory exists."""
-        migrations_dir = Path("/Users/brianokelley/Developer/salesagent/.conductor/kigali/migrations")
+        migrations_dir = Path("/Users/brianokelley/Developer/salesagent/.conductor/richmond/alembic")
         assert migrations_dir.exists(), "Migrations directory missing"
 
         versions_dir = migrations_dir / "versions"
@@ -162,7 +161,7 @@ class TestNoSkippedTests:
         skip_pattern = "@pytest" + ".mark" + ".skip"
         result = subprocess.run(
             ["grep", "-r", skip_pattern, "tests/"],
-            cwd="/Users/brianokelley/Developer/salesagent/.conductor/kigali",
+            cwd="/Users/brianokelley/Developer/salesagent/.conductor/richmond",
             capture_output=True,
             text=True,
         )
@@ -200,7 +199,7 @@ class TestCodeQuality:
         for pattern in patterns[:3]:  # Skip test token check
             result = subprocess.run(
                 ["grep", "-r", "-E", pattern, "--include=*.py", "."],
-                cwd="/Users/brianokelley/Developer/salesagent/.conductor/kigali",
+                cwd="/Users/brianokelley/Developer/salesagent/.conductor/richmond",
                 capture_output=True,
                 text=True,
             )

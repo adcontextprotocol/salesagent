@@ -155,7 +155,7 @@ class TestDatabaseConnectivity:
     @pytest.mark.smoke
     def test_database_connection(self):
         """Test that we can connect to the database."""
-        from database_session import get_db_session
+        from src.core.database.database_session import get_db_session
 
         with get_db_session() as session:
             # Simple query to test connection
@@ -165,7 +165,7 @@ class TestDatabaseConnectivity:
     @pytest.mark.smoke
     def test_critical_tables_exist(self):
         """Test that critical tables exist in the database."""
-        from database_session import get_db_session
+        from src.core.database.database_session import get_db_session
 
         critical_tables = ["tenants", "principals", "products", "media_buys", "creatives", "audit_logs"]
 
@@ -182,7 +182,7 @@ class TestMigrations:
     @pytest.mark.smoke
     def test_migrations_are_current(self):
         """Test that all migrations have been applied."""
-        from database_session import get_db_session
+        from src.core.database.database_session import get_db_session
 
         with get_db_session() as session:
             # Check alembic_version table exists
@@ -193,7 +193,7 @@ class TestMigrations:
             assert result is not None, "No migrations have been applied"
 
             # Get the latest migration from the migrations folder
-            migrations_dir = Path("/Users/brianokelley/Developer/salesagent/.conductor/kigali/migrations/versions")
+            migrations_dir = Path("/Users/brianokelley/Developer/salesagent/.conductor/richmond/alembic/versions")
             if migrations_dir.exists():
                 migration_files = list(migrations_dir.glob("*.py"))
                 if migration_files:
@@ -218,8 +218,8 @@ class TestCriticalBusinessLogic:
     @pytest.mark.smoke
     def test_principal_authentication_flow(self):
         """Test the principal authentication flow."""
-        from database_session import get_db_session
-        from models import Principal as ModelPrincipal
+        from src.core.database.database_session import get_db_session
+        from src.core.database.models import Principal as ModelPrincipal
 
         with get_db_session() as session:
             # Create a test principal
@@ -246,8 +246,8 @@ class TestCriticalBusinessLogic:
     @pytest.mark.smoke
     def test_media_buy_creation_flow(self):
         """Test that media buy creation flow works."""
-        from database_session import get_db_session
-        from models import MediaBuy
+        from src.core.database.database_session import get_db_session
+        from src.core.database.models import MediaBuy
 
         with get_db_session() as session:
             # Create a test media buy
@@ -310,8 +310,8 @@ class TestErrorHandling:
     @pytest.mark.smoke
     def test_database_transaction_rollback(self):
         """Test that failed transactions rollback properly."""
-        from database_session import get_db_session
-        from models import Tenant
+        from src.core.database.database_session import get_db_session
+        from src.core.database.models import Tenant
 
         with get_db_session() as session:
             try:
@@ -319,7 +319,7 @@ class TestErrorHandling:
                 bad_tenant = Tenant(tenant_id=None, name="Bad Tenant")  # This should fail
                 session.add(bad_tenant)
                 session.commit()
-                assert False, "Should have raised an error"
+                raise AssertionError("Should have raised an error")
             except Exception:
                 session.rollback()
                 # Verify database is still functional
@@ -365,8 +365,8 @@ class TestSystemIntegration:
     @pytest.mark.smoke
     def test_audit_logging_works(self):
         """Test that audit logging is functional."""
-        from audit_logger import get_audit_logger
-        from database_session import get_db_session
+        from src.core.audit_logger import get_audit_logger
+        from src.core.database.database_session import get_db_session
 
         logger = get_audit_logger()
 
@@ -393,7 +393,7 @@ class TestSystemIntegration:
     @pytest.mark.smoke
     def test_config_loading(self):
         """Test that configuration loading works."""
-        from config_loader import load_config
+        from src.core.config_loader import load_config
 
         config = load_config()
         assert config is not None

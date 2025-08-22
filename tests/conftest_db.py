@@ -29,20 +29,20 @@ def test_database(test_database_url):
         import subprocess
 
         result = subprocess.run(
-            ["python3", "migrate.py"], capture_output=True, text=True, cwd=Path(__file__).parent.parent
+            ["python3", "scripts/ops/migrate.py"], capture_output=True, text=True, cwd=Path(__file__).parent.parent
         )
         if result.returncode != 0:
             pytest.skip(f"Migration failed: {result.stderr}")
     else:
         # For in-memory database, create tables directly
-        from database_session import get_engine
-        from models import Base
+        from src.core.database.database_session import get_engine
+        from src.core.database.models import Base
 
         engine = get_engine()
         Base.metadata.create_all(engine)
 
     # Initialize with test data
-    from init_database import init_db
+    from scripts.setup.init_database import init_db
 
     init_db(exit_on_error=False)
 
@@ -54,7 +54,7 @@ def test_database(test_database_url):
 @pytest.fixture(scope="function")
 def db_session(test_database):
     """Provide a database session for tests."""
-    from database_session import get_db_session
+    from src.core.database.database_session import get_db_session
 
     with get_db_session() as session:
         yield session
@@ -81,7 +81,7 @@ def clean_db(test_database):
         conn.commit()
 
     # Re-initialize with test data
-    from init_database import init_db
+    from scripts.setup.init_database import init_db
 
     init_db(exit_on_error=False)
 
