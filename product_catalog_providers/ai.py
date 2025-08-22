@@ -6,9 +6,9 @@ from typing import Any
 
 import google.generativeai as genai
 
-from database_session import get_db_session
-from models import Product as ProductModel
-from schemas import Product
+from src.core.database.database_session import get_db_session
+from src.core.database.models import Product as ProductModel
+from src.core.schemas import Product
 
 from .base import ProductCatalogProvider
 

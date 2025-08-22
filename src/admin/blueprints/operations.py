@@ -43,8 +43,8 @@ def reporting(tenant_id):
     # Import needed for this function
     from flask import render_template, session
 
-    from database_session import get_db_session
-    from models import Tenant
+    from src.core.database.database_session import get_db_session
+    from src.core.database.models import Tenant
 
     # Verify tenant access
     if session.get("role") != "super_admin" and session.get("tenant_id") != tenant_id:

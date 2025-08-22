@@ -106,7 +106,11 @@ class SimulationRunner:
 
             # Start server process using run_server.py
             self.server_process = subprocess.Popen(
-                [sys.executable, "run_server.py"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, env=env
+                [sys.executable, "scripts/run_server.py"],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                env=env,
             )
 
             # Wait for server to start

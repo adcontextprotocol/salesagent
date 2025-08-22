@@ -88,7 +88,7 @@ def test_models_use_correct_imports():
     """Verify that SQLAlchemy queries use Model* prefixed classes."""
 
     base_path = Path(__file__).parent.parent.parent
-    main_file = base_path / "main.py"
+    main_file = base_path / "src" / "core" / "main.py"
 
     with open(main_file) as f:
         content = f.read()

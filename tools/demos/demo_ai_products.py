@@ -77,7 +77,7 @@ def demo_product_features():
     print("\n\n5. Usage Examples:")
     print("-" * 60)
     print("  # Create tenant with default products")
-    print('  python setup_tenant.py "My Publisher" --industry news')
+    print('  python scripts/setup/setup_tenant.py "My Publisher" --industry news')
     print()
     print("  # Test product suggestions API")
     print('  curl -H "x-adcp-auth: YOUR_TOKEN" \\')

@@ -5,7 +5,7 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
-from database_session import DatabaseConfig
+from src.core.database.database_session import DatabaseConfig
 
 
 def get_placeholder():
@@ -31,7 +31,7 @@ def test_db(integration_db):
 
     from sqlalchemy import text
 
-    from database_session import get_engine
+    from src.core.database.database_session import get_engine
 
     engine = get_engine()
     conn = engine.connect()

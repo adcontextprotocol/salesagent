@@ -25,7 +25,7 @@ import pytest
 project_root = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(project_root))
 
-from setup_tenant import create_tenant, main
+from scripts.setup.setup_tenant import create_tenant, main
 
 
 @pytest.mark.integration
@@ -268,8 +268,9 @@ class TestGAMTenantSetup:
         This ensures the adapter gracefully handles missing network codes
         during the configuration phase.
         """
-        from adapters.google_ad_manager import GoogleAdManager
         from schemas import Principal
+
+        from adapters.google_ad_manager import GoogleAdManager
 
         # Create principal with GAM platform mapping
         principal = Principal(

@@ -47,7 +47,7 @@ jobs:
         DATABASE_URL: sqlite:///test.db
         PYTEST_CURRENT_TEST: true
       run: |
-        uv run python migrate.py || echo "Migration failed, using in-memory DB"
+        uv run python scripts/ops/migrate.py || echo "Migration failed, using in-memory DB"
 
     - name: Run smoke tests
       env:
@@ -169,7 +169,7 @@ jobs:
       env:
         DATABASE_URL: postgresql://adcp_user:test_password@localhost:5432/adcp_test
       run: |
-        uv run python migrate.py
+        uv run python scripts/ops/migrate.py
 
     - name: Run integration tests
       env:
@@ -232,13 +232,13 @@ jobs:
       env:
         DATABASE_URL: postgresql://adcp_user:test_password@localhost:5432/adcp_test
       run: |
-        uv run python migrate.py
+        uv run python scripts/ops/migrate.py
 
     - name: Initialize test data
       env:
         DATABASE_URL: postgresql://adcp_user:test_password@localhost:5432/adcp_test
       run: |
-        uv run python init_database.py
+        uv run python scripts/setup/init_database.py
 
     - name: Run E2E tests
       env:

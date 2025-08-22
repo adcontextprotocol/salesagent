@@ -9,9 +9,9 @@ from fastmcp.client.transports import StreamableHttpTransport
 from flask import Blueprint, jsonify, request
 from sqlalchemy import func, text
 
-from database_session import get_db_session
-from models import MediaBuy, Principal, Product, SuperadminConfig
 from src.admin.utils import require_auth
+from src.core.database.database_session import get_db_session
+from src.core.database.models import MediaBuy, Principal, Product, SuperadminConfig
 
 logger = logging.getLogger(__name__)
 

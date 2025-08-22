@@ -3,7 +3,7 @@
 from abc import ABC, abstractmethod
 from typing import Any
 
-from schemas import Product
+from src.core.schemas import Product
 
 
 class ProductCatalogProvider(ABC):

@@ -5,8 +5,8 @@ import uuid
 
 import pytest
 
-from config_loader import get_current_tenant, set_current_tenant
-from models import Product as ProductModel
+from src.core.config_loader import get_current_tenant, set_current_tenant
+from src.core.database.models import Product as ProductModel
 
 # Ensure the main module can be imported
 

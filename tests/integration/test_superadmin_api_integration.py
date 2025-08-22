@@ -5,7 +5,7 @@
 import pytest
 from flask import Flask
 
-from superadmin_api import superadmin_api
+from src.admin.superadmin_api import superadmin_api
 
 pytestmark = pytest.mark.integration
 
@@ -45,8 +45,8 @@ def test_tenant(integration_db):
     """Create a test tenant."""
     from datetime import UTC, datetime
 
-    from database_session import get_db_session
-    from models import Tenant
+    from src.core.database.database_session import get_db_session
+    from src.core.database.models import Tenant
 
     with get_db_session() as session:
         # Create a test tenant
