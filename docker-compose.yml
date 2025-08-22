@@ -63,6 +63,7 @@ services:
       ADMIN_UI_PORT: ${ADMIN_UI_PORT:-8003}
       FLASK_ENV: production
       FLASK_DEBUG: ${FLASK_DEBUG:-0}
+      FLASK_SECRET_KEY: ${FLASK_SECRET_KEY}
       # Gemini API key (required for AI features)
       GEMINI_API_KEY: ${GEMINI_API_KEY}
       # Super admin authorization (set these via .env file)
