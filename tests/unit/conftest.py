@@ -14,7 +14,7 @@ import pytest
 def mock_all_external_dependencies():
     """Automatically mock all external dependencies for unit tests."""
     # Mock database connections
-    with patch("database_session.get_db_session") as mock_db:
+    with patch("src.core.database.database_session.get_db_session") as mock_db:
         mock_db.return_value = MagicMock()
 
         # Mock external services

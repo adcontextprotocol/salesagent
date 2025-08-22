@@ -29,8 +29,8 @@ sys.path.append(str(Path(__file__).parent))
 from fastmcp.client import Client
 from fastmcp.client.transports import StreamableHttpTransport
 
-from database import db_session
-from models import Principal, Product, Tenant
+from src.core.database.database import db_session
+from src.core.database.models import Principal, Product, Tenant
 
 console = Console()
 

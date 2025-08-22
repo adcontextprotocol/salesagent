@@ -136,7 +136,7 @@ async def main():
 
 if __name__ == "__main__":
     # Initialize database if needed
-    from database import init_db
+    from src.core.database.database import init_db
 
     init_db()
 

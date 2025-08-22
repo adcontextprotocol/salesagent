@@ -306,8 +306,8 @@ class TestMCPTestPage:
     @pytest.fixture
     def auth_session(self, client, integration_db):
         """Create authenticated session with proper super admin setup."""
-        from database_session import get_db_session
-        from models import SuperadminConfig
+        from src.core.database.database_session import get_db_session
+        from src.core.database.models import SuperadminConfig
 
         # Set up super admin in database
         with get_db_session() as session:

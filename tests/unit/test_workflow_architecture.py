@@ -20,9 +20,9 @@ def test_workflow_architecture():
     from sqlalchemy import create_engine
     from sqlalchemy.orm import sessionmaker
 
-    from context_manager import ContextManager
-    from db_config import DatabaseConfig
-    from models import Context, ObjectWorkflowMapping, WorkflowStep
+    from src.core.context_manager import ContextManager
+    from src.core.database.db_config import DatabaseConfig
+    from src.core.database.models import Context, ObjectWorkflowMapping, WorkflowStep
 
     # Create test database session
     engine = create_engine(DatabaseConfig.get_connection_string())

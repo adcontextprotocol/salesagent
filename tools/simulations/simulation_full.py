@@ -15,7 +15,7 @@ from rich.panel import Panel
 from rich.rule import Rule
 from rich.table import Table
 
-from schemas import *
+from src.core.schemas import *
 
 console = Console()
 

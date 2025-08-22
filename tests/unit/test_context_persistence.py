@@ -12,8 +12,8 @@ from sqlalchemy import create_engine
 # Add parent directory to path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from context_manager import ContextManager
-from models import Base
+from src.core.context_manager import ContextManager
+from src.core.database.models import Base
 
 console = Console()
 
@@ -34,7 +34,7 @@ def test_simplified_context():
         Base.metadata.create_all(engine)
 
         # Update the global db_session to use our test database
-        from database_session import db_session
+        from src.core.database.database_session import db_session
 
         db_session.configure(bind=engine)
 

@@ -36,8 +36,8 @@ def test_tenant(integration_db):
     import json
     from datetime import UTC, datetime
 
-    from database_session import get_db_session
-    from models import Tenant
+    from src.core.database.database_session import get_db_session
+    from src.core.database.models import Tenant
 
     tenant_data = TenantFactory.create()
     now = datetime.now(UTC)

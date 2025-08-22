@@ -8,8 +8,8 @@ from datetime import datetime, timedelta
 
 import pytest
 
-from database_session import get_db_session
-from models import MediaBuy, Principal, Tenant
+from src.core.database.database_session import get_db_session
+from src.core.database.models import MediaBuy, Principal, Tenant
 
 
 @pytest.mark.requires_db

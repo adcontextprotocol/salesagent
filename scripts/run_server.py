@@ -28,7 +28,7 @@ def main():
         f"""
 import sys
 sys.path.insert(0, '.')
-from main import mcp
+from src.core.main import mcp
 mcp.run(transport='http', host='{host}', port={port})
 """,
     ]

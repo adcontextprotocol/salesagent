@@ -29,20 +29,20 @@ def test_database(test_database_url):
         import subprocess
 
         result = subprocess.run(
-            ["python3", "migrate.py"], capture_output=True, text=True, cwd=Path(__file__).parent.parent
+            ["python3", "scripts/ops/migrate.py"], capture_output=True, text=True, cwd=Path(__file__).parent.parent
         )
         if result.returncode != 0:
             pytest.skip(f"Migration failed: {result.stderr}")
     else:
         # For in-memory database, create tables directly
-        from database_session import get_engine
-        from models import Base
+        from src.core.database.database_session import get_engine
+        from src.core.database.models import Base
 
         engine = get_engine()
         Base.metadata.create_all(engine)
 
     # Initialize with test data
-    from init_database import init_db
+    from scripts.setup.init_database import init_db
 
     init_db(exit_on_error=False)
 
@@ -54,7 +54,7 @@ def test_database(test_database_url):
 @pytest.fixture(scope="function")
 def db_session(test_database):
     """Provide a database session for tests."""
-    from database_session import get_db_session
+    from src.core.database.database_session import get_db_session
 
     with get_db_session() as session:
         yield session
@@ -64,7 +64,7 @@ def db_session(test_database):
 @pytest.fixture(scope="function")
 def clean_db(test_database):
     """Provide a clean database for each test."""
-    from database_session import get_engine
+    from src.core.database.database_session import get_engine
 
     engine = get_engine()
 
@@ -81,7 +81,7 @@ def clean_db(test_database):
         conn.commit()
 
     # Re-initialize with test data
-    from init_database import init_db
+    from scripts.setup.init_database import init_db
 
     init_db(exit_on_error=False)
 
@@ -93,7 +93,7 @@ def clean_db(test_database):
 @pytest.fixture
 def test_tenant(db_session):
     """Create a test tenant."""
-    from models import Tenant
+    from src.core.database.models import Tenant
 
     tenant = Tenant(tenant_id="test_tenant", name="Test Tenant", subdomain="test", is_active=True, ad_server="mock")
     db_session.add(tenant)
@@ -105,14 +105,14 @@ def test_tenant(db_session):
 @pytest.fixture
 def test_principal(db_session, test_tenant):
     """Create a test principal."""
-    from models import Principal
+    from src.core.database.models import Principal
 
     principal = Principal(
         tenant_id=test_tenant.tenant_id,
         principal_id="test_principal",
         name="Test Principal",
         access_token="test_token_12345",
-        platform_mappings={},
+        platform_mappings={"mock": {"advertiser_id": "test_advertiser"}},
     )
     db_session.add(principal)
     db_session.commit()
@@ -123,7 +123,7 @@ def test_principal(db_session, test_tenant):
 @pytest.fixture
 def test_product(db_session, test_tenant):
     """Create a test product."""
-    from models import Product
+    from src.core.database.models import Product
 
     product = Product(
         product_id="test_product",

@@ -9,7 +9,7 @@ ad unit analysis, and combined reporting features.
 
 import pytest
 
-from adapters.gam_reporting_service import GAMReportingService
+from src.adapters.gam_reporting_service import GAMReportingService
 
 
 def create_mock_gam_client():

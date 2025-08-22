@@ -92,21 +92,21 @@ def create_app(config=None):
 
     # Import and register existing blueprints
     try:
-        from superadmin_api import superadmin_api
+        from src.admin.superadmin_api import superadmin_api
 
         app.register_blueprint(superadmin_api)
     except ImportError:
         logger.warning("superadmin_api blueprint not found")
 
     try:
-        from sync_api import sync_api
+        from src.admin.sync_api import sync_api
 
         app.register_blueprint(sync_api, url_prefix="/api/sync")
     except ImportError:
         logger.warning("sync_api blueprint not found")
 
     try:
-        from adapters.gam_reporting_api import gam_reporting_api
+        from src.adapters.gam_reporting_api import gam_reporting_api
 
         app.register_blueprint(gam_reporting_api)
     except ImportError:
@@ -141,8 +141,8 @@ def register_adapter_routes(app):
     """Register adapter-specific configuration routes."""
     try:
         # Import adapter modules that have UI routes
-        from adapters.google_ad_manager import GoogleAdManager
-        from adapters.mock_ad_server import MockAdServer
+        from src.adapters.google_ad_manager import GoogleAdManager
+        from src.adapters.mock_ad_server import MockAdServer
 
         # Register routes for each adapter that supports UI routes
         # Note: We skip instantiation errors since routes are optional
