@@ -310,7 +310,7 @@ async def create_media_buy(
     start_date: str,
     end_date: str,
     budget: float,
-    targeting_overlay: dict = None,
+    targeting_overlay: dict = None,  # noqa: B006
 ) -> dict:
     """
     Create a media buy for selected products.
@@ -325,6 +325,10 @@ async def create_media_buy(
     Returns:
         Dict with media_buy_id and status
     """
+    # Handle None default for ADK compatibility
+    if targeting_overlay is None:
+        targeting_overlay = {}
+
     context = setup_direct_call()
 
     try:
