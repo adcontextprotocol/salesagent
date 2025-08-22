@@ -28,8 +28,9 @@ def test_gam_timezone_behavior():
 
     # Check if we can get a real GAM client
     try:
-        from database_session import get_db_session
         from gam_helper import get_ad_manager_client_for_tenant
+
+        from src.core.database.database_session import get_db_session
 
         # Get first available tenant with GAM configured
         conn = get_db_session()

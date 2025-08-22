@@ -60,9 +60,10 @@ services:
     command: python -m src.admin.server
     environment:
       DATABASE_URL: postgresql://adcp_user:secure_password_change_me@postgres:5432/adcp?sslmode=disable
-      ADMIN_UI_PORT: ${ADMIN_UI_PORT:-8011}
+      ADMIN_UI_PORT: ${ADMIN_UI_PORT:-8003}
       FLASK_ENV: production
       FLASK_DEBUG: ${FLASK_DEBUG:-0}
+      FLASK_SECRET_KEY: ${FLASK_SECRET_KEY}
       # Gemini API key (required for AI features)
       GEMINI_API_KEY: ${GEMINI_API_KEY}
       # Super admin authorization (set these via .env file)
@@ -80,7 +81,7 @@ services:
         condition: service_healthy
 
     ports:
-      - "${ADMIN_UI_PORT:-8011}:${ADMIN_UI_PORT:-8011}"
+      - "${ADMIN_UI_PORT:-8003}:${ADMIN_UI_PORT:-8003}"
 
     volumes:
       # Mount OAuth credentials file
@@ -88,7 +89,7 @@ services:
       - ./audit_logs:/app/audit_logs
 
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:${ADMIN_UI_PORT:-8011}/health"]
+      test: ["CMD", "curl", "-f", "http://localhost:${ADMIN_UI_PORT:-8003}/health"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -118,7 +119,7 @@ services:
       retries: 3
       start_period: 20s
     # Run ADK web interface by default
-    command: [".venv/bin/adk", "web", "adcp_agent", "--host", "0.0.0.0", "--port", "8091"]
+    command: [".venv/bin/adk", "web", "src.adk.adcp_agent", "--host", "0.0.0.0", "--port", "8091"]
 
 volumes:
   postgres_data:

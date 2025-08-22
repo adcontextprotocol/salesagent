@@ -306,8 +306,8 @@ class TestMCPTestPage:
     @pytest.fixture
     def auth_session(self, client, integration_db):
         """Create authenticated session with proper super admin setup."""
-        from database_session import get_db_session
-        from models import SuperadminConfig
+        from src.core.database.database_session import get_db_session
+        from src.core.database.models import SuperadminConfig
 
         # Set up super admin in database
         with get_db_session() as session:
@@ -339,7 +339,6 @@ class TestMCPTestPage:
         response = client.get("/mcp-test")
         assert response.status_code == 403  # Forbidden
 
-    @pytest.mark.skip(reason="Requires proper database setup for Flask app")
     def test_mcp_test_page_loads_for_super_admin(self, auth_session):
         """Test that MCP test page loads for super admin."""
         response = auth_session.get("/mcp-test")
@@ -409,7 +408,6 @@ class TestMCPTestPage:
         assert b"principal_select" in response.data
         assert b"-- Select a Principal --" in response.data
 
-    @pytest.mark.skip(reason="Requires proper database setup for Flask app")
     def test_mcp_test_response_parsing(self, auth_session):
         """Test that the test page includes response parsing functionality."""
         response = auth_session.get("/mcp-test")
@@ -420,7 +418,6 @@ class TestMCPTestPage:
         assert b"useParsedData" in response.data
         assert b"Parsed Data from Previous Response" in response.data
 
-    @pytest.mark.skip(reason="Requires proper database setup for Flask app")
     def test_mcp_test_country_targeting_ui(self, auth_session):
         """Test that country targeting is in the UI examples."""
         response = auth_session.get("/mcp-test")

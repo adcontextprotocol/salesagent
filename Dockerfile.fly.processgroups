@@ -50,7 +50,7 @@ ENV ADCP_SALES_PORT=8080
 ENV ADMIN_UI_PORT=8001
 
 # Create entrypoint script for Fly.io with process group support
-RUN echo '#!/bin/bash\nset -e\n\n# Create required directories\nmkdir -p /data/logs /data/uploads\n\n# Run migrations only for MCP process\nif [ "$FLY_PROCESS_GROUP" = "mcp" ]; then\n    echo "Running database migrations..."\n    python migrate.py || echo "Migration failed, continuing..."\nfi\n\n# Check FLY_PROCESS_GROUP and run appropriate service\nif [ "$FLY_PROCESS_GROUP" = "admin" ]; then\n    echo "Starting Admin UI on port 8001..."\n    exec python admin_ui.py\nelse\n    echo "Starting MCP Server on port 8080..."\n    # Use run_server.py which handles the proper binding\n    exec python run_server.py\nfi' > /app/fly-entrypoint.sh && \
+RUN echo '#!/bin/bash\nset -e\n\n# Create required directories\nmkdir -p /data/logs /data/uploads\n\n# Run migrations only for MCP process\nif [ "$FLY_PROCESS_GROUP" = "mcp" ]; then\n    echo "Running database migrations..."\n    python scripts/ops/migrate.py || echo "Migration failed, continuing..."\nfi\n\n# Check FLY_PROCESS_GROUP and run appropriate service\nif [ "$FLY_PROCESS_GROUP" = "admin" ]; then\n    echo "Starting Admin UI on port 8001..."\n    exec python scripts/run_admin_ui.py\nelse\n    echo "Starting MCP Server on port 8080..."\n    # Use run_server.py which handles the proper binding\n    exec python scripts/run_server.py\nfi' > /app/fly-entrypoint.sh && \
     chmod +x /app/fly-entrypoint.sh
 
 # Health check will be different per process

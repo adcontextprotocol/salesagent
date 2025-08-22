@@ -5,9 +5,9 @@ from datetime import UTC, datetime
 
 from flask import Blueprint, flash, redirect, render_template, request, url_for
 
-from database_session import get_db_session
-from models import Tenant, User
 from src.admin.utils import require_tenant_access
+from src.core.database.database_session import get_db_session
+from src.core.database.models import Tenant, User
 
 logger = logging.getLogger(__name__)
 

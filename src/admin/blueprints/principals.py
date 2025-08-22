@@ -8,9 +8,9 @@ from datetime import UTC, datetime
 
 from flask import Blueprint, flash, jsonify, redirect, render_template, request, url_for
 
-from database_session import get_db_session
-from models import MediaBuy, Principal, Tenant
 from src.admin.utils import require_tenant_access
+from src.core.database.database_session import get_db_session
+from src.core.database.models import MediaBuy, Principal, Tenant
 
 logger = logging.getLogger(__name__)
 
@@ -191,7 +191,7 @@ def update_mappings(tenant_id, principal_id):
 def get_gam_advertisers(tenant_id):
     """Get list of advertisers from GAM for a tenant."""
     try:
-        from adapters.google_ad_manager import GoogleAdManager
+        from src.adapters.google_ad_manager import GoogleAdManager
 
         # Get tenant configuration
         with get_db_session() as db_session:

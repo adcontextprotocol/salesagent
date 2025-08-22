@@ -98,17 +98,44 @@ async with client:
 
 ```
 salesagent/
-├── adapters/           # Ad server integrations
-├── alembic/           # Database migrations
-├── docs/              # Documentation
-├── scripts/           # Utility scripts
-├── templates/         # UI templates
-├── tests/             # Test suite
-├── tools/             # Demo and simulation tools
-├── main.py            # MCP server
-├── admin_ui.py        # Admin interface
-├── models.py          # Database models
-└── schemas.py         # API schemas
+├── src/                    # Source code
+│   ├── core/              # Core MCP server components
+│   │   ├── main.py        # MCP server implementation
+│   │   ├── schemas.py     # API schemas and data models
+│   │   ├── config_loader.py  # Configuration management
+│   │   ├── audit_logger.py   # Security and audit logging
+│   │   └── database/      # Database layer
+│   │       ├── models.py  # SQLAlchemy models
+│   │       ├── database.py # Database initialization
+│   │       └── database_session.py # Session management
+│   ├── services/          # Business logic services
+│   │   ├── ai_product_service.py # AI product management
+│   │   ├── targeting_capabilities.py # Targeting system
+│   │   └── gam_inventory_service.py # GAM integration
+│   ├── adapters/          # Ad server integrations
+│   │   ├── base.py        # Base adapter interface
+│   │   ├── google_ad_manager.py # GAM adapter
+│   │   └── mock_ad_server.py # Mock adapter
+│   └── admin/             # Admin UI (Flask)
+│       ├── app.py         # Flask application
+│       ├── blueprints/    # Flask blueprints
+│       └── server.py      # Admin server
+├── scripts/               # Utility scripts
+│   ├── setup/            # Setup and initialization
+│   ├── dev/              # Development tools
+│   ├── ops/              # Operations scripts
+│   └── deploy/           # Deployment scripts
+├── tests/                # Test suite
+│   ├── unit/            # Unit tests
+│   ├── integration/     # Integration tests
+│   └── e2e/             # End-to-end tests
+├── docs/                 # Documentation
+├── examples/             # Example code
+├── tools/                # Demo and simulation tools
+├── alembic/             # Database migrations
+├── templates/           # Jinja2 templates
+└── config/              # Configuration files
+    └── fly/             # Fly.io deployment configs
 ```
 
 ## Requirements
