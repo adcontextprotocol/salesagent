@@ -31,7 +31,10 @@ def init_oauth(app):
             "client_secret.json",
             "client_secret_819081116704-kqh8lrv0nvqmu8onqmvnadqtlajbqbbn.apps.googleusercontent.com.json",
         ]:
-            filepath = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), filename)
+            # Look in project root (4 levels up from src/admin/blueprints/auth.py)
+            filepath = os.path.join(
+                os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(__file__)))), filename
+            )
             if os.path.exists(filepath):
                 try:
                     with open(filepath) as f:
@@ -281,13 +284,38 @@ def test_auth():
         },
     }
 
+    # Check if email is a super admin (bypass password check for super admins in test mode)
+    if is_super_admin(email) and password == "test123":
+        session["test_user"] = email
+        session["test_user_name"] = email.split("@")[0].title()
+        session["test_user_role"] = "super_admin"
+        session["user"] = email  # Store as string for is_super_admin check
+        session["user_name"] = email.split("@")[0].title()
+        session["is_super_admin"] = True
+        session["role"] = "super_admin"
+        session["authenticated"] = True
+        session["email"] = email
+
+        if tenant_id:
+            session["test_tenant_id"] = tenant_id
+            return redirect(url_for("tenants.dashboard", tenant_id=tenant_id))
+        else:
+            return redirect(url_for("core.index"))
+
+    # Check test users
     if email in test_users and test_users[email]["password"] == password:
         user_info = test_users[email]
         session["test_user"] = email
         session["test_user_name"] = user_info["name"]
         session["test_user_role"] = user_info["role"]
-        session["user"] = email  # For compatibility
+        session["user"] = email  # Store as string for consistency
         session["user_name"] = user_info["name"]
+        session["role"] = user_info["role"]
+        session["authenticated"] = True
+        session["email"] = email
+
+        if user_info["role"] == "super_admin":
+            session["is_super_admin"] = True
 
         if tenant_id:
             session["test_tenant_id"] = tenant_id
