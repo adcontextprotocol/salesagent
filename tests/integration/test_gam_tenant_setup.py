@@ -33,7 +33,7 @@ from scripts.setup.setup_tenant import create_tenant, main
 class TestGAMTenantSetup:
     """Test GAM tenant setup and configuration flow."""
 
-    @pytest.mark.skip(reason="Complex mocking setup needs refactoring")
+    @pytest.mark.xfail(reason="Needs database isolation fix")
     def test_gam_tenant_creation_without_network_code(self):
         """
         Test that a GAM tenant can be created without providing network code upfront.
@@ -107,7 +107,7 @@ class TestGAMTenantSetup:
             conn.close()
             os.unlink(tmp_path)
 
-    @pytest.mark.skip(reason="Complex mocking setup needs refactoring")
+    @pytest.mark.xfail(reason="Needs database isolation fix")
     def test_gam_tenant_creation_with_network_code(self):
         """
         Test that a GAM tenant can be created WITH network code provided upfront.
@@ -164,7 +164,7 @@ class TestGAMTenantSetup:
             conn.close()
             os.unlink(tmp_path)
 
-    @pytest.mark.skip(reason="Complex mocking setup needs refactoring")
+    @pytest.mark.xfail(reason="Needs database isolation fix")
     def test_command_line_parsing_network_code_optional(self):
         """
         Test that the command line parsing correctly handles optional network code.
@@ -212,7 +212,7 @@ class TestGAMTenantSetup:
         finally:
             sys.argv = old_argv
 
-    @pytest.mark.skip(reason="Endpoint not yet implemented")
+    @pytest.mark.xfail(reason="Endpoint not yet implemented")
     def test_admin_ui_network_detection_endpoint(self):
         """
         Test the Admin UI endpoint for detecting network code from refresh token.
@@ -272,9 +272,8 @@ class TestGAMTenantSetup:
         This ensures the adapter gracefully handles missing network codes
         during the configuration phase.
         """
-        from src.core.schemas import Principal
-
         from src.adapters.google_ad_manager import GoogleAdManager
+        from src.core.schemas import Principal
 
         # Create principal with GAM platform mapping
         principal = Principal(
