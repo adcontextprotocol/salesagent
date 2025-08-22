@@ -41,10 +41,10 @@ def test_db(integration_db):
     # First, clean up any existing test data
     try:
         # Tasks table removed - no need to delete
-        conn.execute("DELETE FROM media_buys WHERE tenant_id = 'test_dashboard'")
-        conn.execute("DELETE FROM products WHERE tenant_id = 'test_dashboard'")
-        conn.execute("DELETE FROM principals WHERE tenant_id = 'test_dashboard'")
-        conn.execute("DELETE FROM tenants WHERE tenant_id = 'test_dashboard'")
+        conn.execute(text("DELETE FROM media_buys WHERE tenant_id = 'test_dashboard'"))
+        conn.execute(text("DELETE FROM products WHERE tenant_id = 'test_dashboard'"))
+        conn.execute(text("DELETE FROM principals WHERE tenant_id = 'test_dashboard'"))
+        conn.execute(text("DELETE FROM tenants WHERE tenant_id = 'test_dashboard'"))
         conn.commit()
     except:
         pass  # Ignore errors if tables don't exist yet
@@ -53,21 +53,35 @@ def test_db(integration_db):
     if DatabaseConfig.get_db_config()["type"] == "sqlite":
         conn.execute(
             text(
-                f"""
+                """
             INSERT OR IGNORE INTO tenants (tenant_id, name, subdomain, is_active, ad_server, created_at, updated_at)
-            VALUES ({ph}, {ph}, {ph}, {ph}, {ph}, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+            VALUES (:tenant_id, :name, :subdomain, :is_active, :ad_server, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
         """
             ),
-            ("test_dashboard", "Test Dashboard Tenant", "test-dashboard", True, "mock"),
+            {
+                "tenant_id": "test_dashboard",
+                "name": "Test Dashboard Tenant",
+                "subdomain": "test-dashboard",
+                "is_active": True,
+                "ad_server": "mock",
+            },
         )
     else:
         conn.execute(
-            f"""
+            text(
+                """
             INSERT INTO tenants (tenant_id, name, subdomain, is_active, ad_server, created_at, updated_at)
-            VALUES ({ph}, {ph}, {ph}, {ph}, {ph}, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+            VALUES (:tenant_id, :name, :subdomain, :is_active, :ad_server, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
             ON CONFLICT (tenant_id) DO NOTHING
-        """,
-            ("test_dashboard", "Test Dashboard Tenant", "test-dashboard", True, "mock"),
+        """
+            ),
+            {
+                "tenant_id": "test_dashboard",
+                "name": "Test Dashboard Tenant",
+                "subdomain": "test-dashboard",
+                "is_active": True,
+                "ad_server": "mock",
+            },
         )
 
     # Commit the tenant first to ensure it exists
@@ -76,37 +90,69 @@ def test_db(integration_db):
     # Insert test principals
     if DatabaseConfig.get_db_config()["type"] == "sqlite":
         conn.execute(
-            f"""
+            text(
+                """
             INSERT OR IGNORE INTO principals (tenant_id, principal_id, name, access_token, platform_mappings)
-            VALUES ({ph}, {ph}, {ph}, {ph}, {ph})
-        """,
-            ("test_dashboard", "principal_1", "Test Advertiser 1", "token_1", "{}"),
+            VALUES (:tenant_id, :principal_id, :name, :access_token, :platform_mappings)
+        """
+            ),
+            {
+                "tenant_id": "test_dashboard",
+                "principal_id": "principal_1",
+                "name": "Test Advertiser 1",
+                "access_token": "token_1",
+                "platform_mappings": "{}",
+            },
         )
 
         conn.execute(
-            f"""
+            text(
+                """
             INSERT OR IGNORE INTO principals (tenant_id, principal_id, name, access_token, platform_mappings)
-            VALUES ({ph}, {ph}, {ph}, {ph}, {ph})
-        """,
-            ("test_dashboard", "principal_2", "Test Advertiser 2", "token_2", "{}"),
+            VALUES (:tenant_id, :principal_id, :name, :access_token, :platform_mappings)
+        """
+            ),
+            {
+                "tenant_id": "test_dashboard",
+                "principal_id": "principal_2",
+                "name": "Test Advertiser 2",
+                "access_token": "token_2",
+                "platform_mappings": "{}",
+            },
         )
     else:
         conn.execute(
-            f"""
+            text(
+                """
             INSERT INTO principals (tenant_id, principal_id, name, access_token, platform_mappings)
-            VALUES ({ph}, {ph}, {ph}, {ph}, {ph})
+            VALUES (:tenant_id, :principal_id, :name, :access_token, :platform_mappings)
             ON CONFLICT (tenant_id, principal_id) DO NOTHING
-        """,
-            ("test_dashboard", "principal_1", "Test Advertiser 1", "token_1", "{}"),
+        """
+            ),
+            {
+                "tenant_id": "test_dashboard",
+                "principal_id": "principal_1",
+                "name": "Test Advertiser 1",
+                "access_token": "token_1",
+                "platform_mappings": "{}",
+            },
         )
 
         conn.execute(
-            f"""
+            text(
+                """
             INSERT INTO principals (tenant_id, principal_id, name, access_token, platform_mappings)
-            VALUES ({ph}, {ph}, {ph}, {ph}, {ph})
+            VALUES (:tenant_id, :principal_id, :name, :access_token, :platform_mappings)
             ON CONFLICT (tenant_id, principal_id) DO NOTHING
-        """,
-            ("test_dashboard", "principal_2", "Test Advertiser 2", "token_2", "{}"),
+        """
+            ),
+            {
+                "tenant_id": "test_dashboard",
+                "principal_id": "principal_2",
+                "name": "Test Advertiser 2",
+                "access_token": "token_2",
+                "platform_mappings": "{}",
+            },
         )
 
     # Insert test media buys with different statuses and dates
@@ -114,71 +160,80 @@ def test_db(integration_db):
 
     # Active buy from 5 days ago
     conn.execute(
-        f"""
+        text(
+            """
         INSERT INTO media_buys (
             media_buy_id, tenant_id, principal_id, order_name, advertiser_name,
             budget, start_date, end_date, status, created_at, raw_request
-        ) VALUES ({ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph})
-    """,
-        (
-            "mb_test_001",
-            "test_dashboard",
-            "principal_1",
-            "Test Order 1",
-            "Test Advertiser 1",
-            5000.0,
-            (now - timedelta(days=5)).date(),
-            (now + timedelta(days=25)).date(),
-            "active",
-            now - timedelta(days=5),
-            json.dumps({}),
+        ) VALUES (:media_buy_id, :tenant_id, :principal_id, :order_name, :advertiser_name,
+                  :budget, :start_date, :end_date, :status, :created_at, :raw_request)
+    """
         ),
+        {
+            "media_buy_id": "mb_test_001",
+            "tenant_id": "test_dashboard",
+            "principal_id": "principal_1",
+            "order_name": "Test Order 1",
+            "advertiser_name": "Test Advertiser 1",
+            "budget": 5000.0,
+            "start_date": (now - timedelta(days=5)).date(),
+            "end_date": (now + timedelta(days=25)).date(),
+            "status": "active",
+            "created_at": now - timedelta(days=5),
+            "raw_request": json.dumps({}),
+        },
     )
 
     # Pending buy from today
     conn.execute(
-        f"""
+        text(
+            """
         INSERT INTO media_buys (
             media_buy_id, tenant_id, principal_id, order_name, advertiser_name,
             budget, start_date, end_date, status, created_at, raw_request
-        ) VALUES ({ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph})
-    """,
-        (
-            "mb_test_002",
-            "test_dashboard",
-            "principal_2",
-            "Test Order 2",
-            "Test Advertiser 2",
-            3000.0,
-            now.date(),
-            (now + timedelta(days=30)).date(),
-            "pending",
-            now,
-            json.dumps({}),
+        ) VALUES (:media_buy_id, :tenant_id, :principal_id, :order_name, :advertiser_name,
+                  :budget, :start_date, :end_date, :status, :created_at, :raw_request)
+    """
         ),
+        {
+            "media_buy_id": "mb_test_002",
+            "tenant_id": "test_dashboard",
+            "principal_id": "principal_2",
+            "order_name": "Test Order 2",
+            "advertiser_name": "Test Advertiser 2",
+            "budget": 3000.0,
+            "start_date": now.date(),
+            "end_date": (now + timedelta(days=30)).date(),
+            "status": "pending",
+            "created_at": now,
+            "raw_request": json.dumps({}),
+        },
     )
 
     # Completed buy from 45 days ago (for revenue change calculation)
     conn.execute(
-        f"""
+        text(
+            """
         INSERT INTO media_buys (
             media_buy_id, tenant_id, principal_id, order_name, advertiser_name,
             budget, start_date, end_date, status, created_at, raw_request
-        ) VALUES ({ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph})
-    """,
-        (
-            "mb_test_003",
-            "test_dashboard",
-            "principal_1",
-            "Test Order 3",
-            "Test Advertiser 1",
-            2000.0,
-            (now - timedelta(days=75)).date(),
-            (now - timedelta(days=45)).date(),
-            "completed",
-            now - timedelta(days=45),
-            json.dumps({}),
+        ) VALUES (:media_buy_id, :tenant_id, :principal_id, :order_name, :advertiser_name,
+                  :budget, :start_date, :end_date, :status, :created_at, :raw_request)
+    """
         ),
+        {
+            "media_buy_id": "mb_test_003",
+            "tenant_id": "test_dashboard",
+            "principal_id": "principal_1",
+            "order_name": "Test Order 3",
+            "advertiser_name": "Test Advertiser 1",
+            "budget": 2000.0,
+            "start_date": (now - timedelta(days=75)).date(),
+            "end_date": (now - timedelta(days=45)).date(),
+            "status": "completed",
+            "created_at": now - timedelta(days=45),
+            "raw_request": json.dumps({}),
+        },
     )
 
     # Skip inserting tasks - table removed in favor of workflow_steps
@@ -188,35 +243,39 @@ def test_db(integration_db):
 
     # Insert test products with required fields
     conn.execute(
-        f"""
+        text(
+            """
         INSERT INTO products (product_id, tenant_id, name, formats, targeting_template, delivery_type, is_fixed_price)
-        VALUES ({ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph})
-    """,
-        (
-            "prod_001",
-            "test_dashboard",
-            "Test Product 1",
-            '["display_300x250"]',
-            "{}",
-            "guaranteed",
-            True,
+        VALUES (:product_id, :tenant_id, :name, :formats, :targeting_template, :delivery_type, :is_fixed_price)
+    """
         ),
+        {
+            "product_id": "prod_001",
+            "tenant_id": "test_dashboard",
+            "name": "Test Product 1",
+            "formats": '["display_300x250"]',
+            "targeting_template": "{}",
+            "delivery_type": "guaranteed",
+            "is_fixed_price": True,
+        },
     )
 
     conn.execute(
-        f"""
+        text(
+            """
         INSERT INTO products (product_id, tenant_id, name, formats, targeting_template, delivery_type, is_fixed_price)
-        VALUES ({ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph})
-    """,
-        (
-            "prod_002",
-            "test_dashboard",
-            "Test Product 2",
-            '["video_16x9"]',
-            "{}",
-            "guaranteed",
-            True,
+        VALUES (:product_id, :tenant_id, :name, :formats, :targeting_template, :delivery_type, :is_fixed_price)
+    """
         ),
+        {
+            "product_id": "prod_002",
+            "tenant_id": "test_dashboard",
+            "name": "Test Product 2",
+            "formats": '["video_16x9"]',
+            "targeting_template": "{}",
+            "delivery_type": "guaranteed",
+            "is_fixed_price": True,
+        },
     )
 
     conn.commit()
@@ -226,10 +285,10 @@ def test_db(integration_db):
     # Cleanup
     try:
         # Tasks table removed - no need to delete
-        conn.execute("DELETE FROM media_buys WHERE tenant_id = 'test_dashboard'")
-        conn.execute("DELETE FROM products WHERE tenant_id = 'test_dashboard'")
-        conn.execute("DELETE FROM principals WHERE tenant_id = 'test_dashboard'")
-        conn.execute("DELETE FROM tenants WHERE tenant_id = 'test_dashboard'")
+        conn.execute(text("DELETE FROM media_buys WHERE tenant_id = 'test_dashboard'"))
+        conn.execute(text("DELETE FROM products WHERE tenant_id = 'test_dashboard'"))
+        conn.execute(text("DELETE FROM principals WHERE tenant_id = 'test_dashboard'"))
+        conn.execute(text("DELETE FROM tenants WHERE tenant_id = 'test_dashboard'"))
         conn.commit()
     except Exception as e:
         print(f"Cleanup error: {e}")
@@ -240,23 +299,24 @@ def test_db(integration_db):
 class TestDashboardMetricsIntegration:
     """Test dashboard metrics with real database."""
 
-    @pytest.mark.skip(reason="Dashboard tests need SQLAlchemy 2.x migration - not critical for core functionality")
-    @pytest.mark.skip(reason="Dashboard tests need SQLAlchemy 2.x migration - not critical for core functionality")
     @pytest.mark.requires_db
     def test_revenue_metrics(self, test_db):
         """Test revenue calculation from database."""
-        ph = get_placeholder()
+        from sqlalchemy import text
+
         interval_30 = get_interval_syntax(30)
         # Query for 30-day revenue
         cursor = test_db.execute(
-            f"""
+            text(
+                f"""
             SELECT COALESCE(SUM(budget), 0) as total_revenue
             FROM media_buys
-            WHERE tenant_id = {ph}
+            WHERE tenant_id = :tenant_id
             AND status IN ('active', 'completed')
             AND created_at >= {interval_30}
-        """,
-            ("test_dashboard",),
+        """
+            ),
+            {"tenant_id": "test_dashboard"},
         )
 
         total_revenue = cursor.fetchone()[0]
@@ -264,38 +324,42 @@ class TestDashboardMetricsIntegration:
         # Should include active buy (5000) but not pending (3000) or old completed (2000)
         assert total_revenue == 5000.0
 
-    @pytest.mark.skip(reason="Dashboard tests need SQLAlchemy 2.x migration - not critical for core functionality")
     @pytest.mark.requires_db
     def test_revenue_change_calculation(self, test_db):
         """Test revenue change vs previous period."""
-        ph = get_placeholder()
+        from sqlalchemy import text
+
         interval_30 = get_interval_syntax(30)
         interval_60 = get_interval_syntax(60)
 
         # Current period (last 30 days)
         cursor = test_db.execute(
-            f"""
+            text(
+                f"""
             SELECT COALESCE(SUM(budget), 0)
             FROM media_buys
-            WHERE tenant_id = {ph}
+            WHERE tenant_id = :tenant_id
             AND status IN ('active', 'completed')
             AND created_at >= {interval_30}
-        """,
-            ("test_dashboard",),
+        """
+            ),
+            {"tenant_id": "test_dashboard"},
         )
         current = cursor.fetchone()[0]
 
         # Previous period (30-60 days ago)
         cursor = test_db.execute(
-            f"""
+            text(
+                f"""
             SELECT COALESCE(SUM(budget), 0)
             FROM media_buys
-            WHERE tenant_id = {ph}
+            WHERE tenant_id = :tenant_id
             AND status IN ('active', 'completed')
             AND created_at >= {interval_60}
             AND created_at < {interval_30}
-        """,
-            ("test_dashboard",),
+        """
+            ),
+            {"tenant_id": "test_dashboard"},
         )
         previous = cursor.fetchone()[0]
 
@@ -307,44 +371,50 @@ class TestDashboardMetricsIntegration:
         change = ((current - previous) / previous) * 100 if previous > 0 else 0
         assert change == 150.0  # 150% increase
 
-    @pytest.mark.skip(reason="Dashboard tests need SQLAlchemy 2.x migration - not critical for core functionality")
     @pytest.mark.requires_db
     def test_media_buy_counts(self, test_db):
         """Test counting active and pending media buys."""
-        ph = get_placeholder()
+        from sqlalchemy import text
+
         # Active buys
         cursor = test_db.execute(
-            f"""
+            text(
+                """
             SELECT COUNT(*) FROM media_buys
-            WHERE tenant_id = {ph} AND status = 'active'
-        """,
-            ("test_dashboard",),
+            WHERE tenant_id = :tenant_id AND status = 'active'
+        """
+            ),
+            {"tenant_id": "test_dashboard"},
         )
         active = cursor.fetchone()[0]
         assert active == 1
 
         # Pending buys
         cursor = test_db.execute(
-            f"""
+            text(
+                """
             SELECT COUNT(*) FROM media_buys
-            WHERE tenant_id = {ph} AND status = 'pending'
-        """,
-            ("test_dashboard",),
+            WHERE tenant_id = :tenant_id AND status = 'pending'
+        """
+            ),
+            {"tenant_id": "test_dashboard"},
         )
         pending = cursor.fetchone()[0]
         assert pending == 1
 
-    @pytest.mark.skip(reason="Dashboard tests need SQLAlchemy 2.x migration - not critical for core functionality")
     @pytest.mark.requires_db
     def test_advertiser_metrics(self, test_db):
         """Test advertiser counting."""
-        ph = get_placeholder()
+        from sqlalchemy import text
+
         # Total advertisers
         cursor = test_db.execute(
-            f"""
-            SELECT COUNT(*) FROM principals WHERE tenant_id = {ph}
-        """,
-            ("test_dashboard",),
+            text(
+                """
+            SELECT COUNT(*) FROM principals WHERE tenant_id = :tenant_id
+        """
+            ),
+            {"tenant_id": "test_dashboard"},
         )
         total = cursor.fetchone()[0]
         assert total == 2
@@ -352,13 +422,15 @@ class TestDashboardMetricsIntegration:
         # Active advertisers (with activity in last 30 days)
         interval_30 = get_interval_syntax(30)
         cursor = test_db.execute(
-            f"""
+            text(
+                f"""
             SELECT COUNT(DISTINCT principal_id)
             FROM media_buys
-            WHERE tenant_id = {ph}
+            WHERE tenant_id = :tenant_id
             AND created_at >= {interval_30}
-        """,
-            ("test_dashboard",),
+        """
+            ),
+            {"tenant_id": "test_dashboard"},
         )
         active = cursor.fetchone()[0]
         assert active == 2  # Both have recent activity
@@ -367,13 +439,14 @@ class TestDashboardMetricsIntegration:
 class TestDashboardDataRetrieval:
     """Test retrieving and formatting dashboard data."""
 
-    @pytest.mark.skip(reason="Dashboard tests need SQLAlchemy 2.x migration - not critical for core functionality")
     @pytest.mark.requires_db
     def test_recent_media_buys(self, test_db):
         """Test fetching recent media buys."""
-        ph = get_placeholder()
+        from sqlalchemy import text
+
         cursor = test_db.execute(
-            f"""
+            text(
+                """
             SELECT
                 mb.media_buy_id,
                 mb.principal_id,
@@ -382,11 +455,12 @@ class TestDashboardDataRetrieval:
                 mb.budget,
                 mb.created_at
             FROM media_buys mb
-            WHERE mb.tenant_id = {ph}
+            WHERE mb.tenant_id = :tenant_id
             ORDER BY mb.created_at DESC
             LIMIT 10
-        """,
-            ("test_dashboard",),
+        """
+            ),
+            {"tenant_id": "test_dashboard"},
         )
 
         buys = cursor.fetchall()
@@ -398,26 +472,28 @@ class TestDashboardDataRetrieval:
         assert most_recent[3] == "pending"
         assert most_recent[4] == 3000.0
 
-    @pytest.mark.skip(reason="Dashboard tests need SQLAlchemy 2.x migration - not critical for core functionality")
     @pytest.mark.requires_db
     def test_revenue_by_advertiser_chart(self, test_db):
         """Test data for revenue chart."""
-        ph = get_placeholder()
+        from sqlalchemy import text
+
         interval_7 = get_interval_syntax(7)
         cursor = test_db.execute(
-            f"""
+            text(
+                f"""
             SELECT
                 mb.advertiser_name,
                 SUM(mb.budget) as revenue
             FROM media_buys mb
-            WHERE mb.tenant_id = {ph}
+            WHERE mb.tenant_id = :tenant_id
             AND mb.created_at >= {interval_7}
             AND mb.status IN ('active', 'completed')
             GROUP BY mb.advertiser_name
             ORDER BY revenue DESC
             LIMIT 10
-        """,
-            ("test_dashboard",),
+        """
+            ),
+            {"tenant_id": "test_dashboard"},
         )
 
         chart_data = cursor.fetchall()
@@ -431,91 +507,114 @@ class TestDashboardDataRetrieval:
 class TestDashboardErrorCases:
     """Test dashboard behavior with edge cases."""
 
-    @pytest.mark.skip(reason="Dashboard tests need SQLAlchemy 2.x migration - not critical for core functionality")
     @pytest.mark.requires_db
     def test_empty_tenant_data(self, test_db):
         """Test dashboard with tenant that has no data."""
-        ph = get_placeholder()
+        from sqlalchemy import text
+
         db_config = DatabaseConfig.get_db_config()
 
         # Create empty tenant
         if db_config["type"] == "sqlite":
             test_db.execute(
-                f"""
+                text(
+                    """
                 INSERT OR IGNORE INTO tenants (tenant_id, name, subdomain, is_active, ad_server, created_at, updated_at)
-                VALUES ({ph}, {ph}, {ph}, {ph}, {ph}, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-            """,
-                ("empty_tenant", "Empty Tenant", "empty", True, "mock"),
+                VALUES (:tenant_id, :name, :subdomain, :is_active, :ad_server, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+            """
+                ),
+                {
+                    "tenant_id": "empty_tenant",
+                    "name": "Empty Tenant",
+                    "subdomain": "empty",
+                    "is_active": True,
+                    "ad_server": "mock",
+                },
             )
         else:
             test_db.execute(
-                f"""
+                text(
+                    """
                 INSERT INTO tenants (tenant_id, name, subdomain, is_active, ad_server, created_at, updated_at)
-                VALUES ({ph}, {ph}, {ph}, {ph}, {ph}, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                VALUES (:tenant_id, :name, :subdomain, :is_active, :ad_server, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
                 ON CONFLICT (tenant_id) DO NOTHING
-            """,
-                ("empty_tenant", "Empty Tenant", "empty", True, "mock"),
+            """
+                ),
+                {
+                    "tenant_id": "empty_tenant",
+                    "name": "Empty Tenant",
+                    "subdomain": "empty",
+                    "is_active": True,
+                    "ad_server": "mock",
+                },
             )
         test_db.commit()
 
         # All metrics should return 0 or empty
         cursor = test_db.execute(
-            f"""
+            text(
+                """
             SELECT COALESCE(SUM(budget), 0)
             FROM media_buys
-            WHERE tenant_id = {ph}
-        """,
-            ("empty_tenant",),
+            WHERE tenant_id = :tenant_id
+        """
+            ),
+            {"tenant_id": "empty_tenant"},
         )
 
         assert cursor.fetchone()[0] == 0
 
         # Cleanup
-        test_db.execute("DELETE FROM tenants WHERE tenant_id = 'empty_tenant'")
+        test_db.execute(text("DELETE FROM tenants WHERE tenant_id = 'empty_tenant'"))
         test_db.commit()
 
-    @pytest.mark.skip(reason="Dashboard tests need SQLAlchemy 2.x migration - not critical for core functionality")
     @pytest.mark.requires_db
     def test_null_budget_handling(self, test_db):
         """Test handling of NULL budget values."""
-        ph = get_placeholder()
+        from sqlalchemy import text
+
         # Insert media buy with NULL budget
         test_db.execute(
-            f"""
+            text(
+                """
             INSERT INTO media_buys (
                 media_buy_id, tenant_id, principal_id, order_name, advertiser_name,
                 budget, start_date, end_date, status, raw_request
-            ) VALUES ({ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph})
-            """,
-            (
-                "mb_null",
-                "test_dashboard",
-                "principal_1",
-                "Null Budget",
-                "Test",
-                None,
-                datetime.now().date(),
-                datetime.now().date(),
-                "active",
-                json.dumps({}),
+            ) VALUES (:media_buy_id, :tenant_id, :principal_id, :order_name, :advertiser_name,
+                      :budget, :start_date, :end_date, :status, :raw_request)
+            """
             ),
+            {
+                "media_buy_id": "mb_null",
+                "tenant_id": "test_dashboard",
+                "principal_id": "principal_1",
+                "order_name": "Null Budget",
+                "advertiser_name": "Test",
+                "budget": None,
+                "start_date": datetime.now().date(),
+                "end_date": datetime.now().date(),
+                "status": "active",
+                "raw_request": json.dumps({}),
+            },
         )
         test_db.commit()
 
         # Query should handle NULL gracefully
         cursor = test_db.execute(
-            f"""
+            text(
+                """
             SELECT COALESCE(SUM(budget), 0)
             FROM media_buys
-            WHERE tenant_id = {ph} AND media_buy_id = {ph}
-        """,
-            ("test_dashboard", "mb_null"),
+            WHERE tenant_id = :tenant_id AND media_buy_id = :media_buy_id
+        """
+            ),
+            {"tenant_id": "test_dashboard", "media_buy_id": "mb_null"},
         )
 
         assert cursor.fetchone()[0] == 0
 
         # Cleanup
-        test_db.execute("DELETE FROM media_buys WHERE media_buy_id = 'mb_null'")
+        test_db.execute(text("DELETE FROM media_buys WHERE media_buy_id = 'mb_null'"))
         test_db.commit()
 
 
