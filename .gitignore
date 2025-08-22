@@ -73,3 +73,6 @@ server.pid
 # Conductor workspace files
 conductor_ports.json
 conductor_ports.lock
+
+# Conductor workspace
+conductor_ports.lock

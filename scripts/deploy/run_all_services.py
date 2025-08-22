@@ -99,7 +99,7 @@ def run_adk_agent():
 
     env = os.environ.copy()
     proc = subprocess.Popen(
-        [".venv/bin/adk", "web", "adcp_agent", "--host", "0.0.0.0", "--port", "8091"],
+        [".venv/bin/adk", "web", "src.adk.adcp_agent", "--host", "0.0.0.0", "--port", "8091"],
         env=env,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
