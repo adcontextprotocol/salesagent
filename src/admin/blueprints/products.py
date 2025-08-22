@@ -6,14 +6,14 @@ import json
 import logging
 import uuid
 
-from ai_product_service import AIProductConfigurationService
-from default_products import get_default_products, get_industry_specific_products
 from flask import Blueprint, flash, jsonify, redirect, render_template, request, url_for
-from validation import sanitize_form_data
 
 from src.admin.utils import require_tenant_access
 from src.core.database.database_session import get_db_session
 from src.core.database.models import Product, Tenant
+from src.core.validation import sanitize_form_data
+from src.services.ai_product_service import AIProductConfigurationService
+from src.services.default_products import get_default_products, get_industry_specific_products
 
 logger = logging.getLogger(__name__)
 
