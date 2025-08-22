@@ -25,7 +25,7 @@ def test_tenant(integration_db):
     with get_db_session() as session:
         # Clean up any existing test tenant (in case of test reruns)
         try:
-            from models import CreativeFormat
+            from src.core.database.models import CreativeFormat
 
             session.query(Product).filter(Product.tenant_id == "test_product_tenant").delete()
             session.query(Tenant).filter(Tenant.tenant_id == "test_product_tenant").delete()
@@ -39,7 +39,7 @@ def test_tenant(integration_db):
         # Create test tenant
         from datetime import UTC, datetime
 
-        from models import CreativeFormat
+        from src.core.database.models import CreativeFormat
 
         now = datetime.now(UTC)
         tenant = Tenant(
@@ -102,7 +102,7 @@ def test_add_product_json_encoding(client, test_tenant, integration_db):
     # Set up user in database for tenant access
     import uuid
 
-    from models import User
+    from src.core.database.models import User
 
     with get_db_session() as session:
         user = User(
@@ -197,7 +197,7 @@ def test_add_product_empty_json_fields(client, test_tenant, integration_db):
     # Set up user in database for tenant access
     import uuid
 
-    from models import User
+    from src.core.database.models import User
 
     with get_db_session() as session:
         # Check if user already exists
@@ -302,7 +302,7 @@ def test_list_products_json_parsing(client, test_tenant, integration_db):
     # Set up user in database for tenant access
     import uuid
 
-    from models import User
+    from src.core.database.models import User
 
     with get_db_session() as session:
         # Check if user already exists

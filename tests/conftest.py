@@ -106,12 +106,12 @@ def db_session(test_db_path):
     os.environ["DATABASE_URL"] = f"sqlite:///{test_db_path}"
 
     # Initialize database
-    from database import init_db
+    from src.core.database.database import init_db
 
     init_db()
 
     # Create session
-    from db_config import get_db_connection
+    from src.core.database.db_config import get_db_connection
 
     conn = get_db_connection()
 
@@ -278,7 +278,7 @@ def tenant_admin_session(sample_tenant):
 def flask_app():
     """Provide Flask test app."""
     # Mock database before importing admin app
-    with patch("database_session.get_db_session") as mock_get_session:
+    with patch("src.core.database.database_session.get_db_session") as mock_get_session:
         mock_session = MagicMock()
         mock_session.query.return_value.filter_by.return_value.first.return_value = None
         mock_session.query.return_value.filter_by.return_value.all.return_value = []
@@ -290,7 +290,7 @@ def flask_app():
         mock_get_session.return_value = mock_session
 
         # Mock inventory service database session
-        with patch("gam_inventory_service.db_session") as mock_inv_session:
+        with patch("src.services.gam_inventory_service.db_session") as mock_inv_session:
             mock_inv_session.query.return_value.filter.return_value.all.return_value = []
             mock_inv_session.close = MagicMock()
             mock_inv_session.remove = MagicMock()

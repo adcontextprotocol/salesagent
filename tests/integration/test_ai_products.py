@@ -107,7 +107,7 @@ class TestAIProductService:
     @pytest.fixture
     def mock_genai(self):
         """Mock the Gemini AI service."""
-        with patch("ai_product_service.genai") as mock:
+        with patch("src.services.ai_product_service.genai") as mock:
             # Mock the model response
             mock_response = Mock()
             mock_response.text = json.dumps(
@@ -136,7 +136,7 @@ class TestAIProductService:
             AIProductConfigurationService()
 
             # Mock database and adapter
-            with patch("ai_product_service.get_db_session") as mock_db:
+            with patch("src.services.ai_product_service.get_db_session") as mock_db:
                 mock_conn = Mock()
                 mock_cursor = Mock()
                 mock_cursor.fetchone.side_effect = [
@@ -171,7 +171,7 @@ class TestAIProductService:
     def test_analyze_inventory_for_product(self):
         """Test inventory analysis for product matching."""
         with patch.dict("os.environ", {"GEMINI_API_KEY": "test_key"}):
-            with patch("ai_product_service.genai"):
+            with patch("src.services.ai_product_service.genai"):
                 service = AIProductConfigurationService()
 
                 # Test inventory
@@ -229,8 +229,8 @@ class TestProductAPIs:
     @pytest.fixture
     def auth_session(self, client, integration_db):
         """Create authenticated session with proper super admin setup."""
-        from database_session import get_db_session
-        from models import SuperadminConfig
+        from src.core.database.database_session import get_db_session
+        from src.core.database.models import SuperadminConfig
 
         # Set up super admin in database
         with get_db_session() as session:
@@ -254,8 +254,8 @@ class TestProductAPIs:
         import uuid
         from datetime import UTC, datetime
 
-        from database_session import get_db_session
-        from models import Tenant
+        from src.core.database.database_session import get_db_session
+        from src.core.database.models import Tenant
 
         tenant_id = f"test_tenant_{uuid.uuid4().hex[:8]}"
 
@@ -303,8 +303,8 @@ class TestProductAPIs:
         import uuid
         from datetime import UTC, datetime
 
-        from database_session import get_db_session
-        from models import Tenant
+        from src.core.database.database_session import get_db_session
+        from src.core.database.models import Tenant
 
         tenant_id = f"test_tenant_{uuid.uuid4().hex[:8]}"
 
@@ -342,7 +342,7 @@ Test Product,test_prod,"[{""format_id"":""display_300x250"",""name"":""Medium Re
 
         # Verify the product was created by checking the database
         with get_db_session() as session:
-            from models import Product
+            from src.core.database.models import Product
 
             product = session.query(Product).filter_by(tenant_id=tenant_id, product_id="test_prod").first()
             assert product is not None
@@ -355,8 +355,8 @@ Test Product,test_prod,"[{""format_id"":""display_300x250"",""name"":""Medium Re
         import uuid
         from datetime import UTC, datetime
 
-        from database_session import get_db_session
-        from models import Tenant
+        from src.core.database.database_session import get_db_session
+        from src.core.database.models import Tenant
 
         tenant_id = f"test_tenant_{uuid.uuid4().hex[:8]}"
 
@@ -415,7 +415,7 @@ def test_ai_integration():
         )
 
         # Mock the database parts
-        with patch("ai_product_service.get_db_session"):
+        with patch("src.services.ai_product_service.get_db_session"):
             with patch("adapters.get_adapter_class"):
                 # This will fail but we just want to verify the model is working
                 try:
