@@ -9,7 +9,6 @@ import os
 import re
 import sys
 from pathlib import Path
-from typing import Any
 
 from google.adk.agents import LlmAgent
 from google.adk.tools import FunctionTool
@@ -19,7 +18,7 @@ class ConversationAnalyzer:
     """Analyzes conversation history to extract insights."""
 
     @staticmethod
-    def analyze(messages: list[str]) -> dict[str, Any]:
+    def analyze(messages: list) -> dict:
         """Extract insights from conversation history."""
         analysis = {
             "budget_indicators": [],
@@ -123,7 +122,7 @@ class ProductRanker:
     """Ranks products based on conversation context."""
 
     @staticmethod
-    def rank(products: list[dict[str, Any]], analysis: dict[str, Any]) -> list[dict[str, Any]]:
+    def rank(products: list, analysis: dict) -> list:
         """Score and rank products based on conversation analysis."""
         if not products:
             return []
@@ -208,7 +207,7 @@ def setup_direct_call():
 
 
 # Get products by calling the tool directly (no MCP protocol needed!)
-async def get_products_direct(brief: str, promoted_offering: str) -> list[dict[str, Any]]:
+async def get_products_direct(brief: str, promoted_offering: str) -> list:
     """Get products by calling the AdCP tool directly."""
 
     context = setup_direct_call()
@@ -280,7 +279,7 @@ async def get_products_direct(brief: str, promoted_offering: str) -> list[dict[s
 
 
 # Create get_products function matching AdCP protocol
-async def get_products(brief: str, promoted_offering: str) -> dict[str, Any]:
+async def get_products(brief: str, promoted_offering: str) -> dict:
     """
     Get products from the AdCP server, matching the standard protocol.
 
@@ -311,8 +310,8 @@ async def create_media_buy(
     start_date: str,
     end_date: str,
     budget: float,
-    targeting_overlay: dict[str, Any] | None = None,
-) -> dict[str, Any]:
+    targeting_overlay: dict = None,
+) -> dict:
     """
     Create a media buy for selected products.
 
@@ -375,7 +374,7 @@ async def create_media_buy(
 
 
 # Check media buy status function
-async def check_media_buy_status(context_id: str) -> dict[str, Any]:
+async def check_media_buy_status(context_id: str) -> dict:
     """
     Check the status of a pending media buy.
 
@@ -416,7 +415,7 @@ async def check_media_buy_status(context_id: str) -> dict[str, Any]:
 
 
 # Get signals function (optional but part of AdCP v2.4)
-async def get_signals(query: str | None = None, type: str | None = None, category: str | None = None) -> dict[str, Any]:
+async def get_signals(query: str = None, type: str = None, category: str = None) -> dict:
     """
     Discover available signals for targeting.
 
@@ -459,7 +458,7 @@ async def get_signals(query: str | None = None, type: str | None = None, categor
 
 
 # Add creative assets function
-async def add_creative_assets(media_buy_id: str, creatives: list[dict[str, Any]]) -> dict[str, Any]:
+async def add_creative_assets(media_buy_id: str, creatives: list) -> dict:
     """
     Add creative assets to a media buy.
 
