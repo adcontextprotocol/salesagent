@@ -121,7 +121,3 @@ async def test_deprecated_endpoint_backward_compatibility(sample_principal):
         result = await client.call_tool("get_all_media_buy_delivery", {"today": date.today().isoformat()})
 
         assert "deliveries" in result
-    if success:
-        print("\n🎉 Unified delivery endpoint is working correctly!")
-    else:
-        print("\n⚠️  Some tests failed. Check the server logs.")

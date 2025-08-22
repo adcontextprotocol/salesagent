@@ -39,7 +39,7 @@ def init_db(exit_on_error=False):
                 existing_config.config_value = super_admin_emails
                 session.commit()
                 print(f"✅ Updated super admin emails: {super_admin_emails}")
-        
+
         # Similarly for super admin domains
         super_admin_domains = os.environ.get("SUPER_ADMIN_DOMAINS", "")
         if super_admin_domains:
@@ -57,7 +57,7 @@ def init_db(exit_on_error=False):
                 existing_config.config_value = super_admin_domains
                 session.commit()
                 print(f"✅ Updated super admin domains: {super_admin_domains}")
-        
+
         # Check if we need to create a default tenant
         tenant_count = session.query(Tenant).count()
 
@@ -85,6 +85,73 @@ def init_db(exit_on_error=False):
             # Create adapter config for mock adapter
             adapter_config = AdapterConfig(tenant_id="default", adapter_type="mock", mock_dry_run=False)
             session.add(adapter_config)
+
+            # Always create a demo principal for testing (used by ADK agent)
+            demo_principal = Principal(
+                tenant_id="default",
+                principal_id="demo_advertiser",
+                name="Demo Advertiser",
+                platform_mappings={
+                    "gam_advertiser_id": 99999,
+                    "kevel_advertiser_id": "demo-advertiser",
+                    "triton_advertiser_id": "ADV-DEMO-001",
+                    "mock_advertiser_id": "mock-demo",
+                },
+                access_token="demo_token_123",
+            )
+            session.add(demo_principal)
+
+            # Always create basic products for demo/testing
+            basic_products = [
+                Product(
+                    tenant_id="default",
+                    product_id="prod_display_premium",
+                    name="Premium Display Package",
+                    description="Premium display advertising across news and sports sections",
+                    formats=[
+                        {
+                            "format_id": "display_300x250",
+                            "name": "Medium Rectangle",
+                            "type": "display",
+                            "specs": {"width": 300, "height": 250},
+                        }
+                    ],
+                    targeting_template={"geo_country_any_of": ["US"]},
+                    delivery_type="guaranteed",
+                    is_fixed_price=False,
+                    price_guidance={"floor": 10.0, "p50": 15.0, "p75": 20.0},
+                    countries=["United States"],
+                    implementation_config={
+                        "placement_ids": ["premium_300x250"],
+                        "ad_unit_path": "/1234/premium/display",
+                    },
+                ),
+                Product(
+                    tenant_id="default",
+                    product_id="prod_video_sports",
+                    name="Sports Video Package",
+                    description="Pre-roll video ads for sports content",
+                    formats=[
+                        {
+                            "format_id": "video_preroll",
+                            "name": "Pre-roll Video",
+                            "type": "video",
+                            "specs": {"duration": 30},
+                        }
+                    ],
+                    targeting_template={"content_cat_any_of": ["sports"]},
+                    delivery_type="guaranteed",
+                    is_fixed_price=True,
+                    cpm=25.0,
+                    countries=["United States", "Canada"],
+                    implementation_config={
+                        "placement_ids": ["sports_video_preroll"],
+                        "ad_unit_path": "/1234/sports/video",
+                    },
+                ),
+            ]
+            for product in basic_products:
+                session.add(product)
 
             # Only create sample advertisers if this is a development environment
             if os.environ.get("CREATE_SAMPLE_DATA", "false").lower() == "true":

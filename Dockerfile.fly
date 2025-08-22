@@ -1,12 +1,13 @@
-# Simple Fly.io Dockerfile for AdCP Sales Agent
+# Fly.io Dockerfile for AdCP Sales Agent with ADK
 FROM python:3.12-slim
 
-# Install dependencies
+# Install dependencies including nginx
 RUN apt-get update && apt-get install -y \
     libpq5 \
     curl \
     gcc \
     libpq-dev \
+    nginx \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Python packages
@@ -21,47 +22,27 @@ RUN uv sync
 # Copy application
 COPY . .
 
+# Copy nginx configuration
+COPY config/nginx/nginx.conf /etc/nginx/nginx.conf
+
 # Add .venv to PATH
 ENV PATH="/app/.venv/bin:$PATH"
 ENV PYTHONUNBUFFERED=1
 
-# Fly.io environment
+# Service ports
 ENV ADCP_SALES_PORT=8080
 ENV ADMIN_UI_PORT=8001
+ENV ADK_WEB_PORT=8091
 
-# Create startup script
-RUN echo '#!/bin/bash\n\
-set -e\n\
-\n\
-# Run migrations\n\
-python scripts/ops/migrate.py || echo "Migration failed, continuing..."\n\
-\n\
-# Start services in background\n\
-echo "Starting MCP server on port 8080..."\n\
-python scripts/run_server.py > /tmp/mcp_server.log 2>&1 &\n\
-echo "Starting Admin UI on port 8001..."\n\
-python scripts/run_admin_ui.py > /tmp/admin_ui.log 2>&1 &\n\
-\n\
-# Wait for services to start\n\
-echo "Waiting for services to start..."\n\
-sleep 10\n\
-\n\
-# Check if services are running\n\
-echo "Checking services..."\n\
-ps aux | grep python\n\
-\n\
-# Start proxy\n\
-echo "Starting proxy on port 8000..."\n\
-exec python scripts/deploy/fly-proxy.py' > /app/start.sh && chmod +x /app/start.sh
+# Make scripts executable
+RUN chmod +x scripts/deploy/run_all_services.py scripts/deploy/entrypoint.sh
 
-# Health check
+# Health check for nginx proxy
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
-    CMD curl -f http://localhost:8080/health || exit 1
+    CMD curl -f http://localhost:8000/health || exit 1
 
+# Expose only the unified nginx port
 EXPOSE 8000
 
-# Copy debug script
-COPY scripts/dev/debug_start.sh /app/debug_start.sh
-RUN chmod +x /app/debug_start.sh
-
-CMD ["/app/debug_start.sh"]
+# Run all services via entrypoint which handles migrations
+ENTRYPOINT ["/bin/bash", "scripts/deploy/entrypoint.sh"]

@@ -60,8 +60,8 @@ ENV PYTHONUNBUFFERED=1
 ENV ADCP_PORT=8080
 ENV ADCP_HOST=0.0.0.0
 
-# Expose ports
-EXPOSE 8080 8001
+# Expose ports (MCP, Admin UI, ADK)
+EXPOSE 8080 8001 8091
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
