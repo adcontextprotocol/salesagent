@@ -194,6 +194,7 @@ def require_auth(admin_only=False):
                 return f(*args, **kwargs)
 
             if "user" not in session:
+                logger.info(f"require_auth: No 'user' in session. Session keys: {list(session.keys())}")
                 return redirect(url_for("auth.login"))
 
             # Store user in g for access in view functions

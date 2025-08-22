@@ -182,6 +182,8 @@ def google_callback():
             session["role"] = "super_admin"  # Set role for template checks
             session["authenticated"] = True
             session["email"] = email
+            logger.info(f"OAuth callback: Setting session for super admin {email}")
+            logger.info(f"Session keys after setting: {list(session.keys())}")
             flash(f"Welcome {user.get('name', email)}! (Super Admin)", "success")
             return redirect(url_for("core.index"))
 
