@@ -112,7 +112,7 @@ def test_principal(db_session, test_tenant):
         principal_id="test_principal",
         name="Test Principal",
         access_token="test_token_12345",
-        platform_mappings={},
+        platform_mappings={"mock": {"advertiser_id": "test_advertiser"}},
     )
     db_session.add(principal)
     db_session.commit()

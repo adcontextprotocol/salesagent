@@ -98,7 +98,7 @@ class AuditLogger:
             with get_db_session() as db_session:
                 audit_log = AuditLog(
                     tenant_id=tenant_id,
-                    timestamp=datetime.now(UTC).isoformat(),
+                    timestamp=datetime.now(UTC),
                     operation=f"{self.adapter_name}.{operation}",
                     principal_name=principal_name,
                     principal_id=principal_id,
@@ -206,7 +206,7 @@ class AuditLogger:
             with get_db_session() as db_session:
                 audit_log = AuditLog(
                     tenant_id=tenant_id,
-                    timestamp=datetime.now(UTC).isoformat(),
+                    timestamp=datetime.now(UTC),
                     operation=f"SECURITY_VIOLATION:{self.adapter_name}.{operation}",
                     principal_name=None,  # principal_name not available
                     principal_id=principal_id,
