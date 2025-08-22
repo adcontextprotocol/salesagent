@@ -2731,9 +2731,19 @@ if __name__ == "__main__":
     init_db(exit_on_error=True)  # Exit on error when run as main
     # Server is now run via run_server.py script
 
+# Always add health check endpoint
+from fastapi import Request
+from fastapi.responses import JSONResponse
+
+
+@mcp.custom_route("/health", methods=["GET"])
+async def health(request: Request):
+    """Health check endpoint."""
+    return JSONResponse({"status": "healthy", "service": "mcp"})
+
+
 # Add admin UI routes when running unified
 if os.environ.get("ADCP_UNIFIED_MODE"):
-    from fastapi import Request
     from fastapi.middleware.wsgi import WSGIMiddleware
     from fastapi.responses import RedirectResponse
 
@@ -2784,8 +2794,3 @@ if os.environ.get("ADCP_UNIFIED_MODE"):
     async def tenant_root(request: Request, tenant_id: str):
         """Redirect to tenant admin."""
         return RedirectResponse(url=f"/tenant/{tenant_id}/admin/")
-
-    @mcp.custom_route("/health", methods=["GET"])
-    async def health(request: Request):
-        """Unified health check."""
-        return {"status": "healthy", "mode": "unified"}
