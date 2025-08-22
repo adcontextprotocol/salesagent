@@ -185,10 +185,10 @@ class ProductRanker:
 # Helper function to setup path and context for direct calls
 def setup_direct_call():
     """Setup path and create mock context for direct tool calls."""
-    # Add parent directory to path so we can import main.py modules
-    parent_dir = Path(__file__).parent.parent
-    if str(parent_dir) not in sys.path:
-        sys.path.insert(0, str(parent_dir))
+    # Add project root to path so we can import modules
+    project_root = Path(__file__).parent.parent.parent.parent  # Go up to project root
+    if str(project_root) not in sys.path:
+        sys.path.insert(0, str(project_root))
 
     # Create a minimal context that provides what tools need
     class MockContext:
@@ -214,9 +214,9 @@ async def get_products_direct(brief: str, promoted_offering: str) -> list:
 
     try:
         # Import the necessary modules from main.py
-        from config_loader import set_current_tenant
-        from main import get_products, init_db
-        from schemas import GetProductsRequest
+        from src.core.config_loader import set_current_tenant
+        from src.core.main import get_products, init_db
+        from src.core.schemas import GetProductsRequest
 
         # Initialize database if needed
         init_db()
@@ -333,10 +333,10 @@ async def create_media_buy(
 
     try:
 
-        from config_loader import set_current_tenant
-        from main import create_media_buy as create_buy_direct
-        from main import init_db
-        from schemas import CreateMediaBuyRequest, Targeting
+        from src.core.config_loader import set_current_tenant
+        from src.core.main import create_media_buy as create_buy_direct
+        from src.core.main import init_db
+        from src.core.schemas import CreateMediaBuyRequest, Targeting
 
         # Initialize database if needed
         init_db()
@@ -391,10 +391,10 @@ async def check_media_buy_status(context_id: str) -> dict:
     context = setup_direct_call()
 
     try:
-        from config_loader import set_current_tenant
-        from main import check_media_buy_status as check_status_direct
-        from main import init_db
-        from schemas import CheckMediaBuyStatusRequest
+        from src.core.config_loader import set_current_tenant
+        from src.core.main import check_media_buy_status as check_status_direct
+        from src.core.main import init_db
+        from src.core.schemas import CheckMediaBuyStatusRequest
 
         init_db()
         set_current_tenant("default")
@@ -434,10 +434,10 @@ async def get_signals(query: str = None, type: str = None, category: str = None)
     context = setup_direct_call()
 
     try:
-        from config_loader import set_current_tenant
-        from main import get_signals as get_signals_direct
-        from main import init_db
-        from schemas import GetSignalsRequest
+        from src.core.config_loader import set_current_tenant
+        from src.core.main import get_signals as get_signals_direct
+        from src.core.main import init_db
+        from src.core.schemas import GetSignalsRequest
 
         init_db()
         set_current_tenant("default")
@@ -476,10 +476,10 @@ async def add_creative_assets(media_buy_id: str, creatives: list) -> dict:
     context = setup_direct_call()
 
     try:
-        from config_loader import set_current_tenant
-        from main import add_creative_assets as add_assets_direct
-        from main import init_db
-        from schemas import AddCreativeAssetsRequest, Creative
+        from src.core.config_loader import set_current_tenant
+        from src.core.main import add_creative_assets as add_assets_direct
+        from src.core.main import init_db
+        from src.core.schemas import AddCreativeAssetsRequest, Creative
 
         init_db()
         set_current_tenant("default")
