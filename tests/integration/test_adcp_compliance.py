@@ -9,7 +9,13 @@ from pathlib import Path
 # Add the project root to the path
 sys.path.insert(0, str(Path(__file__).parent))
 
-from adcp_agent.agent import add_creative_assets, check_media_buy_status, create_media_buy, get_products, get_signals
+from src.adk.adcp_agent.agent import (
+    add_creative_assets,
+    check_media_buy_status,
+    create_media_buy,
+    get_products,
+    get_signals,
+)
 
 
 async def test_adcp_compliance():
