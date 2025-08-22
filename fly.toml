@@ -9,9 +9,6 @@ primary_region = "iad"
 [build]
   dockerfile = "Dockerfile.fly"
 
-[experimental]
-  cmd = ["python", "run_all_services.py"]
-
 # MCP Server
 [[services]]
   internal_port = 8080

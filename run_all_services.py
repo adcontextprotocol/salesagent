@@ -5,37 +5,111 @@ This allows us to run MCP server, Admin UI, and ADK agent together.
 """
 
 import os
+import signal
 import subprocess
 import sys
 import threading
 import time
 
+# Store process references for cleanup
+processes = []
+
+
+def cleanup(signum=None, frame=None):
+    """Clean up all processes on exit."""
+    print("\nShutting down all services...")
+    for proc in processes:
+        if proc and proc.poll() is None:
+            proc.terminate()
+            try:
+                proc.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+    sys.exit(0)
+
+
+# Register cleanup handlers
+signal.signal(signal.SIGINT, cleanup)
+signal.signal(signal.SIGTERM, cleanup)
+
 
 def run_migrations():
     """Run database migrations before starting services."""
     print("Running database migrations...")
-    subprocess.run([sys.executable, "migrate.py"], check=True)
-    print("✅ Migrations complete")
+    try:
+        result = subprocess.run(
+            [sys.executable, "migrate.py"],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        if result.returncode == 0:
+            print("✅ Migrations complete")
+        else:
+            print(f"⚠️ Migration warnings: {result.stderr}")
+    except Exception as e:
+        print(f"⚠️ Migration error (non-fatal): {e}")
 
 
 def run_mcp_server():
-    """Run the MCP server in a thread."""
+    """Run the MCP server."""
     print("Starting MCP server on port 8080...")
-    subprocess.run([sys.executable, "main.py"])
+    env = os.environ.copy()
+    env["ADCP_SALES_PORT"] = "8080"
+    proc = subprocess.Popen(
+        [sys.executable, "main.py"],
+        env=env,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+    )
+    processes.append(proc)
+
+    # Monitor the process output
+    for line in iter(proc.stdout.readline, b""):
+        if line:
+            print(f"[MCP] {line.decode().rstrip()}")
+    print("MCP server stopped")
 
 
 def run_admin_ui():
-    """Run the Admin UI in a thread."""
+    """Run the Admin UI."""
     print("Starting Admin UI on port 8001...")
-    os.environ["ADMIN_UI_PORT"] = "8001"
-    subprocess.run([sys.executable, "admin_ui.py"])
+    env = os.environ.copy()
+    env["ADMIN_UI_PORT"] = "8001"
+    proc = subprocess.Popen(
+        [sys.executable, "admin_ui.py"],
+        env=env,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+    )
+    processes.append(proc)
+
+    # Monitor the process output
+    for line in iter(proc.stdout.readline, b""):
+        if line:
+            print(f"[Admin] {line.decode().rstrip()}")
+    print("Admin UI stopped")
 
 
 def run_adk_agent():
     """Run the ADK agent web interface."""
     print("Starting ADK agent on port 8091...")
-    time.sleep(5)  # Wait for MCP server to be ready
-    subprocess.run([".venv/bin/adk", "web", "adcp_agent", "--host", "0.0.0.0", "--port", "8091"])
+    time.sleep(10)  # Wait for MCP server to be ready
+
+    env = os.environ.copy()
+    proc = subprocess.Popen(
+        [".venv/bin/adk", "web", "adcp_agent", "--host", "0.0.0.0", "--port", "8091"],
+        env=env,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+    )
+    processes.append(proc)
+
+    # Monitor the process output
+    for line in iter(proc.stdout.readline, b""):
+        if line:
+            print(f"[ADK] {line.decode().rstrip()}")
+    print("ADK agent stopped")
 
 
 def main():
