@@ -9,13 +9,16 @@ primary_region = "iad"
 [build]
   dockerfile = "Dockerfile.fly"
 
-# Single service configuration
+[experimental]
+  cmd = ["python", "run_all_services.py"]
+
+# MCP Server
 [[services]]
-  internal_port = 8000
+  internal_port = 8080
   protocol = "tcp"
   auto_stop_machines = "stop"
   auto_start_machines = true
-  min_machines_running = 0
+  min_machines_running = 1
 
   [services.concurrency]
     type = "connections"
@@ -23,13 +26,52 @@ primary_region = "iad"
     soft_limit = 80
 
   [[services.ports]]
-    port = 80
+    port = 8080
     handlers = ["http"]
-    force_https = true
+
+  [[services.http_checks]]
+    interval = "30s"
+    grace_period = "60s"
+    method = "GET"
+    path = "/health"
+    protocol = "http"
+    timeout = "10s"
+
+# Admin UI
+[[services]]
+  internal_port = 8001
+  protocol = "tcp"
+
+  [services.concurrency]
+    type = "connections"
+    hard_limit = 100
+    soft_limit = 80
 
   [[services.ports]]
-    port = 443
-    handlers = ["tls", "http"]
+    port = 8001
+    handlers = ["http"]
+
+  [[services.http_checks]]
+    interval = "30s"
+    grace_period = "60s"
+    method = "GET"
+    path = "/health"
+    protocol = "http"
+    timeout = "10s"
+
+# ADK Agent Web
+[[services]]
+  internal_port = 8091
+  protocol = "tcp"
+
+  [services.concurrency]
+    type = "connections"
+    hard_limit = 100
+    soft_limit = 80
+
+  [[services.ports]]
+    port = 8091
+    handlers = ["http"]
 
   [[services.http_checks]]
     interval = "30s"
@@ -40,7 +82,7 @@ primary_region = "iad"
     timeout = "10s"
 
 [[vm]]
-  memory = "2gb"
+  memory = "4gb"
   cpu_kind = "shared"
   cpus = 2
 
@@ -48,6 +90,7 @@ primary_region = "iad"
   PRODUCTION = "true"
   ADCP_SALES_PORT = "8080"
   ADMIN_UI_PORT = "8001"
+  ADK_WEB_PORT = "8091"
   DB_TYPE = "postgresql"
 
 [mounts]
