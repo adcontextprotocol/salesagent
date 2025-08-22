@@ -109,7 +109,6 @@ async def test_unified_delivery_completed_filter(sample_principal):
 
 @pytest.mark.asyncio
 @pytest.mark.requires_server
-@pytest.mark.skip(reason="Deprecated endpoint may not exist")
 async def test_deprecated_endpoint_backward_compatibility(sample_principal):
     """Test that deprecated get_all_media_buy_delivery still works (if present)."""
 
