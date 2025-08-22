@@ -64,7 +64,7 @@ def db_session(test_database):
 @pytest.fixture(scope="function")
 def clean_db(test_database):
     """Provide a clean database for each test."""
-    from database_session import get_engine
+    from src.core.database.database_session import get_engine
 
     engine = get_engine()
 
@@ -93,7 +93,7 @@ def clean_db(test_database):
 @pytest.fixture
 def test_tenant(db_session):
     """Create a test tenant."""
-    from models import Tenant
+    from src.core.database.models import Tenant
 
     tenant = Tenant(tenant_id="test_tenant", name="Test Tenant", subdomain="test", is_active=True, ad_server="mock")
     db_session.add(tenant)
@@ -105,7 +105,7 @@ def test_tenant(db_session):
 @pytest.fixture
 def test_principal(db_session, test_tenant):
     """Create a test principal."""
-    from models import Principal
+    from src.core.database.models import Principal
 
     principal = Principal(
         tenant_id=test_tenant.tenant_id,
@@ -123,7 +123,7 @@ def test_principal(db_session, test_tenant):
 @pytest.fixture
 def test_product(db_session, test_tenant):
     """Create a test product."""
-    from models import Product
+    from src.core.database.models import Product
 
     product = Product(
         product_id="test_product",

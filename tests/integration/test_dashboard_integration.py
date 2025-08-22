@@ -29,8 +29,9 @@ def test_db(integration_db):
     # Tables are already created by integration_db fixture
     # No need to call init_db() which expects existing tables
 
-    from database_session import get_engine
     from sqlalchemy import text
+
+    from src.core.database.database_session import get_engine
 
     engine = get_engine()
     conn = engine.connect()
