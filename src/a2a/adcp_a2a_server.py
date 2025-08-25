@@ -8,19 +8,29 @@ No custom protocol code - just business logic.
 import logging
 import os
 import sys
+import uuid
+from functools import wraps
 from typing import Any
 
+# Flask imports for authentication
+from flask import g, jsonify, request
 from python_a2a.models import AgentCard, AgentSkill, Task, TaskState, TaskStatus
 
 # Standard python-a2a imports
 from python_a2a.server import A2AServer
 
-# Add parent directory to path for imports
+# Add parent directories to path for imports
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+# Also add the app root for absolute imports
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
 # Import MCP client for AdCP integration
 from fastmcp.client import Client
 from fastmcp.client.transports import StreamableHttpTransport
+
+# Import database models for authentication
+from core.database.database_session import get_db_session
+from core.database.models import Principal, Tenant
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -41,6 +51,7 @@ class AdCPSalesAgent(A2AServer):
             description=self.description,
             url="http://localhost:8091",
             version=self.version,
+            authentication="bearer-token",  # Indicate auth is required
             skills=[
                 AgentSkill(name="get_products", description="Browse available advertising products and inventory"),
                 AgentSkill(name="create_campaign", description="Create and manage advertising campaigns"),
@@ -54,14 +65,182 @@ class AdCPSalesAgent(A2AServer):
 
         # MCP server configuration
         self.mcp_url = os.getenv("MCP_SERVER_URL", "http://localhost:8080/mcp/")
-        self.mcp_token = os.getenv("MCP_AUTH_TOKEN", "test_principal_token")
+        # Token will be set per request based on authentication
+        self.current_token = None  # Will be set during authenticated requests
+        self.current_tenant = None  # Will be set during authenticated requests
+        self.current_principal = None  # Will be set during authenticated requests
         logger.info(f"AdCP A2A Agent initialized - MCP Server: {self.mcp_url}")
+
+    def require_auth(self, f):
+        """Decorator to check authentication before handling requests."""
+
+        @wraps(f)
+        def decorated(*args, **kwargs):
+            # Get token from various sources
+            token = None
+
+            # 1. Check Authorization header
+            auth_header = request.headers.get("Authorization", "")
+            if auth_header.startswith("Bearer "):
+                token = auth_header[7:]
+
+            # 2. Check custom header
+            if not token:
+                token = request.headers.get("X-Auth-Token")
+
+            # 3. Check query parameter (for CLI compatibility)
+            if not token:
+                token = request.args.get("token")
+
+            if not token:
+                logger.warning(f"No auth token provided for {request.path}")
+                return jsonify({"error": "Authentication required"}), 401
+
+            # Validate token against database
+            try:
+                with get_db_session() as session:
+                    principal = session.query(Principal).filter_by(access_token=token).first()
+
+                    if not principal:
+                        logger.warning(f"Invalid token: {token[:10]}...")
+                        return jsonify({"error": "Invalid authentication token"}), 401
+
+                    # Get tenant
+                    tenant = session.query(Tenant).filter_by(tenant_id=principal.tenant_id).first()
+
+                    if not tenant:
+                        logger.error(f"Tenant not found for principal {principal.principal_id}")
+                        return jsonify({"error": "Tenant configuration error"}), 500
+
+                    # Store in Flask g object and instance variables
+                    g.principal = principal
+                    g.tenant = tenant
+                    g.token = token
+
+                    # Store in instance for use in async methods
+                    self.current_token = token
+                    self.current_tenant = tenant
+                    self.current_principal = principal
+
+                    logger.info(f"Authenticated: {principal.name} (tenant: {tenant.name})")
+            except Exception as e:
+                logger.error(f"Authentication error: {e}")
+                return jsonify({"error": "Authentication failed"}), 500
+
+            return f(*args, **kwargs)
+
+        return decorated
+
+    def setup_routes(self, app):
+        """Set up our own routes with authentication, not calling parent."""
+
+        # Store app reference
+        self.app = app
+
+        # Public endpoints (no auth required)
+        @app.route("/", methods=["GET"])
+        def root_info():
+            """Public endpoint - returns server info."""
+            return jsonify(
+                {
+                    "name": self.agent_card.name,
+                    "description": self.agent_card.description,
+                    "agent_card_url": "/agent.json",
+                    "protocol": "a2a",
+                    "capabilities": self.agent_card.capabilities if hasattr(self.agent_card, "capabilities") else {},
+                    "authentication": self.agent_card.authentication,
+                    "authentication_help": "Use Bearer token in Authorization header, X-Auth-Token header, or ?token= query parameter",
+                }
+            )
+
+        @app.route("/agent.json", methods=["GET"])
+        def get_agent_card():
+            """Public endpoint - returns agent card."""
+            return jsonify(self.agent_card.to_dict())
+
+        @app.route("/health", methods=["GET"])
+        def health_check():
+            """Public endpoint - health check."""
+            return jsonify({"status": "healthy"})
+
+        # Protected endpoints (auth required)
+        @app.route("/tasks/send", methods=["POST"])
+        @self.require_auth
+        def authenticated_task_send():
+            """Protected endpoint - requires authentication."""
+            # Process task with authentication context
+            data = request.json or {}
+
+            # Create task from request data
+            # Ensure message is in the expected format
+            message_content = data.get("message", data.get("text", ""))
+            if isinstance(message_content, str):
+                message_data = {"content": {"text": message_content}}
+            else:
+                message_data = message_content
+
+            task = Task(
+                id=data.get("id", str(uuid.uuid4())), message=message_data, status=TaskStatus(state=TaskState.SUBMITTED)
+            )
+
+            # Process with tenant context
+            result = self.handle_task(task)
+
+            # Return result
+            if hasattr(result, "to_dict"):
+                return jsonify(result.to_dict())
+            else:
+                return jsonify(result)
+
+        @app.route("/tasks/<task_id>", methods=["GET"])
+        @self.require_auth
+        def authenticated_task_get(task_id):
+            """Protected endpoint - requires authentication."""
+            # In production, would fetch task status from database
+            return jsonify(
+                {
+                    "id": task_id,
+                    "status": {"state": "completed"},
+                    "tenant": self.current_tenant.name if self.current_tenant else "unknown",
+                }
+            )
+
+        @app.route("/message", methods=["POST"])
+        @self.require_auth
+        def authenticated_message():
+            """Protected endpoint - requires authentication."""
+            # Process message with authentication context
+            data = request.json or {}
+
+            # Create task from message
+            # Ensure message is in the expected format
+            if isinstance(data, str):
+                message_data = {"content": {"text": data}}
+            elif "content" not in data:
+                # Wrap the entire data as content if it doesn't have content key
+                message_data = {"content": data}
+            else:
+                message_data = data
+
+            task = Task(id=str(uuid.uuid4()), message=message_data, status=TaskStatus(state=TaskState.SUBMITTED))
+
+            # Process with tenant context
+            result = self.handle_task(task)
+
+            # Return result
+            if hasattr(result, "to_dict"):
+                return jsonify(result.to_dict())
+            else:
+                return jsonify(result)
 
     async def get_products(self, query: str = "") -> dict[str, Any]:
         """Get available advertising products."""
         try:
-            # Create MCP client
-            headers = {"x-adcp-auth": self.mcp_token}
+            # Use authenticated token if available, otherwise fall back
+            token = self.current_token if self.current_token else os.getenv("MCP_AUTH_TOKEN", "test_principal_token")
+
+            # Create MCP client with authenticated token
+            headers = {"x-adcp-auth": token}
             transport = StreamableHttpTransport(url=self.mcp_url, headers=headers)
 
             async with Client(transport=transport) as client:
@@ -102,7 +281,9 @@ class AdCPSalesAgent(A2AServer):
     ) -> dict[str, Any]:
         """Create a new advertising campaign."""
         try:
-            headers = {"x-adcp-auth": self.mcp_token}
+            # Use authenticated token
+            token = self.current_token if self.current_token else os.getenv("MCP_AUTH_TOKEN", "test_principal_token")
+            headers = {"x-adcp-auth": token}
             transport = StreamableHttpTransport(url=self.mcp_url, headers=headers)
 
             async with Client(transport=transport) as client:
