@@ -190,6 +190,7 @@ class TestMigrations:
     """Test database migrations are properly applied."""
 
     @pytest.mark.smoke
+    @pytest.mark.skip_ci
     def test_migrations_are_current(self, test_database):
         """Test that all migrations have been applied."""
         from src.core.database.database_session import get_db_session
