@@ -57,6 +57,10 @@ def create_app(config=None):
     # Configuration
     app.secret_key = os.environ.get("FLASK_SECRET_KEY", secrets.token_hex(32))
     app.logger.setLevel(logging.INFO)
+    
+    # Trust proxy headers in production
+    if os.environ.get("PRODUCTION") == "true":
+        app.config["PREFERRED_URL_SCHEME"] = "https"
 
     # Apply any additional config
     if config:
