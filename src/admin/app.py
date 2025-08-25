@@ -29,7 +29,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
-# Custom ProxyFix for handling X-Forwarded-Prefix
+# Custom ProxyFix for handling X-Script-Name and X-Forwarded-Prefix
 class CustomProxyFix:
     """Fix for proxy headers when running behind a reverse proxy with path prefix."""
 
@@ -37,10 +37,21 @@ class CustomProxyFix:
         self.app = app
 
     def __call__(self, environ, start_response):
-        # Handle X-Forwarded-Prefix for path-based routing
-        prefix = environ.get("HTTP_X_FORWARDED_PREFIX", "")
-        if prefix:
-            environ["SCRIPT_NAME"] = prefix
+        # Handle X-Script-Name (standard for mounting path) or X-Forwarded-Prefix
+        script_name = environ.get("HTTP_X_SCRIPT_NAME", "")
+        if not script_name:
+            script_name = environ.get("HTTP_X_FORWARDED_PREFIX", "")
+        
+        if script_name:
+            # Set SCRIPT_NAME so Flask knows it's mounted at this path
+            environ["SCRIPT_NAME"] = script_name
+            # Also ensure PATH_INFO is correct
+            path_info = environ.get("PATH_INFO", "")
+            if path_info.startswith(script_name):
+                environ["PATH_INFO"] = path_info[len(script_name):]
+                if not environ["PATH_INFO"]:
+                    environ["PATH_INFO"] = "/"
+        
         return self.app(environ, start_response)
 
 
