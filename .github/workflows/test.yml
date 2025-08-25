@@ -56,8 +56,7 @@ jobs:
         PYTEST_CURRENT_TEST: true
         ADCP_TESTING: true
       run: |
-        uv run pytest tests/smoke/ -v --tb=short -m smoke || true
-        # Always pass for now - we're fixing tests incrementally
+        uv run pytest tests/smoke/ -v --tb=short -m smoke
 
     - name: Check for skipped tests
       run: |

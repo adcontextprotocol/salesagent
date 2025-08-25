@@ -258,9 +258,6 @@ class AdCPSalesAgent(A2AServer):
                 }
                 result = await client.call_tool("get_products", params)
 
-                # Log the result for debugging
-                logger.info(f"MCP raw result: {result}")
-
                 # The result is a CallToolResult object with structured_content
                 if (
                     result
