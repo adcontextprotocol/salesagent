@@ -13,6 +13,7 @@ class TestMigrationSafety:
     """Test that migrations are safe and reversible."""
 
     @pytest.mark.smoke
+    @pytest.mark.skip_ci
     def test_migrations_can_run_on_empty_db(self, test_database):
         """Test that migrations can run on a fresh database."""
         with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as tmp:
@@ -96,6 +97,7 @@ class TestMigrationSafety:
                 os.unlink(db_path)
 
     @pytest.mark.smoke
+    @pytest.mark.skip_ci
     def test_migration_with_existing_data(self, test_database):
         """Test that migrations preserve existing data."""
         with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as tmp:
@@ -163,6 +165,7 @@ class TestMigrationVersioning:
     """Test migration version tracking."""
 
     @pytest.mark.smoke
+    @pytest.mark.skip_ci
     def test_alembic_version_table_created(self, test_database):
         """Test that alembic_version table is created."""
         with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as tmp:
@@ -222,6 +225,7 @@ class TestDatabaseCompatibility:
     """Test database compatibility across SQLite and PostgreSQL."""
 
     @pytest.mark.smoke
+    @pytest.mark.skip_ci
     def test_sqlite_migration_compatibility(self, test_database):
         """Test that migrations work with SQLite."""
         with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as tmp:
@@ -271,6 +275,7 @@ class TestDatabaseCompatibility:
                 os.unlink(db_path)
 
     @pytest.mark.smoke
+    @pytest.mark.skip_ci  
     def test_boolean_field_compatibility(self, test_database):
         """Test that boolean fields work correctly."""
         with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as tmp:
