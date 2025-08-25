@@ -244,7 +244,7 @@ class TestDatabaseCompatibility:
             if result.returncode != 0:
                 if "No module named" in result.stderr or "alembic" in result.stderr.lower():
                     pytest.skip("Migration dependencies not available in CI")
-                assert False, f"Migration failed: {result.stderr}", f"SQLite migration failed: {result.stderr}"
+                assert False, f"SQLite migration failed: {result.stderr}"
 
             # Test SQLite-specific features
             engine = create_engine(f"sqlite:///{db_path}")
