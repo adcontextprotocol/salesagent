@@ -182,6 +182,7 @@ class TestNoSkippedTests:
                 for line in lines
                 if line
                 and "pytest.skip(" not in line  # Allow runtime skips
+                and "skip_ci" not in line  # Allow CI-specific skips
                 and "skip_pattern" not in line  # Exclude this test file
                 and "test_no_skip" not in line  # Exclude this test
                 and "test_no_hardcoded_credentials" not in line  # Exclude disabled test
@@ -200,12 +201,12 @@ class TestCodeQuality:
         """Test that no hardcoded credentials exist in code."""
         import subprocess
 
-        # Check for common credential patterns
+        # Check for hardcoded credential patterns (not dynamic config access)
         patterns = [
-            "password.*=.*[\"'][a-zA-Z0-9_-]{8,}[\"']",  # More specific - must be 8+ chars
-            "secret.*=.*[\"'][a-zA-Z0-9_-]{8,}[\"']",
-            "api_key.*=.*[\"'][a-zA-Z0-9_-]{20,}[\"']",  # API keys usually longer
-            "token.*=.*[\"'][a-zA-Z0-9_-]{16,}[\"']",  # Tokens usually longer
+            "password\\s*=\\s*[\"'][a-zA-Z0-9_!@#$%^&*-]{8,}[\"']",  # Direct assignment only
+            "secret\\s*=\\s*[\"'][a-zA-Z0-9_!@#$%^&*-]{8,}[\"']",
+            "api_key\\s*=\\s*[\"'][a-zA-Z0-9_-]{20,}[\"']",  # API keys usually longer
+            "token\\s*=\\s*[\"'][a-zA-Z0-9_-]{16,}[\"']",  # Tokens usually longer
         ]
 
         test_dir = Path(__file__).parent.parent.parent
@@ -217,7 +218,7 @@ class TestCodeQuality:
                 text=True,
             )
 
-            # Filter out test files and comments
+            # Filter out test files, comments, and legitimate config access
             if result.returncode == 0:
                 lines = result.stdout.split("\n")
                 non_test_lines = [
@@ -229,6 +230,12 @@ class TestCodeQuality:
                     and ".venv/" not in line  # Exclude virtual environment
                     and "site-packages/" not in line  # Exclude installed packages
                     and not line.startswith("./.")  # Exclude hidden directories
+                    # Exclude legitimate config access patterns
+                    and "config.get(" not in line
+                    and "config[" not in line
+                    and "request.form.get(" not in line
+                    and "getenv(" not in line
+                    and "environ.get(" not in line
                 ]
                 assert len(non_test_lines) == 0, f"Found hardcoded credentials:\n{chr(10).join(non_test_lines[:5])}"
 

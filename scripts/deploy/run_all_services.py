@@ -92,25 +92,37 @@ def run_admin_ui():
     print("Admin UI stopped")
 
 
-def run_adk_agent():
-    """Run the ADK agent web interface."""
-    print("Starting ADK agent on port 8091...")
-    time.sleep(10)  # Wait for MCP server to be ready
+def run_a2a_server():
+    """Run the A2A server for agent-to-agent interactions."""
+    try:
+        print("Starting A2A server on port 8091...")
+        print("[A2A] Waiting 10 seconds for MCP server to be ready...")
+        time.sleep(10)  # Wait for MCP server to be ready
 
-    env = os.environ.copy()
-    proc = subprocess.Popen(
-        [".venv/bin/adk", "web", "src.adk.adcp_agent", "--host", "0.0.0.0", "--port", "8091"],
-        env=env,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-    )
-    processes.append(proc)
+        env = os.environ.copy()
+        env["A2A_MOCK_MODE"] = "true"  # Use mock mode in production for now
 
-    # Monitor the process output
-    for line in iter(proc.stdout.readline, b""):
-        if line:
-            print(f"[ADK] {line.decode().rstrip()}")
-    print("ADK agent stopped")
+        print("[A2A] Launching standard python-a2a server...")
+        # Use standard python-a2a server implementation - no custom protocol code
+        proc = subprocess.Popen(
+            [sys.executable, "src/a2a/adcp_a2a_server.py"],
+            env=env,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+        )
+        processes.append(proc)
+
+        print("[A2A] Process started, monitoring output...")
+        # Monitor the process output
+        for line in iter(proc.stdout.readline, b""):
+            if line:
+                print(f"[A2A] {line.decode().rstrip()}")
+        print("A2A server stopped")
+    except Exception as e:
+        print(f"[A2A] ERROR: Failed to start A2A server: {e}")
+        import traceback
+
+        traceback.print_exc()
 
 
 def run_nginx():
@@ -162,10 +174,10 @@ def main():
     admin_thread.start()
     threads.append(admin_thread)
 
-    # ADK Agent thread
-    adk_thread = threading.Thread(target=run_adk_agent, daemon=True)
-    adk_thread.start()
-    threads.append(adk_thread)
+    # A2A Server thread for agent-to-agent communication
+    a2a_thread = threading.Thread(target=run_a2a_server, daemon=True)
+    a2a_thread.start()
+    threads.append(a2a_thread)
 
     # Give services time to start before nginx
     time.sleep(5)
@@ -178,7 +190,7 @@ def main():
     print("\n✅ All services started with unified routing:")
     print("  - MCP Server: http://localhost:8000/mcp")
     print("  - Admin UI: http://localhost:8000/admin")
-    print("  - ADK Agent: http://localhost:8000/a2a")
+    print("  - A2A Server: http://localhost:8000/a2a")
     print("\nPress Ctrl+C to stop all services")
 
     # Keep the main thread alive
