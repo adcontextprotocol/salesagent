@@ -1,14 +1,34 @@
 # AdCP Sales Agent Server - Development Guide
 
+## 🚨 DEPLOYMENT ARCHITECTURE - CRITICAL TO UNDERSTAND 🚨
+
+This project has **TWO COMPLETELY SEPARATE** deployment environments:
+
+### 1. LOCAL DEVELOPMENT (Docker Compose)
+- **Control**: `docker-compose up/down`
+- **URLs**: localhost:8001 (Admin), localhost:8080 (MCP), localhost:8091 (A2A)
+- **Database**: Local PostgreSQL container on port 5526
+- **Config**: `docker-compose.yml`, `.env`
+- **Purpose**: Development and testing only
+
+### 2. PRODUCTION (Fly.io)
+- **Control**: `fly deploy`, `fly status`, `fly logs`
+- **URL**: https://adcp-sales-agent.fly.dev
+- **Database**: Fly PostgreSQL cluster (completely separate)
+- **Config**: `config/fly/*.toml`
+- **Status**: ✅ **CURRENTLY DEPLOYED AND RUNNING**
+- **App Name**: `adcp-sales-agent`
+
+**⚠️ IMPORTANT**: Docker and Fly.io are INDEPENDENT. Starting/stopping Docker does NOT affect production on Fly.io!
+
 ## Project Overview
 
 This is a Python-based reference implementation of the Advertising Context Protocol (AdCP) V2.3 sales agent. It demonstrates how publishers expose advertising inventory to AI-driven clients through a standardized MCP (Model Context Protocol) interface.
 
-**Primary Deployment Method**: Docker Compose with PostgreSQL, MCP Server, and Admin UI
-
 The server provides:
 - **MCP Server**: FastMCP-based server exposing tools for AI agents (port 8080)
 - **Admin UI**: Secure web interface with Google OAuth authentication (port 8001)
+- **A2A Server**: Standard python-a2a server for agent-to-agent communication (port 8091)
 - **Multi-Tenant Architecture**: Database-backed tenant isolation with subdomain routing
 - **Advanced Targeting**: Comprehensive targeting system with overlay and managed-only dimensions
 - **Creative Management**: Auto-approval workflows, creative groups, and admin review
@@ -40,6 +60,13 @@ The server provides:
 - Context parameter provides access to HTTP request headers
 - Tools are exposed as MCP methods
 
+### 4. A2A Protocol Support
+- Standard `python-a2a` library implementation
+- No custom protocol code - using library's base classes only
+- Supports both REST and JSON-RPC transports
+- Compatible with `a2a` CLI and other standard A2A clients
+- Intelligent response handling for product queries
+
 ## Core Components
 
 ### `main.py` - Server Implementation
@@ -60,7 +87,22 @@ The server provides:
 - `google_ad_manager.py`: GAM integration with detailed API logging
 - Each adapter accepts a `Principal` object for cleaner architecture
 
+### `src/a2a/adcp_a2a_server.py` - A2A Server
+- Standard `python-a2a` server implementation
+- Extends `A2AServer` base class from python-a2a library
+- Handles product, targeting, and pricing queries
+- Integrates with MCP server for real data when available
+- Uses Waitress WSGI server for production reliability
+
 ## Recent Major Changes
+
+### A2A Protocol Integration with python-a2a (Latest)
+- **Standard Library**: Now using `python-a2a` library for all A2A protocol handling
+- **No Custom Protocol Code**: Removed all custom protocol implementations
+- **Server Implementation**: Using `python_a2a.server.A2AServer` base class
+- **Full Compatibility**: Works with `a2a` CLI from python-a2a out of the box
+- **Intelligent Responses**: Server responds to product, targeting, and pricing queries
+- **Production Deployment**: Live at https://adcp-sales-agent.fly.dev/a2a
 
 ### AdCP v2.4 Protocol Updates
 - **Renamed Endpoints**: `list_products` renamed to `get_products` to align with signals agent spec
@@ -240,30 +282,50 @@ Tests marked with `@pytest.mark.requires_server` or `@pytest.mark.skip_ci` are a
 
 ## Deployment
 
-### Docker Deployment
+### LOCAL Docker Deployment (Development Only)
 ```bash
-# Build and run
-docker-compose build
+# Start local development environment
 docker-compose up -d
 
 # Check health
 docker-compose ps
 docker-compose logs --tail=50
+
+# Stop local environment
+docker-compose down
+
+# NOTE: This is LOCAL ONLY - does not affect Fly.io production!
 ```
 
-### Fly.io Deployment
+### PRODUCTION Fly.io Deployment
 ```bash
-# Deploy to Fly.io
-fly deploy
+# Check current production status
+fly status --app adcp-sales-agent
 
-# Set secrets
-fly secrets set GEMINI_API_KEY="your-key"
-fly secrets set GOOGLE_CLIENT_ID="your-client-id"
-fly secrets set GOOGLE_CLIENT_SECRET="your-secret"
+# Deploy changes to production
+fly deploy --app adcp-sales-agent
 
-# View logs
-fly logs
+# View production logs
+fly logs --app adcp-sales-agent
+
+# SSH into production (BE CAREFUL!)
+fly ssh console --app adcp-sales-agent
+
+# Set/update secrets in production
+fly secrets set GEMINI_API_KEY="your-key" --app adcp-sales-agent
+
+# IMPORTANT: Production database is separate from local!
+# Production URL: https://adcp-sales-agent.fly.dev
 ```
+
+### Deployment Checklist Before Going to Production
+1. ✅ Test changes locally with `docker-compose up`
+2. ✅ Run tests: `uv run pytest`
+3. ✅ Check migrations work: `uv run python migrate.py`
+4. ✅ Verify no hardcoded secrets or debug code
+5. ✅ Deploy: `fly deploy --app adcp-sales-agent`
+6. ✅ Monitor logs: `fly logs --app adcp-sales-agent`
+7. ✅ Verify health: `fly status --app adcp-sales-agent`
 
 ## Support
 

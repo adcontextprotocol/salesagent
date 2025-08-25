@@ -1,6 +1,12 @@
 #!/bin/bash
 # setup_conductor_workspace.sh - Automated setup for Conductor workspaces
 
+# Add .venv/bin to PATH if it exists and not already added
+if [ -d ".venv/bin" ] && [[ ":$PATH:" != *":.venv/bin:"* ]]; then
+    export PATH="$(pwd)/.venv/bin:$PATH"
+    echo "✓ Added .venv/bin to PATH for this session"
+fi
+
 # Check if Conductor environment variables are set
 if [ -z "$CONDUCTOR_WORKSPACE_NAME" ]; then
     echo "Error: This script should be run within a Conductor workspace"
@@ -376,10 +382,42 @@ if grep -q "ui-tests" pyproject.toml 2>/dev/null; then
     fi
 fi
 
+# Create activation script for workspace
+echo ""
+echo "Creating workspace activation script..."
+cat > activate.sh << 'EOF'
+#!/bin/bash
+# Activation script for Conductor workspace
+
+# Add .venv/bin to PATH if it exists
+if [ -d ".venv/bin" ]; then
+    export PATH="$(pwd)/.venv/bin:$PATH"
+    echo "✓ Added .venv/bin to PATH"
+fi
+
+# Load environment variables from .env
+if [ -f ".env" ]; then
+    set -a
+    source .env
+    set +a
+    echo "✓ Loaded environment variables from .env"
+fi
+
+echo ""
+echo "Conductor workspace activated!"
+echo "You can now run commands directly:"
+echo "  a2a send http://localhost:8091 'Hello'"
+echo "  pytest"
+echo "  pre-commit run --all-files"
+EOF
+chmod +x activate.sh
+echo "✓ Created activate.sh script"
+
 echo ""
 echo "Setup complete! Next steps:"
-echo "1. Review .env file and ensure GEMINI_API_KEY is set"
-echo "2. Build and start services:"
+echo "1. Activate the workspace: source ./activate.sh"
+echo "2. Review .env file and ensure GEMINI_API_KEY is set"
+echo "3. Build and start services:"
 echo "   docker compose build"
 echo "   docker compose up -d"
 echo ""
