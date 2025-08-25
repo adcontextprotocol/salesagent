@@ -6,6 +6,7 @@ import secrets
 
 from flask import Flask, request
 from flask_socketio import SocketIO, join_room
+from werkzeug.middleware.proxy_fix import ProxyFix as WerkzeugProxyFix
 
 from src.admin.blueprints.adapters import adapters_bp
 from src.admin.blueprints.api import api_bp
@@ -28,25 +29,18 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
-class ProxyFix:
-    """Fix for proxy headers when running behind a reverse proxy."""
+# Custom ProxyFix for handling X-Forwarded-Prefix
+class CustomProxyFix:
+    """Fix for proxy headers when running behind a reverse proxy with path prefix."""
 
     def __init__(self, app):
         self.app = app
 
     def __call__(self, environ, start_response):
-        # Handle X-Forwarded-* headers
-        scheme = environ.get("HTTP_X_FORWARDED_PROTO", "")
-        host = environ.get("HTTP_X_FORWARDED_HOST", "")
+        # Handle X-Forwarded-Prefix for path-based routing
         prefix = environ.get("HTTP_X_FORWARDED_PREFIX", "")
-
-        if scheme:
-            environ["wsgi.url_scheme"] = scheme
-        if host:
-            environ["HTTP_HOST"] = host
         if prefix:
             environ["SCRIPT_NAME"] = prefix
-
         return self.app(environ, start_response)
 
 
@@ -66,8 +60,16 @@ def create_app(config=None):
     if config:
         app.config.update(config)
 
-    # Apply proxy fix
-    app.wsgi_app = ProxyFix(app.wsgi_app)
+    # Apply proxy fixes for production
+    if os.environ.get("PRODUCTION") == "true":
+        # Use Werkzeug's ProxyFix to handle X-Forwarded headers
+        # x_for=1 for X-Forwarded-For, x_proto=1 for X-Forwarded-Proto, x_host=1 for X-Forwarded-Host
+        app.wsgi_app = WerkzeugProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_prefix=0)
+        # Apply custom fix for X-Forwarded-Prefix  
+        app.wsgi_app = CustomProxyFix(app.wsgi_app)
+    else:
+        # In development, still apply custom proxy fix if needed
+        app.wsgi_app = CustomProxyFix(app.wsgi_app)
 
     # Initialize OAuth
     init_oauth(app)
