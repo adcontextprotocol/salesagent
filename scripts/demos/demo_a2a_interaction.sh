@@ -1,8 +1,10 @@
 #!/bin/bash
 # Demo script showing a2a CLI interaction with our AdCP A2A server
 
-# Source the activation script to get a2a in PATH
-source ./activate.sh 2>/dev/null
+# Add .venv/bin to PATH if needed
+if [ -d ".venv/bin" ]; then
+    export PATH="$(pwd)/.venv/bin:$PATH"
+fi
 
 echo "=== AdCP A2A Server Interaction Demo ==="
 echo ""
