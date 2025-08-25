@@ -1,0 +1,23 @@
+{
+  "servers": {
+    "adcp": "https://adcp-sales-agent.fly.dev/a2a",
+    "local": "http://localhost:8091"
+  },
+  "handlers": {
+    "adcp_sales_agent": {
+      "type": "a2a_server.tasks.handlers.chuk.chuk_agent_handler.ChukAgentHandler",
+      "agent": "src.a2a.adcp_agent.create_agent",
+      "name": "AdCP Sales Agent",
+      "description": "AdCP Sales Agent for advertising inventory management",
+      "enable_sessions": true,
+      "enable_tools": false,
+      "provider": "custom",
+      "model": "adcp-mcp-backend"
+    }
+  },
+  "host": "0.0.0.0",
+  "port": 8091,
+  "cors_enabled": true,
+  "cors_origins": ["*"],
+  "debug": false
+}
