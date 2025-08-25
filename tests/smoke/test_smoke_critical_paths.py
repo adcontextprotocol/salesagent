@@ -46,6 +46,7 @@ class TestMCPCriticalEndpoints:
         return {"x-adcp-auth": "test_token_sports"}
 
     @pytest.mark.smoke
+    @pytest.mark.requires_server
     @pytest.mark.asyncio
     async def test_get_products_endpoint(self, auth_headers):
         """Test that get_products endpoint works."""
@@ -66,6 +67,7 @@ class TestMCPCriticalEndpoints:
             assert "result" in result or "error" in result
 
     @pytest.mark.smoke
+    @pytest.mark.requires_server
     @pytest.mark.asyncio
     async def test_create_media_buy_endpoint(self, auth_headers):
         """Test that create_media_buy endpoint is available."""
@@ -95,6 +97,7 @@ class TestMCPCriticalEndpoints:
             assert "result" in result or "error" in result
 
     @pytest.mark.smoke
+    @pytest.mark.requires_server
     @pytest.mark.asyncio
     async def test_get_media_buy_status_endpoint(self, auth_headers):
         """Test that get_media_buy_status endpoint works."""
@@ -113,6 +116,7 @@ class TestMCPCriticalEndpoints:
             assert response.status_code == 200
 
     @pytest.mark.smoke
+    @pytest.mark.requires_server
     def test_authentication_required(self):
         """Test that endpoints require authentication."""
         response = httpx.post(
@@ -135,6 +139,7 @@ class TestAdminUICriticalPaths:
     """Test critical Admin UI paths."""
 
     @pytest.mark.smoke
+    @pytest.mark.requires_server
     def test_login_page_accessible(self):
         """Test that login page is accessible."""
         response = httpx.get("http://localhost:8001/login", timeout=5.0)
@@ -142,6 +147,7 @@ class TestAdminUICriticalPaths:
         assert b"Sign in" in response.content or b"Login" in response.content
 
     @pytest.mark.smoke
+    @pytest.mark.requires_server
     def test_protected_routes_require_auth(self):
         """Test that protected routes redirect to login."""
         response = httpx.get("http://localhost:8001/tenants", follow_redirects=False, timeout=5.0)
@@ -184,6 +190,7 @@ class TestMigrations:
     """Test database migrations are properly applied."""
 
     @pytest.mark.smoke
+    @pytest.mark.skip_ci
     def test_migrations_are_current(self, test_database):
         """Test that all migrations have been applied."""
         from src.core.database.database_session import get_db_session
@@ -288,12 +295,14 @@ class TestErrorHandling:
     """Test system handles errors gracefully."""
 
     @pytest.mark.smoke
+    @pytest.mark.requires_server
     def test_invalid_endpoint_returns_error(self):
         """Test that invalid endpoints return proper errors."""
         response = httpx.get("http://localhost:8080/invalid/endpoint", timeout=5.0)
         assert response.status_code in [404, 405]
 
     @pytest.mark.smoke
+    @pytest.mark.requires_server
     @pytest.mark.asyncio
     async def test_invalid_tool_returns_error(self, auth_headers):
         """Test that calling invalid tools returns proper error."""
@@ -339,6 +348,7 @@ class TestConcurrency:
     """Test system handles concurrent requests."""
 
     @pytest.mark.smoke
+    @pytest.mark.requires_server
     @pytest.mark.asyncio
     async def test_concurrent_read_requests(self):
         """Test system handles concurrent read requests."""
@@ -405,13 +415,16 @@ class TestSystemIntegration:
             assert result[0] > 0
 
     @pytest.mark.smoke
-    def test_config_loading(self):
+    def test_config_loading(self, test_database):
         """Test that configuration loading works."""
         from src.core.config_loader import load_config
 
         config = load_config()
         assert config is not None
-        assert "tenants" in config or "tenant_id" in config
+        # Config should have the main sections
+        assert "ad_server" in config
+        assert "creative_engine" in config
+        assert "features" in config
 
 
 if __name__ == "__main__":

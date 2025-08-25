@@ -60,12 +60,12 @@ ENV PYTHONUNBUFFERED=1
 ENV ADCP_PORT=8080
 ENV ADCP_HOST=0.0.0.0
 
-# Expose ports (MCP, Admin UI, ADK)
+# Expose ports (MCP, Admin UI, A2A)
 EXPOSE 8080 8001 8091
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
     CMD curl -f http://localhost:8080/health || exit 1
 
-# Default command - can be overridden in docker-compose
-CMD ["./scripts/deploy/entrypoint.sh"]
+# Use ENTRYPOINT to ensure the script runs
+ENTRYPOINT ["/bin/bash", "./scripts/deploy/entrypoint.sh"]

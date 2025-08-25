@@ -67,6 +67,9 @@ def init_db(exit_on_error=False):
             secrets.token_urlsafe(32)
 
             # Create default tenant
+            from datetime import datetime
+
+            now = datetime.utcnow()
             default_tenant = Tenant(
                 tenant_id="default",
                 name="Default Publisher",
@@ -79,6 +82,8 @@ def init_db(exit_on_error=False):
                 admin_token=admin_token,
                 human_review_required=True,
                 auto_approve_formats=["display_300x250", "display_728x90", "display_320x50"],
+                created_at=now,
+                updated_at=now,
             )
             session.add(default_tenant)
 
@@ -91,12 +96,7 @@ def init_db(exit_on_error=False):
                 tenant_id="default",
                 principal_id="demo_advertiser",
                 name="Demo Advertiser",
-                platform_mappings={
-                    "gam_advertiser_id": 99999,
-                    "kevel_advertiser_id": "demo-advertiser",
-                    "triton_advertiser_id": "ADV-DEMO-001",
-                    "mock_advertiser_id": "mock-demo",
-                },
+                platform_mappings={"mock": {"advertiser_id": "mock-demo"}},
                 access_token="demo_token_123",
             )
             session.add(demo_principal)

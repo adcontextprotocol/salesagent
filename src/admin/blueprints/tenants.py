@@ -520,15 +520,38 @@ def create_principal(tenant_id):
                                 "advertiser_id": gam_advertiser_id,
                                 "advertiser_name": form_data.get("gam_advertiser_name", ""),
                             }
+                        else:
+                            # GAM but no advertiser ID provided, use default
+                            platform_mappings["google_ad_manager"] = {
+                                "advertiser_id": f"gam_{principal_id[:8]}",
+                                "advertiser_name": form_data["name"],
+                            }
+                    elif adapter_config_obj.adapter_type == "mock":
+                        # For mock adapter, create a default mapping
+                        platform_mappings["mock"] = {
+                            "advertiser_id": f"mock_adv_{principal_id[:8]}",
+                            "advertiser_name": form_data["name"],
+                        }
+                    else:
+                        # For other adapters, create a basic mapping
+                        platform_mappings[adapter_config_obj.adapter_type] = {
+                            "advertiser_id": f"{adapter_config_obj.adapter_type}_{principal_id[:8]}",
+                            "advertiser_name": form_data["name"],
+                        }
+                else:
+                    # Default to mock if no adapter configured
+                    platform_mappings["mock"] = {
+                        "advertiser_id": f"mock_adv_{principal_id[:8]}",
+                        "advertiser_name": form_data["name"],
+                    }
 
                 principal = Principal(
                     principal_id=principal_id,
                     tenant_id=tenant_id,
                     name=form_data["name"],
                     access_token=access_token,
-                    platform_mappings=json.dumps(platform_mappings) if platform_mappings else None,
+                    platform_mappings=json.dumps(platform_mappings),  # Always provide JSON, even if empty dict
                     created_at=datetime.now(UTC),
-                    updated_at=datetime.now(UTC),
                 )
                 db_session.add(principal)
                 db_session.commit()
