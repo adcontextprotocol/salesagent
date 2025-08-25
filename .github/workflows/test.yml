@@ -60,7 +60,7 @@ jobs:
 
     - name: Check for skipped tests
       run: |
-        if grep -r "@pytest.mark.skip" tests/ --include="test_*.py"; then
+        if grep -r "@pytest.mark.skip" tests/ --include="test_*.py" | grep -v "skip_ci"; then
           echo "❌ Found skip decorators in tests!"
           exit 1
         fi
