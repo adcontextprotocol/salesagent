@@ -55,6 +55,9 @@ def create_app(config=None):
     # Trust proxy headers in production
     if os.environ.get("PRODUCTION") == "true":
         app.config["PREFERRED_URL_SCHEME"] = "https"
+        # Force external URLs to use HTTPS
+        app.config["SERVER_NAME"] = None  # Let Flask detect from request
+        app.config["APPLICATION_ROOT"] = "/"
 
     # Apply any additional config
     if config:
