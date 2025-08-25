@@ -294,6 +294,7 @@ class TestErrorHandling:
     """Test system handles errors gracefully."""
 
     @pytest.mark.smoke
+    @pytest.mark.requires_server
     def test_invalid_endpoint_returns_error(self):
         """Test that invalid endpoints return proper errors."""
         response = httpx.get("http://localhost:8080/invalid/endpoint", timeout=5.0)
