@@ -52,7 +52,13 @@ class DatabaseConfig:
         parsed = urlparse(url)
 
         if parsed.scheme == "sqlite":
-            return {"type": "sqlite", "path": parsed.path.lstrip("/"), "check_same_thread": False}
+            path = parsed.path.lstrip("/")
+            # Ensure directory exists for SQLite database file
+            if path:
+                db_dir = os.path.dirname(path)
+                if db_dir:
+                    os.makedirs(db_dir, exist_ok=True)
+            return {"type": "sqlite", "path": path, "check_same_thread": False}
 
         elif parsed.scheme in ["postgres", "postgresql"]:
             return {
