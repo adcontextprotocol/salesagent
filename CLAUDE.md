@@ -93,6 +93,8 @@ The server provides:
 - Handles product, targeting, and pricing queries
 - Integrates with MCP server for real data when available
 - Uses Waitress WSGI server for production reliability
+- **Authentication**: Supports Bearer tokens via Authorization headers
+- **Security**: Query parameter auth deprecated in favor of headers
 
 ## Recent Major Changes
 
@@ -100,7 +102,8 @@ The server provides:
 - **Standard Library**: Now using `python-a2a` library for all A2A protocol handling
 - **No Custom Protocol Code**: Removed all custom protocol implementations
 - **Server Implementation**: Using `python_a2a.server.A2AServer` base class
-- **Full Compatibility**: Works with `a2a` CLI from python-a2a out of the box
+- **Authentication**: Bearer token auth via Authorization headers (secure approach)
+- **Client Script**: `scripts/a2a_query.py` provides authenticated CLI access
 - **Intelligent Responses**: Server responds to product, targeting, and pricing queries
 - **Production Deployment**: Live at https://adcp-sales-agent.fly.dev/a2a
 
