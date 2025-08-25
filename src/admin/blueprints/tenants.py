@@ -2,11 +2,13 @@
 
 import json
 import logging
+import os
 import secrets
 import uuid
 from datetime import UTC, datetime
 
 from flask import Blueprint, flash, jsonify, redirect, render_template, request, session, url_for
+from sqlalchemy import and_
 
 from src.admin.utils import get_tenant_config_from_db, require_auth, require_tenant_access
 from src.core.database.database_session import get_db_session
@@ -46,10 +48,13 @@ def dashboard(tenant_id):
 
             products_count = db_session.query(Product).filter_by(tenant_id=tenant_id).count()
 
-            # Get recent media buys
+            # Get recent media buys - use outerjoin to handle missing principals
             recent_buys = (
                 db_session.query(MediaBuy, Principal)
-                .join(Principal, MediaBuy.principal_id == Principal.principal_id)
+                .outerjoin(
+                    Principal,
+                    and_(MediaBuy.principal_id == Principal.principal_id, MediaBuy.tenant_id == Principal.tenant_id),
+                )
                 .filter(MediaBuy.tenant_id == tenant_id)
                 .order_by(MediaBuy.created_at.desc())
                 .limit(10)
@@ -156,8 +161,15 @@ def dashboard(tenant_id):
             )
 
     except Exception as e:
-        logger.error(f"Error loading tenant dashboard: {e}", exc_info=True)
-        flash("Error loading dashboard", "error")
+        import traceback
+
+        error_detail = traceback.format_exc()
+        logger.error(f"Error loading tenant dashboard: {e}\nFull traceback:\n{error_detail}")
+        # Show more specific error in development/debugging
+        if os.environ.get("DEBUG_ERRORS") == "true":
+            flash(f"Error loading dashboard: {str(e)}", "error")
+        else:
+            flash("Error loading dashboard", "error")
         return redirect(url_for("core.index"))
 
 

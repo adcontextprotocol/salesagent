@@ -210,8 +210,13 @@ def mcp_test():
                 }
             )
 
-    # Get server URL - use correct port from environment
-    server_port = int(os.environ.get("ADCP_SALES_PORT", 8005))
-    server_url = f"http://localhost:{server_port}/mcp/"
+    # Get server URL - use production URL if in production, otherwise localhost
+    if os.environ.get("PRODUCTION") == "true":
+        # In production, the MCP server is accessible at the main domain root
+        server_url = "https://adcp-sales-agent.fly.dev/mcp/"
+    else:
+        # In development, use localhost with the configured port
+        server_port = int(os.environ.get("ADCP_SALES_PORT", 8005))
+        server_url = f"http://localhost:{server_port}/mcp/"
 
     return render_template("mcp_test.html", tenants=tenants, principals=principals, server_url=server_url)
