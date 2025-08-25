@@ -45,7 +45,7 @@ Our `a2a_query.py` script solves these issues by using secure Authorization head
 The server supports these authentication methods (in order of security preference):
 
 1. **Authorization Header** `Authorization: Bearer TOKEN` - Most secure, recommended
-2. **Custom Header** `X-Auth-Token: TOKEN` - Secure alternative  
+2. **Custom Header** `X-Auth-Token: TOKEN` - Secure alternative
 3. **Query Parameter** `?token=TOKEN` - Less secure, avoid in production
 4. **Environment Variable** `A2A_AUTH_TOKEN` - Server-side fallback only
 
@@ -100,7 +100,7 @@ for artifact in data.get("artifacts", []):
 # Query products
 ./scripts/a2a_query.py "What products do you have?"
 
-# Create a campaign  
+# Create a campaign
 ./scripts/a2a_query.py "Create a video ad campaign with $5000 budget for next month"
 
 # Check targeting options

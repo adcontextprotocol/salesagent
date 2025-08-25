@@ -181,19 +181,28 @@ class FormValidator:
         return None
 
 
-def validate_form_data(data: dict[str, Any], validators: dict[str, list]) -> dict[str, str]:
+def validate_form_data(data: dict[str, Any], validators: dict[str, list] | list[str]) -> tuple[bool, list[str]]:
     """
     Validate form data using specified validators.
 
     Args:
         data: Form data dictionary
-        validators: Dictionary mapping field names to list of validator functions
+        validators: Either a dictionary mapping field names to list of validator functions,
+                   or a list of required field names for simple presence validation
 
     Returns:
-        Dictionary of field names to error messages (empty if no errors)
+        Tuple of (is_valid, list of error messages)
     """
-    errors = {}
+    errors = []
 
+    # Handle simple required field validation when passed a list
+    if isinstance(validators, list):
+        for field in validators:
+            if not data.get(field, "").strip():
+                errors.append(f"{field.title()} is required")
+        return (len(errors) == 0, errors)
+
+    # Handle dictionary of validators
     for field, field_validators in validators.items():
         value = data.get(field, "")
 
@@ -201,10 +210,10 @@ def validate_form_data(data: dict[str, Any], validators: dict[str, list]) -> dic
             if callable(validator):
                 error = validator(value)
                 if error:
-                    errors[field] = error
+                    errors.append(f"{field.title()}: {error}")
                     break  # Stop on first error for this field
 
-    return errors
+    return (len(errors) == 0, errors)
 
 
 def sanitize_json(json_str: str) -> str:
