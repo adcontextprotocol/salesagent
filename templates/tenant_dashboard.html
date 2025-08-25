@@ -367,7 +367,7 @@
         </p>
     </div>
     <div style="display: flex; gap: 0.75rem;">
-        <a href="/tenant/{{ tenant.tenant_id }}/settings" class="btn btn-secondary">
+        <a href="{{ script_name }}/tenant/{{ tenant.tenant_id }}/settings" class="btn btn-secondary">
             <i class="fas fa-cog"></i> Settings
         </a>
         <button onclick="refreshDashboard()" class="btn">
@@ -445,7 +445,7 @@
         <div class="quick-actions">
             <h3>Quick Actions</h3>
             <div class="action-grid">
-                <a href="/tenant/{{ tenant.tenant_id }}/settings" class="action-button">
+                <a href="{{ script_name }}/tenant/{{ tenant.tenant_id }}/settings" class="action-button">
                     <div class="action-icon settings">⚙️</div>
                     <div>
                         <div style="font-weight: 600;">Configuration</div>
@@ -453,7 +453,7 @@
                     </div>
                 </a>
 
-                <a href="/tenant/{{ tenant.tenant_id }}/products" class="action-button">
+                <a href="{{ script_name }}/tenant/{{ tenant.tenant_id }}/products" class="action-button">
                     <div class="action-icon products">📦</div>
                     <div>
                         <div style="font-weight: 600;">Products</div>
@@ -462,7 +462,7 @@
                 </a>
 
                 {% if tenant.ad_server == 'google_ad_manager' %}
-                <a href="/tenant/{{ tenant.tenant_id }}/inventory" class="action-button">
+                <a href="{{ script_name }}/tenant/{{ tenant.tenant_id }}/inventory" class="action-button">
                     <div class="action-icon inventory">📊</div>
                     <div>
                         <div style="font-weight: 600;">GAM Inventory</div>
@@ -471,7 +471,7 @@
                 </a>
                 {% endif %}
 
-                <a href="/tenant/{{ tenant.tenant_id }}/reporting" class="action-button">
+                <a href="{{ script_name }}/tenant/{{ tenant.tenant_id }}/reporting" class="action-button">
                     <div class="action-icon reports">📈</div>
                     <div>
                         <div style="font-weight: 600;">Reports</div>
@@ -495,7 +495,7 @@
                 </div>
                 {% endfor %}
                 {% if pending_tasks|length > 3 %}
-                <a href="/tenant/{{ tenant.tenant_id }}/tasks" class="action-button">
+                <a href="{{ script_name }}/tenant/{{ tenant.tenant_id }}/tasks" class="action-button">
                     <div>View all {{ pending_tasks|length }} tasks →</div>
                 </a>
                 {% endif %}
