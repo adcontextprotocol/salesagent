@@ -92,6 +92,10 @@ class AdCPSalesAgent(A2AServer):
             if not token:
                 token = request.args.get("token")
 
+            # 4. Check environment variable (for standard library compatibility)
+            if not token:
+                token = os.environ.get("A2A_AUTH_TOKEN")
+
             if not token:
                 logger.warning(f"No auth token provided for {request.path}")
                 return jsonify({"error": "Authentication required"}), 401
