@@ -248,23 +248,46 @@ class AdCPSalesAgent(A2AServer):
             transport = StreamableHttpTransport(url=self.mcp_url, headers=headers)
 
             async with Client(transport=transport) as client:
-                # Call get_products tool
-                result = await client.tools.get_products(brief=query if query else None)
+                # Call get_products tool - MCP tools expect params wrapped in 'req'
+                # promoted_offering is REQUIRED per AdCP spec
+                params = {
+                    "req": {
+                        "brief": query if query else "General advertising inquiry",
+                        "promoted_offering": f"Products and services from {self.current_principal.name if self.current_principal else 'advertiser'}",
+                    }
+                }
+                result = await client.call_tool("get_products", params)
 
-                if result and hasattr(result, "products"):
-                    products = result.products
+                # Log the result for debugging
+                logger.info(f"MCP raw result: {result}")
+
+                # The result is a CallToolResult object with structured_content
+                if (
+                    result
+                    and hasattr(result, "structured_content")
+                    and result.structured_content
+                    and "products" in result.structured_content
+                ):
+                    products = result.structured_content["products"]
                     if not products:
                         return {"message": "No products are currently available."}
 
                     product_list = []
                     for product in products[:10]:  # Limit to first 10
+                        # Product is a dict
                         product_info = {
-                            "name": product.name,
-                            "id": product.product_id,
-                            "formats": product.supported_formats,
+                            "name": product.get("name", "Unknown"),
+                            "id": product.get("product_id", "unknown"),
+                            "formats": [f.get("format_id", "") for f in product.get("formats", [])],
                         }
-                        if hasattr(product, "price_model"):
-                            product_info["pricing"] = product.price_model
+                        # Handle pricing info
+                        if product.get("is_fixed_price") and product.get("cpm"):
+                            product_info["pricing"] = f"CPM ${product['cpm']}"
+                        elif product.get("price_guidance"):
+                            pg = product["price_guidance"]
+                            floor = pg.get("floor", 0)
+                            p50 = pg.get("p50", 0)
+                            product_info["pricing"] = f"CPM ${floor}-{p50}" if p50 else f"CPM ${floor}+"
                         product_list.append(product_info)
 
                     return {
@@ -291,9 +314,16 @@ class AdCPSalesAgent(A2AServer):
             transport = StreamableHttpTransport(url=self.mcp_url, headers=headers)
 
             async with Client(transport=transport) as client:
-                result = await client.tools.create_media_buy(
-                    product_ids=product_ids, total_budget=budget, flight_start_date=start_date, flight_end_date=end_date
-                )
+                # MCP tools expect params wrapped in 'req'
+                params = {
+                    "req": {
+                        "product_ids": product_ids,
+                        "total_budget": budget,
+                        "flight_start_date": start_date,
+                        "flight_end_date": end_date,
+                    }
+                }
+                result = await client.call_tool("create_media_buy", params)
 
                 if result:
                     return {
