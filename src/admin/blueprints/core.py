@@ -147,9 +147,7 @@ def create_tenant():
                 principal_id=f"{tenant_id}_default",
                 name=f"{tenant_name} Default Principal",
                 access_token=admin_token,  # Use same token for simplicity
-                is_active=True,
                 created_at=datetime.now(UTC),
-                updated_at=datetime.now(UTC),
             )
             db_session.add(default_principal)
 

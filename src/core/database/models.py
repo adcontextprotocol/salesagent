@@ -96,7 +96,7 @@ class CreativeFormat(Base):
     modifications = Column(JSON, nullable=True)  # JSONB in PostgreSQL
     source_url = Column(Text)
     created_at = Column(DateTime, server_default=func.now())
-    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
+    # updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())  # TEMPORARILY DISABLED - migration 018 not applied in production
 
     # Relationships
     tenant = relationship("Tenant", backref="creative_formats")
@@ -200,7 +200,7 @@ class MediaBuy(Base):
     approved_at = Column(DateTime)
     approved_by = Column(String(255))
     raw_request = Column(JSON, nullable=False)  # JSONB in PostgreSQL
-    context_id = Column(String(100), nullable=True)  # Link to context if created through A2A protocol
+    # context_id = Column(String(100), nullable=True)  # TEMPORARILY DISABLED - column missing in production
 
     # Relationships
     tenant = relationship("Tenant", back_populates="media_buys", overlaps="media_buys")
