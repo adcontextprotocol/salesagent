@@ -133,10 +133,10 @@
                         {% endif %}
                     </span>
                     {% if session.role == 'super_admin' %}
-                        <a href="/">Tenants</a>
-                        <a href="/create_tenant">Create Tenant</a>
+                        <a href="{{ script_name }}/">Tenants</a>
+                        <a href="{{ script_name }}/create_tenant">Create Tenant</a>
                     {% endif %}
-                    <a href="/logout">Logout</a>
+                    <a href="{{ script_name }}/logout">Logout</a>
                 {% endif %}
             </nav>
         </div>
