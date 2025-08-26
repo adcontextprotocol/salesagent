@@ -971,7 +971,7 @@ function testSlack() {
         return;
     }
 
-    fetch('/tenant/{{ tenant.tenant_id }}/test_slack', {
+    fetch('{{ script_name }}/tenant/{{ tenant.tenant_id }}/test_slack', {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
@@ -1000,7 +1000,7 @@ function selectAdapter(adapterName) {
     }
 
     // Send request to update adapter
-    fetch(`/tenant/{{ tenant.tenant_id }}/settings/adapter`, {
+    fetch(`{{ script_name }}/tenant/{{ tenant.tenant_id }}/settings/adapter`, {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
@@ -1034,7 +1034,7 @@ window.addEventListener('DOMContentLoaded', function() {
 
 // Check if OAuth is properly configured
 function checkOAuthConfig() {
-    fetch('/api/oauth/status')
+    fetch('{{ script_name }}/api/oauth/status')
         .then(response => response.json())
         .then(data => {
             const statusDiv = document.getElementById('oauth-status');
@@ -1089,7 +1089,7 @@ function detectGAMNetwork() {
     detectBtn.disabled = true;
     detectBtn.textContent = 'Detecting...';
 
-    fetch('/tenant/{{ tenant.tenant_id }}/gam/detect-network', {
+    fetch('{{ script_name }}/tenant/{{ tenant.tenant_id }}/gam/detect-network', {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
@@ -1181,7 +1181,7 @@ function saveGAMConfig() {
         return;
     }
 
-    fetch('/tenant/{{ tenant.tenant_id }}/gam/configure', {
+    fetch('{{ script_name }}/tenant/{{ tenant.tenant_id }}/gam/configure', {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
@@ -1220,7 +1220,7 @@ function testGAMConnection() {
         return;
     }
 
-    fetch('/api/gam/test-connection', {
+    fetch('{{ script_name }}/api/gam/test-connection', {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',

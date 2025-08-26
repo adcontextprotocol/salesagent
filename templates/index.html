@@ -8,10 +8,10 @@
         <h2>Tenants</h2>
         <div>
             {% if session.role == 'super_admin' %}
-            <a href="/mcp-test" class="btn btn-secondary">MCP Protocol Test</a>
-            <a href="/settings" class="btn btn-secondary">Settings</a>
+            <a href="{{ script_name }}/mcp-test" class="btn btn-secondary">MCP Protocol Test</a>
+            <a href="{{ script_name }}/settings" class="btn btn-secondary">Settings</a>
             {% endif %}
-            <a href="/tenant/wizard" class="btn">Create New Tenant</a>
+            <a href="{{ script_name }}/create_tenant" class="btn">Create New Tenant</a>
         </div>
     </div>
 
@@ -84,14 +84,14 @@
                 </td>
                 <td>{{ tenant.created_at.strftime('%Y-%m-%d') if tenant.created_at else 'N/A' }}</td>
                 <td>
-                    <a href="/tenant/{{ tenant.tenant_id }}" class="btn btn-small">Manage</a>
+                    <a href="{{ script_name }}/tenant/{{ tenant.tenant_id }}" class="btn btn-small">Manage</a>
                 </td>
             </tr>
             {% endfor %}
         </tbody>
     </table>
     {% else %}
-    <p>No tenants found. <a href="/create_tenant">Create your first tenant</a>.</p>
+    <p>No tenants found. <a href="{{ script_name }}/create_tenant">Create your first tenant</a>.</p>
     {% endif %}
 </div>
 

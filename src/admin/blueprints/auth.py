@@ -93,6 +93,9 @@ def google_auth():
         return redirect(url_for("auth.login"))
 
     redirect_uri = url_for("auth.google_callback", _external=True)
+    # Force HTTPS in production
+    if os.environ.get("PRODUCTION") == "true" and redirect_uri.startswith("http://"):
+        redirect_uri = redirect_uri.replace("http://", "https://", 1)
     return oauth.google.authorize_redirect(redirect_uri)
 
 
@@ -107,6 +110,9 @@ def tenant_google_auth(tenant_id):
     # Store tenant_id in session for callback
     session["oauth_tenant_id"] = tenant_id
     redirect_uri = url_for("auth.google_callback", _external=True)
+    # Force HTTPS in production
+    if os.environ.get("PRODUCTION") == "true" and redirect_uri.startswith("http://"):
+        redirect_uri = redirect_uri.replace("http://", "https://", 1)
     return oauth.google.authorize_redirect(redirect_uri)
 
 

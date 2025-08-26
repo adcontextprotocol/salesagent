@@ -302,7 +302,7 @@ def mock_external_apis():
 
 @pytest.fixture(scope="session")
 def mcp_server():
-    """Start the MCP server for integration testing."""
+    """Mock MCP server for integration testing (doesn't actually start a server)."""
     import socket
 
     # Find an available port
@@ -326,11 +326,6 @@ def mcp_server():
             self.port = 8080  # Default MCP port
 
     yield MockServer()
-
-    # Create test client
-    client = TestClient(mcp_app)
-
-    yield client
 
 
 @pytest.fixture

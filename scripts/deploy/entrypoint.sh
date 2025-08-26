@@ -30,6 +30,44 @@ if ! python scripts/ops/migrate.py; then
     exit 1
 fi
 
+# Check for common schema issues (report only, don't fail)
+echo "🔍 Checking for known schema issues..."
+python -c "
+from src.core.database.db_config import get_db_connection
+import json
+
+issues = []
+conn = get_db_connection()
+
+# Check for commonly missing columns
+checks = [
+    ('media_buys', 'context_id'),
+    ('creative_formats', 'updated_at'),
+]
+
+for table, column in checks:
+    try:
+        cursor = conn.execute(f\"\"\"
+            SELECT column_name
+            FROM information_schema.columns
+            WHERE table_name = '{table}' AND column_name = '{column}'
+        \"\"\")
+        if not cursor.fetchone():
+            issues.append(f'Missing column: {table}.{column}')
+    except:
+        # SQLite doesn't have information_schema, skip check
+        pass
+
+if issues:
+    print('⚠️  Schema issues detected (non-critical):')
+    for issue in issues:
+        print(f'   - {issue}')
+else:
+    print('✅ No known schema issues detected')
+
+conn.close()
+" || true  # Don't fail on error
+
 # Initialize database (safe - only creates data if tables are empty)
 echo "📦 Initializing database schema and default data..."
 echo "ℹ️  Note: init_db() is safe - it only creates tables (IF NOT EXISTS) and default tenant (if no tenants exist)"
