@@ -6,6 +6,7 @@ import secrets
 
 from flask import Flask, request
 from flask_socketio import SocketIO, join_room
+from werkzeug.middleware.proxy_fix import ProxyFix as WerkzeugProxyFix
 
 from src.admin.blueprints.adapters import adapters_bp
 from src.admin.blueprints.api import api_bp
@@ -28,26 +29,61 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
-class ProxyFix:
-    """Fix for proxy headers when running behind a reverse proxy."""
+# Custom ProxyFix for handling X-Script-Name and fixing redirect URLs
+class CustomProxyFix:
+    """Fix for proxy headers when running behind a reverse proxy with path prefix.
+    
+    Also fixes hardcoded URLs in redirects to include the script name prefix.
+    """
 
-    def __init__(self, app):
+    def __init__(self, app, script_name="/admin"):
         self.app = app
+        self.script_name = script_name
 
     def __call__(self, environ, start_response):
-        # Handle X-Forwarded-* headers
-        scheme = environ.get("HTTP_X_FORWARDED_PROTO", "")
-        host = environ.get("HTTP_X_FORWARDED_HOST", "")
-        prefix = environ.get("HTTP_X_FORWARDED_PREFIX", "")
-
-        if scheme:
-            environ["wsgi.url_scheme"] = scheme
-        if host:
-            environ["HTTP_HOST"] = host
-        if prefix:
-            environ["SCRIPT_NAME"] = prefix
-
-        return self.app(environ, start_response)
+        # Handle X-Script-Name (standard for mounting path) or X-Forwarded-Prefix
+        script_name = environ.get("HTTP_X_SCRIPT_NAME", "")
+        if not script_name:
+            script_name = environ.get("HTTP_X_FORWARDED_PREFIX", "")
+        
+        # Use configured script_name if provided in production
+        if not script_name and os.environ.get("PRODUCTION") == "true":
+            script_name = self.script_name
+        
+        if script_name:
+            # Store for use in response wrapper
+            self.active_script_name = script_name
+            # Set SCRIPT_NAME so Flask knows it's mounted at this path
+            environ["SCRIPT_NAME"] = script_name
+            # Also ensure PATH_INFO is correct
+            path_info = environ.get("PATH_INFO", "")
+            if path_info.startswith(script_name):
+                environ["PATH_INFO"] = path_info[len(script_name):]
+                if not environ["PATH_INFO"]:
+                    environ["PATH_INFO"] = "/"
+        else:
+            self.active_script_name = ""
+        
+        # Wrap start_response to fix redirect headers
+        def custom_start_response(status, headers, exc_info=None):
+            # Check if this is a redirect and we have a script_name
+            if status.startswith('30') and self.active_script_name:
+                # Fix Location header to include script_name if needed
+                new_headers = []
+                for name, value in headers:
+                    if name.lower() == 'location':
+                        # If location starts with / but not /admin, prepend /admin
+                        if value.startswith('/') and not value.startswith(self.active_script_name):
+                            # Skip external URLs
+                            if '://' not in value:
+                                value = self.active_script_name + value
+                        new_headers.append((name, value))
+                    else:
+                        new_headers.append((name, value))
+                headers = new_headers
+            return start_response(status, headers, exc_info)
+        
+        return self.app(environ, custom_start_response)
 
 
 def create_app(config=None):
@@ -57,13 +93,28 @@ def create_app(config=None):
     # Configuration
     app.secret_key = os.environ.get("FLASK_SECRET_KEY", secrets.token_hex(32))
     app.logger.setLevel(logging.INFO)
+    
+    # Trust proxy headers in production
+    if os.environ.get("PRODUCTION") == "true":
+        app.config["PREFERRED_URL_SCHEME"] = "https"
+        # Force external URLs to use HTTPS
+        app.config["SERVER_NAME"] = None  # Let Flask detect from request
+        app.config["APPLICATION_ROOT"] = "/"
 
     # Apply any additional config
     if config:
         app.config.update(config)
 
-    # Apply proxy fix
-    app.wsgi_app = ProxyFix(app.wsgi_app)
+    # Apply proxy fixes for production
+    if os.environ.get("PRODUCTION") == "true":
+        # Use Werkzeug's ProxyFix to handle X-Forwarded headers
+        # x_for=1 for X-Forwarded-For, x_proto=1 for X-Forwarded-Proto, x_host=1 for X-Forwarded-Host
+        app.wsgi_app = WerkzeugProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_prefix=0)
+        # Apply custom fix for X-Forwarded-Prefix  
+        app.wsgi_app = CustomProxyFix(app.wsgi_app)
+    else:
+        # In development, still apply custom proxy fix if needed
+        app.wsgi_app = CustomProxyFix(app.wsgi_app)
 
     # Initialize OAuth
     init_oauth(app)
@@ -71,6 +122,34 @@ def create_app(config=None):
     # Initialize SocketIO
     socketio = SocketIO(app, cors_allowed_origins="*", async_mode="threading")
     app.socketio = socketio
+    
+    # Add context processor to make script_name available in templates
+    @app.context_processor
+    def inject_script_name():
+        """Make the script_name (e.g., /admin) available in all templates."""
+        if os.environ.get("PRODUCTION") == "true":
+            return {"script_name": "/admin"}
+        return {"script_name": ""}
+    
+    # Add after_request handler to fix hardcoded URLs in HTML responses
+    @app.after_request
+    def fix_hardcoded_urls(response):
+        """Fix hardcoded URLs in HTML responses to include script_name prefix."""
+        if os.environ.get("PRODUCTION") == "true" and response.content_type and 'text/html' in response.content_type:
+            # Only process HTML responses
+            try:
+                html = response.get_data(as_text=True)
+                # Fix common hardcoded patterns
+                html = html.replace('href="/', 'href="/admin/')
+                html = html.replace("href='/", "href='/admin/")
+                html = html.replace('action="/', 'action="/admin/')
+                html = html.replace("action='/", "action='/admin/")
+                # Fix any that were already prefixed (avoid double prefixing)
+                html = html.replace('/admin/admin/', '/admin/')
+                response.set_data(html)
+            except Exception as e:
+                logger.error(f"Error fixing URLs in response: {e}")
+        return response
 
     # Register blueprints
     app.register_blueprint(core_bp)  # Core routes (/, /health, /static, /mcp-test)
