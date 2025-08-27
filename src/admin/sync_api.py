@@ -149,6 +149,7 @@ def trigger_sync(tenant_id: str):
             principal = Principal(
                 principal_id="system",
                 name="System",
+                access_token="system_sync_token",  # Required field for sync operations
                 platform_mappings={"gam_advertiser_id": adapter_config.gam_company_id or "system"},
             )
 
@@ -475,6 +476,7 @@ def sync_tenant_orders(tenant_id):
             principal = Principal(
                 principal_id="system",
                 name="System",
+                access_token="system_sync_token",  # Required field for sync operations
                 platform_mappings={"gam_advertiser_id": adapter_config.gam_company_id or "system"},
             )
 

@@ -39,6 +39,28 @@ The server provides:
 
 ## Key Architecture Decisions
 
+### 0. Admin UI Route Architecture (IMPORTANT FOR DEBUGGING)
+**⚠️ CRITICAL**: The admin interface has confusing route handling that can waste debugging time:
+
+- **`src/admin/blueprints/settings.py`**: Handles SUPER ADMIN settings and POST operations for tenant settings
+  - Functions: `admin_settings()` (GET) and `update_admin_settings()` (POST) for superadmin settings
+  - Also contains POST-only routes for updating tenant settings (`update_adapter()`, `update_general()`, etc.)
+- **`src/admin/blueprints/tenants.py`**: Handles TENANT-SPECIFIC settings GET requests  
+  - Function: `tenant_settings()` - Renders the main tenant settings page
+
+**Route Architecture**:
+- **GET** `/admin/tenant/{id}/settings` → `tenants.py::tenant_settings()` (displays the page)
+- **POST** `/admin/tenant/{id}/settings/adapter` → `settings.py::update_adapter()` (updates data, redirects back)
+
+**Route Mapping**:
+```
+/admin/settings                           → src/admin/blueprints/settings.py::admin_settings()
+/admin/tenant/{id}/settings               → src/admin/blueprints/tenants.py::tenant_settings()
+/admin/tenant/{id}/settings/adapter       → src/admin/blueprints/settings.py::update_adapter()
+/admin/tenant/{id}/settings/general       → src/admin/blueprints/settings.py::update_general()
+/admin/tenant/{id}/settings/slack         → src/admin/blueprints/settings.py::update_slack()
+```
+
 ### 1. Database-Backed Multi-Tenancy
 - **Tenant Isolation**: Each publisher is a tenant with isolated data
 - **Principal System**: Within each tenant, principals (advertisers) have unique tokens
