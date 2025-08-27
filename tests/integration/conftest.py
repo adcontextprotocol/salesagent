@@ -409,7 +409,7 @@ def test_media_buy_workflow(populated_db):
 @pytest.fixture
 def test_audit_logger(integration_db):
     """Provide test audit logger with database."""
-    from audit_logger import AuditLogger
+    from src.core.audit_logger import AuditLogger
 
     logger = AuditLogger("test_tenant")
 
