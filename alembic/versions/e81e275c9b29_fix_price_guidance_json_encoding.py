@@ -27,8 +27,8 @@ def upgrade() -> None:
     db_type = connection.dialect.name
 
     if db_type == "postgresql":
-        # PostgreSQL: Fix double-encoded JSON strings in TEXT columns
-        # In production, these are TEXT columns, not JSONB, so we need to handle them differently
+        # PostgreSQL: Fix double-encoded JSON strings
+        # Production has JSON columns (not JSONB), so we need to cast to text for LIKE operations
 
         # Fix price_guidance - check if it starts with a quote (indicating double-encoding)
         op.execute(
@@ -36,8 +36,8 @@ def upgrade() -> None:
             UPDATE products
             SET price_guidance =
                 CASE
-                    WHEN price_guidance LIKE '"{%' AND price_guidance LIKE '%}"'
-                    THEN substr(price_guidance, 2, length(price_guidance) - 2)
+                    WHEN price_guidance::text LIKE '"{%' AND price_guidance::text LIKE '%}"'
+                    THEN substr(price_guidance::text, 2, length(price_guidance::text) - 2)::json
                     ELSE price_guidance
                 END
             WHERE price_guidance IS NOT NULL
@@ -50,8 +50,8 @@ def upgrade() -> None:
             UPDATE products
             SET formats =
                 CASE
-                    WHEN formats LIKE '"[%' AND formats LIKE '%]"'
-                    THEN substr(formats, 2, length(formats) - 2)
+                    WHEN formats::text LIKE '"[%' AND formats::text LIKE '%]"'
+                    THEN substr(formats::text, 2, length(formats::text) - 2)::json
                     ELSE formats
                 END
             WHERE formats IS NOT NULL
@@ -64,8 +64,8 @@ def upgrade() -> None:
             UPDATE products
             SET targeting_template =
                 CASE
-                    WHEN targeting_template LIKE '"{%' AND targeting_template LIKE '%}"'
-                    THEN substr(targeting_template, 2, length(targeting_template) - 2)
+                    WHEN targeting_template::text LIKE '"{%' AND targeting_template::text LIKE '%}"'
+                    THEN substr(targeting_template::text, 2, length(targeting_template::text) - 2)::json
                     ELSE targeting_template
                 END
             WHERE targeting_template IS NOT NULL
@@ -78,8 +78,8 @@ def upgrade() -> None:
             UPDATE products
             SET implementation_config =
                 CASE
-                    WHEN implementation_config LIKE '"{%' AND implementation_config LIKE '%}"'
-                    THEN substr(implementation_config, 2, length(implementation_config) - 2)
+                    WHEN implementation_config::text LIKE '"{%' AND implementation_config::text LIKE '%}"'
+                    THEN substr(implementation_config::text, 2, length(implementation_config::text) - 2)::json
                     ELSE implementation_config
                 END
             WHERE implementation_config IS NOT NULL
