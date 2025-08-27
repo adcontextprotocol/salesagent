@@ -820,12 +820,12 @@
                                     </td>
                                     <td>
                                         <div class="btn-group btn-group-sm">
-                                            <button class="btn btn-outline-primary btn-sm" 
+                                            <button class="btn btn-outline-primary btn-sm"
                                                     onclick="copyA2AConfig('{{ principal.principal_id }}', '{{ principal.name }}', '{{ principal.access_token }}')"
                                                     title="Copy A2A Configuration">
                                                 📋 A2A
                                             </button>
-                                            <button class="btn btn-outline-danger btn-sm" 
+                                            <button class="btn btn-outline-danger btn-sm"
                                                     onclick="deletePrincipal('{{ principal.principal_id }}', '{{ principal.name }}')"
                                                     title="Delete Advertiser">
                                                 🗑️
@@ -1037,7 +1037,7 @@ window.addEventListener('load', function() {
 function copyToClipboard(buttonOrText) {
     let textToCopy;
     let buttonElement;
-    
+
     if (typeof buttonOrText === 'string') {
         // Direct text passed
         textToCopy = buttonOrText;
@@ -1047,7 +1047,7 @@ function copyToClipboard(buttonOrText) {
         textToCopy = buttonOrText.parentElement.querySelector('pre').textContent;
         buttonElement = buttonOrText;
     }
-    
+
     navigator.clipboard.writeText(textToCopy).then(() => {
         const originalText = buttonElement.textContent;
         buttonElement.textContent = 'Copied!';
@@ -1106,7 +1106,7 @@ function selectAdapter(adapterName) {
         'kevel': 'Kevel',
         'triton': 'Triton Digital'
     };
-    
+
     const friendlyName = friendlyNames[adapterName] || adapterName;
 
     // Show confirmation dialog
@@ -1390,7 +1390,7 @@ function checkOAuthForAdapterSelection() {
         .then(data => {
             const gamCard = document.getElementById('gam-adapter-card');
             const gamNotice = document.getElementById('gam-prerequisite-notice');
-            
+
             if (!data.configured) {
                 // OAuth not configured - disable GAM card
                 gamCard.classList.add('disabled');
@@ -1418,20 +1418,20 @@ function checkOAuthForAdapterSelection() {
 function selectGAMAdapter() {
     console.log('selectGAMAdapter() called');
     const gamCard = document.getElementById('gam-adapter-card');
-    
+
     if (!gamCard) {
         console.error('GAM adapter card not found!');
         return;
     }
-    
+
     console.log('GAM card classes:', gamCard.className);
-    
+
     if (gamCard.classList.contains('disabled')) {
         console.log('GAM card is disabled - showing OAuth alert');
         alert('Google Ad Manager requires OAuth setup in super admin settings first.\n\nPlease contact your administrator to configure OAuth credentials.');
         return;
     }
-    
+
     console.log('GAM card is enabled - proceeding with adapter selection');
     // OAuth is configured, proceed with normal adapter selection
     selectAdapter('google_ad_manager');
@@ -1447,9 +1447,9 @@ function copyA2AConfig(principalId, principalName, accessToken) {
         "auth_token_env": accessToken,
         "requiresAuth": true
     };
-    
+
     const configText = JSON.stringify(a2aConfig, null, 2);
-    
+
     navigator.clipboard.writeText(configText).then(() => {
         const button = event.target;
         const originalText = button.innerHTML;
@@ -1465,7 +1465,7 @@ function deletePrincipal(principalId, principalName) {
     if (!confirm(`Are you sure you want to delete advertiser "${principalName}"?\n\nThis action cannot be undone and will fail if there are active media buys.`)) {
         return;
     }
-    
+
     fetch(`{{ script_name }}/tenant/{{ tenant.tenant_id }}/principals/${principalId}/delete`, {
         method: 'DELETE',
         headers: {

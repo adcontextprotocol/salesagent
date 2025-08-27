@@ -287,14 +287,18 @@ def analyze_ad_server_inventory(tenant_id):
         if not config:
             return jsonify({"error": "Tenant not found"}), 404
 
-        # Find enabled adapter
-        adapter_type = None
-        adapter_config = None
-        for adapter, cfg in config.get("adapters", {}).items():
-            if cfg.get("enabled"):
-                adapter_type = adapter
-                adapter_config = cfg
-                break
+        # Find enabled adapter from database
+        with get_db_session() as db_session:
+            tenant = db_session.query(Tenant).filter_by(tenant_id=tenant_id).first()
+            
+            adapter_type = None
+            adapter_config = {}
+            
+            # Check database for adapter configuration
+            if tenant and tenant.ad_server:
+                adapter_type = tenant.ad_server
+            elif tenant and tenant.adapter_config and tenant.adapter_config.adapter_type:
+                adapter_type = tenant.adapter_config.adapter_type
 
         if not adapter_type:
             # Return mock data if no adapter configured

@@ -16,7 +16,7 @@ def init_db_ci():
 
         from database_session import get_db_session
         from migrate import run_migrations
-        from models import Principal, Tenant
+        from src.core.database.models import Principal, Tenant
 
         print("Applying database migrations for CI...")
         run_migrations()

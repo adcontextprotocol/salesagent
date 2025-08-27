@@ -147,6 +147,7 @@ def create_tenant():
                 principal_id=f"{tenant_id}_default",
                 name=f"{tenant_name} Default Principal",
                 access_token=admin_token,  # Use same token for simplicity
+                platform_mappings=json.dumps({"mock": {"advertiser_id": f"default_{tenant_id[:8]}", "advertiser_name": f"{tenant_name} Default"}}),
                 created_at=datetime.now(UTC),
             )
             db_session.add(default_principal)
