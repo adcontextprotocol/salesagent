@@ -2,8 +2,8 @@
 
 ⚠️ ROUTING NOTICE: This file handles SUPERADMIN settings only!
 - URL: /admin/settings
-- Function: superadmin_settings()  
-- The tenant_settings() function in this file is UNUSED - actual tenant settings 
+- Function: superadmin_settings()
+- The tenant_settings() function in this file is UNUSED - actual tenant settings
   are handled by src/admin/blueprints/tenants.py::settings()
 """
 
@@ -13,7 +13,7 @@ from datetime import UTC, datetime
 
 from flask import Blueprint, flash, jsonify, redirect, render_template, request, url_for
 
-from src.admin.utils import get_tenant_config_from_db, require_auth, require_tenant_access
+from src.admin.utils import require_auth, require_tenant_access
 from src.core.database.database_session import get_db_session
 from src.core.database.models import SuperadminConfig, Tenant
 
