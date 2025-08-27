@@ -1,5 +1,5 @@
 """A2A Server integration for AdCP Sales Agent."""
 
-from .server import app, run_server
+from .adcp_a2a_server import main
 
-__all__ = ["app", "run_server"]
+__all__ = ["main"]

@@ -1,0 +1,274 @@
+{
+  "line_item": {
+    "id": 7047822666,
+    "name": "Q1_2025_Sports_Premium_Video",
+    "orderId": 2871234567,
+    "status": "DELIVERING",
+    "lineItemType": "STANDARD",
+    "priority": 8,
+    "startDateTime": {
+      "date": {
+        "year": 2025,
+        "month": 1,
+        "day": 1
+      },
+      "hour": 0,
+      "minute": 0,
+      "second": 0,
+      "timeZoneId": "America/New_York"
+    },
+    "endDateTime": {
+      "date": {
+        "year": 2025,
+        "month": 3,
+        "day": 31
+      },
+      "hour": 23,
+      "minute": 59,
+      "second": 59,
+      "timeZoneId": "America/New_York"
+    },
+    "costType": "CPM",
+    "costPerUnit": {
+      "currencyCode": "USD",
+      "microAmount": 15000000
+    },
+    "unitsBought": 1000000,
+    "deliveryRateType": "EVENLY",
+    "targeting": {
+      "geoTargeting": {
+        "targetedLocations": [
+          {
+            "id": 2840,
+            "type": "Country",
+            "displayName": "United States"
+          },
+          {
+            "id": 2124,
+            "type": "Country",
+            "displayName": "Canada"
+          }
+        ],
+        "excludedLocations": []
+      },
+      "technologyTargeting": {
+        "deviceCategoryTargeting": {
+          "targetedDeviceCategories": [
+            {
+              "id": 30000,
+              "name": "Desktop"
+            },
+            {
+              "id": 30001,
+              "name": "Tablet"
+            }
+          ]
+        }
+      },
+      "customTargeting": {
+        "logicalOperator": "AND",
+        "children": [
+          {
+            "keyId": 123456,
+            "keyName": "content_category",
+            "operator": "IS",
+            "valueIds": [
+              789012,
+              789013
+            ],
+            "valueNames": [
+              "sports",
+              "news"
+            ]
+          },
+          {
+            "keyId": 234567,
+            "keyName": "audience_segment",
+            "operator": "IS",
+            "valueIds": [
+              890123
+            ],
+            "valueNames": [
+              "sports_enthusiasts"
+            ]
+          }
+        ]
+      },
+      "dayPartTargeting": {
+        "timeZone": "America/New_York",
+        "dayParts": [
+          {
+            "dayOfWeek": "MONDAY",
+            "startTime": {
+              "hour": 6,
+              "minute": 0
+            },
+            "endTime": {
+              "hour": 23,
+              "minute": 59
+            }
+          },
+          {
+            "dayOfWeek": "TUESDAY",
+            "startTime": {
+              "hour": 6,
+              "minute": 0
+            },
+            "endTime": {
+              "hour": 23,
+              "minute": 59
+            }
+          }
+        ]
+      }
+    },
+    "frequencyCaps": [
+      {
+        "maxImpressions": 3,
+        "numTimeUnits": 1,
+        "timeUnit": "DAY"
+      }
+    ],
+    "creativePlaceholders": [
+      {
+        "size": {
+          "width": 1920,
+          "height": 1080
+        },
+        "expectedCreativeCount": 3,
+        "creativeSizeType": "PIXEL"
+      }
+    ]
+  },
+  "order": {
+    "id": 2871234567,
+    "name": "Q1 2025 Sports Campaign",
+    "advertiserId": 4561234567,
+    "advertiserName": "SportsBrand Inc",
+    "traffickerId": 987654321,
+    "status": "APPROVED",
+    "totalBudget": {
+      "currencyCode": "USD",
+      "microAmount": 50000000000
+    }
+  },
+  "creatives": [
+    {
+      "id": 138123456789,
+      "name": "Sports_Hero_Video_30s",
+      "size": {
+        "width": 1920,
+        "height": 1080
+      },
+      "Creative.Type": "VideoCreative",
+      "previewUrl": "https://pubads.g.doubleclick.net/preview/123456"
+    },
+    {
+      "id": 138123456790,
+      "name": "Sports_Promo_Video_15s",
+      "size": {
+        "width": 1920,
+        "height": 1080
+      },
+      "Creative.Type": "VideoCreative",
+      "previewUrl": "https://pubads.g.doubleclick.net/preview/123457"
+    }
+  ],
+  "creative_associations": [
+    {
+      "lineItemId": 7047822666,
+      "creativeId": 138123456789
+    },
+    {
+      "lineItemId": 7047822666,
+      "creativeId": 138123456790
+    }
+  ],
+  "media_product_json": {
+    "product_id": "gam_line_item_7047822666",
+    "name": "Q1_2025_Sports_Premium_Video",
+    "description": "GAM Line Item: Q1_2025_Sports_Premium_Video",
+    "formats": [
+      {
+        "format_id": "video_1920x1080",
+        "name": "Video 1920x1080",
+        "type": "video",
+        "dimensions": {
+          "width": 1920,
+          "height": 1080
+        }
+      }
+    ],
+    "delivery_type": "guaranteed",
+    "is_fixed_price": true,
+    "cpm": 15.0,
+    "targeting_overlay": {
+      "geo_country_any_of": [
+        "United States",
+        "Canada"
+      ],
+      "device_type_any_of": [
+        "desktop",
+        "tablet"
+      ],
+      "key_value_pairs": {
+        "content_category": [
+          "sports",
+          "news"
+        ],
+        "audience_segment": [
+          "sports_enthusiasts"
+        ]
+      },
+      "dayparting": {
+        "timezone": "America/New_York",
+        "schedules": [
+          {
+            "days": [
+              "MONDAY"
+            ],
+            "start_hour": 6,
+            "end_hour": 23
+          },
+          {
+            "days": [
+              "TUESDAY"
+            ],
+            "start_hour": 6,
+            "end_hour": 23
+          }
+        ]
+      },
+      "frequency_cap": {
+        "suppress_minutes": 1440,
+        "scope": "media_buy"
+      }
+    },
+    "implementation_config": {
+      "gam": {
+        "line_item_id": 7047822666,
+        "order_id": 2871234567,
+        "line_item_type": "STANDARD",
+        "priority": 8,
+        "delivery_rate_type": "EVENLY",
+        "creative_placeholders": [
+          {
+            "size": {
+              "width": 1920,
+              "height": 1080
+            },
+            "expectedCreativeCount": 3,
+            "creativeSizeType": "PIXEL"
+          }
+        ],
+        "status": "DELIVERING",
+        "start_datetime": "2025-01-01T00:00:00",
+        "end_datetime": "2025-03-31T23:59:59",
+        "units_bought": 1000000,
+        "cost_type": "CPM",
+        "discount_type": null,
+        "allow_overbook": false
+      }
+    }
+  }
+}

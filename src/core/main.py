@@ -653,7 +653,7 @@ def create_media_buy(req: CreateMediaBuyRequest, context: Context) -> CreateMedi
 
     # Validate targeting doesn't use managed-only dimensions
     if req.targeting_overlay:
-        from targeting_capabilities import validate_overlay_targeting
+        from src.services.targeting_capabilities import validate_overlay_targeting
 
         violations = validate_overlay_targeting(req.targeting_overlay.model_dump(exclude_none=True))
         if violations:
@@ -834,11 +834,10 @@ def create_media_buy(req: CreateMediaBuyRequest, context: Context) -> CreateMedi
             campaign_objective=getattr(req, "campaign_objective", ""),  # Optional field
             kpi_goal=getattr(req, "kpi_goal", ""),  # Optional field
             budget=req.total_budget,
-            start_date=req.flight_start_date.isoformat(),
-            end_date=req.flight_end_date.isoformat(),
+            start_date=req.flight_start_date,
+            end_date=req.flight_end_date,
             status=response.status or "active",
             raw_request=req.model_dump(mode="json"),
-            context_id=None,  # No context for synchronous operations
         )
         session.add(new_media_buy)
         session.commit()
@@ -905,32 +904,36 @@ def create_media_buy(req: CreateMediaBuyRequest, context: Context) -> CreateMedi
 
 @mcp.tool
 def check_media_buy_status(req: CheckMediaBuyStatusRequest, context: Context) -> CheckMediaBuyStatusResponse:
-    """Check the status of a media buy using the context_id returned from create_media_buy."""
+    """Check the status of a media buy using the context_id or media_buy_id."""
     _get_principal_id_from_context(context)
 
-    # Get the media_buy_id from context_id
-    media_buy_id = None
-    if req.context_id in context_map:
-        media_buy_id = context_map[req.context_id]
+    # Get the media_buy_id - either directly provided or from context_id
+    media_buy_id = req.media_buy_id  # Direct media_buy_id takes precedence
 
-    # If not in memory, check database
+    if not media_buy_id and req.context_id:
+        # Try to get from memory map first
+        if req.context_id in context_map:
+            media_buy_id = context_map[req.context_id]
+
+        # If not in memory, check database (but context_id column is disabled)
+        if not media_buy_id:
+            with get_db_session() as session:
+                # Note: context_id column is currently disabled in MediaBuy model
+                # This fallback won't work until column is re-enabled
+                # media_buy = session.query(MediaBuy).filter_by(context_id=req.context_id).first()
+                pass  # Skip database lookup for now
+
     if not media_buy_id:
-        with get_db_session() as session:
-            media_buy = session.query(MediaBuy).filter_by(context_id=req.context_id).first()
-
-            if media_buy:
-                media_buy_id = media_buy.media_buy_id
-                status = media_buy.status
-            else:
-                # Context not found
-                return CheckMediaBuyStatusResponse(
-                    media_buy_id="",
-                    status="not_found",
-                    detail=f"No media buy found for context_id: {req.context_id}",
-                    creative_count=0,
-                    budget_spent=0.0,
-                    budget_remaining=0.0,
-                )
+        # Neither context_id nor media_buy_id worked
+        identifier = req.context_id if req.context_id else req.media_buy_id
+        return CheckMediaBuyStatusResponse(
+            media_buy_id="",
+            status="not_found",
+            detail=f"No media buy found for identifier: {identifier}",
+            creative_count=0,
+            budget_spent=0.0,
+            budget_remaining=0.0,
+        )
 
     # Check if media buy exists in memory
     if media_buy_id in media_buys:
@@ -1356,7 +1359,7 @@ def update_media_buy(req: UpdateMediaBuyRequest, context: Context) -> UpdateMedi
         buy_request.total_budget = req.total_budget
     if req.targeting_overlay is not None:
         # Validate targeting doesn't use managed-only dimensions
-        from targeting_capabilities import validate_overlay_targeting
+        from src.services.targeting_capabilities import validate_overlay_targeting
 
         violations = validate_overlay_targeting(req.targeting_overlay.model_dump(exclude_none=True))
         if violations:
@@ -2616,18 +2619,27 @@ def get_product_catalog() -> list[schemas.Product]:
         loaded_products = []
         for product in products:
             # Convert ORM model to Pydantic schema
+            # Parse JSON fields that might be strings (SQLite) or dicts (PostgreSQL)
+            def safe_json_parse(value):
+                if isinstance(value, str):
+                    try:
+                        return json.loads(value)
+                    except (json.JSONDecodeError, TypeError):
+                        return value
+                return value
+
             product_data = {
                 "product_id": product.product_id,
                 "name": product.name,
                 "description": product.description,
-                "formats": product.formats,
+                "formats": safe_json_parse(product.formats),
                 "delivery_type": product.delivery_type,
                 "is_fixed_price": product.is_fixed_price,
                 "cpm": float(product.cpm) if product.cpm else None,
-                "price_guidance": product.price_guidance,
+                "price_guidance": safe_json_parse(product.price_guidance),
                 "is_custom": product.is_custom,
-                "countries": product.countries,
-                "implementation_config": product.implementation_config,
+                "countries": safe_json_parse(product.countries),
+                "implementation_config": safe_json_parse(product.implementation_config),
             }
             loaded_products.append(schemas.Product(**product_data))
 
@@ -2736,6 +2748,89 @@ if __name__ == "__main__":
 # Always add health check endpoint
 from fastapi import Request
 from fastapi.responses import JSONResponse
+
+# --- Strategy and Simulation Control ---
+from src.core.strategy import SimulationError, StrategyError, StrategyManager
+
+
+@mcp.tool
+async def simulation_control(
+    req: schemas.SimulationControlRequest,
+    context: Context | None = None,
+) -> schemas.SimulationControlResponse:
+    """
+    Control simulation time progression and events.
+
+    Allows jumping to specific events, resetting simulations,
+    and changing scenarios for testing purposes.
+    """
+    principal_id = get_principal_from_context(context)
+    if not principal_id:
+        raise ToolError("Authentication required")
+
+    tenant_config = get_current_tenant()
+    if not tenant_config:
+        raise ToolError("No tenant configuration found")
+
+    # Validate this is a simulation strategy
+    if not req.strategy_id.startswith("sim_"):
+        raise ToolError("Only simulation strategies can be controlled")
+
+    try:
+        # Create strategy manager for current tenant/principal
+        tenant_id = tenant_config.get("tenant_id")
+        strategy_manager = StrategyManager(tenant_id=tenant_id, principal_id=principal_id)
+
+        # Control the simulation
+        result = strategy_manager.control_simulation(
+            strategy_id=req.strategy_id, action=req.action, parameters=req.parameters
+        )
+
+        # Log the simulation control action
+        audit_logger = get_audit_logger()
+        audit_logger.log_operation(
+            operation="simulation_control",
+            tenant_id=tenant_id,
+            principal_id=principal_id,
+            success=True,
+            details={
+                "strategy_id": req.strategy_id,
+                "action": req.action,
+                "parameters": req.parameters,
+                "result": result,
+            },
+        )
+
+        return schemas.SimulationControlResponse(
+            status="ok" if result.get("status") == "ok" else "error",
+            message=result.get("message"),
+            current_state=result.get("current_state"),
+            simulation_time=result.get("simulation_time"),
+        )
+
+    except (StrategyError, SimulationError) as e:
+        # Log the error
+        audit_logger = get_audit_logger()
+        audit_logger.log_operation(
+            operation="simulation_control",
+            tenant_id=tenant_config.get("tenant_id"),
+            principal_id=principal_id,
+            success=False,
+            details={"strategy_id": req.strategy_id, "action": req.action, "error": str(e)},
+        )
+
+        return schemas.SimulationControlResponse(status="error", message=f"Simulation control failed: {e}")
+
+
+def get_strategy_manager(context: Context | None) -> StrategyManager:
+    """Get strategy manager for current context."""
+    principal_id = get_principal_from_context(context)
+    tenant_config = get_current_tenant()
+
+    if not tenant_config:
+        raise ToolError("No tenant configuration found")
+
+    return StrategyManager(tenant_id=tenant_config.get("tenant_id"), principal_id=principal_id)
 
 
 @mcp.custom_route("/health", methods=["GET"])
