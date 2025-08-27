@@ -101,28 +101,29 @@ from src.core.database.connection import get_db_session
 import secrets
 
 with get_db_session() as session:
-    # Check if test tenant exists
-    tenant = session.query(Tenant).filter_by(subdomain='e2e-test').first()
+    # Use the default tenant that already exists
+    tenant = session.query(Tenant).filter_by(tenant_id='default').first()
     if not tenant:
+        # Create default tenant if it doesn't exist
         tenant = Tenant(
-            tenant_id='e2e-test-tenant',
-            name='E2E Test Publisher',
-            subdomain='e2e-test',
+            tenant_id='default',
+            name='Default Publisher',
+            subdomain='default',
             ad_server='mock',
             admin_token=secrets.token_urlsafe(32)
         )
         session.add(tenant)
         session.commit()
 
-    # Check if test principal exists
+    # Check if test principal exists in default tenant
     principal = session.query(Principal).filter_by(
-        tenant_id=tenant.tenant_id,
+        tenant_id='default',
         name='E2E Test Advertiser'
     ).first()
 
     if not principal:
         principal = Principal(
-            tenant_id=tenant.tenant_id,
+            tenant_id='default',
             principal_id='e2e-test-principal',
             name='E2E Test Advertiser',
             access_token=secrets.token_urlsafe(32),

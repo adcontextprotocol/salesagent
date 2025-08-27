@@ -254,8 +254,11 @@ class TestAdCPFullLifecycle:
                 "creatives": [
                     {
                         "creative_id": "test_creative_1",
+                        "principal_id": "e2e-test-principal",
                         "name": "Test Banner",
                         "format": "display_300x250",
+                        "format_id": "display_300x250",
+                        "content_uri": "https://example.com/banner.jpg",
                         "content": {"url": "https://example.com/banner.jpg"},
                         "status": "pending",
                     }
@@ -360,7 +363,7 @@ class TestAdCPFullLifecycle:
         print("\n=== Testing AEE Compliance ===")
 
         result = await test_client.call_mcp_tool(
-            "check_aee_requirements", {"channel": "display", "required_dimensions": ["geo", "daypart", "frequency"]}
+            "check_aee_requirements", {"channel": "web", "required_dimensions": ["geo", "daypart", "frequency"]}
         )
 
         assert "supported" in result or "compliant" in result or "status" in result
@@ -480,15 +483,21 @@ class TestAdCPFullLifecycle:
                 "creatives": [
                     {
                         "creative_id": "hero_banner",
+                        "principal_id": "e2e-test-principal",
                         "name": "Hero Banner",
                         "format": "display_728x90",
+                        "format_id": "display_728x90",
+                        "content_uri": "https://example.com/hero.jpg",
                         "content": {"url": "https://example.com/hero.jpg"},
                         "status": "pending",
                     },
                     {
                         "creative_id": "square_banner",
+                        "principal_id": "e2e-test-principal",
                         "name": "Square",
                         "format": "display_300x250",
+                        "format_id": "display_300x250",
+                        "content_uri": "https://example.com/square.jpg",
                         "content": {"url": "https://example.com/square.jpg"},
                         "status": "pending",
                     },
