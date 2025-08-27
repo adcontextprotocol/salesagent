@@ -1667,8 +1667,15 @@ def get_all_media_buy_delivery(req: GetAllMediaBuyDeliveryRequest, context: Cont
         today=req.today,
     )
 
-    # Call the unified endpoint
-    unified_response = get_media_buy_delivery(unified_request, context)
+    # Call the unified endpoint - need to call the underlying function, not the tool wrapper
+    # The @mcp.tool decorator wraps the function, so we need to access the original
+    if hasattr(get_media_buy_delivery, "__wrapped__"):
+        unified_response = get_media_buy_delivery.__wrapped__(unified_request, context)
+    elif hasattr(get_media_buy_delivery, "func"):
+        unified_response = get_media_buy_delivery.func(unified_request, context)
+    else:
+        # Fallback - call it directly and hope it works
+        unified_response = get_media_buy_delivery(unified_request, context)
 
     # Convert response to deprecated format (they're actually the same now)
     return GetAllMediaBuyDeliveryResponse(
@@ -2850,6 +2857,10 @@ async def simulation_control(
     tenant_config = get_current_tenant()
     if not tenant_config:
         raise ToolError("No tenant configuration found")
+
+    # Validate strategy_id is provided
+    if not req.strategy_id:
+        raise ToolError("strategy_id is required")
 
     # Validate this is a simulation strategy
     if not req.strategy_id.startswith("sim_"):
