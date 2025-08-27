@@ -2730,7 +2730,7 @@ def get_targeting_capabilities(
     req: GetTargetingCapabilitiesRequest, context: Context
 ) -> GetTargetingCapabilitiesResponse:
     """Get available targeting dimensions for specified channels."""
-    from targeting_dimensions import (
+    from src.services.targeting_dimensions import (
         Channel,
         ChannelTargetingCapabilities,
         TargetingDimensionInfo,
@@ -2791,7 +2791,7 @@ def get_targeting_capabilities(
 @mcp.tool
 def check_aee_requirements(req: CheckAEERequirementsRequest, context: Context) -> CheckAEERequirementsResponse:
     """Check if required AEE dimensions are supported for a channel."""
-    from targeting_dimensions import Channel, get_aee_dimensions
+    from src.services.targeting_dimensions import Channel, get_aee_dimensions
 
     try:
         channel = Channel(req.channel)
