@@ -1,0 +1,131 @@
+[
+  {
+    "product_id": "test_guaranteed_homepage",
+    "name": "Homepage Takeover - Guaranteed",
+    "description": "Premium guaranteed placement on homepage with high visibility and engagement",
+    "delivery_type": "guaranteed",
+    "formats": ["display_970x250", "display_728x90", "display_300x250"],
+    "pricing_model": "fixed_cpm",
+    "cpm": 50.00,
+    "min_spend": 10000,
+    "countries": ["US", "CA"],
+    "targeting_template": {
+      "geo_country_any_of": ["US", "CA"],
+      "device_type_any_of": ["desktop", "tablet"],
+      "daypart_presets": ["prime_time"]
+    },
+    "implementation_config": {
+      "mock_inventory_size": 100000,
+      "mock_fill_rate": 0.95,
+      "mock_viewability": 0.85,
+      "mock_ctr": 0.035
+    }
+  },
+  {
+    "product_id": "test_programmatic_video_sports",
+    "name": "Sports Video - Programmatic",
+    "description": "Video advertising within sports content with dynamic pricing",
+    "delivery_type": "non_guaranteed",
+    "formats": ["video_16:9_1920x1080", "video_16:9_1280x720"],
+    "pricing_model": "dynamic_cpm",
+    "cpm_range": [15, 40],
+    "countries": ["US"],
+    "targeting_template": {
+      "content_category_any_of": ["sports"],
+      "media_type_any_of": ["video"],
+      "device_type_any_of": ["mobile", "desktop", "ctv"]
+    },
+    "implementation_config": {
+      "mock_inventory_size": 500000,
+      "mock_fill_rate": 0.75,
+      "mock_ctr": 0.025,
+      "mock_viewability": 0.78,
+      "mock_completion_rate": 0.85
+    }
+  },
+  {
+    "product_id": "test_audio_streaming",
+    "name": "Audio Streaming - Targeted",
+    "description": "Audio advertising in streaming content with daypart targeting",
+    "delivery_type": "non_guaranteed",
+    "formats": ["audio_companion_300x250", "audio_spot_30s"],
+    "pricing_model": "dynamic_cpm",
+    "cpm_range": [8, 20],
+    "countries": ["US"],
+    "targeting_template": {
+      "media_type_any_of": ["audio"],
+      "daypart_presets": ["drive_time", "work_day"],
+      "audience_segment_any_of": ["music_streaming", "podcast_listeners"]
+    },
+    "implementation_config": {
+      "mock_inventory_size": 200000,
+      "mock_fill_rate": 0.80,
+      "mock_completion_rate": 0.92,
+      "mock_skip_rate": 0.08
+    }
+  },
+  {
+    "product_id": "test_ctv_premium",
+    "name": "Premium CTV - Guaranteed",
+    "description": "Premium Connected TV guaranteed inventory with high viewability",
+    "delivery_type": "guaranteed",
+    "formats": ["video_16:9_1920x1080"],
+    "pricing_model": "fixed_cpm",
+    "cpm": 65.00,
+    "min_spend": 25000,
+    "countries": ["US"],
+    "targeting_template": {
+      "device_type_any_of": ["ctv"],
+      "content_rating_any_of": ["TV-G", "TV-PG", "TV-14"],
+      "daypart_presets": ["prime_time", "late_night"]
+    },
+    "implementation_config": {
+      "mock_inventory_size": 50000,
+      "mock_fill_rate": 0.98,
+      "mock_viewability": 0.95,
+      "mock_completion_rate": 0.93
+    }
+  },
+  {
+    "product_id": "test_mobile_interstitial",
+    "name": "Mobile App Interstitials",
+    "description": "Full-screen mobile app advertising with high engagement",
+    "delivery_type": "non_guaranteed",
+    "formats": ["display_320x480", "video_9:16_1080x1920"],
+    "pricing_model": "dynamic_cpm",
+    "cmp_range": [3, 12],
+    "countries": ["US"],
+    "targeting_template": {
+      "device_type_any_of": ["mobile"],
+      "app_categories": ["gaming", "social", "entertainment"],
+      "os_any_of": ["iOS", "Android"]
+    },
+    "implementation_config": {
+      "mock_inventory_size": 1000000,
+      "mock_fill_rate": 0.65,
+      "mock_ctr": 0.045,
+      "mock_viewability": 0.70
+    }
+  },
+  {
+    "product_id": "test_display_retargeting",
+    "name": "Display Retargeting - Programmatic",
+    "description": "Programmatic display advertising for retargeting campaigns",
+    "delivery_type": "non_guaranteed",
+    "formats": ["display_300x250", "display_728x90", "display_160x600"],
+    "pricing_model": "dynamic_cpm",
+    "cpm_range": [5, 18],
+    "countries": ["US", "CA"],
+    "targeting_template": {
+      "media_type_any_of": ["display"],
+      "audience_segment_any_of": ["retargeting", "lookalike"],
+      "device_type_any_of": ["desktop", "mobile", "tablet"]
+    },
+    "implementation_config": {
+      "mock_inventory_size": 800000,
+      "mock_fill_rate": 0.72,
+      "mock_ctr": 0.055,
+      "mock_viewability": 0.68
+    }
+  }
+]

@@ -30,12 +30,54 @@ class MockAdServer(AdServerAdapter):
     SUPPORTED_DEVICE_TYPES = {"mobile", "desktop", "tablet", "ctv", "dooh", "audio"}
     SUPPORTED_MEDIA_TYPES = {"video", "display", "native", "audio", "dooh"}
 
-    def __init__(self, config, principal, dry_run=False, creative_engine=None, tenant_id=None):
+    def __init__(self, config, principal, dry_run=False, creative_engine=None, tenant_id=None, strategy_context=None):
         """Initialize mock adapter with GAM-like objects."""
         super().__init__(config, principal, dry_run, creative_engine, tenant_id)
 
+        # Store strategy context for simulation behavior
+        self.strategy_context = strategy_context
+        self._current_simulation_time = None
+
         # Initialize GAM-like object hierarchy for this instance
         self._initialize_mock_objects()
+
+    def _is_simulation(self) -> bool:
+        """Check if we're running in simulation mode."""
+        return (
+            self.strategy_context
+            and self.strategy_context.is_simulation
+            and self.strategy_context.strategy_id.startswith("sim_")
+        )
+
+    def _should_force_error(self, error_type: str) -> bool:
+        """Check if strategy should force a specific error."""
+        if not self._is_simulation() or not self.strategy_context:
+            return False
+        return self.strategy_context.should_force_error(error_type)
+
+    def _get_simulation_scenario(self) -> str:
+        """Get current simulation scenario."""
+        if not self._is_simulation() or not self.strategy_context:
+            return "normal"
+        return self.strategy_context.get_config_value("scenario", "normal")
+
+    def _apply_strategy_multipliers(self, base_value: float, multiplier_key: str) -> float:
+        """Apply strategy-based multipliers to base values."""
+        if not self.strategy_context:
+            return base_value
+
+        multiplier = self.strategy_context.get_config_value(multiplier_key, 1.0)
+        return base_value * multiplier
+
+    def _simulate_time_progression(self) -> datetime:
+        """Get current time for simulation (real or simulated)."""
+        if self._is_simulation() and self._current_simulation_time:
+            return self._current_simulation_time
+        return datetime.utcnow()
+
+    def set_simulation_time(self, simulation_time: datetime):
+        """Set the current simulation time."""
+        self._current_simulation_time = simulation_time
 
     def _initialize_mock_objects(self):
         """Create realistic GAM-like objects for testing."""
@@ -204,6 +246,22 @@ class MockAdServer(AdServerAdapter):
 
         media_buy_id = f"buy_{request.po_number}" if request.po_number else f"buy_{uuid.uuid4().hex[:8]}"
 
+        # Strategy-aware behavior modifications
+        if self._is_simulation():
+            self.log(f"🧪 Running in simulation mode with strategy: {self.strategy_context.strategy_id}")
+            scenario = self._get_simulation_scenario()
+            self.log(f"   Simulation scenario: {scenario}")
+
+            # Check for forced errors
+            if self._should_force_error("budget_exceeded"):
+                raise Exception("Simulated error: Campaign budget exceeds available funds")
+
+            if self._should_force_error("targeting_invalid"):
+                raise Exception("Simulated error: Invalid targeting parameters")
+
+            if self._should_force_error("inventory_unavailable"):
+                raise Exception("Simulated error: Requested inventory not available")
+
         # Select appropriate template based on packages
         template_name = "standard_display"  # Default
         if any(p.name and "video" in p.name.lower() for p in packages):
@@ -233,6 +291,16 @@ class MockAdServer(AdServerAdapter):
         total_budget = sum((p.cpm * p.impressions / 1000) for p in packages if p.delivery_type == "guaranteed")
         # Use the request's budget if available, otherwise use calculated
         total_budget = request.budget if request.budget else total_budget
+
+        # Apply strategy-based bid adjustment
+        if self.strategy_context:
+            bid_adjustment = self.strategy_context.get_bid_adjustment()
+            if bid_adjustment != 1.0:
+                adjusted_budget = total_budget * bid_adjustment
+                self.log(
+                    f"📈 Strategy bid adjustment: {bid_adjustment:.2f} (${total_budget:,.2f} → ${adjusted_budget:,.2f})"
+                )
+                total_budget = adjusted_budget
 
         self.log(f"Creating media buy with ID: {media_buy_id}")
         self.log(f"Using template: {template_name} (priority: {template['priority']})")
@@ -386,15 +454,43 @@ class MockAdServer(AdServerAdapter):
                 impressions = int(spend / 0.01)  # $10 CPM
             else:
                 # Campaign in progress - calculate based on pacing
-                elapsed_duration / campaign_duration
+                progress_ratio = elapsed_duration / campaign_duration
                 daily_budget = total_budget / campaign_duration
 
-                # Add some daily variance
-                daily_variance = random.uniform(0.8, 1.2)
-                spend = daily_budget * elapsed_duration * daily_variance
+                # Apply strategy-based pacing multiplier
+                pacing_multiplier = 1.0
+                if self.strategy_context:
+                    pacing_multiplier = self.strategy_context.get_pacing_multiplier()
+                    if self._is_simulation():
+                        self.log(f"🚀 Strategy pacing multiplier: {pacing_multiplier:.2f}")
 
-                # Cap at total budget
-                spend = min(spend, total_budget)
+                # Strategy-aware spend calculation
+                if self._is_simulation():
+                    scenario = self._get_simulation_scenario()
+
+                    # Check for forced budget exceeded error
+                    if self._should_force_error("budget_exceeded"):
+                        spend = total_budget * 1.15  # Overspend by 15%
+                        self.log("🚨 Simulating budget exceeded scenario")
+                    elif scenario == "high_performance":
+                        spend = daily_budget * elapsed_duration * pacing_multiplier * 1.3
+                        self.log("📈 High performance scenario - accelerated spend")
+                    elif scenario == "underperforming":
+                        spend = daily_budget * elapsed_duration * pacing_multiplier * 0.6
+                        self.log("📉 Underperforming scenario - reduced spend")
+                    else:
+                        # Normal variance with strategy pacing
+                        daily_variance = random.uniform(0.8, 1.2)
+                        spend = daily_budget * elapsed_duration * daily_variance * pacing_multiplier
+                else:
+                    # Production mode - normal variance with strategy pacing
+                    daily_variance = random.uniform(0.8, 1.2)
+                    spend = daily_budget * elapsed_duration * daily_variance * pacing_multiplier
+
+                # Cap at total budget (unless simulating budget exceeded)
+                if not self._should_force_error("budget_exceeded"):
+                    spend = min(spend, total_budget)
+
                 impressions = int(spend / 0.01)  # $10 CPM
         else:
             # Fallback for missing media buy

@@ -285,6 +285,10 @@ class GetProductsRequest(BaseModel):
         ...,
         description="Description of the advertiser and the product or service being promoted (REQUIRED per AdCP spec)",
     )
+    strategy_id: str | None = Field(
+        None,
+        description="Optional strategy ID for linking operations and enabling simulation/testing modes",
+    )
 
 
 class GetProductsResponse(BaseModel):
@@ -518,6 +522,10 @@ class CreateMediaBuyRequest(BaseModel):
     # AEE signal requirements
     required_aee_signals: list[str] | None = None  # Required targeting signals
     enable_creative_macro: bool | None = False  # Enable AEE to provide creative_macro signal
+    strategy_id: str | None = Field(
+        None,
+        description="Optional strategy ID for linking operations and enabling simulation/testing modes",
+    )
 
     # Backward compatibility properties for old field names
     @property
@@ -548,7 +556,18 @@ class CreateMediaBuyResponse(BaseModel):
 
 
 class CheckMediaBuyStatusRequest(BaseModel):
-    context_id: str  # The context ID returned from create_media_buy
+    context_id: str | None = None  # The context ID returned from async create_media_buy operations
+    media_buy_id: str | None = None  # Alternative: use media_buy_id for sync operations
+    strategy_id: str | None = Field(
+        None,
+        description="Optional strategy ID for consistent simulation/testing context",
+    )
+
+    def model_validate(cls, values):
+        # Ensure at least one of context_id or media_buy_id is provided
+        if not values.get("context_id") and not values.get("media_buy_id"):
+            raise ValueError("Either context_id or media_buy_id must be provided")
+        return values
 
 
 class CheckMediaBuyStatusResponse(BaseModel):
@@ -588,6 +607,10 @@ class GetMediaBuyDeliveryRequest(BaseModel):
         description="Filter for which buys to fetch when media_buy_ids not provided: 'active', 'all', 'completed'",
     )
     today: date = Field(..., description="Reference date for calculating delivery metrics")
+    strategy_id: str | None = Field(
+        None,
+        description="Optional strategy ID for consistent simulation/testing context",
+    )
 
 
 class MediaBuyDeliveryData(BaseModel):
@@ -747,6 +770,10 @@ class UpdateMediaBuyRequest(BaseModel):
     # Legacy fields
     creative_assignments: dict[str, list[str]] | None = None  # Update creative-to-package mapping
     today: date | None = None  # For testing/simulation
+    strategy_id: str | None = Field(
+        None,
+        description="Optional strategy ID for consistent simulation/testing context",
+    )
 
 
 # Adapter-specific response schemas
@@ -967,3 +994,21 @@ class GetSignalsResponse(BaseModel):
     """Response containing available signals."""
 
     signals: list[Signal]
+
+
+# --- Simulation and Time Progression Control ---
+class SimulationControlRequest(BaseModel):
+    """Control simulation time progression and events."""
+
+    strategy_id: str = Field(..., description="Strategy ID to control (must be simulation strategy with 'sim_' prefix)")
+    action: Literal["jump_to", "reset", "set_scenario"] = Field(..., description="Action to perform on the simulation")
+    parameters: dict[str, Any] = Field(default_factory=dict, description="Action-specific parameters")
+
+
+class SimulationControlResponse(BaseModel):
+    """Response from simulation control operations."""
+
+    status: Literal["ok", "error"] = "ok"
+    message: str | None = None
+    current_state: dict[str, Any] | None = None
+    simulation_time: datetime | None = None

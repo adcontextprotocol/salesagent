@@ -60,6 +60,7 @@ class Tenant(Base, JSONValidatorMixin):
     media_buys = relationship("MediaBuy", back_populates="tenant", cascade="all, delete-orphan")
     # tasks table removed - replaced by workflow_steps
     audit_logs = relationship("AuditLog", back_populates="tenant", cascade="all, delete-orphan")
+    strategies = relationship("Strategy", back_populates="tenant", cascade="all, delete-orphan")
     adapter_config = relationship(
         "AdapterConfig",
         back_populates="tenant",
@@ -150,6 +151,7 @@ class Principal(Base, JSONValidatorMixin):
     # Relationships
     tenant = relationship("Tenant", back_populates="principals")
     media_buys = relationship("MediaBuy", back_populates="principal")
+    strategies = relationship("Strategy", back_populates="principal")
 
     __table_args__ = (
         Index("idx_principals_tenant", "tenant_id"),
@@ -200,6 +202,7 @@ class MediaBuy(Base):
     approved_at = Column(DateTime)
     approved_by = Column(String(255))
     raw_request = Column(JSON, nullable=False)  # JSONB in PostgreSQL
+    strategy_id = Column(String(255), nullable=True)  # Strategy reference for linking operations
     # context_id = Column(String(100), nullable=True)  # TEMPORARILY DISABLED - column missing in production
 
     # Relationships
@@ -210,6 +213,7 @@ class MediaBuy(Base):
         primaryjoin="and_(MediaBuy.tenant_id==Principal.tenant_id, MediaBuy.principal_id==Principal.principal_id)",
         overlaps="media_buys,tenant",
     )
+    strategy = relationship("Strategy", back_populates="media_buys")
     # Removed tasks and context relationships - using ObjectWorkflowMapping instead
 
     __table_args__ = (
@@ -218,8 +222,14 @@ class MediaBuy(Base):
             ["principals.tenant_id", "principals.principal_id"],
             ondelete="CASCADE",
         ),
+        ForeignKeyConstraint(
+            ["strategy_id"],
+            ["strategies.strategy_id"],
+            ondelete="SET NULL",
+        ),
         Index("idx_media_buys_tenant", "tenant_id"),
         Index("idx_media_buys_status", "status"),
+        Index("idx_media_buys_strategy", "strategy_id"),
     )
 
 
@@ -244,11 +254,18 @@ class Task(Base):
     completed_by = Column(String(255))
     task_metadata = Column(JSON)  # JSONB in PostgreSQL
     details = Column(JSON)  # JSONB in PostgreSQL (for backward compatibility)
+    strategy_id = Column(String(255), nullable=True)  # Strategy reference for linking operations
     created_at = Column(DateTime, server_default=func.now())
 
     __table_args__ = (
+        ForeignKeyConstraint(
+            ["strategy_id"],
+            ["strategies.strategy_id"],
+            ondelete="SET NULL",
+        ),
         Index("idx_tasks_tenant", "tenant_id"),
         Index("idx_tasks_status", "status"),
+        Index("idx_tasks_strategy", "strategy_id"),
     )
 
 
@@ -274,13 +291,20 @@ class AuditLog(Base):
     success = Column(Boolean, nullable=False)
     error_message = Column(Text)
     details = Column(JSON)  # JSONB in PostgreSQL
+    strategy_id = Column(String(255), nullable=True)  # Strategy reference for linking operations
 
     # Relationships
     tenant = relationship("Tenant", back_populates="audit_logs")
 
     __table_args__ = (
+        ForeignKeyConstraint(
+            ["strategy_id"],
+            ["strategies.strategy_id"],
+            ondelete="SET NULL",
+        ),
         Index("idx_audit_logs_tenant", "tenant_id"),
         Index("idx_audit_logs_timestamp", "timestamp"),
+        Index("idx_audit_logs_strategy", "strategy_id"),
     )
 
 
@@ -661,4 +685,72 @@ class ObjectWorkflowMapping(Base):
         Index("idx_object_workflow_type_id", "object_type", "object_id"),
         Index("idx_object_workflow_step", "step_id"),
         Index("idx_object_workflow_created", "created_at"),
+    )
+
+
+class Strategy(Base, JSONValidatorMixin):
+    """Strategy definitions for both production and simulation contexts.
+
+    Strategies define behavior patterns for campaigns and simulations.
+    Production strategies control pacing, bidding, and optimization.
+    Simulation strategies (prefix 'sim_') enable testing scenarios.
+    """
+
+    __tablename__ = "strategies"
+
+    strategy_id = Column(String(255), primary_key=True)
+    tenant_id = Column(String(50), ForeignKey("tenants.tenant_id", ondelete="CASCADE"), nullable=True)
+    principal_id = Column(String(100), nullable=True)
+    name = Column(String(255), nullable=False)
+    description = Column(Text, nullable=True)
+    config = Column(JSON, nullable=False, default=dict)
+    is_simulation = Column(Boolean, default=False, nullable=False)
+    created_at = Column(DateTime, nullable=False, server_default=func.now())
+    updated_at = Column(DateTime, nullable=False, server_default=func.now(), onupdate=func.now())
+
+    # Relationships
+    tenant = relationship("Tenant", back_populates="strategies")
+    principal = relationship("Principal", back_populates="strategies")
+    states = relationship("StrategyState", back_populates="strategy", cascade="all, delete-orphan")
+    media_buys = relationship("MediaBuy", back_populates="strategy")
+
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["tenant_id", "principal_id"], ["principals.tenant_id", "principals.principal_id"], ondelete="CASCADE"
+        ),
+        Index("idx_strategies_tenant", "tenant_id"),
+        Index("idx_strategies_principal", "tenant_id", "principal_id"),
+        Index("idx_strategies_simulation", "is_simulation"),
+    )
+
+    @property
+    def is_production_strategy(self) -> bool:
+        """Check if this is a production (non-simulation) strategy."""
+        return not self.is_simulation
+
+    def get_config_value(self, key: str, default=None):
+        """Get a configuration value with fallback."""
+        return self.config.get(key, default) if self.config else default
+
+
+class StrategyState(Base, JSONValidatorMixin):
+    """Persistent state storage for simulation strategies.
+
+    Stores simulation state like current time, triggered events,
+    media buy states, etc. Enables pause/resume of simulations.
+    """
+
+    __tablename__ = "strategy_states"
+
+    strategy_id = Column(String(255), nullable=False, primary_key=True)
+    state_key = Column(String(255), nullable=False, primary_key=True)
+    state_value = Column(JSON, nullable=False)
+    updated_at = Column(DateTime, nullable=False, server_default=func.now(), onupdate=func.now())
+
+    # Relationships
+    strategy = relationship("Strategy", back_populates="states")
+
+    __table_args__ = (
+        ForeignKeyConstraint(["strategy_id"], ["strategies.strategy_id"], ondelete="CASCADE"),
+        Index("idx_strategy_states_id", "strategy_id"),
     )
