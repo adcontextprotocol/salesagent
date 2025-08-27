@@ -27,7 +27,7 @@ settings_bp = Blueprint("settings", __name__)
 # Superadmin settings routes
 @superadmin_settings_bp.route("/settings")
 @require_auth(admin_only=True)
-def admin_settings():
+def superadmin_settings():
     """Superadmin settings page."""
     with get_db_session() as db_session:
         # Get all superadmin config values
@@ -92,7 +92,7 @@ def update_admin_settings():
             logger.error(f"Error updating settings: {e}", exc_info=True)
             flash(f"Error updating settings: {str(e)}", "error")
 
-    return redirect(url_for("superadmin_settings.admin_settings"))
+    return redirect(url_for("superadmin_settings.superadmin_settings"))
 
 
 # POST-only routes for updating tenant settings
