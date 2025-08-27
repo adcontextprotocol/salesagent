@@ -28,7 +28,16 @@ def upgrade() -> None:
     return
     
     # Original migration code below (disabled for now)
-
+    """
+    # Get database type
+    connection = op.get_bind()
+    db_type = connection.dialect.name
+    
+    if db_type == "postgresql":
+        # PostgreSQL: Fix double-encoded JSON strings
+        # Production has JSON columns (not JSONB), so we need to cast to text for LIKE operations
+        pass  # Complex migration code removed
+        
     elif db_type == "sqlite":
         # SQLite: Parse and re-encode JSON strings
         # SQLite stores JSON as text, so we need to handle double-encoded strings
