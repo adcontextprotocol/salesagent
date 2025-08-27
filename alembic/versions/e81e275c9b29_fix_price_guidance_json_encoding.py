@@ -27,42 +27,62 @@ def upgrade() -> None:
     db_type = connection.dialect.name
 
     if db_type == "postgresql":
-        # PostgreSQL: Convert JSON strings back to proper JSON objects
-        # This handles cases where the JSON was stored as a string instead of an object
+        # PostgreSQL: Fix double-encoded JSON strings in TEXT columns
+        # In production, these are TEXT columns, not JSONB, so we need to handle them differently
+
+        # Fix price_guidance - check if it starts with a quote (indicating double-encoding)
         op.execute(
             """
             UPDATE products
-            SET price_guidance = price_guidance::text::jsonb
+            SET price_guidance =
+                CASE
+                    WHEN price_guidance LIKE '"{%' AND price_guidance LIKE '%}"'
+                    THEN substr(price_guidance, 2, length(price_guidance) - 2)
+                    ELSE price_guidance
+                END
             WHERE price_guidance IS NOT NULL
-              AND jsonb_typeof(price_guidance) = 'string'
         """
         )
 
-        # Also fix formats, targeting_template, and implementation_config if needed
+        # Fix formats if needed
         op.execute(
             """
             UPDATE products
-            SET formats = formats::text::jsonb
+            SET formats =
+                CASE
+                    WHEN formats LIKE '"[%' AND formats LIKE '%]"'
+                    THEN substr(formats, 2, length(formats) - 2)
+                    ELSE formats
+                END
             WHERE formats IS NOT NULL
-              AND jsonb_typeof(formats) = 'string'
         """
         )
 
+        # Fix targeting_template if needed
         op.execute(
             """
             UPDATE products
-            SET targeting_template = targeting_template::text::jsonb
+            SET targeting_template =
+                CASE
+                    WHEN targeting_template LIKE '"{%' AND targeting_template LIKE '%}"'
+                    THEN substr(targeting_template, 2, length(targeting_template) - 2)
+                    ELSE targeting_template
+                END
             WHERE targeting_template IS NOT NULL
-              AND jsonb_typeof(targeting_template) = 'string'
         """
         )
 
+        # Fix implementation_config if needed
         op.execute(
             """
             UPDATE products
-            SET implementation_config = implementation_config::text::jsonb
+            SET implementation_config =
+                CASE
+                    WHEN implementation_config LIKE '"{%' AND implementation_config LIKE '%}"'
+                    THEN substr(implementation_config, 2, length(implementation_config) - 2)
+                    ELSE implementation_config
+                END
             WHERE implementation_config IS NOT NULL
-              AND jsonb_typeof(implementation_config) = 'string'
         """
         )
 
