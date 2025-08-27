@@ -88,6 +88,7 @@ from src.core.schemas import (
     LegacyUpdateMediaBuyRequest,
     MarkTaskCompleteRequest,
     MediaBuyDeliveryData,
+    MediaPackage,
     Principal,
     Product,
     Signal,
