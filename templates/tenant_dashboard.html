@@ -34,6 +34,14 @@
     .metric-card.tasks::before { background: linear-gradient(90deg, #f59e0b, #fbbf24); }
     .metric-card.advertisers::before { background: linear-gradient(90deg, #8b5cf6, #a78bfa); }
 
+    /* Hover effect for clickable metric cards */
+    a.metric-card:hover {
+        cursor: pointer;
+        transform: translateY(-2px);
+        box-shadow: 0 4px 16px rgba(139, 92, 246, 0.15);
+        transition: all 0.2s ease;
+    }
+
     .metric-label {
         color: #6b7280;
         font-size: 0.875rem;
@@ -414,13 +422,13 @@
         </div>
     </div>
 
-    <div class="metric-card advertisers">
+    <a href="{{ script_name }}/tenant/{{ tenant.tenant_id }}/settings#advertisers" class="metric-card advertisers" style="text-decoration: none; color: inherit;">
         <div class="metric-label">Active Advertisers</div>
         <div class="metric-value">{{ metrics.active_advertisers }}</div>
         <div class="metric-change neutral">
             {{ metrics.total_advertisers }} total registered
         </div>
-    </div>
+    </a>
 </div>
 
 <!-- Main Dashboard Area -->
@@ -428,7 +436,7 @@
     <!-- Activity Feed -->
     <div class="activity-feed">
         <div class="activity-header">
-            <h3>Live Activity Feed</h3>
+            <h3>Activity Feed</h3>
             <div class="activity-status">
                 <span class="status-dot active"></span>
                 <span id="connection-status">Connected</span>
@@ -436,7 +444,11 @@
         </div>
 
         <div class="activity-list" id="activity-list">
-            <!-- Activities will be added here via WebSocket -->
+            <!-- Static message for production -->
+            <div class="activity-item info" style="text-align: center; padding: 2rem; color: #6b7280;">
+                <p>Real-time activity updates are disabled in production.</p>
+                <p style="font-size: 0.875rem; margin-top: 0.5rem;">Refresh the page to see latest data.</p>
+            </div>
         </div>
     </div>
 
@@ -554,52 +566,29 @@
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-<script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
 <script>
-// WebSocket connection for real-time activity feed
+// Real-time activity feed disabled in production
+// Static dashboard data is loaded via page refresh
 let socket = null;
 let activityBuffer = [];
 const MAX_ACTIVITIES = 50;
 
 function connectWebSocket() {
-    // Connect to Socket.IO with tenant_id as query parameter
-    socket = io(window.location.origin, {
-        query: {
-            tenant_id: '{{ tenant.tenant_id }}'
-        },
-        reconnection: true,
-        reconnectionDelay: 5000
-    });
-
-    socket.on('connect', function() {
-        console.log('Socket.IO connected');
-        document.getElementById('connection-status').textContent = 'Connected';
-        document.querySelector('.status-dot').classList.remove('idle');
-        document.querySelector('.status-dot').classList.add('active');
-
-        // Subscribe to this tenant's activities
-        socket.emit('subscribe', { tenant_id: '{{ tenant.tenant_id }}' });
-    });
-
-    socket.on('activity', function(activity) {
-        console.log('Received activity:', activity);
-        addActivity(activity);
-    });
-
-    socket.on('disconnect', function() {
-        console.log('Socket.IO disconnected');
-        document.getElementById('connection-status').textContent = 'Disconnected';
-        document.querySelector('.status-dot').classList.remove('active');
-        document.querySelector('.status-dot').classList.add('idle');
-    });
-
-    socket.on('connect_error', function(error) {
-        console.error('Socket.IO connection error:', error);
-    });
-
-    socket.on('subscribed', function(data) {
-        console.log('Subscribed to tenant:', data.tenant_id);
-    });
+    // Socket.IO disabled in production to eliminate console errors
+    // Real-time updates are not available - page refresh required for latest data
+    const statusEl = document.getElementById('connection-status');
+    if (statusEl) {
+        statusEl.textContent = 'Real-time updates disabled';
+        statusEl.style.color = '#6b7280';
+    }
+    
+    const statusDot = document.querySelector('.status-dot');
+    if (statusDot) {
+        statusDot.classList.remove('active');
+        statusDot.classList.add('idle');
+    }
+    
+    console.log('Socket.IO disabled in production environment');
 }
 
 function addActivity(activity) {

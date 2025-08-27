@@ -317,7 +317,7 @@ def get_principal_reporting(tenant_id: str, principal_id: str):
         gam_client = get_ad_manager_client_for_tenant(tenant_id)
 
         # Get the network timezone from adapter config
-        from models import AdapterConfig
+        from src.core.database.models import AdapterConfig
 
         with get_db_session() as db_session:
             adapter_config = (
@@ -589,7 +589,7 @@ def get_principal_summary(tenant_id: str, principal_id: str):
         gam_client = get_ad_manager_client_for_tenant(tenant_id)
 
         # Get the network timezone from adapter config
-        from models import AdapterConfig
+        from src.core.database.models import AdapterConfig
 
         with get_db_session() as db_session:
             adapter_config = (

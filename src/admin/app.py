@@ -1,5 +1,6 @@
 """Flask application factory for Admin UI."""
 
+import json
 import logging
 import os
 import secrets
@@ -93,6 +94,18 @@ def create_app(config=None):
     # Configuration
     app.secret_key = os.environ.get("FLASK_SECRET_KEY", secrets.token_hex(32))
     app.logger.setLevel(logging.INFO)
+
+    # Add custom Jinja2 filters
+    def from_json_filter(s):
+        """Parse JSON string to Python object."""
+        if not s:
+            return {}
+        try:
+            return json.loads(s) if isinstance(s, str) else s
+        except (json.JSONDecodeError, TypeError):
+            return {}
+    
+    app.jinja_env.filters['from_json'] = from_json_filter
     
     # Trust proxy headers in production
     if os.environ.get("PRODUCTION") == "true":

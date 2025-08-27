@@ -30,7 +30,7 @@ from fastmcp.client.transports import StreamableHttpTransport
 
 # Import database models for authentication
 from core.database.database_session import get_db_session
-from core.database.models import Principal, Tenant
+from src.core.database.models import Principal, Tenant
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
