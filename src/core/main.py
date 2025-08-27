@@ -351,7 +351,7 @@ def _verify_principal(media_buy_id: str, context: Context):
         raise ValueError(f"Media buy '{media_buy_id}' not found.")
     if media_buys[media_buy_id][1] != principal_id:
         # Log security violation
-        from audit_logger import get_audit_logger
+        from src.core.audit_logger import get_audit_logger
 
         tenant = get_current_tenant()
         security_logger = get_audit_logger("AdCP", tenant["tenant_id"])
@@ -1180,7 +1180,7 @@ def approve_adaptation(req: ApproveAdaptationRequest, context: Context) -> Appro
     creative_statuses[new_creative_id] = new_status
 
     # Log the adaptation
-    from audit_logger import get_audit_logger
+    from src.core.audit_logger import get_audit_logger
     tenant = get_current_tenant()
     logger = get_audit_logger("AdCP", tenant['tenant_id'])
     logger.log_operation(
@@ -1682,7 +1682,7 @@ def create_creative_group(req: CreateCreativeGroupRequest, context: Context) -> 
     creative_groups[group.group_id] = group
 
     # Log the creation
-    from audit_logger import get_audit_logger
+    from src.core.audit_logger import get_audit_logger
 
     tenant = get_current_tenant()
     logger = get_audit_logger("AdCP", tenant["tenant_id"])
@@ -1739,7 +1739,7 @@ def create_creative(req: CreateCreativeRequest, context: Context) -> CreateCreat
     creative_statuses[creative.creative_id] = status
 
     # Log the creation
-    from audit_logger import get_audit_logger
+    from src.core.audit_logger import get_audit_logger
 
     tenant = get_current_tenant()
     logger = get_audit_logger("AdCP", tenant["tenant_id"])
@@ -1799,7 +1799,7 @@ def assign_creative(req: AssignCreativeRequest, context: Context) -> AssignCreat
     creative_assignments[req.media_buy_id][req.package_id].append(req.creative_id)
 
     # Log the assignment
-    from audit_logger import get_audit_logger
+    from src.core.audit_logger import get_audit_logger
 
     tenant = get_current_tenant()
     logger = get_audit_logger("AdCP", tenant["tenant_id"])
@@ -1876,7 +1876,7 @@ def get_pending_creatives(req: GetPendingCreativesRequest, context: Context) -> 
         pending_creatives = pending_creatives[: req.limit]
 
     # Log admin action
-    from audit_logger import get_audit_logger
+    from src.core.audit_logger import get_audit_logger
 
     tenant = get_current_tenant()
     logger = get_audit_logger("AdCP", tenant["tenant_id"])
@@ -1917,7 +1917,7 @@ def approve_creative(req: ApproveCreativeRequest, context: Context) -> ApproveCr
     )
 
     # Log admin action
-    from audit_logger import get_audit_logger
+    from src.core.audit_logger import get_audit_logger
 
     tenant = get_current_tenant()
     logger = get_audit_logger("AdCP", tenant["tenant_id"])
