@@ -20,20 +20,8 @@ sys.path.insert(0, str(project_root))
 # Import database fixtures for all tests
 from tests.conftest_db import *  # noqa: F401,F403
 
-# Set testing environment
-os.environ["ADCP_TESTING"] = "true"
-
-# Only set DATABASE_URL if not already set (allows CI to override)
-# Use in-memory database by default to avoid test pollution
-if "DATABASE_URL" not in os.environ:
-    os.environ["DATABASE_URL"] = "sqlite:///:memory:"
-
-# Set default test environment variables
-os.environ.setdefault("GEMINI_API_KEY", "test_key_for_mocking")
-os.environ.setdefault("GOOGLE_CLIENT_ID", "test_client_id")
-os.environ.setdefault("GOOGLE_CLIENT_SECRET", "test_client_secret")
-os.environ.setdefault("SUPER_ADMIN_EMAILS", "test@example.com")
-
+# Note: Environment variables are now set via fixtures to avoid global pollution
+# See test_environment fixture below for configuration
 # Import fixtures modules
 from tests.fixtures import (
     CreativeFactory,
@@ -94,6 +82,26 @@ def test_db_path():
             os.unlink(db_path)
         except Exception:
             pass  # Ignore cleanup errors
+
+
+@pytest.fixture(autouse=True)
+def test_environment(monkeypatch):
+    """Configure test environment variables without global pollution."""
+    # Set testing flag
+    monkeypatch.setenv("ADCP_TESTING", "true")
+
+    # Set default test values if not already configured
+    if "DATABASE_URL" not in os.environ:
+        monkeypatch.setenv("DATABASE_URL", "sqlite:///:memory:")
+
+    # Set test API keys and credentials
+    monkeypatch.setenv("GEMINI_API_KEY", os.environ.get("GEMINI_API_KEY", "test_key_for_mocking"))
+    monkeypatch.setenv("GOOGLE_CLIENT_ID", os.environ.get("GOOGLE_CLIENT_ID", "test_client_id"))
+    monkeypatch.setenv("GOOGLE_CLIENT_SECRET", os.environ.get("GOOGLE_CLIENT_SECRET", "test_client_secret"))
+    monkeypatch.setenv("SUPER_ADMIN_EMAILS", os.environ.get("SUPER_ADMIN_EMAILS", "test@example.com"))
+
+    yield
+    # Cleanup happens automatically with monkeypatch
 
 
 @pytest.fixture

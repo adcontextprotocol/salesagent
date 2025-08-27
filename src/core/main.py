@@ -4,6 +4,7 @@ import os
 import time
 import uuid
 from datetime import date, datetime, timedelta
+from typing import Any
 
 from fastmcp import FastMCP
 from fastmcp.exceptions import ToolError
@@ -19,9 +20,12 @@ from src.core.audit_logger import get_audit_logger
 from src.services.activity_feed import activity_feed
 
 logger = logging.getLogger(__name__)
-import src.core.schemas as schemas
+
+# Database models
 from product_catalog_providers.factory import get_product_catalog_provider
 from scripts.setup.init_database import init_db
+
+# Other imports
 from src.core.config_loader import (
     get_current_tenant,
     load_config,
@@ -33,15 +37,89 @@ from src.core.database.models import AdapterConfig, MediaBuy, Task, Tenant
 from src.core.database.models import HumanTask as ModelHumanTask
 from src.core.database.models import Principal as ModelPrincipal
 from src.core.database.models import Product as ModelProduct
-from src.core.schemas import *
-from src.services.policy_check_service import PolicyCheckService, PolicyStatus
 
-# CRITICAL: Re-import models AFTER wildcard to prevent collision
-# The wildcard import overwrites Product, Principal, HumanTask
+# Schema models (explicit imports to avoid collisions)
+from src.core.schemas import (
+    AddCreativeAssetsRequest,
+    AddCreativeAssetsResponse,
+    # ApproveAdaptationRequest,  # Not defined in schemas yet
+    # ApproveAdaptationResponse,  # Not defined in schemas yet
+    ApproveCreativeRequest,
+    ApproveCreativeResponse,
+    AssignCreativeRequest,
+    AssignCreativeResponse,
+    AssignTaskRequest,
+    CheckAEERequirementsRequest,
+    CheckAEERequirementsResponse,
+    CheckCreativeStatusRequest,
+    CheckCreativeStatusResponse,
+    CheckMediaBuyStatusRequest,
+    CheckMediaBuyStatusResponse,
+    CompleteTaskRequest,
+    CreateCreativeGroupRequest,
+    CreateCreativeGroupResponse,
+    CreateCreativeRequest,
+    CreateCreativeResponse,
+    CreateHumanTaskRequest,
+    CreateHumanTaskResponse,
+    CreateMediaBuyRequest,
+    CreateMediaBuyResponse,
+    Creative,
+    CreativeAssignment,
+    CreativeGroup,
+    CreativeStatus,
+    GetAllMediaBuyDeliveryRequest,
+    GetAllMediaBuyDeliveryResponse,
+    GetCreativesRequest,
+    GetCreativesResponse,
+    GetMediaBuyDeliveryRequest,
+    GetMediaBuyDeliveryResponse,
+    GetPendingCreativesRequest,
+    GetPendingCreativesResponse,
+    GetPendingTasksRequest,
+    GetPendingTasksResponse,
+    GetProductsRequest,
+    GetProductsResponse,
+    GetSignalsRequest,
+    GetSignalsResponse,
+    GetTargetingCapabilitiesRequest,
+    GetTargetingCapabilitiesResponse,
+    HumanTask,
+    LegacyUpdateMediaBuyRequest,
+    MarkTaskCompleteRequest,
+    MediaBuyDeliveryData,
+    Principal,
+    Product,
+    Signal,
+    SimulationControlRequest,
+    SimulationControlResponse,
+    UpdateMediaBuyRequest,
+    UpdateMediaBuyResponse,
+    UpdatePackageRequest,
+    UpdatePerformanceIndexRequest,
+    UpdatePerformanceIndexResponse,
+    VerifyTaskRequest,
+    VerifyTaskResponse,
+)
+from src.services.policy_check_service import PolicyCheckService, PolicyStatus
 from src.services.slack_notifier import get_slack_notifier
 
 # Initialize Rich console
 console = Console()
+
+# Temporary placeholder classes for missing schemas
+# TODO: These should be properly defined in schemas.py
+from pydantic import BaseModel
+
+
+class ApproveAdaptationRequest(BaseModel):
+    creative_id: str
+    adaptation_id: str
+
+
+class ApproveAdaptationResponse(BaseModel):
+    success: bool
+    message: str
 
 
 def safe_parse_json_field(field_value, field_name="field", default=None):
@@ -173,7 +251,7 @@ def get_principal_adapter_mapping(principal_id: str) -> dict[str, Any]:
         return principal.platform_mappings if principal else {}
 
 
-def get_principal_object(principal_id: str) -> schemas.Principal | None:
+def get_principal_object(principal_id: str) -> Principal | None:
     """Get a Principal object for the given principal_id."""
     tenant = get_current_tenant()
     with get_db_session() as session:
@@ -182,7 +260,7 @@ def get_principal_object(principal_id: str) -> schemas.Principal | None:
         )
 
         if principal:
-            return schemas.Principal(
+            return Principal(
                 principal_id=principal.principal_id,
                 name=principal.name,
                 platform_mappings=principal.platform_mappings,
@@ -2609,7 +2687,7 @@ def mark_task_complete(req: MarkTaskCompleteRequest, context: Context) -> dict[s
 # Dry run logs are now handled by the adapters themselves
 
 
-def get_product_catalog() -> list[schemas.Product]:
+def get_product_catalog() -> list[Product]:
     """Get products for the current tenant."""
     tenant = get_current_tenant()
 
@@ -2641,7 +2719,7 @@ def get_product_catalog() -> list[schemas.Product]:
                 "countries": safe_json_parse(product.countries),
                 "implementation_config": safe_json_parse(product.implementation_config),
             }
-            loaded_products.append(schemas.Product(**product_data))
+            loaded_products.append(Product(**product_data))
 
     return loaded_products
 
@@ -2755,9 +2833,9 @@ from src.core.strategy import SimulationError, StrategyError, StrategyManager
 
 @mcp.tool
 async def simulation_control(
-    req: schemas.SimulationControlRequest,
+    req: SimulationControlRequest,
     context: Context | None = None,
-) -> schemas.SimulationControlResponse:
+) -> SimulationControlResponse:
     """
     Control simulation time progression and events.
 
@@ -2801,7 +2879,7 @@ async def simulation_control(
             },
         )
 
-        return schemas.SimulationControlResponse(
+        return SimulationControlResponse(
             status="ok" if result.get("status") == "ok" else "error",
             message=result.get("message"),
             current_state=result.get("current_state"),
@@ -2819,7 +2897,7 @@ async def simulation_control(
             details={"strategy_id": req.strategy_id, "action": req.action, "error": str(e)},
         )
 
-        return schemas.SimulationControlResponse(status="error", message=f"Simulation control failed: {e}")
+        return SimulationControlResponse(status="error", message=f"Simulation control failed: {e}")
 
 
 def get_strategy_manager(context: Context | None) -> StrategyManager:
