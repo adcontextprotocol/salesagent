@@ -218,6 +218,26 @@
         background: #f0fdf4;
     }
 
+    .adapter-card.disabled {
+        border-color: #d1d5db;
+        background: #f9fafb;
+        color: #9ca3af;
+        cursor: not-allowed;
+        opacity: 0.6;
+    }
+
+    .adapter-card.disabled:hover {
+        border-color: #d1d5db;
+        box-shadow: none;
+    }
+
+    .adapter-card .prerequisite-notice {
+        font-size: 0.75rem;
+        color: #ef4444;
+        margin-top: 0.5rem;
+        font-weight: 500;
+    }
+
     .adapter-card h4 {
         margin: 0 0 0.5rem 0;
         font-size: 1rem;
@@ -486,16 +506,16 @@
                 <p>Connect and configure your ad serving platform</p>
             </div>
 
-            {% if tenant.active_adapter %}
+            {% if active_adapter %}
             <div class="status-card success">
                 <div style="display: flex; justify-content: space-between; align-items: center;">
                     <div>
-                        <strong>✅ Connected to {{ tenant.active_adapter|title|replace('_', ' ') }}</strong>
+                        <strong>✅ Connected to {{ active_adapter|title|replace('_', ' ') }}</strong>
                         <p style="margin: 0.25rem 0 0 0; font-size: 0.75rem;">
                             Last synced: {{ last_sync_time or 'Never' }}
                         </p>
                     </div>
-                    {% if tenant.active_adapter == 'google_ad_manager' %}
+                    {% if active_adapter == 'google_ad_manager' %}
                     <button onclick="syncInventory()" class="btn btn-small">Sync Now</button>
                     {% endif %}
                 </div>
@@ -512,36 +532,39 @@
             <div class="form-section">
                 <h3>Available Ad Servers</h3>
                 <div class="adapter-cards">
-                    <div class="adapter-card {% if tenant.active_adapter == 'mock' %}current{% endif %}"
+                    <div class="adapter-card {% if active_adapter == 'mock' %}current{% endif %}"
                          onclick="selectAdapter('mock')">
-                        {% if tenant.active_adapter == 'mock' %}
+                        {% if active_adapter == 'mock' %}
                         <span class="adapter-badge">Current</span>
                         {% endif %}
                         <h4>Mock (Testing)</h4>
                         <p>Perfect for development and testing. No external setup required.</p>
                     </div>
 
-                    <div class="adapter-card {% if tenant.active_adapter == 'google_ad_manager' %}current{% endif %}"
-                         onclick="selectAdapter('google_ad_manager')">
-                        {% if tenant.active_adapter == 'google_ad_manager' %}
+                    <div id="gam-adapter-card" class="adapter-card {% if active_adapter == 'google_ad_manager' %}current{% endif %}"
+                         onclick="selectGAMAdapter()">
+                        {% if active_adapter == 'google_ad_manager' %}
                         <span class="adapter-badge">Current</span>
                         {% endif %}
                         <h4>Google Ad Manager</h4>
                         <p>Enterprise ad serving platform from Google</p>
+                        <div id="gam-prerequisite-notice" class="prerequisite-notice" style="display: none;">
+                            OAuth setup required in super admin settings
+                        </div>
                     </div>
 
-                    <div class="adapter-card {% if tenant.active_adapter == 'kevel' %}current{% endif %}"
+                    <div class="adapter-card {% if active_adapter == 'kevel' %}current{% endif %}"
                          onclick="selectAdapter('kevel')">
-                        {% if tenant.active_adapter == 'kevel' %}
+                        {% if active_adapter == 'kevel' %}
                         <span class="adapter-badge">Current</span>
                         {% endif %}
                         <h4>Kevel</h4>
                         <p>API-first ad serving for developers</p>
                     </div>
 
-                    <div class="adapter-card {% if tenant.active_adapter == 'triton' %}current{% endif %}"
+                    <div class="adapter-card {% if active_adapter == 'triton' %}current{% endif %}"
                          onclick="selectAdapter('triton')">
-                        {% if tenant.active_adapter == 'triton' %}
+                        {% if active_adapter == 'triton' %}
                         <span class="adapter-badge">Current</span>
                         {% endif %}
                         <h4>Triton Digital</h4>
@@ -552,7 +575,7 @@
 
             <!-- Adapter-specific configuration will be loaded here -->
             <div id="adapter-config">
-                {% if tenant.active_adapter == 'google_ad_manager' %}
+                {% if active_adapter == 'google_ad_manager' %}
                 <div class="form-section" style="margin-top: 2rem;">
                     <h3>Google Ad Manager Configuration</h3>
 
@@ -627,7 +650,7 @@
                         {% endif %}
                     </div>
                 </div>
-                {% elif tenant.active_adapter == 'mock' %}
+                {% elif active_adapter == 'mock' %}
                 <div class="form-section" style="margin-top: 2rem;">
                     <div class="alert alert-info">
                         <strong>Mock Adapter Active</strong>
@@ -755,7 +778,77 @@
                 </div>
             </div>
 
-            <!-- List of advertisers would go here -->
+            <!-- Advertisers List -->
+            {% if principals %}
+            <div class="card" style="margin-top: 1rem;">
+                <div class="card-body">
+                    <h5 class="card-title">Current Advertisers</h5>
+                    <div class="table-responsive">
+                        <table class="table table-sm">
+                            <thead>
+                                <tr>
+                                    <th>Name</th>
+                                    <th>Principal ID</th>
+                                    <th>Platform Mappings</th>
+                                    <th>Created</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for principal in principals %}
+                                <tr>
+                                    <td><strong>{{ principal.name }}</strong></td>
+                                    <td><code>{{ principal.principal_id }}</code></td>
+                                    <td>
+                                        {% if principal.platform_mappings %}
+                                            {% set mappings = principal.platform_mappings | from_json %}
+                                            {% for platform, config in mappings.items() %}
+                                            <small class="badge bg-secondary me-1">{{ platform }}</small>
+                                            {% endfor %}
+                                        {% else %}
+                                        <small class="text-muted">None</small>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        <small class="text-muted">
+                                            {% if principal.created_at %}
+                                            {{ principal.created_at.strftime('%Y-%m-%d') }}
+                                            {% else %}
+                                            Unknown
+                                            {% endif %}
+                                        </small>
+                                    </td>
+                                    <td>
+                                        <div class="btn-group btn-group-sm">
+                                            <button class="btn btn-outline-primary btn-sm"
+                                                    onclick="copyA2AConfig('{{ principal.principal_id }}', '{{ principal.name }}', '{{ principal.access_token }}')"
+                                                    title="Copy A2A Configuration">
+                                                📋 A2A
+                                            </button>
+                                            <button class="btn btn-outline-danger btn-sm"
+                                                    onclick="deletePrincipal('{{ principal.principal_id }}', '{{ principal.name }}')"
+                                                    title="Delete Advertiser">
+                                                🗑️
+                                            </button>
+                                        </div>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+            {% else %}
+            <div class="card" style="margin-top: 1rem;">
+                <div class="card-body text-center text-muted">
+                    <p>No advertisers registered yet.</p>
+                    <a href="/tenant/{{ tenant.tenant_id }}/principals/create" class="btn btn-primary">
+                        Create First Advertiser
+                    </a>
+                </div>
+            </div>
+            {% endif %}
         </div>
 
         <!-- Integrations Settings -->
@@ -941,13 +1034,25 @@ window.addEventListener('load', function() {
 });
 
 // Copy to clipboard
-function copyToClipboard(button) {
-    const code = button.parentElement.querySelector('pre').textContent;
-    navigator.clipboard.writeText(code).then(() => {
-        const originalText = button.textContent;
-        button.textContent = 'Copied!';
+function copyToClipboard(buttonOrText) {
+    let textToCopy;
+    let buttonElement;
+
+    if (typeof buttonOrText === 'string') {
+        // Direct text passed
+        textToCopy = buttonOrText;
+        buttonElement = event.target; // Get the button that was clicked
+    } else {
+        // Button element passed (existing behavior)
+        textToCopy = buttonOrText.parentElement.querySelector('pre').textContent;
+        buttonElement = buttonOrText;
+    }
+
+    navigator.clipboard.writeText(textToCopy).then(() => {
+        const originalText = buttonElement.textContent;
+        buttonElement.textContent = 'Copied!';
         setTimeout(() => {
-            button.textContent = originalText;
+            buttonElement.textContent = originalText;
         }, 2000);
     });
 }
@@ -994,10 +1099,23 @@ function testSlack() {
 function selectAdapter(adapterName) {
     console.log('Switching to adapter:', adapterName);
 
+    // Create friendly adapter name for confirmation
+    const friendlyNames = {
+        'google_ad_manager': 'Google Ad Manager',
+        'mock': 'Mock (Testing)',
+        'kevel': 'Kevel',
+        'triton': 'Triton Digital'
+    };
+
+    const friendlyName = friendlyNames[adapterName] || adapterName;
+
     // Show confirmation dialog
-    if (!confirm(`Are you sure you want to switch to ${adapterName}? This will change how ads are served.`)) {
+    if (!confirm(`Switch to ${friendlyName}?\n\nThis will change how ads are served for your organization.`)) {
+        console.log('User cancelled adapter switch');
         return;
     }
+
+    console.log('User confirmed adapter switch, proceeding...');
 
     // Send request to update adapter
     fetch(`{{ script_name }}/tenant/{{ tenant.tenant_id }}/settings/adapter`, {
@@ -1011,7 +1129,8 @@ function selectAdapter(adapterName) {
     })
     .then(response => {
         if (response.ok) {
-            // Reload the page to show new adapter configuration
+            console.log('Adapter switch successful, reloading page...');
+            // Simple reload to show the updated adapter
             window.location.reload();
         } else {
             return response.text().then(text => {
@@ -1030,6 +1149,8 @@ window.addEventListener('DOMContentLoaded', function() {
     if (document.getElementById('oauth-status')) {
         checkOAuthConfig();
     }
+    // Always check OAuth status for adapter selection
+    checkOAuthForAdapterSelection();
 });
 
 // Check if OAuth is properly configured
@@ -1261,5 +1382,115 @@ function syncInventory() {
     // Would trigger inventory sync
     console.log('Syncing inventory...');
 }
+
+// Check OAuth status for adapter selection (runs on page load)
+function checkOAuthForAdapterSelection() {
+    fetch('{{ script_name }}/api/oauth/status')
+        .then(response => response.json())
+        .then(data => {
+            const gamCard = document.getElementById('gam-adapter-card');
+            const gamNotice = document.getElementById('gam-prerequisite-notice');
+
+            if (!data.configured) {
+                // OAuth not configured - disable GAM card
+                gamCard.classList.add('disabled');
+                gamNotice.style.display = 'block';
+                gamCard.setAttribute('title', 'OAuth credentials must be configured in super admin settings before using Google Ad Manager');
+            } else {
+                // OAuth configured - enable GAM card
+                gamCard.classList.remove('disabled');
+                gamNotice.style.display = 'none';
+                gamCard.removeAttribute('title');
+            }
+        })
+        .catch(error => {
+            console.error('Error checking OAuth for adapter selection:', error);
+            // On error, disable GAM as a precaution
+            const gamCard = document.getElementById('gam-adapter-card');
+            const gamNotice = document.getElementById('gam-prerequisite-notice');
+            gamCard.classList.add('disabled');
+            gamNotice.style.display = 'block';
+            gamNotice.textContent = 'Unable to verify OAuth setup';
+        });
+}
+
+// Handle GAM adapter selection (with OAuth prerequisite check)
+function selectGAMAdapter() {
+    console.log('selectGAMAdapter() called');
+    const gamCard = document.getElementById('gam-adapter-card');
+
+    if (!gamCard) {
+        console.error('GAM adapter card not found!');
+        return;
+    }
+
+    console.log('GAM card classes:', gamCard.className);
+
+    if (gamCard.classList.contains('disabled')) {
+        console.log('GAM card is disabled - showing OAuth alert');
+        alert('Google Ad Manager requires OAuth setup in super admin settings first.\n\nPlease contact your administrator to configure OAuth credentials.');
+        return;
+    }
+
+    console.log('GAM card is enabled - proceeding with adapter selection');
+    // OAuth is configured, proceed with normal adapter selection
+    selectAdapter('google_ad_manager');
+}
+
+// Copy A2A configuration for a principal
+function copyA2AConfig(principalId, principalName, accessToken) {
+    const a2aConfig = {
+        "id": principalId,
+        "name": principalName,
+        "agent_uri": "https://adcp-sales-agent.fly.dev/a2a/",
+        "protocol": "a2a",
+        "auth_token_env": accessToken,
+        "requiresAuth": true
+    };
+
+    const configText = JSON.stringify(a2aConfig, null, 2);
+
+    navigator.clipboard.writeText(configText).then(() => {
+        const button = event.target;
+        const originalText = button.innerHTML;
+        button.innerHTML = '📋 Copied!';
+        setTimeout(() => {
+            button.innerHTML = originalText;
+        }, 2000);
+    });
+}
+
+// Delete a principal/advertiser
+function deletePrincipal(principalId, principalName) {
+    if (!confirm(`Are you sure you want to delete advertiser "${principalName}"?\n\nThis action cannot be undone and will fail if there are active media buys.`)) {
+        return;
+    }
+
+    fetch(`{{ script_name }}/tenant/{{ tenant.tenant_id }}/principals/${principalId}/delete`, {
+        method: 'DELETE',
+        headers: {
+            'Content-Type': 'application/json',
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            alert(data.message || `Advertiser "${principalName}" deleted successfully`);
+            // Reload the page to update the advertisers list
+            window.location.reload();
+        } else {
+            alert('Failed to delete advertiser: ' + (data.error || 'Unknown error'));
+        }
+    })
+    .catch(error => {
+        console.error('Error deleting principal:', error);
+        alert('Failed to delete advertiser: ' + error.message);
+    });
+}
+
+// Debug: Log the current adapter state from backend
+console.log('Backend says active_adapter is:', '{{ active_adapter }}');
+console.log('Backend says tenant.ad_server is:', '{{ tenant.ad_server }}');
+console.log('Current URL params:', window.location.search);
 </script>
 {% endblock %}

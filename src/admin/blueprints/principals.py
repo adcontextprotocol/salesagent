@@ -80,11 +80,12 @@ def create_principal(tenant_id):
                 return redirect(url_for("core.index"))
 
             # Check if GAM is configured
-            from src.admin.utils import get_tenant_config_from_db
-
-            config = get_tenant_config_from_db(tenant_id)
-            gam_config = config.get("adapters", {}).get("google_ad_manager", {})
-            has_gam = gam_config.get("enabled", False)
+            has_gam = False
+            
+            if tenant.ad_server == "google_ad_manager":
+                has_gam = True
+            elif tenant.adapter_config and tenant.adapter_config.adapter_type == "google_ad_manager":
+                has_gam = True
 
             return render_template(
                 "create_principal.html",
@@ -199,15 +200,18 @@ def get_gam_advertisers(tenant_id):
             if not tenant:
                 return jsonify({"error": "Tenant not found"}), 404
 
-            from src.admin.utils import get_tenant_config_from_db
+            # Check if GAM is configured
+            gam_enabled = False
+            
+            if tenant.ad_server == "google_ad_manager":
+                gam_enabled = True
+            elif tenant.adapter_config and tenant.adapter_config.adapter_type == "google_ad_manager":
+                gam_enabled = True
 
-            config = get_tenant_config_from_db(tenant_id)
-            gam_config = config.get("adapters", {}).get("google_ad_manager", {})
-
-            if not gam_config.get("enabled"):
+            if not gam_enabled:
                 return jsonify({"error": "Google Ad Manager not configured"}), 400
 
-            # Initialize GAM adapter with tenant config
+            # Initialize GAM adapter with adapter config
             try:
                 # Create a mock principal for GAM initialization
                 mock_principal = {
@@ -215,6 +219,13 @@ def get_gam_advertisers(tenant_id):
                     "name": "System",
                     "platform_mappings": {},
                 }
+
+                # Build GAM config from AdapterConfig
+                gam_config = {
+                    "network_code": tenant.adapter_config.gam_network_code,
+                    "refresh_token": tenant.adapter_config.gam_refresh_token,
+                    "manual_approval_required": tenant.adapter_config.gam_manual_approval_required or False,
+                } if tenant.adapter_config else {}
 
                 adapter = GoogleAdManager(
                     principal=mock_principal,

@@ -274,7 +274,7 @@ def configure_gam(tenant_id):
                 return jsonify({"success": False, "error": "Tenant not found"}), 404
 
             # Get or create adapter config
-            from models import AdapterConfig
+            from src.core.database.models import AdapterConfig
 
             adapter_config = db_session.query(AdapterConfig).filter_by(tenant_id=tenant_id).first()
 
@@ -326,7 +326,7 @@ def view_gam_line_item(tenant_id, line_item_id):
                     return render_template("error.html", error="Tenant not found"), 404
 
                 # Get GAM configuration from adapter_config
-                from models import AdapterConfig
+                from src.core.database.models import AdapterConfig
 
                 adapter_config = db_session.query(AdapterConfig).filter_by(tenant_id=tenant_id).first()
 
@@ -416,7 +416,7 @@ def get_gam_custom_targeting_keys(tenant_id):
                 return jsonify({"error": "Tenant not found"}), 404
 
             # Get GAM configuration from adapter_config
-            from models import AdapterConfig
+            from src.core.database.models import AdapterConfig
 
             adapter_config = db_session.query(AdapterConfig).filter_by(tenant_id=tenant_id).first()
 
@@ -456,7 +456,7 @@ def get_gam_line_item_api(tenant_id, line_item_id):
                     return jsonify({"error": "Tenant not found"}), 404
 
                 # Get GAM configuration from adapter_config
-                from models import AdapterConfig
+                from src.core.database.models import AdapterConfig
 
                 adapter_config = db_session.query(AdapterConfig).filter_by(tenant_id=tenant_id).first()
 
