@@ -6,6 +6,7 @@ Implements testing hooks from https://github.com/adcontextprotocol/adcp/pull/34
 """
 
 import json
+import os
 import subprocess
 import time
 import uuid
@@ -52,7 +53,8 @@ def docker_services_e2e():
             # Check MCP server health
             if not mcp_ready:
                 try:
-                    response = requests.get("http://localhost:8155/health", timeout=2)
+                    mcp_port = os.getenv("ADCP_SALES_PORT", "8166")
+                    response = requests.get(f"http://localhost:{mcp_port}/health", timeout=2)
                     if response.status_code == 200:
                         print("✓ MCP server is ready")
                         mcp_ready = True
@@ -63,7 +65,8 @@ def docker_services_e2e():
             if not a2a_ready:
                 try:
                     # A2A server typically responds to a basic GET request
-                    response = requests.get("http://localhost:8091/", timeout=2)
+                    a2a_port = os.getenv("A2A_PORT", "8091")
+                    response = requests.get(f"http://localhost:{a2a_port}/", timeout=2)
                     if response.status_code in [200, 404, 405]:  # Any response means it's up
                         print("✓ A2A server is ready")
                         a2a_ready = True
@@ -93,12 +96,17 @@ def docker_services_e2e():
 
 @pytest.fixture
 def live_server(docker_services_e2e):
-    """Provide URLs for live services with correct ports."""
+    """Provide URLs for live services with correct ports from environment."""
+    mcp_port = os.getenv("ADCP_SALES_PORT", "8166")
+    a2a_port = os.getenv("A2A_PORT", "8091")
+    admin_port = os.getenv("ADMIN_UI_PORT", "8087")
+    postgres_port = os.getenv("POSTGRES_PORT", "5518")
+
     return {
-        "mcp": "http://localhost:8155",  # From .env ADCP_SALES_PORT
-        "a2a": "http://localhost:8091",  # From docker-compose.yml A2A_PORT
-        "admin": "http://localhost:8076",  # From .env ADMIN_UI_PORT
-        "postgres": "postgresql://adcp_user:secure_password_change_me@localhost:5507/adcp",
+        "mcp": f"http://localhost:{mcp_port}",
+        "a2a": f"http://localhost:{a2a_port}",
+        "admin": f"http://localhost:{admin_port}",
+        "postgres": f"postgresql://adcp_user:secure_password_change_me@localhost:{postgres_port}/adcp",
     }
 
 
@@ -107,12 +115,26 @@ async def test_auth_token(live_server):
     """Create or get a test principal with auth token."""
     # Try to create a test principal via Docker exec
     # This ensures we have a valid token for testing
+
+    # First, find the running ADCP server container
+    container_result = subprocess.run(
+        ["docker", "ps", "--format", "{{.Names}}", "--filter", "name=adcp-server"],
+        capture_output=True,
+        text=True,
+    )
+
+    if container_result.returncode != 0 or not container_result.stdout.strip():
+        # Fallback to known working token if container discovery fails
+        return "1sNG-OxWfEsELsey-6H6IGg1HCxrpbtneGfW4GkSb10"
+
+    container_name = container_result.stdout.strip().split("\n")[0]
+
     result = subprocess.run(
         [
             "docker",
             "exec",
             "-i",
-            "set-up-production-tenants-adcp-server-1",
+            container_name,
             "python",
             "-c",
             """

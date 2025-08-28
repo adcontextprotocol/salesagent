@@ -127,6 +127,7 @@ class AdCPSalesAgent(A2AServer):
                     self.current_principal = principal
 
                     logger.info(f"Authenticated: {principal.name} (tenant: {tenant.name})")
+
             except Exception as e:
                 logger.error(f"Authentication error: {e}")
                 return jsonify({"error": "Authentication failed"}), 500
@@ -315,19 +316,28 @@ class AdCPSalesAgent(A2AServer):
                 params = {
                     "req": {
                         "product_ids": product_ids,
-                        "total_budget": budget,
-                        "flight_start_date": start_date,
-                        "flight_end_date": end_date,
+                        "budget": budget,
+                        "start_date": start_date,
+                        "end_date": end_date,
                     }
                 }
                 result = await client.call_tool("create_media_buy", params)
 
                 if result:
+                    # Extract media_buy_id from structured_content
+                    media_buy_id = "unknown"
+                    if hasattr(result, "structured_content") and result.structured_content:
+                        media_buy_id = result.structured_content.get("media_buy_id", "unknown")
+                    elif hasattr(result, "media_buy_id"):
+                        media_buy_id = result.media_buy_id
+
                     return {
                         "success": True,
-                        "media_buy_id": result.media_buy_id if hasattr(result, "media_buy_id") else "mock_id",
-                        "message": "Campaign created successfully",
+                        "media_buy_id": media_buy_id,
+                        "message": f"Campaign {media_buy_id} created successfully",
                     }
+                else:
+                    return {"success": False, "message": "No result from MCP server"}
 
         except Exception as e:
             logger.error(f"Error creating campaign: {e}")
@@ -372,7 +382,8 @@ class AdCPSalesAgent(A2AServer):
 
             # Handle both dict and string content
             if isinstance(content, dict):
-                text = content.get("text", "")
+                # Try multiple possible field names for the text content
+                text = content.get("text", "") or content.get("message", "") or str(content)
             else:
                 text = str(content)
 
@@ -381,16 +392,54 @@ class AdCPSalesAgent(A2AServer):
             # Route based on keywords and return structured data per AdCP spec
             text_lower = text.lower()
 
-            if any(word in text_lower for word in ["product", "inventory", "available", "catalog"]):
-                # Handle product queries - return structured product data
+            if any(word in text_lower for word in ["create", "campaign", "buy"]):
+                # Parse message and actually create the media buy
                 import asyncio
+                import re
+
+                # Extract product ID
+                product_match = re.search(r"prod_\d+", text_lower)
+                product_ids = [product_match.group(0)] if product_match else ["prod_1"]
+
+                # Extract budget
+                budget_match = re.search(r"\$?([\d,]+(?:\.\d+)?)", text)
+                budget = float(budget_match.group(1).replace(",", "")) if budget_match else 5000.0
+
+                # Extract dates
+                dates = re.findall(r"\d{4}-\d{2}-\d{2}", text)
+                start_date = dates[0] if len(dates) >= 1 else "2025-09-01"
+                end_date = dates[1] if len(dates) >= 2 else "2025-09-30"
+
+                # Create the media buy
+                logger.info(f"Creating media buy: {product_ids}, ${budget}, {start_date} to {end_date}")
 
                 loop = asyncio.new_event_loop()
                 asyncio.set_event_loop(loop)
-                result = loop.run_until_complete(self.get_products(text))
+                result = loop.run_until_complete(self.create_campaign(product_ids, budget, start_date, end_date))
 
-                # Create structured artifact per AdCP spec
-                task.artifacts = [{"name": "product_catalog", "parts": [{"kind": "application/json", "data": result}]}]
+                # Return proper artifact
+                if result.get("success"):
+                    task.artifacts = [
+                        {
+                            "name": "media_buy_created",
+                            "parts": [
+                                {
+                                    "kind": "application/json",
+                                    "data": {
+                                        "media_buy_id": result.get("media_buy_id", "unknown"),
+                                        "status": "created",
+                                        "products": product_ids,
+                                        "budget": budget,
+                                        "flight_dates": {"start": start_date, "end": end_date},
+                                    },
+                                }
+                            ],
+                        }
+                    ]
+                else:
+                    task.artifacts = [
+                        {"name": "media_buy_error", "parts": [{"kind": "application/json", "data": result}]}
+                    ]
 
             elif any(word in text_lower for word in ["target", "audience"]):
                 result = self.get_targeting()
@@ -404,20 +453,16 @@ class AdCPSalesAgent(A2AServer):
                     {"name": "pricing_information", "parts": [{"kind": "application/json", "data": result}]}
                 ]
 
-            elif any(word in text_lower for word in ["create", "campaign", "buy"]):
-                campaign_help = {
-                    "required_fields": ["product_ids", "total_budget", "start_date", "end_date"],
-                    "example": {
-                        "product_ids": ["sports_video"],
-                        "total_budget": 5000,
-                        "start_date": "2025-02-01",
-                        "end_date": "2025-02-28",
-                    },
-                    "message": "To create a campaign, provide the required fields with your next request",
-                }
-                task.artifacts = [
-                    {"name": "campaign_creation_guide", "parts": [{"kind": "application/json", "data": campaign_help}]}
-                ]
+            elif any(word in text_lower for word in ["product", "inventory", "available", "catalog"]):
+                # Handle product queries - return structured product data
+                import asyncio
+
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                result = loop.run_until_complete(self.get_products(text))
+
+                # Create structured artifact per AdCP spec
+                task.artifacts = [{"name": "product_catalog", "parts": [{"kind": "application/json", "data": result}]}]
 
             else:
                 # General help response with structured capabilities
