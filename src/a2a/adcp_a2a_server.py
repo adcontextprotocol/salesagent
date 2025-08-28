@@ -60,10 +60,13 @@ class AdCPSalesAgent(A2AServer):
             version=self.version,
             authentication="bearer-token",  # Indicate auth is required
             skills=[
-                AgentSkill(name="get_products", description="Browse available advertising products and inventory"),
-                AgentSkill(name="create_campaign", description="Create and manage advertising campaigns"),
-                AgentSkill(name="get_targeting", description="Get available targeting options"),
-                AgentSkill(name="get_pricing", description="Get pricing information and models"),
+                # Match AdCP specification skills from MCP server
+                AgentSkill(name="get_products", description="Retrieve available advertising products and inventory"),
+                AgentSkill(name="create_media_buy", description="Create a new media buy for advertising campaigns"),
+                AgentSkill(name="get_media_buy_status", description="Check the status of an existing media buy"),
+                AgentSkill(name="update_media_buy", description="Update an existing media buy configuration"),
+                AgentSkill(name="approve_creative", description="Approve a creative for use in campaigns"),
+                AgentSkill(name="assign_creative", description="Assign approved creatives to media packages"),
             ],
         )
 
