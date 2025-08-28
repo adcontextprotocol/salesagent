@@ -49,11 +49,18 @@ Welcome to the AdCP Sales Agent documentation. This guide will help you find the
 - **Creative Management** - Upload, approval, and tracking
 - **Audit Logging** - Complete operational history
 
+## Protocol Documentation
+
+- **[A2A Overview](a2a-overview.md)** - Agent-to-Agent protocol implementation
+- **[A2A Authentication Guide](a2a-authentication-guide.md)** - Authentication patterns and security
+- **[A2A Spec Clarification Issue](a2a-spec-clarification-issue.md)** - Proposed improvements to A2A artifacts specification
+- **[MCP Usage Guide](mcp-usage.md)** - Model Context Protocol integration
+
 ## Documentation Structure
 
 ```
 docs/
-├── README.md           # This file - documentation index
+├── index.md           # This file - documentation index
 ├── SETUP.md           # Installation and configuration
 ├── DEVELOPMENT.md     # Development environment and guidelines
 ├── api.md             # API reference (MCP and REST)
@@ -61,7 +68,9 @@ docs/
 ├── deployment.md      # Production deployment
 ├── OPERATIONS.md      # Admin UI and operations
 ├── ARCHITECTURE.md    # System design and architecture
-└── TROUBLESHOOTING.md # Common problems and solutions
+├── TROUBLESHOOTING.md # Common problems and solutions
+├── a2a-*.md          # A2A protocol documentation
+└── adcp-*.md         # AdCP protocol mappings
 ```
 
 ## Quick Links

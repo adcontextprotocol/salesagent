@@ -35,18 +35,31 @@ RUN apt-get update && apt-get install -y \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
+# Install uv
+RUN pip install uv
+
 # Create non-root user
 RUN useradd -m -u 1000 adcp
 
 WORKDIR /app
 
-# Copy virtual environment from builder
-COPY --from=builder /app/.venv /app/.venv
-
 # Copy application code
 COPY . .
 
-# Set ownership
+# Set up caching for uv
+ENV UV_CACHE_DIR=/cache/uv
+ENV UV_TOOL_DIR=/cache/uv-tools
+ENV UV_PYTHON_PREFERENCE=only-system
+ENV UV_PYTHON=/usr/local/bin/python3.12
+
+# Create virtual environment and install dependencies
+# This needs to be done as root first, then we'll switch to adcp user
+ENV UV_HTTP_TIMEOUT=300
+RUN --mount=type=cache,target=/cache/uv \
+    --mount=type=cache,target=/root/.cache/pip \
+    uv sync --python=/usr/local/bin/python3.12 --frozen
+
+# Set ownership after creating venv
 RUN chown -R adcp:adcp /app
 
 # Switch to non-root user

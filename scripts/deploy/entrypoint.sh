@@ -6,6 +6,10 @@ echo "🚀 Starting AdCP Sales Agent..."
 # Function to check if database is accessible
 check_database_health() {
     echo "🔍 Checking database connectivity..."
+    echo "Python path: $(which python)"
+    echo "Python version: $(python --version)"
+    echo "Checking if psycopg2 is available..."
+    python -c "import psycopg2; print('✅ psycopg2 imported successfully')" || (echo "❌ psycopg2 not available"; exit 1)
     python -c "
 from src.core.database.db_config import get_db_connection
 try:
