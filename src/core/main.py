@@ -209,7 +209,6 @@ def get_principal_from_context(context: Context | None) -> str | None:
             tenant = session.query(Tenant).filter_by(tenant_id=tenant_id, is_active=True).first()
 
             if not tenant:
-                print(f"No active tenant found for ID: {tenant_id}")
                 return None
 
             # Set tenant context with new fields
@@ -232,7 +231,7 @@ def get_principal_from_context(context: Context | None) -> str | None:
             }
         set_current_tenant(tenant_dict)
 
-        # Get the x-adcp-auth header
+        # Get the x-adcp-auth header (FastMCP v2.11.0+ properly forwards this)
         auth_token = request.headers.get("x-adcp-auth")
         if not auth_token:
             return None
@@ -383,6 +382,8 @@ product_catalog: list[Product] = []
 creative_library: dict[str, Creative] = {}  # creative_id -> Creative
 creative_groups: dict[str, CreativeGroup] = {}  # group_id -> CreativeGroup
 creative_assignments_v2: dict[str, CreativeAssignment] = {}  # assignment_id -> CreativeAssignment
+
+# Authentication cache removed - FastMCP v2.11.0+ properly forwards headers
 
 # Import audit logger for later use
 
