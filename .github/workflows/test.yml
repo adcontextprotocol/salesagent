@@ -193,7 +193,8 @@ jobs:
   e2e-tests:
     name: E2E Tests
     runs-on: ubuntu-latest
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    # Run E2E tests on PRs and main branch pushes - catch issues early!
+    if: github.event_name == 'push' || github.event_name == 'pull_request'
 
     services:
       postgres:
