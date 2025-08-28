@@ -53,7 +53,7 @@ def docker_services_e2e():
             # Check MCP server health
             if not mcp_ready:
                 try:
-                    mcp_port = os.getenv("ADCP_SALES_PORT", "8166")
+                    mcp_port = os.getenv("ADCP_SALES_PORT", "8126")
                     response = requests.get(f"http://localhost:{mcp_port}/health", timeout=2)
                     if response.status_code == 200:
                         print("✓ MCP server is ready")
@@ -97,7 +97,7 @@ def docker_services_e2e():
 @pytest.fixture
 def live_server(docker_services_e2e):
     """Provide URLs for live services with correct ports from environment."""
-    mcp_port = os.getenv("ADCP_SALES_PORT", "8166")
+    mcp_port = os.getenv("ADCP_SALES_PORT", "8126")
     a2a_port = os.getenv("A2A_PORT", "8091")
     admin_port = os.getenv("ADMIN_UI_PORT", "8087")
     postgres_port = os.getenv("POSTGRES_PORT", "5518")
