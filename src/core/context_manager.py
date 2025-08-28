@@ -172,11 +172,11 @@ class ContextManager(DatabaseManager):
             owner=owner,
             status=status,
             tool_name=tool_name,
-            request_data=request_data,
-            response_data=response_data,
+            request_data=request_data if request_data is not None else {},
+            response_data=response_data if response_data is not None else {},
             assigned_to=assigned_to,
             error_message=error_message,
-            transaction_details=transaction_details,
+            transaction_details=transaction_details if transaction_details is not None else {},
             comments=comments,
             created_at=datetime.now(UTC),
         )
@@ -264,6 +264,31 @@ class ContextManager(DatabaseManager):
                 console.print(f"[green]Updated workflow step {step_id}[/green]")
         finally:
             session.close()
+
+    def mark_human_needed(
+        self,
+        context_id: str,
+        reason: str,
+        clarification_details: str | None = None,
+    ) -> None:
+        """Mark that human intervention is needed for this context.
+
+        Args:
+            context_id: The context ID
+            reason: Why human review is needed
+            clarification_details: Additional details about what needs review
+        """
+        self.create_workflow_step(
+            context_id=context_id,
+            step_type="approval",
+            owner="publisher",  # Publisher needs to review
+            status="requires_approval",
+            request_data={
+                "reason": reason,
+                "details": clarification_details,
+            },
+            initial_comment=reason,
+        )
 
     def get_pending_steps(self, owner: str | None = None, assigned_to: str | None = None) -> list[WorkflowStep]:
         """Get pending workflow steps from the work queue.

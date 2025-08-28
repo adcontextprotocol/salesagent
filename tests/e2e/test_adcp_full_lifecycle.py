@@ -15,6 +15,7 @@ Usage:
     pytest tests/e2e/test_adcp_full_lifecycle.py --server-url=https://example.com
 """
 
+import asyncio
 import json
 import uuid
 from datetime import datetime
@@ -98,16 +99,35 @@ class AdCPTestClient:
         return result
 
     async def query_a2a(self, query: str) -> dict[str, Any]:
-        """Query the A2A server using REST transport."""
+        """Query the A2A server using REST transport with retry logic."""
         headers = self._build_headers()
         # A2A expects Bearer token in Authorization header
         headers["Authorization"] = f"Bearer {self.auth_token}"
 
-        response = await self.http_client.post(
-            f"{self.a2a_url}/message", json={"message": query, "thread_id": self.test_session_id}, headers=headers
-        )
-        response.raise_for_status()
-        return response.json()
+        # Retry logic for connection issues
+        max_retries = 3
+        retry_delay = 2.0
+
+        for attempt in range(max_retries):
+            try:
+                response = await self.http_client.post(
+                    f"{self.a2a_url}/message",
+                    json={"message": query, "thread_id": self.test_session_id},
+                    headers=headers,
+                    timeout=10.0,  # Add timeout
+                )
+                response.raise_for_status()
+                return response.json()
+            except httpx.ReadError as e:
+                if attempt < max_retries - 1:
+                    print(f"A2A connection failed (attempt {attempt + 1}/{max_retries}), retrying in {retry_delay}s...")
+                    await asyncio.sleep(retry_delay)
+                    retry_delay *= 1.5  # Exponential backoff
+                else:
+                    raise e
+            except Exception as e:
+                # Don't retry for non-connection errors
+                raise e
 
 
 class TestAdCPFullLifecycle:
@@ -261,6 +281,8 @@ class TestAdCPFullLifecycle:
                         "content_uri": "https://example.com/banner.jpg",
                         "content": {"url": "https://example.com/banner.jpg"},
                         "status": "pending",
+                        "created_at": "2025-09-01T00:00:00Z",
+                        "updated_at": "2025-09-01T00:00:00Z",
                     }
                 ],
             },
@@ -305,11 +327,17 @@ class TestAdCPFullLifecycle:
         print("✓ Advanced simulation to midpoint")
 
         # Check delivery at midpoint
-        delivery = await test_client.call_mcp_tool("get_media_buy_delivery", {"media_buy_id": media_buy_id})
+        delivery = await test_client.call_mcp_tool(
+            "get_media_buy_delivery", {"media_buy_id": media_buy_id, "today": "2025-09-15"}
+        )
 
-        assert "impressions" in delivery
-        assert "spend" in delivery
-        print(f"✓ Delivery check: {delivery.get('impressions', 0)} impressions")
+        # The response has deliveries array with the media buy data
+        assert "deliveries" in delivery
+        assert len(delivery["deliveries"]) > 0
+        first_delivery = delivery["deliveries"][0]
+        assert "impressions" in first_delivery
+        assert "spend" in first_delivery
+        print(f"✓ Delivery check: {first_delivery.get('impressions', 0)} impressions")
 
     @pytest.mark.asyncio
     async def test_performance_optimization(self, test_client: AdCPTestClient):
@@ -341,8 +369,9 @@ class TestAdCPFullLifecycle:
             "get_all_media_buy_delivery", {"today": "2025-09-15"}  # Mid-campaign date
         )
 
-        assert "media_buys" in all_delivery
-        print(f"✓ Retrieved delivery for {len(all_delivery['media_buys'])} campaigns")
+        # The response has deliveries array instead of media_buys
+        assert "deliveries" in all_delivery
+        print(f"✓ Retrieved delivery for {len(all_delivery['deliveries'])} campaigns")
 
         # Update performance index if available
         try:
@@ -490,6 +519,8 @@ class TestAdCPFullLifecycle:
                         "content_uri": "https://example.com/hero.jpg",
                         "content": {"url": "https://example.com/hero.jpg"},
                         "status": "pending",
+                        "created_at": "2025-09-01T00:00:00Z",
+                        "updated_at": "2025-09-01T00:00:00Z",
                     },
                     {
                         "creative_id": "square_banner",
@@ -500,6 +531,8 @@ class TestAdCPFullLifecycle:
                         "content_uri": "https://example.com/square.jpg",
                         "content": {"url": "https://example.com/square.jpg"},
                         "status": "pending",
+                        "created_at": "2025-09-01T00:00:00Z",
+                        "updated_at": "2025-09-01T00:00:00Z",
                     },
                 ],
             },
@@ -518,7 +551,9 @@ class TestAdCPFullLifecycle:
         test_client.set_mock_time(datetime(2025, 9, 15, 12, 0, 0))
         test_client.jump_to_event("campaign-midpoint")
 
-        delivery = await test_client.call_mcp_tool("get_media_buy_delivery", {"media_buy_id": media_buy_id})
+        delivery = await test_client.call_mcp_tool(
+            "get_media_buy_delivery", {"media_buy_id": media_buy_id, "today": "2025-09-15"}
+        )
 
         print(f"✓ Mid-flight delivery: {delivery.get('impressions', 0)} impressions, ${delivery.get('spend', 0)} spend")
 
@@ -534,11 +569,18 @@ class TestAdCPFullLifecycle:
         test_client.set_mock_time(datetime(2025, 10, 1, 9, 0, 0))
         test_client.jump_to_event("campaign-complete")
 
-        final_delivery = await test_client.call_mcp_tool("get_media_buy_delivery", {"media_buy_id": media_buy_id})
+        final_delivery = await test_client.call_mcp_tool(
+            "get_media_buy_delivery", {"media_buy_id": media_buy_id, "today": "2025-10-01"}
+        )
 
         print("✓ Campaign completed:")
-        print(f"  - Total impressions: {final_delivery.get('impressions', 0)}")
-        print(f"  - Total spend: ${final_delivery.get('spend', 0)}")
+        if "deliveries" in final_delivery and len(final_delivery["deliveries"]) > 0:
+            campaign_data = final_delivery["deliveries"][0]
+            print(f"  - Total impressions: {campaign_data.get('impressions', 0)}")
+            print(f"  - Total spend: ${campaign_data.get('spend', 0)}")
+        else:
+            print(f"  - Total impressions: {final_delivery.get('total_impressions', 0)}")
+            print(f"  - Total spend: ${final_delivery.get('total_spend', 0)}")
         print(f"  - CTR: {final_delivery.get('ctr', 0):.2%}")
 
         print("\n✅ Full lifecycle test completed successfully!")
