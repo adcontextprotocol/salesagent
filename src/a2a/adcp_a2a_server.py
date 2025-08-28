@@ -137,35 +137,21 @@ class AdCPSalesAgent(A2AServer):
         return decorated
 
     def setup_routes(self, app):
-        """Set up our own routes with authentication, not calling parent."""
+        """Add our custom authenticated routes to the standard A2A Flask app.
+        
+        Note: Standard routes (/.well-known/agent.json, /a2a, /agent.json, etc.) 
+        are automatically provided by create_flask_app().
+        """
 
         # Store app reference
         self.app = app
 
-        # Public endpoints (no auth required)
-        @app.route("/", methods=["GET"])
-        def root_info():
-            """Public endpoint - returns server info."""
-            return jsonify(
-                {
-                    "name": self.agent_card.name,
-                    "description": self.agent_card.description,
-                    "agent_card_url": "/agent.json",
-                    "protocol": "a2a",
-                    "capabilities": self.agent_card.capabilities if hasattr(self.agent_card, "capabilities") else {},
-                    "authentication": self.agent_card.authentication,
-                    "authentication_help": "Use Bearer token in Authorization header, X-Auth-Token header, or ?token= query parameter",
-                }
-            )
-
-        @app.route("/agent.json", methods=["GET"])
-        def get_agent_card():
-            """Public endpoint - returns agent card."""
-            return jsonify(self.agent_card.to_dict())
+        # Note: We don't need to add /agent.json or / routes since they're provided by create_flask_app()
+        # The library provides: /, /a2a, /agent.json, /.well-known/agent.json, /stream
 
         @app.route("/health", methods=["GET"])
-        def health_check():
-            """Public endpoint - health check."""
+        def custom_health_check():
+            """Custom health check endpoint (different from library's /a2a/health)."""
             return jsonify({"status": "healthy"})
 
         # Protected endpoints (auth required)
@@ -539,22 +525,25 @@ def main():
     host = os.getenv("A2A_HOST", "0.0.0.0")
 
     logger.info(f"Starting AdCP A2A Agent on {host}:{port}")
-    logger.info("Using standard python-a2a server - no custom protocol code")
+    logger.info("Using standard python-a2a server with create_flask_app()")
 
     # Create agent
     agent = AdCPSalesAgent()
 
-    # Create Flask app and setup routes
-    from flask import Flask
+    # Use python-a2a's standard Flask app creation
+    # This automatically provides all A2A spec endpoints including /.well-known/agent.json
+    from python_a2a.server.http import create_flask_app
 
-    app = Flask(__name__)
-    agent.setup_routes(app)
+    app = create_flask_app(agent)
+    
+    # Our custom routes are added via agent.setup_routes() which is called by create_flask_app
 
     # Use waitress production server instead of Flask dev server
     # This avoids the WERKZEUG_SERVER_FD issue in Docker
     from waitress import serve
 
     logger.info(f"Running with Waitress WSGI server on {host}:{port}")
+    logger.info("Standard A2A endpoints: /.well-known/agent.json, /a2a, /agent.json, /stream")
     serve(app, host=host, port=port, threads=4)
 
 
