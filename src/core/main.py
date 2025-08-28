@@ -89,6 +89,7 @@ from src.core.schemas import (
     MarkTaskCompleteRequest,
     MediaBuyDeliveryData,
     MediaPackage,
+    PackagePerformance,
     Principal,
     Product,
     ReportingPeriod,
@@ -503,6 +504,38 @@ async def get_products(req: GetProductsRequest, context: Context) -> GetProducts
     principal = get_principal_object(principal_id) if principal_id else None
     principal_data = principal.model_dump() if principal else None
 
+    # Validate promoted_offering per AdCP spec
+    if not req.promoted_offering or not req.promoted_offering.strip():
+        raise ToolError("promoted_offering is required per AdCP spec and cannot be empty")
+
+    offering = req.promoted_offering.strip()
+    generic_terms = {
+        "footwear",
+        "shoes",
+        "clothing",
+        "apparel",
+        "electronics",
+        "food",
+        "beverages",
+        "automotive",
+        "athletic",
+    }
+    words = offering.split()
+
+    # Must have at least 2 words (brand + product)
+    if len(words) < 2:
+        raise ToolError(
+            f"Invalid promoted_offering: '{offering}'. Must include both brand and specific product "
+            f"(e.g., 'Nike Air Jordan 2025 basketball shoes', not just 'shoes')"
+        )
+
+    # Check if it's just generic category terms without a brand
+    if all(word.lower() in generic_terms or word.lower() in ["and", "or", "the", "a", "an"] for word in words):
+        raise ToolError(
+            f"Invalid promoted_offering: '{offering}'. Must include brand name and specific product, "
+            f"not just generic category (e.g., 'Nike Air Jordan 2025' not 'athletic footwear')"
+        )
+
     # Check policy compliance first
     policy_service = PolicyCheckService()
     # Safely parse policy_settings that might be JSON string (SQLite) or dict (PostgreSQL JSONB)
@@ -731,6 +764,29 @@ def create_media_buy(req: CreateMediaBuyRequest, context: Context) -> CreateMedi
         error_msg = f"Principal {principal_id} not found"
         raise ToolError(error_msg)
 
+    # Validate input parameters
+    # 1. Budget validation
+    if req.total_budget is not None and req.total_budget <= 0:
+        error_msg = f"Invalid budget: {req.total_budget}. Budget must be positive."
+        raise ToolError(error_msg)
+
+    # 2. Date validation
+    from datetime import date
+
+    today = date.today()
+
+    if req.start_date and req.end_date:
+        start_date = req.start_date if isinstance(req.start_date, date) else date.fromisoformat(req.start_date)
+        end_date = req.end_date if isinstance(req.end_date, date) else date.fromisoformat(req.end_date)
+
+        if start_date < today:
+            error_msg = f"Invalid start date: {start_date}. Start date cannot be in the past."
+            raise ToolError(error_msg)
+
+        if end_date <= start_date:
+            error_msg = f"Invalid date range: end date ({end_date}) must be after start date ({start_date})."
+            raise ToolError(error_msg)
+
     # Validate targeting doesn't use managed-only dimensions
     if req.targeting_overlay:
         from src.services.targeting_capabilities import validate_overlay_targeting
@@ -895,8 +951,8 @@ def create_media_buy(req: CreateMediaBuyRequest, context: Context) -> CreateMedi
         )
 
     # Create the media buy using the adapter (SYNCHRONOUS operation)
-    start_time = datetime.combine(req.flight_start_date, datetime.min.time())
-    end_time = datetime.combine(req.flight_end_date, datetime.max.time())
+    start_time = datetime.combine(req.start_date, datetime.min.time())
+    end_time = datetime.combine(req.end_date, datetime.max.time())
     response = adapter.create_media_buy(req, packages, start_time, end_time)
 
     # Store the media buy in memory (for backward compatibility)
@@ -914,8 +970,8 @@ def create_media_buy(req: CreateMediaBuyRequest, context: Context) -> CreateMedi
             campaign_objective=getattr(req, "campaign_objective", ""),  # Optional field
             kpi_goal=getattr(req, "kpi_goal", ""),  # Optional field
             budget=req.total_budget,
-            start_date=req.flight_start_date,
-            end_date=req.flight_end_date,
+            start_date=req.start_date,
+            end_date=req.end_date,
             status=response.status or "active",
             raw_request=req.model_dump(mode="json"),
         )
@@ -946,7 +1002,7 @@ def create_media_buy(req: CreateMediaBuyRequest, context: Context) -> CreateMedi
             )
 
     # Add message to response (no context_id for synchronous operations)
-    response.message = f"Media buy {response.media_buy_id} has been created successfully. Your campaign will run from {req.flight_start_date} to {req.flight_end_date} with a budget of ${req.total_budget}."
+    response.message = f"Media buy {response.media_buy_id} has been created successfully. Your campaign will run from {req.start_date} to {req.end_date} with a budget of ${req.total_budget}."
 
     # Log activity
     log_tool_activity(context, "create_media_buy", start_time)
@@ -964,8 +1020,8 @@ def create_media_buy(req: CreateMediaBuyRequest, context: Context) -> CreateMedi
                 principal_name = principal.name
 
         # Calculate duration
-        start_date = datetime.strptime(req.flight_start_date, "%Y-%m-%d")
-        end_date = datetime.strptime(req.flight_end_date, "%Y-%m-%d")
+        start_date = datetime.strptime(req.start_date, "%Y-%m-%d")
+        end_date = datetime.strptime(req.end_date, "%Y-%m-%d")
         duration_days = (end_date - start_date).days + 1
 
         activity_feed.log_media_buy(
@@ -1433,7 +1489,12 @@ def update_media_buy(req: UpdateMediaBuyRequest, context: Context) -> UpdateMedi
                     )
                     return result
 
-    # Update stored metadata if needed
+    # Validate update parameters
+    if req.total_budget is not None and req.total_budget <= 0:
+        error_msg = f"Invalid budget: {req.total_budget}. Budget must be positive."
+        ctx_manager.update_workflow_step(step.step_id, status="failed", error_message=error_msg)
+        return UpdateMediaBuyResponse(status="failed", detail=error_msg)
+
     buy_request, _ = media_buys[req.media_buy_id]
     if req.total_budget is not None:
         buy_request.total_budget = req.total_budget
@@ -2467,8 +2528,8 @@ def complete_task(req: CompleteTaskRequest, context: Context) -> dict[str, str]:
                         )
 
                     # Execute the actual creation
-                    start_time = datetime.combine(original_req.flight_start_date, datetime.min.time())
-                    end_time = datetime.combine(original_req.flight_end_date, datetime.max.time())
+                    start_time = datetime.combine(original_req.start_date, datetime.min.time())
+                    end_time = datetime.combine(original_req.end_date, datetime.max.time())
                     response = adapter.create_media_buy(original_req, packages, start_time, end_time)
 
                     # Store the media buy in memory (for backward compatibility)
@@ -2490,8 +2551,8 @@ def complete_task(req: CompleteTaskRequest, context: Context) -> dict[str, str]:
                             campaign_objective=getattr(original_req, "campaign_objective", ""),  # Optional field
                             kpi_goal=getattr(original_req, "kpi_goal", ""),  # Optional field
                             budget=original_req.total_budget,
-                            start_date=original_req.flight_start_date.isoformat(),
-                            end_date=original_req.flight_end_date.isoformat(),
+                            start_date=original_req.start_date.isoformat(),
+                            end_date=original_req.end_date.isoformat(),
                             status=response.status or "active",
                             raw_request=original_req.model_dump(mode="json"),
                         )
