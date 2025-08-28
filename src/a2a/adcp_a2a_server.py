@@ -47,9 +47,11 @@ class AdCPSalesAgent(A2AServer):
     def __init__(self):
         # Create agent card with skills
         # Use production URL for deployed server, localhost for development
-        server_url = os.getenv("A2A_SERVER_URL", "https://adcp-sales-agent.fly.dev/a2a")
-        if os.getenv("A2A_MOCK_MODE") == "true":
-            server_url = "http://localhost:8091"  # Use localhost in development/testing
+        # Check if we're running in production (Fly.io sets FLY_APP_NAME)
+        if os.getenv("FLY_APP_NAME") or os.getenv("PRODUCTION") == "true":
+            server_url = "https://adcp-sales-agent.fly.dev/a2a"  # Force production URL
+        else:
+            server_url = "http://localhost:8091"  # Use localhost in development
             
         agent_card = AgentCard(
             name=self.name,
