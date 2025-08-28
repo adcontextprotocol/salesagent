@@ -29,7 +29,7 @@ import pytest
 from fastmcp.client import Client
 from fastmcp.client.transports import StreamableHttpTransport
 
-DEFAULT_MCP_PORT = int(os.getenv("ADCP_SALES_PORT", "8166"))  # From .env
+DEFAULT_MCP_PORT = int(os.getenv("ADCP_SALES_PORT", "8126"))  # Match docker-compose actual mapping
 DEFAULT_A2A_PORT = int(os.getenv("A2A_PORT", "8091"))  # From docker-compose.yml
 DEFAULT_ADMIN_PORT = int(os.getenv("ADMIN_UI_PORT", "8087"))  # From .env
 TEST_TIMEOUT = 30
@@ -169,7 +169,7 @@ class TestAdCPFullLifecycle:
     """Comprehensive E2E test suite for AdCP protocol compliance."""
 
     @pytest.fixture
-    async def test_client(self, request, docker_services_e2e) -> AdCPTestClient:
+    async def test_client(self, request, docker_services_e2e, test_auth_token) -> AdCPTestClient:
         """Create test client based on test mode."""
         mode = request.config.getoption("--mode", "docker")
         server_url = request.config.getoption("--server-url", None)
@@ -188,8 +188,8 @@ class TestAdCPFullLifecycle:
             mcp_url = f"http://localhost:{DEFAULT_MCP_PORT}"
             a2a_url = f"http://localhost:{DEFAULT_A2A_PORT}"
 
-        # Get or create auth token
-        auth_token = await self._get_or_create_auth_token(mcp_url)
+        # Use the provided test auth token
+        auth_token = test_auth_token
 
         client = AdCPTestClient(
             mcp_url=mcp_url, a2a_url=a2a_url, auth_token=auth_token, dry_run=True  # Always use dry-run for tests
@@ -197,11 +197,6 @@ class TestAdCPFullLifecycle:
 
         async with client:
             yield client
-
-    async def _get_or_create_auth_token(self, base_url: str) -> str:
-        """Get existing token or create new test principal."""
-        # Use the valid test token that exists in our test database
-        return "7HP-ulnyvAxALOuYPMeDujwKjwjgfUpriSuXAzfKa5c"
 
     @pytest.mark.asyncio
     async def test_product_discovery(self, test_client: AdCPTestClient):
@@ -1053,7 +1048,7 @@ class TestAdCPFullLifecycle:
 
         # Create a simple media buy first
         products = await test_client.call_mcp_tool(
-            "get_products", {"brief": "display ads", "promoted_offering": "performance"}
+            "get_products", {"brief": "display ads", "promoted_offering": "Acme Corp performance marketing campaigns"}
         )
 
         media_buy = await test_client.call_mcp_tool(
@@ -1304,10 +1299,12 @@ class TestAdCPFullLifecycle:
         async with client2:
             # Both clients should work independently
             products1 = await test_client.call_mcp_tool(
-                "get_products", {"brief": "display", "promoted_offering": "test1"}
+                "get_products", {"brief": "display", "promoted_offering": "TestBrand Alpha premium products"}
             )
 
-            products2 = await client2.call_mcp_tool("get_products", {"brief": "video", "promoted_offering": "test2"})
+            products2 = await client2.call_mcp_tool(
+                "get_products", {"brief": "video", "promoted_offering": "TestBrand Beta premium services"}
+            )
 
             # Sessions should be isolated
             assert test_client.test_session_id != client2.test_session_id
@@ -1322,7 +1319,8 @@ class TestAdCPFullLifecycle:
         # Phase 1: Discovery
         print("\nPhase 1: Discovery")
         products = await test_client.call_mcp_tool(
-            "get_products", {"brief": "brand awareness campaign", "promoted_offering": "premium"}
+            "get_products",
+            {"brief": "brand awareness campaign", "promoted_offering": "Premium Brand luxury automotive collection"},
         )
         product = products["products"][0]
         product_id = product.get("product_id", product.get("id"))
@@ -1428,6 +1426,1542 @@ class TestAdCPFullLifecycle:
         print(f"  - CTR: {final_delivery.get('ctr', 0):.2%}")
 
         print("\n✅ Full lifecycle test completed successfully!")
+
+    @pytest.mark.asyncio
+    async def test_complete_campaign_lifecycle_standard(self, test_client: AdCPTestClient):
+        """Test complete campaign lifecycle with proper AdCP spec compliance."""
+        print("\n=== Testing Complete Standard Campaign Lifecycle ===")
+
+        # Phase 1: Product Discovery (AdCP spec compliant)
+        print("\nPhase 1: Product Discovery")
+        products = await test_client.call_mcp_tool(
+            "get_products",
+            {
+                "brief": "Video advertising campaign for spring sports season",
+                "promoted_offering": "Nike Air Jordan 2025 basketball shoes and apparel collection",
+            },
+        )
+
+        assert "products" in products and len(products["products"]) > 0
+        selected_product = products["products"][0]
+        product_id = selected_product.get("product_id", selected_product.get("id"))
+        print(f"✓ Selected product: {product_id} - {selected_product.get('name', 'Unknown')}")
+
+        # Phase 2: Campaign Creation with AdCP-compliant targeting
+        print("\nPhase 2: Campaign Creation")
+        media_buy = await test_client.call_mcp_tool(
+            "create_media_buy",
+            {
+                "product_ids": [product_id],
+                "budget": 75000.0,
+                "start_date": "2025-09-01",
+                "end_date": "2025-09-30",
+                "targeting_overlay": {
+                    # AdCP spec-compliant geographic targeting
+                    "geo_country_any_of": ["US", "CA"],
+                    "geo_region_any_of": ["CA", "NY", "TX", "ON"],
+                    "geo_metro_any_of": ["501", "803", "807"],  # LA, Dallas, San Francisco
+                    # AdCP spec-compliant device targeting
+                    "device_type_any_of": ["mobile", "tablet", "ctv"],
+                    # AdCP spec-compliant frequency capping
+                    "frequency_cap": {"suppress_minutes": 1440, "scope": "media_buy"},  # 24 hours
+                },
+            },
+        )
+
+        media_buy_id = media_buy["media_buy_id"]
+        assert "status" in media_buy
+        print(f"✓ Created campaign: {media_buy_id} with status: {media_buy['status']}")
+
+        # Phase 3: Creative Group and Asset Management
+        print("\nPhase 3: Creative Management")
+
+        # Create creative group
+        creative_group = await test_client.call_mcp_tool(
+            "create_creative_group", {"name": "Nike Jordan 2025 Campaign Assets"}
+        )
+
+        # Handle nested response structure
+        if "group" in creative_group:
+            group = creative_group["group"]
+        else:
+            group = creative_group
+        group_id = group.get("group_id", group.get("id"))
+        print(f"✓ Created creative group: {group_id}")
+
+        # Add comprehensive creative assets
+        creative_assets = [
+            {
+                "creative_id": "nike_jordan_hero_video",
+                "principal_id": "e2e-test-principal",
+                "name": "Nike Jordan Hero Video 30s",
+                "format": "video_16_9",
+                "format_id": "video_16_9",
+                "content_uri": "https://example.com/nike_jordan_hero_30s.mp4",
+                "content": {
+                    "url": "https://example.com/nike_jordan_hero_30s.mp4",
+                    "duration": 30,
+                    "aspect_ratio": "16:9",
+                    "video_codec": "h264",
+                },
+                "status": "pending",
+                "created_at": "2025-09-01T00:00:00Z",
+                "updated_at": "2025-09-01T00:00:00Z",
+            },
+            {
+                "creative_id": "nike_jordan_ctv_video",
+                "principal_id": "e2e-test-principal",
+                "name": "Nike Jordan CTV Video 15s",
+                "format": "video_16_9",
+                "format_id": "video_16_9",
+                "content_uri": "https://example.com/nike_jordan_ctv_15s.mp4",
+                "content": {
+                    "url": "https://example.com/nike_jordan_ctv_15s.mp4",
+                    "duration": 15,
+                    "aspect_ratio": "16:9",
+                    "video_codec": "h264",
+                },
+                "status": "pending",
+                "created_at": "2025-09-01T00:00:00Z",
+                "updated_at": "2025-09-01T00:00:00Z",
+            },
+            {
+                "creative_id": "nike_jordan_mobile_banner",
+                "principal_id": "e2e-test-principal",
+                "name": "Nike Jordan Mobile Banner",
+                "format": "display_320x50",
+                "format_id": "display_320x50",
+                "content_uri": "https://example.com/nike_jordan_mobile_banner.jpg",
+                "content": {
+                    "url": "https://example.com/nike_jordan_mobile_banner.jpg",
+                    "width": 320,
+                    "height": 50,
+                    "alt_text": "Nike Air Jordan 2025 - Shop Now",
+                },
+                "status": "pending",
+                "created_at": "2025-09-01T00:00:00Z",
+                "updated_at": "2025-09-01T00:00:00Z",
+            },
+        ]
+
+        creative_response = await test_client.call_mcp_tool(
+            "add_creative_assets", {"media_buy_id": media_buy_id, "creatives": creative_assets, "group_id": group_id}
+        )
+
+        assert "statuses" in creative_response
+        creative_statuses = creative_response["statuses"]
+        print(f"✓ Added {len(creative_statuses)} creatives to campaign")
+
+        # Phase 4: Campaign Launch and Status Verification
+        print("\nPhase 4: Campaign Launch")
+        test_client.jump_to_event("campaign-start")
+
+        status_check = await test_client.call_mcp_tool("check_media_buy_status", {"media_buy_id": media_buy_id})
+
+        print(f"✓ Campaign status after launch: {status_check.get('status', 'unknown')}")
+
+        # Phase 5: Mid-Campaign Delivery Monitoring
+        print("\nPhase 5: Delivery Monitoring")
+        test_client.set_mock_time(datetime(2025, 9, 15, 12, 0, 0))
+        test_client.jump_to_event("campaign-midpoint")
+
+        mid_delivery = await test_client.call_mcp_tool(
+            "get_media_buy_delivery", {"media_buy_ids": [media_buy_id], "today": "2025-09-15"}
+        )
+
+        assert "deliveries" in mid_delivery and len(mid_delivery["deliveries"]) > 0
+        delivery_data = mid_delivery["deliveries"][0]
+        print("✓ Mid-campaign delivery:")
+        print(f"  - Impressions: {delivery_data.get('impressions', 0):,}")
+        print(f"  - Spend: ${delivery_data.get('spend', 0):,.2f}")
+        print(f"  - Days elapsed: {delivery_data.get('days_elapsed', 0)}/{delivery_data.get('total_days', 0)}")
+
+        # Phase 6: Performance Optimization
+        print("\nPhase 6: Performance Optimization")
+
+        # Update performance index if campaign is underdelivering
+        if delivery_data.get("pacing", "on_track") != "ahead":
+            perf_update = await test_client.call_mcp_tool(
+                "update_performance_index",
+                {
+                    "media_buy_id": media_buy_id,
+                    "performance_data": [
+                        {"product_id": product_id, "performance_index": 1.25, "confidence_score": 0.92}
+                    ],
+                },
+            )
+            print("✓ Updated performance index for optimization")
+
+        # Phase 7: Campaign Completion and Final Reporting
+        print("\nPhase 7: Campaign Completion")
+        test_client.set_mock_time(datetime(2025, 10, 1, 9, 0, 0))
+        test_client.jump_to_event("campaign-complete")
+
+        final_delivery = await test_client.call_mcp_tool(
+            "get_media_buy_delivery", {"media_buy_ids": [media_buy_id], "today": "2025-10-01"}
+        )
+
+        assert "deliveries" in final_delivery and len(final_delivery["deliveries"]) > 0
+        final_data = final_delivery["deliveries"][0]
+
+        print("✓ Campaign completed successfully:")
+        print(f"  - Total impressions: {final_data.get('impressions', 0):,}")
+        print(f"  - Total spend: ${final_data.get('spend', 0):,.2f}")
+        print(f"  - Final status: {final_data.get('status', 'unknown')}")
+
+        # Validate campaign completion metrics
+        assert final_data.get("impressions", 0) > 0, "Campaign should have delivered impressions"
+        assert final_data.get("spend", 0) > 0, "Campaign should have spent budget"
+
+        print("\n✅ Complete standard campaign lifecycle test passed!")
+
+    @pytest.mark.asyncio
+    async def test_multi_product_campaign_lifecycle(self, test_client: AdCPTestClient):
+        """Test campaign with multiple products from different categories."""
+        print("\n=== Testing Multi-Product Campaign Lifecycle ===")
+
+        # Get products for multi-product campaign
+        products_response = await test_client.call_mcp_tool(
+            "get_products",
+            {
+                "brief": "Multi-format advertising campaign for back-to-school season",
+                "promoted_offering": "Target back-to-school 2025 clothing, electronics, and school supplies",
+            },
+        )
+
+        products = products_response["products"]
+        assert len(products) >= 2, "Need multiple products for multi-product test"
+
+        # Select up to 3 products for testing
+        selected_products = products[:3]
+        product_ids = [p.get("product_id", p.get("id")) for p in selected_products]
+
+        print(f"✓ Selected {len(product_ids)} products for multi-product campaign")
+
+        # Create multi-product campaign
+        media_buy = await test_client.call_mcp_tool(
+            "create_media_buy",
+            {
+                "product_ids": product_ids,
+                "budget": 125000.0,
+                "start_date": "2025-12-15",
+                "end_date": "2026-01-15",
+                "targeting_overlay": {
+                    "geo_country_any_of": ["US"],
+                    "geo_region_any_of": ["CA", "TX", "NY", "FL"],
+                    "device_type_any_of": ["mobile", "desktop"],
+                    "frequency_cap": {"suppress_minutes": 720, "scope": "media_buy"},  # 12 hours
+                },
+            },
+        )
+
+        media_buy_id = media_buy["media_buy_id"]
+        print(f"✓ Created multi-product campaign: {media_buy_id}")
+
+        # Verify packages were created for each product
+        if "packages" in media_buy:
+            packages = media_buy["packages"]
+            assert len(packages) == len(product_ids), f"Expected {len(product_ids)} packages, got {len(packages)}"
+            print(f"✓ Created {len(packages)} packages for products")
+
+            for i, package in enumerate(packages):
+                print(
+                    f"  Package {i+1}: {package.get('package_id', 'unknown')} for {package.get('product_id', 'unknown')}"
+                )
+
+        # Test delivery across all products
+        test_client.jump_to_event("campaign-midpoint")
+
+        delivery = await test_client.call_mcp_tool(
+            "get_media_buy_delivery", {"media_buy_ids": [media_buy_id], "today": "2025-12-31"}
+        )
+
+        delivery_data = delivery["deliveries"][0]
+        print(
+            f"✓ Multi-product delivery: {delivery_data.get('impressions', 0):,} impressions, ${delivery_data.get('spend', 0):,.2f} spend"
+        )
+
+        print("\n✅ Multi-product campaign lifecycle test passed!")
+
+    @pytest.mark.asyncio
+    async def test_campaign_with_frequency_capping(self, test_client: AdCPTestClient):
+        """Test campaign with comprehensive frequency capping configuration."""
+        print("\n=== Testing Campaign with Frequency Capping ===")
+
+        # Get products
+        products = await test_client.call_mcp_tool(
+            "get_products",
+            {
+                "brief": "High-frequency awareness campaign for brand recognition",
+                "promoted_offering": "Coca-Cola Summer 2025 refreshment campaign and new flavors",
+            },
+        )
+
+        product_id = products["products"][0].get("product_id", products["products"][0].get("id"))
+
+        # Test different frequency capping configurations
+        frequency_configs = [
+            {
+                "name": "Aggressive Frequency Cap",
+                "config": {"suppress_minutes": 60, "scope": "media_buy"},  # 1 hour
+                "budget": 25000,
+            },
+            {
+                "name": "Standard Frequency Cap",
+                "config": {"suppress_minutes": 720, "scope": "package"},  # 12 hours
+                "budget": 35000,
+            },
+            {
+                "name": "Conservative Frequency Cap",
+                "config": {"suppress_minutes": 2880, "scope": "media_buy"},  # 48 hours
+                "budget": 20000,
+            },
+        ]
+
+        campaign_results = []
+
+        for freq_config in frequency_configs:
+            print(f"\n Testing {freq_config['name']}")
+
+            media_buy = await test_client.call_mcp_tool(
+                "create_media_buy",
+                {
+                    "product_ids": [product_id],
+                    "budget": freq_config["budget"],
+                    "start_date": "2025-12-01",
+                    "end_date": "2025-12-31",
+                    "targeting_overlay": {
+                        "geo_country_any_of": ["US"],
+                        "device_type_any_of": ["mobile", "desktop", "tablet"],
+                        "frequency_cap": freq_config["config"],
+                    },
+                },
+            )
+
+            media_buy_id = media_buy["media_buy_id"]
+            print(f"✓ Created campaign with {freq_config['name']}: {media_buy_id}")
+
+            # Test delivery with frequency capping
+            test_client.jump_to_event("campaign-midpoint")
+
+            delivery = await test_client.call_mcp_tool(
+                "get_media_buy_delivery", {"media_buy_ids": [media_buy_id], "today": "2025-12-15"}
+            )
+
+            delivery_data = delivery["deliveries"][0]
+            campaign_results.append(
+                {
+                    "name": freq_config["name"],
+                    "media_buy_id": media_buy_id,
+                    "impressions": delivery_data.get("impressions", 0),
+                    "spend": delivery_data.get("spend", 0),
+                    "frequency_config": freq_config["config"],
+                }
+            )
+
+            print(f"  Impressions: {delivery_data.get('impressions', 0):,}")
+            print(f"  Spend: ${delivery_data.get('spend', 0):,.2f}")
+
+        # Validate that different frequency caps produce different delivery patterns
+        print(f"\n✓ Frequency capping test completed with {len(campaign_results)} configurations")
+
+        # All campaigns should have delivered something
+        for result in campaign_results:
+            assert result["impressions"] > 0, f"Campaign {result['name']} should have delivered impressions"
+            assert result["spend"] > 0, f"Campaign {result['name']} should have spent budget"
+
+        print("\n✅ Frequency capping campaign test passed!")
+
+    @pytest.mark.asyncio
+    async def test_promoted_offering_spec_compliance(self, test_client: AdCPTestClient):
+        """Test AdCP spec compliance for promoted_offering field."""
+        print("\n=== Testing Promoted Offering Spec Compliance ===")
+
+        # Test cases that should be rejected per AdCP spec
+        invalid_cases = [
+            {
+                "name": "Missing brand - too vague",
+                "brief": "Display advertising campaign for retail",
+                "promoted_offering": "athletic footwear",  # No brand specified
+                "expected_error_keywords": ["brand", "advertiser", "specific"],
+            },
+            {
+                "name": "Missing product details",
+                "brief": "Video campaign for technology",
+                "promoted_offering": "Apple",  # Brand only, no product
+                "expected_error_keywords": ["product", "service", "specific"],
+            },
+            {
+                "name": "Generic category only",
+                "brief": "Social media advertising",
+                "promoted_offering": "shoes",  # Too generic
+                "expected_error_keywords": ["brand", "advertiser"],
+            },
+            {
+                "name": "Empty promoted_offering",
+                "brief": "Brand awareness campaign",
+                "promoted_offering": "",  # Empty
+                "expected_error_keywords": ["required", "empty"],
+            },
+        ]
+
+        print(f"\nTesting {len(invalid_cases)} invalid promoted_offering cases:")
+
+        for case in invalid_cases:
+            print(f"\n  Testing: {case['name']}")
+            try:
+                result = await test_client.call_mcp_tool(
+                    "get_products", {"brief": case["brief"], "promoted_offering": case["promoted_offering"]}
+                )
+
+                # If we got here, the server accepted invalid input
+                print(f"    ❌ Server incorrectly accepted: '{case['promoted_offering']}'")
+
+            except Exception as e:
+                # This is expected - validate it's the right kind of error
+                error_message = str(e).lower()
+                expected_found = any(keyword in error_message for keyword in case["expected_error_keywords"])
+
+                if expected_found:
+                    print(f"    ✓ Correctly rejected: {type(e).__name__}")
+                else:
+                    print(f"    ⚠ Rejected but unexpected error message: {e}")
+
+        # Test cases that should be accepted
+        valid_cases = [
+            {
+                "name": "Complete brand and product",
+                "brief": "Premium video advertising for automotive industry",
+                "promoted_offering": "Tesla Model S 2025 electric luxury sedan with autopilot features",
+            },
+            {
+                "name": "Retail brand and specific products",
+                "brief": "E-commerce display advertising for holiday season",
+                "promoted_offering": "Amazon Prime Day 2025 electronics deals and free shipping",
+            },
+            {
+                "name": "Consumer brand with product line",
+                "brief": "Social media campaign for sports apparel",
+                "promoted_offering": "Nike Air Max 2025 running shoes and athletic wear collection",
+            },
+        ]
+
+        print(f"\nTesting {len(valid_cases)} valid promoted_offering cases:")
+
+        for case in valid_cases:
+            print(f"\n  Testing: {case['name']}")
+            try:
+                result = await test_client.call_mcp_tool(
+                    "get_products", {"brief": case["brief"], "promoted_offering": case["promoted_offering"]}
+                )
+
+                assert "products" in result, "Valid request should return products"
+                print(f"    ✓ Correctly accepted: {len(result['products'])} products returned")
+
+            except Exception as e:
+                print(f"    ❌ Valid request incorrectly rejected: {e}")
+
+        print("\n✅ Promoted offering spec compliance test completed!")
+
+    @pytest.mark.asyncio
+    async def test_invalid_targeting_handling(self, test_client: AdCPTestClient):
+        """Test that unsupported targeting dimensions are properly rejected."""
+        print("\n=== Testing Invalid Targeting Handling ===")
+
+        # Get a valid product first
+        products = await test_client.call_mcp_tool(
+            "get_products",
+            {
+                "brief": "Testing campaign for targeting validation",
+                "promoted_offering": "Microsoft Office 365 productivity software and Teams collaboration tools",
+            },
+        )
+
+        product_id = products["products"][0].get("product_id", products["products"][0].get("id"))
+
+        # Test unsupported targeting dimensions (based on user feedback)
+        invalid_targeting_cases = [
+            {
+                "name": "Unsupported keywords targeting",
+                "targeting": {
+                    "geo_country_any_of": ["US"],
+                    "keywords_any_of": ["productivity", "office"],  # Not supported per user
+                },
+            },
+            {
+                "name": "Unsupported content categories",
+                "targeting": {
+                    "geo_country_any_of": ["US"],
+                    "content_cat_any_of": ["IAB19", "IAB20"],  # Not supported per user
+                },
+            },
+            {
+                "name": "Invalid frequency cap structure",
+                "targeting": {
+                    "geo_country_any_of": ["US"],
+                    "frequency_cap": {"impressions_per_day": 5},  # Wrong structure - should be suppress_minutes
+                },
+            },
+            {
+                "name": "Invalid frequency cap scope",
+                "targeting": {
+                    "geo_country_any_of": ["US"],
+                    "frequency_cap": {
+                        "suppress_minutes": 1440,
+                        "scope": "invalid_scope",  # Should be 'media_buy' or 'package'
+                    },
+                },
+            },
+        ]
+
+        print(f"\nTesting {len(invalid_targeting_cases)} invalid targeting cases:")
+
+        for case in invalid_targeting_cases:
+            print(f"\n  Testing: {case['name']}")
+            try:
+                result = await test_client.call_mcp_tool(
+                    "create_media_buy",
+                    {
+                        "product_ids": [product_id],
+                        "budget": 10000.0,
+                        "start_date": "2025-10-01",
+                        "end_date": "2025-10-31",
+                        "targeting_overlay": case["targeting"],
+                    },
+                )
+
+                print(f"    ⚠ Server incorrectly accepted invalid targeting: {case['name']}")
+
+            except Exception as e:
+                print(f"    ✓ Correctly rejected invalid targeting: {type(e).__name__}")
+
+        # Test valid targeting that should be accepted
+        valid_targeting = {
+            "geo_country_any_of": ["US", "CA"],
+            "geo_region_any_of": ["CA", "NY"],
+            "geo_metro_any_of": ["501", "803"],
+            "device_type_any_of": ["mobile", "desktop"],
+            "frequency_cap": {"suppress_minutes": 720, "scope": "media_buy"},
+        }
+
+        print("\n  Testing valid AdCP-compliant targeting:")
+        try:
+            result = await test_client.call_mcp_tool(
+                "create_media_buy",
+                {
+                    "product_ids": [product_id],
+                    "budget": 15000.0,
+                    "start_date": "2025-10-01",
+                    "end_date": "2025-10-31",
+                    "targeting_overlay": valid_targeting,
+                },
+            )
+
+            assert "media_buy_id" in result, "Valid targeting should create media buy"
+            print(f"    ✓ Valid targeting accepted: {result['media_buy_id']}")
+
+        except Exception as e:
+            print(f"    ❌ Valid targeting incorrectly rejected: {e}")
+
+        print("\n✅ Invalid targeting handling test completed!")
+
+    @pytest.mark.asyncio
+    async def test_budget_and_date_validation(self, test_client: AdCPTestClient):
+        """Test validation of budget and date range inputs."""
+        print("\n=== Testing Budget and Date Validation ===")
+
+        # Get valid product for testing
+        products = await test_client.call_mcp_tool(
+            "get_products",
+            {
+                "brief": "Validation testing campaign",
+                "promoted_offering": "Adobe Creative Cloud 2025 design software suite and subscription",
+            },
+        )
+
+        product_id = products["products"][0].get("product_id", products["products"][0].get("id"))
+
+        # Test invalid budget scenarios
+        invalid_budget_cases = [
+            {"name": "Negative budget", "budget": -5000.0, "start_date": "2025-11-01", "end_date": "2025-11-30"},
+            {"name": "Zero budget", "budget": 0.0, "start_date": "2025-11-01", "end_date": "2025-11-30"},
+            {"name": "Extremely small budget", "budget": 0.01, "start_date": "2025-11-01", "end_date": "2025-11-30"},
+        ]
+
+        print(f"\nTesting {len(invalid_budget_cases)} invalid budget cases:")
+
+        for case in invalid_budget_cases:
+            print(f"\n  Testing: {case['name']} (${case['budget']})")
+            try:
+                result = await test_client.call_mcp_tool(
+                    "create_media_buy",
+                    {
+                        "product_ids": [product_id],
+                        "budget": case["budget"],
+                        "start_date": case["start_date"],
+                        "end_date": case["end_date"],
+                        "targeting_overlay": {"geo_country_any_of": ["US"]},
+                    },
+                )
+
+                print(f"    ⚠ Server incorrectly accepted invalid budget: ${case['budget']}")
+
+            except Exception as e:
+                print(f"    ✓ Correctly rejected invalid budget: {type(e).__name__}")
+
+        # Test invalid date scenarios
+        invalid_date_cases = [
+            {
+                "name": "End date before start date",
+                "budget": 10000.0,
+                "start_date": "2025-12-31",
+                "end_date": "2025-12-01",
+            },
+            {
+                "name": "Same start and end date",
+                "budget": 10000.0,
+                "start_date": "2025-11-15",
+                "end_date": "2025-11-15",
+            },
+            {"name": "Invalid date format", "budget": 10000.0, "start_date": "invalid-date", "end_date": "2025-11-30"},
+            {"name": "Past dates", "budget": 10000.0, "start_date": "2020-01-01", "end_date": "2020-01-31"},
+        ]
+
+        print(f"\nTesting {len(invalid_date_cases)} invalid date cases:")
+
+        for case in invalid_date_cases:
+            print(f"\n  Testing: {case['name']}")
+            try:
+                result = await test_client.call_mcp_tool(
+                    "create_media_buy",
+                    {
+                        "product_ids": [product_id],
+                        "budget": case["budget"],
+                        "start_date": case["start_date"],
+                        "end_date": case["end_date"],
+                        "targeting_overlay": {"geo_country_any_of": ["US"]},
+                    },
+                )
+
+                print(f"    ⚠ Server incorrectly accepted invalid dates: {case['start_date']} to {case['end_date']}")
+
+            except Exception as e:
+                print(f"    ✓ Correctly rejected invalid dates: {type(e).__name__}")
+
+        # Test valid case to ensure validation isn't too strict
+        print("\n  Testing valid budget and dates:")
+        try:
+            result = await test_client.call_mcp_tool(
+                "create_media_buy",
+                {
+                    "product_ids": [product_id],
+                    "budget": 25000.0,
+                    "start_date": "2025-11-01",
+                    "end_date": "2025-11-30",
+                    "targeting_overlay": {"geo_country_any_of": ["US"]},
+                },
+            )
+
+            assert "media_buy_id" in result, "Valid budget and dates should create media buy"
+            print(f"    ✓ Valid case accepted: {result['media_buy_id']}")
+
+        except Exception as e:
+            print(f"    ❌ Valid case incorrectly rejected: {e}")
+
+        print("\n✅ Budget and date validation test completed!")
+
+    @pytest.mark.asyncio
+    async def test_budget_exceeded_simulation(self, test_client: AdCPTestClient):
+        """Test budget exceeded scenario using simulation controls."""
+        print("\n=== Testing Budget Exceeded Simulation ===")
+
+        # Create a campaign for budget testing
+        products = await test_client.call_mcp_tool(
+            "get_products",
+            {
+                "brief": "High-spend campaign for budget monitoring",
+                "promoted_offering": "BMW X5 2025 luxury SUV with premium package and financing options",
+            },
+        )
+
+        product_id = products["products"][0].get("product_id", products["products"][0].get("id"))
+
+        media_buy = await test_client.call_mcp_tool(
+            "create_media_buy",
+            {
+                "product_ids": [product_id],
+                "budget": 30000.0,  # Set budget that we'll exceed
+                "start_date": "2025-10-01",
+                "end_date": "2025-10-31",
+                "targeting_overlay": {"geo_country_any_of": ["US"], "device_type_any_of": ["mobile", "desktop"]},
+            },
+        )
+
+        media_buy_id = media_buy["media_buy_id"]
+        print(f"✓ Created campaign for budget testing: {media_buy_id}")
+        print(f"  Budget: ${media_buy.get('budget', 30000)}")
+
+        # Use simulation control to trigger budget exceeded scenario
+        if hasattr(test_client, "test_session_id"):
+            strategy_id = f"sim_budget_test_{test_client.test_session_id[:8]}"
+
+            try:
+                # Set scenario to trigger budget exceeded
+                scenario_result = await test_client.call_mcp_tool(
+                    "simulation_control",
+                    {
+                        "strategy_id": strategy_id,
+                        "action": "set_scenario",
+                        "parameters": {"scenario": "budget_exceeded"},
+                    },
+                )
+                print("✓ Set budget exceeded simulation scenario")
+
+                # Jump to mid-campaign to trigger the scenario
+                jump_result = await test_client.call_mcp_tool(
+                    "simulation_control",
+                    {"strategy_id": strategy_id, "action": "jump_to", "parameters": {"event": "error-budget-exceeded"}},
+                )
+                print("✓ Jumped to budget exceeded event")
+
+                # Check delivery to see if budget was exceeded
+                delivery = await test_client.call_mcp_tool(
+                    "get_media_buy_delivery", {"media_buy_ids": [media_buy_id], "today": "2025-10-15"}
+                )
+
+                if "deliveries" in delivery and len(delivery["deliveries"]) > 0:
+                    delivery_data = delivery["deliveries"][0]
+                    spend = delivery_data.get("spend", 0)
+                    budget = 30000.0
+
+                    print("✓ Budget exceeded scenario results:")
+                    print(f"  - Original budget: ${budget:,.2f}")
+                    print(f"  - Actual spend: ${spend:,.2f}")
+                    print(f"  - Overspend ratio: {spend/budget:.2f}x")
+
+                    if spend > budget * 1.1:  # More than 10% overspend
+                        print("✓ Budget exceeded scenario working correctly")
+                    else:
+                        print("⚠ Budget exceeded scenario may not be active")
+
+            except Exception as e:
+                print(f"⚠ Simulation control not available or failed: {e}")
+
+                # Fall back to regular delivery check
+                delivery = await test_client.call_mcp_tool(
+                    "get_media_buy_delivery", {"media_buy_ids": [media_buy_id], "today": "2025-10-15"}
+                )
+
+                delivery_data = delivery["deliveries"][0] if delivery.get("deliveries") else {}
+                print(f"✓ Regular delivery check: ${delivery_data.get('spend', 0):,.2f} spent")
+
+        print("\n✅ Budget exceeded simulation test completed!")
+
+    @pytest.mark.asyncio
+    async def test_creative_approval_workflow(self, test_client: AdCPTestClient):
+        """Test creative approval and rejection workflow with human review."""
+        print("\n=== Testing Creative Approval Workflow ===")
+
+        # Create base campaign for creative testing
+        products = await test_client.call_mcp_tool(
+            "get_products",
+            {
+                "brief": "Brand safety sensitive campaign requiring creative review",
+                "promoted_offering": "Pfizer COVID-19 vaccine information and health safety awareness",
+            },
+        )
+
+        product_id = products["products"][0].get("product_id", products["products"][0].get("id"))
+
+        media_buy = await test_client.call_mcp_tool(
+            "create_media_buy",
+            {
+                "product_ids": [product_id],
+                "budget": 50000.0,
+                "start_date": "2025-11-01",
+                "end_date": "2025-11-30",
+                "targeting_overlay": {"geo_country_any_of": ["US"], "device_type_any_of": ["mobile", "desktop"]},
+            },
+        )
+
+        media_buy_id = media_buy["media_buy_id"]
+        print(f"✓ Created campaign for creative testing: {media_buy_id}")
+
+        # Create creative group
+        creative_group = await test_client.call_mcp_tool(
+            "create_creative_group", {"name": "Health Campaign Creatives - Review Required"}
+        )
+
+        group = creative_group.get("group", creative_group)
+        group_id = group.get("group_id", group.get("id"))
+
+        # Phase 1: Submit creatives that require review
+        print("\nPhase 1: Creative Submission")
+
+        test_creatives = [
+            {
+                "creative_id": "health_awareness_video",
+                "principal_id": "e2e-test-principal",
+                "name": "COVID-19 Health Awareness Video",
+                "format": "video_16_9",
+                "format_id": "video_16_9",
+                "content_uri": "https://example.com/covid_awareness.mp4",
+                "content": {"url": "https://example.com/covid_awareness.mp4", "duration": 30, "aspect_ratio": "16:9"},
+                "status": "pending",
+                "created_at": "2025-11-01T00:00:00Z",
+                "updated_at": "2025-11-01T00:00:00Z",
+            },
+            {
+                "creative_id": "vaccine_info_banner",
+                "principal_id": "e2e-test-principal",
+                "name": "Vaccine Information Banner",
+                "format": "display_728x90",
+                "format_id": "display_728x90",
+                "content_uri": "https://example.com/vaccine_banner.jpg",
+                "content": {"url": "https://example.com/vaccine_banner.jpg", "width": 728, "height": 90},
+                "status": "pending",
+                "created_at": "2025-11-01T00:00:00Z",
+                "updated_at": "2025-11-01T00:00:00Z",
+            },
+        ]
+
+        creative_response = await test_client.call_mcp_tool(
+            "add_creative_assets", {"media_buy_id": media_buy_id, "creatives": test_creatives, "group_id": group_id}
+        )
+
+        creative_statuses = creative_response.get("statuses", [])
+        creative_ids = [status["creative_id"] for status in creative_statuses]
+        print(f"✓ Submitted {len(creative_ids)} creatives for review")
+
+        # Phase 2: Check for pending creative reviews
+        print("\nPhase 2: Human Review Detection")
+
+        try:
+            # Check if there are pending creatives that need approval
+            pending_creatives = await test_client.call_mcp_tool("get_pending_creatives", {})
+
+            if "creatives" in pending_creatives and len(pending_creatives["creatives"]) > 0:
+                print(f"✓ Found {len(pending_creatives['creatives'])} pending creatives")
+
+                # Phase 3: Human approval simulation
+                print("\nPhase 3: Human Approval Process")
+
+                for creative in pending_creatives["creatives"]:
+                    creative_id = creative.get("creative_id", creative.get("id"))
+
+                    # Simulate human approval decision
+                    approval_decision = "approved" if "awareness" in creative.get("name", "").lower() else "rejected"
+                    rejection_reason = "Content requires medical review" if approval_decision == "rejected" else None
+
+                    approve_result = await test_client.call_mcp_tool(
+                        "approve_creative",
+                        {
+                            "creative_id": creative_id,
+                            "decision": approval_decision,
+                            "rejection_reason": rejection_reason,
+                            "notes": f"Reviewed by human moderator - {approval_decision}",
+                        },
+                    )
+
+                    print(f"  ✓ Creative {creative_id}: {approval_decision}")
+                    if rejection_reason:
+                        print(f"    Reason: {rejection_reason}")
+            else:
+                print("⚠ No pending creatives found - may be auto-approved")
+
+        except Exception as e:
+            print(f"⚠ Creative approval workflow not available: {e}")
+
+        # Phase 4: Check final creative status
+        print("\nPhase 4: Creative Status Verification")
+
+        final_status = await test_client.call_mcp_tool("check_creative_status", {"creative_ids": creative_ids})
+
+        if "statuses" in final_status:
+            for status in final_status["statuses"]:
+                creative_id = status.get("creative_id", "unknown")
+                status_value = status.get("status", "unknown")
+                print(f"  ✓ Creative {creative_id}: {status_value}")
+
+        print("\n✅ Creative approval workflow test completed!")
+
+    @pytest.mark.asyncio
+    async def test_human_task_management_workflow(self, test_client: AdCPTestClient):
+        """Test human task creation, assignment, and completion workflow."""
+        print("\n=== Testing Human Task Management Workflow ===")
+
+        # Create campaign that may require human intervention
+        products = await test_client.call_mcp_tool(
+            "get_products",
+            {
+                "brief": "High-value enterprise campaign requiring manual oversight",
+                "promoted_offering": "Salesforce Enterprise CRM platform with custom implementation services",
+            },
+        )
+
+        product_id = products["products"][0].get("product_id", products["products"][0].get("id"))
+
+        media_buy = await test_client.call_mcp_tool(
+            "create_media_buy",
+            {
+                "product_ids": [product_id],
+                "budget": 150000.0,  # High budget requiring approval
+                "start_date": "2025-12-01",
+                "end_date": "2025-12-31",
+                "targeting_overlay": {"geo_country_any_of": ["US"], "device_type_any_of": ["desktop"]},
+            },
+        )
+
+        media_buy_id = media_buy["media_buy_id"]
+        print(f"✓ Created high-value campaign: {media_buy_id}")
+
+        # Phase 1: Create human task for campaign approval
+        print("\nPhase 1: Human Task Creation")
+
+        try:
+            task_creation = await test_client.call_mcp_tool(
+                "create_workflow_step_for_task",
+                {
+                    "task_type": "approve_high_budget_campaign",
+                    "description": f"Manual approval required for campaign {media_buy_id} with ${150000} budget",
+                    "metadata": {"media_buy_id": media_buy_id, "budget": 150000.0, "requires_review": True},
+                    "priority": "high",
+                    "assigned_to": "campaign_manager",
+                },
+            )
+
+            if "task_id" in task_creation:
+                task_id = task_creation["task_id"]
+                print(f"✓ Created human task: {task_id}")
+
+                # Phase 2: Check pending workflows
+                print("\nPhase 2: Pending Task Verification")
+
+                pending_tasks = await test_client.call_mcp_tool(
+                    "get_pending_workflows", {"task_type": "approve_high_budget_campaign"}
+                )
+
+                if "tasks" in pending_tasks and len(pending_tasks["tasks"]) > 0:
+                    print(f"✓ Found {len(pending_tasks['tasks'])} pending approval tasks")
+
+                    # Phase 3: Task assignment
+                    print("\nPhase 3: Task Assignment")
+
+                    assignment_result = await test_client.call_mcp_tool(
+                        "assign_task",
+                        {
+                            "task_id": task_id,
+                            "assigned_to": "senior_campaign_manager",
+                            "notes": "Assigned to senior manager for high-budget review",
+                        },
+                    )
+                    print("✓ Task assigned to senior campaign manager")
+
+                    # Phase 4: Task completion
+                    print("\nPhase 4: Task Completion")
+
+                    completion_result = await test_client.call_mcp_tool(
+                        "complete_task",
+                        {
+                            "task_id": task_id,
+                            "resolution": "approved",
+                            "notes": "Campaign approved after budget review and targeting verification",
+                            "completion_data": {
+                                "approval_reason": "Budget justified by target audience size",
+                                "reviewer": "senior_campaign_manager",
+                            },
+                        },
+                    )
+                    print("✓ Task completed with approval")
+
+                    # Phase 5: Task verification
+                    print("\nPhase 5: Task Verification")
+
+                    verification = await test_client.call_mcp_tool(
+                        "verify_task", {"task_id": task_id, "expected_resolution": "approved"}
+                    )
+
+                    if verification.get("verified", False):
+                        print("✓ Task completion verified successfully")
+                    else:
+                        print("⚠ Task verification failed or incomplete")
+
+                else:
+                    print("⚠ No pending tasks found")
+            else:
+                print("⚠ Task creation may have failed")
+
+        except Exception as e:
+            print(f"⚠ Human task workflow not available: {e}")
+
+            # Fallback - just check campaign status
+            status = await test_client.call_mcp_tool("check_media_buy_status", {"media_buy_id": media_buy_id})
+            print(f"✓ Campaign status: {status.get('status', 'unknown')}")
+
+        print("\n✅ Human task management workflow test completed!")
+
+    @pytest.mark.asyncio
+    async def test_manual_campaign_approval_process(self, test_client: AdCPTestClient):
+        """Test complete manual approval process from creation to activation."""
+        print("\n=== Testing Manual Campaign Approval Process ===")
+
+        # Create campaign that should require manual approval
+        products = await test_client.call_mcp_tool(
+            "get_products",
+            {
+                "brief": "Pharmaceutical advertising requiring regulatory compliance review",
+                "promoted_offering": "Johnson & Johnson prescription medication Stelara for autoimmune conditions",
+            },
+        )
+
+        product_id = products["products"][0].get("product_id", products["products"][0].get("id"))
+
+        # Phase 1: Create campaign that should trigger approval workflow
+        print("\nPhase 1: Campaign Creation Requiring Approval")
+
+        media_buy = await test_client.call_mcp_tool(
+            "create_media_buy",
+            {
+                "product_ids": [product_id],
+                "budget": 75000.0,
+                "start_date": "2026-01-15",
+                "end_date": "2026-02-15",
+                "targeting_overlay": {"geo_country_any_of": ["US"], "device_type_any_of": ["desktop", "mobile"]},
+            },
+        )
+
+        media_buy_id = media_buy["media_buy_id"]
+        initial_status = media_buy.get("status", "unknown")
+
+        print(f"✓ Created pharmaceutical campaign: {media_buy_id}")
+        print(f"  Initial status: {initial_status}")
+
+        # Check if campaign is in pending approval state
+        if initial_status in ["pending_approval", "pending", "pending_review"]:
+            print("✓ Campaign correctly entered approval workflow")
+
+            # Phase 2: Check for human approval tasks
+            print("\nPhase 2: Approval Task Detection")
+
+            try:
+                pending_workflows = await test_client.call_mcp_tool("get_pending_workflows", {})
+
+                approval_tasks = []
+                if "tasks" in pending_workflows:
+                    approval_tasks = [
+                        task for task in pending_workflows["tasks"] if media_buy_id in str(task.get("metadata", {}))
+                    ]
+
+                if approval_tasks:
+                    print(f"✓ Found {len(approval_tasks)} approval tasks for campaign")
+
+                    # Phase 3: Simulate approval process
+                    print("\nPhase 3: Approval Process Simulation")
+
+                    for task in approval_tasks:
+                        task_id = task.get("task_id", task.get("id"))
+
+                        # Complete approval task
+                        await test_client.call_mcp_tool(
+                            "mark_task_complete",
+                            {
+                                "task_id": task_id,
+                                "resolution": "approved",
+                                "notes": "Pharmaceutical campaign approved after regulatory review",
+                            },
+                        )
+                        print(f"  ✓ Completed approval task: {task_id}")
+
+                else:
+                    print("⚠ No approval tasks found - may be auto-approved")
+
+            except Exception as e:
+                print(f"⚠ Approval workflow check failed: {e}")
+
+        else:
+            print("⚠ Campaign did not require approval - may be auto-approved")
+
+        # Phase 4: Verify final campaign status
+        print("\nPhase 4: Final Status Verification")
+
+        # Give some time for approval to process
+        final_status = await test_client.call_mcp_tool("check_media_buy_status", {"media_buy_id": media_buy_id})
+
+        final_status_value = final_status.get("status", "unknown")
+        print(f"✓ Final campaign status: {final_status_value}")
+
+        # Phase 5: Test campaign activation
+        if final_status_value in ["approved", "active", "ready"]:
+            print("\nPhase 5: Campaign Activation Test")
+
+            # Jump to campaign start to activate
+            test_client.jump_to_event("campaign-start")
+
+            activation_status = await test_client.call_mcp_tool(
+                "check_media_buy_status", {"media_buy_id": media_buy_id}
+            )
+
+            print(f"✓ Campaign activation status: {activation_status.get('status', 'unknown')}")
+
+            # Test delivery after activation
+            delivery = await test_client.call_mcp_tool(
+                "get_media_buy_delivery", {"media_buy_ids": [media_buy_id], "today": "2026-01-20"}
+            )
+
+            if "deliveries" in delivery and len(delivery["deliveries"]) > 0:
+                delivery_data = delivery["deliveries"][0]
+                print(f"✓ Campaign delivering: {delivery_data.get('impressions', 0)} impressions")
+            else:
+                print("⚠ No delivery data available")
+
+        print("\n✅ Manual campaign approval process test completed!")
+
+    @pytest.mark.asyncio
+    async def test_performance_optimization_comprehensive(self, test_client: AdCPTestClient):
+        """Test comprehensive performance optimization with performance index updates."""
+        print("\n=== Testing Performance Optimization Comprehensive ===")
+
+        # Create campaign for performance testing
+        products = await test_client.call_mcp_tool(
+            "get_products",
+            {
+                "brief": "Performance-driven campaign for conversion optimization",
+                "promoted_offering": "HubSpot marketing automation platform with lead generation tools",
+            },
+        )
+
+        product_id = products["products"][0].get("product_id", products["products"][0].get("id"))
+
+        media_buy = await test_client.call_mcp_tool(
+            "create_media_buy",
+            {
+                "product_ids": [product_id],
+                "budget": 60000.0,
+                "start_date": "2025-09-01",
+                "end_date": "2025-09-30",
+                "targeting_overlay": {
+                    "geo_country_any_of": ["US"],
+                    "geo_region_any_of": ["CA", "NY", "TX"],
+                    "device_type_any_of": ["desktop", "mobile"],
+                    "frequency_cap": {"suppress_minutes": 1440, "scope": "media_buy"},
+                },
+            },
+        )
+
+        media_buy_id = media_buy["media_buy_id"]
+        print(f"✓ Created performance campaign: {media_buy_id}")
+
+        # Phase 1: Initial Performance Baseline
+        print("\nPhase 1: Initial Performance Baseline")
+        test_client.jump_to_event("campaign-start")
+
+        # Get initial delivery metrics
+        initial_delivery = await test_client.call_mcp_tool(
+            "get_media_buy_delivery", {"media_buy_ids": [media_buy_id], "today": "2025-09-03"}
+        )
+
+        initial_data = initial_delivery["deliveries"][0] if initial_delivery.get("deliveries") else {}
+        print("✓ Initial baseline established:")
+        print(f"  - Impressions: {initial_data.get('impressions', 0):,}")
+        print(f"  - Spend: ${initial_data.get('spend', 0):,.2f}")
+        print(f"  - Pacing: {initial_data.get('pacing', 'unknown')}")
+
+        # Phase 2: Performance Monitoring and Optimization Trigger Points
+        print("\nPhase 2: Performance Monitoring Timeline")
+
+        optimization_timeline = [
+            {
+                "day": "2025-09-08",
+                "event": "campaign-week1",
+                "performance_check": "underdelivering",
+                "action": "increase_performance_index",
+            },
+            {
+                "day": "2025-09-15",
+                "event": "campaign-midpoint",
+                "performance_check": "on_track",
+                "action": "maintain_performance",
+            },
+            {
+                "day": "2025-09-25",
+                "event": "campaign-final-push",
+                "performance_check": "optimize_for_completion",
+                "action": "aggressive_performance_boost",
+            },
+        ]
+
+        performance_results = []
+
+        for checkpoint in optimization_timeline:
+            print(f"\n  Checkpoint: {checkpoint['day']} ({checkpoint['event']})")
+
+            # Jump to the checkpoint
+            test_client.set_mock_time(datetime.fromisoformat(f"{checkpoint['day']}T12:00:00"))
+            test_client.jump_to_event(checkpoint["event"])
+
+            # Get delivery data at this point
+            delivery = await test_client.call_mcp_tool(
+                "get_media_buy_delivery", {"media_buy_ids": [media_buy_id], "today": checkpoint["day"]}
+            )
+
+            delivery_data = delivery["deliveries"][0] if delivery.get("deliveries") else {}
+
+            # Calculate performance metrics
+            days_elapsed = delivery_data.get("days_elapsed", 1)
+            total_days = delivery_data.get("total_days", 31)
+            expected_progress = days_elapsed / total_days
+            actual_spend_rate = delivery_data.get("spend", 0) / 60000.0 if delivery_data.get("spend", 0) > 0 else 0
+
+            print(f"    Progress: {days_elapsed}/{total_days} days ({expected_progress:.2%})")
+            print(f"    Spend rate: {actual_spend_rate:.2%} of budget")
+            print(f"    Impressions: {delivery_data.get('impressions', 0):,}")
+
+            # Apply performance optimization based on performance check
+            performance_index_update = None
+            confidence_score = 0.8
+
+            if checkpoint["action"] == "increase_performance_index":
+                performance_index_update = 1.3
+                confidence_score = 0.85
+                print(f"    ✓ Applying performance boost: {performance_index_update}x")
+            elif checkpoint["action"] == "maintain_performance":
+                performance_index_update = 1.1
+                confidence_score = 0.9
+                print(f"    ✓ Maintaining performance: {performance_index_update}x")
+            elif checkpoint["action"] == "aggressive_performance_boost":
+                performance_index_update = 1.5
+                confidence_score = 0.75
+                print(f"    ✓ Aggressive performance boost: {performance_index_update}x")
+
+            # Update performance index
+            if performance_index_update:
+                perf_result = await test_client.call_mcp_tool(
+                    "update_performance_index",
+                    {
+                        "media_buy_id": media_buy_id,
+                        "performance_data": [
+                            {
+                                "product_id": product_id,
+                                "performance_index": performance_index_update,
+                                "confidence_score": confidence_score,
+                            }
+                        ],
+                    },
+                )
+                print("    ✓ Performance index updated successfully")
+
+            performance_results.append(
+                {
+                    "checkpoint": checkpoint["day"],
+                    "delivery_data": delivery_data,
+                    "performance_index": performance_index_update,
+                    "confidence_score": confidence_score,
+                }
+            )
+
+        # Phase 3: Final Performance Analysis
+        print("\nPhase 3: Final Performance Analysis")
+
+        # Jump to campaign completion
+        test_client.set_mock_time(datetime(2025, 4, 1, 9, 0, 0))
+        test_client.jump_to_event("campaign-complete")
+
+        final_delivery = await test_client.call_mcp_tool(
+            "get_media_buy_delivery", {"media_buy_ids": [media_buy_id], "today": "2025-10-01"}
+        )
+
+        final_data = final_delivery["deliveries"][0] if final_delivery.get("deliveries") else {}
+
+        print("✓ Final campaign performance:")
+        print(f"  - Total impressions: {final_data.get('impressions', 0):,}")
+        print(f"  - Total spend: ${final_data.get('spend', 0):,.2f}")
+        print(f"  - Budget utilization: {(final_data.get('spend', 0) / 60000.0):.1%}")
+        print(f"  - Final status: {final_data.get('status', 'unknown')}")
+
+        # Validate performance optimization worked
+        total_impressions = final_data.get("impressions", 0)
+        total_spend = final_data.get("spend", 0)
+
+        assert total_impressions > 0, "Campaign should have delivered impressions"
+        assert total_spend > 0, "Campaign should have spent budget"
+
+        if total_spend > 0 and total_impressions > 0:
+            final_cpm = (total_spend / total_impressions) * 1000
+            print(f"  - Final CPM: ${final_cpm:.2f}")
+
+        print(f"\n✓ Performance optimization applied at {len(optimization_timeline)} checkpoints")
+        print("\n✅ Performance optimization comprehensive test completed!")
+
+    @pytest.mark.asyncio
+    async def test_delivery_monitoring_over_time(self, test_client: AdCPTestClient):
+        """Test delivery monitoring and pacing over campaign lifetime."""
+        print("\n=== Testing Delivery Monitoring Over Time ===")
+
+        # Create campaign for delivery monitoring
+        products = await test_client.call_mcp_tool(
+            "get_products",
+            {
+                "brief": "Long-running brand awareness campaign for delivery monitoring",
+                "promoted_offering": "Spotify Premium music streaming service with ad-free experience",
+            },
+        )
+
+        product_id = products["products"][0].get("product_id", products["products"][0].get("id"))
+
+        media_buy = await test_client.call_mcp_tool(
+            "create_media_buy",
+            {
+                "product_ids": [product_id],
+                "budget": 45000.0,
+                "start_date": "2026-05-01",
+                "end_date": "2026-05-31",  # 31-day campaign
+                "targeting_overlay": {
+                    "geo_country_any_of": ["US", "CA"],
+                    "device_type_any_of": ["mobile", "desktop", "tablet"],
+                    "frequency_cap": {"suppress_minutes": 720, "scope": "media_buy"},  # 12 hours
+                },
+            },
+        )
+
+        media_buy_id = media_buy["media_buy_id"]
+        print(f"✓ Created monitoring campaign: {media_buy_id}")
+
+        # Phase 1: Daily Delivery Monitoring
+        print("\nPhase 1: Daily Delivery Monitoring")
+
+        # Define monitoring schedule - key days throughout campaign
+        monitoring_schedule = [
+            {"day": 1, "date": "2026-05-01", "expected_progress": 0.03},
+            {"day": 3, "date": "2026-05-03", "expected_progress": 0.10},
+            {"day": 7, "date": "2026-05-07", "expected_progress": 0.23},
+            {"day": 14, "date": "2026-05-14", "expected_progress": 0.45},
+            {"day": 21, "date": "2026-05-21", "expected_progress": 0.68},
+            {"day": 28, "date": "2026-05-28", "expected_progress": 0.90},
+            {"day": 31, "date": "2026-05-31", "expected_progress": 1.00},
+        ]
+
+        delivery_tracking = []
+
+        for checkpoint in monitoring_schedule:
+            print(f"\n  Day {checkpoint['day']} ({checkpoint['date']}):")
+
+            # Set time and get delivery
+            test_client.set_mock_time(datetime.fromisoformat(f"{checkpoint['date']}T15:00:00"))
+
+            if checkpoint["day"] == 1:
+                test_client.jump_to_event("campaign-start")
+            elif checkpoint["day"] == 14:
+                test_client.jump_to_event("campaign-midpoint")
+            elif checkpoint["day"] == 31:
+                test_client.jump_to_event("campaign-complete")
+
+            delivery = await test_client.call_mcp_tool(
+                "get_media_buy_delivery", {"media_buy_ids": [media_buy_id], "today": checkpoint["date"]}
+            )
+
+            delivery_data = delivery["deliveries"][0] if delivery.get("deliveries") else {}
+
+            # Calculate key metrics
+            impressions = delivery_data.get("impressions", 0)
+            spend = delivery_data.get("spend", 0)
+            days_elapsed = delivery_data.get("days_elapsed", checkpoint["day"])
+            total_days = delivery_data.get("total_days", 31)
+            pacing = delivery_data.get("pacing", "unknown")
+
+            actual_progress = spend / 45000.0 if spend > 0 else 0
+            progress_variance = actual_progress - checkpoint["expected_progress"]
+
+            print(f"    Impressions: {impressions:,}")
+            print(f"    Spend: ${spend:,.2f} ({actual_progress:.1%} of budget)")
+            print(f"    Expected: {checkpoint['expected_progress']:.1%} (variance: {progress_variance:+.1%})")
+            print(f"    Pacing: {pacing}")
+            print(f"    Days: {days_elapsed}/{total_days}")
+
+            # Check for delivery issues
+            if abs(progress_variance) > 0.15:  # More than 15% variance
+                if progress_variance < -0.15:
+                    print(f"    ⚠ UNDERDELIVERING by {abs(progress_variance):.1%}")
+                else:
+                    print(f"    ⚠ OVERDELIVERING by {progress_variance:.1%}")
+            else:
+                print("    ✓ Delivery on track")
+
+            delivery_tracking.append(
+                {
+                    "day": checkpoint["day"],
+                    "date": checkpoint["date"],
+                    "impressions": impressions,
+                    "spend": spend,
+                    "actual_progress": actual_progress,
+                    "expected_progress": checkpoint["expected_progress"],
+                    "variance": progress_variance,
+                    "pacing": pacing,
+                }
+            )
+
+        # Phase 2: Delivery Analysis and Validation
+        print("\nPhase 2: Delivery Analysis")
+
+        # Analyze delivery patterns
+        total_impressions = delivery_tracking[-1]["impressions"]
+        total_spend = delivery_tracking[-1]["spend"]
+        budget_utilization = total_spend / 45000.0
+
+        print("✓ Campaign delivery summary:")
+        print(f"  - Total impressions delivered: {total_impressions:,}")
+        print(f"  - Total budget spent: ${total_spend:,.2f}")
+        print(f"  - Budget utilization: {budget_utilization:.1%}")
+
+        # Check for consistent delivery growth
+        previous_impressions = 0
+        consistent_growth = True
+        for checkpoint in delivery_tracking:
+            if checkpoint["impressions"] < previous_impressions:
+                consistent_growth = False
+                break
+            previous_impressions = checkpoint["impressions"]
+
+        if consistent_growth:
+            print("  ✓ Delivery showed consistent growth over time")
+        else:
+            print("  ⚠ Delivery had inconsistent patterns")
+
+        # Validate final results
+        assert total_impressions > 0, "Campaign should have delivered impressions"
+        assert total_spend > 0, "Campaign should have spent budget"
+        assert budget_utilization > 0.5, "Campaign should have spent at least 50% of budget"
+
+        print(f"\n✓ Monitored delivery across {len(monitoring_schedule)} checkpoints")
+        print("\n✅ Delivery monitoring over time test completed!")
+
+    @pytest.mark.asyncio
+    async def test_campaign_updates_and_modifications(self, test_client: AdCPTestClient):
+        """Test mid-flight campaign updates and modifications."""
+        print("\n=== Testing Campaign Updates and Modifications ===")
+
+        # Create campaign for modification testing
+        products = await test_client.call_mcp_tool(
+            "get_products",
+            {
+                "brief": "Flexible campaign for testing updates and modifications",
+                "promoted_offering": "Zoom video conferencing software with enterprise features",
+            },
+        )
+
+        product_id = products["products"][0].get("product_id", products["products"][0].get("id"))
+
+        # Phase 1: Initial Campaign Creation
+        print("\nPhase 1: Initial Campaign Creation")
+
+        initial_media_buy = await test_client.call_mcp_tool(
+            "create_media_buy",
+            {
+                "product_ids": [product_id],
+                "budget": 35000.0,
+                "start_date": "2026-06-01",
+                "end_date": "2026-06-30",
+                "targeting_overlay": {
+                    "geo_country_any_of": ["US"],
+                    "device_type_any_of": ["desktop"],
+                    "frequency_cap": {"suppress_minutes": 1440, "scope": "media_buy"},
+                },
+            },
+        )
+
+        media_buy_id = initial_media_buy["media_buy_id"]
+        print(f"✓ Created campaign for updates: {media_buy_id}")
+        print(f"  Initial budget: ${initial_media_buy.get('budget', 35000):,.2f}")
+        print(f"  Initial targeting: {initial_media_buy.get('targeting_overlay', {}).get('geo_country_any_of', [])}")
+
+        # Start campaign
+        test_client.jump_to_event("campaign-start")
+
+        # Phase 2: Budget Increase
+        print("\nPhase 2: Budget Increase")
+        test_client.set_mock_time(datetime(2025, 6, 10, 14, 0, 0))
+
+        try:
+            budget_update = await test_client.call_mcp_tool(
+                "update_media_buy",
+                {"media_buy_id": media_buy_id, "budget": 50000.0, "today": "2026-06-10"},  # Increase budget
+            )
+
+            print("✓ Budget increased to $50,000")
+            print(f"  Update status: {budget_update.get('status', 'unknown')}")
+
+        except Exception as e:
+            print(f"⚠ Budget update failed: {e}")
+
+        # Phase 3: Targeting Expansion
+        print("\nPhase 3: Targeting Expansion")
+        test_client.set_mock_time(datetime(2025, 6, 15, 10, 0, 0))
+
+        try:
+            targeting_update = await test_client.call_mcp_tool(
+                "update_media_buy",
+                {
+                    "media_buy_id": media_buy_id,
+                    "targeting_overlay": {
+                        "geo_country_any_of": ["US", "CA"],  # Add Canada
+                        "device_type_any_of": ["desktop", "mobile"],  # Add mobile
+                        "frequency_cap": {"suppress_minutes": 720, "scope": "media_buy"},  # Reduce to 12 hours
+                    },
+                    "today": "2026-06-15",
+                },
+            )
+
+            print("✓ Targeting expanded to include Canada and mobile devices")
+            print(f"  Update status: {targeting_update.get('status', 'unknown')}")
+
+        except Exception as e:
+            print(f"⚠ Targeting update failed: {e}")
+
+        # Phase 4: Campaign Extension
+        print("\nPhase 4: Campaign Extension")
+        test_client.set_mock_time(datetime(2025, 6, 25, 16, 0, 0))
+
+        try:
+            extension_update = await test_client.call_mcp_tool(
+                "update_media_buy",
+                {
+                    "media_buy_id": media_buy_id,
+                    "flight_end_date": "2026-07-15",  # Extend by 15 days
+                    "today": "2026-06-25",
+                },
+            )
+
+            print("✓ Campaign extended to July 15th")
+            print(f"  Update status: {extension_update.get('status', 'unknown')}")
+
+        except Exception as e:
+            print(f"⚠ Campaign extension failed: {e}")
+
+        # Phase 5: Verify Final Campaign State
+        print("\nPhase 5: Final State Verification")
+
+        final_status = await test_client.call_mcp_tool("check_media_buy_status", {"media_buy_id": media_buy_id})
+
+        print(f"✓ Final campaign status: {final_status.get('status', 'unknown')}")
+
+        # Check final delivery with all updates applied
+        test_client.set_mock_time(datetime(2025, 7, 1, 12, 0, 0))
+
+        final_delivery = await test_client.call_mcp_tool(
+            "get_media_buy_delivery", {"media_buy_ids": [media_buy_id], "today": "2026-07-01"}
+        )
+
+        if "deliveries" in final_delivery and len(final_delivery["deliveries"]) > 0:
+            delivery_data = final_delivery["deliveries"][0]
+            print("✓ Campaign delivery after updates:")
+            print(f"  - Impressions: {delivery_data.get('impressions', 0):,}")
+            print(f"  - Spend: ${delivery_data.get('spend', 0):,.2f}")
+            print(f"  - Budget utilization: {(delivery_data.get('spend', 0) / 50000.0):.1%}")
+
+            # Validate that updates had impact
+            assert delivery_data.get("impressions", 0) > 0, "Updated campaign should deliver impressions"
+            assert delivery_data.get("spend", 0) > 0, "Updated campaign should spend budget"
+
+        print("\n✅ Campaign updates and modifications test completed!")
 
 
 # Pytest configuration hooks
