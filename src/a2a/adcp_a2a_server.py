@@ -378,70 +378,84 @@ class AdCPSalesAgent(A2AServer):
 
             logger.info(f"Processing task: {text[:100]}...")
 
-            # Route based on keywords (simple routing for demo)
+            # Route based on keywords and return structured data per AdCP spec
             text_lower = text.lower()
 
             if any(word in text_lower for word in ["product", "inventory", "available", "catalog"]):
-                # Handle product queries
+                # Handle product queries - return structured product data
                 import asyncio
 
                 loop = asyncio.new_event_loop()
                 asyncio.set_event_loop(loop)
                 result = loop.run_until_complete(self.get_products(text))
 
-                # Format response
-                if "products" in result:
-                    response_text = f"Found {result['total']} products:\n\n"
-                    for p in result["products"][:5]:
-                        response_text += f"• {p['name']} (ID: {p['id']})\n"
-                        response_text += f"  Formats: {', '.join(p['formats'])}\n"
-                        if "pricing" in p:
-                            response_text += f"  Pricing: {p['pricing']}\n"
-                        response_text += "\n"
-                else:
-                    response_text = result.get("message", "No products available")
+                # Create structured artifact per AdCP spec
+                task.artifacts = [{"name": "product_catalog", "parts": [{"kind": "application/json", "data": result}]}]
 
             elif any(word in text_lower for word in ["target", "audience"]):
                 result = self.get_targeting()
-                response_text = "Available targeting options:\n\n"
-                for category, options in result["targeting_options"].items():
-                    response_text += f"**{category.title()}:**\n"
-                    response_text += f"• {', '.join(options)}\n\n"
+                task.artifacts = [
+                    {"name": "targeting_options", "parts": [{"kind": "application/json", "data": result}]}
+                ]
 
             elif any(word in text_lower for word in ["price", "pricing", "cost", "cpm", "budget"]):
                 result = self.get_pricing()
-                response_text = "Pricing information:\n\n"
-                response_text += f"Minimum budget: {result['minimum_budget']}\n\n"
-                for model, tiers in result["pricing_models"].items():
-                    response_text += f"**{model}:**\n"
-                    if isinstance(tiers, dict):
-                        for tier, price in tiers.items():
-                            response_text += f"• {tier}: {price}\n"
-                    response_text += "\n"
-                response_text += f"\n{result['volume_discounts']}"
+                task.artifacts = [
+                    {"name": "pricing_information", "parts": [{"kind": "application/json", "data": result}]}
+                ]
 
             elif any(word in text_lower for word in ["create", "campaign", "buy"]):
-                response_text = "To create a campaign, please provide:\n"
-                response_text += "• Product IDs (from product catalog)\n"
-                response_text += "• Total budget\n"
-                response_text += "• Start and end dates\n\n"
-                response_text += "Example: Create campaign with product_id=sports_video, budget=$5000, dates=2025-02-01 to 2025-02-28"
+                campaign_help = {
+                    "required_fields": ["product_ids", "total_budget", "start_date", "end_date"],
+                    "example": {
+                        "product_ids": ["sports_video"],
+                        "total_budget": 5000,
+                        "start_date": "2025-02-01",
+                        "end_date": "2025-02-28",
+                    },
+                    "message": "To create a campaign, provide the required fields with your next request",
+                }
+                task.artifacts = [
+                    {"name": "campaign_creation_guide", "parts": [{"kind": "application/json", "data": campaign_help}]}
+                ]
 
             else:
-                response_text = "I can help you with:\n"
-                response_text += "• Browse available products and inventory\n"
-                response_text += "• View targeting options\n"
-                response_text += "• Check pricing information\n"
-                response_text += "• Create advertising campaigns\n\n"
-                response_text += "What would you like to know?"
+                # General help response with structured capabilities
+                capabilities = {
+                    "supported_queries": [
+                        "product_catalog",
+                        "targeting_options",
+                        "pricing_information",
+                        "campaign_creation",
+                    ],
+                    "message": "I can help you with advertising inventory, targeting, pricing, and campaign creation",
+                    "example_queries": [
+                        "What video ad products do you have available?",
+                        "Show me targeting options",
+                        "What are your pricing models?",
+                        "How do I create a media buy?",
+                    ],
+                }
+                task.artifacts = [
+                    {"name": "capabilities", "parts": [{"kind": "application/json", "data": capabilities}]}
+                ]
 
-            # Create response artifacts
-            task.artifacts = [{"parts": [{"type": "text", "text": response_text}]}]
             task.status = TaskStatus(state=TaskState.COMPLETED)
 
         except Exception as e:
             logger.error(f"Error handling task: {e}")
-            task.artifacts = [{"parts": [{"type": "text", "text": f"I encountered an error: {str(e)}"}]}]
+            # Error response following AdCP spec
+            task.artifacts = [
+                {
+                    "name": "error_response",
+                    "parts": [
+                        {
+                            "kind": "application/json",
+                            "data": {"error": str(e), "message": "An error occurred while processing your request"},
+                        }
+                    ],
+                }
+            ]
             task.status = TaskStatus(state=TaskState.FAILED)
 
         return task

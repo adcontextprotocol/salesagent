@@ -45,7 +45,7 @@ The server provides:
 - **`src/admin/blueprints/settings.py`**: Handles SUPER ADMIN settings and POST operations for tenant settings
   - Functions: `admin_settings()` (GET) and `update_admin_settings()` (POST) for superadmin settings
   - Also contains POST-only routes for updating tenant settings (`update_adapter()`, `update_general()`, etc.)
-- **`src/admin/blueprints/tenants.py`**: Handles TENANT-SPECIFIC settings GET requests  
+- **`src/admin/blueprints/tenants.py`**: Handles TENANT-SPECIFIC settings GET requests
   - Function: `tenant_settings()` - Renders the main tenant settings page
 
 **Route Architecture**:
@@ -228,6 +228,44 @@ uv run pytest tests/e2e/
 
 # Run with coverage
 uv run pytest --cov=. --cov-report=html
+
+# Run E2E tests with Docker services
+docker-compose -f docker-compose.test.yml up -d
+uv run pytest tests/e2e/ -v
+docker-compose -f docker-compose.test.yml down
+```
+
+### End-to-End Testing with Strategy System
+
+The E2E test suite provides comprehensive testing of AdCP protocol operations:
+
+**Test Files:**
+- `test_adcp_full_lifecycle.py` - Complete campaign lifecycle testing with all AdCP tools
+- `test_strategy_simulation_end_to_end.py` - Strategy-based simulation testing
+- `test_testing_hooks.py` - Protocol testing hooks (X-Dry-Run, X-Mock-Time, etc.)
+
+**Key Features:**
+- Strategy-based testing with deterministic time progression
+- Testing hooks from AdCP spec (PR #34) for controlled testing
+- Both MCP and A2A protocol testing with official clients
+- Parallel test execution with isolated test sessions
+
+**Testing Hooks:**
+- `X-Dry-Run`: Validate operations without executing
+- `X-Mock-Time`: Control time for deterministic testing
+- `X-Jump-To-Event`: Jump to specific campaign events
+- `X-Test-Session-ID`: Isolate parallel test sessions
+
+**Running Specific Tests:**
+```bash
+# Run full lifecycle test
+uv run pytest tests/e2e/test_adcp_full_lifecycle.py -v
+
+# Run strategy simulation
+uv run pytest tests/e2e/test_strategy_simulation_end_to_end.py -v
+
+# Run with specific markers
+uv run pytest -m "not requires_server" tests/e2e/
 ```
 
 ### Using MCP Client

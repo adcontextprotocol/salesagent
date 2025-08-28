@@ -4,6 +4,7 @@ import os
 import time
 import uuid
 from datetime import date, datetime, timedelta
+from typing import Any
 
 from fastmcp import FastMCP
 from fastmcp.exceptions import ToolError
@@ -19,9 +20,12 @@ from src.core.audit_logger import get_audit_logger
 from src.services.activity_feed import activity_feed
 
 logger = logging.getLogger(__name__)
-import src.core.schemas as schemas
+
+# Database models
 from product_catalog_providers.factory import get_product_catalog_provider
 from scripts.setup.init_database import init_db
+
+# Other imports
 from src.core.config_loader import (
     get_current_tenant,
     load_config,
@@ -33,15 +37,91 @@ from src.core.database.models import AdapterConfig, MediaBuy, Task, Tenant
 from src.core.database.models import HumanTask as ModelHumanTask
 from src.core.database.models import Principal as ModelPrincipal
 from src.core.database.models import Product as ModelProduct
-from src.core.schemas import *
-from src.services.policy_check_service import PolicyCheckService, PolicyStatus
 
-# CRITICAL: Re-import models AFTER wildcard to prevent collision
-# The wildcard import overwrites Product, Principal, HumanTask
+# Schema models (explicit imports to avoid collisions)
+from src.core.schemas import (
+    AddCreativeAssetsRequest,
+    AddCreativeAssetsResponse,
+    # ApproveAdaptationRequest,  # Not defined in schemas yet
+    # ApproveAdaptationResponse,  # Not defined in schemas yet
+    ApproveCreativeRequest,
+    ApproveCreativeResponse,
+    AssignCreativeRequest,
+    AssignCreativeResponse,
+    AssignTaskRequest,
+    CheckAEERequirementsRequest,
+    CheckAEERequirementsResponse,
+    CheckCreativeStatusRequest,
+    CheckCreativeStatusResponse,
+    CheckMediaBuyStatusRequest,
+    CheckMediaBuyStatusResponse,
+    CompleteTaskRequest,
+    CreateCreativeGroupRequest,
+    CreateCreativeGroupResponse,
+    CreateCreativeRequest,
+    CreateCreativeResponse,
+    CreateHumanTaskRequest,
+    CreateHumanTaskResponse,
+    CreateMediaBuyRequest,
+    CreateMediaBuyResponse,
+    Creative,
+    CreativeAssignment,
+    CreativeGroup,
+    CreativeStatus,
+    GetAllMediaBuyDeliveryRequest,
+    GetAllMediaBuyDeliveryResponse,
+    GetCreativesRequest,
+    GetCreativesResponse,
+    GetMediaBuyDeliveryRequest,
+    GetMediaBuyDeliveryResponse,
+    GetPendingCreativesRequest,
+    GetPendingCreativesResponse,
+    GetPendingTasksRequest,
+    GetPendingTasksResponse,
+    GetProductsRequest,
+    GetProductsResponse,
+    GetSignalsRequest,
+    GetSignalsResponse,
+    GetTargetingCapabilitiesRequest,
+    GetTargetingCapabilitiesResponse,
+    HumanTask,
+    LegacyUpdateMediaBuyRequest,
+    MarkTaskCompleteRequest,
+    MediaBuyDeliveryData,
+    MediaPackage,
+    Principal,
+    Product,
+    ReportingPeriod,
+    Signal,
+    SimulationControlRequest,
+    SimulationControlResponse,
+    UpdateMediaBuyRequest,
+    UpdateMediaBuyResponse,
+    UpdatePackageRequest,
+    UpdatePerformanceIndexRequest,
+    UpdatePerformanceIndexResponse,
+    VerifyTaskRequest,
+    VerifyTaskResponse,
+)
+from src.services.policy_check_service import PolicyCheckService, PolicyStatus
 from src.services.slack_notifier import get_slack_notifier
 
 # Initialize Rich console
 console = Console()
+
+# Temporary placeholder classes for missing schemas
+# TODO: These should be properly defined in schemas.py
+from pydantic import BaseModel
+
+
+class ApproveAdaptationRequest(BaseModel):
+    creative_id: str
+    adaptation_id: str
+
+
+class ApproveAdaptationResponse(BaseModel):
+    success: bool
+    message: str
 
 
 def safe_parse_json_field(field_value, field_name="field", default=None):
@@ -173,7 +253,7 @@ def get_principal_adapter_mapping(principal_id: str) -> dict[str, Any]:
         return principal.platform_mappings if principal else {}
 
 
-def get_principal_object(principal_id: str) -> schemas.Principal | None:
+def get_principal_object(principal_id: str) -> Principal | None:
     """Get a Principal object for the given principal_id."""
     tenant = get_current_tenant()
     with get_db_session() as session:
@@ -182,7 +262,7 @@ def get_principal_object(principal_id: str) -> schemas.Principal | None:
         )
 
         if principal:
-            return schemas.Principal(
+            return Principal(
                 principal_id=principal.principal_id,
                 name=principal.name,
                 platform_mappings=principal.platform_mappings,
@@ -351,7 +431,7 @@ def _verify_principal(media_buy_id: str, context: Context):
         raise ValueError(f"Media buy '{media_buy_id}' not found.")
     if media_buys[media_buy_id][1] != principal_id:
         # Log security violation
-        from audit_logger import get_audit_logger
+        from src.core.audit_logger import get_audit_logger
 
         tenant = get_current_tenant()
         security_logger = get_audit_logger("AdCP", tenant["tenant_id"])
@@ -653,7 +733,7 @@ def create_media_buy(req: CreateMediaBuyRequest, context: Context) -> CreateMedi
 
     # Validate targeting doesn't use managed-only dimensions
     if req.targeting_overlay:
-        from targeting_capabilities import validate_overlay_targeting
+        from src.services.targeting_capabilities import validate_overlay_targeting
 
         violations = validate_overlay_targeting(req.targeting_overlay.model_dump(exclude_none=True))
         if violations:
@@ -834,11 +914,10 @@ def create_media_buy(req: CreateMediaBuyRequest, context: Context) -> CreateMedi
             campaign_objective=getattr(req, "campaign_objective", ""),  # Optional field
             kpi_goal=getattr(req, "kpi_goal", ""),  # Optional field
             budget=req.total_budget,
-            start_date=req.flight_start_date.isoformat(),
-            end_date=req.flight_end_date.isoformat(),
+            start_date=req.flight_start_date,
+            end_date=req.flight_end_date,
             status=response.status or "active",
             raw_request=req.model_dump(mode="json"),
-            context_id=None,  # No context for synchronous operations
         )
         session.add(new_media_buy)
         session.commit()
@@ -905,32 +984,36 @@ def create_media_buy(req: CreateMediaBuyRequest, context: Context) -> CreateMedi
 
 @mcp.tool
 def check_media_buy_status(req: CheckMediaBuyStatusRequest, context: Context) -> CheckMediaBuyStatusResponse:
-    """Check the status of a media buy using the context_id returned from create_media_buy."""
+    """Check the status of a media buy using the context_id or media_buy_id."""
     _get_principal_id_from_context(context)
 
-    # Get the media_buy_id from context_id
-    media_buy_id = None
-    if req.context_id in context_map:
-        media_buy_id = context_map[req.context_id]
+    # Get the media_buy_id - either directly provided or from context_id
+    media_buy_id = req.media_buy_id  # Direct media_buy_id takes precedence
 
-    # If not in memory, check database
+    if not media_buy_id and req.context_id:
+        # Try to get from memory map first
+        if req.context_id in context_map:
+            media_buy_id = context_map[req.context_id]
+
+        # If not in memory, check database (but context_id column is disabled)
+        if not media_buy_id:
+            with get_db_session() as session:
+                # Note: context_id column is currently disabled in MediaBuy model
+                # This fallback won't work until column is re-enabled
+                # media_buy = session.query(MediaBuy).filter_by(context_id=req.context_id).first()
+                pass  # Skip database lookup for now
+
     if not media_buy_id:
-        with get_db_session() as session:
-            media_buy = session.query(MediaBuy).filter_by(context_id=req.context_id).first()
-
-            if media_buy:
-                media_buy_id = media_buy.media_buy_id
-                status = media_buy.status
-            else:
-                # Context not found
-                return CheckMediaBuyStatusResponse(
-                    media_buy_id="",
-                    status="not_found",
-                    detail=f"No media buy found for context_id: {req.context_id}",
-                    creative_count=0,
-                    budget_spent=0.0,
-                    budget_remaining=0.0,
-                )
+        # Neither context_id nor media_buy_id worked
+        identifier = req.context_id if req.context_id else req.media_buy_id
+        return CheckMediaBuyStatusResponse(
+            media_buy_id="",
+            status="not_found",
+            detail=f"No media buy found for identifier: {identifier}",
+            creative_count=0,
+            budget_spent=0.0,
+            budget_remaining=0.0,
+        )
 
     # Check if media buy exists in memory
     if media_buy_id in media_buys:
@@ -983,7 +1066,7 @@ def add_creative_assets(req: AddCreativeAssetsRequest, context: Context) -> AddC
         tenant_id=tenant["tenant_id"],
         principal_id=principal_id,
         context_id=ctx_id,
-        session_type="interactive",
+        is_async=True,
     )
 
     # Create workflow step for this tool call
@@ -1177,7 +1260,7 @@ def approve_adaptation(req: ApproveAdaptationRequest, context: Context) -> Appro
     creative_statuses[new_creative_id] = new_status
 
     # Log the adaptation
-    from audit_logger import get_audit_logger
+    from src.core.audit_logger import get_audit_logger
     tenant = get_current_tenant()
     logger = get_audit_logger("AdCP", tenant['tenant_id'])
     logger.log_operation(
@@ -1231,7 +1314,7 @@ def update_media_buy(req: UpdateMediaBuyRequest, context: Context) -> UpdateMedi
         tenant_id=tenant["tenant_id"],
         principal_id=principal_id,
         context_id=ctx_id,
-        session_type="interactive",
+        is_async=True,
     )
 
     # Create workflow step for this tool call
@@ -1356,7 +1439,7 @@ def update_media_buy(req: UpdateMediaBuyRequest, context: Context) -> UpdateMedi
         buy_request.total_budget = req.total_budget
     if req.targeting_overlay is not None:
         # Validate targeting doesn't use managed-only dimensions
-        from targeting_capabilities import validate_overlay_targeting
+        from src.services.targeting_capabilities import validate_overlay_targeting
 
         violations = validate_overlay_targeting(req.targeting_overlay.model_dump(exclude_none=True))
         if violations:
@@ -1448,8 +1531,7 @@ def update_package(req: UpdatePackageRequest, context: Context) -> UpdateMediaBu
     )
 
 
-@mcp.tool
-def get_media_buy_delivery(req: GetMediaBuyDeliveryRequest, context: Context) -> GetMediaBuyDeliveryResponse:
+def _get_media_buy_delivery_impl(req: GetMediaBuyDeliveryRequest, context: Context) -> GetMediaBuyDeliveryResponse:
     """Get delivery data for one or more media buys.
 
     Supports:
@@ -1573,6 +1655,12 @@ def get_media_buy_delivery(req: GetMediaBuyDeliveryRequest, context: Context) ->
 
 
 @mcp.tool
+def get_media_buy_delivery(req: GetMediaBuyDeliveryRequest, context: Context) -> GetMediaBuyDeliveryResponse:
+    """Get delivery data for media buys (MCP tool wrapper)."""
+    return _get_media_buy_delivery_impl(req, context)
+
+
+@mcp.tool
 def get_all_media_buy_delivery(req: GetAllMediaBuyDeliveryRequest, context: Context) -> GetAllMediaBuyDeliveryResponse:
     """DEPRECATED: Use get_media_buy_delivery with filter parameter instead.
 
@@ -1585,8 +1673,8 @@ def get_all_media_buy_delivery(req: GetAllMediaBuyDeliveryRequest, context: Cont
         today=req.today,
     )
 
-    # Call the unified endpoint
-    unified_response = get_media_buy_delivery(unified_request, context)
+    # Call the implementation function directly
+    unified_response = _get_media_buy_delivery_impl(unified_request, context)
 
     # Convert response to deprecated format (they're actually the same now)
     return GetAllMediaBuyDeliveryResponse(
@@ -1679,7 +1767,7 @@ def create_creative_group(req: CreateCreativeGroupRequest, context: Context) -> 
     creative_groups[group.group_id] = group
 
     # Log the creation
-    from audit_logger import get_audit_logger
+    from src.core.audit_logger import get_audit_logger
 
     tenant = get_current_tenant()
     logger = get_audit_logger("AdCP", tenant["tenant_id"])
@@ -1736,7 +1824,7 @@ def create_creative(req: CreateCreativeRequest, context: Context) -> CreateCreat
     creative_statuses[creative.creative_id] = status
 
     # Log the creation
-    from audit_logger import get_audit_logger
+    from src.core.audit_logger import get_audit_logger
 
     tenant = get_current_tenant()
     logger = get_audit_logger("AdCP", tenant["tenant_id"])
@@ -1796,7 +1884,7 @@ def assign_creative(req: AssignCreativeRequest, context: Context) -> AssignCreat
     creative_assignments[req.media_buy_id][req.package_id].append(req.creative_id)
 
     # Log the assignment
-    from audit_logger import get_audit_logger
+    from src.core.audit_logger import get_audit_logger
 
     tenant = get_current_tenant()
     logger = get_audit_logger("AdCP", tenant["tenant_id"])
@@ -1873,7 +1961,7 @@ def get_pending_creatives(req: GetPendingCreativesRequest, context: Context) -> 
         pending_creatives = pending_creatives[: req.limit]
 
     # Log admin action
-    from audit_logger import get_audit_logger
+    from src.core.audit_logger import get_audit_logger
 
     tenant = get_current_tenant()
     logger = get_audit_logger("AdCP", tenant["tenant_id"])
@@ -1914,7 +2002,7 @@ def approve_creative(req: ApproveCreativeRequest, context: Context) -> ApproveCr
     )
 
     # Log admin action
-    from audit_logger import get_audit_logger
+    from src.core.audit_logger import get_audit_logger
 
     tenant = get_current_tenant()
     logger = get_audit_logger("AdCP", tenant["tenant_id"])
@@ -2065,6 +2153,7 @@ def create_workflow_step_for_task(req: CreateHumanTaskRequest, context: Context)
     # Create workflow step
     step = context_mgr.create_workflow_step(
         context_id=ctx_id,
+        is_async=True,
         step_type="approval",
         owner=owner,
         status="requires_approval",
@@ -2606,7 +2695,7 @@ def mark_task_complete(req: MarkTaskCompleteRequest, context: Context) -> dict[s
 # Dry run logs are now handled by the adapters themselves
 
 
-def get_product_catalog() -> list[schemas.Product]:
+def get_product_catalog() -> list[Product]:
     """Get products for the current tenant."""
     tenant = get_current_tenant()
 
@@ -2616,20 +2705,29 @@ def get_product_catalog() -> list[schemas.Product]:
         loaded_products = []
         for product in products:
             # Convert ORM model to Pydantic schema
+            # Parse JSON fields that might be strings (SQLite) or dicts (PostgreSQL)
+            def safe_json_parse(value):
+                if isinstance(value, str):
+                    try:
+                        return json.loads(value)
+                    except (json.JSONDecodeError, TypeError):
+                        return value
+                return value
+
             product_data = {
                 "product_id": product.product_id,
                 "name": product.name,
                 "description": product.description,
-                "formats": product.formats,
+                "formats": safe_json_parse(product.formats),
                 "delivery_type": product.delivery_type,
                 "is_fixed_price": product.is_fixed_price,
                 "cpm": float(product.cpm) if product.cpm else None,
-                "price_guidance": product.price_guidance,
+                "price_guidance": safe_json_parse(product.price_guidance),
                 "is_custom": product.is_custom,
-                "countries": product.countries,
-                "implementation_config": product.implementation_config,
+                "countries": safe_json_parse(product.countries),
+                "implementation_config": safe_json_parse(product.implementation_config),
             }
-            loaded_products.append(schemas.Product(**product_data))
+            loaded_products.append(Product(**product_data))
 
     return loaded_products
 
@@ -2639,7 +2737,7 @@ def get_targeting_capabilities(
     req: GetTargetingCapabilitiesRequest, context: Context
 ) -> GetTargetingCapabilitiesResponse:
     """Get available targeting dimensions for specified channels."""
-    from targeting_dimensions import (
+    from src.services.targeting_dimensions import (
         Channel,
         ChannelTargetingCapabilities,
         TargetingDimensionInfo,
@@ -2700,7 +2798,7 @@ def get_targeting_capabilities(
 @mcp.tool
 def check_aee_requirements(req: CheckAEERequirementsRequest, context: Context) -> CheckAEERequirementsResponse:
     """Check if required AEE dimensions are supported for a channel."""
-    from targeting_dimensions import Channel, get_aee_dimensions
+    from src.services.targeting_dimensions import Channel, get_aee_dimensions
 
     try:
         channel = Channel(req.channel)
@@ -2736,6 +2834,94 @@ if __name__ == "__main__":
 # Always add health check endpoint
 from fastapi import Request
 from fastapi.responses import JSONResponse
+
+# --- Strategy and Simulation Control ---
+from src.core.strategy import SimulationError, StrategyError, StrategyManager
+
+
+@mcp.tool
+async def simulation_control(
+    req: SimulationControlRequest,
+    context: Context | None = None,
+) -> SimulationControlResponse:
+    """
+    Control simulation time progression and events.
+
+    Allows jumping to specific events, resetting simulations,
+    and changing scenarios for testing purposes.
+    """
+    principal_id = get_principal_from_context(context)
+    if not principal_id:
+        raise ToolError("Authentication required")
+
+    tenant_config = get_current_tenant()
+    if not tenant_config:
+        raise ToolError("No tenant configuration found")
+
+    # Validate strategy_id is provided
+    if not req.strategy_id:
+        raise ToolError("strategy_id is required")
+
+    # Validate this is a simulation strategy
+    if not req.strategy_id.startswith("sim_"):
+        raise ToolError("Only simulation strategies can be controlled")
+
+    try:
+        # Create strategy manager for current tenant/principal
+        tenant_id = tenant_config.get("tenant_id")
+        strategy_manager = StrategyManager(tenant_id=tenant_id, principal_id=principal_id)
+
+        # Control the simulation
+        result = strategy_manager.control_simulation(
+            strategy_id=req.strategy_id, action=req.action, parameters=req.parameters
+        )
+
+        # Log the simulation control action
+        audit_logger = get_audit_logger("AdCP", tenant_id)
+        audit_logger.log_operation(
+            operation="simulation_control",
+            principal_name=principal_id,
+            principal_id=principal_id,
+            adapter_id="simulation",
+            success=True,
+            details={
+                "strategy_id": req.strategy_id,
+                "action": req.action,
+                "parameters": req.parameters,
+                "result": result,
+            },
+        )
+
+        return SimulationControlResponse(
+            status="ok" if result.get("status") == "ok" else "error",
+            message=result.get("message"),
+            current_state=result.get("current_state"),
+            simulation_time=result.get("simulation_time"),
+        )
+
+    except (StrategyError, SimulationError) as e:
+        # Log the error
+        audit_logger = get_audit_logger()
+        audit_logger.log_operation(
+            operation="simulation_control",
+            tenant_id=tenant_config.get("tenant_id"),
+            principal_id=principal_id,
+            success=False,
+            details={"strategy_id": req.strategy_id, "action": req.action, "error": str(e)},
+        )
+
+        return SimulationControlResponse(status="error", message=f"Simulation control failed: {e}")
+
+
+def get_strategy_manager(context: Context | None) -> StrategyManager:
+    """Get strategy manager for current context."""
+    principal_id = get_principal_from_context(context)
+    tenant_config = get_current_tenant()
+
+    if not tenant_config:
+        raise ToolError("No tenant configuration found")
+
+    return StrategyManager(tenant_id=tenant_config.get("tenant_id"), principal_id=principal_id)
 
 
 @mcp.custom_route("/health", methods=["GET"])

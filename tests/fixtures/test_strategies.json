@@ -1,0 +1,139 @@
+{
+  "production_strategies": {
+    "conservative_pacing": {
+      "name": "Conservative Pacing",
+      "description": "Slow, steady delivery to ensure full flight completion",
+      "config": {
+        "pacing_rate": 0.8,
+        "bid_adjustment": 0.9,
+        "optimization_threshold": 0.15,
+        "error_handling": "pause_and_alert"
+      },
+      "is_simulation": false
+    },
+    "aggressive_scaling": {
+      "name": "Aggressive Scaling",
+      "description": "Fast delivery to maximize reach quickly",
+      "config": {
+        "pacing_rate": 1.3,
+        "bid_adjustment": 1.2,
+        "optimization_threshold": 0.25,
+        "error_handling": "auto_recover"
+      },
+      "is_simulation": false
+    },
+    "premium_guaranteed": {
+      "name": "Premium Guaranteed Strategy",
+      "description": "Ensure premium placement delivery with high viewability",
+      "config": {
+        "require_viewability": 0.7,
+        "placement_priority": "premium_only",
+        "pacing_rate": 1.0,
+        "error_handling": "escalate_immediately"
+      },
+      "is_simulation": false
+    }
+  },
+  "simulation_strategies": {
+    "sim_happy_path": {
+      "name": "Happy Path Simulation",
+      "description": "Everything works perfectly simulation",
+      "config": {
+        "mode": "simulation",
+        "time_progression": "accelerated",
+        "scenario": "everything_works",
+        "force_success": true
+      },
+      "is_simulation": true
+    },
+    "sim_creative_rejection": {
+      "name": "Creative Rejection Simulation",
+      "description": "Simulate creative policy violations",
+      "config": {
+        "mode": "simulation",
+        "force_creative_rejection": true,
+        "rejection_reason": "policy_violation",
+        "rejection_stage": "review"
+      },
+      "is_simulation": true
+    },
+    "sim_budget_exceeded": {
+      "name": "Budget Exceeded Simulation",
+      "description": "Simulate budget overspend scenarios",
+      "config": {
+        "mode": "simulation",
+        "force_budget_exceeded": true,
+        "overspend_percentage": 0.15
+      },
+      "is_simulation": true
+    },
+    "sim_inventory_shortage": {
+      "name": "Inventory Shortage Simulation",
+      "description": "Simulate low inventory availability",
+      "config": {
+        "mode": "simulation",
+        "force_inventory_shortage": true,
+        "available_inventory_percent": 0.3
+      },
+      "is_simulation": true
+    },
+    "sim_performance_optimization": {
+      "name": "Performance Optimization Simulation",
+      "description": "Simulate campaign optimization cycles",
+      "config": {
+        "mode": "simulation",
+        "enable_optimization": true,
+        "optimization_triggers": ["low_ctr", "high_cpa", "budget_pacing"]
+      },
+      "is_simulation": true
+    }
+  },
+  "jump_events": {
+    "campaign_lifecycle": [
+      "campaign-created",
+      "campaign-pending-approval",
+      "campaign-approved",
+      "campaign-start",
+      "campaign-25-percent",
+      "campaign-50-percent",
+      "campaign-75-percent",
+      "campaign-end",
+      "campaign-completed"
+    ],
+    "creative_lifecycle": [
+      "creative-submitted",
+      "creative-scanning",
+      "creative-pending-review",
+      "creative-approved",
+      "creative-rejected-policy",
+      "creative-rejected-quality",
+      "creative-paused",
+      "creative-expired"
+    ],
+    "error_scenarios": [
+      "error-budget-exceeded",
+      "error-policy-violation",
+      "error-targeting-invalid",
+      "error-inventory-unavailable",
+      "error-competitive-conflict",
+      "error-frequency-cap-hit",
+      "error-pacing-alert",
+      "error-creative-404",
+      "error-billing-failed"
+    ],
+    "performance_milestones": [
+      "milestone-first-impression",
+      "milestone-first-click",
+      "milestone-first-conversion",
+      "milestone-optimization-triggered",
+      "milestone-budget-50-percent",
+      "milestone-budget-90-percent"
+    ],
+    "edge_cases": [
+      "edge-partial-delivery",
+      "edge-timezone-change",
+      "edge-concurrent-update",
+      "edge-api-rate-limit"
+    ]
+  }
+}

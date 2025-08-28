@@ -100,6 +100,23 @@ class JSONValidatorMixin:
         """Validate that these fields are JSON arrays."""
         return ensure_json_array(value, default=[])
 
+    @validates("request_data", "response_data", "transaction_details")
+    def validate_json_object_fields(self, key, value):
+        """Validate that these fields are JSON objects or None."""
+        if value is None:
+            return None  # Allow NULL for these fields
+        if isinstance(value, str):
+            if value == "null":
+                return None  # Convert string 'null' to actual None
+            try:
+                value = json.loads(value)
+            except json.JSONDecodeError:
+                raise ValueError(f"{key} must be valid JSON")
+        if not isinstance(value, dict):
+            # If it's not a dict and not None, make it an empty dict
+            return {}
+        return value
+
     @validates("comments")
     def validate_comments(self, key, value):
         """Validate comments field is a list of proper comment objects."""

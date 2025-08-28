@@ -164,15 +164,13 @@ def init_db(exit_on_error=False):
                     product_id=p["product_id"],
                     name=p["name"],
                     description=p["description"],
-                    formats=json.dumps(p["formats"]),
-                    targeting_template=json.dumps(p["targeting_template"]),
+                    formats=p["formats"],  # No json.dumps needed for JSONB columns
+                    targeting_template=p["targeting_template"],
                     delivery_type=p["delivery_type"],
                     is_fixed_price=p["is_fixed_price"],
                     cpm=p.get("cpm"),
-                    price_guidance=json.dumps(p["price_guidance"]) if p.get("price_guidance") else None,
-                    implementation_config=(
-                        json.dumps(p.get("implementation_config")) if p.get("implementation_config") else None
-                    ),
+                    price_guidance=p.get("price_guidance"),  # Direct dict assignment
+                    implementation_config=p.get("implementation_config"),
                 )
                 db_session.add(new_product)
 
