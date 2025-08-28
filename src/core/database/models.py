@@ -273,9 +273,21 @@ class HumanTask(Base):
     __tablename__ = "human_tasks"
 
     task_id = Column(String(100), primary_key=True)
-    media_buy_id = Column(String(100))
-    status = Column(String(20), nullable=False, default="pending")
-    task_metadata = Column(Text)
+    tenant_id = Column(String(50), ForeignKey("tenants.tenant_id"), nullable=False)
+    media_buy_id = Column(String(100), ForeignKey("media_buys.media_buy_id"))
+    task_type = Column(String(50), nullable=False)
+    priority = Column(String(20), nullable=False)
+    status = Column(String(50), nullable=False, default="pending")
+    operation = Column(String(100))
+    error_detail = Column(Text)
+    context_data = Column(JSON)
+    assigned_to = Column(String(255))
+    due_at = Column(DateTime)
+    created_at = Column(DateTime, server_default=func.now())
+    updated_at = Column(DateTime)
+    completed_at = Column(DateTime)
+    completed_by = Column(String(255))
+    resolution = Column(Text)
 
 
 class AuditLog(Base):

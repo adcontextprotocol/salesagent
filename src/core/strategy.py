@@ -226,7 +226,11 @@ class StrategyManager:
         sim_context = self._get_simulation_context(strategy_id, strategy)
 
         if action == "jump_to":
-            return sim_context.jump_to_event(parameters.get("event"))
+            # Support both event and target_date parameters for flexibility
+            target = parameters.get("event") or parameters.get("target_date")
+            if not target:
+                raise SimulationError("jump_to requires either 'event' or 'target_date' parameter")
+            return sim_context.jump_to_event(target)
         elif action == "reset":
             return sim_context.reset()
         elif action == "set_scenario":
@@ -326,7 +330,30 @@ class SimulationContext:
             # Jump to predefined event
             return self._trigger_event(event)
         else:
-            raise SimulationError(f"Unknown jump event: {event}")
+            # Try to parse as an absolute date (e.g., "2025-09-15")
+            try:
+                from datetime import datetime
+
+                target_date = datetime.strptime(event, "%Y-%m-%d")
+                old_time = self.current_time
+                self.current_time = target_date
+                self.events_triggered.append(
+                    {
+                        "event": "time_jumped",
+                        "old_time": old_time.isoformat(),
+                        "new_time": self.current_time.isoformat(),
+                        "target": event,
+                        "triggered_at": datetime.utcnow().isoformat(),
+                    }
+                )
+                self._save_state()
+                return {
+                    "status": "ok",
+                    "message": f"Jumped to {event}",
+                    "current_time": self.current_time.isoformat(),
+                }
+            except ValueError:
+                raise SimulationError(f"Unknown jump event: {event}")
 
     def _advance_time(self, duration_str: str) -> dict[str, Any]:
         """Advance simulation time by duration."""

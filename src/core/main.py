@@ -91,6 +91,7 @@ from src.core.schemas import (
     MediaPackage,
     Principal,
     Product,
+    ReportingPeriod,
     Signal,
     SimulationControlRequest,
     SimulationControlResponse,
@@ -1065,7 +1066,7 @@ def add_creative_assets(req: AddCreativeAssetsRequest, context: Context) -> AddC
         tenant_id=tenant["tenant_id"],
         principal_id=principal_id,
         context_id=ctx_id,
-        session_type="interactive",
+        is_async=True,
     )
 
     # Create workflow step for this tool call
@@ -1313,7 +1314,7 @@ def update_media_buy(req: UpdateMediaBuyRequest, context: Context) -> UpdateMedi
         tenant_id=tenant["tenant_id"],
         principal_id=principal_id,
         context_id=ctx_id,
-        session_type="interactive",
+        is_async=True,
     )
 
     # Create workflow step for this tool call
@@ -1530,8 +1531,7 @@ def update_package(req: UpdatePackageRequest, context: Context) -> UpdateMediaBu
     )
 
 
-@mcp.tool
-def get_media_buy_delivery(req: GetMediaBuyDeliveryRequest, context: Context) -> GetMediaBuyDeliveryResponse:
+def _get_media_buy_delivery_impl(req: GetMediaBuyDeliveryRequest, context: Context) -> GetMediaBuyDeliveryResponse:
     """Get delivery data for one or more media buys.
 
     Supports:
@@ -1655,6 +1655,12 @@ def get_media_buy_delivery(req: GetMediaBuyDeliveryRequest, context: Context) ->
 
 
 @mcp.tool
+def get_media_buy_delivery(req: GetMediaBuyDeliveryRequest, context: Context) -> GetMediaBuyDeliveryResponse:
+    """Get delivery data for media buys (MCP tool wrapper)."""
+    return _get_media_buy_delivery_impl(req, context)
+
+
+@mcp.tool
 def get_all_media_buy_delivery(req: GetAllMediaBuyDeliveryRequest, context: Context) -> GetAllMediaBuyDeliveryResponse:
     """DEPRECATED: Use get_media_buy_delivery with filter parameter instead.
 
@@ -1667,15 +1673,8 @@ def get_all_media_buy_delivery(req: GetAllMediaBuyDeliveryRequest, context: Cont
         today=req.today,
     )
 
-    # Call the unified endpoint - need to call the underlying function, not the tool wrapper
-    # The @mcp.tool decorator wraps the function, so we need to access the original
-    if hasattr(get_media_buy_delivery, "__wrapped__"):
-        unified_response = get_media_buy_delivery.__wrapped__(unified_request, context)
-    elif hasattr(get_media_buy_delivery, "func"):
-        unified_response = get_media_buy_delivery.func(unified_request, context)
-    else:
-        # Fallback - call it directly and hope it works
-        unified_response = get_media_buy_delivery(unified_request, context)
+    # Call the implementation function directly
+    unified_response = _get_media_buy_delivery_impl(unified_request, context)
 
     # Convert response to deprecated format (they're actually the same now)
     return GetAllMediaBuyDeliveryResponse(
@@ -2154,6 +2153,7 @@ def create_workflow_step_for_task(req: CreateHumanTaskRequest, context: Context)
     # Create workflow step
     step = context_mgr.create_workflow_step(
         context_id=ctx_id,
+        is_async=True,
         step_type="approval",
         owner=owner,
         status="requires_approval",
@@ -2877,11 +2877,12 @@ async def simulation_control(
         )
 
         # Log the simulation control action
-        audit_logger = get_audit_logger()
+        audit_logger = get_audit_logger("AdCP", tenant_id)
         audit_logger.log_operation(
             operation="simulation_control",
-            tenant_id=tenant_id,
+            principal_name=principal_id,
             principal_id=principal_id,
+            adapter_id="simulation",
             success=True,
             details={
                 "strategy_id": req.strategy_id,

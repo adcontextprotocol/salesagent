@@ -45,19 +45,41 @@ def docker_services_e2e():
         max_wait = 60
         start_time = time.time()
 
+        mcp_ready = False
+        a2a_ready = False
+
         while time.time() - start_time < max_wait:
             # Check MCP server health
-            try:
-                response = requests.get("http://localhost:8155/health", timeout=2)
-                if response.status_code == 200:
-                    print("✓ MCP server is ready")
-                    break
-            except requests.RequestException:
-                pass
+            if not mcp_ready:
+                try:
+                    response = requests.get("http://localhost:8155/health", timeout=2)
+                    if response.status_code == 200:
+                        print("✓ MCP server is ready")
+                        mcp_ready = True
+                except requests.RequestException:
+                    pass
+
+            # Check A2A server health
+            if not a2a_ready:
+                try:
+                    # A2A server typically responds to a basic GET request
+                    response = requests.get("http://localhost:8091/", timeout=2)
+                    if response.status_code in [200, 404, 405]:  # Any response means it's up
+                        print("✓ A2A server is ready")
+                        a2a_ready = True
+                except requests.RequestException:
+                    pass
+
+            # Both services ready
+            if mcp_ready and a2a_ready:
+                break
 
             time.sleep(2)
         else:
-            pytest.fail("Docker services did not become healthy in time")
+            if not mcp_ready:
+                pytest.fail("MCP server did not become healthy in time")
+            if not a2a_ready:
+                pytest.fail("A2A server did not become healthy in time")
     else:
         print("✓ Docker services already running")
 
