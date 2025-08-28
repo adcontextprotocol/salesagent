@@ -68,10 +68,18 @@ class AdCPSalesAgent(A2AServer):
                 AgentSkill(name="approve_creative", description="Approve a creative for use in campaigns"),
                 AgentSkill(name="assign_creative", description="Assign approved creatives to media packages"),
             ],
+            # Enable Google A2A compatibility
+            capabilities={
+                "google_a2a_compatible": True,  # Enable Google A2A compatibility
+                "parts_array_format": True,     # Use parts array format for messages
+            }
         )
 
         # Initialize parent with agent card
         super().__init__(agent_card=agent_card)
+        
+        # Enable Google A2A compatibility mode in the library
+        self._use_google_a2a = True
 
         # MCP server configuration
         self.mcp_url = os.getenv("MCP_SERVER_URL", "http://localhost:8080/mcp/")
