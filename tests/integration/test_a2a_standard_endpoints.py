@@ -145,6 +145,28 @@ class TestA2AStandardEndpoints:
         # Should include Google A2A compatibility
         assert data['capabilities'].get('google_a2a_compatible') is True
 
+    def test_agent_card_url_field(self, client):
+        """Test that agent card includes proper URL field for messaging."""
+        response = client.get('/.well-known/agent.json')
+        data = response.get_json()
+        
+        # Should have URL field (required by A2A SDK)
+        assert 'url' in data
+        assert data['url'] is not None
+        assert len(data['url']) > 0
+        
+        # URL should be properly formatted
+        url = data['url']
+        assert url.startswith('http://') or url.startswith('https://')
+        
+        # In production should use production URL, in development should use localhost
+        if os.getenv("A2A_MOCK_MODE") == "true":
+            assert "localhost" in url
+        else:
+            # Should use the configured server URL
+            expected_url = os.getenv("A2A_SERVER_URL", "https://adcp-sales-agent.fly.dev/a2a")
+            assert url == expected_url
+
     def test_custom_authenticated_endpoints_exist(self, client):
         """Test that our custom authenticated endpoints still exist."""
         # These should exist but may return 401 without auth

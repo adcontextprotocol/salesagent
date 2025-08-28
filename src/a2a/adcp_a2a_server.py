@@ -46,10 +46,15 @@ class AdCPSalesAgent(A2AServer):
 
     def __init__(self):
         # Create agent card with skills
+        # Use production URL for deployed server, localhost for development
+        server_url = os.getenv("A2A_SERVER_URL", "https://adcp-sales-agent.fly.dev/a2a")
+        if os.getenv("A2A_MOCK_MODE") == "true":
+            server_url = "http://localhost:8091"  # Use localhost in development/testing
+            
         agent_card = AgentCard(
             name=self.name,
             description=self.description,
-            url="http://localhost:8091",
+            url=server_url,
             version=self.version,
             authentication="bearer-token",  # Indicate auth is required
             skills=[
