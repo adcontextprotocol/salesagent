@@ -109,7 +109,7 @@ The server provides:
 - `google_ad_manager.py`: GAM integration with detailed API logging
 - Each adapter accepts a `Principal` object for cleaner architecture
 
-### `src/a2a/adcp_a2a_server.py` - A2A Server
+### `src/a2a_server/adcp_a2a_server.py` - A2A Server
 - Standard `python-a2a` server implementation
 - Extends `A2AServer` base class from python-a2a library
 - Handles product, targeting, and pricing queries
