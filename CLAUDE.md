@@ -120,7 +120,16 @@ The server provides:
 
 ## Recent Major Changes
 
-### A2A Protocol Integration with python-a2a (Latest)
+### JSON-RPC 2.0 Protocol Fixes & Security Enhancements (Latest - Dec 2024)
+- **A2A Protocol Compliance**: Fixed JSON-RPC 2.0 implementation to use string `messageId` per spec
+- **Removed Proxy Workaround**: Eliminated unnecessary `/a2a-internal` endpoint and messageId conversion
+- **Backward Compatibility**: Added middleware to handle both numeric and string messageId formats
+- **Security Fix**: Added tenant validation to prevent access to disabled/deleted tenants
+- **Authentication Enhancement**: Added explicit transaction management for database consistency
+- **Test Infrastructure**: Added `--skip-docker` option for E2E tests with external services
+- **Token Security**: Removed hard-coded test tokens, now uses environment variables
+
+### A2A Protocol Integration with python-a2a
 - **Standard Library**: Now using `python-a2a` library for all A2A protocol handling
 - **No Custom Protocol Code**: Removed all custom protocol implementations
 - **Server Implementation**: Using `python_a2a.server.A2AServer` base class
@@ -190,10 +199,10 @@ Your custom routes are added via `setup_routes(app)` which is called automatical
 class MyA2AAgent(A2AServer):
     def setup_routes(self, app):
         """Add custom routes to the standard A2A Flask app."""
-        
+
         # Don't redefine standard routes - they're already provided
         # ❌ Don't add: /agent.json, /.well-known/agent.json, /a2a, etc.
-        
+
         # ✅ Add your custom business logic routes
         @app.route("/custom/endpoint", methods=["POST"])
         @self.require_auth
@@ -259,6 +268,22 @@ def test_standard_a2a_endpoints(client):
         response = client.get(endpoint)
         assert response.status_code != 404  # Should exist
 ```
+
+### Troubleshooting MCP Issues
+
+**Issue**: MCP returns empty products array
+- **Cause**: No products exist in database for the tenant
+- **Fix**: Create products for the tenant using Admin UI or database scripts
+
+**Issue**: "Missing or invalid x-adcp-auth header for authentication"
+- **Cause 1**: Token doesn't exist in database
+- **Cause 2**: Tenant is disabled or deleted
+- **Cause 3**: FastMCP SSE transport not forwarding headers properly
+- **Fix**: Verify token exists, tenant is active, and use direct HTTP requests for debugging
+
+**Issue**: Policy check blocking requests
+- **Cause**: Gemini API key invalid or policy service returning BLOCKED status
+- **Fix**: Check GEMINI_API_KEY environment variable and review policy settings
 
 ### Troubleshooting A2A Issues
 

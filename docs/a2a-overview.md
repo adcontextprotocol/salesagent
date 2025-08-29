@@ -7,9 +7,11 @@ The AdCP Sales Agent implements the A2A protocol using the standard `python-a2a`
 ## Server Implementation
 
 - **Library**: Standard `python-a2a` with custom business logic
-- **Location**: `src/a2a/adcp_a2a_server.py`
+- **Location**: `src/a2a_server/adcp_a2a_server.py`
 - **Port**: 8091 (local), available at `/a2a` path in production
+- **Protocol**: JSON-RPC 2.0 compliant with string `messageId` (per spec)
 - **Authentication**: Required via Bearer tokens
+- **Backward Compatibility**: Middleware converts numeric messageId to string for legacy clients
 
 ## Authentication
 
