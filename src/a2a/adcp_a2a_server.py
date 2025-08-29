@@ -428,7 +428,7 @@ class AdCPSalesAgent(A2AServer):
                             "name": "media_buy_created",
                             "parts": [
                                 {
-                                    "kind": "application/json",
+                                    "type": "data",
                                     "data": {
                                         "media_buy_id": result.get("media_buy_id", "unknown"),
                                         "status": "created",
@@ -441,21 +441,18 @@ class AdCPSalesAgent(A2AServer):
                         }
                     ]
                 else:
-                    task.artifacts = [
-                        {"name": "media_buy_error", "parts": [{"kind": "application/json", "data": result}]}
-                    ]
+                    task.artifacts = [{"name": "media_buy_error", "parts": [{"type": "data", "data": result}]}]
+                task.status = TaskStatus(state=TaskState.COMPLETED)
 
             elif any(word in text_lower for word in ["target", "audience"]):
                 result = self.get_targeting()
-                task.artifacts = [
-                    {"name": "targeting_options", "parts": [{"kind": "application/json", "data": result}]}
-                ]
+                task.artifacts = [{"name": "targeting_options", "parts": [{"type": "data", "data": result}]}]
+                task.status = TaskStatus(state=TaskState.COMPLETED)
 
             elif any(word in text_lower for word in ["price", "pricing", "cost", "cpm", "budget"]):
                 result = self.get_pricing()
-                task.artifacts = [
-                    {"name": "pricing_information", "parts": [{"kind": "application/json", "data": result}]}
-                ]
+                task.artifacts = [{"name": "pricing_information", "parts": [{"type": "data", "data": result}]}]
+                task.status = TaskStatus(state=TaskState.COMPLETED)
 
             elif any(word in text_lower for word in ["product", "inventory", "available", "catalog"]):
                 # Handle product queries - return structured product data
@@ -465,8 +462,9 @@ class AdCPSalesAgent(A2AServer):
                 asyncio.set_event_loop(loop)
                 result = loop.run_until_complete(self.get_products(text))
 
-                # Create structured artifact per AdCP spec
-                task.artifacts = [{"name": "product_catalog", "parts": [{"kind": "application/json", "data": result}]}]
+                # Create structured artifact per A2A spec (use "type" not "kind")
+                task.artifacts = [{"name": "product_catalog", "parts": [{"type": "data", "data": result}]}]
+                task.status = TaskStatus(state=TaskState.COMPLETED)
 
             else:
                 # General help response with structured capabilities
@@ -485,9 +483,7 @@ class AdCPSalesAgent(A2AServer):
                         "How do I create a media buy?",
                     ],
                 }
-                task.artifacts = [
-                    {"name": "capabilities", "parts": [{"kind": "application/json", "data": capabilities}]}
-                ]
+                task.artifacts = [{"name": "capabilities", "parts": [{"type": "data", "data": capabilities}]}]
 
             task.status = TaskStatus(state=TaskState.COMPLETED)
 
