@@ -8,7 +8,6 @@ No custom protocol code - just business logic.
 import logging
 import os
 import sys
-import uuid
 from functools import wraps
 from typing import Any
 
@@ -172,75 +171,76 @@ class AdCPSalesAgent(A2AServer):
             """Custom health check endpoint (different from library's /a2a/health)."""
             return jsonify({"status": "healthy"})
 
+        # TEMPORARILY DISABLED - Testing library's default routes
         # Protected endpoints (auth required)
-        @app.route("/tasks/send", methods=["POST"])
-        @self.require_auth
-        def authenticated_task_send():
-            """Protected endpoint - requires authentication."""
-            # Process task with authentication context
-            data = request.json or {}
+        # @app.route("/tasks/send", methods=["POST"])
+        # @self.require_auth
+        # def authenticated_task_send():
+        #     """Protected endpoint - requires authentication."""
+        #     # Process task with authentication context
+        #     data = request.json or {}
 
-            # Create task from request data
-            # Ensure message is in the expected format
-            message_content = data.get("message", data.get("text", ""))
-            if isinstance(message_content, str):
-                message_data = {"content": {"text": message_content}}
-            else:
-                message_data = message_content
+        #     # Create task from request data
+        #     # Ensure message is in the expected format
+        #     message_content = data.get("message", data.get("text", ""))
+        #     if isinstance(message_content, str):
+        #         message_data = {"content": {"text": message_content}}
+        #     else:
+        #         message_data = message_content
 
-            task = Task(
-                id=data.get("id", str(uuid.uuid4())), message=message_data, status=TaskStatus(state=TaskState.SUBMITTED)
-            )
+        #     task = Task(
+        #         id=data.get("id", str(uuid.uuid4())), message=message_data, status=TaskStatus(state=TaskState.SUBMITTED)
+        #     )
 
-            # Process with tenant context
-            result = self.handle_task(task)
+        #     # Process with tenant context
+        #     result = self.handle_task(task)
 
-            # Return result
-            if hasattr(result, "to_dict"):
-                return jsonify(result.to_dict())
-            else:
-                return jsonify(result)
+        #     # Return result
+        #     if hasattr(result, "to_dict"):
+        #         return jsonify(result.to_dict())
+        #     else:
+        #         return jsonify(result)
 
-        @app.route("/tasks/<task_id>", methods=["GET"])
-        @self.require_auth
-        def authenticated_task_get(task_id):
-            """Protected endpoint - requires authentication."""
-            # In production, would fetch task status from database
-            return jsonify(
-                {
-                    "id": task_id,
-                    "status": {"state": "completed"},
-                    "tenant": self.current_tenant.name if self.current_tenant else "unknown",
-                }
-            )
+        # @app.route("/tasks/<task_id>", methods=["GET"])
+        # @self.require_auth
+        # def authenticated_task_get(task_id):
+        #     """Protected endpoint - requires authentication."""
+        #     # In production, would fetch task status from database
+        #     return jsonify(
+        #         {
+        #             "id": task_id,
+        #             "status": {"state": "completed"},
+        #             "tenant": self.current_tenant.name if self.current_tenant else "unknown",
+        #         }
+        #     )
 
-        @app.route("/message", methods=["POST"])
-        @self.require_auth
-        def authenticated_message():
-            """Protected endpoint - requires authentication."""
-            # Process message with authentication context
-            data = request.json or {}
+        # @app.route("/message", methods=["POST"])
+        # @self.require_auth
+        # def authenticated_message():
+        #     """Protected endpoint - requires authentication."""
+        #     # Process message with authentication context
+        #     data = request.json or {}
 
-            # Create task from message
-            # Ensure message is in the expected format
-            if isinstance(data, str):
-                message_data = {"content": {"text": data}}
-            elif "content" not in data:
-                # Wrap the entire data as content if it doesn't have content key
-                message_data = {"content": data}
-            else:
-                message_data = data
+        #     # Create task from message
+        #     # Ensure message is in the expected format
+        #     if isinstance(data, str):
+        #         message_data = {"content": {"text": data}}
+        #     elif "content" not in data:
+        #         # Wrap the entire data as content if it doesn't have content key
+        #         message_data = {"content": data}
+        #     else:
+        #         message_data = data
 
-            task = Task(id=str(uuid.uuid4()), message=message_data, status=TaskStatus(state=TaskState.SUBMITTED))
+        #     task = Task(id=str(uuid.uuid4()), message=message_data, status=TaskStatus(state=TaskState.SUBMITTED))
 
-            # Process with tenant context
-            result = self.handle_task(task)
+        #     # Process with tenant context
+        #     result = self.handle_task(task)
 
-            # Return result
-            if hasattr(result, "to_dict"):
-                return jsonify(result.to_dict())
-            else:
-                return jsonify(result)
+        #     # Return result
+        #     if hasattr(result, "to_dict"):
+        #         return jsonify(result.to_dict())
+        #     else:
+        #         return jsonify(result)
 
     async def get_products(self, query: str = "") -> dict[str, Any]:
         """Get available advertising products."""
