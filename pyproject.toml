@@ -31,7 +31,6 @@ dependencies = [
     "httpx>=0.28.1",
     "a2a-cli>=0.1.12",
     "a2a-sdk[http-server]>=0.3.2",
-    "python-a2a>=0.5.9",
 ]
 
 
