@@ -114,19 +114,41 @@ class AdCPRequestHandler(RequestHandler):
             # Route based on keywords
             if any(word in text for word in ["product", "inventory", "available", "catalog"]):
                 result = await self._get_products(text)
-                task.artifacts = [Artifact(name="product_catalog", parts=[Part(type="data", data=result)])]
+                task.artifacts = [
+                    Artifact(
+                        artifactId="product_catalog_1", name="product_catalog", parts=[Part(type="data", data=result)]
+                    )
+                ]
             elif any(word in text for word in ["price", "pricing", "cost", "cpm", "budget"]):
                 result = self._get_pricing()
-                task.artifacts = [Artifact(name="pricing_information", parts=[Part(type="data", data=result)])]
+                task.artifacts = [
+                    Artifact(
+                        artifactId="pricing_info_1", name="pricing_information", parts=[Part(type="data", data=result)]
+                    )
+                ]
             elif any(word in text for word in ["target", "audience"]):
                 result = self._get_targeting()
-                task.artifacts = [Artifact(name="targeting_options", parts=[Part(type="data", data=result)])]
+                task.artifacts = [
+                    Artifact(
+                        artifactId="targeting_opts_1", name="targeting_options", parts=[Part(type="data", data=result)]
+                    )
+                ]
             elif any(word in text for word in ["create", "buy", "campaign", "media"]):
                 result = await self._create_media_buy(text)
                 if result.get("success"):
-                    task.artifacts = [Artifact(name="media_buy_created", parts=[Part(type="data", data=result)])]
+                    task.artifacts = [
+                        Artifact(
+                            artifactId="media_buy_1", name="media_buy_created", parts=[Part(type="data", data=result)]
+                        )
+                    ]
                 else:
-                    task.artifacts = [Artifact(name="media_buy_error", parts=[Part(type="data", data=result)])]
+                    task.artifacts = [
+                        Artifact(
+                            artifactId="media_buy_error_1",
+                            name="media_buy_error",
+                            parts=[Part(type="data", data=result)],
+                        )
+                    ]
             else:
                 # General help response
                 capabilities = {
@@ -143,7 +165,11 @@ class AdCPRequestHandler(RequestHandler):
                         "How do I create a media buy?",
                     ],
                 }
-                task.artifacts = [Artifact(name="capabilities", parts=[Part(type="data", data=capabilities)])]
+                task.artifacts = [
+                    Artifact(
+                        artifactId="capabilities_1", name="capabilities", parts=[Part(type="data", data=capabilities)]
+                    )
+                ]
 
             # Mark task as completed
             task.status = TaskStatus(state=TaskState.completed)
@@ -151,7 +177,7 @@ class AdCPRequestHandler(RequestHandler):
         except Exception as e:
             logger.error(f"Error processing message: {e}")
             task.status = TaskStatus(state=TaskState.failed)
-            task.artifacts = [Artifact(name="error", parts=[Part(type="text", text=str(e))])]
+            task.artifacts = [Artifact(artifactId="error_1", name="error", parts=[Part(type="text", text=str(e))])]
 
         self.tasks[task_id] = task
         return task
@@ -598,15 +624,14 @@ def main():
         http_handler=request_handler,
     )
 
-    # Build the Starlette app with proper routing
+    # Build the Starlette app with proper routing, but use internal path for library
     app = a2a_app.build(
         agent_card_url="/.well-known/agent.json",
-        rpc_url="/a2a",
+        rpc_url="/a2a-internal",  # Library uses internal path
         extended_agent_card_url="/agent.json",
     )
 
     # Add alias for agent-card.json (some clients look for this)
-    # Note: Must add routes before wrapping with middleware
     @app.route("/.well-known/agent-card.json", methods=["GET"])
     async def agent_card_alias(request):
         """Alias for agent.json to support different client expectations."""
@@ -614,58 +639,107 @@ def main():
 
         return JSONResponse(agent_card.model_dump())
 
-    # Wrap app with ASGI middleware to fix messageId type
+    # Add proxy endpoint that fixes messageId before forwarding to library
     import json
 
-    class MessageIdFixMiddleware:
-        """ASGI middleware to convert numeric messageId to string."""
+    from starlette.responses import Response
 
-        def __init__(self, app):
-            self.app = app
+    @app.route("/a2a", methods=["POST"])
+    async def a2a_proxy_handler(request):
+        """Proxy handler that converts numeric messageId to string before forwarding to library."""
+        try:
+            # Get the raw body
+            body = await request.body()
 
-        async def __call__(self, scope, receive, send):
-            if scope["type"] == "http" and scope["method"] == "POST" and scope["path"] == "/a2a":
-                # Intercept the receive function to modify the body
-                body_parts = []
+            # Parse and potentially modify JSON
+            if body:  # Only process if we have body content
+                try:
+                    # Decode bytes to string first if needed
+                    body_str = body.decode("utf-8") if isinstance(body, bytes) else body
+                    data = json.loads(body_str)
+                    modified = False
 
-                async def receive_wrapper():
-                    message = await receive()
-                    if message["type"] == "http.request":
-                        body = message.get("body", b"")
-                        if body and not body_parts:  # First chunk
-                            try:
-                                # Try to parse and fix the JSON
-                                data = json.loads(body)
+                    # Fix numeric messageId in message/send requests
+                    if (
+                        data.get("method") == "message/send"
+                        and "params" in data
+                        and "message" in data["params"]
+                        and "messageId" in data["params"]["message"]
+                    ):
+                        message_id = data["params"]["message"]["messageId"]
+                        if isinstance(message_id, int | float):
+                            data["params"]["message"]["messageId"] = str(message_id)
+                            logger.info(f"Converted numeric messageId {message_id} to string")
+                            modified = True
 
-                                # Check if this is a message/send with numeric messageId
-                                if (
-                                    data.get("method") == "message/send"
-                                    and "params" in data
-                                    and "message" in data["params"]
-                                    and "messageId" in data["params"]["message"]
-                                ):
+                    # Also fix numeric id in JSON-RPC request itself if needed
+                    if "id" in data and isinstance(data["id"], int | float):
+                        # JSON-RPC spec allows numeric id, but convert for consistency
+                        logger.debug(f"JSON-RPC id is numeric: {data['id']} (this is valid)")
 
-                                    message_id = data["params"]["message"]["messageId"]
-                                    if isinstance(message_id, int | float):
-                                        # Convert to string
-                                        data["params"]["message"]["messageId"] = str(message_id)
-                                        logger.info(f"Converted numeric messageId {message_id} to string")
+                    if modified:
+                        body = json.dumps(data).encode("utf-8")
 
-                                        # Return modified body
-                                        message["body"] = json.dumps(data).encode()
-                            except Exception as e:
-                                logger.debug(f"MessageId fix skipped: {e}")
+                except json.JSONDecodeError:
+                    # Not valid JSON, let library handle the error
+                    pass
 
-                        body_parts.append(body)
+            # Forward to internal library endpoint
+            # Create new request scope
+            scope = dict(request.scope)
+            scope["path"] = "/a2a-internal"
+            scope["raw_path"] = b"/a2a-internal"
 
-                    return message
+            # Create receive callable that provides the (possibly modified) body
+            body_sent = False
 
-                await self.app(scope, receive_wrapper, send)
-            else:
-                await self.app(scope, receive, send)
+            async def receive():
+                nonlocal body_sent
+                if not body_sent:
+                    body_sent = True
+                    return {"type": "http.request", "body": body, "more_body": False}
+                else:
+                    return {"type": "http.disconnect"}
 
-    # Apply the middleware
-    app = MessageIdFixMiddleware(app)
+            # Capture response
+            response_started = False
+            response_status = 200
+            response_headers = []
+            response_body = b""
+
+            async def send(message):
+                nonlocal response_started, response_status, response_headers, response_body
+                if message["type"] == "http.response.start":
+                    response_started = True
+                    response_status = message["status"]
+                    response_headers = message["headers"]
+                elif message["type"] == "http.response.body":
+                    response_body += message.get("body", b"")
+
+            # Route to the internal handler
+            await app.router(scope, receive, send)
+
+            # Return the response (handle headers properly)
+            headers = {}
+            for header_pair in response_headers:
+                if isinstance(header_pair, list | tuple) and len(header_pair) == 2:
+                    key, value = header_pair
+                    # Convert bytes to strings if needed
+                    key = key.decode("latin-1") if isinstance(key, bytes) else str(key)
+                    value = value.decode("latin-1") if isinstance(value, bytes) else str(value)
+                    headers[key] = value
+
+            return Response(content=response_body, status_code=response_status, headers=headers)
+
+        except Exception as e:
+            logger.error(f"Error in A2A proxy handler: {e}")
+            # Return JSON-RPC error response
+            error_response = {
+                "jsonrpc": "2.0",
+                "id": None,
+                "error": {"code": -32603, "message": "Internal error", "data": str(e)},
+            }
+            return Response(content=json.dumps(error_response), status_code=200, media_type="application/json")
 
     # Run with uvicorn
     import uvicorn
