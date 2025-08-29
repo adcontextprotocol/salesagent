@@ -307,7 +307,10 @@ class AdCPRequestHandler(RequestHandler):
         """
         try:
             # Try to connect to MCP server
-            headers = {"x-adcp-auth": "test_token"}  # TODO: Get from context
+            # TODO: Extract auth token from A2A request context when available
+            # For now, use environment variable or skip auth for internal calls
+            auth_token = os.getenv("A2A_MCP_AUTH_TOKEN", "")
+            headers = {"x-adcp-auth": auth_token} if auth_token else {}
             transport = StreamableHttpTransport(url=self.mcp_server_url, headers=headers)
 
             async with Client(transport=transport) as client:
@@ -630,6 +633,51 @@ def main():
         rpc_url="/a2a",  # Use standard /a2a endpoint directly
         extended_agent_card_url="/agent.json",
     )
+
+    # Add middleware for backward compatibility with numeric messageId
+    @app.middleware("http")
+    async def messageId_compatibility_middleware(request, call_next):
+        """Middleware to handle both numeric and string messageId for backward compatibility."""
+        import json
+
+        # Only process JSON-RPC requests to /a2a
+        if request.url.path == "/a2a" and request.method == "POST":
+            # Read the body
+            body = await request.body()
+            try:
+                data = json.loads(body)
+
+                # Check if this is a JSON-RPC request with numeric messageId
+                if isinstance(data, dict) and "params" in data:
+                    params = data.get("params", {})
+                    if "message" in params and isinstance(params["message"], dict):
+                        message = params["message"]
+                        # Convert numeric messageId to string if needed
+                        if "messageId" in message and isinstance(message["messageId"], int | float):
+                            logger.warning(
+                                f"Converting numeric messageId {message['messageId']} to string for compatibility"
+                            )
+                            message["messageId"] = str(message["messageId"])
+                            # Update the request body
+                            body = json.dumps(data).encode()
+
+                # Also handle the outer id field for JSON-RPC
+                if "id" in data and isinstance(data["id"], int | float):
+                    logger.warning(f"Converting numeric JSON-RPC id {data['id']} to string for compatibility")
+                    data["id"] = str(data["id"])
+                    body = json.dumps(data).encode()
+
+            except (json.JSONDecodeError, KeyError):
+                # Not JSON or doesn't have expected structure, pass through
+                pass
+
+            # Create new request with potentially modified body
+            from starlette.requests import Request
+
+            request = Request(request.scope, receive=lambda: {"type": "http.request", "body": body})
+
+        response = await call_next(request)
+        return response
 
     # Add alias for agent-card.json (some clients look for this)
     @app.route("/.well-known/agent-card.json", methods=["GET"])
