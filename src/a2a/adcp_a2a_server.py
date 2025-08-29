@@ -49,10 +49,10 @@ class AdCPSalesAgent(A2AServer):
         # Use production URL for deployed server, localhost for development
         # Check if we're running in production (Fly.io sets FLY_APP_NAME)
         if os.getenv("FLY_APP_NAME") or os.getenv("PRODUCTION") == "true":
-            server_url = "https://adcp-sales-agent.fly.dev/a2a"  # Force production URL
+            server_url = "https://adcp-sales-agent.fly.dev/a2a/"  # Force production URL with trailing slash
         else:
             server_url = "http://localhost:8091"  # Use localhost in development
-            
+
         agent_card = AgentCard(
             name=self.name,
             description=self.description,
@@ -71,13 +71,13 @@ class AdCPSalesAgent(A2AServer):
             # Enable Google A2A compatibility
             capabilities={
                 "google_a2a_compatible": True,  # Enable Google A2A compatibility
-                "parts_array_format": True,     # Use parts array format for messages
-            }
+                "parts_array_format": True,  # Use parts array format for messages
+            },
         )
 
         # Initialize parent with agent card
         super().__init__(agent_card=agent_card)
-        
+
         # Enable Google A2A compatibility mode in the library
         self._use_google_a2a = True
 
@@ -156,8 +156,8 @@ class AdCPSalesAgent(A2AServer):
 
     def setup_routes(self, app):
         """Add our custom authenticated routes to the standard A2A Flask app.
-        
-        Note: Standard routes (/.well-known/agent.json, /a2a, /agent.json, etc.) 
+
+        Note: Standard routes (/.well-known/agent.json, /a2a, /agent.json, etc.)
         are automatically provided by create_flask_app().
         """
 
@@ -553,13 +553,13 @@ def main():
     from python_a2a.server.http import create_flask_app
 
     app = create_flask_app(agent)
-    
+
     # Configure Flask to be aware it's mounted at /a2a in production
     if os.getenv("FLY_APP_NAME") or os.getenv("PRODUCTION") == "true":
-        app.config['APPLICATION_ROOT'] = '/a2a'
+        app.config["APPLICATION_ROOT"] = "/a2a"
         # This helps with URL generation in templates and redirects
         logger.info("Configured APPLICATION_ROOT=/a2a for production deployment")
-    
+
     # Our custom routes are added via agent.setup_routes() which is called by create_flask_app
 
     # Use waitress production server instead of Flask dev server
