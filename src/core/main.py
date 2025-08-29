@@ -161,19 +161,86 @@ def safe_parse_json_field(field_value, field_name="field", default=None):
 # --- Authentication ---
 
 
-def get_principal_from_token(token: str, tenant_id: str) -> str | None:
-    """Looks up a principal_id from the database using a token."""
+def get_principal_from_token(token: str, tenant_id: str | None = None) -> str | None:
+    """Looks up a principal_id from the database using a token.
 
-    # Check for tenant admin token first
-    tenant = get_current_tenant()
-    if tenant and token == tenant.get("admin_token"):
-        return f"{tenant['tenant_id']}_admin"
+    If tenant_id is provided, only looks in that specific tenant.
+    If not provided, searches globally by token and sets the tenant context.
+    """
 
     # Use standardized session management
     with get_db_session() as session:
-        principal = session.query(ModelPrincipal).filter_by(access_token=token, tenant_id=tenant_id).first()
+        # Use explicit transaction for consistency
+        with session.begin():
+            if tenant_id:
+                # If tenant_id specified, ONLY look in that tenant
+                principal = session.query(ModelPrincipal).filter_by(access_token=token, tenant_id=tenant_id).first()
 
-        return principal.principal_id if principal else None
+                if not principal:
+                    # Also check if it's the admin token for this specific tenant
+                    tenant = session.query(Tenant).filter_by(tenant_id=tenant_id, is_active=True).first()
+                    if tenant and token == tenant.admin_token:
+                        # Set tenant context for admin token
+                        tenant_dict = {
+                            "tenant_id": tenant.tenant_id,
+                            "name": tenant.name,
+                            "subdomain": tenant.subdomain,
+                            "ad_server": tenant.ad_server,
+                            "max_daily_budget": tenant.max_daily_budget,
+                            "enable_aee_signals": tenant.enable_aee_signals,
+                            "authorized_emails": tenant.authorized_emails or [],
+                            "authorized_domains": tenant.authorized_domains or [],
+                            "slack_webhook_url": tenant.slack_webhook_url,
+                            "admin_token": tenant.admin_token,
+                            "auto_approve_formats": tenant.auto_approve_formats or [],
+                            "human_review_required": tenant.human_review_required,
+                            "slack_audit_webhook_url": tenant.slack_audit_webhook_url,
+                            "hitl_webhook_url": tenant.hitl_webhook_url,
+                            "policy_settings": tenant.policy_settings,
+                        }
+                        set_current_tenant(tenant_dict)
+                        return f"{tenant_id}_admin"
+                    return None
+            else:
+                # No tenant specified - search globally by token
+                principal = session.query(ModelPrincipal).filter_by(access_token=token).first()
+
+                if not principal:
+                    return None
+
+                # CRITICAL: Validate the tenant exists and is active before proceeding
+                tenant_check = session.query(Tenant).filter_by(tenant_id=principal.tenant_id, is_active=True).first()
+                if not tenant_check:
+                    # Tenant is disabled or deleted - fail securely
+                    return None
+
+            # Get the tenant for this principal and set it as current context
+            tenant = session.query(Tenant).filter_by(tenant_id=principal.tenant_id, is_active=True).first()
+            if tenant:
+                tenant_dict = {
+                    "tenant_id": tenant.tenant_id,
+                    "name": tenant.name,
+                    "subdomain": tenant.subdomain,
+                    "ad_server": tenant.ad_server,
+                    "max_daily_budget": tenant.max_daily_budget,
+                    "enable_aee_signals": tenant.enable_aee_signals,
+                    "authorized_emails": tenant.authorized_emails or [],
+                    "authorized_domains": tenant.authorized_domains or [],
+                    "slack_webhook_url": tenant.slack_webhook_url,
+                    "admin_token": tenant.admin_token,
+                    "auto_approve_formats": tenant.auto_approve_formats or [],
+                    "human_review_required": tenant.human_review_required,
+                    "slack_audit_webhook_url": tenant.slack_audit_webhook_url,
+                    "hitl_webhook_url": tenant.hitl_webhook_url,
+                    "policy_settings": tenant.policy_settings,
+                }
+                set_current_tenant(tenant_dict)
+
+                # Check if this is the admin token for the tenant
+                if token == tenant.admin_token:
+                    return f"{tenant.tenant_id}_admin"
+
+            return principal.principal_id
 
 
 def get_principal_from_context(context: Context | None) -> str | None:
@@ -187,58 +254,28 @@ def get_principal_from_context(context: Context | None) -> str | None:
         if not request:
             return None
 
-        # Extract tenant from multiple sources
-        tenant_id = None
-
-        # 1. Check x-adcp-tenant header (set by middleware for path-based routing)
-        tenant_id = request.headers.get("x-adcp-tenant")
-
-        # 2. If not found, check host header for subdomain
-        if not tenant_id:
-            host = request.headers.get("host", "")
-            subdomain = host.split(".")[0] if "." in host else None
-            if subdomain and subdomain != "localhost":
-                tenant_id = subdomain
-
-        # 3. Default to 'default' tenant if none specified
-        if not tenant_id:
-            tenant_id = "default"
-
-        # Load tenant by ID with all new fields
-        with get_db_session() as session:
-            tenant = session.query(Tenant).filter_by(tenant_id=tenant_id, is_active=True).first()
-
-            if not tenant:
-                print(f"No active tenant found for ID: {tenant_id}")
-                return None
-
-            # Set tenant context with new fields
-            tenant_dict = {
-                "tenant_id": tenant.tenant_id,
-                "name": tenant.name,
-                "subdomain": tenant.subdomain,
-                "ad_server": tenant.ad_server,
-                "max_daily_budget": tenant.max_daily_budget,
-                "enable_aee_signals": tenant.enable_aee_signals,
-                "authorized_emails": tenant.authorized_emails or [],
-                "authorized_domains": tenant.authorized_domains or [],
-                "slack_webhook_url": tenant.slack_webhook_url,
-                "admin_token": tenant.admin_token,
-                "auto_approve_formats": tenant.auto_approve_formats or [],
-                "human_review_required": tenant.human_review_required,
-                "slack_audit_webhook_url": tenant.slack_audit_webhook_url,
-                "hitl_webhook_url": tenant.hitl_webhook_url,
-                "policy_settings": tenant.policy_settings,
-            }
-        set_current_tenant(tenant_dict)
-
-        # Get the x-adcp-auth header
+        # Get the x-adcp-auth header (FastMCP v2.11.0+ properly forwards this)
         auth_token = request.headers.get("x-adcp-auth")
         if not auth_token:
             return None
 
+        # Check if a specific tenant was requested via header or subdomain
+        requested_tenant_id = None
+
+        # 1. Check x-adcp-tenant header (set by middleware for path-based routing)
+        requested_tenant_id = request.headers.get("x-adcp-tenant")
+
+        # 2. If not found, check host header for subdomain
+        if not requested_tenant_id:
+            host = request.headers.get("host", "")
+            subdomain = host.split(".")[0] if "." in host else None
+            if subdomain and subdomain not in ["localhost", "adcp-sales-agent", "www"]:
+                requested_tenant_id = subdomain
+
         # Validate token and get principal
-        return get_principal_from_token(auth_token, tenant_dict["tenant_id"])
+        # If a specific tenant was requested, validate against it
+        # Otherwise, look up by token alone and set tenant context
+        return get_principal_from_token(auth_token, requested_tenant_id)
     except Exception as e:
         print(f"Auth error: {e}")
         return None
@@ -383,6 +420,8 @@ product_catalog: list[Product] = []
 creative_library: dict[str, Creative] = {}  # creative_id -> Creative
 creative_groups: dict[str, CreativeGroup] = {}  # group_id -> CreativeGroup
 creative_assignments_v2: dict[str, CreativeAssignment] = {}  # assignment_id -> CreativeAssignment
+
+# Authentication cache removed - FastMCP v2.11.0+ properly forwards headers
 
 # Import audit logger for later use
 

@@ -102,10 +102,10 @@ def run_a2a_server():
         env = os.environ.copy()
         env["A2A_MOCK_MODE"] = "true"  # Use mock mode in production for now
 
-        print("[A2A] Launching standard python-a2a server...")
-        # Use standard python-a2a server implementation - no custom protocol code
+        print("[A2A] Launching official a2a-sdk server...")
+        # Use official a2a-sdk implementation with JSON-RPC 2.0 support
         proc = subprocess.Popen(
-            [sys.executable, "src/a2a/adcp_a2a_server.py"],
+            [sys.executable, "src/a2a_server/adcp_a2a_server.py"],
             env=env,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
