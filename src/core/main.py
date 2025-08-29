@@ -161,57 +161,29 @@ def safe_parse_json_field(field_value, field_name="field", default=None):
 # --- Authentication ---
 
 
-def get_principal_from_token(token: str, tenant_id: str) -> str | None:
-    """Looks up a principal_id from the database using a token."""
+def get_principal_from_token(token: str, tenant_id: str | None = None) -> str | None:
+    """Looks up a principal_id from the database using a token.
 
-    # Check for tenant admin token first
-    tenant = get_current_tenant()
-    if tenant and token == tenant.get("admin_token"):
-        return f"{tenant['tenant_id']}_admin"
+    If tenant_id is provided, it validates the principal belongs to that tenant.
+    If not provided, it looks up the principal by token alone and sets the tenant context.
+    """
 
     # Use standardized session management
     with get_db_session() as session:
-        principal = session.query(ModelPrincipal).filter_by(access_token=token, tenant_id=tenant_id).first()
+        # First try to find principal by token alone (tokens are globally unique)
+        principal = session.query(ModelPrincipal).filter_by(access_token=token).first()
 
-        return principal.principal_id if principal else None
-
-
-def get_principal_from_context(context: Context | None) -> str | None:
-    """Extract principal ID from the FastMCP context using x-adcp-auth header."""
-    if not context:
-        return None
-
-    try:
-        # Get the HTTP request from context
-        request = context.get_http_request()
-        if not request:
+        if not principal:
             return None
 
-        # Extract tenant from multiple sources
-        tenant_id = None
+        # If tenant_id was provided, verify it matches
+        if tenant_id and principal.tenant_id != tenant_id:
+            # Token exists but for a different tenant
+            return None
 
-        # 1. Check x-adcp-tenant header (set by middleware for path-based routing)
-        tenant_id = request.headers.get("x-adcp-tenant")
-
-        # 2. If not found, check host header for subdomain
-        if not tenant_id:
-            host = request.headers.get("host", "")
-            subdomain = host.split(".")[0] if "." in host else None
-            if subdomain and subdomain != "localhost":
-                tenant_id = subdomain
-
-        # 3. Default to 'default' tenant if none specified
-        if not tenant_id:
-            tenant_id = "default"
-
-        # Load tenant by ID with all new fields
-        with get_db_session() as session:
-            tenant = session.query(Tenant).filter_by(tenant_id=tenant_id, is_active=True).first()
-
-            if not tenant:
-                return None
-
-            # Set tenant context with new fields
+        # Get the tenant for this principal and set it as current context
+        tenant = session.query(Tenant).filter_by(tenant_id=principal.tenant_id, is_active=True).first()
+        if tenant:
             tenant_dict = {
                 "tenant_id": tenant.tenant_id,
                 "name": tenant.name,
@@ -229,15 +201,48 @@ def get_principal_from_context(context: Context | None) -> str | None:
                 "hitl_webhook_url": tenant.hitl_webhook_url,
                 "policy_settings": tenant.policy_settings,
             }
-        set_current_tenant(tenant_dict)
+            set_current_tenant(tenant_dict)
+
+            # Check if this is the admin token for the tenant
+            if token == tenant.admin_token:
+                return f"{tenant.tenant_id}_admin"
+
+        return principal.principal_id
+
+
+def get_principal_from_context(context: Context | None) -> str | None:
+    """Extract principal ID from the FastMCP context using x-adcp-auth header."""
+    if not context:
+        return None
+
+    try:
+        # Get the HTTP request from context
+        request = context.get_http_request()
+        if not request:
+            return None
 
         # Get the x-adcp-auth header (FastMCP v2.11.0+ properly forwards this)
         auth_token = request.headers.get("x-adcp-auth")
         if not auth_token:
             return None
 
+        # Check if a specific tenant was requested via header or subdomain
+        requested_tenant_id = None
+
+        # 1. Check x-adcp-tenant header (set by middleware for path-based routing)
+        requested_tenant_id = request.headers.get("x-adcp-tenant")
+
+        # 2. If not found, check host header for subdomain
+        if not requested_tenant_id:
+            host = request.headers.get("host", "")
+            subdomain = host.split(".")[0] if "." in host else None
+            if subdomain and subdomain not in ["localhost", "adcp-sales-agent", "www"]:
+                requested_tenant_id = subdomain
+
         # Validate token and get principal
-        return get_principal_from_token(auth_token, tenant_dict["tenant_id"])
+        # If a specific tenant was requested, validate against it
+        # Otherwise, look up by token alone and set tenant context
+        return get_principal_from_token(auth_token, requested_tenant_id)
     except Exception as e:
         print(f"Auth error: {e}")
         return None
