@@ -606,12 +606,66 @@ def main():
     )
 
     # Add alias for agent-card.json (some clients look for this)
+    # Note: Must add routes before wrapping with middleware
     @app.route("/.well-known/agent-card.json", methods=["GET"])
     async def agent_card_alias(request):
         """Alias for agent.json to support different client expectations."""
         from starlette.responses import JSONResponse
 
         return JSONResponse(agent_card.model_dump())
+
+    # Wrap app with ASGI middleware to fix messageId type
+    import json
+
+    class MessageIdFixMiddleware:
+        """ASGI middleware to convert numeric messageId to string."""
+
+        def __init__(self, app):
+            self.app = app
+
+        async def __call__(self, scope, receive, send):
+            if scope["type"] == "http" and scope["method"] == "POST" and scope["path"] == "/a2a":
+                # Intercept the receive function to modify the body
+                body_parts = []
+
+                async def receive_wrapper():
+                    message = await receive()
+                    if message["type"] == "http.request":
+                        body = message.get("body", b"")
+                        if body and not body_parts:  # First chunk
+                            try:
+                                # Try to parse and fix the JSON
+                                data = json.loads(body)
+
+                                # Check if this is a message/send with numeric messageId
+                                if (
+                                    data.get("method") == "message/send"
+                                    and "params" in data
+                                    and "message" in data["params"]
+                                    and "messageId" in data["params"]["message"]
+                                ):
+
+                                    message_id = data["params"]["message"]["messageId"]
+                                    if isinstance(message_id, int | float):
+                                        # Convert to string
+                                        data["params"]["message"]["messageId"] = str(message_id)
+                                        logger.info(f"Converted numeric messageId {message_id} to string")
+
+                                        # Return modified body
+                                        message["body"] = json.dumps(data).encode()
+                            except Exception as e:
+                                logger.debug(f"MessageId fix skipped: {e}")
+
+                        body_parts.append(body)
+
+                    return message
+
+                await self.app(scope, receive_wrapper, send)
+            else:
+                await self.app(scope, receive, send)
+
+    # Apply the middleware
+    app = MessageIdFixMiddleware(app)
 
     # Run with uvicorn
     import uvicorn
