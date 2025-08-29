@@ -29,8 +29,8 @@ import pytest
 from fastmcp.client import Client
 from fastmcp.client.transports import StreamableHttpTransport
 
-DEFAULT_MCP_PORT = int(os.getenv("ADCP_SALES_PORT", "8126"))  # Match docker-compose actual mapping
-DEFAULT_A2A_PORT = int(os.getenv("A2A_PORT", "8091"))  # From docker-compose.yml
+DEFAULT_MCP_PORT = int(os.getenv("ADCP_SALES_PORT", "8080"))  # Default MCP port
+DEFAULT_A2A_PORT = int(os.getenv("A2A_PORT", "8091"))  # Default A2A port
 DEFAULT_ADMIN_PORT = int(os.getenv("ADMIN_UI_PORT", "8087"))  # From .env
 TEST_TIMEOUT = 30
 
