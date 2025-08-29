@@ -16,7 +16,7 @@ A protocol-aware client for A2A (Agent-to-Agent) Protocol servers that understan
 The smart client is already included in the project dependencies:
 
 ```bash
-uv run python src/a2a/smart_client.py --help
+uv run python src/a2a_server/smart_client.py --help
 ```
 
 ## Usage
@@ -25,53 +25,53 @@ uv run python src/a2a/smart_client.py --help
 
 ```bash
 # Local server
-uv run python src/a2a/smart_client.py info
+uv run python src/a2a_server/smart_client.py info
 
 # Production server
-uv run python src/a2a/smart_client.py info --server https://adcp-sales-agent.fly.dev/a2a
+uv run python src/a2a_server/smart_client.py info --server https://adcp-sales-agent.fly.dev/a2a
 ```
 
 ### Send Tasks
 
 ```bash
 # Simple query
-uv run python src/a2a/smart_client.py send "What products are available?"
+uv run python src/a2a_server/smart_client.py send "What products are available?"
 
 # Query with specific skill
-uv run python src/a2a/smart_client.py send "Create a campaign with $5000 budget" --skill create_campaign
+uv run python src/a2a_server/smart_client.py send "Create a campaign with $5000 budget" --skill create_campaign
 
 # Don't wait for completion
-uv run python src/a2a/smart_client.py send "Long running task" --no-wait
+uv run python src/a2a_server/smart_client.py send "Long running task" --no-wait
 ```
 
 ### Interactive Chat Mode
 
 ```bash
 # Start interactive chat with persistent context
-uv run python src/a2a/smart_client.py chat
+uv run python src/a2a_server/smart_client.py chat
 
 # Chat with production server
-uv run python src/a2a/smart_client.py chat --server https://adcp-sales-agent.fly.dev/a2a
+uv run python src/a2a_server/smart_client.py chat --server https://adcp-sales-agent.fly.dev/a2a
 
 # Use custom context ID for session continuity
-uv run python src/a2a/smart_client.py chat --context "my-session-123"
+uv run python src/a2a_server/smart_client.py chat --context "my-session-123"
 ```
 
 ### Get Task Status
 
 ```bash
 # Get specific task by ID
-uv run python src/a2a/smart_client.py task <task-id>
+uv run python src/a2a_server/smart_client.py task <task-id>
 ```
 
 ### Run Test Suite
 
 ```bash
 # Test local server
-uv run python src/a2a/smart_client.py test
+uv run python src/a2a_server/smart_client.py test
 
 # Test production server
-uv run python src/a2a/smart_client.py test --server https://adcp-sales-agent.fly.dev/a2a
+uv run python src/a2a_server/smart_client.py test --server https://adcp-sales-agent.fly.dev/a2a
 ```
 
 ## Protocol Features
@@ -114,7 +114,7 @@ Unlike simple HTTP clients or the basic a2a-cli, this smart client:
 ### Example 1: Product Discovery
 
 ```bash
-$ uv run python src/a2a/smart_client.py send "Show me video advertising products"
+$ uv run python src/a2a_server/smart_client.py send "Show me video advertising products"
 
 Sending: Show me video advertising products
 ✓ Processing task 5b96dc19...
@@ -139,7 +139,7 @@ Result:
 ### Example 2: Interactive Chat
 
 ```bash
-$ uv run python src/a2a/smart_client.py chat
+$ uv run python src/a2a_server/smart_client.py chat
 
 ╭─────────────────────────────── A2A Smart Chat ───────────────────────────────╮
 │ Connected to: http://localhost:8091                                          │
@@ -189,5 +189,5 @@ The client includes a comprehensive test suite that validates:
 Run the test suite to verify server compatibility:
 
 ```bash
-uv run python src/a2a/smart_client.py test --server <your-server-url>
+uv run python src/a2a_server/smart_client.py test --server <your-server-url>
 ```

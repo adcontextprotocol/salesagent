@@ -34,8 +34,8 @@ ENV ADCP_SALES_PORT=8080
 ENV ADMIN_UI_PORT=8001
 ENV A2A_PORT=8091
 
-# Enable mock mode for A2A testing
-ENV A2A_MOCK_MODE=true
+# Disable mock mode in production (enables proper URL configuration)
+ENV A2A_MOCK_MODE=false
 
 # Make scripts executable
 RUN chmod +x scripts/deploy/run_all_services.py scripts/deploy/entrypoint.sh

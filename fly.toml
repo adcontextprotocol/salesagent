@@ -48,7 +48,11 @@ primary_region = "iad"
   ADCP_SALES_PORT = "8080"
   ADMIN_UI_PORT = "8001"
   ADK_WEB_PORT = "8091"
+  A2A_PORT = "8091"
   DB_TYPE = "postgresql"
+  # A2A Configuration
+  A2A_MOCK_MODE = "false"
+  A2A_SERVER_URL = "https://adcp-sales-agent.fly.dev/a2a"
 
 [mounts]
   source = "adcp_data"

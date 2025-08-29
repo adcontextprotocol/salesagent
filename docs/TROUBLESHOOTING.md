@@ -28,6 +28,26 @@ docker exec -it postgres psql -U adcp_user adcp -c \
   "SELECT principal_id, access_token FROM principals;"
 ```
 
+#### MCP Returns Empty Products Array
+```bash
+# Check if products exist for the tenant
+docker exec -it postgres psql -U adcp_user adcp -c \
+  "SELECT COUNT(*) FROM products WHERE tenant_id='your_tenant_id';"
+
+# Create products using Admin UI or database script
+# Products are tenant-specific and must be created for each tenant
+```
+
+#### "Missing or invalid x-adcp-auth header" with Valid Token
+```bash
+# Verify tenant is active
+docker exec -it postgres psql -U adcp_user adcp -c \
+  "SELECT is_active FROM tenants WHERE tenant_id='your_tenant_id';"
+
+# Check if using SSE transport (may not forward headers properly)
+# Use direct HTTP requests for debugging instead of SSE
+```
+
 ### Database Issues
 
 #### "Column doesn't exist" Error
@@ -124,6 +144,45 @@ grep -r "def get_products" main.py
 environment:
   - ADCP_REQUEST_TIMEOUT=120
   - ADCP_KEEPALIVE_INTERVAL=30
+```
+
+### A2A Protocol Issues
+
+#### JSON-RPC "Invalid messageId" Error
+```bash
+# A2A spec requires string messageId, not numeric
+# Old format (incorrect):
+{"id": 123, "params": {"message": {"messageId": 456}}}
+
+# New format (correct):
+{"id": "123", "params": {"message": {"messageId": "456"}}}
+
+# Server has backward compatibility middleware
+# but clients should update to use strings
+```
+
+#### A2A Server Not Responding
+```bash
+# Check if A2A server is running
+docker ps | grep a2a
+
+# Test A2A endpoint directly
+curl http://localhost:8091/.well-known/agent.json
+
+# Check logs for errors
+docker logs adcp-server | grep a2a
+```
+
+#### A2A Authentication Failed
+```bash
+# Use Bearer token in Authorization header
+curl -X POST http://localhost:8091/a2a \
+  -H "Authorization: Bearer YOUR_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"jsonrpc": "2.0", "method": "message/send", ...}'
+
+# Avoid deprecated query parameter auth
+# Don't use: ?auth=TOKEN
 ```
 
 ### Admin UI Issues
