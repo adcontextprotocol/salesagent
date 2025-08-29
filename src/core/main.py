@@ -164,22 +164,47 @@ def safe_parse_json_field(field_value, field_name="field", default=None):
 def get_principal_from_token(token: str, tenant_id: str | None = None) -> str | None:
     """Looks up a principal_id from the database using a token.
 
-    If tenant_id is provided, it validates the principal belongs to that tenant.
-    If not provided, it looks up the principal by token alone and sets the tenant context.
+    If tenant_id is provided, only looks in that specific tenant.
+    If not provided, searches globally by token and sets the tenant context.
     """
 
     # Use standardized session management
     with get_db_session() as session:
-        # First try to find principal by token alone (tokens are globally unique)
-        principal = session.query(ModelPrincipal).filter_by(access_token=token).first()
+        if tenant_id:
+            # If tenant_id specified, ONLY look in that tenant
+            principal = session.query(ModelPrincipal).filter_by(access_token=token, tenant_id=tenant_id).first()
 
-        if not principal:
-            return None
+            if not principal:
+                # Also check if it's the admin token for this specific tenant
+                tenant = session.query(Tenant).filter_by(tenant_id=tenant_id, is_active=True).first()
+                if tenant and token == tenant.admin_token:
+                    # Set tenant context for admin token
+                    tenant_dict = {
+                        "tenant_id": tenant.tenant_id,
+                        "name": tenant.name,
+                        "subdomain": tenant.subdomain,
+                        "ad_server": tenant.ad_server,
+                        "max_daily_budget": tenant.max_daily_budget,
+                        "enable_aee_signals": tenant.enable_aee_signals,
+                        "authorized_emails": tenant.authorized_emails or [],
+                        "authorized_domains": tenant.authorized_domains or [],
+                        "slack_webhook_url": tenant.slack_webhook_url,
+                        "admin_token": tenant.admin_token,
+                        "auto_approve_formats": tenant.auto_approve_formats or [],
+                        "human_review_required": tenant.human_review_required,
+                        "slack_audit_webhook_url": tenant.slack_audit_webhook_url,
+                        "hitl_webhook_url": tenant.hitl_webhook_url,
+                        "policy_settings": tenant.policy_settings,
+                    }
+                    set_current_tenant(tenant_dict)
+                    return f"{tenant_id}_admin"
+                return None
+        else:
+            # No tenant specified - search globally by token
+            principal = session.query(ModelPrincipal).filter_by(access_token=token).first()
 
-        # If tenant_id was provided, verify it matches
-        if tenant_id and principal.tenant_id != tenant_id:
-            # Token exists but for a different tenant
-            return None
+            if not principal:
+                return None
 
         # Get the tenant for this principal and set it as current context
         tenant = session.query(Tenant).filter_by(tenant_id=principal.tenant_id, is_active=True).first()
