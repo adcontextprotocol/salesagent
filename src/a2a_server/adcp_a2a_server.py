@@ -624,10 +624,10 @@ def main():
         http_handler=request_handler,
     )
 
-    # Build the Starlette app with proper routing, but use internal path for library
+    # Build the Starlette app with standard routing at /a2a
     app = a2a_app.build(
         agent_card_url="/.well-known/agent.json",
-        rpc_url="/a2a-internal",  # Library uses internal path
+        rpc_url="/a2a",  # Use standard /a2a endpoint directly
         extended_agent_card_url="/agent.json",
     )
 
@@ -638,108 +638,6 @@ def main():
         from starlette.responses import JSONResponse
 
         return JSONResponse(agent_card.model_dump())
-
-    # Add proxy endpoint that fixes messageId before forwarding to library
-    import json
-
-    from starlette.responses import Response
-
-    @app.route("/a2a", methods=["POST"])
-    async def a2a_proxy_handler(request):
-        """Proxy handler that converts numeric messageId to string before forwarding to library."""
-        try:
-            # Get the raw body
-            body = await request.body()
-
-            # Parse and potentially modify JSON
-            if body:  # Only process if we have body content
-                try:
-                    # Decode bytes to string first if needed
-                    body_str = body.decode("utf-8") if isinstance(body, bytes) else body
-                    data = json.loads(body_str)
-                    modified = False
-
-                    # Fix numeric messageId in message/send requests
-                    if (
-                        data.get("method") == "message/send"
-                        and "params" in data
-                        and "message" in data["params"]
-                        and "messageId" in data["params"]["message"]
-                    ):
-                        message_id = data["params"]["message"]["messageId"]
-                        if isinstance(message_id, int | float):
-                            data["params"]["message"]["messageId"] = str(message_id)
-                            logger.info(f"Converted numeric messageId {message_id} to string")
-                            modified = True
-
-                    # Also fix numeric id in JSON-RPC request itself if needed
-                    if "id" in data and isinstance(data["id"], int | float):
-                        # JSON-RPC spec allows numeric id, but convert for consistency
-                        logger.debug(f"JSON-RPC id is numeric: {data['id']} (this is valid)")
-
-                    if modified:
-                        body = json.dumps(data).encode("utf-8")
-
-                except json.JSONDecodeError:
-                    # Not valid JSON, let library handle the error
-                    pass
-
-            # Forward to internal library endpoint
-            # Create new request scope
-            scope = dict(request.scope)
-            scope["path"] = "/a2a-internal"
-            scope["raw_path"] = b"/a2a-internal"
-
-            # Create receive callable that provides the (possibly modified) body
-            body_sent = False
-
-            async def receive():
-                nonlocal body_sent
-                if not body_sent:
-                    body_sent = True
-                    return {"type": "http.request", "body": body, "more_body": False}
-                else:
-                    return {"type": "http.disconnect"}
-
-            # Capture response
-            response_started = False
-            response_status = 200
-            response_headers = []
-            response_body = b""
-
-            async def send(message):
-                nonlocal response_started, response_status, response_headers, response_body
-                if message["type"] == "http.response.start":
-                    response_started = True
-                    response_status = message["status"]
-                    response_headers = message["headers"]
-                elif message["type"] == "http.response.body":
-                    response_body += message.get("body", b"")
-
-            # Route to the internal handler
-            await app.router(scope, receive, send)
-
-            # Return the response (handle headers properly)
-            headers = {}
-            for header_pair in response_headers:
-                if isinstance(header_pair, list | tuple) and len(header_pair) == 2:
-                    key, value = header_pair
-                    # Convert bytes to strings if needed
-                    key = key.decode("latin-1") if isinstance(key, bytes) else str(key)
-                    value = value.decode("latin-1") if isinstance(value, bytes) else str(value)
-                    headers[key] = value
-
-            return Response(content=response_body, status_code=response_status, headers=headers)
-
-        except Exception as e:
-            logger.error(f"Error in A2A proxy handler: {e}")
-            # Return JSON-RPC error response
-            error_response = {
-                "jsonrpc": "2.0",
-                "id": None,
-                "error": {"code": -32603, "message": "Internal error", "data": str(e)},
-            }
-            return Response(content=json.dumps(error_response), status_code=200, media_type="application/json")
 
     # Run with uvicorn
     import uvicorn

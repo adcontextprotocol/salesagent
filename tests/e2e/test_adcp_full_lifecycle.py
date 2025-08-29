@@ -134,10 +134,26 @@ class AdCPTestClient:
             raise RuntimeError(f"MCP tool '{tool_name}' failed: {e}") from e
 
     async def query_a2a(self, query: str) -> dict[str, Any]:
-        """Query the A2A server using REST transport with retry logic."""
+        """Query the A2A server using JSON-RPC 2.0 transport with proper string messageId."""
         headers = self._build_headers()
         # A2A expects Bearer token in Authorization header
         headers["Authorization"] = f"Bearer {self.auth_token}"
+        headers["Content-Type"] = "application/json"
+
+        # Create proper JSON-RPC 2.0 request with string IDs as per A2A spec
+        request = {
+            "jsonrpc": "2.0",
+            "id": str(uuid.uuid4()),  # JSON-RPC request ID as string
+            "method": "message/send",
+            "params": {
+                "message": {
+                    "messageId": str(uuid.uuid4()),  # Message ID as string (A2A spec requirement)
+                    "contextId": self.test_session_id,
+                    "role": "user",
+                    "parts": [{"kind": "text", "text": query}],
+                }
+            },
+        }
 
         # Retry logic for connection issues
         max_retries = 3
@@ -146,13 +162,33 @@ class AdCPTestClient:
         for attempt in range(max_retries):
             try:
                 response = await self.http_client.post(
-                    f"{self.a2a_url}/message",
-                    json={"message": query, "thread_id": self.test_session_id},
+                    f"{self.a2a_url}/a2a",  # Use standard /a2a endpoint
+                    json=request,
                     headers=headers,
                     timeout=10.0,  # Add timeout
                 )
                 response.raise_for_status()
-                return response.json()
+                result = response.json()
+
+                # Handle JSON-RPC response format
+                if "result" in result:
+                    task = result["result"]
+                    # Convert to expected format for existing tests
+                    return {
+                        "status": {"state": task.get("status", {}).get("state", "unknown")},
+                        "artifacts": task.get("artifacts", []),
+                        "message": task.get("metadata", {}).get("response", "") if task.get("metadata") else "",
+                    }
+                elif "error" in result:
+                    # Return error in expected format
+                    return {
+                        "status": {"state": "failed"},
+                        "error": result["error"],
+                        "message": result["error"].get("message", "Error occurred"),
+                    }
+                else:
+                    # Unexpected format
+                    return {"status": {"state": "unknown"}, "message": "Unexpected response format"}
             except httpx.ReadError as e:
                 if attempt < max_retries - 1:
                     print(f"A2A connection failed (attempt {attempt + 1}/{max_retries}), retrying in {retry_delay}s...")
