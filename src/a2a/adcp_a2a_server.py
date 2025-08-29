@@ -554,6 +554,12 @@ def main():
 
     app = create_flask_app(agent)
     
+    # Configure Flask to be aware it's mounted at /a2a in production
+    if os.getenv("FLY_APP_NAME") or os.getenv("PRODUCTION") == "true":
+        app.config['APPLICATION_ROOT'] = '/a2a'
+        # This helps with URL generation in templates and redirects
+        logger.info("Configured APPLICATION_ROOT=/a2a for production deployment")
+    
     # Our custom routes are added via agent.setup_routes() which is called by create_flask_app
 
     # Use waitress production server instead of Flask dev server
