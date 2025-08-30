@@ -70,6 +70,8 @@ class TestTemplateUrlValidation:
                             test_params["principal_id"] = "test_principal"
                         if "media_buy_id" in params:
                             test_params["media_buy_id"] = "test_buy"
+                        if "task_id" in params:
+                            test_params["task_id"] = "test_task"
 
                         # Try to build the URL
                         url = url_for(endpoint, **test_params)

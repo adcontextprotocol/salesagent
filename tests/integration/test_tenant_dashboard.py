@@ -129,8 +129,15 @@ class TestTenantDashboard:
         assert response.status_code == 200
 
         # Check for metrics display (active campaigns, total revenue, etc.)
-        # The exact text might vary, but there should be no errors
-        assert b"Error" not in response.data or b"error" not in response.data.lower()
+        # Look for key dashboard elements rather than broad error checking
+        assert b"Total Revenue" in response.data
+        assert b"Active Media Buys" in response.data
+        assert b"Open Tasks" in response.data
+
+        # Check for specific error messages that would indicate dashboard failures
+        assert b"Error loading dashboard" not in response.data
+        assert b"Dashboard error" not in response.data
+        assert b"Failed to load" not in response.data
 
     def test_tenant_config_building(self, integration_db):
         """Test that tenant configuration is built correctly from new schema."""
