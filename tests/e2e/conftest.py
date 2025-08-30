@@ -16,9 +16,41 @@ import pytest
 import requests
 
 
+def pytest_addoption(parser):
+    """Add custom command line options for E2E tests."""
+    parser.addoption(
+        "--skip-docker",
+        action="store_true",
+        default=False,
+        help="Skip Docker setup and assume services are already running",
+    )
+
+
 @pytest.fixture(scope="session")
-def docker_services_e2e():
+def docker_services_e2e(request):
     """Start Docker services for E2E tests with proper health checks."""
+    # Check if we should skip Docker setup
+    if request.config.getoption("--skip-docker"):
+        print("Skipping Docker setup (--skip-docker flag provided)")
+        # Just verify services are accessible
+        try:
+            mcp_port = os.getenv("ADCP_SALES_PORT", "8080")
+            a2a_port = os.getenv("A2A_PORT", "8091")
+
+            # Quick health check
+            response = requests.get(f"http://localhost:{a2a_port}/.well-known/agent.json", timeout=2)
+            if response.status_code == 200:
+                print(f"✓ A2A server is accessible on port {a2a_port}")
+
+            print(f"✓ Assuming MCP server is on port {mcp_port}")
+            yield
+            return
+        except Exception as e:
+            print(f"Warning: Could not verify services are running: {e}")
+            print("Proceeding anyway since --skip-docker was specified")
+            yield
+            return
+
     # Check if Docker is available
     try:
         subprocess.run(["docker", "--version"], check=True, capture_output=True)

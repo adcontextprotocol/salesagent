@@ -64,9 +64,22 @@ This starts:
 
 ### For Developers
 - **MCP Protocol** - Standard interface for AI agents
+- **A2A Protocol** - Agent-to-Agent communication via JSON-RPC 2.0
 - **REST API** - Programmatic tenant management
 - **Docker Deployment** - Easy local and production setup
 - **Comprehensive Testing** - Unit, integration, and E2E tests
+
+## Protocol Support
+
+### MCP (Model Context Protocol)
+The primary interface for AI agents to interact with the AdCP Sales Agent. Uses FastMCP with HTTP/SSE transport.
+
+### A2A (Agent-to-Agent Protocol)
+JSON-RPC 2.0 compliant server for agent-to-agent communication:
+- **Endpoint**: `/a2a` (also available at port 8091)
+- **Discovery**: `/.well-known/agent.json`
+- **Authentication**: Bearer tokens via Authorization header
+- **Library**: Built with standard `python-a2a` library
 
 ## Using the MCP Client
 
