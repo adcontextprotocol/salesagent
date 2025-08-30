@@ -256,6 +256,7 @@ class Task(Base):
     details = Column(JSON)  # JSONB in PostgreSQL (for backward compatibility)
     strategy_id = Column(String(255), nullable=True)  # Strategy reference for linking operations
     created_at = Column(DateTime, server_default=func.now())
+    version = Column(Integer, nullable=False, default=1)  # For optimistic locking
 
     __table_args__ = (
         ForeignKeyConstraint(

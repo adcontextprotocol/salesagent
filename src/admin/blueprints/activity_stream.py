@@ -3,6 +3,7 @@
 import json
 import logging
 import time
+from collections import defaultdict
 from datetime import UTC, datetime, timedelta
 
 from flask import Blueprint, Response, request
@@ -15,6 +16,11 @@ logger = logging.getLogger(__name__)
 
 # Create blueprint
 activity_stream_bp = Blueprint("activity_stream", __name__)
+
+# Rate limiting for SSE connections
+MAX_CONNECTIONS_PER_TENANT = 10
+connection_counts = defaultdict(int)
+connection_timestamps = defaultdict(list)
 
 
 def format_activity_from_audit_log(audit_log: AuditLog) -> dict:
@@ -139,6 +145,14 @@ def format_activity_from_audit_log(audit_log: AuditLog) -> dict:
 
 def get_recent_activities(tenant_id: str, since: datetime = None, limit: int = 50) -> list[dict]:
     """Get recent activities for a tenant from the database."""
+    # Validate input parameters
+    if not tenant_id or not isinstance(tenant_id, str) or len(tenant_id) > 50:
+        logger.warning(f"Invalid tenant_id provided: {tenant_id}")
+        return []
+
+    # Enforce reasonable limits
+    limit = max(1, min(limit, 100))  # Between 1 and 100
+
     try:
         with get_db_session() as db_session:
             query = db_session.query(AuditLog).filter(AuditLog.tenant_id == tenant_id)
@@ -169,9 +183,33 @@ def get_recent_activities(tenant_id: str, since: datetime = None, limit: int = 5
 @require_tenant_access()
 def activity_events(tenant_id, **kwargs):
     """Server-Sent Events endpoint for real-time activity updates."""
+    # Validate tenant_id
+    if not tenant_id or not isinstance(tenant_id, str) or len(tenant_id) > 50:
+        logger.error(f"Invalid tenant_id for SSE endpoint: {tenant_id}")
+        return Response("Invalid tenant ID", status=400)
+
+    # Rate limiting: Clean up old timestamps (older than 1 minute)
+    now = datetime.now(UTC)
+    connection_timestamps[tenant_id] = [
+        ts for ts in connection_timestamps[tenant_id] if (now - ts).total_seconds() < 60
+    ]
+
+    # Check rate limit
+    if len(connection_timestamps[tenant_id]) >= MAX_CONNECTIONS_PER_TENANT:
+        logger.warning(
+            f"Rate limit exceeded for tenant {tenant_id}: {len(connection_timestamps[tenant_id])} connections in last minute"
+        )
+        return Response("Too many connections. Please wait before reconnecting.", status=429)
+
+    # Record this connection
+    connection_timestamps[tenant_id].append(now)
+    connection_counts[tenant_id] += 1
 
     def generate():
         """Generator function that yields SSE formatted data."""
+        # Track resources for cleanup
+        cleanup_needed = False
+
         try:
             # Send initial historical data
             logger.info(f"Starting SSE stream for tenant {tenant_id}")
@@ -183,6 +221,7 @@ def activity_events(tenant_id, **kwargs):
 
             # Keep track of last check time
             last_check = datetime.now(UTC)
+            cleanup_needed = True
 
             # Poll for new activities every 2 seconds
             while True:
@@ -240,6 +279,16 @@ def activity_events(tenant_id, **kwargs):
                 }
             )
             yield f"event: error\ndata: {error_data}\n\n"
+        finally:
+            # Clean up resources
+            if cleanup_needed:
+                logger.info(f"Cleaning up SSE stream resources for tenant {tenant_id}")
+                # Decrement connection count
+                connection_counts[tenant_id] = max(0, connection_counts[tenant_id] - 1)
+                # Force garbage collection for any lingering resources
+                import gc
+
+                gc.collect()
 
     # Set appropriate headers for SSE
     response = Response(

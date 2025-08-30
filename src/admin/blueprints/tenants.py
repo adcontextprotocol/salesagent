@@ -14,7 +14,7 @@ import uuid
 from datetime import UTC, datetime
 
 from flask import Blueprint, flash, jsonify, redirect, render_template, request, session, url_for
-from sqlalchemy import and_
+from sqlalchemy.orm import joinedload
 
 from src.admin.utils import get_tenant_config_from_db, require_auth, require_tenant_access
 from src.core.database.database_session import get_db_session
@@ -54,14 +54,11 @@ def dashboard(tenant_id):
 
             products_count = db_session.query(Product).filter_by(tenant_id=tenant_id).count()
 
-            # Get recent media buys - use outerjoin to handle missing principals
+            # Get recent media buys with eager loading to avoid N+1 queries
             recent_buys = (
-                db_session.query(MediaBuy, Principal)
-                .outerjoin(
-                    Principal,
-                    and_(MediaBuy.principal_id == Principal.principal_id, MediaBuy.tenant_id == Principal.tenant_id),
-                )
+                db_session.query(MediaBuy)
                 .filter(MediaBuy.tenant_id == tenant_id)
+                .options(joinedload(MediaBuy.principal))  # Eager load principal relationship
                 .order_by(MediaBuy.created_at.desc())
                 .limit(10)
                 .all()
@@ -144,9 +141,9 @@ def dashboard(tenant_id):
             chart_labels = [d["date"] for d in revenue_data]
             chart_data = [d["revenue"] for d in revenue_data]
 
-            # Transform recent_buys tuples to list of MediaBuy objects with extra properties
+            # Transform recent_buys to list with extra properties
             recent_media_buys_list = []
-            for media_buy, _principal in recent_buys:
+            for media_buy in recent_buys:
                 # TODO: Calculate actual spend from delivery data when available
                 media_buy.spend = 0
 
@@ -154,6 +151,9 @@ def dashboard(tenant_id):
                 media_buy.created_at_relative = (
                     media_buy.created_at.strftime("%Y-%m-%d") if media_buy.created_at else "Unknown"
                 )
+
+                # Add advertiser name from eager-loaded principal
+                media_buy.advertiser_name = media_buy.principal.name if media_buy.principal else "Unknown"
 
                 recent_media_buys_list.append(media_buy)
 

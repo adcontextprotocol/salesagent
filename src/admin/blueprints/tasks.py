@@ -4,6 +4,7 @@ import logging
 from datetime import UTC, datetime
 
 from flask import Blueprint, flash, jsonify, redirect, render_template, request, url_for
+from sqlalchemy.exc import SQLAlchemyError
 
 from src.admin.utils import require_tenant_access
 from src.core.database.database_session import get_db_session
@@ -78,111 +79,158 @@ def view_task(tenant_id, task_id):
 @tasks_bp.route("/<task_id>/approve", methods=["GET", "POST"])
 @require_tenant_access()
 def approve_task(tenant_id, task_id):
-    """Approve or reject a task."""
-    try:
-        with get_db_session() as db_session:
-            task = db_session.query(Task).filter_by(tenant_id=tenant_id, task_id=task_id).first()
+    """Approve or reject a task with optimistic locking."""
+    max_retries = 3
+    retry_count = 0
 
-            if not task:
-                flash("Task not found", "error")
-                return redirect(url_for("tasks.list_tasks", tenant_id=tenant_id))
+    while retry_count < max_retries:
+        try:
+            with get_db_session() as db_session:
+                # Use FOR UPDATE to lock the row
+                task = db_session.query(Task).filter_by(tenant_id=tenant_id, task_id=task_id).with_for_update().first()
 
-            if task.status != "pending":
-                flash("Task is not pending approval", "warning")
-                return redirect(url_for("tasks.view_task", tenant_id=tenant_id, task_id=task_id))
+                if not task:
+                    flash("Task not found", "error")
+                    return redirect(url_for("tasks.list_tasks", tenant_id=tenant_id))
 
-            if request.method == "POST":
-                action = request.form.get("action")
-                notes = request.form.get("notes", "")
+                if task.status != "pending":
+                    flash("Task is not pending approval", "warning")
+                    return redirect(url_for("tasks.view_task", tenant_id=tenant_id, task_id=task_id))
 
-                if action == "approve":
-                    task.status = "completed"
-                    task.resolution = "approved"
-                    task.resolution_notes = notes
-                    task.resolved_by = request.session.get("user", {}).get("email", "admin")
-                    task.resolved_at = datetime.now(UTC)
-                    flash("Task approved successfully", "success")
+                if request.method == "POST":
+                    # Require valid authentication
+                    user = request.session.get("user")
+                    if not user or not user.get("email"):
+                        flash("Authentication required to approve tasks", "error")
+                        return redirect(url_for("auth.login"))
 
-                    # Log approval
-                    from src.core.audit_logger import get_audit_logger
+                    # Get expected version from form (for optimistic locking)
+                    expected_version = request.form.get("version", type=int)
+                    if expected_version and task.version != expected_version:
+                        # Version mismatch - someone else updated the task
+                        retry_count += 1
+                        if retry_count >= max_retries:
+                            flash("Task was modified by another user. Please try again.", "warning")
+                            return redirect(url_for("tasks.view_task", tenant_id=tenant_id, task_id=task_id))
+                        db_session.rollback()
+                        continue  # Retry with new version
 
-                    audit_logger = get_audit_logger("Admin", tenant_id)
-                    audit_logger.log_operation(
-                        operation="approve_task",
-                        principal_name=task.resolved_by,
-                        principal_id=task.resolved_by,
-                        adapter_id="admin",
-                        success=True,
-                        details={
-                            "task_id": task_id,
-                            "task_type": task.task_type,
-                            "resolution": "approved",
-                            "notes": notes,
-                        },
-                    )
+                    action = request.form.get("action")
+                    notes = request.form.get("notes", "")
 
-                elif action == "reject":
-                    task.status = "completed"
-                    task.resolution = "rejected"
-                    task.resolution_notes = notes
-                    task.resolved_by = request.session.get("user", {}).get("email", "admin")
-                    task.resolved_at = datetime.now(UTC)
-                    flash("Task rejected", "info")
+                    if action == "approve":
+                        task.status = "completed"
+                        task.resolution = "approved"
+                        task.resolution_notes = notes
+                        task.resolved_by = user["email"]  # Use authenticated user's email
+                        task.resolved_at = datetime.now(UTC)
+                        task.version += 1  # Increment version for optimistic locking
+                        flash("Task approved successfully", "success")
 
-                    # Log rejection
-                    from src.core.audit_logger import get_audit_logger
+                        # Log approval
+                        from src.core.audit_logger import get_audit_logger
 
-                    audit_logger = get_audit_logger("Admin", tenant_id)
-                    audit_logger.log_operation(
-                        operation="reject_task",
-                        principal_name=task.resolved_by,
-                        principal_id=task.resolved_by,
-                        adapter_id="admin",
-                        success=True,
-                        details={
-                            "task_id": task_id,
-                            "task_type": task.task_type,
-                            "resolution": "rejected",
-                            "notes": notes,
-                        },
-                    )
+                        audit_logger = get_audit_logger("Admin", tenant_id)
+                        audit_logger.log_operation(
+                            operation="approve_task",
+                            principal_name=task.resolved_by,
+                            principal_id=task.resolved_by,
+                            adapter_id="admin",
+                            success=True,
+                            details={
+                                "task_id": task_id,
+                                "task_type": task.task_type,
+                                "resolution": "approved",
+                                "notes": notes,
+                            },
+                        )
 
-                db_session.commit()
+                    elif action == "reject":
+                        task.status = "completed"
+                        task.resolution = "rejected"
+                        task.resolution_notes = notes
+                        task.resolved_by = user["email"]  # Use authenticated user's email
+                        task.resolved_at = datetime.now(UTC)
+                        task.version += 1  # Increment version for optimistic locking
+                        flash("Task rejected", "info")
 
-                # If this was a media buy approval, update the media buy status
-                if task.task_type == "manual_approval" and task.media_buy_id and action == "approve":
+                        # Log rejection
+                        from src.core.audit_logger import get_audit_logger
+
+                        audit_logger = get_audit_logger("Admin", tenant_id)
+                        audit_logger.log_operation(
+                            operation="reject_task",
+                            principal_name=task.resolved_by,
+                            principal_id=task.resolved_by,
+                            adapter_id="admin",
+                            success=True,
+                            details={
+                                "task_id": task_id,
+                                "task_type": task.task_type,
+                                "resolution": "rejected",
+                                "notes": notes,
+                            },
+                        )
+
+                    db_session.commit()
+
+                    # If this was a media buy approval, update the media buy status
+                    if task.task_type == "manual_approval" and task.media_buy_id and action == "approve":
+                        media_buy = (
+                            db_session.query(MediaBuy)
+                            .filter_by(tenant_id=tenant_id, media_buy_id=task.media_buy_id)
+                            .first()
+                        )
+                        if media_buy and media_buy.status == "pending":
+                            media_buy.status = "active"
+                            db_session.commit()
+                            flash("Media buy activated", "success")
+
+                    return redirect(url_for("tasks.list_tasks", tenant_id=tenant_id))
+
+                # GET request - show approval form
+                # Get related objects for context
+                media_buy = None
+                if task.media_buy_id:
                     media_buy = (
                         db_session.query(MediaBuy)
                         .filter_by(tenant_id=tenant_id, media_buy_id=task.media_buy_id)
                         .first()
                     )
-                    if media_buy and media_buy.status == "pending":
-                        media_buy.status = "active"
-                        db_session.commit()
-                        flash("Media buy activated", "success")
 
-                return redirect(url_for("tasks.list_tasks", tenant_id=tenant_id))
+                principal = None
+                # Note: Task model doesn't have principal_id field
+                # Would need to get from media_buy if needed
 
-            # GET request - show approval form
-            # Get related objects for context
-            media_buy = None
-            if task.media_buy_id:
-                media_buy = (
-                    db_session.query(MediaBuy).filter_by(tenant_id=tenant_id, media_buy_id=task.media_buy_id).first()
+                return render_template(
+                    "task_approve.html", tenant_id=tenant_id, task=task, media_buy=media_buy, principal=principal
                 )
 
-            principal = None
-            # Note: Task model doesn't have principal_id field
-            # Would need to get from media_buy if needed
+        except SQLAlchemyError as e:
+            if "could not serialize access" in str(e) or "deadlock" in str(e):
+                # Concurrent modification detected - retry
+                retry_count += 1
+                if retry_count >= max_retries:
+                    logger.error(f"Max retries exceeded for task approval: {e}")
+                    flash("Unable to update task due to concurrent modifications. Please try again.", "error")
+                    return redirect(url_for("tasks.view_task", tenant_id=tenant_id, task_id=task_id))
+                continue
+            else:
+                # Other database error
+                logger.error(f"Database error processing task approval: {e}", exc_info=True)
+                flash("Database error processing task", "error")
+                return redirect(url_for("tasks.list_tasks", tenant_id=tenant_id))
+        except Exception as e:
+            logger.error(f"Error processing task approval: {e}", exc_info=True)
+            flash("Error processing task", "error")
+            return redirect(url_for("tasks.list_tasks", tenant_id=tenant_id))
 
-            return render_template(
-                "task_approve.html", tenant_id=tenant_id, task=task, media_buy=media_buy, principal=principal
-            )
+        # Should not reach here unless successful
+        break
 
-    except Exception as e:
-        logger.error(f"Error processing task approval: {e}", exc_info=True)
-        flash("Error processing task", "error")
-        return redirect(url_for("tasks.list_tasks", tenant_id=tenant_id))
+    # If we exit the loop without returning, something went wrong
+    flash("Unexpected error processing task", "error")
+    return redirect(url_for("tasks.list_tasks", tenant_id=tenant_id))
 
 
 @tasks_bp.route("/api/pending")

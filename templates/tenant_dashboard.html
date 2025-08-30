@@ -662,6 +662,26 @@ const MAX_ACTIVITIES = 50;
 let reconnectDelay = 1000; // Start with 1 second
 const maxReconnectDelay = 30000; // Max 30 seconds
 
+// HTML escaping functions to prevent XSS
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text || '';
+    return div.innerHTML;
+}
+
+function escapeHtmlAttr(text) {
+    return String(text || '').replace(/["'<>&]/g, function(match) {
+        const escapeMap = {
+            '"': '&quot;',
+            "'": '&#39;',
+            '<': '&lt;',
+            '>': '&gt;',
+            '&': '&amp;'
+        };
+        return escapeMap[match];
+    });
+}
+
 function connectActivityStream() {
     const statusEl = document.getElementById('connection-status');
     const statusDot = document.querySelector('.status-dot');
@@ -779,6 +799,16 @@ function addActivity(activity) {
     const activityId = activity.id || Date.now();
     item.dataset.activityId = activityId;
 
+    // Safely escape all user-provided content to prevent XSS
+    const safeActivityId = escapeHtmlAttr(activityId);
+    const safePrincipalName = escapeHtml(activity.principal_name);
+    const safeAction = escapeHtml(activity.action);
+    const safePrimary = activity.details ? escapeHtml(activity.details.primary) : '';
+    const safeSecondary = activity.details && activity.details.secondary ? escapeHtml(activity.details.secondary) : '';
+    const safeTimeRelative = escapeHtml(activity.time_relative);
+    const safeTaskId = activity.full_details && activity.full_details.task_id ? escapeHtmlAttr(activity.full_details.task_id) : '';
+    const safeMediaBuyId = activity.full_details && activity.full_details.media_buy_id ? escapeHtmlAttr(activity.full_details.media_buy_id) : '';
+
     // Determine icon based on activity type
     const iconMap = {
         'media-buy': '💰',
@@ -791,40 +821,40 @@ function addActivity(activity) {
     const icon = iconMap[activity.type] || '📌';
 
     item.innerHTML = `
-        <div class="activity-header" onclick="toggleActivityDetails('${activityId}')">
+        <div class="activity-header" onclick="toggleActivityDetails('${safeActivityId}')">
             <div class="activity-content" style="flex: 1;">
                 <div class="activity-main">
                     <span class="activity-icon">${icon}</span>
                     <div style="flex: 1;">
-                        <div class="activity-principal">${activity.principal_name}</div>
-                        <div class="activity-action">${activity.action}</div>
+                        <div class="activity-principal">${safePrincipalName}</div>
+                        <div class="activity-action">${safeAction}</div>
                         <div class="activity-details" style="margin-top: 0.25rem;">
                             ${activity.details ? `
-                                <div style="font-weight: 500;">${activity.details.primary || ''}</div>
-                                ${activity.details.secondary ? `<div style="font-size: 0.875rem; color: #6b7280;">${activity.details.secondary}</div>` : ''}
+                                <div style="font-weight: 500;">${safePrimary}</div>
+                                ${safeSecondary ? `<div style="font-size: 0.875rem; color: #6b7280;">${safeSecondary}</div>` : ''}
                             ` : ''}
                         </div>
                     </div>
                 </div>
             </div>
             <div style="display: flex; align-items: center; gap: 1rem;">
-                <div class="activity-time">${activity.time_relative}</div>
-                <div class="expand-indicator" id="indicator-${activityId}">▼</div>
+                <div class="activity-time">${safeTimeRelative}</div>
+                <div class="expand-indicator" id="indicator-${safeActivityId}">▼</div>
             </div>
         </div>
 
-        <div class="activity-expanded" id="expanded-${activityId}" style="display: none;">
+        <div class="activity-expanded" id="expanded-${safeActivityId}" style="display: none;">
             ${activity.full_details && Object.keys(activity.full_details).length > 0 ? `
                 <div class="expanded-content">
                     <h4 style="margin: 0 0 0.5rem 0;">Full Details:</h4>
-                    <pre>${JSON.stringify(activity.full_details, null, 2)}</pre>
+                    <pre>${escapeHtml(JSON.stringify(activity.full_details, null, 2))}</pre>
 
                     ${activity.action_required ? `
                         <div class="action-buttons">
-                            <button class="btn btn-primary" onclick="handleTask('${activityId}', '${activity.full_details.task_id || ''}')">
+                            <button class="btn btn-primary" onclick="handleTask('${safeActivityId}', '${safeTaskId}')">
                                 Review & Approve
                             </button>
-                            <button class="btn btn-secondary" onclick="viewTaskDetails('${activityId}')">
+                            <button class="btn btn-secondary" onclick="viewTaskDetails('${safeActivityId}')">
                                 View Details
                             </button>
                         </div>
@@ -832,7 +862,7 @@ function addActivity(activity) {
 
                     ${activity.type === 'media-buy' && activity.full_details.media_buy_id ? `
                         <div class="action-buttons">
-                            <a href="/tenant/{{ tenant.tenant_id }}/media-buy/${activity.full_details.media_buy_id}"
+                            <a href="/tenant/{{ tenant.tenant_id }}/media-buy/${safeMediaBuyId}"
                                class="btn btn-primary" style="text-decoration: none; display: inline-block;">View Media Buy</a>
                         </div>
                     ` : ''}
