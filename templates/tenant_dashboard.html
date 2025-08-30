@@ -117,6 +117,7 @@
     }
 
     .status-dot.active { background: #10b981; }
+    .status-dot.connecting { background: #f59e0b; }
     .status-dot.idle { background: #6b7280; }
 
     @keyframes pulse {
@@ -128,15 +129,97 @@
         flex: 1;
         overflow-y: auto;
         padding-right: 0.5rem;
+        max-height: 400px;
+        scroll-behavior: smooth;
     }
 
     .activity-item {
-        padding: 0.75rem;
-        border-left: 3px solid transparent;
         margin-bottom: 0.5rem;
         border-radius: 4px;
         transition: all 0.2s;
         animation: slideIn 0.3s ease-out;
+        border: 1px solid #e5e7eb;
+        overflow: hidden;
+    }
+
+    .activity-item.action-required {
+        border-left: 4px solid #f59e0b;
+    }
+
+    .activity-header {
+        padding: 0.75rem;
+        cursor: pointer;
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+    }
+
+    .activity-header:hover {
+        background: #f9fafb;
+    }
+
+    .activity-icon {
+        font-size: 1.25rem;
+        margin-right: 0.75rem;
+    }
+
+    .activity-main {
+        display: flex;
+        align-items: flex-start;
+    }
+
+    .expand-indicator {
+        font-size: 0.75rem;
+        color: #6b7280;
+        transition: transform 0.2s;
+    }
+
+    .expand-indicator.expanded {
+        transform: rotate(180deg);
+    }
+
+    .activity-expanded {
+        background: #f9fafb;
+        border-top: 1px solid #e5e7eb;
+        padding: 1rem;
+    }
+
+    .expanded-content pre {
+        background: white;
+        padding: 0.75rem;
+        border-radius: 4px;
+        font-size: 0.75rem;
+        max-height: 300px;
+        overflow-y: auto;
+    }
+
+    .action-buttons {
+        margin-top: 1rem;
+        display: flex;
+        gap: 0.5rem;
+    }
+
+    .btn {
+        padding: 0.5rem 1rem;
+        border-radius: 4px;
+        border: none;
+        cursor: pointer;
+        font-size: 0.875rem;
+        transition: opacity 0.2s;
+    }
+
+    .btn:hover {
+        opacity: 0.9;
+    }
+
+    .btn-primary {
+        background: #2563eb;
+        color: white;
+    }
+
+    .btn-secondary {
+        background: #6b7280;
+        color: white;
     }
 
     @keyframes slideIn {
@@ -154,10 +237,12 @@
         background: #f9fafb;
     }
 
-    .activity-item.api-call { border-left-color: #3b82f6; }
-    .activity-item.media-buy { border-left-color: #10b981; }
-    .activity-item.creative { border-left-color: #8b5cf6; }
-    .activity-item.error { border-left-color: #ef4444; background: #fef2f2; }
+    .activity-item.api-call { background: #eff6ff; }
+    .activity-item.product-query { background: #f0f9ff; }
+    .activity-item.human-task { background: #fffbeb; }
+    .activity-item.media-buy { background: #f0fdf4; }
+    .activity-item.creative { background: #faf5ff; }
+    .activity-item.error { background: #fef2f2; }
 
     .activity-time {
         font-size: 0.75rem;
@@ -444,11 +529,14 @@
         </div>
 
         <div class="activity-list" id="activity-list">
-            <!-- Static message for production -->
+            <!-- Activity items will be populated here via SSE -->
             <div class="activity-item info" style="text-align: center; padding: 2rem; color: #6b7280;">
-                <p>Real-time activity updates are disabled in production.</p>
-                <p style="font-size: 0.875rem; margin-top: 0.5rem;">Refresh the page to see latest data.</p>
+                <p>Loading recent activities...</p>
             </div>
+        </div>
+
+        <div style="text-align: center; padding: 1rem; border-top: 1px solid #e5e7eb;">
+            <small style="color: #6b7280;">Showing up to 50 recent activities • Updates every 2 seconds</small>
         </div>
     </div>
 
@@ -567,54 +655,205 @@
 
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script>
-// Real-time activity feed disabled in production
-// Static dashboard data is loaded via page refresh
-let socket = null;
+// Real-time activity feed using Server-Sent Events (SSE)
+let eventSource = null;
 let activityBuffer = [];
 const MAX_ACTIVITIES = 50;
+let reconnectDelay = 1000; // Start with 1 second
+const maxReconnectDelay = 30000; // Max 30 seconds
 
-function connectWebSocket() {
-    // Socket.IO disabled in production to eliminate console errors
-    // Real-time updates are not available - page refresh required for latest data
+function connectActivityStream() {
     const statusEl = document.getElementById('connection-status');
-    if (statusEl) {
-        statusEl.textContent = 'Real-time updates disabled';
-        statusEl.style.color = '#6b7280';
-    }
-    
     const statusDot = document.querySelector('.status-dot');
-    if (statusDot) {
-        statusDot.classList.remove('active');
-        statusDot.classList.add('idle');
+
+    try {
+        // Close existing connection if any
+        if (eventSource) {
+            eventSource.close();
+        }
+
+        // Update status to connecting
+        if (statusEl) statusEl.textContent = 'Connecting...';
+        if (statusDot) {
+            statusDot.classList.remove('active', 'idle');
+            statusDot.classList.add('connecting');
+        }
+
+        // Create new EventSource connection
+        const streamUrl = `{{ script_name }}/admin/tenant/{{ tenant.tenant_id }}/events`;
+        eventSource = new EventSource(streamUrl);
+
+        eventSource.onopen = function(e) {
+            console.log('SSE connection opened');
+            reconnectDelay = 1000; // Reset delay on successful connection
+
+            // Update status to connected
+            if (statusEl) {
+                statusEl.textContent = 'Connected';
+                statusEl.style.color = '#10b981'; // Green
+            }
+            if (statusDot) {
+                statusDot.classList.remove('connecting', 'idle');
+                statusDot.classList.add('active');
+            }
+        };
+
+        eventSource.onmessage = function(e) {
+            try {
+                const activity = JSON.parse(e.data);
+                addActivity(activity);
+            } catch (error) {
+                console.error('Failed to parse activity data:', error);
+            }
+        };
+
+        eventSource.onerror = function(e) {
+            console.error('SSE connection error:', e);
+
+            // Update status to error
+            if (statusEl) {
+                statusEl.textContent = 'Connection error';
+                statusEl.style.color = '#ef4444'; // Red
+            }
+            if (statusDot) {
+                statusDot.classList.remove('active', 'connecting');
+                statusDot.classList.add('idle');
+            }
+
+            // Close and retry with exponential backoff
+            if (eventSource) {
+                eventSource.close();
+                eventSource = null;
+            }
+
+            setTimeout(() => {
+                console.log(`Retrying SSE connection in ${reconnectDelay}ms`);
+                connectActivityStream();
+                reconnectDelay = Math.min(reconnectDelay * 2, maxReconnectDelay);
+            }, reconnectDelay);
+        };
+
+        // Handle specific error events
+        eventSource.addEventListener('error', function(e) {
+            if (e.data) {
+                try {
+                    const errorData = JSON.parse(e.data);
+                    console.error('Activity stream error:', errorData.message);
+                } catch (parseError) {
+                    console.error('Activity stream error event');
+                }
+            }
+        });
+
+    } catch (error) {
+        console.error('Failed to create SSE connection:', error);
+
+        // Update status to error
+        if (statusEl) {
+            statusEl.textContent = 'Connection failed';
+            statusEl.style.color = '#ef4444';
+        }
+        if (statusDot) {
+            statusDot.classList.remove('active', 'connecting');
+            statusDot.classList.add('idle');
+        }
+
+        // Retry after delay
+        setTimeout(() => {
+            connectActivityStream();
+        }, reconnectDelay);
     }
-    
-    console.log('Socket.IO disabled in production environment');
 }
 
 function addActivity(activity) {
     const list = document.getElementById('activity-list');
 
-    // Create activity element
+    // Clear loading message on first activity
+    if (list.children.length === 1 && list.children[0].textContent.includes('Loading recent activities')) {
+        list.innerHTML = '';
+    }
+
+    // Create activity element with expandable details
     const item = document.createElement('div');
-    item.className = `activity-item ${activity.type}`;
+    item.className = `activity-item ${activity.type} ${activity.action_required ? 'action-required' : ''}`;
+    const activityId = activity.id || Date.now();
+    item.dataset.activityId = activityId;
+
+    // Determine icon based on activity type
+    const iconMap = {
+        'media-buy': '💰',
+        'creative': '🎨',
+        'error': '❌',
+        'product-query': '🔍',
+        'human-task': '⚠️',
+        'api-call': '📡'
+    };
+    const icon = iconMap[activity.type] || '📌';
+
     item.innerHTML = `
-        <div class="activity-time">${activity.time_relative}</div>
-        <div class="activity-content">
-            <div>
-                <div class="activity-principal">${activity.principal_name}</div>
-                <div class="activity-action">${activity.action}</div>
+        <div class="activity-header" onclick="toggleActivityDetails('${activityId}')">
+            <div class="activity-content" style="flex: 1;">
+                <div class="activity-main">
+                    <span class="activity-icon">${icon}</span>
+                    <div style="flex: 1;">
+                        <div class="activity-principal">${activity.principal_name}</div>
+                        <div class="activity-action">${activity.action}</div>
+                        <div class="activity-details" style="margin-top: 0.25rem;">
+                            ${activity.details ? `
+                                <div style="font-weight: 500;">${activity.details.primary || ''}</div>
+                                ${activity.details.secondary ? `<div style="font-size: 0.875rem; color: #6b7280;">${activity.details.secondary}</div>` : ''}
+                            ` : ''}
+                        </div>
+                    </div>
+                </div>
             </div>
-            <div class="activity-details">
-                ${activity.details ? `
-                    <div>${activity.details.primary}</div>
-                    <div>${activity.details.secondary}</div>
-                ` : ''}
+            <div style="display: flex; align-items: center; gap: 1rem;">
+                <div class="activity-time">${activity.time_relative}</div>
+                <div class="expand-indicator" id="indicator-${activityId}">▼</div>
             </div>
+        </div>
+
+        <div class="activity-expanded" id="expanded-${activityId}" style="display: none;">
+            ${activity.full_details && Object.keys(activity.full_details).length > 0 ? `
+                <div class="expanded-content">
+                    <h4 style="margin: 0 0 0.5rem 0;">Full Details:</h4>
+                    <pre>${JSON.stringify(activity.full_details, null, 2)}</pre>
+
+                    ${activity.action_required ? `
+                        <div class="action-buttons">
+                            <button class="btn btn-primary" onclick="handleTask('${activityId}', '${activity.full_details.task_id || ''}')">
+                                Review & Approve
+                            </button>
+                            <button class="btn btn-secondary" onclick="viewTaskDetails('${activityId}')">
+                                View Details
+                            </button>
+                        </div>
+                    ` : ''}
+
+                    ${activity.type === 'media-buy' && activity.full_details.media_buy_id ? `
+                        <div class="action-buttons">
+                            <a href="/tenant/{{ tenant.tenant_id }}/media-buy/${activity.full_details.media_buy_id}"
+                               class="btn btn-primary" style="text-decoration: none; display: inline-block;">View Media Buy</a>
+                        </div>
+                    ` : ''}
+                </div>
+            ` : `
+                <div class="expanded-content">
+                    <p style="color: #6b7280;">No additional details available</p>
+                </div>
+            `}
         </div>
     `;
 
     // Add to beginning of list
     list.insertBefore(item, list.firstChild);
+
+    // Add a brief highlight animation for new items
+    const bgColor = activity.action_required ? '#fff3cd' : '#e8f4f8';
+    item.style.backgroundColor = bgColor;
+    setTimeout(() => {
+        item.style.backgroundColor = '';
+    }, 3000);
 
     // Keep only MAX_ACTIVITIES items
     while (list.children.length > MAX_ACTIVITIES) {
@@ -689,15 +928,49 @@ function refreshDashboard() {
     window.location.reload();
 }
 
-// Initialize WebSocket connection
+// Toggle activity details expansion
+function toggleActivityDetails(activityId) {
+    const expanded = document.getElementById(`expanded-${activityId}`);
+    const indicator = document.getElementById(`indicator-${activityId}`);
+
+    if (expanded) {
+        if (expanded.style.display === 'none') {
+            expanded.style.display = 'block';
+            if (indicator) indicator.classList.add('expanded');
+        } else {
+            expanded.style.display = 'none';
+            if (indicator) indicator.classList.remove('expanded');
+        }
+    }
+}
+
+// Handle human-in-the-loop tasks
+function handleTask(activityId, taskId) {
+    if (!taskId) {
+        alert('No task ID available');
+        return;
+    }
+    // Navigate to task approval page
+    window.location.href = `/tenant/{{ tenant.tenant_id }}/tasks/${taskId}/approve`;
+}
+
+// View task details
+function viewTaskDetails(activityId) {
+    const expanded = document.getElementById(`expanded-${activityId}`);
+    if (expanded && expanded.style.display === 'none') {
+        toggleActivityDetails(activityId);
+    }
+}
+
+// Initialize activity stream connection
 document.addEventListener('DOMContentLoaded', function() {
-    connectWebSocket();
+    connectActivityStream();
 });
 
 // Clean up on page unload
 window.addEventListener('beforeunload', function() {
-    if (ws) {
-        ws.close();
+    if (eventSource) {
+        eventSource.close();
     }
 });
 </script>

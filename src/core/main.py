@@ -2281,6 +2281,39 @@ def create_workflow_step_for_task(req: CreateHumanTaskRequest, context: Context)
         except:
             pass  # Don't fail task creation if webhook fails
 
+    # Create Task record in database for tracking
+    try:
+        from database_session import get_db_session
+
+        from src.core.database.models import Task
+
+        with get_db_session() as db_session:
+            # Create task record
+            task = Task(
+                task_id=task_id,
+                tenant_id=tenant["tenant_id"],
+                media_buy_id=req.media_buy_id,
+                task_type=req.task_type,
+                principal_id=principal_id,
+                adapter_name=req.adapter_name,
+                status="pending",
+                priority=req.priority,
+                operation=req.operation,
+                context_data=req.context_data or {},
+                created_at=datetime.now(UTC),
+                updated_at=datetime.now(UTC),
+                due_by=due_by,
+                assigned_to=req.assigned_to,
+                creative_id=req.creative_id,
+                error_detail=req.error_detail,
+            )
+            db_session.add(task)
+            db_session.commit()
+            console.print(f"[green]✅ Created task {task_id} in database[/green]")
+    except Exception as e:
+        console.print(f"[yellow]Warning: Failed to create task record in database: {e}[/yellow]")
+        # Don't fail the whole operation if database write fails
+
     # Send Slack notification for new tasks
     try:
         # Build notifier config from tenant fields

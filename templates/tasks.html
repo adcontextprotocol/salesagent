@@ -1,0 +1,174 @@
+{% extends "base.html" %}
+
+{% block title %}Tasks - {{ tenant_id }}{% endblock %}
+
+{% block content %}
+<div class="dashboard-header">
+    <h1>Tasks Management</h1>
+    <div>
+        <a href="{{ url_for('tenants.dashboard', tenant_id=tenant_id) }}" class="btn btn-secondary">Back to Dashboard</a>
+    </div>
+</div>
+
+<div class="custom-card">
+    <h2>Pending Tasks ({{ pending_tasks|length }})</h2>
+    {% if pending_tasks %}
+        <table class="table">
+            <thead>
+                <tr>
+                    <th>Task ID</th>
+                    <th>Type</th>
+                    <th>Title</th>
+                    <th>Assigned To</th>
+                    <th>Due Date</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for task in pending_tasks %}
+                <tr>
+                    <td>{{ task.task_id }}</td>
+                    <td>
+                        <span class="badge badge-info">{{ task.task_type }}</span>
+                    </td>
+                    <td>{{ task.title or 'No title' }}</td>
+                    <td>{{ task.assigned_to or 'Unassigned' }}</td>
+                    <td>
+                        {% if task.due_date %}
+                            {{ task.due_date.strftime('%Y-%m-%d %H:%M') }}
+                        {% else %}
+                            -
+                        {% endif %}
+                    </td>
+                    <td>
+                        <a href="{{ url_for('tasks.view_task', tenant_id=tenant_id, task_id=task.task_id) }}"
+                           class="btn btn-small btn-primary">View</a>
+                        {% if task.task_type == 'manual_approval' %}
+                            <a href="{{ url_for('tasks.approve_task', tenant_id=tenant_id, task_id=task.task_id) }}"
+                               class="btn btn-small btn-success">Review & Approve</a>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    {% else %}
+        <p class="text-muted">No pending tasks</p>
+    {% endif %}
+</div>
+
+<div class="custom-card">
+    <h2>Completed Tasks ({{ completed_tasks|length }})</h2>
+    {% if completed_tasks %}
+        <table class="table">
+            <thead>
+                <tr>
+                    <th>Task ID</th>
+                    <th>Type</th>
+                    <th>Title</th>
+                    <th>Completed By</th>
+                    <th>Completed At</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for task in completed_tasks %}
+                <tr>
+                    <td>{{ task.task_id }}</td>
+                    <td>
+                        <span class="badge badge-secondary">{{ task.task_type }}</span>
+                    </td>
+                    <td>{{ task.title or 'No title' }}</td>
+                    <td>{{ task.completed_by or task.resolved_by or '-' }}</td>
+                    <td>
+                        {% if task.completed_at %}
+                            {{ task.completed_at.strftime('%Y-%m-%d %H:%M') }}
+                        {% elif task.resolved_at %}
+                            {{ task.resolved_at.strftime('%Y-%m-%d %H:%M') }}
+                        {% else %}
+                            -
+                        {% endif %}
+                    </td>
+                    <td>
+                        <a href="{{ url_for('tasks.view_task', tenant_id=tenant_id, task_id=task.task_id) }}"
+                           class="btn btn-small btn-secondary">View</a>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    {% else %}
+        <p class="text-muted">No completed tasks</p>
+    {% endif %}
+</div>
+
+<style>
+.dashboard-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 2rem;
+}
+
+.custom-card {
+    background: white;
+    border-radius: 8px;
+    padding: 1.5rem;
+    margin-bottom: 1.5rem;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.custom-card h2 {
+    margin-bottom: 1rem;
+    color: #2c3e50;
+}
+
+.table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.table th,
+.table td {
+    padding: 0.75rem;
+    text-align: left;
+    border-bottom: 1px solid #ddd;
+}
+
+.table th {
+    background: #f8f9fa;
+    font-weight: 600;
+}
+
+.table tr:hover {
+    background: #f8f9fa;
+}
+
+.badge {
+    display: inline-block;
+    padding: 0.25rem 0.5rem;
+    font-size: 0.875rem;
+    font-weight: 600;
+    border-radius: 4px;
+}
+
+.badge-info {
+    background-color: #17a2b8;
+    color: white;
+}
+
+.badge-secondary {
+    background-color: #6c757d;
+    color: white;
+}
+
+.btn-small {
+    padding: 0.25rem 0.5rem;
+    font-size: 0.875rem;
+}
+
+.text-muted {
+    color: #6c757d;
+}
+</style>
+{% endblock %}

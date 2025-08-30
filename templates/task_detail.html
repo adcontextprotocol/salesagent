@@ -1,0 +1,284 @@
+{% extends "base.html" %}
+
+{% block title %}Task {{ task.task_id }} - {{ tenant_id }}{% endblock %}
+
+{% block content %}
+<div class="dashboard-header">
+    <h1>Task Details</h1>
+    <div>
+        <a href="{{ url_for('tasks.list_tasks', tenant_id=tenant_id) }}" class="btn btn-secondary">Back to Tasks</a>
+        <a href="{{ url_for('tenants.dashboard', tenant_id=tenant_id) }}" class="btn btn-secondary">Dashboard</a>
+    </div>
+</div>
+
+<div class="custom-card">
+    <h2>Task Information</h2>
+    <div class="task-details">
+        <div class="detail-row">
+            <span class="label">Task ID:</span>
+            <span class="value">{{ task.task_id }}</span>
+        </div>
+        <div class="detail-row">
+            <span class="label">Type:</span>
+            <span class="value">
+                <span class="badge badge-{{ 'info' if task.status == 'pending' else 'secondary' }}">
+                    {{ task.task_type }}
+                </span>
+            </span>
+        </div>
+        <div class="detail-row">
+            <span class="label">Status:</span>
+            <span class="value">
+                <span class="status status-{{ task.status }}">{{ task.status|upper }}</span>
+            </span>
+        </div>
+        <div class="detail-row">
+            <span class="label">Title:</span>
+            <span class="value">{{ task.title or 'No title' }}</span>
+        </div>
+        {% if task.description %}
+        <div class="detail-row">
+            <span class="label">Description:</span>
+            <span class="value">{{ task.description }}</span>
+        </div>
+        {% endif %}
+        <div class="detail-row">
+            <span class="label">Created:</span>
+            <span class="value">
+                {% if task.created_at %}
+                    {{ task.created_at.strftime('%Y-%m-%d %H:%M:%S') }}
+                {% else %}
+                    Unknown
+                {% endif %}
+            </span>
+        </div>
+        {% if task.assigned_to %}
+        <div class="detail-row">
+            <span class="label">Assigned To:</span>
+            <span class="value">{{ task.assigned_to }}</span>
+        </div>
+        {% endif %}
+        {% if task.due_date %}
+        <div class="detail-row">
+            <span class="label">Due Date:</span>
+            <span class="value">{{ task.due_date.strftime('%Y-%m-%d %H:%M') }}</span>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+{% if media_buy %}
+<div class="custom-card">
+    <h2>Related Media Buy</h2>
+    <div class="task-details">
+        <div class="detail-row">
+            <span class="label">Media Buy ID:</span>
+            <span class="value">{{ media_buy.media_buy_id }}</span>
+        </div>
+        <div class="detail-row">
+            <span class="label">Budget:</span>
+            <span class="value">${{ "%.2f"|format(media_buy.budget or 0) }}</span>
+        </div>
+        <div class="detail-row">
+            <span class="label">Status:</span>
+            <span class="value">
+                <span class="status status-{{ media_buy.status }}">{{ media_buy.status|upper }}</span>
+            </span>
+        </div>
+        <div class="detail-row">
+            <span class="label">Flight Dates:</span>
+            <span class="value">
+                {% if media_buy.start_date and media_buy.end_date %}
+                    {{ media_buy.start_date.strftime('%Y-%m-%d') }} to {{ media_buy.end_date.strftime('%Y-%m-%d') }}
+                {% else %}
+                    Not set
+                {% endif %}
+            </span>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+{% if principal %}
+<div class="custom-card">
+    <h2>Advertiser Information</h2>
+    <div class="task-details">
+        <div class="detail-row">
+            <span class="label">Advertiser:</span>
+            <span class="value">{{ principal.name }}</span>
+        </div>
+        <div class="detail-row">
+            <span class="label">Principal ID:</span>
+            <span class="value">{{ principal.principal_id }}</span>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+{% if task.details %}
+<div class="custom-card">
+    <h2>Additional Details</h2>
+    <pre class="json-details">{{ task.details|tojson(indent=2) }}</pre>
+</div>
+{% endif %}
+
+{% if task.status == 'pending' %}
+<div class="custom-card">
+    <h2>Actions</h2>
+    <div class="action-buttons">
+        {% if task.task_type == 'manual_approval' %}
+            <a href="{{ url_for('tasks.approve_task', tenant_id=tenant_id, task_id=task.task_id) }}"
+               class="btn btn-success">Review & Approve</a>
+        {% endif %}
+    </div>
+</div>
+{% endif %}
+
+{% if task.status == 'completed' %}
+<div class="custom-card">
+    <h2>Resolution</h2>
+    <div class="task-details">
+        {% if task.resolution %}
+        <div class="detail-row">
+            <span class="label">Resolution:</span>
+            <span class="value">
+                <span class="badge badge-{{ 'success' if task.resolution == 'approved' else 'warning' }}">
+                    {{ task.resolution|upper }}
+                </span>
+            </span>
+        </div>
+        {% endif %}
+        {% if task.resolution_notes %}
+        <div class="detail-row">
+            <span class="label">Resolution Notes:</span>
+            <span class="value">{{ task.resolution_notes }}</span>
+        </div>
+        {% endif %}
+        {% if task.resolved_by or task.completed_by %}
+        <div class="detail-row">
+            <span class="label">Resolved By:</span>
+            <span class="value">{{ task.resolved_by or task.completed_by }}</span>
+        </div>
+        {% endif %}
+        {% if task.resolved_at or task.completed_at %}
+        <div class="detail-row">
+            <span class="label">Resolved At:</span>
+            <span class="value">
+                {{ (task.resolved_at or task.completed_at).strftime('%Y-%m-%d %H:%M:%S') }}
+            </span>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endif %}
+
+<style>
+.dashboard-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 2rem;
+}
+
+.custom-card {
+    background: white;
+    border-radius: 8px;
+    padding: 1.5rem;
+    margin-bottom: 1.5rem;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.custom-card h2 {
+    margin-bottom: 1rem;
+    color: #2c3e50;
+}
+
+.task-details {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+}
+
+.detail-row {
+    display: flex;
+    align-items: center;
+}
+
+.detail-row .label {
+    font-weight: 600;
+    color: #6c757d;
+    width: 150px;
+    flex-shrink: 0;
+}
+
+.detail-row .value {
+    flex: 1;
+}
+
+.status {
+    display: inline-block;
+    padding: 0.25rem 0.75rem;
+    border-radius: 4px;
+    font-size: 0.875rem;
+    font-weight: 600;
+    text-transform: uppercase;
+}
+
+.status-pending {
+    background-color: #fff3cd;
+    color: #856404;
+}
+
+.status-completed {
+    background-color: #d4edda;
+    color: #155724;
+}
+
+.status-active {
+    background-color: #d1ecf1;
+    color: #0c5460;
+}
+
+.badge {
+    display: inline-block;
+    padding: 0.25rem 0.5rem;
+    font-size: 0.875rem;
+    font-weight: 600;
+    border-radius: 4px;
+}
+
+.badge-info {
+    background-color: #17a2b8;
+    color: white;
+}
+
+.badge-secondary {
+    background-color: #6c757d;
+    color: white;
+}
+
+.badge-success {
+    background-color: #28a745;
+    color: white;
+}
+
+.badge-warning {
+    background-color: #ffc107;
+    color: #212529;
+}
+
+.json-details {
+    background-color: #f8f9fa;
+    padding: 1rem;
+    border-radius: 4px;
+    overflow-x: auto;
+    font-family: monospace;
+    font-size: 0.875rem;
+}
+
+.action-buttons {
+    display: flex;
+    gap: 1rem;
+}
+</style>
+{% endblock %}

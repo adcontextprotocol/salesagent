@@ -1,0 +1,281 @@
+"""Activity stream blueprint for Server-Sent Events (SSE)."""
+
+import json
+import logging
+import time
+from datetime import UTC, datetime, timedelta
+
+from flask import Blueprint, Response, request
+
+from src.admin.utils import require_tenant_access
+from src.core.database.database_session import get_db_session
+from src.core.database.models import AuditLog
+
+logger = logging.getLogger(__name__)
+
+# Create blueprint
+activity_stream_bp = Blueprint("activity_stream", __name__)
+
+
+def format_activity_from_audit_log(audit_log: AuditLog) -> dict:
+    """Convert AuditLog database record to activity feed format with rich details."""
+    # Parse operation to extract method name
+    operation_parts = audit_log.operation.split(".", 1)
+    adapter_name = operation_parts[0] if len(operation_parts) > 1 else "system"
+    method = operation_parts[1] if len(operation_parts) > 1 else audit_log.operation
+
+    # Determine activity type based on operation
+    if "media_buy" in method.lower():
+        activity_type = "media-buy"
+    elif "creative" in method.lower():
+        activity_type = "creative"
+    elif "error" in method.lower() or not audit_log.success:
+        activity_type = "error"
+    elif "get_products" in method.lower():
+        activity_type = "product-query"
+    elif "human" in method.lower() or "approval" in method.lower():
+        activity_type = "human-task"
+    else:
+        activity_type = "api-call"
+
+    # Build rich activity details based on operation type
+    details = {}
+    full_details = {}
+    action_required = False
+
+    # Parse the details JSON if available
+    parsed_details = {}
+    if audit_log.details:
+        try:
+            parsed_details = json.loads(audit_log.details)
+        except (json.JSONDecodeError, TypeError):
+            parsed_details = {}
+
+    # Format based on operation type
+    if "get_products" in method.lower():
+        details["primary"] = f"Found {parsed_details.get('product_count', 0)} products"
+        if parsed_details.get("brief"):
+            details["secondary"] = (
+                f'Brief: "{parsed_details["brief"][:50]}..."'
+                if len(parsed_details.get("brief", "")) > 50
+                else f'Brief: "{parsed_details.get("brief")}"'
+            )
+        if parsed_details.get("products"):
+            full_details["products"] = parsed_details["products"]
+            full_details["promoted"] = parsed_details.get("promoted_product", "No specific promotion")
+
+    elif "create_media_buy" in method.lower():
+        if parsed_details.get("budget"):
+            details["primary"] = f"Budget: ${parsed_details['budget']:,.0f}"
+        if parsed_details.get("duration_days"):
+            details["secondary"] = f"Duration: {parsed_details['duration_days']} days"
+        if parsed_details.get("targeting"):
+            full_details["targeting"] = parsed_details["targeting"]
+        full_details["media_buy_id"] = parsed_details.get("media_buy_id", "N/A")
+
+    elif "upload_creative" in method.lower():
+        details["primary"] = f"Format: {parsed_details.get('format', 'Unknown')}"
+        if parsed_details.get("file_size"):
+            details["secondary"] = f"Size: {parsed_details['file_size']}"
+        full_details["creative_id"] = parsed_details.get("creative_id", "N/A")
+        full_details["status"] = parsed_details.get("status", "pending")
+
+    elif "human" in method.lower() or "approval" in method.lower():
+        details["primary"] = "⚠️ Human approval required"
+        details["secondary"] = parsed_details.get("task_type", "Review required")
+        full_details["task_id"] = parsed_details.get("task_id")
+        full_details["task_details"] = parsed_details.get("details", {})
+        action_required = True
+
+    elif not audit_log.success:
+        details["primary"] = "❌ Failed"
+        if audit_log.error_message:
+            details["secondary"] = (
+                audit_log.error_message[:75] + "..." if len(audit_log.error_message) > 75 else audit_log.error_message
+            )
+        full_details["error_details"] = audit_log.error_message
+    else:
+        # Default success case
+        details["primary"] = "✅ Success"
+        if parsed_details:
+            # Show first interesting field from details
+            for key in ["message", "result", "count", "status"]:
+                if key in parsed_details:
+                    details["secondary"] = str(parsed_details[key])[:75]
+                    break
+
+    # Calculate relative time
+    now = datetime.now(UTC)
+    if audit_log.timestamp.tzinfo is None:
+        # Handle naive datetime (assume UTC)
+        audit_timestamp = audit_log.timestamp.replace(tzinfo=UTC)
+    else:
+        audit_timestamp = audit_log.timestamp
+
+    delta = now - audit_timestamp
+    if delta.days > 0:
+        time_relative = f"{delta.days}d ago"
+    elif delta.seconds > 3600:
+        time_relative = f"{delta.seconds // 3600}h ago"
+    elif delta.seconds > 60:
+        time_relative = f"{delta.seconds // 60}m ago"
+    else:
+        time_relative = "Just now"
+
+    return {
+        "id": audit_log.log_id,
+        "type": activity_type,
+        "principal_name": audit_log.principal_name or "System",
+        "action": f"Called {method}",
+        "details": details,
+        "full_details": full_details,
+        "timestamp": audit_log.timestamp.isoformat(),
+        "time_relative": time_relative,
+        "action_required": action_required,
+        "operation": audit_log.operation,
+        "success": audit_log.success,
+    }
+
+
+def get_recent_activities(tenant_id: str, since: datetime = None, limit: int = 50) -> list[dict]:
+    """Get recent activities for a tenant from the database."""
+    try:
+        with get_db_session() as db_session:
+            query = db_session.query(AuditLog).filter(AuditLog.tenant_id == tenant_id)
+
+            if since:
+                query = query.filter(AuditLog.timestamp > since)
+
+            # Order by timestamp descending and limit results
+            audit_logs = query.order_by(AuditLog.timestamp.desc()).limit(limit).all()
+
+            # Convert to activity format
+            activities = []
+            for audit_log in audit_logs:
+                try:
+                    activity = format_activity_from_audit_log(audit_log)
+                    activities.append(activity)
+                except Exception as e:
+                    logger.warning(f"Failed to format activity from audit log {audit_log.id}: {e}")
+
+            return activities
+
+    except Exception as e:
+        logger.error(f"Failed to query activities for tenant {tenant_id}: {e}")
+        return []
+
+
+@activity_stream_bp.route("/tenant/<tenant_id>/events", methods=["GET"])
+@require_tenant_access()
+def activity_events(tenant_id, **kwargs):
+    """Server-Sent Events endpoint for real-time activity updates."""
+
+    def generate():
+        """Generator function that yields SSE formatted data."""
+        try:
+            # Send initial historical data
+            logger.info(f"Starting SSE stream for tenant {tenant_id}")
+            recent_activities = get_recent_activities(tenant_id, limit=50)
+
+            for activity in reversed(recent_activities):  # Reverse to show oldest first
+                data = json.dumps(activity)
+                yield f"data: {data}\n\n"
+
+            # Keep track of last check time
+            last_check = datetime.now(UTC)
+
+            # Poll for new activities every 2 seconds
+            while True:
+                try:
+                    # Check for new activities since last check
+                    new_activities = get_recent_activities(
+                        tenant_id,
+                        since=last_check - timedelta(seconds=1),  # Small overlap to avoid missing events
+                        limit=10,
+                    )
+
+                    # Send new activities
+                    for activity in reversed(new_activities):  # Newest activities last
+                        data = json.dumps(activity)
+                        yield f"data: {data}\n\n"
+
+                    # Update last check time
+                    if new_activities:
+                        # Use timestamp of newest activity
+                        newest_timestamp_str = new_activities[0]["timestamp"]
+                        newest_timestamp = datetime.fromisoformat(newest_timestamp_str.replace("Z", "+00:00"))
+                        last_check = max(last_check, newest_timestamp)
+                    else:
+                        last_check = datetime.now(UTC)
+
+                    # Send heartbeat to keep connection alive
+                    yield ": heartbeat\n\n"
+
+                    # Wait before next poll
+                    time.sleep(2)
+
+                except GeneratorExit:
+                    logger.info(f"SSE client disconnected for tenant {tenant_id}")
+                    break
+                except Exception as e:
+                    logger.error(f"Error in SSE stream for tenant {tenant_id}: {e}")
+                    # Send error event
+                    error_data = json.dumps(
+                        {
+                            "type": "error",
+                            "message": "Stream error occurred",
+                            "timestamp": datetime.now(UTC).isoformat(),
+                        }
+                    )
+                    yield f"event: error\ndata: {error_data}\n\n"
+                    time.sleep(5)  # Wait longer after error
+
+        except Exception as e:
+            logger.error(f"Failed to start SSE stream for tenant {tenant_id}: {e}")
+            error_data = json.dumps(
+                {
+                    "type": "error",
+                    "message": "Failed to start activity stream",
+                    "timestamp": datetime.now(UTC).isoformat(),
+                }
+            )
+            yield f"event: error\ndata: {error_data}\n\n"
+
+    # Set appropriate headers for SSE
+    response = Response(
+        generate(),
+        mimetype="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "Access-Control-Allow-Origin": "*",
+        },
+    )
+
+    return response
+
+
+@activity_stream_bp.route("/tenant/<tenant_id>/activities", methods=["GET"])
+@require_tenant_access()
+def get_activities_api(tenant_id, **kwargs):
+    """REST API endpoint to get recent activities (fallback for non-SSE clients)."""
+    try:
+        # Get optional since parameter
+        since_param = request.args.get("since")
+        since = None
+        if since_param:
+            try:
+                since = datetime.fromisoformat(since_param.replace("Z", "+00:00"))
+            except ValueError:
+                logger.warning(f"Invalid since parameter: {since_param}")
+
+        # Get optional limit parameter
+        limit = min(int(request.args.get("limit", 50)), 100)  # Max 100 activities
+
+        activities = get_recent_activities(tenant_id, since=since, limit=limit)
+
+        return {"activities": activities, "count": len(activities), "timestamp": datetime.now(UTC).isoformat()}
+
+    except Exception as e:
+        logger.error(f"Failed to get activities for tenant {tenant_id}: {e}")
+        return {"error": "Failed to retrieve activities"}, 500

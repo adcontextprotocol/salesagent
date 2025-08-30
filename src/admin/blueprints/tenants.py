@@ -1,7 +1,7 @@
 """Tenant management blueprint for admin UI.
 
 ⚠️ ROUTING NOTICE: This file contains the ACTUAL handler for tenant settings!
-- URL: /admin/tenant/{id}/settings  
+- URL: /admin/tenant/{id}/settings
 - Function: settings()
 - DO NOT confuse with src/admin/blueprints/settings.py which handles superadmin settings
 """
@@ -110,9 +110,17 @@ def dashboard(tenant_id):
             # Calculate pending buys
             pending_buys = db_session.query(MediaBuy).filter_by(tenant_id=tenant_id, status="pending").count()
 
-            # Calculate tasks metrics
-            open_tasks = 0  # Could be calculated from human_tasks table if needed
-            overdue_tasks = 0  # Could be calculated from human_tasks with due dates
+            # Calculate tasks metrics from the Task table
+            from src.core.database.models import Task
+
+            open_tasks = db_session.query(Task).filter_by(tenant_id=tenant_id, status="pending").count()
+
+            # Calculate overdue tasks (tasks past their due date)
+            overdue_tasks = (
+                db_session.query(Task)
+                .filter(Task.tenant_id == tenant_id, Task.status == "pending", Task.due_date < datetime.now(UTC))
+                .count()
+            )
 
             # Calculate advertiser metrics
             active_advertisers = db_session.query(Principal).filter_by(tenant_id=tenant_id).count()
@@ -184,12 +192,12 @@ def dashboard(tenant_id):
 @require_tenant_access()
 def tenant_settings(tenant_id, section=None):
     """Show tenant settings page.
-    
+
     ⚠️ IMPORTANT: This is the ACTUAL handler for /admin/tenant/{id}/settings URLs.
     Function renamed from settings() to tenant_settings() for clarity.
-    
+
     This function handles the main tenant settings UI including:
-    - Adapter selection and configuration 
+    - Adapter selection and configuration
     - GAM OAuth status
     - Template rendering with active_adapter variable
     """
@@ -217,21 +225,22 @@ def tenant_settings(tenant_id, section=None):
 
             # Get advertiser data for the advertisers section
             from src.core.database.models import Principal
+
             principals = db_session.query(Principal).filter_by(tenant_id=tenant_id).all()
             advertiser_count = len(principals)
             active_advertisers = len(principals)  # For now, assume all are active
-            
+
             # Get additional variables that the template expects
             last_sync_time = None  # Could be enhanced to track actual sync times
-            
+
             # Convert adapter_config to dict format for template compatibility
             adapter_config_dict = {}
             if adapter_config_obj:
                 adapter_config_dict = {
-                    'network_code': adapter_config_obj.gam_network_code or '',
-                    'refresh_token': adapter_config_obj.gam_refresh_token or '',
-                    'trafficker_id': adapter_config_obj.gam_trafficker_id or '',
-                    'application_name': getattr(adapter_config_obj, 'gam_application_name', '') or '',
+                    "network_code": adapter_config_obj.gam_network_code or "",
+                    "refresh_token": adapter_config_obj.gam_refresh_token or "",
+                    "trafficker_id": adapter_config_obj.gam_trafficker_id or "",
+                    "application_name": getattr(adapter_config_obj, "gam_application_name", "") or "",
                 }
 
             return render_template(
@@ -694,30 +703,30 @@ def delete_principal(tenant_id, principal_id):
     try:
         with get_db_session() as db_session:
             # Find the principal
-            principal = db_session.query(Principal).filter_by(
-                tenant_id=tenant_id, 
-                principal_id=principal_id
-            ).first()
-            
+            principal = db_session.query(Principal).filter_by(tenant_id=tenant_id, principal_id=principal_id).first()
+
             if not principal:
                 return jsonify({"error": "Principal not found"}), 404
-            
+
             # Check if principal has active media buys
             from src.core.database.models import MediaBuy
-            active_buys = db_session.query(MediaBuy).filter_by(
-                tenant_id=tenant_id,
-                principal_id=principal_id
-            ).filter(MediaBuy.status.in_(['active', 'pending'])).count()
-            
+
+            active_buys = (
+                db_session.query(MediaBuy)
+                .filter_by(tenant_id=tenant_id, principal_id=principal_id)
+                .filter(MediaBuy.status.in_(["active", "pending"]))
+                .count()
+            )
+
             if active_buys > 0:
                 return jsonify({"error": f"Cannot delete principal with {active_buys} active media buys"}), 400
-            
+
             # Delete the principal
             db_session.delete(principal)
             db_session.commit()
-            
+
             return jsonify({"success": True, "message": f"Principal {principal.name} deleted successfully"})
-            
+
     except Exception as e:
         logger.error(f"Error deleting principal {principal_id}: {e}", exc_info=True)
         return jsonify({"error": "Internal server error"}), 500

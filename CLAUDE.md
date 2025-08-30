@@ -120,7 +120,15 @@ The server provides:
 
 ## Recent Major Changes
 
-### A2A Protocol Integration with python-a2a (Latest)
+### Real-Time Dashboard & Task Management System (Latest)
+- **Activity Stream**: Live dashboard with Server-Sent Events (SSE) for real-time updates
+- **Task Management UI**: Complete task management system with listing, detail, and approval pages
+- **Database Schema**: Added `tasks` table with full column set matching SQLAlchemy models
+- **Templates**: Created `tasks.html`, `task_detail.html`, and enhanced `tenant_dashboard.html`
+- **Blueprints**: Added `activity_stream.py` and `tasks.py` for handling task operations
+- **Bug Fixes**: Fixed missing table columns, removed invalid model references, corrected import paths
+
+### A2A Protocol Integration with python-a2a
 - **Standard Library**: Now using `python-a2a` library for all A2A protocol handling
 - **No Custom Protocol Code**: Removed all custom protocol implementations
 - **Server Implementation**: Using `python_a2a.server.A2AServer` base class
@@ -389,6 +397,50 @@ fly secrets set GEMINI_API_KEY="your-key" --app adcp-sales-agent
 5. ✅ Deploy: `fly deploy --app adcp-sales-agent`
 6. ✅ Monitor logs: `fly logs --app adcp-sales-agent`
 7. ✅ Verify health: `fly status --app adcp-sales-agent`
+
+## Troubleshooting
+
+### Common Issues and Solutions
+
+#### "Error loading dashboard"
+- **Cause**: Missing `tasks` table or columns
+- **Solution**: Create the table with all required columns:
+```sql
+-- Run in PostgreSQL
+CREATE TABLE IF NOT EXISTS tasks (
+    task_id VARCHAR(100) PRIMARY KEY,
+    tenant_id VARCHAR(50) NOT NULL REFERENCES tenants(tenant_id) ON DELETE CASCADE,
+    media_buy_id VARCHAR(100),
+    task_type VARCHAR(50) NOT NULL,
+    title VARCHAR(255) NOT NULL DEFAULT '',
+    description TEXT,
+    status VARCHAR(20) NOT NULL DEFAULT 'pending',
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    assigned_to VARCHAR(255),
+    due_date TIMESTAMP WITH TIME ZONE,
+    completed_at TIMESTAMP WITH TIME ZONE,
+    completed_by VARCHAR(255),
+    task_metadata JSONB,
+    details JSONB,
+    strategy_id VARCHAR(255),
+    resolution VARCHAR(50),
+    resolution_notes TEXT,
+    resolved_by VARCHAR(255),
+    resolved_at TIMESTAMP WITH TIME ZONE,
+    context_id VARCHAR(100)
+);
+```
+
+#### "Task not found" or "Error loading tasks"
+- **Cause**: Missing template files
+- **Solution**: Ensure `templates/tasks.html` and `templates/task_detail.html` exist
+
+#### Port conflicts
+- **Solution**: Update `.env` file:
+```bash
+ADMIN_UI_PORT=8001  # Change from 8052 or other conflicting port
+```
 
 ## Support
 
