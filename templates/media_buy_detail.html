@@ -1,0 +1,134 @@
+{% extends "base.html" %}
+
+{% block title %}Media Buy {{ media_buy.media_buy_id }} - {{ tenant_id }}{% endblock %}
+
+{% block content %}
+<div class="dashboard-header">
+    <h1>Media Buy Details</h1>
+    <div>
+        <a href="{{ url_for('tenants.dashboard', tenant_id=tenant_id) }}" class="btn btn-secondary">Back to Dashboard</a>
+    </div>
+</div>
+
+<div class="custom-card">
+    <h2>Media Buy Information</h2>
+    <div class="detail-rows">
+        <div class="detail-row">
+            <span class="label">Media Buy ID:</span>
+            <span class="value">{{ media_buy.media_buy_id }}</span>
+        </div>
+        <div class="detail-row">
+            <span class="label">Status:</span>
+            <span class="value">
+                <span class="status status-{{ media_buy.status }}">{{ media_buy.status|upper }}</span>
+            </span>
+        </div>
+        <div class="detail-row">
+            <span class="label">Budget:</span>
+            <span class="value">${{ "%.2f"|format(media_buy.budget or 0) }}</span>
+        </div>
+        {% if media_buy.start_date and media_buy.end_date %}
+        <div class="detail-row">
+            <span class="label">Flight Dates:</span>
+            <span class="value">
+                {{ media_buy.start_date.strftime('%Y-%m-%d') }} to {{ media_buy.end_date.strftime('%Y-%m-%d') }}
+            </span>
+        </div>
+        {% endif %}
+        <div class="detail-row">
+            <span class="label">Created:</span>
+            <span class="value">
+                {% if media_buy.created_at %}
+                    {{ media_buy.created_at.strftime('%Y-%m-%d %H:%M:%S') }}
+                {% else %}
+                    Unknown
+                {% endif %}
+            </span>
+        </div>
+    </div>
+</div>
+
+{% if principal %}
+<div class="custom-card">
+    <h2>Advertiser Information</h2>
+    <div class="detail-rows">
+        <div class="detail-row">
+            <span class="label">Advertiser:</span>
+            <span class="value">{{ principal.name }}</span>
+        </div>
+        <div class="detail-row">
+            <span class="label">Principal ID:</span>
+            <span class="value">{{ principal.principal_id }}</span>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<style>
+.dashboard-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 2rem;
+}
+
+.custom-card {
+    background: white;
+    border-radius: 8px;
+    padding: 1.5rem;
+    margin-bottom: 1.5rem;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.custom-card h2 {
+    margin-bottom: 1rem;
+    color: #2c3e50;
+}
+
+.detail-rows {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+}
+
+.detail-row {
+    display: flex;
+    align-items: center;
+}
+
+.detail-row .label {
+    font-weight: 600;
+    color: #6c757d;
+    width: 150px;
+    flex-shrink: 0;
+}
+
+.detail-row .value {
+    flex: 1;
+}
+
+.status {
+    display: inline-block;
+    padding: 0.25rem 0.75rem;
+    border-radius: 4px;
+    font-size: 0.875rem;
+    font-weight: 600;
+    text-transform: uppercase;
+}
+
+.status-pending {
+    background-color: #fff3cd;
+    color: #856404;
+}
+
+.status-active {
+    background-color: #d1ecf1;
+    color: #0c5460;
+}
+
+.status-completed {
+    background-color: #d4edda;
+    color: #155724;
+}
+</style>
+{% endblock %}

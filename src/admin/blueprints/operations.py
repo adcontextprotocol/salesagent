@@ -88,6 +88,39 @@ def workflows(tenant_id, **kwargs):
     return jsonify({"error": "Not yet implemented"}), 501
 
 
+@operations_bp.route("/media-buy/<media_buy_id>", methods=["GET"])
+@require_tenant_access()
+def media_buy_detail(tenant_id, media_buy_id):
+    """View media buy details."""
+    from flask import render_template
+
+    from src.core.database.database_session import get_db_session
+    from src.core.database.models import MediaBuy, Principal
+
+    try:
+        with get_db_session() as db_session:
+            media_buy = db_session.query(MediaBuy).filter_by(tenant_id=tenant_id, media_buy_id=media_buy_id).first()
+
+            if not media_buy:
+                return "Media buy not found", 404
+
+            # Get principal info
+            principal = None
+            if media_buy.principal_id:
+                principal = (
+                    db_session.query(Principal)
+                    .filter_by(tenant_id=tenant_id, principal_id=media_buy.principal_id)
+                    .first()
+                )
+
+            return render_template(
+                "media_buy_detail.html", tenant_id=tenant_id, media_buy=media_buy, principal=principal
+            )
+    except Exception as e:
+        logger.error(f"Error viewing media buy: {e}", exc_info=True)
+        return "Error loading media buy", 500
+
+
 @operations_bp.route("/media-buy/<media_buy_id>/approve", methods=["GET"])
 @require_tenant_access()
 def media_buy_media_buy_id_approve(tenant_id, **kwargs):

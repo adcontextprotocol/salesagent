@@ -412,6 +412,54 @@ def load_media_buys_from_db():
         console.print(f"[yellow]Warning: Could not initialize media buys from database: {e}[/yellow]")
 
 
+def load_tasks_from_db():
+    """[DEPRECATED] This function is no longer needed - tasks are queried directly from database."""
+    # This function is kept for backward compatibility but does nothing
+    # All task operations now use direct database queries
+    pass
+
+
+def get_task_from_db(task_id: str, tenant_id: str) -> HumanTask:
+    """Get task directly from database."""
+    from src.core.database.database_session import get_db_session
+    from src.core.database.models import Task
+
+    with get_db_session() as db_session:
+        db_task = db_session.query(Task).filter_by(task_id=task_id, tenant_id=tenant_id).first()
+
+        if not db_task:
+            return None
+
+        # Extract metadata fields
+        metadata = db_task.task_metadata or {}
+
+        # Create HumanTask object from database record
+        human_task = HumanTask(
+            task_id=db_task.task_id,
+            task_type=db_task.task_type,
+            priority=metadata.get("priority", "medium"),
+            media_buy_id=db_task.media_buy_id,
+            creative_id=metadata.get("creative_id"),
+            operation=metadata.get("operation"),
+            principal_id=metadata.get("principal_id"),
+            adapter_name=metadata.get("adapter_name"),
+            error_detail=metadata.get("error_detail") or db_task.description,
+            context_data=db_task.details or {},
+            status=db_task.status,
+            created_at=db_task.created_at,
+            due_by=db_task.due_date,
+            assigned_to=db_task.assigned_to,
+            resolution=db_task.resolution,
+            resolution_detail=db_task.resolution_notes,
+            resolved_by=db_task.resolved_by,
+            completed_at=db_task.completed_at,
+            task_metadata=metadata,  # Include the metadata for compatibility
+        )
+
+        # No longer caching in memory - direct database queries only
+        return human_task
+
+
 # --- In-Memory State ---
 media_buys: dict[str, tuple[CreateMediaBuyRequest, str]] = {}
 creative_assignments: dict[str, dict[str, list[str]]] = {}
@@ -420,6 +468,9 @@ product_catalog: list[Product] = []
 creative_library: dict[str, Creative] = {}  # creative_id -> Creative
 creative_groups: dict[str, CreativeGroup] = {}  # group_id -> CreativeGroup
 creative_assignments_v2: dict[str, CreativeAssignment] = {}  # assignment_id -> CreativeAssignment
+# REMOVED: human_tasks dictionary - now using direct database queries only
+
+# Note: load_tasks_from_db() is no longer needed - tasks are queried directly from database
 
 # Authentication cache removed - FastMCP v2.11.0+ properly forwards headers
 
@@ -435,12 +486,8 @@ context_mgr = ContextManager()
 SELECTED_ADAPTER = config.get("ad_server", {}).get("adapter", "mock").lower()
 AVAILABLE_ADAPTERS = ["mock", "gam", "kevel", "triton", "triton_digital"]
 
-# --- In-Memory State ---
-media_buys: dict[str, tuple[CreateMediaBuyRequest, str]] = {}
+# --- In-Memory State (already initialized above, just adding context_map) ---
 context_map: dict[str, str] = {}  # Maps context_id to media_buy_id
-creative_assignments: dict[str, dict[str, list[str]]] = {}
-creative_statuses: dict[str, CreativeStatus] = {}
-product_catalog: list[Product] = []
 
 # --- Dry Run Mode ---
 DRY_RUN_MODE = config.get("dry_run", False)
@@ -2320,6 +2367,44 @@ def create_workflow_step_for_task(req: CreateHumanTaskRequest, context: Context)
         except:
             pass  # Don't fail task creation if webhook fails
 
+    # Create Task record in database for tracking
+    try:
+        from src.core.database.database_session import get_db_session
+        from src.core.database.models import Task
+
+        with get_db_session() as db_session:
+            # Create task record with correct field mappings
+            task = Task(
+                task_id=task_id,
+                tenant_id=tenant["tenant_id"],
+                media_buy_id=req.media_buy_id,
+                task_type=req.task_type,
+                title=f"{req.task_type.replace('_', ' ').title()} Required",
+                description=req.error_detail or f"Task requires {req.task_type}",
+                status="pending",
+                assigned_to=req.assigned_to,
+                due_date=due_by,  # Fixed field name
+                # Store all extra data in task_metadata
+                task_metadata={
+                    "principal_id": principal_id,
+                    "adapter_name": req.adapter_name,
+                    "priority": req.priority,
+                    "operation": req.operation,
+                    "creative_id": req.creative_id,
+                    "error_detail": req.error_detail,
+                },
+                # Store context data in details field
+                details=req.context_data or {},
+                created_at=datetime.now(UTC),
+            )
+            db_session.add(task)
+            db_session.commit()
+            console.print(f"[green]✅ Created task {task_id} in database[/green]")
+            # Task is now stored only in database, no in-memory storage needed
+    except Exception as e:
+        console.print(f"[yellow]Warning: Failed to create task record: {e}[/yellow]")
+        # Don't fail the whole operation if database write fails
+
     # Send Slack notification for new tasks
     try:
         # Build notifier config from tenant fields
@@ -2424,15 +2509,22 @@ def assign_task(req: AssignTaskRequest, context: Context) -> dict[str, str]:
     if principal_id != f"{tenant['tenant_id']}_admin":
         raise ToolError("PERMISSION_DENIED", "Only administrators can assign tasks")
 
-    if req.task_id not in human_tasks:
-        raise ToolError("NOT_FOUND", f"Task {req.task_id} not found")
+    # Update task in database
+    from src.core.database.database_session import get_db_session
+    from src.core.database.models import Task
 
-    task = human_tasks[req.task_id]
-    task.assigned_to = req.assigned_to
-    task.assigned_at = datetime.now()
-    task.status = "assigned"
-    task.updated_at = datetime.now()
+    with get_db_session() as db_session:
+        db_task = db_session.query(Task).filter_by(task_id=req.task_id, tenant_id=tenant["tenant_id"]).first()
 
+        if not db_task:
+            raise ToolError("NOT_FOUND", f"Task {req.task_id} not found")
+
+        db_task.assigned_to = req.assigned_to
+        db_task.status = "assigned"
+        db_task.updated_at = datetime.now(UTC)
+        db_session.commit()
+
+    audit_logger = get_audit_logger("AdCP", tenant["tenant_id"])
     audit_logger.log_operation(
         operation="assign_task",
         principal_name="admin",
@@ -2457,36 +2549,54 @@ def complete_task(req: CompleteTaskRequest, context: Context) -> dict[str, str]:
     if principal_id != f"{tenant['tenant_id']}_admin":
         raise ToolError("PERMISSION_DENIED", "Only administrators can complete tasks")
 
-    if req.task_id not in human_tasks:
-        raise ToolError("NOT_FOUND", f"Task {req.task_id} not found")
-
-    task = human_tasks[req.task_id]
-    task.resolution = req.resolution
-    task.resolution_detail = req.resolution_detail
-    task.resolved_by = req.resolved_by
-    task.completed_at = datetime.now()
-    task.status = "completed" if req.resolution in ["approved", "completed"] else "failed"
-    task.updated_at = datetime.now()
-
     # Update task in database
-    tenant = get_current_tenant()
-    with get_db_session() as session:
-        db_task = session.query(Task).filter_by(task_id=req.task_id, tenant_id=tenant["tenant_id"]).first()
+    from src.core.database.database_session import get_db_session
+    from src.core.database.models import Task
 
-        if db_task:
-            db_task.status = task.status
-            db_task.completed_at = task.completed_at.isoformat() if task.completed_at else None
-            db_task.completed_by = task.resolved_by
-            db_task.task_metadata = {
-                "resolution": task.resolution,
-                "resolution_detail": task.resolution_detail,
-                "original_metadata": (
-                    json.loads(human_tasks[req.task_id].task_metadata)
-                    if hasattr(human_tasks[req.task_id], "task_metadata")
-                    else {}
-                ),
-            }
-            session.commit()
+    with get_db_session() as db_session:
+        db_task = db_session.query(Task).filter_by(task_id=req.task_id, tenant_id=tenant["tenant_id"]).first()
+
+        if not db_task:
+            raise ToolError("NOT_FOUND", f"Task {req.task_id} not found")
+
+        # Update database fields
+        db_task.status = "completed" if req.resolution in ["approved", "completed"] else "failed"
+        db_task.resolution = req.resolution
+        db_task.resolution_notes = req.resolution_detail
+        db_task.resolved_by = req.resolved_by
+        db_task.completed_at = datetime.now(UTC)
+        db_task.updated_at = datetime.now(UTC)
+
+        # Preserve original metadata while adding resolution info
+        original_metadata = db_task.task_metadata or {}
+        db_task.task_metadata = {
+            **original_metadata,  # Keep original fields
+            "resolution": req.resolution,
+            "resolution_detail": req.resolution_detail,
+        }
+        db_session.commit()
+
+        # Create HumanTask object for backward compatibility (e.g., for Slack notifications)
+        task = HumanTask(
+            task_id=db_task.task_id,
+            task_type=db_task.task_type,
+            priority=original_metadata.get("priority", "medium"),
+            media_buy_id=db_task.media_buy_id,
+            creative_id=original_metadata.get("creative_id"),
+            operation=original_metadata.get("operation"),
+            principal_id=original_metadata.get("principal_id"),
+            adapter_name=original_metadata.get("adapter_name"),
+            error_detail=original_metadata.get("error_detail") or db_task.description,
+            context_data=db_task.details or {},
+            status=db_task.status,
+            created_at=db_task.created_at,
+            due_by=db_task.due_date,
+            assigned_to=db_task.assigned_to,
+            resolution=db_task.resolution,
+            resolution_detail=db_task.resolution_notes,
+            resolved_by=db_task.resolved_by,
+            completed_at=db_task.completed_at,
+        )
 
     audit_logger = get_audit_logger("AdCP", tenant["tenant_id"])
     audit_logger.log_operation(
@@ -2641,10 +2751,11 @@ def complete_task(req: CompleteTaskRequest, context: Context) -> dict[str, str]:
 @mcp.tool
 def verify_task(req: VerifyTaskRequest, context: Context) -> VerifyTaskResponse:
     """Verify if a task was completed correctly by checking actual state."""
-    if req.task_id not in human_tasks:
+    # Get task from database
+    tenant = get_current_tenant()
+    task = get_task_from_db(req.task_id, tenant["tenant_id"])
+    if not task:
         raise ToolError("NOT_FOUND", f"Task {req.task_id} not found")
-
-    task = human_tasks[req.task_id]
     actual_state = {}
     expected_state = req.expected_outcome or {}
     discrepancies = []
@@ -2721,11 +2832,6 @@ def mark_task_complete(req: MarkTaskCompleteRequest, context: Context) -> dict[s
     if principal_id != f"{tenant['tenant_id']}_admin":
         raise ToolError("PERMISSION_DENIED", "Only administrators can mark tasks complete")
 
-    if req.task_id not in human_tasks:
-        raise ToolError("NOT_FOUND", f"Task {req.task_id} not found")
-
-    task = human_tasks[req.task_id]
-
     # First verify the task
     verify_req = VerifyTaskRequest(task_id=req.task_id)
     verification = verify_task(verify_req, context)
@@ -2738,31 +2844,37 @@ def mark_task_complete(req: MarkTaskCompleteRequest, context: Context) -> dict[s
             "message": "Task verification failed. Use override_verification=true to force completion.",
         }
 
-    # Mark as complete
-    task.status = "completed"
-    task.resolution = "completed"
-    task.resolution_detail = f"Marked complete by {req.completed_by}"
-    if not verification.verified:
-        task.resolution_detail += " (verification overridden)"
-    task.resolved_by = req.completed_by
-    task.completed_at = datetime.now()
-    task.updated_at = datetime.now()
+    # Update task in database directly
+    from src.core.database.database_session import get_db_session
+    from src.core.database.models import Task
 
-    # Update task in database
-    tenant = get_current_tenant()
-    with get_db_session() as session:
-        db_task = session.query(Task).filter_by(task_id=req.task_id, tenant_id=tenant["tenant_id"]).first()
+    with get_db_session() as db_session:
+        db_task = db_session.query(Task).filter_by(task_id=req.task_id, tenant_id=tenant["tenant_id"]).first()
 
-        if db_task:
-            db_task.status = task.status
-            db_task.completed_at = task.completed_at.isoformat()
-            db_task.completed_by = task.resolved_by
-            db_task.task_metadata = {
-                "resolution": task.resolution,
-                "resolution_detail": task.resolution_detail,
-                "verification": verification.model_dump(),
-            }
-            session.commit()
+        if not db_task:
+            raise ToolError("NOT_FOUND", f"Task {req.task_id} not found")
+
+        # Mark as complete
+        resolution_detail = f"Marked complete by {req.completed_by}"
+        if not verification.verified:
+            resolution_detail += " (verification overridden)"
+
+        db_task.status = "completed"
+        db_task.resolution = "completed"
+        db_task.resolution_notes = resolution_detail
+        db_task.resolved_by = req.completed_by
+        db_task.completed_at = datetime.now(UTC)
+        db_task.updated_at = datetime.now(UTC)
+
+        # Update metadata with verification results
+        original_metadata = db_task.task_metadata or {}
+        db_task.task_metadata = {
+            **original_metadata,
+            "resolution": "completed",
+            "resolution_detail": resolution_detail,
+            "verification": verification.model_dump(),
+        }
+        db_session.commit()
 
     audit_logger = get_audit_logger("AdCP", tenant["tenant_id"])
     audit_logger.log_operation(
