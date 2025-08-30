@@ -73,12 +73,12 @@ def run_mcp_server():
 
 def run_admin_ui():
     """Run the Admin UI."""
-    print("Starting Admin UI on port 8001...")
+    admin_port = os.environ.get("ADMIN_UI_PORT", "8001")
+    print(f"Starting Admin UI on port {admin_port}...")
     env = os.environ.copy()
-    env["ADMIN_UI_PORT"] = "8001"
     env["PYTHONPATH"] = "/app"
     proc = subprocess.Popen(
-        [sys.executable, "src/admin/server.py"],
+        [sys.executable, "-m", "src.admin.server"],
         env=env,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
@@ -179,19 +179,31 @@ def main():
     a2a_thread.start()
     threads.append(a2a_thread)
 
-    # Give services time to start before nginx
-    time.sleep(5)
+    # Check if we should skip nginx (useful for docker-compose with separate services)
+    skip_nginx = os.environ.get("SKIP_NGINX", "false").lower() == "true"
 
-    # Nginx reverse proxy thread
-    nginx_thread = threading.Thread(target=run_nginx, daemon=True)
-    nginx_thread.start()
-    threads.append(nginx_thread)
+    if not skip_nginx:
+        # Give services time to start before nginx
+        time.sleep(5)
 
-    print("\n✅ All services started with unified routing:")
-    print("  - MCP Server: http://localhost:8000/mcp")
-    print("  - Admin UI: http://localhost:8000/admin")
-    print("  - A2A Server: http://localhost:8000/a2a")
-    print("\nPress Ctrl+C to stop all services")
+        # Nginx reverse proxy thread
+        nginx_thread = threading.Thread(target=run_nginx, daemon=True)
+        nginx_thread.start()
+        threads.append(nginx_thread)
+
+        print("\n✅ All services started with unified routing:")
+        print("  - MCP Server: http://localhost:8000/mcp")
+        print("  - Admin UI: http://localhost:8000/admin")
+        print("  - A2A Server: http://localhost:8000/a2a")
+        print("\nPress Ctrl+C to stop all services")
+    else:
+        admin_port = os.environ.get("ADMIN_UI_PORT", "8001")
+        print("\n✅ Services started (nginx skipped):")
+        print("  - MCP Server: http://localhost:8080")
+        print(f"  - Admin UI: http://localhost:{admin_port}")
+        print("  - A2A Server: http://localhost:8091")
+        print("\nℹ️  Nginx reverse proxy skipped (SKIP_NGINX=true)")
+        print("Press Ctrl+C to stop all services")
 
     # Keep the main thread alive
     try:

@@ -1,0 +1,185 @@
+{% extends "base.html" %}
+
+{% block title %}Approve Task - {{ task.task_id[:8] }}{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <nav aria-label="breadcrumb">
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item"><a href="{{ url_for('tenants.dashboard', tenant_id=tenant_id) }}">Dashboard</a></li>
+            <li class="breadcrumb-item"><a href="{{ url_for('tasks.list_tasks', tenant_id=tenant_id) }}">Tasks</a></li>
+            <li class="breadcrumb-item active">Approve Task</li>
+        </ol>
+    </nav>
+
+    <div class="row">
+        <div class="col-md-8">
+            <h2>Task Approval Required</h2>
+
+            <div class="card mt-4">
+                <div class="card-header">
+                    <h5 class="mb-0">Task Details</h5>
+                </div>
+                <div class="card-body">
+                    <dl class="row">
+                        <dt class="col-sm-3">Task ID:</dt>
+                        <dd class="col-sm-9"><code>{{ task.task_id }}</code></dd>
+
+                        <dt class="col-sm-3">Type:</dt>
+                        <dd class="col-sm-9">
+                            <span class="badge bg-info">{{ task.task_type }}</span>
+                        </dd>
+
+                        <dt class="col-sm-3">Priority:</dt>
+                        <dd class="col-sm-9">
+                            {% if task.priority == 'urgent' %}
+                                <span class="badge bg-danger">Urgent</span>
+                            {% elif task.priority == 'high' %}
+                                <span class="badge bg-warning">High</span>
+                            {% else %}
+                                <span class="badge bg-secondary">{{ task.priority|title }}</span>
+                            {% endif %}
+                        </dd>
+
+                        <dt class="col-sm-3">Created:</dt>
+                        <dd class="col-sm-9">{{ task.created_at.strftime('%Y-%m-%d %H:%M:%S') if task.created_at else 'N/A' }}</dd>
+
+                        {% if task.due_by %}
+                        <dt class="col-sm-3">Due By:</dt>
+                        <dd class="col-sm-9">{{ task.due_by.strftime('%Y-%m-%d %H:%M:%S') }}</dd>
+                        {% endif %}
+
+                        {% if task.operation %}
+                        <dt class="col-sm-3">Operation:</dt>
+                        <dd class="col-sm-9">{{ task.operation }}</dd>
+                        {% endif %}
+
+                        {% if principal %}
+                        <dt class="col-sm-3">Advertiser:</dt>
+                        <dd class="col-sm-9">{{ principal.name }}</dd>
+                        {% endif %}
+                    </dl>
+
+                    {% if task.error_detail %}
+                    <div class="alert alert-warning mt-3">
+                        <strong>Details:</strong> {{ task.error_detail }}
+                    </div>
+                    {% endif %}
+
+                    {% if task.context_data %}
+                    <div class="mt-3">
+                        <h6>Context Data:</h6>
+                        <pre class="bg-light p-2">{{ task.context_data|tojson(indent=2) }}</pre>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+
+            {% if media_buy %}
+            <div class="card mt-3">
+                <div class="card-header">
+                    <h5 class="mb-0">Related Media Buy</h5>
+                </div>
+                <div class="card-body">
+                    <dl class="row">
+                        <dt class="col-sm-3">Buy ID:</dt>
+                        <dd class="col-sm-9"><code>{{ media_buy.media_buy_id }}</code></dd>
+
+                        <dt class="col-sm-3">Status:</dt>
+                        <dd class="col-sm-9">
+                            <span class="badge bg-{{ 'warning' if media_buy.status == 'pending' else 'success' }}">
+                                {{ media_buy.status }}
+                            </span>
+                        </dd>
+
+                        <dt class="col-sm-3">Budget:</dt>
+                        <dd class="col-sm-9">${{ "{:,.2f}".format(media_buy.budget) if media_buy.budget else '0.00' }}</dd>
+
+                        <dt class="col-sm-3">Flight Dates:</dt>
+                        <dd class="col-sm-9">
+                            {{ media_buy.start_date.strftime('%Y-%m-%d') if media_buy.start_date else 'N/A' }} -
+                            {{ media_buy.end_date.strftime('%Y-%m-%d') if media_buy.end_date else 'N/A' }}
+                        </dd>
+                    </dl>
+                </div>
+            </div>
+            {% endif %}
+
+            <div class="card mt-4">
+                <div class="card-header">
+                    <h5 class="mb-0">Approval Decision</h5>
+                </div>
+                <div class="card-body">
+                    <form method="POST">
+                        <div class="mb-3">
+                            <label for="notes" class="form-label">Notes (optional)</label>
+                            <textarea class="form-control" id="notes" name="notes" rows="3"
+                                placeholder="Add any notes about your decision..."></textarea>
+                        </div>
+
+                        <div class="d-flex gap-2">
+                            <button type="submit" name="action" value="approve" class="btn btn-success">
+                                <i class="fas fa-check"></i> Approve Task
+                            </button>
+                            <button type="submit" name="action" value="reject" class="btn btn-danger">
+                                <i class="fas fa-times"></i> Reject Task
+                            </button>
+                            <a href="{{ url_for('tasks.list_tasks', tenant_id=tenant_id) }}" class="btn btn-secondary">
+                                Cancel
+                            </a>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-4">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0">Quick Actions</h5>
+                </div>
+                <div class="card-body">
+                    <div class="d-grid gap-2">
+                        {% if media_buy %}
+                        <a href="{{ url_for('operations.media_buy_detail', tenant_id=tenant_id, media_buy_id=media_buy.media_buy_id) }}"
+                           class="btn btn-outline-primary btn-sm">
+                            View Media Buy Details
+                        </a>
+                        {% endif %}
+
+                        <a href="{{ url_for('tasks.list_tasks', tenant_id=tenant_id) }}"
+                           class="btn btn-outline-secondary btn-sm">
+                            Back to Tasks List
+                        </a>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card mt-3">
+                <div class="card-header">
+                    <h5 class="mb-0">Help</h5>
+                </div>
+                <div class="card-body">
+                    <p class="small mb-2">
+                        <strong>What does approval mean?</strong>
+                    </p>
+                    <ul class="small">
+                        <li>For <strong>manual_approval</strong> tasks: The requested operation will be executed</li>
+                        <li>For <strong>creative_approval</strong> tasks: The creative will be marked as approved</li>
+                        <li>For <strong>compliance_review</strong> tasks: The compliance check will pass</li>
+                    </ul>
+
+                    <p class="small mb-2 mt-3">
+                        <strong>What does rejection mean?</strong>
+                    </p>
+                    <ul class="small">
+                        <li>The operation will not proceed</li>
+                        <li>The requester will be notified</li>
+                        <li>The task will be marked as completed with a "rejected" resolution</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

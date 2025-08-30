@@ -2,6 +2,61 @@
 
 ## Common Issues and Solutions
 
+### Dashboard and UI Issues
+
+#### "Error loading dashboard"
+This typically indicates missing database tables or columns.
+
+**Solution:**
+```sql
+-- Create tasks table with all required columns
+CREATE TABLE IF NOT EXISTS tasks (
+    task_id VARCHAR(100) PRIMARY KEY,
+    tenant_id VARCHAR(50) NOT NULL REFERENCES tenants(tenant_id) ON DELETE CASCADE,
+    media_buy_id VARCHAR(100),
+    task_type VARCHAR(50) NOT NULL,
+    title VARCHAR(255) NOT NULL DEFAULT '',
+    description TEXT,
+    status VARCHAR(20) NOT NULL DEFAULT 'pending',
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    assigned_to VARCHAR(255),
+    due_date TIMESTAMP WITH TIME ZONE,
+    completed_at TIMESTAMP WITH TIME ZONE,
+    completed_by VARCHAR(255),
+    task_metadata JSONB,
+    details JSONB,
+    strategy_id VARCHAR(255),
+    resolution VARCHAR(50),
+    resolution_notes TEXT,
+    resolved_by VARCHAR(255),
+    resolved_at TIMESTAMP WITH TIME ZONE,
+    context_id VARCHAR(100)
+);
+
+-- Create indexes
+CREATE INDEX IF NOT EXISTS idx_tasks_tenant ON tasks(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status);
+CREATE INDEX IF NOT EXISTS idx_tasks_strategy ON tasks(strategy_id);
+```
+
+#### "Task not found" or "Error loading tasks"
+Missing template files for task management.
+
+**Solution:**
+Ensure these template files exist:
+- `templates/tasks.html` - Task listing page
+- `templates/task_detail.html` - Task detail view
+- `templates/task_approve.html` - Task approval interface
+
+#### Activity Feed Not Updating
+The activity feed uses Server-Sent Events (SSE) for real-time updates.
+
+**Check:**
+1. SSE endpoint is accessible: `http://localhost:8001/admin/tenant/{tenant_id}/events`
+2. Database audit_logs table is being populated
+3. No browser extensions blocking SSE connections
+
 ### Authentication Problems
 
 #### "Access Denied" in Admin UI

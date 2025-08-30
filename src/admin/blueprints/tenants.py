@@ -1,7 +1,7 @@
 """Tenant management blueprint for admin UI.
 
 ⚠️ ROUTING NOTICE: This file contains the ACTUAL handler for tenant settings!
-- URL: /admin/tenant/{id}/settings  
+- URL: /admin/tenant/{id}/settings
 - Function: settings()
 - DO NOT confuse with src/admin/blueprints/settings.py which handles superadmin settings
 """
@@ -14,7 +14,7 @@ import uuid
 from datetime import UTC, datetime
 
 from flask import Blueprint, flash, jsonify, redirect, render_template, request, session, url_for
-from sqlalchemy import and_
+from sqlalchemy.orm import joinedload
 
 from src.admin.utils import get_tenant_config_from_db, require_auth, require_tenant_access
 from src.core.database.database_session import get_db_session
@@ -54,14 +54,11 @@ def dashboard(tenant_id):
 
             products_count = db_session.query(Product).filter_by(tenant_id=tenant_id).count()
 
-            # Get recent media buys - use outerjoin to handle missing principals
+            # Get recent media buys with eager loading to avoid N+1 queries
             recent_buys = (
-                db_session.query(MediaBuy, Principal)
-                .outerjoin(
-                    Principal,
-                    and_(MediaBuy.principal_id == Principal.principal_id, MediaBuy.tenant_id == Principal.tenant_id),
-                )
+                db_session.query(MediaBuy)
                 .filter(MediaBuy.tenant_id == tenant_id)
+                .options(joinedload(MediaBuy.principal))  # Eager load principal relationship
                 .order_by(MediaBuy.created_at.desc())
                 .limit(10)
                 .all()
@@ -110,9 +107,17 @@ def dashboard(tenant_id):
             # Calculate pending buys
             pending_buys = db_session.query(MediaBuy).filter_by(tenant_id=tenant_id, status="pending").count()
 
-            # Calculate tasks metrics
-            open_tasks = 0  # Could be calculated from human_tasks table if needed
-            overdue_tasks = 0  # Could be calculated from human_tasks with due dates
+            # Calculate tasks metrics from the Task table
+            from src.core.database.models import Task
+
+            open_tasks = db_session.query(Task).filter_by(tenant_id=tenant_id, status="pending").count()
+
+            # Calculate overdue tasks (tasks past their due date)
+            overdue_tasks = (
+                db_session.query(Task)
+                .filter(Task.tenant_id == tenant_id, Task.status == "pending", Task.due_date < datetime.now(UTC))
+                .count()
+            )
 
             # Calculate advertiser metrics
             active_advertisers = db_session.query(Principal).filter_by(tenant_id=tenant_id).count()
@@ -136,9 +141,9 @@ def dashboard(tenant_id):
             chart_labels = [d["date"] for d in revenue_data]
             chart_data = [d["revenue"] for d in revenue_data]
 
-            # Transform recent_buys tuples to list of MediaBuy objects with extra properties
+            # Transform recent_buys to list with extra properties
             recent_media_buys_list = []
-            for media_buy, _principal in recent_buys:
+            for media_buy in recent_buys:
                 # TODO: Calculate actual spend from delivery data when available
                 media_buy.spend = 0
 
@@ -146,6 +151,9 @@ def dashboard(tenant_id):
                 media_buy.created_at_relative = (
                     media_buy.created_at.strftime("%Y-%m-%d") if media_buy.created_at else "Unknown"
                 )
+
+                # Add advertiser name from eager-loaded principal
+                media_buy.advertiser_name = media_buy.principal.name if media_buy.principal else "Unknown"
 
                 recent_media_buys_list.append(media_buy)
 
@@ -184,12 +192,12 @@ def dashboard(tenant_id):
 @require_tenant_access()
 def tenant_settings(tenant_id, section=None):
     """Show tenant settings page.
-    
+
     ⚠️ IMPORTANT: This is the ACTUAL handler for /admin/tenant/{id}/settings URLs.
     Function renamed from settings() to tenant_settings() for clarity.
-    
+
     This function handles the main tenant settings UI including:
-    - Adapter selection and configuration 
+    - Adapter selection and configuration
     - GAM OAuth status
     - Template rendering with active_adapter variable
     """
@@ -217,21 +225,22 @@ def tenant_settings(tenant_id, section=None):
 
             # Get advertiser data for the advertisers section
             from src.core.database.models import Principal
+
             principals = db_session.query(Principal).filter_by(tenant_id=tenant_id).all()
             advertiser_count = len(principals)
             active_advertisers = len(principals)  # For now, assume all are active
-            
+
             # Get additional variables that the template expects
             last_sync_time = None  # Could be enhanced to track actual sync times
-            
+
             # Convert adapter_config to dict format for template compatibility
             adapter_config_dict = {}
             if adapter_config_obj:
                 adapter_config_dict = {
-                    'network_code': adapter_config_obj.gam_network_code or '',
-                    'refresh_token': adapter_config_obj.gam_refresh_token or '',
-                    'trafficker_id': adapter_config_obj.gam_trafficker_id or '',
-                    'application_name': getattr(adapter_config_obj, 'gam_application_name', '') or '',
+                    "network_code": adapter_config_obj.gam_network_code or "",
+                    "refresh_token": adapter_config_obj.gam_refresh_token or "",
+                    "trafficker_id": adapter_config_obj.gam_trafficker_id or "",
+                    "application_name": getattr(adapter_config_obj, "gam_application_name", "") or "",
                 }
 
             return render_template(
@@ -694,30 +703,30 @@ def delete_principal(tenant_id, principal_id):
     try:
         with get_db_session() as db_session:
             # Find the principal
-            principal = db_session.query(Principal).filter_by(
-                tenant_id=tenant_id, 
-                principal_id=principal_id
-            ).first()
-            
+            principal = db_session.query(Principal).filter_by(tenant_id=tenant_id, principal_id=principal_id).first()
+
             if not principal:
                 return jsonify({"error": "Principal not found"}), 404
-            
+
             # Check if principal has active media buys
             from src.core.database.models import MediaBuy
-            active_buys = db_session.query(MediaBuy).filter_by(
-                tenant_id=tenant_id,
-                principal_id=principal_id
-            ).filter(MediaBuy.status.in_(['active', 'pending'])).count()
-            
+
+            active_buys = (
+                db_session.query(MediaBuy)
+                .filter_by(tenant_id=tenant_id, principal_id=principal_id)
+                .filter(MediaBuy.status.in_(["active", "pending"]))
+                .count()
+            )
+
             if active_buys > 0:
                 return jsonify({"error": f"Cannot delete principal with {active_buys} active media buys"}), 400
-            
+
             # Delete the principal
             db_session.delete(principal)
             db_session.commit()
-            
+
             return jsonify({"success": True, "message": f"Principal {principal.name} deleted successfully"})
-            
+
     except Exception as e:
         logger.error(f"Error deleting principal {principal_id}: {e}", exc_info=True)
         return jsonify({"error": "Internal server error"}), 500
