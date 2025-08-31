@@ -107,10 +107,37 @@ def dashboard(tenant_id):
             # Calculate pending buys
             pending_buys = db_session.query(MediaBuy).filter_by(tenant_id=tenant_id, status="pending").count()
 
-            # Task metrics removed - tasks were eliminated in favor of workflow system
-            # TODO: Replace with workflow-based metrics if needed
-            open_tasks = 0
-            overdue_tasks = 0
+            # Calculate workflow-based metrics
+            from src.core.database.models import WorkflowStep
+
+            # Get pending workflow steps that require action
+            pending_steps = (
+                db_session.query(WorkflowStep)
+                .filter(
+                    WorkflowStep.tenant_id == tenant_id,
+                    WorkflowStep.status.in_(["requires_approval", "pending", "active"]),
+                )
+                .count()
+            )
+
+            # Get workflow steps requiring immediate attention (approval needed)
+            approval_needed = (
+                db_session.query(WorkflowStep)
+                .filter(WorkflowStep.tenant_id == tenant_id, WorkflowStep.status == "requires_approval")
+                .count()
+            )
+
+            # Get recent completed workflow steps (for activity feed)
+            recent_activity = (
+                db_session.query(WorkflowStep)
+                .filter(
+                    WorkflowStep.tenant_id == tenant_id,
+                    WorkflowStep.status.in_(["completed", "failed", "requires_approval"]),
+                )
+                .order_by(WorkflowStep.created_at.desc())
+                .limit(10)
+                .all()
+            )
 
             # Calculate advertiser metrics
             active_advertisers = db_session.query(Principal).filter_by(tenant_id=tenant_id).count()
@@ -124,8 +151,9 @@ def dashboard(tenant_id):
                 "conversion_rate": 0.0,  # Could be calculated from actual data
                 "revenue_change": round(revenue_change, 1),
                 "revenue_change_abs": round(abs(revenue_change), 1),  # Absolute value for display
-                "open_tasks": open_tasks,
-                "overdue_tasks": overdue_tasks,
+                "pending_workflows": pending_steps,
+                "approval_needed": approval_needed,
+                "recent_activity": recent_activity,
                 "active_advertisers": active_advertisers,
                 "total_advertisers": active_advertisers,  # Same for now, could differentiate active vs total
             }
