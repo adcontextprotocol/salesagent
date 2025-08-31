@@ -107,17 +107,10 @@ def dashboard(tenant_id):
             # Calculate pending buys
             pending_buys = db_session.query(MediaBuy).filter_by(tenant_id=tenant_id, status="pending").count()
 
-            # Calculate tasks metrics from the Task table
-            from src.core.database.models import Task
-
-            open_tasks = db_session.query(Task).filter_by(tenant_id=tenant_id, status="pending").count()
-
-            # Calculate overdue tasks (tasks past their due date)
-            overdue_tasks = (
-                db_session.query(Task)
-                .filter(Task.tenant_id == tenant_id, Task.status == "pending", Task.due_date < datetime.now(UTC))
-                .count()
-            )
+            # Task metrics removed - tasks were eliminated in favor of workflow system
+            # TODO: Replace with workflow-based metrics if needed
+            open_tasks = 0
+            overdue_tasks = 0
 
             # Calculate advertiser metrics
             active_advertisers = db_session.query(Principal).filter_by(tenant_id=tenant_id).count()

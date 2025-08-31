@@ -23,7 +23,8 @@ from src.admin.blueprints.policy import policy_bp
 from src.admin.blueprints.principals import principals_bp
 from src.admin.blueprints.products import products_bp
 from src.admin.blueprints.settings import settings_bp, superadmin_settings_bp
-from src.admin.blueprints.tasks import tasks_bp
+
+# from src.admin.blueprints.tasks import tasks_bp  # Disabled - tasks eliminated in favor of workflow system
 from src.admin.blueprints.tenants import tenants_bp
 from src.admin.blueprints.users import users_bp
 
@@ -184,7 +185,7 @@ def create_app(config=None):
     app.register_blueprint(api_bp, url_prefix="/api")
     app.register_blueprint(activity_stream_bp, url_prefix="/admin")  # SSE endpoints
     app.register_blueprint(mcp_test_bp)
-    app.register_blueprint(tasks_bp)  # Tasks management
+    # app.register_blueprint(tasks_bp)  # Tasks management - Disabled, tasks eliminated in favor of workflow system
 
     # Import and register existing blueprints
     try:
