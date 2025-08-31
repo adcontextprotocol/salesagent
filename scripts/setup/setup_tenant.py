@@ -42,6 +42,10 @@ def create_tenant(args):
             sys.exit(1)
 
         # Create tenant with new schema
+        from datetime import datetime
+
+        now = datetime.utcnow()
+
         tenant = Tenant(
             tenant_id=tenant_id,
             name=args.name,
@@ -55,6 +59,8 @@ def create_tenant(args):
             policy_settings=policy_settings,
             is_active=True,
             billing_plan="standard",
+            created_at=now,
+            updated_at=now,
         )
         session.add(tenant)
 
