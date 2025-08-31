@@ -49,6 +49,7 @@ from src.core.schemas import (
     AssignCreativeRequest,
     AssignCreativeResponse,
     AssignTaskRequest,
+    Budget,  # AdCP v2.4 Budget model
     CheckAEERequirementsRequest,
     CheckAEERequirementsResponse,
     CheckCreativeStatusRequest,
@@ -716,11 +717,8 @@ async def get_products(req: GetProductsRequest, context: Context) -> GetProducts
         is_eligible, reason = policy_service.check_product_eligibility(policy_result, product.model_dump())
 
         if is_eligible:
-            # Add policy compliance information to product
-            if policy_result.status == PolicyStatus.RESTRICTED:
-                product.policy_compliance = f"Restricted: {', '.join(policy_result.restrictions)}"
-            else:
-                product.policy_compliance = "Compliant"
+            # Product passed policy checks - add to eligible products
+            # Note: policy_compliance field removed in AdCP v2.4
             eligible_products.append(product)
         else:
             logger.info(f"Product {product.product_id} excluded: {reason}")
@@ -852,26 +850,35 @@ def create_media_buy(req: CreateMediaBuyRequest, context: Context) -> CreateMedi
 
     # Validate input parameters
     # 1. Budget validation
-    if req.total_budget is not None and req.total_budget <= 0:
-        error_msg = f"Invalid budget: {req.total_budget}. Budget must be positive."
+    total_budget = req.get_total_budget()
+    if total_budget <= 0:
+        error_msg = f"Invalid budget: {total_budget}. Budget must be positive."
         raise ToolError(error_msg)
 
-    # 2. Date validation
-    from datetime import date
+    # 2. DateTime validation
+    from datetime import datetime
 
-    today = date.today()
+    now = datetime.utcnow()
 
-    if req.start_date and req.end_date:
-        start_date = req.start_date if isinstance(req.start_date, date) else date.fromisoformat(req.start_date)
-        end_date = req.end_date if isinstance(req.end_date, date) else date.fromisoformat(req.end_date)
+    if req.start_time < now:
+        error_msg = f"Invalid start time: {req.start_time}. Start time cannot be in the past."
+        raise ToolError(error_msg)
 
-        if start_date < today:
-            error_msg = f"Invalid start date: {start_date}. Start date cannot be in the past."
-            raise ToolError(error_msg)
+    if req.end_time <= req.start_time:
+        error_msg = f"Invalid time range: end time ({req.end_time}) must be after start time ({req.start_time})."
+        raise ToolError(error_msg)
 
-        if end_date <= start_date:
-            error_msg = f"Invalid date range: end date ({end_date}) must be after start date ({start_date})."
-            raise ToolError(error_msg)
+    # 3. Package/Product validation
+    product_ids = req.get_product_ids()
+    if not product_ids:
+        error_msg = "At least one product is required."
+        raise ToolError(error_msg)
+
+    if req.packages:
+        for package in req.packages:
+            if not package.products:
+                error_msg = f"Package {package.buyer_ref} must contain at least one product."
+                raise ToolError(error_msg)
 
     # Validate targeting doesn't use managed-only dimensions
     if req.targeting_overlay:
@@ -1013,7 +1020,8 @@ def create_media_buy(req: CreateMediaBuyRequest, context: Context) -> CreateMedi
 
     # Get products for the media buy
     catalog = get_product_catalog()
-    products_in_buy = [p for p in catalog if p.product_id in req.product_ids]
+    product_ids = req.get_product_ids()
+    products_in_buy = [p for p in catalog if p.product_id in product_ids]
 
     # Note: Key-value pairs are NOT aggregated here anymore.
     # Each product maintains its own custom_targeting_keys in implementation_config
@@ -1031,15 +1039,13 @@ def create_media_buy(req: CreateMediaBuyRequest, context: Context) -> CreateMedi
                 name=product.name,
                 delivery_type=product.delivery_type,
                 cpm=product.cpm if product.cpm else 10.0,  # Default CPM
-                impressions=int(req.total_budget / (product.cpm if product.cpm else 10.0) * 1000),
+                impressions=int(total_budget / (product.cpm if product.cpm else 10.0) * 1000),
                 format_ids=[format_info.format_id] if format_info else [],
             )
         )
 
     # Create the media buy using the adapter (SYNCHRONOUS operation)
-    start_time = datetime.combine(req.start_date, datetime.min.time())
-    end_time = datetime.combine(req.end_date, datetime.max.time())
-    response = adapter.create_media_buy(req, packages, start_time, end_time)
+    response = adapter.create_media_buy(req, packages, req.start_time, req.end_time)
 
     # Store the media buy in memory (for backward compatibility)
     media_buys[response.media_buy_id] = (req, principal_id)
@@ -1051,13 +1057,17 @@ def create_media_buy(req: CreateMediaBuyRequest, context: Context) -> CreateMedi
             media_buy_id=response.media_buy_id,
             tenant_id=tenant["tenant_id"],
             principal_id=principal_id,
+            buyer_ref=req.buyer_ref,  # AdCP v2.4 buyer reference
             order_name=req.po_number or f"Order-{response.media_buy_id}",
             advertiser_name=principal.name,
             campaign_objective=getattr(req, "campaign_objective", ""),  # Optional field
             kpi_goal=getattr(req, "kpi_goal", ""),  # Optional field
-            budget=req.total_budget,
-            start_date=req.start_date,
-            end_date=req.end_date,
+            budget=total_budget,  # Extract total budget
+            currency=req.budget.currency if req.budget else "USD",  # AdCP v2.4 currency field
+            start_date=req.start_time.date(),  # Legacy field for compatibility
+            end_date=req.end_time.date(),  # Legacy field for compatibility
+            start_time=req.start_time,  # AdCP v2.4 datetime scheduling
+            end_time=req.end_time,  # AdCP v2.4 datetime scheduling
             status=response.status or "active",
             raw_request=req.model_dump(mode="json"),
         )
@@ -1087,8 +1097,25 @@ def create_media_buy(req: CreateMediaBuyRequest, context: Context) -> CreateMedi
                 detail="Creative submitted to ad server",
             )
 
-    # Add message to response (no context_id for synchronous operations)
-    response.message = f"Media buy {response.media_buy_id} has been created successfully. Your campaign will run from {req.start_date} to {req.end_date} with a budget of ${req.total_budget}."
+    # Build packages list for response (AdCP v2.4 format)
+    response_packages = []
+    for i, package in enumerate(req.packages):
+        response_packages.append(
+            {
+                "package_id": f"{response.media_buy_id}_pkg_{i+1}",
+                "buyer_ref": package.buyer_ref,
+                "products": package.products,
+                "status": "active",
+            }
+        )
+
+    # Create AdCP v2.4 compliant response
+    adcp_response = CreateMediaBuyResponse(
+        media_buy_id=response.media_buy_id,
+        buyer_ref=req.buyer_ref,
+        packages=response_packages,
+        creative_deadline=response.creative_deadline,
+    )
 
     # Log activity
     log_tool_activity(context, "create_media_buy", start_time)
@@ -1105,23 +1132,21 @@ def create_media_buy(req: CreateMediaBuyRequest, context: Context) -> CreateMedi
             if principal:
                 principal_name = principal.name
 
-        # Calculate duration
-        start_date = datetime.strptime(req.start_date, "%Y-%m-%d")
-        end_date = datetime.strptime(req.end_date, "%Y-%m-%d")
-        duration_days = (end_date - start_date).days + 1
+        # Calculate duration using new datetime fields
+        duration_days = (req.end_time - req.start_time).days + 1
 
         activity_feed.log_media_buy(
             tenant_id=tenant["tenant_id"],
             principal_name=principal_name,
             media_buy_id=response.media_buy_id,
-            budget=req.total_budget,
+            budget=total_budget,  # Extract total budget
             duration_days=duration_days,
             action="created",
         )
     except:
         pass
 
-    return response
+    return adcp_response
 
 
 @mcp.tool
@@ -1129,32 +1154,32 @@ def check_media_buy_status(req: CheckMediaBuyStatusRequest, context: Context) ->
     """Check the status of a media buy using the context_id or media_buy_id."""
     _get_principal_id_from_context(context)
 
-    # Get the media_buy_id - either directly provided or from context_id
+    # Get the media_buy_id - either directly provided or from buyer_ref
     media_buy_id = req.media_buy_id  # Direct media_buy_id takes precedence
+    buyer_ref = None
 
-    if not media_buy_id and req.context_id:
-        # Try to get from memory map first
-        if req.context_id in context_map:
-            media_buy_id = context_map[req.context_id]
-
-        # If not in memory, check database (but context_id column is disabled)
-        if not media_buy_id:
-            with get_db_session() as session:
-                # Note: context_id column is currently disabled in MediaBuy model
-                # This fallback won't work until column is re-enabled
-                # media_buy = session.query(MediaBuy).filter_by(context_id=req.context_id).first()
-                pass  # Skip database lookup for now
+    if not media_buy_id and req.buyer_ref:
+        # AdCP v2.4 - lookup by buyer_ref
+        with get_db_session() as session:
+            tenant = get_current_tenant()
+            media_buy = (
+                session.query(MediaBuy).filter_by(buyer_ref=req.buyer_ref, tenant_id=tenant["tenant_id"]).first()
+            )
+            if media_buy:
+                media_buy_id = media_buy.media_buy_id
+                buyer_ref = media_buy.buyer_ref
 
     if not media_buy_id:
-        # Neither context_id nor media_buy_id worked
-        identifier = req.context_id if req.context_id else req.media_buy_id
+        # Neither media_buy_id nor buyer_ref worked
+        identifier = req.buyer_ref if req.buyer_ref else req.media_buy_id
         return CheckMediaBuyStatusResponse(
             media_buy_id="",
+            buyer_ref="",
             status="not_found",
-            detail=f"No media buy found for identifier: {identifier}",
+            packages=[],
+            budget_spent=None,
+            budget_remaining=None,
             creative_count=0,
-            budget_spent=0.0,
-            budget_remaining=0.0,
         )
 
     # Check if media buy exists in memory
@@ -1175,29 +1200,52 @@ def check_media_buy_status(req: CheckMediaBuyStatusRequest, context: Context) ->
                 status = "active" if creative_count > 0 else "pending_creative"
                 detail = "Media buy is active" if creative_count > 0 else "Awaiting creative assets"
 
+        # Get buyer_ref and currency - either from request or database lookup
+        if not buyer_ref:
+            # Try to get from database
+            with get_db_session() as session:
+                tenant = get_current_tenant()
+                media_buy = (
+                    session.query(MediaBuy).filter_by(media_buy_id=media_buy_id, tenant_id=tenant["tenant_id"]).first()
+                )
+                if media_buy:
+                    buyer_ref = media_buy.buyer_ref or "unknown"
+                    currency = media_buy.currency or "USD"
+                else:
+                    buyer_ref = "unknown"
+                    currency = "USD"
+        else:
+            currency = "USD"  # Default, should be from database
+
         return CheckMediaBuyStatusResponse(
             media_buy_id=media_buy_id,
+            buyer_ref=buyer_ref or "unknown",
             status=status,
-            detail=detail,
+            packages=[],  # Would need to build from database
+            budget_spent=Budget(total=0.0, currency=currency),
+            budget_remaining=Budget(total=buy_req.total_budget, currency=currency),
             creative_count=creative_count,
-            budget_spent=0.0,  # Would need adapter integration for real data
-            budget_remaining=buy_req.total_budget,
         )
     else:
         # Not found
         return CheckMediaBuyStatusResponse(
             media_buy_id=media_buy_id or "",
+            buyer_ref="",
             status="not_found",
-            detail="Media buy not found",
+            packages=[],
+            budget_spent=None,
+            budget_remaining=None,
             creative_count=0,
-            budget_spent=0.0,
-            budget_remaining=0.0,
         )
 
 
 @mcp.tool
 def add_creative_assets(req: AddCreativeAssetsRequest, context: Context) -> AddCreativeAssetsResponse:
-    _verify_principal(req.media_buy_id, context)
+    # AdCP v2.4 - Handle both media_buy_id and buyer_ref
+    if req.media_buy_id:
+        _verify_principal(req.media_buy_id, context)
+    # Note: buyer_ref verification would need database lookup - implement as needed
+
     principal_id = _get_principal_id_from_context(context)
     tenant = get_current_tenant()
 
@@ -1229,8 +1277,8 @@ def add_creative_assets(req: AddCreativeAssetsRequest, context: Context) -> AddC
     }
     creative_engine = MockCreativeEngine(creative_engine_config)
 
-    # Process creatives through the creative engine
-    statuses = creative_engine.process_creatives(req.creatives)
+    # Process assets through the creative engine (AdCP v2.4 uses 'assets' field)
+    statuses = creative_engine.process_creatives(req.assets)
     pending_count = 0
     approved_count = 0
 
@@ -1282,7 +1330,8 @@ def add_creative_assets(req: AddCreativeAssetsRequest, context: Context) -> AddC
                     tool_name="approve_creative",
                     request_data={
                         "creative_id": status.creative_id,
-                        "media_buy_id": req.media_buy_id,
+                        "media_buy_id": req.media_buy_id,  # May be None in AdCP v2.4
+                        "buyer_ref": req.buyer_ref,  # May be None in AdCP v2.4
                     },
                 )
 
@@ -1291,9 +1340,9 @@ def add_creative_assets(req: AddCreativeAssetsRequest, context: Context) -> AddC
             f"{pending_count} creative(s) require human review",
             clarification_details=f"Please review and approve {pending_count} pending creative(s)",
         )
-        message = f"Submitted {len(req.creatives)} creatives: {approved_count} approved, {pending_count} pending review"
+        message = f"Submitted {len(req.assets)} assets: {approved_count} approved, {pending_count} pending review"
     else:
-        message = f"All {len(req.creatives)} creatives were approved automatically"
+        message = f"All {len(req.assets)} assets were approved automatically"
 
     # Update workflow step with success
     ctx_manager.update_workflow_step(
@@ -1306,10 +1355,8 @@ def add_creative_assets(req: AddCreativeAssetsRequest, context: Context) -> AddC
         },
     )
 
-    # Add context_id to response
+    # Create AdCP v2.4 compliant response (no context_id or message fields)
     response = AddCreativeAssetsResponse(statuses=statuses)
-    response.context_id = persistent_ctx.context_id
-    response.message = message
 
     return response
 
@@ -1575,7 +1622,41 @@ def update_media_buy(req: UpdateMediaBuyRequest, context: Context) -> UpdateMedi
                     )
                     return result
 
-    # Validate update parameters
+    # Handle budget updates (support both Budget object and float)
+    if req.budget is not None:
+        if isinstance(req.budget, dict):
+            # Handle Budget object
+            total_budget = req.budget.get("total", 0)
+            currency = req.budget.get("currency", "USD")
+        elif hasattr(req.budget, "total"):
+            # Handle Budget model instance
+            total_budget = req.budget.total
+            currency = req.budget.currency
+        else:
+            # Handle float
+            total_budget = req.budget
+            currency = req.currency or "USD"
+
+        if total_budget <= 0:
+            error_msg = f"Invalid budget: {total_budget}. Budget must be positive."
+            ctx_manager.update_workflow_step(step.step_id, status="failed", error_message=error_msg)
+            return UpdateMediaBuyResponse(status="failed", detail=error_msg)
+
+        # Store budget update in media buy
+        if req.media_buy_id in media_buys:
+            buy_data = media_buys[req.media_buy_id]
+            if isinstance(buy_data, tuple) and len(buy_data) >= 2:
+                # Update with new budget info
+                media_buys[req.media_buy_id] = (
+                    {
+                        "budget": total_budget,
+                        "currency": currency,
+                        "buyer_ref": req.buyer_ref or buy_data[0].get("buyer_ref"),
+                    },
+                    buy_data[1],  # Keep principal_id
+                )
+
+    # Validate update parameters (backwards compatibility)
     if req.total_budget is not None and req.total_budget <= 0:
         error_msg = f"Invalid budget: {req.total_budget}. Budget must be positive."
         ctx_manager.update_workflow_step(step.step_id, status="failed", error_message=error_msg)

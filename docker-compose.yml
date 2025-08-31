@@ -80,6 +80,10 @@ services:
       # Test mode
       ADCP_AUTH_TEST_MODE: ${ADCP_AUTH_TEST_MODE:-false}
 
+      # Server ports for MCP and A2A testing
+      ADCP_SALES_PORT: ${ADCP_SALES_PORT:-8080}
+      A2A_PORT: ${A2A_PORT:-8091}
+
       # Skip nginx for standalone service
       SKIP_NGINX: "true"
 

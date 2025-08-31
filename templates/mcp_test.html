@@ -188,6 +188,35 @@
     </div>
 </div>
 
+<!-- A2A Server Information -->
+<div class="test-section" style="margin-top: 2rem; background: #f8fafc; border: 1px solid #e2e8f0;">
+    <h2>A2A Server Information</h2>
+    <p style="color: #6b7280; margin-bottom: 1rem;">
+        Agent-to-Agent (A2A) server is also available for programmatic access.
+    </p>
+
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+        <div>
+            <label style="font-weight: 500; color: #374151;">A2A Server URL</label>
+            <input type="text" readonly value="{{ a2a_server_url }}"
+                   style="background: #f9fafb; margin-top: 0.25rem; padding: 0.5rem; border: 1px solid #d1d5db; border-radius: 4px; width: 100%;">
+        </div>
+        <div>
+            <label style="font-weight: 500; color: #374151;">Protocol</label>
+            <div style="margin-top: 0.25rem; padding: 0.5rem; background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 4px; color: #15803d;">
+                REST API + JSON-RPC 2.0
+            </div>
+        </div>
+    </div>
+
+    <div style="margin-top: 1rem;">
+        <small style="color: #6b7280;">
+            💡 <strong>Tip:</strong> Use the A2A server for agent-to-agent communication, automated workflows, and integration with other AI systems.
+            Authentication uses Bearer tokens via the Authorization header.
+        </small>
+    </div>
+</div>
+
 <div id="results_container" style="display: none;">
     <div class="results-section">
         <h3>Request</h3>
@@ -229,49 +258,79 @@ function selectMethod(method) {
     const paramsField = document.getElementById('params');
     const sampleParams = {
         'get_products': JSON.stringify({
-            brief: "display ads for news content",
-            promoted_offering: "Tech startup promoting new AI-powered analytics platform"
+            req: {
+                brief: "display ads for news content",
+                promoted_offering: "Tech startup promoting new AI-powered analytics platform"
+            }
         }, null, 2),
         'get_signals': JSON.stringify({
-            query: "sports",
-            type: "contextual"
+            req: {
+                query: "sports",
+                type: "contextual"
+            }
         }, null, 2),
         'create_media_buy': JSON.stringify({
-            product_ids: ["product_1"],
-            budget: 1000.0,
-            start_date: new Date().toISOString().split('T')[0],
-            end_date: new Date(Date.now() + 30*24*60*60*1000).toISOString().split('T')[0],
-            targeting_overlay: {
-                geo_country_any_of: ["US", "CA"],
-                device_type_any_of: ["desktop", "mobile"]
+            req: {
+                buyer_ref: "buyer_demo_001",
+                packages: [{
+                    buyer_ref: "pkg_001",
+                    products: ["product_1"],
+                    budget: {
+                        total: 1000.0,
+                        currency: "USD"
+                    },
+                    targeting_overlay: {
+                        geo_country_any_of: ["US", "CA"],
+                        device_type_any_of: ["desktop", "mobile"]
+                    }
+                }],
+                budget: {
+                    total: 1000.0,
+                    currency: "USD"
+                },
+                start_time: new Date().toISOString(),
+                end_time: new Date(Date.now() + 30*24*60*60*1000).toISOString()
             }
         }, null, 2),
         'check_media_buy_status': JSON.stringify({
-            media_buy_id: "mb_123"
+            req: {
+                media_buy_id: "mb_123"
+            }
         }, null, 2),
         'update_media_buy': JSON.stringify({
-            media_buy_id: "mb_123",
-            budget: 2000.0,
-            targeting_overlay: {
-                geo_country_any_of: ["US", "GB"]
+            req: {
+                media_buy_id: "mb_123",
+                budget: {
+                    total: 2000.0,
+                    currency: "USD"
+                },
+                targeting_overlay: {
+                    geo_country_any_of: ["US", "GB"]
+                }
             }
         }, null, 2),
         'add_creative_assets': JSON.stringify({
-            media_buy_id: "mb_123",
-            creatives: [{
-                creative_id: "creative_1",
-                format: "display_300x250",
-                content: {
-                    type: "url",
-                    url: "https://example.com/creative.jpg"
-                }
-            }]
+            req: {
+                media_buy_id: "mb_123",
+                assets: [{
+                    creative_id: "creative_1",
+                    format: "display_300x250",
+                    content: {
+                        type: "url",
+                        url: "https://example.com/creative.jpg"
+                    }
+                }]
+            }
         }, null, 2),
         'check_creative_status': JSON.stringify({
-            creative_ids: ["creative_1"]
+            req: {
+                creative_ids: ["creative_1"]
+            }
         }, null, 2),
         'get_media_buy_delivery': JSON.stringify({
-            media_buy_id: "mb_123"
+            req: {
+                media_buy_id: "mb_123"
+            }
         }, null, 2)
     };
 

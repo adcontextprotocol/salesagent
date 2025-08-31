@@ -630,6 +630,7 @@
             <tr>
                 <th>Advertiser</th>
                 <th>Media Buy ID</th>
+                <th>Buyer Ref</th>
                 <th>Status</th>
                 <th>Budget</th>
                 <th>Spend</th>
@@ -641,10 +642,11 @@
             <tr>
                 <td class="advertiser-name">{{ buy.advertiser_name }}</td>
                 <td><code style="font-size: 0.75rem;">{{ buy.media_buy_id }}</code></td>
+                <td><code style="font-size: 0.75rem;">{{ buy.buyer_ref or '-' }}</code></td>
                 <td>
                     <span class="buy-status {{ buy.status }}">{{ buy.status|upper }}</span>
                 </td>
-                <td class="spend-amount">${{ "{:,.0f}".format(buy.budget) }}</td>
+                <td class="spend-amount">${{ "{:,.0f}".format(buy.budget) }} {{ buy.currency or 'USD' }}</td>
                 <td>${{ "{:,.0f}".format(buy.spend) }}</td>
                 <td style="color: #6b7280;">{{ buy.created_at_relative }}</td>
             </tr>
