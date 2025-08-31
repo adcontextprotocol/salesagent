@@ -12,12 +12,9 @@ specifically testing the scenarios that caused the regression:
 This would have caught the regression where network code was required upfront.
 """
 
-import os
-import sqlite3
 import sys
-import tempfile
 from pathlib import Path
-from unittest.mock import MagicMock, Mock, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -26,6 +23,7 @@ project_root = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(project_root))
 
 from scripts.setup.setup_tenant import create_tenant, main
+from src.core.database.models import AdapterConfig, Tenant
 
 
 @pytest.mark.integration
@@ -33,138 +31,85 @@ from scripts.setup.setup_tenant import create_tenant, main
 class TestGAMTenantSetup:
     """Test GAM tenant setup and configuration flow."""
 
-    @pytest.mark.xfail(reason="Needs database isolation fix")
-    def test_gam_tenant_creation_without_network_code(self):
+    def test_gam_tenant_creation_without_network_code(self, test_database):
         """
         Test that a GAM tenant can be created without providing network code upfront.
 
         This tests the core regression scenario: network code should be optional
         during tenant creation when using OAuth tokens.
         """
-        # Create temporary database
-        with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as tmp:
-            tmp_path = tmp.name
+        # Create a simple args object without network code (should work)
+        import uuid
 
-        try:
-            # Create database schema
-            conn = sqlite3.connect(tmp_path)
-            self._create_test_schema(conn)
+        unique_id = str(uuid.uuid4())[:8]
 
-            # Mock database connection to use our test DB
-            with patch("scripts.setup.setup_tenant.get_db_session") as mock_get_session:
-                # Create a mock session that works with SQLAlchemy ORM
-                mock_session = Mock()
-                mock_session.execute = conn.execute
-                mock_session.commit = conn.commit
-                mock_session.close = Mock()  # Don't actually close the connection yet
-                mock_session.query = Mock()  # Add query method for ORM operations
-                mock_session.add = Mock()  # Add method for adding objects
-                mock_session.flush = Mock()  # Add flush method
+        class Args:
+            name = "Test GAM Publisher"
+            tenant_id = f"test_gam_pub_{unique_id}"
+            subdomain = f"testgampub{unique_id}"
+            adapter = "google_ad_manager"
+            gam_network_code = None  # Key test: No network code provided
+            gam_refresh_token = "test_refresh_token_123"
+            manual_approval = False
+            auto_approve_all = False
+            max_daily_budget = 15000
+            admin_token = "test_admin_token"
 
-                # Make it work as a context manager
-                mock_context = Mock()
-                mock_context.__enter__ = Mock(return_value=mock_session)
-                mock_context.__exit__ = Mock(return_value=None)
-                mock_get_session.return_value = mock_context
+        args = Args()
 
-                # Create args without network code (should work)
-                args = Mock()
-                args.name = "Test GAM Publisher"
-                args.tenant_id = "test_gam_pub"
-                args.subdomain = "testgampub"
-                args.adapter = "google_ad_manager"
-                args.gam_network_code = None  # Key test: No network code provided
-                args.gam_refresh_token = "test_refresh_token_123"
-                args.manual_approval = False
-                args.auto_approve_all = False
-                args.max_daily_budget = 15000
-                args.admin_token = "test_admin_token"
+        # This should NOT raise an error (the regression made this fail)
+        create_tenant(args)
 
-                # This should NOT raise an error (the regression made this fail)
-                create_tenant(args)
+        # Verify tenant was created successfully using SQLAlchemy ORM
+        from src.core.database.database_session import get_db_session
 
-                # Verify tenant was created successfully
-                cursor = conn.execute(
-                    "SELECT name, ad_server FROM tenants WHERE tenant_id = ?",
-                    (args.tenant_id,),
-                )
-                tenant = cursor.fetchone()
-                assert tenant is not None
-                assert tenant[0] == "Test GAM Publisher"
-                assert tenant[1] == "google_ad_manager"
+        with get_db_session() as session:
+            tenant = session.query(Tenant).filter_by(tenant_id=args.tenant_id).first()
+            assert tenant is not None
+            assert tenant.name == "Test GAM Publisher"
+            assert tenant.ad_server == "google_ad_manager"
 
-                # Verify adapter config allows null network code initially
-                cursor = conn.execute(
-                    "SELECT gam_network_code, gam_refresh_token FROM adapter_config WHERE tenant_id = ?",
-                    (args.tenant_id,),
-                )
-                adapter_config = cursor.fetchone()
-                assert adapter_config is not None
-                assert adapter_config[0] is None  # network_code should be null initially
-                assert adapter_config[1] == "test_refresh_token_123"  # refresh_token should be stored
+            # Verify adapter config allows null network code initially
+            adapter_config = session.query(AdapterConfig).filter_by(tenant_id=args.tenant_id).first()
+            assert adapter_config is not None
+            assert adapter_config.gam_network_code is None  # network_code should be null initially
+            assert adapter_config.gam_refresh_token == "test_refresh_token_123"  # refresh_token should be stored
 
-        finally:
-            conn.close()
-            os.unlink(tmp_path)
-
-    @pytest.mark.xfail(reason="Needs database isolation fix")
-    def test_gam_tenant_creation_with_network_code(self):
+    def test_gam_tenant_creation_with_network_code(self, test_database):
         """
         Test that a GAM tenant can be created WITH network code provided upfront.
 
         This ensures the manual network code path still works.
         """
-        with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as tmp:
-            tmp_path = tmp.name
+        # Create a simple args object with network code
+        import uuid
 
-        try:
-            conn = sqlite3.connect(tmp_path)
-            self._create_test_schema(conn)
+        unique_id = str(uuid.uuid4())[:8]
 
-            with patch("scripts.setup.setup_tenant.get_db_session") as mock_get_session:
-                # Create a mock session that works with SQLAlchemy ORM
-                mock_session = Mock()
-                mock_session.execute = conn.execute
-                mock_session.commit = conn.commit
-                mock_session.close = Mock()  # Don't actually close the connection yet
-                mock_session.query = Mock()  # Add query method for ORM operations
-                mock_session.add = Mock()  # Add method for adding objects
-                mock_session.flush = Mock()  # Add flush method
+        class Args:
+            name = "Test GAM Publisher With Code"
+            tenant_id = f"test_gam_with_code_{unique_id}"
+            subdomain = f"testgamcode{unique_id}"
+            adapter = "google_ad_manager"
+            gam_network_code = "123456789"  # Network code provided
+            gam_refresh_token = "test_refresh_token_456"
+            manual_approval = False
+            auto_approve_all = False
+            max_daily_budget = 20000
+            admin_token = "test_admin_token_2"
 
-                # Make it work as a context manager
-                mock_context = Mock()
-                mock_context.__enter__ = Mock(return_value=mock_session)
-                mock_context.__exit__ = Mock(return_value=None)
-                mock_get_session.return_value = mock_context
+        args = Args()
 
-                args = Mock()
-                args.name = "Test GAM Publisher With Code"
-                args.tenant_id = "test_gam_with_code"
-                args.subdomain = "testgamcode"
-                args.adapter = "google_ad_manager"
-                args.gam_network_code = "123456789"  # Network code provided
-                args.gam_refresh_token = "test_refresh_token_456"
-                args.manual_approval = False
-                args.auto_approve_all = False
-                args.max_daily_budget = 20000
-                args.admin_token = "test_admin_token_2"
+        create_tenant(args)
 
-                create_tenant(args)
+        # Verify network code was stored using SQLAlchemy ORM
+        from src.core.database.database_session import get_db_session
 
-                # Verify network code was stored
-                cursor = conn.execute(
-                    "SELECT gam_network_code FROM adapter_config WHERE tenant_id = ?",
-                    (args.tenant_id,),
-                )
-                adapter_config = cursor.fetchone()
-                assert adapter_config is not None
-                assert adapter_config[0] == "123456789"
+        with get_db_session() as session:
+            adapter_config = session.query(AdapterConfig).filter_by(tenant_id=args.tenant_id).first()
+            assert adapter_config is not None
+            assert adapter_config.gam_network_code == "123456789"
 
-        finally:
-            conn.close()
-            os.unlink(tmp_path)
-
-    @pytest.mark.xfail(reason="Needs database isolation fix")
     def test_command_line_parsing_network_code_optional(self):
         """
         Test that the command line parsing correctly handles optional network code.
@@ -303,47 +248,6 @@ class TestGAMTenantSetup:
         assert adapter.refresh_token == "test_refresh_token"
         # network_code should be None but not cause errors
         assert adapter.network_code is None
-
-    def _create_test_schema(self, conn):
-        """Create test database schema."""
-        conn.execute(
-            """
-            CREATE TABLE IF NOT EXISTS tenants (
-                tenant_id TEXT PRIMARY KEY,
-                name TEXT NOT NULL,
-                subdomain TEXT UNIQUE NOT NULL,
-                ad_server TEXT NOT NULL,
-                max_daily_budget REAL DEFAULT 10000,
-                enable_aee_signals BOOLEAN DEFAULT 1,
-                admin_token TEXT,
-                auto_approve_formats TEXT DEFAULT '[]',
-                human_review_required BOOLEAN DEFAULT 0,
-                policy_settings TEXT DEFAULT '{}',
-                created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-                updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
-                is_active BOOLEAN DEFAULT 1,
-                billing_plan TEXT DEFAULT 'standard'
-            )
-        """
-        )
-
-        conn.execute(
-            """
-            CREATE TABLE IF NOT EXISTS adapter_config (
-                tenant_id TEXT PRIMARY KEY,
-                adapter_type TEXT NOT NULL,
-                gam_network_code TEXT,
-                gam_refresh_token TEXT,
-                gam_manual_approval_required BOOLEAN DEFAULT 0,
-                mock_dry_run BOOLEAN DEFAULT 0,
-                created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-                updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (tenant_id) REFERENCES tenants(tenant_id)
-            )
-        """
-        )
-
-        conn.commit()
 
 
 if __name__ == "__main__":
