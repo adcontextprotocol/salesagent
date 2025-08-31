@@ -43,7 +43,7 @@ class TestMCPCriticalEndpoints:
     def auth_headers(self):
         """Get valid auth headers for testing."""
         # Use the test token from the test database
-        return {"x-adcp-auth": "test_token_sports"}
+        return {"x-adcp-auth": "test_token_sports", "Content-Type": "application/json", "Accept": "application/json"}
 
     @pytest.mark.smoke
     @pytest.mark.requires_server
@@ -52,7 +52,7 @@ class TestMCPCriticalEndpoints:
         """Test that get_products endpoint works."""
         async with httpx.AsyncClient() as client:
             response = await client.post(
-                "http://localhost:8080/mcp/",
+                "http://localhost:8080/mcp",
                 headers=auth_headers,
                 json={
                     "jsonrpc": "2.0",
@@ -73,7 +73,7 @@ class TestMCPCriticalEndpoints:
         """Test that create_media_buy endpoint is available."""
         async with httpx.AsyncClient() as client:
             response = await client.post(
-                "http://localhost:8080/mcp/",
+                "http://localhost:8080/mcp",
                 headers=auth_headers,
                 json={
                     "jsonrpc": "2.0",
@@ -103,7 +103,7 @@ class TestMCPCriticalEndpoints:
         """Test that get_media_buy_status endpoint works."""
         async with httpx.AsyncClient() as client:
             response = await client.post(
-                "http://localhost:8080/mcp/",
+                "http://localhost:8080/mcp",
                 headers=auth_headers,
                 json={
                     "jsonrpc": "2.0",
@@ -308,7 +308,7 @@ class TestErrorHandling:
         """Test that calling invalid tools returns proper error."""
         async with httpx.AsyncClient() as client:
             response = await client.post(
-                "http://localhost:8080/mcp/",
+                "http://localhost:8080/mcp",
                 headers={"x-adcp-auth": "test_token_sports"},
                 json={
                     "jsonrpc": "2.0",
@@ -355,7 +355,7 @@ class TestConcurrency:
 
         async def make_request(client, request_id):
             response = await client.post(
-                "http://localhost:8080/mcp/",
+                "http://localhost:8080/mcp",
                 headers={"x-adcp-auth": "test_token_sports"},
                 json={
                     "jsonrpc": "2.0",

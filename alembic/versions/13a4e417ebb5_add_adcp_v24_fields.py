@@ -30,7 +30,7 @@ def upgrade():
 
     # Add currency column if it doesn't exist
     if "currency" not in existing_columns:
-        op.add_column("media_buys", sa.Column("currency", sa.String(3), nullable=False, server_default="USD"))
+        op.add_column("media_buys", sa.Column("currency", sa.String(3), nullable=True, server_default="USD"))
 
     # Add datetime columns if they don't exist
     if "start_time" not in existing_columns:

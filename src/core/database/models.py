@@ -195,11 +195,11 @@ class MediaBuy(Base):
     campaign_objective = Column(String(100))
     kpi_goal = Column(String(255))
     budget = Column(DECIMAL(15, 2))
-    currency = Column(String(3), nullable=False, default="USD")  # ISO 4217 currency code
+    currency = Column(String(3), nullable=True, default="USD")  # ISO 4217 currency code
     start_date = Column(Date, nullable=False)  # Legacy field, keep for compatibility
     end_date = Column(Date, nullable=False)  # Legacy field, keep for compatibility
-    start_time = Column(DateTime, nullable=False)  # AdCP v2.4 datetime scheduling
-    end_time = Column(DateTime, nullable=False)  # AdCP v2.4 datetime scheduling
+    start_time = Column(DateTime, nullable=True)  # AdCP v2.4 datetime scheduling
+    end_time = Column(DateTime, nullable=True)  # AdCP v2.4 datetime scheduling
     status = Column(String(20), nullable=False, default="draft")
     created_at = Column(DateTime, server_default=func.now())
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
