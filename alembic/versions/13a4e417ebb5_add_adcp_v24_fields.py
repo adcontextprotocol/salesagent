@@ -41,6 +41,7 @@ def upgrade():
 
     # Populate datetime fields only if they're null and source dates exist
     # Use database-agnostic approach with proper casting
+    # CRITICAL FIX: Changed OR to AND to prevent data loss
     dialect = conn.dialect.name
     if dialect == "postgresql":
         op.execute(
@@ -48,7 +49,8 @@ def upgrade():
             UPDATE media_buys
             SET start_time = (start_date || ' 00:00:00')::timestamp,
                 end_time = (end_date || ' 23:59:59')::timestamp
-            WHERE (start_time IS NULL OR end_time IS NULL)
+            WHERE start_time IS NULL
+              AND end_time IS NULL
               AND start_date IS NOT NULL
               AND end_date IS NOT NULL
         """
@@ -59,7 +61,8 @@ def upgrade():
             UPDATE media_buys
             SET start_time = datetime(start_date || ' 00:00:00'),
                 end_time = datetime(end_date || ' 23:59:59')
-            WHERE (start_time IS NULL OR end_time IS NULL)
+            WHERE start_time IS NULL
+              AND end_time IS NULL
               AND start_date IS NOT NULL
               AND end_date IS NOT NULL
         """

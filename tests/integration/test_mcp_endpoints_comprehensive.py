@@ -14,6 +14,17 @@ from src.core.database.database_session import get_db_session
 from src.core.database.models import Principal, Product, Tenant
 
 
+def safe_get_content(result):
+    """Safely extract content from MCP result with proper error handling."""
+    if result is None:
+        return {}
+    if hasattr(result, "structured_content") and result.structured_content is not None:
+        return result.structured_content
+    if hasattr(result, "content") and result.content is not None:
+        return result.content
+    return result if isinstance(result, dict) else {}
+
+
 class TestMCPEndpointsComprehensive:
     """Comprehensive tests for all MCP endpoints."""
 
@@ -131,7 +142,7 @@ class TestMCPEndpointsComprehensive:
             )
 
             assert result is not None
-            content = result.structured_content if hasattr(result, "structured_content") else result
+            content = safe_get_content(result)
             assert "products" in content
 
             products = content["products"]
@@ -165,7 +176,7 @@ class TestMCPEndpointsComprehensive:
                 },
             )
 
-            content = result.structured_content if hasattr(result, "structured_content") else result
+            content = safe_get_content(result)
             products = content["products"]
 
             # Should find display_news product
@@ -250,10 +261,10 @@ class TestMCPEndpointsComprehensive:
         assert mixed_request.get_total_budget() == 3000.0
 
     @pytest.mark.requires_server
-    async def test_invalid_auth(self):
+    async def test_invalid_auth(self, mcp_server):
         """Test that invalid authentication is rejected."""
         headers = {"x-adcp-auth": "invalid_token"}
-        transport = StreamableHttpTransport(url="http://localhost:8080/mcp/", headers=headers)
+        transport = StreamableHttpTransport(url=f"http://localhost:{mcp_server.port}/mcp/", headers=headers)
         client = Client(transport=transport)
 
         async with client:
@@ -287,7 +298,7 @@ class TestMCPEndpointsComprehensive:
                     },
                 )
 
-                content = result.structured_content if hasattr(result, "structured_content") else result
+                content = safe_get_content(result)
                 assert "signals" in content
                 assert isinstance(content["signals"], list)
             except Exception as e:
@@ -310,11 +321,7 @@ class TestMCPEndpointsComprehensive:
                 },
             )
 
-            products_content = (
-                products_result.structured_content
-                if hasattr(products_result, "structured_content")
-                else products_result
-            )
+            products_content = safe_get_content(products_result)
             assert len(products_content["products"]) > 0
 
             # 2. Create media buy
@@ -334,7 +341,7 @@ class TestMCPEndpointsComprehensive:
                 },
             )
 
-            buy_content = buy_result.structured_content if hasattr(buy_result, "structured_content") else buy_result
+            buy_content = safe_get_content(buy_result)
             assert "media_buy_id" in buy_content
             media_buy_id = buy_content["media_buy_id"]
 
@@ -344,9 +351,7 @@ class TestMCPEndpointsComprehensive:
                 {"req": {"media_buy_id": media_buy_id}},
             )
 
-            status_content = (
-                status_result.structured_content if hasattr(status_result, "structured_content") else status_result
-            )
+            status_content = safe_get_content(status_result)
             assert status_content["media_buy_id"] == media_buy_id
             assert "status" in status_content
             assert "packages" in status_content
