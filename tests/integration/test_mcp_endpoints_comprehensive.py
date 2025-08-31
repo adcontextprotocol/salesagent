@@ -14,6 +14,17 @@ from src.core.database.database_session import get_db_session
 from src.core.database.models import Principal, Product, Tenant
 
 
+def safe_get_content(result):
+    """Safely extract content from MCP result with proper error handling."""
+    if result is None:
+        return {}
+    if hasattr(result, "structured_content") and result.structured_content is not None:
+        return result.structured_content
+    if hasattr(result, "content") and result.content is not None:
+        return result.content
+    return result if isinstance(result, dict) else {}
+
+
 class TestMCPEndpointsComprehensive:
     """Comprehensive tests for all MCP endpoints."""
 
@@ -123,13 +134,15 @@ class TestMCPEndpointsComprehensive:
             result = await client.call_tool(
                 "get_products",
                 {
-                    "brief": "display ads for news content",
-                    "promoted_offering": "Tech startup promoting AI analytics platform",
+                    "req": {
+                        "brief": "display ads for news content",
+                        "promoted_offering": "Tech startup promoting AI analytics platform",
+                    }
                 },
             )
 
             assert result is not None
-            content = result.structured_content if hasattr(result, "structured_content") else result
+            content = safe_get_content(result)
             assert "products" in content
 
             products = content["products"]
@@ -156,12 +169,14 @@ class TestMCPEndpointsComprehensive:
             result = await client.call_tool(
                 "get_products",
                 {
-                    "brief": "display advertising on news websites",
-                    "promoted_offering": "B2B software company",
+                    "req": {
+                        "brief": "display advertising on news websites",
+                        "promoted_offering": "B2B software company",
+                    }
                 },
             )
 
-            content = result.structured_content if hasattr(result, "structured_content") else result
+            content = safe_get_content(result)
             products = content["products"]
 
             # Should find display_news product
@@ -175,62 +190,81 @@ class TestMCPEndpointsComprehensive:
             with pytest.raises(Exception) as exc_info:
                 await client.call_tool(
                     "get_products",
-                    {"brief": "display ads"},  # Missing promoted_offering
+                    {"req": {"brief": "display ads"}},  # Missing promoted_offering
                 )
 
             # Should fail with validation error
             assert "promoted_offering" in str(exc_info.value).lower()
 
+    def test_schema_backward_compatibility(self):
+        """Test that AdCP v2.4 schema maintains backward compatibility."""
+        from datetime import date, datetime, timedelta
+
+        from src.core.schemas import Budget, CreateMediaBuyRequest, Package
+
+        # Test 1: Legacy format should work
+        legacy_request = CreateMediaBuyRequest(
+            product_ids=["prod_1", "prod_2"],
+            total_budget=5000.0,
+            start_date=date.today(),
+            end_date=date.today() + timedelta(days=30),
+            targeting_overlay={"geo_country_any_of": ["US"]},
+        )
+
+        # Should auto-generate buyer_ref
+        assert legacy_request.buyer_ref is not None
+        assert legacy_request.buyer_ref.startswith("buy_")
+
+        # Should auto-create budget from total_budget
+        assert legacy_request.get_total_budget() == 5000.0
+        assert legacy_request.budget.total == 5000.0
+        assert legacy_request.budget.currency == "USD"
+
+        # Should create packages from product_ids
+        product_ids = legacy_request.get_product_ids()
+        assert len(product_ids) == 2
+        assert product_ids[0] == "prod_1"
+        assert product_ids[1] == "prod_2"
+
+        # Should have packages created
+        assert len(legacy_request.packages) == 2
+
+        # Test 2: New v2.4 format should work
+        new_request = CreateMediaBuyRequest(
+            buyer_ref="custom_ref_123",
+            budget=Budget(total=10000.0, currency="EUR", pacing="asap"),
+            packages=[
+                Package(buyer_ref="pkg_1", products=["prod_1", "prod_3"], budget=Budget(total=6000.0, currency="EUR")),
+                Package(buyer_ref="pkg_2", products=["prod_2"], budget=Budget(total=4000.0, currency="EUR")),
+            ],
+            start_time=datetime.now(),
+            end_time=datetime.now() + timedelta(days=30),
+        )
+
+        assert new_request.buyer_ref == "custom_ref_123"
+        assert new_request.budget.currency == "EUR"
+        assert new_request.budget.pacing == "asap"
+        assert len(new_request.packages) == 2
+
+        # Test 3: Mixed format should work (legacy with some new fields)
+        mixed_request = CreateMediaBuyRequest(
+            buyer_ref="mixed_ref",
+            product_ids=["prod_1"],
+            total_budget=3000.0,
+            start_date=date.today(),
+            end_date=date.today() + timedelta(days=15),
+            budget=Budget(total=3000.0, currency="GBP"),  # Override currency
+        )
+
+        assert mixed_request.buyer_ref == "mixed_ref"
+        assert mixed_request.budget.currency == "GBP"
+        assert mixed_request.get_total_budget() == 3000.0
+
     @pytest.mark.requires_server
-    async def test_create_media_buy(self, mcp_client):
-        """Test creating a media buy."""
-        async with mcp_client as client:
-            # First get products
-            products_result = await client.call_tool(
-                "get_products",
-                {
-                    "brief": "news advertising",
-                    "promoted_offering": "Tech company",
-                },
-            )
-
-            products_content = (
-                products_result.structured_content
-                if hasattr(products_result, "structured_content")
-                else products_result
-            )
-            products = products_content["products"]
-            assert len(products) > 0
-
-            # Create media buy with first product
-            product_id = products[0]["product_id"]
-
-            start_date = (datetime.now() + timedelta(days=1)).strftime("%Y-%m-%d")
-            end_date = (datetime.now() + timedelta(days=30)).strftime("%Y-%m-%d")
-
-            result = await client.call_tool(
-                "create_media_buy",
-                {
-                    "product_ids": [product_id],
-                    "total_budget": 5000.0,
-                    "flight_start_date": start_date,
-                    "flight_end_date": end_date,
-                    "targeting_overlay": {
-                        "geo_country_any_of": ["US"],
-                    },
-                },
-            )
-
-            content = result.structured_content if hasattr(result, "structured_content") else result
-            assert "media_buy_id" in content
-            assert "status" in content
-            assert content["status"] in ["pending", "active", "draft"]
-
-    @pytest.mark.requires_server
-    async def test_invalid_auth(self):
+    async def test_invalid_auth(self, mcp_server):
         """Test that invalid authentication is rejected."""
         headers = {"x-adcp-auth": "invalid_token"}
-        transport = StreamableHttpTransport(url="http://localhost:8080/mcp/", headers=headers)
+        transport = StreamableHttpTransport(url=f"http://localhost:{mcp_server.port}/mcp/", headers=headers)
         client = Client(transport=transport)
 
         async with client:
@@ -238,8 +272,10 @@ class TestMCPEndpointsComprehensive:
                 await client.call_tool(
                     "get_products",
                     {
-                        "brief": "test",
-                        "promoted_offering": "test",
+                        "req": {
+                            "brief": "test",
+                            "promoted_offering": "test",
+                        }
                     },
                 )
 
@@ -255,12 +291,14 @@ class TestMCPEndpointsComprehensive:
                 result = await client.call_tool(
                     "get_signals",
                     {
-                        "query": "sports",
-                        "type": "contextual",
+                        "req": {
+                            "query": "sports",
+                            "type": "contextual",
+                        }
                     },
                 )
 
-                content = result.structured_content if hasattr(result, "structured_content") else result
+                content = safe_get_content(result)
                 assert "signals" in content
                 assert isinstance(content["signals"], list)
             except Exception as e:
@@ -276,16 +314,14 @@ class TestMCPEndpointsComprehensive:
             products_result = await client.call_tool(
                 "get_products",
                 {
-                    "brief": "Looking for premium display advertising",
-                    "promoted_offering": "Enterprise SaaS platform for data analytics",
+                    "req": {
+                        "brief": "Looking for premium display advertising",
+                        "promoted_offering": "Enterprise SaaS platform for data analytics",
+                    }
                 },
             )
 
-            products_content = (
-                products_result.structured_content
-                if hasattr(products_result, "structured_content")
-                else products_result
-            )
+            products_content = safe_get_content(products_result)
             assert len(products_content["products"]) > 0
 
             # 2. Create media buy
@@ -296,26 +332,26 @@ class TestMCPEndpointsComprehensive:
             buy_result = await client.call_tool(
                 "create_media_buy",
                 {
-                    "product_ids": [product["product_id"]],
-                    "total_budget": 10000.0,
-                    "flight_start_date": start_date,
-                    "flight_end_date": end_date,
+                    "req": {
+                        "product_ids": [product["product_id"]],
+                        "total_budget": 10000.0,
+                        "start_date": start_date,
+                        "end_date": end_date,
+                    }
                 },
             )
 
-            buy_content = buy_result.structured_content if hasattr(buy_result, "structured_content") else buy_result
+            buy_content = safe_get_content(buy_result)
             assert "media_buy_id" in buy_content
             media_buy_id = buy_content["media_buy_id"]
 
             # 3. Get media buy status
             status_result = await client.call_tool(
                 "get_media_buy_status",
-                {"media_buy_id": media_buy_id},
+                {"req": {"media_buy_id": media_buy_id}},
             )
 
-            status_content = (
-                status_result.structured_content if hasattr(status_result, "structured_content") else status_result
-            )
+            status_content = safe_get_content(status_result)
             assert status_content["media_buy_id"] == media_buy_id
             assert "status" in status_content
             assert "packages" in status_content

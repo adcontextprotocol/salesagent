@@ -43,7 +43,7 @@ def test_mock_ad_server_create_media_buy(sample_packages):
         product_ids=["pkg_1"],
         start_date=start_time.date(),
         end_date=end_time.date(),
-        budget=5000.0,
+        total_budget=5000.0,  # Legacy format uses total_budget
         targeting_overlay={},  # Empty targeting
         po_number="PO-12345",
     )
@@ -55,7 +55,7 @@ def test_mock_ad_server_create_media_buy(sample_packages):
 
     # Assert
     assert response.media_buy_id == "buy_PO-12345"
-    assert response.status == "pending_creative"
+    assert response.buyer_ref.startswith("buy_")  # Should have auto-generated buyer_ref
 
     # Check the internal state of the mock server
     internal_buy = adapter._media_buys.get("buy_PO-12345")

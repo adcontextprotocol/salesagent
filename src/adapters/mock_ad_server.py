@@ -290,7 +290,7 @@ class MockAdServer(AdServerAdapter):
         # Calculate total budget from packages (CPM * impressions / 1000)
         total_budget = sum((p.cpm * p.impressions / 1000) for p in packages if p.delivery_type == "guaranteed")
         # Use the request's budget if available, otherwise use calculated
-        total_budget = request.budget if request.budget else total_budget
+        total_budget = request.get_total_budget() if hasattr(request, "get_total_budget") else total_budget
 
         # Apply strategy-based bid adjustment
         if self.strategy_context:
@@ -348,9 +348,7 @@ class MockAdServer(AdServerAdapter):
 
         return CreateMediaBuyResponse(
             media_buy_id=media_buy_id,
-            context_id=f"ctx_{media_buy_id}",  # Add context_id for AdCP compliance
-            status="pending_creative",
-            detail="Media buy created successfully",
+            buyer_ref=request.buyer_ref,
             creative_deadline=datetime.now() + timedelta(days=2),
         )
 
