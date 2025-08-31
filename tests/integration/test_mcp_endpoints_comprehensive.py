@@ -123,8 +123,10 @@ class TestMCPEndpointsComprehensive:
             result = await client.call_tool(
                 "get_products",
                 {
-                    "brief": "display ads for news content",
-                    "promoted_offering": "Tech startup promoting AI analytics platform",
+                    "req": {
+                        "brief": "display ads for news content",
+                        "promoted_offering": "Tech startup promoting AI analytics platform",
+                    }
                 },
             )
 
@@ -156,8 +158,10 @@ class TestMCPEndpointsComprehensive:
             result = await client.call_tool(
                 "get_products",
                 {
-                    "brief": "display advertising on news websites",
-                    "promoted_offering": "B2B software company",
+                    "req": {
+                        "brief": "display advertising on news websites",
+                        "promoted_offering": "B2B software company",
+                    }
                 },
             )
 
@@ -175,56 +179,75 @@ class TestMCPEndpointsComprehensive:
             with pytest.raises(Exception) as exc_info:
                 await client.call_tool(
                     "get_products",
-                    {"brief": "display ads"},  # Missing promoted_offering
+                    {"req": {"brief": "display ads"}},  # Missing promoted_offering
                 )
 
             # Should fail with validation error
             assert "promoted_offering" in str(exc_info.value).lower()
 
-    @pytest.mark.requires_server
-    async def test_create_media_buy(self, mcp_client):
-        """Test creating a media buy."""
-        async with mcp_client as client:
-            # First get products
-            products_result = await client.call_tool(
-                "get_products",
-                {
-                    "brief": "news advertising",
-                    "promoted_offering": "Tech company",
-                },
-            )
+    def test_schema_backward_compatibility(self):
+        """Test that AdCP v2.4 schema maintains backward compatibility."""
+        from datetime import date, datetime, timedelta
 
-            products_content = (
-                products_result.structured_content
-                if hasattr(products_result, "structured_content")
-                else products_result
-            )
-            products = products_content["products"]
-            assert len(products) > 0
+        from src.core.schemas import Budget, CreateMediaBuyRequest, Package
 
-            # Create media buy with first product
-            product_id = products[0]["product_id"]
+        # Test 1: Legacy format should work
+        legacy_request = CreateMediaBuyRequest(
+            product_ids=["prod_1", "prod_2"],
+            total_budget=5000.0,
+            start_date=date.today(),
+            end_date=date.today() + timedelta(days=30),
+            targeting_overlay={"geo_country_any_of": ["US"]},
+        )
 
-            start_date = (datetime.now() + timedelta(days=1)).strftime("%Y-%m-%d")
-            end_date = (datetime.now() + timedelta(days=30)).strftime("%Y-%m-%d")
+        # Should auto-generate buyer_ref
+        assert legacy_request.buyer_ref is not None
+        assert legacy_request.buyer_ref.startswith("buy_")
 
-            result = await client.call_tool(
-                "create_media_buy",
-                {
-                    "product_ids": [product_id],
-                    "total_budget": 5000.0,
-                    "flight_start_date": start_date,
-                    "flight_end_date": end_date,
-                    "targeting_overlay": {
-                        "geo_country_any_of": ["US"],
-                    },
-                },
-            )
+        # Should auto-create budget from total_budget
+        assert legacy_request.get_total_budget() == 5000.0
+        assert legacy_request.budget.total == 5000.0
+        assert legacy_request.budget.currency == "USD"
 
-            content = result.structured_content if hasattr(result, "structured_content") else result
-            assert "media_buy_id" in content
-            assert "status" in content
-            assert content["status"] in ["pending", "active", "draft"]
+        # Should create packages from product_ids
+        product_ids = legacy_request.get_product_ids()
+        assert len(product_ids) == 2
+        assert product_ids[0] == "prod_1"
+        assert product_ids[1] == "prod_2"
+
+        # Should have packages created
+        assert len(legacy_request.packages) == 2
+
+        # Test 2: New v2.4 format should work
+        new_request = CreateMediaBuyRequest(
+            buyer_ref="custom_ref_123",
+            budget=Budget(total=10000.0, currency="EUR", pacing="asap"),
+            packages=[
+                Package(buyer_ref="pkg_1", products=["prod_1", "prod_3"], budget=Budget(total=6000.0, currency="EUR")),
+                Package(buyer_ref="pkg_2", products=["prod_2"], budget=Budget(total=4000.0, currency="EUR")),
+            ],
+            start_time=datetime.now(),
+            end_time=datetime.now() + timedelta(days=30),
+        )
+
+        assert new_request.buyer_ref == "custom_ref_123"
+        assert new_request.budget.currency == "EUR"
+        assert new_request.budget.pacing == "asap"
+        assert len(new_request.packages) == 2
+
+        # Test 3: Mixed format should work (legacy with some new fields)
+        mixed_request = CreateMediaBuyRequest(
+            buyer_ref="mixed_ref",
+            product_ids=["prod_1"],
+            total_budget=3000.0,
+            start_date=date.today(),
+            end_date=date.today() + timedelta(days=15),
+            budget=Budget(total=3000.0, currency="GBP"),  # Override currency
+        )
+
+        assert mixed_request.buyer_ref == "mixed_ref"
+        assert mixed_request.budget.currency == "GBP"
+        assert mixed_request.get_total_budget() == 3000.0
 
     @pytest.mark.requires_server
     async def test_invalid_auth(self):
@@ -238,8 +261,10 @@ class TestMCPEndpointsComprehensive:
                 await client.call_tool(
                     "get_products",
                     {
-                        "brief": "test",
-                        "promoted_offering": "test",
+                        "req": {
+                            "brief": "test",
+                            "promoted_offering": "test",
+                        }
                     },
                 )
 
@@ -255,8 +280,10 @@ class TestMCPEndpointsComprehensive:
                 result = await client.call_tool(
                     "get_signals",
                     {
-                        "query": "sports",
-                        "type": "contextual",
+                        "req": {
+                            "query": "sports",
+                            "type": "contextual",
+                        }
                     },
                 )
 
@@ -276,8 +303,10 @@ class TestMCPEndpointsComprehensive:
             products_result = await client.call_tool(
                 "get_products",
                 {
-                    "brief": "Looking for premium display advertising",
-                    "promoted_offering": "Enterprise SaaS platform for data analytics",
+                    "req": {
+                        "brief": "Looking for premium display advertising",
+                        "promoted_offering": "Enterprise SaaS platform for data analytics",
+                    }
                 },
             )
 
@@ -296,10 +325,12 @@ class TestMCPEndpointsComprehensive:
             buy_result = await client.call_tool(
                 "create_media_buy",
                 {
-                    "product_ids": [product["product_id"]],
-                    "total_budget": 10000.0,
-                    "flight_start_date": start_date,
-                    "flight_end_date": end_date,
+                    "req": {
+                        "product_ids": [product["product_id"]],
+                        "total_budget": 10000.0,
+                        "start_date": start_date,
+                        "end_date": end_date,
+                    }
                 },
             )
 
@@ -310,7 +341,7 @@ class TestMCPEndpointsComprehensive:
             # 3. Get media buy status
             status_result = await client.call_tool(
                 "get_media_buy_status",
-                {"media_buy_id": media_buy_id},
+                {"req": {"media_buy_id": media_buy_id}},
             )
 
             status_content = (

@@ -380,16 +380,24 @@ class TestAdCPFullLifecycle:
 
         # Test comprehensive media buy creation with targeting
         media_buy_request = {
-            "product_ids": product_ids,
-            "budget": 25000.0,  # Test with significant budget
-            "start_date": "2025-09-01",
-            "end_date": "2025-09-30",
+            "buyer_ref": "e2e_comprehensive_" + str(uuid.uuid4().hex[:8]),
+            "packages": [
+                {
+                    "buyer_ref": "pkg_comp_" + str(uuid.uuid4().hex[:6]),
+                    "products": product_ids,
+                    "budget": {"total": 50000.0, "currency": "USD", "pacing": "even"},
+                    "targeting_overlay": {
+                        "geographic": {"countries": ["US", "CA"], "cities": ["New York", "Los Angeles"]},
+                        "demographic": {"age_range": "25-54", "gender": "all"},
+                        "behavioral": {"interests": ["technology", "business"]},
+                    },
+                }
+            ],
+            "start_time": "2025-09-01T00:00:00Z",
+            "end_time": "2025-09-30T23:59:59Z",
             "targeting_overlay": {
-                "geographic": {
-                    "countries": ["US", "CA"],
-                    "regions": ["California", "New York", "Ontario"],
-                    "cities": ["San Francisco", "Toronto"],
-                },
+                "device": {"types": ["desktop", "mobile"]},
+                "time": {"dayparts": ["morning", "evening"], "days_of_week": [1, 2, 3, 4, 5]},
                 "audience": {
                     "age_ranges": ["25-34", "35-44"],
                     "interests": ["technology", "business", "finance"],

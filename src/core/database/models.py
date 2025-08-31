@@ -189,13 +189,17 @@ class MediaBuy(Base):
     media_buy_id = Column(String(100), primary_key=True)
     tenant_id = Column(String(50), ForeignKey("tenants.tenant_id", ondelete="CASCADE"), nullable=False)
     principal_id = Column(String(50), nullable=False)
+    buyer_ref = Column(String(100), nullable=True, index=True)  # AdCP v2.4 buyer reference
     order_name = Column(String(255), nullable=False)
     advertiser_name = Column(String(255), nullable=False)
     campaign_objective = Column(String(100))
     kpi_goal = Column(String(255))
     budget = Column(DECIMAL(15, 2))
-    start_date = Column(Date, nullable=False)
-    end_date = Column(Date, nullable=False)
+    currency = Column(String(3), nullable=False, default="USD")  # ISO 4217 currency code
+    start_date = Column(Date, nullable=False)  # Legacy field, keep for compatibility
+    end_date = Column(Date, nullable=False)  # Legacy field, keep for compatibility
+    start_time = Column(DateTime, nullable=False)  # AdCP v2.4 datetime scheduling
+    end_time = Column(DateTime, nullable=False)  # AdCP v2.4 datetime scheduling
     status = Column(String(20), nullable=False, default="draft")
     created_at = Column(DateTime, server_default=func.now())
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
@@ -203,7 +207,6 @@ class MediaBuy(Base):
     approved_by = Column(String(255))
     raw_request = Column(JSON, nullable=False)  # JSONB in PostgreSQL
     strategy_id = Column(String(255), nullable=True)  # Strategy reference for linking operations
-    # context_id = Column(String(100), nullable=True)  # TEMPORARILY DISABLED - column missing in production
 
     # Relationships
     tenant = relationship("Tenant", back_populates="media_buys", overlaps="media_buys")

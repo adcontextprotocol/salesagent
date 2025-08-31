@@ -147,7 +147,9 @@ def create_tenant():
                 principal_id=f"{tenant_id}_default",
                 name=f"{tenant_name} Default Principal",
                 access_token=admin_token,  # Use same token for simplicity
-                platform_mappings=json.dumps({"mock": {"advertiser_id": f"default_{tenant_id[:8]}", "advertiser_name": f"{tenant_name} Default"}}),
+                platform_mappings=json.dumps(
+                    {"mock": {"advertiser_id": f"default_{tenant_id[:8]}", "advertiser_name": f"{tenant_name} Default"}}
+                ),
                 created_at=datetime.now(UTC),
             )
             db_session.add(default_principal)
@@ -209,13 +211,24 @@ def mcp_test():
                 }
             )
 
-    # Get server URL - use production URL if in production, otherwise localhost
+    # Get server URLs - use production URLs if in production, otherwise localhost
     if os.environ.get("PRODUCTION") == "true":
-        # In production, the MCP server is accessible at the main domain root
-        server_url = "https://adcp-sales-agent.fly.dev/mcp/"
+        # In production, both servers are accessible at the main domain
+        mcp_server_url = "https://adcp-sales-agent.fly.dev/mcp"  # Remove trailing slash
+        a2a_server_url = "https://adcp-sales-agent.fly.dev/a2a/"
     else:
-        # In development, use localhost with the configured port
-        server_port = int(os.environ.get("ADCP_SALES_PORT", 8005))
-        server_url = f"http://localhost:{server_port}/mcp/"
+        # In development, use localhost with the configured ports from environment
+        # Default to common development ports if not set
+        mcp_port = int(os.environ.get("ADCP_SALES_PORT", 8080))
+        a2a_port = int(os.environ.get("A2A_PORT", 8091))
+        mcp_server_url = f"http://localhost:{mcp_port}/mcp"  # Remove trailing slash
+        a2a_server_url = f"http://localhost:{a2a_port}/a2a/"
 
-    return render_template("mcp_test.html", tenants=tenants, principals=principals, server_url=server_url)
+    return render_template(
+        "mcp_test.html",
+        tenants=tenants,
+        principals=principals,
+        server_url=mcp_server_url,  # Keep legacy name for MCP server
+        mcp_server_url=mcp_server_url,
+        a2a_server_url=a2a_server_url,
+    )

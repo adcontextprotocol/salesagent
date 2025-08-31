@@ -197,7 +197,7 @@ class TestAdCPContract:
 
         request = CreateMediaBuyRequest(
             product_ids=["product_1", "product_2"],
-            budget=5000.0,
+            total_budget=5000.0,
             start_date=start_date.date(),
             end_date=end_date.date(),
             targeting_overlay={
@@ -208,10 +208,10 @@ class TestAdCPContract:
         )
 
         # Verify AdCP requirements
-        assert len(request.product_ids) > 0
-        assert request.budget > 0
+        assert len(request.get_product_ids()) > 0
+        assert request.get_total_budget() > 0
         # Also verify backward compatibility
-        assert request.total_budget == request.budget
+        assert request.get_total_budget() == 5000.0
         assert request.flight_end_date > request.flight_start_date
 
         # Targeting overlay should support signals (AdCP v2.4)
@@ -336,7 +336,7 @@ class TestAdCPContract:
         """Test AdCP v2.4 signal support in targeting."""
         request = CreateMediaBuyRequest(
             product_ids=["test_product"],
-            budget=1000.0,
+            total_budget=1000.0,
             start_date=datetime.now().date(),
             end_date=(datetime.now() + timedelta(days=7)).date(),
             targeting_overlay={

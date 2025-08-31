@@ -1,7 +1,8 @@
-from datetime import date, datetime
+import uuid
+from datetime import date, datetime, time
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 # --- V2.3 Pydantic Models (Bearer Auth, Restored & Complete) ---
 
@@ -165,6 +166,15 @@ class Targeting(BaseModel):
     key_value_pairs: dict[str, str] | None = None  # e.g., {"aee_segment": "high_value", "aee_score": "0.85"}
 
 
+class Budget(BaseModel):
+    """Budget object with multi-currency support."""
+
+    total: float = Field(..., description="Total budget amount")
+    currency: str = Field(..., description="ISO 4217 currency code (e.g., 'USD', 'EUR')")
+    daily_cap: float | None = Field(None, description="Optional daily spending limit")
+    pacing: Literal["even", "asap", "daily_budget"] = Field("even", description="Budget pacing strategy")
+
+
 class PriceGuidance(BaseModel):
     floor: float
     p25: float | None = None
@@ -204,9 +214,6 @@ class Product(BaseModel):
         return super().dict(**kwargs)
 
     # Audience characteristics fields
-    policy_compliance: str | None = Field(
-        default=None, description="Policy compliance information returned during product discovery"
-    )
     targeted_ages: Literal["children", "teens", "adults"] | None = Field(
         default=None, description="Target age group for this product's audience"
     )
@@ -387,16 +394,27 @@ class CreativeAssignment(BaseModel):
 class AddCreativeAssetsRequest(BaseModel):
     """Request to add creative assets to a media buy (AdCP spec compliant)."""
 
-    media_buy_id: str
-    creatives: list[Creative]  # TODO: Rename to 'assets' to match spec
+    media_buy_id: str | None = None
+    buyer_ref: str | None = None
+    assets: list[Creative]  # Renamed from 'creatives' to match spec
+
+    def model_validate(cls, values):
+        # Ensure at least one of media_buy_id or buyer_ref is provided
+        if not values.get("media_buy_id") and not values.get("buyer_ref"):
+            raise ValueError("Either media_buy_id or buyer_ref must be provided")
+        return values
+
+    # Backward compatibility
+    @property
+    def creatives(self) -> list[Creative]:
+        """Backward compatibility for existing code."""
+        return self.assets
 
 
 class AddCreativeAssetsResponse(BaseModel):
     """Response from adding creative assets (AdCP spec compliant)."""
 
     statuses: list[CreativeStatus]
-    context_id: str | None = None  # Persistent context ID
-    message: str | None = None  # Human-readable message
 
 
 # Legacy aliases for backward compatibility (to be removed)
@@ -508,16 +526,35 @@ class AdaptCreativeRequest(BaseModel):
     instructions: str | None = None
 
 
+class Package(BaseModel):
+    """Package object with buyer reference and product arrays."""
+
+    buyer_ref: str = Field(..., description="Buyer reference for tracking")
+    products: list[str] = Field(..., description="Array of product IDs in this package")
+    budget: Budget | None = Field(None, description="Optional package-specific budget")
+    targeting_overlay: Targeting | None = Field(None, description="Package-specific targeting")
+
+
 # --- Media Buy Lifecycle ---
 class CreateMediaBuyRequest(BaseModel):
-    product_ids: list[str]
-    start_date: date
-    end_date: date
-    budget: float
+    # New AdCP v2.4 fields (optional for backward compatibility)
+    buyer_ref: str | None = Field(None, description="Buyer reference for tracking")
+    packages: list[Package] | None = Field(None, description="Array of packages with products and budgets")
+    start_time: datetime | None = Field(None, description="Campaign start time (ISO 8601)")
+    end_time: datetime | None = Field(None, description="Campaign end time (ISO 8601)")
+    budget: Budget | None = Field(None, description="Overall campaign budget")
+
+    # Legacy fields (for backward compatibility)
+    product_ids: list[str] | None = Field(None, description="Legacy: Product IDs (converted to packages)")
+    start_date: date | None = Field(None, description="Legacy: Start date (converted to start_time)")
+    end_date: date | None = Field(None, description="Legacy: End date (converted to end_time)")
+    total_budget: float | None = Field(None, description="Legacy: Total budget (converted to Budget object)")
+
+    # Common fields
     targeting_overlay: Targeting | None = None
     po_number: str | None = None
-    pacing: Literal["even", "asap", "daily_budget"] = "even"
-    daily_budget: float | None = None
+    pacing: Literal["even", "asap", "daily_budget"] = "even"  # Legacy field
+    daily_budget: float | None = None  # Legacy field
     creatives: list[Creative] | None = None
     # AEE signal requirements
     required_aee_signals: list[str] | None = None  # Required targeting signals
@@ -527,57 +564,115 @@ class CreateMediaBuyRequest(BaseModel):
         description="Optional strategy ID for linking operations and enabling simulation/testing modes",
     )
 
+    @model_validator(mode="before")
+    @classmethod
+    def handle_legacy_format(cls, values):
+        """Convert legacy format to new format."""
+        if not isinstance(values, dict):
+            return values
+
+        # If using legacy format, convert to new format
+        if "product_ids" in values and not values.get("packages"):
+            # Generate buyer_ref if not provided
+            if not values.get("buyer_ref"):
+                values["buyer_ref"] = f"buy_{uuid.uuid4().hex[:8]}"
+
+            # Convert product_ids to packages
+            product_ids = values.get("product_ids", [])
+            packages = []
+            for i, pid in enumerate(product_ids):
+                packages.append({"buyer_ref": f"pkg_{i}_{uuid.uuid4().hex[:6]}", "products": [pid]})
+            values["packages"] = packages
+
+        # Convert dates to datetimes
+        if "start_date" in values and not values.get("start_time"):
+            start_date = values["start_date"]
+            if isinstance(start_date, str):
+                start_date = date.fromisoformat(start_date)
+            values["start_time"] = datetime.combine(start_date, time.min)
+
+        if "end_date" in values and not values.get("end_time"):
+            end_date = values["end_date"]
+            if isinstance(end_date, str):
+                end_date = date.fromisoformat(end_date)
+            values["end_time"] = datetime.combine(end_date, time.max)
+
+        # Convert total_budget to Budget object
+        if "total_budget" in values and not values.get("budget"):
+            total_budget = values["total_budget"]
+            pacing = values.get("pacing", "even")
+            daily_cap = values.get("daily_budget")
+
+            values["budget"] = {
+                "total": total_budget,
+                "currency": "USD",  # Default currency
+                "pacing": pacing,
+                "daily_cap": daily_cap,
+            }
+
+        # Ensure required fields are present after conversion
+        if not values.get("buyer_ref"):
+            values["buyer_ref"] = f"buy_{uuid.uuid4().hex[:8]}"
+
+        return values
+
     # Backward compatibility properties for old field names
     @property
     def flight_start_date(self) -> date:
         """Backward compatibility for old field name."""
-        return self.start_date
+        return self.start_time.date() if self.start_time else None
 
     @property
     def flight_end_date(self) -> date:
         """Backward compatibility for old field name."""
-        return self.end_date
+        return self.end_time.date() if self.end_time else None
 
-    @property
-    def total_budget(self) -> float:
-        """Backward compatibility for old field name."""
-        return self.budget
+    def get_total_budget(self) -> float:
+        """Get total budget, handling both new and legacy formats."""
+        if self.budget:
+            return self.budget.total
+        return self.total_budget or 0.0
+
+    def get_product_ids(self) -> list[str]:
+        """Extract all product IDs from packages for backward compatibility."""
+        if self.packages:
+            product_ids = []
+            for package in self.packages:
+                product_ids.extend(package.products)
+            return product_ids
+        return self.product_ids or []
 
 
 class CreateMediaBuyResponse(BaseModel):
-    context_id: str  # Added per AdCP spec - used to check status
     media_buy_id: str
-    status: str  # pending_creative, active, paused, completed
-    detail: str
+    buyer_ref: str
+    packages: list[dict[str, Any]] = Field(default_factory=list, description="Created packages with IDs")
     creative_deadline: datetime | None = None
-    message: str | None = None  # Human-readable message for the response
-    clarification_needed: bool | None = False  # Whether clarification is needed
-    clarification_details: str | None = None  # What clarification is needed
 
 
 class CheckMediaBuyStatusRequest(BaseModel):
-    context_id: str | None = None  # The context ID returned from async create_media_buy operations
-    media_buy_id: str | None = None  # Alternative: use media_buy_id for sync operations
+    media_buy_id: str | None = None
+    buyer_ref: str | None = None
     strategy_id: str | None = Field(
         None,
         description="Optional strategy ID for consistent simulation/testing context",
     )
 
     def model_validate(cls, values):
-        # Ensure at least one of context_id or media_buy_id is provided
-        if not values.get("context_id") and not values.get("media_buy_id"):
-            raise ValueError("Either context_id or media_buy_id must be provided")
+        # Ensure at least one of media_buy_id or buyer_ref is provided
+        if not values.get("media_buy_id") and not values.get("buyer_ref"):
+            raise ValueError("Either media_buy_id or buyer_ref must be provided")
         return values
 
 
 class CheckMediaBuyStatusResponse(BaseModel):
     media_buy_id: str
+    buyer_ref: str
     status: str  # pending_creative, active, paused, completed, failed
-    detail: str | None = None
-    creative_count: int = 0
     packages: list[dict[str, Any]] | None = None
-    budget_spent: float = 0.0
-    budget_remaining: float = 0.0
+    budget_spent: Budget | None = None
+    budget_remaining: Budget | None = None
+    creative_count: int = 0
 
 
 class LegacyUpdateMediaBuyRequest(BaseModel):
@@ -594,17 +689,20 @@ class GetMediaBuyDeliveryRequest(BaseModel):
 
     Examples:
     - Single buy: media_buy_ids=["buy_123"]
-    - Multiple buys: media_buy_ids=["buy_123", "buy_456"]
-    - All active buys: status_filter="active" (or omit media_buy_ids)
+    - Multiple buys: buyer_refs=["ref_123", "ref_456"]
+    - All active buys: status_filter="active"
     - All buys: status_filter="all"
     """
 
     media_buy_ids: list[str] | None = Field(
         None, description="Specific media buy IDs to fetch. If omitted, fetches based on status_filter."
     )
+    buyer_refs: list[str] | None = Field(
+        None, description="Alternative: specify buyer references instead of media buy IDs."
+    )
     status_filter: str | None = Field(
         "active",
-        description="Filter for which buys to fetch when media_buy_ids not provided: 'active', 'all', 'completed'",
+        description="Filter for which buys to fetch when IDs/refs not provided: 'active', 'all', 'completed'",
     )
     today: date = Field(..., description="Reference date for calculating delivery metrics")
     strategy_id: str | None = Field(
@@ -617,8 +715,9 @@ class MediaBuyDeliveryData(BaseModel):
     """Delivery data for a single media buy."""
 
     media_buy_id: str
+    buyer_ref: str
     status: str
-    spend: float
+    spend: Budget
     impressions: int
     pacing: str
     days_elapsed: int
@@ -739,11 +838,15 @@ class UpdateMediaBuyRequest(BaseModel):
 
     media_buy_id: str
     # Campaign-level updates
+    buyer_ref: str | None = None  # Update buyer reference
     active: bool | None = None  # True to activate, False to pause entire campaign
     flight_start_date: date | None = None  # Change start date (if not started)
     flight_end_date: date | None = None  # Extend or shorten campaign
-    budget: float | None = None  # Update total budget
+    budget: Budget | float | None = None  # Update total budget (supports Budget object or float)
+    currency: str | None = None  # Update currency (ISO 4217)
     targeting_overlay: Targeting | None = None  # Update global targeting
+    start_time: datetime | None = None  # Update start datetime
+    end_time: datetime | None = None  # Update end datetime
     pacing: Literal["even", "asap", "daily_budget"] | None = None
     daily_budget: float | None = None  # Daily spend cap across all packages
     # Package-level updates

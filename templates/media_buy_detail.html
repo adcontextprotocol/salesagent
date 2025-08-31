@@ -25,13 +25,28 @@
         </div>
         <div class="detail-row">
             <span class="label">Budget:</span>
-            <span class="value">${{ "%.2f"|format(media_buy.budget or 0) }}</span>
+            <span class="value">${{ "%.2f"|format(media_buy.budget or 0) }} {{ media_buy.currency or 'USD' }}</span>
         </div>
+        {% if media_buy.buyer_ref %}
+        <div class="detail-row">
+            <span class="label">Buyer Reference:</span>
+            <span class="value">{{ media_buy.buyer_ref }}</span>
+        </div>
+        {% endif %}
         {% if media_buy.start_date and media_buy.end_date %}
         <div class="detail-row">
             <span class="label">Flight Dates:</span>
             <span class="value">
                 {{ media_buy.start_date.strftime('%Y-%m-%d') }} to {{ media_buy.end_date.strftime('%Y-%m-%d') }}
+            </span>
+        </div>
+        {% endif %}
+        {% if media_buy.start_time and media_buy.end_time %}
+        <div class="detail-row">
+            <span class="label">Schedule Time:</span>
+            <span class="value">
+                {{ media_buy.start_time.strftime('%Y-%m-%d %H:%M:%S') if media_buy.start_time else 'Not set' }} to
+                {{ media_buy.end_time.strftime('%Y-%m-%d %H:%M:%S') if media_buy.end_time else 'Not set' }}
             </span>
         </div>
         {% endif %}
