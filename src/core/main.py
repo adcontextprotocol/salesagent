@@ -878,35 +878,16 @@ def create_media_buy(req: CreateMediaBuyRequest, context: Context) -> CreateMedi
             request_data=req.model_dump(mode="json"),  # Convert dates to strings
         )
 
-        # Create a human task instead of executing immediately
-        task_req = CreateHumanTaskRequest(
-            task_type="manual_approval",
-            priority="high",
-            media_buy_id=f"pending_{uuid.uuid4().hex[:8]}",
-            operation="create_media_buy",
-            error_detail="Publisher requires manual approval for all media buy creation",
-            context_data={
-                "request": req.model_dump(mode="json"),
-                "principal_id": principal_id,
-                "adapter": adapter.__class__.adapter_name,
-                "context_id": persistent_ctx.context_id,
-                "workflow_step_id": step.step_id,
-            },
-            due_in_hours=4,
-        )
-
-        task_response = create_workflow_step_for_task(task_req, context)
-
-        # Link task to context
-        ctx_manager.link_task_to_context(persistent_ctx.context_id, task_response.task_id, is_current=True)
+        # Workflow step already created above - no need for separate task
+        pending_media_buy_id = f"pending_{uuid.uuid4().hex[:8]}"
 
         response_msg = (
-            f"Manual approval required. Task ID: {task_response.task_id}. Context ID: {persistent_ctx.context_id}"
+            f"Manual approval required. Workflow Step ID: {step.step_id}. Context ID: {persistent_ctx.context_id}"
         )
         ctx_manager.add_message(persistent_ctx.context_id, "assistant", response_msg)
 
         return CreateMediaBuyResponse(
-            media_buy_id=task_req.media_buy_id,
+            media_buy_id=pending_media_buy_id,
             status="pending_manual",
             detail=response_msg,
             creative_deadline=None,
@@ -938,30 +919,14 @@ def create_media_buy(req: CreateMediaBuyRequest, context: Context) -> CreateMedi
             request_data=req.model_dump(mode="json"),  # Convert dates to strings
         )
 
-        # Create human task for non-automatic creation
-        task_req = CreateHumanTaskRequest(
-            task_type="manual_approval",
-            priority="medium",
-            media_buy_id=f"pending_{uuid.uuid4().hex[:8]}",
-            operation="create_media_buy",
-            error_detail=f"{reason} disables automatic media buy creation",
-            context_data={
-                "request": req.model_dump(mode="json"),
-                "principal_id": principal_id,
-                "context_id": persistent_ctx.context_id,
-                "workflow_step_id": step.step_id,
-            },
-            due_in_hours=8,
-        )
+        # Workflow step already created above - no need for separate task
+        pending_media_buy_id = f"pending_{uuid.uuid4().hex[:8]}"
 
-        task_response = create_workflow_step_for_task(task_req, context)
-        ctx_manager.link_task_to_context(persistent_ctx.context_id, task_response.task_id, is_current=True)
-
-        response_msg = f"Media buy requires approval due to {reason.lower()}. Task ID: {task_response.task_id}. Context ID: {persistent_ctx.context_id}"
+        response_msg = f"Media buy requires approval due to {reason.lower()}. Workflow Step ID: {step.step_id}. Context ID: {persistent_ctx.context_id}"
         ctx_manager.add_message(persistent_ctx.context_id, "assistant", response_msg)
 
         return CreateMediaBuyResponse(
-            media_buy_id=task_req.media_buy_id,
+            media_buy_id=pending_media_buy_id,
             status="pending_manual",
             detail=response_msg,
             creative_deadline=None,
@@ -1493,26 +1458,16 @@ def update_media_buy(req: UpdateMediaBuyRequest, context: Context) -> UpdateMedi
     )
 
     if manual_approval_required and "update_media_buy" in manual_approval_operations:
-        # Create a human task instead of executing immediately
-        task_req = CreateHumanTaskRequest(
-            task_type="manual_approval",
-            priority="high",
-            media_buy_id=req.media_buy_id,
-            operation="update_media_buy",
-            error_detail="Publisher requires manual approval for all media buy updates",
-            context_data={
-                "request": req.model_dump(mode="json"),
-                "principal_id": principal_id,
-                "adapter": adapter.__class__.adapter_name,
-            },
-            due_in_hours=2,
+        # Workflow step already created above - update its status
+        ctx_manager.update_workflow_step(
+            step.step_id,
+            status="requires_approval",
+            add_comment={"user": "system", "comment": "Publisher requires manual approval for all media buy updates"},
         )
-
-        task_response = create_workflow_step_for_task(task_req, context)
 
         return UpdateMediaBuyResponse(
             status="pending_manual",
-            detail=f"Manual approval required. Task ID: {task_response.task_id}",
+            detail=f"Manual approval required. Workflow Step ID: {step.step_id}",
         )
 
     # Handle campaign-level updates
@@ -2284,7 +2239,9 @@ def update_performance_index(req: UpdatePerformanceIndexRequest, context: Contex
 
 # @mcp.tool  # DEPRECATED - removed from MCP interface
 def create_workflow_step_for_task(req, context):
-    """Create a task requiring human intervention."""
+    """DEPRECATED - Use context_mgr.create_workflow_step() directly."""
+    raise ToolError("DEPRECATED", "This function has been deprecated. Use workflow steps directly.")
+    # Original implementation removed - see git history if needed
     principal_id = get_principal_from_context(context)
     if not principal_id:
         raise ToolError("AUTHENTICATION_REQUIRED", "You must provide a valid x-adcp-auth header")
