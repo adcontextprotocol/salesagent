@@ -8,7 +8,7 @@ from flask import Blueprint, jsonify, redirect, render_template, request, sessio
 from src.admin.utils import get_tenant_config_from_db, require_auth
 from src.core.audit_logger import AuditLogger
 from src.core.database.database_session import get_db_session
-from src.core.database.models import AuditLog, Tenant, WorkflowStep
+from src.core.database.models import AuditLog, Context, Tenant, WorkflowStep
 
 logger = logging.getLogger(__name__)
 
@@ -222,7 +222,12 @@ def review_task(tenant_id, task_id):
 
             try:
                 # Get the workflow step
-                step = db_session.query(WorkflowStep).filter_by(tenant_id=tenant_id, step_id=task_id).first()
+                step = (
+                    db_session.query(WorkflowStep)
+                    .join(Context, WorkflowStep.context_id == Context.context_id)
+                    .filter(Context.tenant_id == tenant_id, WorkflowStep.step_id == task_id)
+                    .first()
+                )
 
                 if not step:
                     return "Task not found", 404
@@ -255,7 +260,12 @@ def review_task(tenant_id, task_id):
 
         # GET request - show review form
         try:
-            step = db_session.query(WorkflowStep).filter_by(tenant_id=tenant_id, step_id=task_id).first()
+            step = (
+                db_session.query(WorkflowStep)
+                .join(Context, WorkflowStep.context_id == Context.context_id)
+                .filter(Context.tenant_id == tenant_id, WorkflowStep.step_id == task_id)
+                .first()
+            )
 
             if not step:
                 return "Task not found", 404

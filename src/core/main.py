@@ -44,8 +44,7 @@ from src.core.config_loader import (
 )
 from src.core.context_manager import get_context_manager
 from src.core.database.database_session import get_db_session
-from src.core.database.models import AdapterConfig, MediaBuy, Task, Tenant
-from src.core.database.models import HumanTask as ModelHumanTask
+from src.core.database.models import AdapterConfig, MediaBuy, ObjectWorkflowMapping, Tenant, WorkflowStep
 from src.core.database.models import Principal as ModelPrincipal
 from src.core.database.models import Product as ModelProduct
 
@@ -59,7 +58,6 @@ from src.core.schemas import (
     ApproveCreativeResponse,
     AssignCreativeRequest,
     AssignCreativeResponse,
-    AssignTaskRequest,
     Budget,  # AdCP v2.4 Budget model
     CheckAEERequirementsRequest,
     CheckAEERequirementsResponse,
@@ -67,13 +65,10 @@ from src.core.schemas import (
     CheckCreativeStatusResponse,
     CheckMediaBuyStatusRequest,
     CheckMediaBuyStatusResponse,
-    CompleteTaskRequest,
     CreateCreativeGroupRequest,
     CreateCreativeGroupResponse,
     CreateCreativeRequest,
     CreateCreativeResponse,
-    CreateHumanTaskRequest,
-    CreateHumanTaskResponse,
     CreateMediaBuyRequest,
     CreateMediaBuyResponse,
     Creative,
@@ -88,17 +83,13 @@ from src.core.schemas import (
     GetMediaBuyDeliveryResponse,
     GetPendingCreativesRequest,
     GetPendingCreativesResponse,
-    GetPendingTasksRequest,
-    GetPendingTasksResponse,
     GetProductsRequest,
     GetProductsResponse,
     GetSignalsRequest,
     GetSignalsResponse,
     GetTargetingCapabilitiesRequest,
     GetTargetingCapabilitiesResponse,
-    HumanTask,
     LegacyUpdateMediaBuyRequest,
-    MarkTaskCompleteRequest,
     MediaBuyDeliveryData,
     MediaPackage,
     PackagePerformance,
@@ -113,8 +104,6 @@ from src.core.schemas import (
     UpdatePackageRequest,
     UpdatePerformanceIndexRequest,
     UpdatePerformanceIndexResponse,
-    VerifyTaskRequest,
-    VerifyTaskResponse,
 )
 from src.services.policy_check_service import PolicyCheckService, PolicyStatus
 from src.services.slack_notifier import get_slack_notifier
@@ -435,45 +424,7 @@ def load_tasks_from_db():
     pass
 
 
-def get_task_from_db(task_id: str, tenant_id: str) -> HumanTask:
-    """Get task directly from database."""
-    from src.core.database.database_session import get_db_session
-    from src.core.database.models import Task
-
-    with get_db_session() as db_session:
-        db_task = db_session.query(Task).filter_by(task_id=task_id, tenant_id=tenant_id).first()
-
-        if not db_task:
-            return None
-
-        # Extract metadata fields
-        metadata = db_task.task_metadata or {}
-
-        # Create HumanTask object from database record
-        human_task = HumanTask(
-            task_id=db_task.task_id,
-            task_type=db_task.task_type,
-            priority=metadata.get("priority", "medium"),
-            media_buy_id=db_task.media_buy_id,
-            creative_id=metadata.get("creative_id"),
-            operation=metadata.get("operation"),
-            principal_id=metadata.get("principal_id"),
-            adapter_name=metadata.get("adapter_name"),
-            error_detail=metadata.get("error_detail") or db_task.description,
-            context_data=db_task.details or {},
-            status=db_task.status,
-            created_at=db_task.created_at,
-            due_by=db_task.due_date,
-            assigned_to=db_task.assigned_to,
-            resolution=db_task.resolution,
-            resolution_detail=db_task.resolution_notes,
-            resolved_by=db_task.resolved_by,
-            completed_at=db_task.completed_at,
-            task_metadata=metadata,  # Include the metadata for compatibility
-        )
-
-        # No longer caching in memory - direct database queries only
-        return human_task
+# Removed get_task_from_db - replaced by workflow-based system
 
 
 # --- In-Memory State ---
@@ -959,35 +910,16 @@ def create_media_buy(req: CreateMediaBuyRequest, context: Context) -> CreateMedi
             request_data=req.model_dump(mode="json"),  # Convert dates to strings
         )
 
-        # Create a human task instead of executing immediately
-        task_req = CreateHumanTaskRequest(
-            task_type="manual_approval",
-            priority="high",
-            media_buy_id=f"pending_{uuid.uuid4().hex[:8]}",
-            operation="create_media_buy",
-            error_detail="Publisher requires manual approval for all media buy creation",
-            context_data={
-                "request": req.model_dump(mode="json"),
-                "principal_id": principal_id,
-                "adapter": adapter.__class__.adapter_name,
-                "context_id": persistent_ctx.context_id,
-                "workflow_step_id": step.step_id,
-            },
-            due_in_hours=4,
-        )
-
-        task_response = create_workflow_step_for_task(task_req, context)
-
-        # Link task to context
-        ctx_manager.link_task_to_context(persistent_ctx.context_id, task_response.task_id, is_current=True)
+        # Workflow step already created above - no need for separate task
+        pending_media_buy_id = f"pending_{uuid.uuid4().hex[:8]}"
 
         response_msg = (
-            f"Manual approval required. Task ID: {task_response.task_id}. Context ID: {persistent_ctx.context_id}"
+            f"Manual approval required. Workflow Step ID: {step.step_id}. Context ID: {persistent_ctx.context_id}"
         )
         ctx_manager.add_message(persistent_ctx.context_id, "assistant", response_msg)
 
         return CreateMediaBuyResponse(
-            media_buy_id=task_req.media_buy_id,
+            media_buy_id=pending_media_buy_id,
             status="pending_manual",
             detail=response_msg,
             creative_deadline=None,
@@ -1019,30 +951,14 @@ def create_media_buy(req: CreateMediaBuyRequest, context: Context) -> CreateMedi
             request_data=req.model_dump(mode="json"),  # Convert dates to strings
         )
 
-        # Create human task for non-automatic creation
-        task_req = CreateHumanTaskRequest(
-            task_type="manual_approval",
-            priority="medium",
-            media_buy_id=f"pending_{uuid.uuid4().hex[:8]}",
-            operation="create_media_buy",
-            error_detail=f"{reason} disables automatic media buy creation",
-            context_data={
-                "request": req.model_dump(mode="json"),
-                "principal_id": principal_id,
-                "context_id": persistent_ctx.context_id,
-                "workflow_step_id": step.step_id,
-            },
-            due_in_hours=8,
-        )
+        # Workflow step already created above - no need for separate task
+        pending_media_buy_id = f"pending_{uuid.uuid4().hex[:8]}"
 
-        task_response = create_workflow_step_for_task(task_req, context)
-        ctx_manager.link_task_to_context(persistent_ctx.context_id, task_response.task_id, is_current=True)
-
-        response_msg = f"Media buy requires approval due to {reason.lower()}. Task ID: {task_response.task_id}. Context ID: {persistent_ctx.context_id}"
+        response_msg = f"Media buy requires approval due to {reason.lower()}. Workflow Step ID: {step.step_id}. Context ID: {persistent_ctx.context_id}"
         ctx_manager.add_message(persistent_ctx.context_id, "assistant", response_msg)
 
         return CreateMediaBuyResponse(
-            media_buy_id=task_req.media_buy_id,
+            media_buy_id=pending_media_buy_id,
             status="pending_manual",
             detail=response_msg,
             creative_deadline=None,
@@ -1230,11 +1146,19 @@ def check_media_buy_status(req: CheckMediaBuyStatusRequest, context: Context) ->
         # Calculate basic info
         creative_count = len(creative_assignments.get(media_buy_id, {}).get("all", []))
 
-        # Check for any pending human tasks
+        # Check for any pending workflow steps requiring approval
         with get_db_session() as session:
-            pending_task = session.query(ModelHumanTask).filter_by(media_buy_id=media_buy_id, status="pending").first()
+            pending_step = (
+                session.query(WorkflowStep)
+                .filter_by(status="requires_approval")
+                .join(ObjectWorkflowMapping)
+                .filter(
+                    ObjectWorkflowMapping.object_type == "media_buy", ObjectWorkflowMapping.object_id == media_buy_id
+                )
+                .first()
+            )
 
-            if pending_task:
+            if pending_step:
                 status = "pending_manual"
                 detail = "Awaiting manual approval"
             else:
@@ -1575,26 +1499,16 @@ def update_media_buy(req: UpdateMediaBuyRequest, context: Context) -> UpdateMedi
     )
 
     if manual_approval_required and "update_media_buy" in manual_approval_operations:
-        # Create a human task instead of executing immediately
-        task_req = CreateHumanTaskRequest(
-            task_type="manual_approval",
-            priority="high",
-            media_buy_id=req.media_buy_id,
-            operation="update_media_buy",
-            error_detail="Publisher requires manual approval for all media buy updates",
-            context_data={
-                "request": req.model_dump(mode="json"),
-                "principal_id": principal_id,
-                "adapter": adapter.__class__.adapter_name,
-            },
-            due_in_hours=2,
+        # Workflow step already created above - update its status
+        ctx_manager.update_workflow_step(
+            step.step_id,
+            status="requires_approval",
+            add_comment={"user": "system", "comment": "Publisher requires manual approval for all media buy updates"},
         )
-
-        task_response = create_workflow_step_for_task(task_req, context)
 
         return UpdateMediaBuyResponse(
             status="pending_manual",
-            detail=f"Manual approval required. Task ID: {task_response.task_id}",
+            detail=f"Manual approval required. Workflow Step ID: {step.step_id}",
         )
 
     # Handle campaign-level updates
@@ -2439,9 +2353,11 @@ def update_performance_index(req: UpdatePerformanceIndexRequest, context: Contex
 # --- Human-in-the-Loop Task Queue Tools ---
 
 
-@mcp.tool
-def create_workflow_step_for_task(req: CreateHumanTaskRequest, context: Context) -> CreateHumanTaskResponse:
-    """Create a task requiring human intervention."""
+# @mcp.tool  # DEPRECATED - removed from MCP interface
+def create_workflow_step_for_task(req, context):
+    """DEPRECATED - Use context_mgr.create_workflow_step() directly."""
+    raise ToolError("DEPRECATED", "This function has been deprecated. Use workflow steps directly.")
+    # Original implementation removed - see git history if needed
     principal_id = get_principal_from_context(context)
     if not principal_id:
         raise ToolError("AUTHENTICATION_REQUIRED", "You must provide a valid x-adcp-auth header")
@@ -2564,43 +2480,8 @@ def create_workflow_step_for_task(req: CreateHumanTaskRequest, context: Context)
         except:
             pass  # Don't fail task creation if webhook fails
 
-    # Create Task record in database for tracking
-    try:
-        from src.core.database.database_session import get_db_session
-        from src.core.database.models import Task
-
-        with get_db_session() as db_session:
-            # Create task record with correct field mappings
-            task = Task(
-                task_id=task_id,
-                tenant_id=tenant["tenant_id"],
-                media_buy_id=req.media_buy_id,
-                task_type=req.task_type,
-                title=f"{req.task_type.replace('_', ' ').title()} Required",
-                description=req.error_detail or f"Task requires {req.task_type}",
-                status="pending",
-                assigned_to=req.assigned_to,
-                due_date=due_by,  # Fixed field name
-                # Store all extra data in task_metadata
-                task_metadata={
-                    "principal_id": principal_id,
-                    "adapter_name": req.adapter_name,
-                    "priority": req.priority,
-                    "operation": req.operation,
-                    "creative_id": req.creative_id,
-                    "error_detail": req.error_detail,
-                },
-                # Store context data in details field
-                details=req.context_data or {},
-                created_at=datetime.now(UTC),
-            )
-            db_session.add(task)
-            db_session.commit()
-            console.print(f"[green]✅ Created task {task_id} in database[/green]")
-            # Task is now stored only in database, no in-memory storage needed
-    except Exception as e:
-        console.print(f"[yellow]Warning: Failed to create task record: {e}[/yellow]")
-        # Don't fail the whole operation if database write fails
+    # Task is now handled entirely through WorkflowStep - no separate Task table needed
+    console.print(f"[green]✅ Created workflow step {task_id}[/green]")
 
     # Send Slack notification for new tasks
     try:
@@ -2631,114 +2512,14 @@ def create_workflow_step_for_task(req: CreateHumanTaskRequest, context: Context)
     return CreateHumanTaskResponse(task_id=task_id, status="pending", due_by=due_by)
 
 
-@mcp.tool
-def get_pending_workflows(req: GetPendingTasksRequest, context: Context) -> GetPendingTasksResponse:
-    """Get pending workflow steps that need action."""
-    # Check if requester is admin
-    principal_id = get_principal_from_context(context)
-    tenant = get_current_tenant()
-    is_admin = principal_id == f"{tenant['tenant_id']}_admin"
-
-    # Determine owner filter based on role
-    owner_filter = None
-    if not is_admin:
-        # Non-admins only see steps assigned to "principal" role
-        owner_filter = "principal"
-    elif req.principal_id:
-        # Admin filtering by specific principal
-        owner_filter = "principal"
-    else:
-        # Admin can see publisher and system tasks
-        owner_filter = "publisher"
-
-    # Get pending steps from workflow
-    pending_steps = context_mgr.get_pending_steps(owner=owner_filter, assigned_to=req.assigned_to)
-
-    # Convert workflow steps to HumanTask format for compatibility
-    tasks = []
-    for step in pending_steps:
-        # Extract task data from request_data
-        req_data = step.request_data or {}
-
-        # Create compatible HumanTask object
-        task = HumanTask(
-            task_id=step.step_id,
-            task_type=req_data.get("task_type", step.step_type),
-            principal_id=req_data.get("principal_id", ""),
-            adapter_name=req_data.get("adapter_name"),
-            status=step.status,
-            priority=req_data.get("priority", "medium"),
-            media_buy_id=req_data.get("media_buy_id"),
-            creative_id=req_data.get("creative_id"),
-            operation=req_data.get("operation", step.tool_name),
-            error_detail=req_data.get("error_detail", step.error_message),
-            context_data=req_data.get("context_data"),
-            created_at=step.created_at,
-            updated_at=step.created_at,
-            due_by=datetime.fromisoformat(req_data["due_by"]) if req_data.get("due_by") else None,
-            assigned_to=step.assigned_to,
-        )
-
-        # Apply additional filters
-        if req.principal_id and req_data.get("principal_id") != req.principal_id:
-            continue
-        if req.task_type and req_data.get("task_type") != req.task_type:
-            continue
-
-        tasks.append(task)
-
-    # Sort by created_at (most recent first)
-    tasks.sort(key=lambda t: t.created_at, reverse=True)
-
-    # Count overdue tasks
-    now = datetime.now()
-    overdue_count = sum(1 for t in tasks if t.due_by and t.due_by < now)
-
-    return GetPendingTasksResponse(tasks=tasks, total_count=len(tasks), overdue_count=overdue_count)
+# Removed get_pending_workflows - replaced by admin dashboard workflow views
 
 
-@mcp.tool
-def assign_task(req: AssignTaskRequest, context: Context) -> dict[str, str]:
-    """Assign a task to a human operator."""
-    # Admin only
-    principal_id = get_principal_from_context(context)
-    tenant = get_current_tenant()
-    if principal_id != f"{tenant['tenant_id']}_admin":
-        raise ToolError("PERMISSION_DENIED", "Only administrators can assign tasks")
-
-    # Update task in database
-    from src.core.database.database_session import get_db_session
-    from src.core.database.models import Task
-
-    with get_db_session() as db_session:
-        db_task = db_session.query(Task).filter_by(task_id=req.task_id, tenant_id=tenant["tenant_id"]).first()
-
-        if not db_task:
-            raise ToolError("NOT_FOUND", f"Task {req.task_id} not found")
-
-        db_task.assigned_to = req.assigned_to
-        db_task.status = "assigned"
-        db_task.updated_at = datetime.now(UTC)
-        db_session.commit()
-
-    audit_logger = get_audit_logger("AdCP", tenant["tenant_id"])
-    audit_logger.log_operation(
-        operation="assign_task",
-        principal_name="admin",
-        principal_id=principal_id,
-        adapter_id="task_queue",
-        success=True,
-        details={"task_id": req.task_id, "assigned_to": req.assigned_to},
-    )
-
-    return {
-        "status": "success",
-        "detail": f"Task {req.task_id} assigned to {req.assigned_to}",
-    }
+# Removed assign_task - assignment handled through admin UI workflow management
 
 
-@mcp.tool
-def complete_task(req: CompleteTaskRequest, context: Context) -> dict[str, str]:
+# @mcp.tool  # DEPRECATED - removed from MCP interface
+def complete_task(req, context):
     """Complete a human task with resolution details."""
     # Admin only
     principal_id = get_principal_from_context(context)
@@ -2945,8 +2726,8 @@ def complete_task(req: CompleteTaskRequest, context: Context) -> dict[str, str]:
     }
 
 
-@mcp.tool
-def verify_task(req: VerifyTaskRequest, context: Context) -> VerifyTaskResponse:
+# @mcp.tool  # DEPRECATED - removed from MCP interface
+def verify_task(req, context):
     """Verify if a task was completed correctly by checking actual state."""
     # Get task from database
     tenant = get_current_tenant()
@@ -3020,8 +2801,8 @@ def verify_task(req: VerifyTaskRequest, context: Context) -> VerifyTaskResponse:
     )
 
 
-@mcp.tool
-def mark_task_complete(req: MarkTaskCompleteRequest, context: Context) -> dict[str, Any]:
+# @mcp.tool  # DEPRECATED - removed from MCP interface
+def mark_task_complete(req, context):
     """Mark a task as complete with automatic verification."""
     # Admin only
     principal_id = get_principal_from_context(context)

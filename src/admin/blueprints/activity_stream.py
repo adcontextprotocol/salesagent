@@ -179,10 +179,16 @@ def get_recent_activities(tenant_id: str, since: datetime = None, limit: int = 5
         return []
 
 
-@activity_stream_bp.route("/tenant/<tenant_id>/events", methods=["GET"])
-@require_tenant_access()
+@activity_stream_bp.route("/tenant/<tenant_id>/events", methods=["GET", "HEAD"])
+@require_tenant_access(api_mode=True)
 def activity_events(tenant_id, **kwargs):
     """Server-Sent Events endpoint for real-time activity updates."""
+
+    # Handle HEAD requests for authentication checks
+    if request.method == "HEAD":
+        logger.info(f"HEAD request for SSE endpoint - tenant: {tenant_id}, authenticated: True")
+        return Response(status=200)
+
     # Validate tenant_id
     if not tenant_id or not isinstance(tenant_id, str) or len(tenant_id) > 50:
         logger.error(f"Invalid tenant_id for SSE endpoint: {tenant_id}")
@@ -195,15 +201,20 @@ def activity_events(tenant_id, **kwargs):
     ]
 
     # Check rate limit
-    if len(connection_timestamps[tenant_id]) >= MAX_CONNECTIONS_PER_TENANT:
+    active_connections = len(connection_timestamps[tenant_id])
+    if active_connections >= MAX_CONNECTIONS_PER_TENANT:
         logger.warning(
-            f"Rate limit exceeded for tenant {tenant_id}: {len(connection_timestamps[tenant_id])} connections in last minute"
+            f"RATE LIMIT HIT - tenant: {tenant_id}, active_connections: {active_connections}, max: {MAX_CONNECTIONS_PER_TENANT}"
         )
         return Response("Too many connections. Please wait before reconnecting.", status=429)
 
     # Record this connection
     connection_timestamps[tenant_id].append(now)
     connection_counts[tenant_id] += 1
+
+    logger.info(
+        f"SSE GET request starting - tenant: {tenant_id}, active_connections: {active_connections + 1}, total_connections: {connection_counts[tenant_id]}"
+    )
 
     def generate():
         """Generator function that yields SSE formatted data."""
@@ -255,9 +266,11 @@ def activity_events(tenant_id, **kwargs):
 
                 except GeneratorExit:
                     logger.info(f"SSE client disconnected for tenant {tenant_id}")
+                    cleanup_needed = True
                     break
                 except Exception as e:
                     logger.error(f"Error in SSE stream for tenant {tenant_id}: {e}")
+                    cleanup_needed = True
                     # Send error event
                     error_data = json.dumps(
                         {
@@ -271,6 +284,7 @@ def activity_events(tenant_id, **kwargs):
 
         except Exception as e:
             logger.error(f"Failed to start SSE stream for tenant {tenant_id}: {e}")
+            cleanup_needed = True
             error_data = json.dumps(
                 {
                     "type": "error",
@@ -282,9 +296,11 @@ def activity_events(tenant_id, **kwargs):
         finally:
             # Clean up resources
             if cleanup_needed:
-                logger.info(f"Cleaning up SSE stream resources for tenant {tenant_id}")
-                # Decrement connection count
+                old_count = connection_counts[tenant_id]
                 connection_counts[tenant_id] = max(0, connection_counts[tenant_id] - 1)
+                logger.info(
+                    f"Cleaning up SSE stream resources for tenant {tenant_id} - connection count: {old_count} -> {connection_counts[tenant_id]}"
+                )
                 # Force garbage collection for any lingering resources
                 import gc
 

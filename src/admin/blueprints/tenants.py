@@ -18,7 +18,7 @@ from sqlalchemy.orm import joinedload
 
 from src.admin.utils import get_tenant_config_from_db, require_auth, require_tenant_access
 from src.core.database.database_session import get_db_session
-from src.core.database.models import MediaBuy, Principal, Product, Tenant, User
+from src.core.database.models import MediaBuy, Principal, Product, Task, Tenant, User
 from src.core.validation import sanitize_form_data, validate_form_data
 
 logger = logging.getLogger(__name__)
@@ -107,16 +107,32 @@ def dashboard(tenant_id):
             # Calculate pending buys
             pending_buys = db_session.query(MediaBuy).filter_by(tenant_id=tenant_id, status="pending").count()
 
-            # Calculate tasks metrics from the Task table
-            from src.core.database.models import Task
-
-            open_tasks = db_session.query(Task).filter_by(tenant_id=tenant_id, status="pending").count()
-
-            # Calculate overdue tasks (tasks past their due date)
-            overdue_tasks = (
+            # Calculate task-based metrics (temporary fallback from workflow system)
+            # Get pending tasks that require action
+            pending_steps = (
                 db_session.query(Task)
-                .filter(Task.tenant_id == tenant_id, Task.status == "pending", Task.due_date < datetime.now(UTC))
+                .filter(
+                    Task.tenant_id == tenant_id,
+                    Task.status.in_(["pending", "active", "requires_approval"]),
+                )
                 .count()
+            )
+
+            # Get tasks requiring immediate attention (approval needed)
+            approval_needed = (
+                db_session.query(Task).filter(Task.tenant_id == tenant_id, Task.status == "requires_approval").count()
+            )
+
+            # Get recent completed tasks (for activity feed)
+            recent_activity = (
+                db_session.query(Task)
+                .filter(
+                    Task.tenant_id == tenant_id,
+                    Task.status.in_(["completed", "failed", "requires_approval"]),
+                )
+                .order_by(Task.created_at.desc())
+                .limit(10)
+                .all()
             )
 
             # Calculate advertiser metrics
@@ -131,8 +147,9 @@ def dashboard(tenant_id):
                 "conversion_rate": 0.0,  # Could be calculated from actual data
                 "revenue_change": round(revenue_change, 1),
                 "revenue_change_abs": round(abs(revenue_change), 1),  # Absolute value for display
-                "open_tasks": open_tasks,
-                "overdue_tasks": overdue_tasks,
+                "pending_workflows": pending_steps,
+                "approval_needed": approval_needed,
+                "recent_activity": recent_activity,
                 "active_advertisers": active_advertisers,
                 "total_advertisers": active_advertisers,  # Same for now, could differentiate active vs total
             }

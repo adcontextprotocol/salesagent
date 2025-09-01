@@ -31,7 +31,7 @@
 
     .metric-card.revenue::before { background: linear-gradient(90deg, #10b981, #34d399); }
     .metric-card.buys::before { background: linear-gradient(90deg, #3b82f6, #60a5fa); }
-    .metric-card.tasks::before { background: linear-gradient(90deg, #f59e0b, #fbbf24); }
+    .metric-card.workflows::before { background: linear-gradient(90deg, #f59e0b, #fbbf24); }
     .metric-card.advertisers::before { background: linear-gradient(90deg, #8b5cf6, #a78bfa); }
 
     /* Hover effect for clickable metric cards */
@@ -494,15 +494,16 @@
         </div>
     </div>
 
-    <div class="metric-card tasks">
-        <div class="metric-label">Open Tasks</div>
-        <div class="metric-value">{{ metrics.open_tasks }}</div>
-        <div class="metric-change {{ 'negative' if metrics.overdue_tasks > 0 else 'neutral' }}">
-            {% if metrics.overdue_tasks > 0 %}
-                <i class="fas fa-exclamation-triangle"></i>
-                {{ metrics.overdue_tasks }} overdue
+    <div class="metric-card workflows">
+        <div class="metric-label">Active Workflows</div>
+        <div class="metric-value">{{ metrics.pending_workflows }}</div>
+        <div class="metric-change {{ 'negative' if metrics.approval_needed > 0 else 'neutral' }}">
+            {% if metrics.approval_needed > 0 %}
+                <i class="fas fa-hand-paper"></i>
+                {{ metrics.approval_needed }} need approval
             {% else %}
-                All on track
+                <i class="fas fa-check-circle"></i>
+                All workflows running smoothly
             {% endif %}
         </div>
     </div>
@@ -521,7 +522,7 @@
     <!-- Activity Feed -->
     <div class="activity-feed">
         <div class="activity-header">
-            <h3>Activity Feed</h3>
+            <h3>Workflow Activity</h3>
             <div class="activity-status">
                 <span class="status-dot active"></span>
                 <span id="connection-status">Connected</span>
@@ -529,14 +530,49 @@
         </div>
 
         <div class="activity-list" id="activity-list">
-            <!-- Activity items will be populated here via SSE -->
-            <div class="activity-item info" style="text-align: center; padding: 2rem; color: #6b7280;">
-                <p>Loading recent activities...</p>
-            </div>
+            <!-- Show recent workflow activity -->
+            {% if metrics.recent_activity %}
+                {% for step in metrics.recent_activity %}
+                    <div class="activity-item {{ 'action-required' if step.status == 'requires_approval' else 'info' }}">
+                        <div style="padding: 0.75rem; display: flex; justify-content: between; align-items: center;">
+                            <div style="flex: 1;">
+                                <div style="font-weight: 600; margin-bottom: 0.25rem;">
+                                    {% if step.step_type == 'approval' %}
+                                        <i class="fas fa-hand-paper" style="color: #f59e0b; margin-right: 0.5rem;"></i>
+                                        {{ step.step_type|title }} Required
+                                    {% elif step.status == 'completed' %}
+                                        <i class="fas fa-check-circle" style="color: #10b981; margin-right: 0.5rem;"></i>
+                                        {{ step.step_type|title }} Completed
+                                    {% elif step.status == 'failed' %}
+                                        <i class="fas fa-times-circle" style="color: #ef4444; margin-right: 0.5rem;"></i>
+                                        {{ step.step_type|title }} Failed
+                                    {% else %}
+                                        <i class="fas fa-cog fa-spin" style="color: #6b7280; margin-right: 0.5rem;"></i>
+                                        {{ step.step_type|title }} {{ step.status|title }}
+                                    {% endif %}
+                                </div>
+                                <div style="color: #6b7280; font-size: 0.875rem;">
+                                    {% if step.tool_name %}Tool: {{ step.tool_name }}{% endif %}
+                                    {% if step.assigned_to %} • Assigned to: {{ step.assigned_to }}{% endif %}
+                                </div>
+                            </div>
+                            <div style="color: #9ca3af; font-size: 0.75rem; text-align: right;">
+                                {{ step.created_at.strftime('%H:%M') if step.created_at else 'Unknown' }}
+                            </div>
+                        </div>
+                    </div>
+                {% endfor %}
+            {% else %}
+                <div class="activity-item info" style="text-align: center; padding: 2rem; color: #6b7280;">
+                    <i class="fas fa-stream" style="font-size: 2rem; margin-bottom: 1rem; opacity: 0.5;"></i>
+                    <p>No recent workflow activity</p>
+                    <p style="font-size: 0.875rem;">Workflow steps will appear here as they're processed</p>
+                </div>
+            {% endif %}
         </div>
 
         <div style="text-align: center; padding: 1rem; border-top: 1px solid #e5e7eb;">
-            <small style="color: #6b7280;">Showing up to 50 recent activities • Updates every 2 seconds</small>
+            <small style="color: #6b7280;">Showing recent workflow steps • Live updates via SSE</small>
         </div>
     </div>
 
@@ -655,7 +691,7 @@
     </table>
 </div>
 
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@3.9.1/dist/chart.min.js?v=3.9.1"></script>
 <script>
 // Real-time activity feed using Server-Sent Events (SSE)
 let eventSource = null;
@@ -684,7 +720,7 @@ function escapeHtmlAttr(text) {
     });
 }
 
-function connectActivityStream() {
+async function connectActivityStream() {
     const statusEl = document.getElementById('connection-status');
     const statusDot = document.querySelector('.status-dot');
 
@@ -701,9 +737,54 @@ function connectActivityStream() {
             statusDot.classList.add('connecting');
         }
 
-        // Create new EventSource connection
-        const streamUrl = `{{ script_name }}/admin/tenant/{{ tenant.tenant_id }}/events`;
-        eventSource = new EventSource(streamUrl);
+        // Pre-flight authentication check
+        const streamUrl = `{{ script_name }}/tenant/{{ tenant.tenant_id }}/events`;
+
+        try {
+            const authCheck = await fetch(streamUrl, {
+                method: 'HEAD',
+                credentials: 'same-origin'
+            });
+
+            if (authCheck.status === 401) {
+                // Authentication failed - show error and don't retry
+                if (statusEl) {
+                    statusEl.textContent = 'Authentication required';
+                    statusEl.style.color = '#ef4444';
+                }
+                if (statusDot) {
+                    statusDot.classList.remove('connecting', 'active');
+                    statusDot.classList.add('idle');
+                }
+                console.log('SSE authentication failed - please log in');
+                return; // Don't retry
+            }
+
+            if (authCheck.status === 403) {
+                // Access forbidden - show error and don't retry
+                if (statusEl) {
+                    statusEl.textContent = 'Access denied';
+                    statusEl.style.color = '#ef4444';
+                }
+                if (statusDot) {
+                    statusDot.classList.remove('connecting', 'active');
+                    statusDot.classList.add('idle');
+                }
+                console.log('SSE access denied - insufficient permissions');
+                return; // Don't retry
+            }
+
+            if (!authCheck.ok) {
+                throw new Error(`HTTP ${authCheck.status}`);
+            }
+        } catch (authError) {
+            console.log('SSE pre-flight check failed:', authError);
+            // For other errors (network, 500, etc.), we'll retry with backoff
+            throw authError;
+        }
+
+        // Authentication successful, create EventSource connection
+        eventSource = new EventSource(streamUrl, { withCredentials: true });
 
         eventSource.onopen = function(e) {
             console.log('SSE connection opened');

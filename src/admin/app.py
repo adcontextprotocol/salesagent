@@ -23,7 +23,8 @@ from src.admin.blueprints.policy import policy_bp
 from src.admin.blueprints.principals import principals_bp
 from src.admin.blueprints.products import products_bp
 from src.admin.blueprints.settings import settings_bp, superadmin_settings_bp
-from src.admin.blueprints.tasks import tasks_bp
+
+# from src.admin.blueprints.tasks import tasks_bp  # Disabled - tasks eliminated in favor of workflow system
 from src.admin.blueprints.tenants import tenants_bp
 from src.admin.blueprints.users import users_bp
 
@@ -96,6 +97,15 @@ def create_app(config=None):
     # Configuration
     app.secret_key = os.environ.get("FLASK_SECRET_KEY", secrets.token_hex(32))
     app.logger.setLevel(logging.INFO)
+
+    # Configure session cookies for production
+    if os.environ.get("PRODUCTION") == "true":
+        app.config["SESSION_COOKIE_SECURE"] = True  # Only send over HTTPS
+        app.config["SESSION_COOKIE_HTTPONLY"] = True  # Prevent JS access (security)
+        app.config["SESSION_COOKIE_SAMESITE"] = "Lax"  # Allow cross-site for SSE but maintain security
+    else:
+        app.config["SESSION_COOKIE_SECURE"] = False  # Allow HTTP in dev
+        app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
 
     # Add custom Jinja2 filters
     def from_json_filter(s):
@@ -182,9 +192,9 @@ def create_app(config=None):
     app.register_blueprint(adapters_bp, url_prefix="/tenant/<tenant_id>")
     app.register_blueprint(inventory_bp)  # Has its own internal routing
     app.register_blueprint(api_bp, url_prefix="/api")
-    app.register_blueprint(activity_stream_bp, url_prefix="/admin")  # SSE endpoints
+    app.register_blueprint(activity_stream_bp)  # SSE endpoints - Flask handles /admin via script_name from nginx proxy
     app.register_blueprint(mcp_test_bp)
-    app.register_blueprint(tasks_bp)  # Tasks management
+    # app.register_blueprint(tasks_bp)  # Tasks management - Disabled, tasks eliminated in favor of workflow system
 
     # Import and register existing blueprints
     try:

@@ -252,13 +252,16 @@ class ContextManager(DatabaseManager):
                     # Ensure comments is a list
                     if not isinstance(step.comments, list):
                         step.comments = []
-                    step.comments.append(
+                    # Create a new list to trigger SQLAlchemy change detection
+                    new_comments = list(step.comments)
+                    new_comments.append(
                         {
                             "user": add_comment.get("user", "system"),
                             "timestamp": datetime.now(UTC).isoformat(),
                             "text": add_comment.get("text", add_comment.get("comment", "")),
                         }
                     )
+                    step.comments = new_comments
 
                 session.commit()
                 console.print(f"[green]Updated workflow step {step_id}[/green]")
