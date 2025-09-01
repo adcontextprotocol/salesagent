@@ -186,6 +186,7 @@ def activity_events(tenant_id, **kwargs):
 
     # Handle HEAD requests for authentication checks
     if request.method == "HEAD":
+        logger.info(f"HEAD request for SSE endpoint - tenant: {tenant_id}, authenticated: True")
         return Response(status=200)
 
     # Validate tenant_id
@@ -200,15 +201,20 @@ def activity_events(tenant_id, **kwargs):
     ]
 
     # Check rate limit
-    if len(connection_timestamps[tenant_id]) >= MAX_CONNECTIONS_PER_TENANT:
+    active_connections = len(connection_timestamps[tenant_id])
+    if active_connections >= MAX_CONNECTIONS_PER_TENANT:
         logger.warning(
-            f"Rate limit exceeded for tenant {tenant_id}: {len(connection_timestamps[tenant_id])} connections in last minute"
+            f"RATE LIMIT HIT - tenant: {tenant_id}, active_connections: {active_connections}, max: {MAX_CONNECTIONS_PER_TENANT}"
         )
         return Response("Too many connections. Please wait before reconnecting.", status=429)
 
     # Record this connection
     connection_timestamps[tenant_id].append(now)
     connection_counts[tenant_id] += 1
+
+    logger.info(
+        f"SSE GET request starting - tenant: {tenant_id}, active_connections: {active_connections + 1}, total_connections: {connection_counts[tenant_id]}"
+    )
 
     def generate():
         """Generator function that yields SSE formatted data."""
