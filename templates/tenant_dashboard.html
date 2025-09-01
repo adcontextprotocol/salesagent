@@ -743,7 +743,7 @@ async function connectActivityStream() {
         try {
             const authCheck = await fetch(streamUrl, {
                 method: 'HEAD',
-                credentials: 'same-origin'
+                credentials: 'include'
             });
 
             if (authCheck.status === 401) {
@@ -779,11 +779,22 @@ async function connectActivityStream() {
             }
         } catch (authError) {
             console.log('SSE pre-flight check failed:', authError);
-            // For other errors (network, 500, etc.), we'll retry with backoff
-            throw authError;
+
+            // If it's a network error or other non-auth error, skip pre-flight and try EventSource directly
+            // EventSource will handle authentication errors properly on its own
+            const isNetworkError = authError instanceof TypeError || authError.message.includes('Failed to fetch');
+            const isServerError = authError.message.includes('HTTP 5'); // 500, 502, 503, etc.
+
+            if (isNetworkError || isServerError) {
+                console.log('Network/server error in pre-flight - skipping and trying EventSource directly');
+                // Continue to EventSource creation below
+            } else {
+                // For other errors (likely auth-related), retry with backoff
+                throw authError;
+            }
         }
 
-        // Authentication successful, create EventSource connection
+        // Create EventSource connection (either after successful pre-flight or as fallback)
         eventSource = new EventSource(streamUrl, { withCredentials: true });
 
         eventSource.onopen = function(e) {

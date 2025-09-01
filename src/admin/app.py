@@ -103,9 +103,11 @@ def create_app(config=None):
         app.config["SESSION_COOKIE_SECURE"] = True  # Only send over HTTPS
         app.config["SESSION_COOKIE_HTTPONLY"] = True  # Prevent JS access (security)
         app.config["SESSION_COOKIE_SAMESITE"] = "Lax"  # Allow cross-site for SSE but maintain security
+        app.config["SESSION_COOKIE_PATH"] = "/admin/"  # Ensure cookies work for all /admin/* paths
     else:
         app.config["SESSION_COOKIE_SECURE"] = False  # Allow HTTP in dev
         app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
+        app.config["SESSION_COOKIE_PATH"] = "/admin/"  # Consistent cookie path in dev too
 
     # Add custom Jinja2 filters
     def from_json_filter(s):
