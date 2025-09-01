@@ -179,22 +179,6 @@ def get_recent_activities(tenant_id: str, since: datetime = None, limit: int = 5
         return []
 
 
-@activity_stream_bp.route("/test-simple", methods=["GET"])
-def simple_test():
-    """Simple test endpoint to verify blueprint routing."""
-    from flask import Response
-
-    return Response("Simple test endpoint works", status=200)
-
-
-@activity_stream_bp.route("/tenant/<tenant_id>/events-test", methods=["GET"])
-def activity_events_test(tenant_id):
-    """Test endpoint without auth to verify routing."""
-    from flask import Response
-
-    return Response(f"SSE test endpoint works for tenant {tenant_id}", status=200)
-
-
 @activity_stream_bp.route("/tenant/<tenant_id>/events", methods=["GET"])
 @require_tenant_access(api_mode=True)
 def activity_events(tenant_id, **kwargs):
