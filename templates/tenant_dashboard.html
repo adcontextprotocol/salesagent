@@ -738,7 +738,7 @@ function connectActivityStream() {
         }
 
         // Create new EventSource connection
-        const streamUrl = `{{ script_name }}/admin/tenant/{{ tenant.tenant_id }}/events`;
+        const streamUrl = `{{ script_name }}/tenant/{{ tenant.tenant_id }}/events`;
         eventSource = new EventSource(streamUrl);
 
         eventSource.onopen = function(e) {
