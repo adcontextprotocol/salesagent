@@ -104,7 +104,6 @@ class TestMCPEndpointsComprehensive:
                     targeting_template={"content_category": {"values": ["sports"], "required": True}},
                     delivery_type="non_guaranteed",
                     is_fixed_price=False,
-                    price_guidance={"floor": 15.0, "p50": 20.0, "p75": 25.0},
                     is_custom=False,
                     countries=["US"],
                 ),
@@ -158,8 +157,9 @@ class TestMCPEndpointsComprehensive:
                 assert "delivery_type" in product
                 assert product["delivery_type"] in ["guaranteed", "non_guaranteed"]
                 assert "is_fixed_price" in product
-                # Either cpm or price_guidance should be present
-                assert "cpm" in product or "price_guidance" in product
+                # cpm should be present for fixed-price products
+                if product["is_fixed_price"]:
+                    assert "cpm" in product
 
     @pytest.mark.requires_server
     async def test_get_products_filtering(self, mcp_client):
