@@ -9,7 +9,7 @@ import pytest
 
 from src.core.context_manager import ContextManager
 from src.core.database.database_session import get_db_session
-from src.core.database.models import Context, WorkflowStep
+from src.core.database.models import Context, Principal, Tenant, WorkflowStep
 
 
 @pytest.mark.integration
@@ -31,6 +31,24 @@ class TestWorkflowLifecycle:
                 session.query(WorkflowStep).filter(WorkflowStep.context_id == ctx.context_id).delete()
             # Then delete contexts
             session.query(Context).filter(Context.tenant_id == self.tenant_id).delete()
+            # Delete principal
+            session.query(Principal).filter(Principal.tenant_id == self.tenant_id).delete()
+            # Delete tenant
+            session.query(Tenant).filter(Tenant.tenant_id == self.tenant_id).delete()
+            session.commit()
+
+            # Create test tenant and principal for the tests
+            tenant = Tenant(tenant_id=self.tenant_id, name="Test Tenant", subdomain="test", ad_server=None)
+            session.add(tenant)
+
+            principal = Principal(
+                tenant_id=self.tenant_id,
+                principal_id=self.principal_id,
+                name="Test Principal",
+                access_token="test_token",
+                platform_mappings={},
+            )
+            session.add(principal)
             session.commit()
 
     def test_sync_operation_no_workflow(self):
