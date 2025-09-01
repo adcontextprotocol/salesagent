@@ -127,24 +127,34 @@ async def test_workflow_with_manual_approval():
             traceback.print_exc()
             return
 
-        # Try to get pending tasks/workflows
-        console.print("\n[yellow]Step 3: Checking for pending workflows[/yellow]")
+        # Check media buy status to see if workflow was created
+        console.print("\n[yellow]Step 3: Checking media buy status[/yellow]")
         try:
-            # Note: get_pending_tasks might be renamed to get_pending_workflows
-            result = await client.call_tool("get_pending_workflows", {"req": {}})
+            status_result = await client.call_tool("check_media_buy_status", {"req": {"media_buy_id": media_buy_id}})
 
-            if hasattr(result, "tasks") and result.tasks:
-                console.print(f"✓ Found {len(result.tasks)} pending workflow steps:")
-                for task in result.tasks[:3]:  # Show first 3
-                    console.print(
-                        f"  - {task.get('task_id', 'N/A')}: {task.get('task_type', 'N/A')} ({task.get('status', 'N/A')})"
-                    )
+            if hasattr(status_result, "data"):
+                status_data = status_result.data
+            elif hasattr(status_result, "structured_content"):
+                status_data = status_result.structured_content
             else:
-                console.print("  No pending workflow steps")
+                status_data = status_result
+
+            # Check for any pending approval status
+            if hasattr(status_data, "status"):
+                status = status_data.status
+            elif isinstance(status_data, dict):
+                status = status_data.get("status", "unknown")
+            else:
+                status = "unknown"
+
+            console.print(f"  Media buy status: {status}")
+
+            if status in ["pending_manual", "requires_approval", "pending_approval"]:
+                console.print("  [yellow]Media buy requires manual approval![/yellow]")
+                console.print("  This would be handled through the admin UI workflow system")
 
         except Exception as e:
-            # This might fail if the function was renamed
-            console.print(f"[dim]Note: get_pending_tasks might not exist: {e}[/dim]")
+            console.print(f"[dim]Note: Could not check media buy status: {e}[/dim]")
 
     console.print("\n[bold green]✅ Workflow test completed![/bold green]")
     console.print("\nKey observations:")
