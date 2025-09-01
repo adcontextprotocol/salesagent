@@ -224,6 +224,15 @@ def require_tenant_access(api_mode=False):
     def decorator(f):
         @wraps(f)
         def decorated_function(tenant_id, *args, **kwargs):
+            # Debug logging for SSE authentication issues
+            from flask import request
+
+            has_session = "user" in session
+            has_cookies = bool(request.cookies)
+            logger.info(
+                f"Auth check - tenant: {tenant_id}, method: {request.method}, has_session: {has_session}, has_cookies: {has_cookies}, session_keys: {list(session.keys())}"
+            )
+
             # Check for test mode
             test_mode = os.environ.get("ADCP_AUTH_TEST_MODE", "").lower() == "true"
             if test_mode and "test_user" in session:

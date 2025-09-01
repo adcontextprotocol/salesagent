@@ -98,6 +98,15 @@ def create_app(config=None):
     app.secret_key = os.environ.get("FLASK_SECRET_KEY", secrets.token_hex(32))
     app.logger.setLevel(logging.INFO)
 
+    # Configure session cookies for production
+    if os.environ.get("PRODUCTION") == "true":
+        app.config["SESSION_COOKIE_SECURE"] = True  # Only send over HTTPS
+        app.config["SESSION_COOKIE_HTTPONLY"] = True  # Prevent JS access (security)
+        app.config["SESSION_COOKIE_SAMESITE"] = "Lax"  # Allow cross-site for SSE but maintain security
+    else:
+        app.config["SESSION_COOKIE_SECURE"] = False  # Allow HTTP in dev
+        app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
+
     # Add custom Jinja2 filters
     def from_json_filter(s):
         """Parse JSON string to Python object."""
