@@ -74,18 +74,35 @@ class DatabaseProductCatalog(ProductCatalogProvider):
                     # Fix price_guidance structure - convert min/max to floor/percentiles
                     if isinstance(product_data["price_guidance"], dict):
                         pg = product_data["price_guidance"]
-                        # Handle both "min"/"max" and "min_spend"/"max_spend" formats
-                        if "min" in pg or "max" in pg or "min_spend" in pg or "max_spend" in pg:
-                            # Convert min/max to floor and percentiles
-                            min_val = pg.get("min", pg.get("min_spend", pg.get("floor", 0)))
-                            max_val = pg.get("max", pg.get("max_spend", 10))
+                        logger.debug(f"price_guidance dict keys: {list(pg.keys())}")
+
+                        # Always convert if we have spending ranges (regardless of field names)
+                        # Handle multiple legacy formats: min/max, min_spend/max_spend, etc.
+                        min_val = None
+                        max_val = None
+
+                        # Try different field name combinations
+                        if "min_spend" in pg and "max_spend" in pg:
+                            min_val = pg["min_spend"]
+                            max_val = pg["max_spend"]
+                        elif "min" in pg and "max" in pg:
+                            min_val = pg["min"]
+                            max_val = pg["max"]
+                        elif "floor" in pg:
+                            # Already in correct format
+                            logger.debug("price_guidance already in AdCP format")
+
+                        if min_val is not None and max_val is not None:
+                            # Convert to AdCP format
                             fixed_price_guidance = {
-                                "floor": min_val,
-                                "p50": (min_val + max_val) / 2,  # Median as midpoint
-                                "p90": max_val * 0.9,  # 90th percentile
+                                "floor": float(min_val),
+                                "p50": float(min_val + max_val) / 2,  # Median as midpoint
+                                "p90": float(max_val) * 0.9,  # 90th percentile
                             }
                             product_data["price_guidance"] = fixed_price_guidance
                             logger.debug(f"Fixed price_guidance structure: {fixed_price_guidance}")
+                        else:
+                            logger.debug(f"No conversion needed for price_guidance: {pg}")
 
                 # Remove implementation_config - it's internal and should NEVER be exposed to buyers
                 # This contains proprietary ad server configuration details
