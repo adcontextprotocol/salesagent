@@ -69,10 +69,11 @@ class DatabaseProductCatalog(ProductCatalogProvider):
                     # Fix price_guidance structure - convert min/max to floor/percentiles
                     if isinstance(product_data["price_guidance"], dict):
                         pg = product_data["price_guidance"]
-                        if "min" in pg or "max" in pg:
+                        # Handle both "min"/"max" and "min_spend"/"max_spend" formats
+                        if "min" in pg or "max" in pg or "min_spend" in pg or "max_spend" in pg:
                             # Convert min/max to floor and percentiles
-                            min_val = pg.get("min", pg.get("floor", 0))
-                            max_val = pg.get("max", 10)
+                            min_val = pg.get("min", pg.get("min_spend", pg.get("floor", 0)))
+                            max_val = pg.get("max", pg.get("max_spend", 10))
                             product_data["price_guidance"] = {
                                 "floor": min_val,
                                 "p50": (min_val + max_val) / 2,  # Median as midpoint
