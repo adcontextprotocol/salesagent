@@ -179,10 +179,15 @@ def get_recent_activities(tenant_id: str, since: datetime = None, limit: int = 5
         return []
 
 
-@activity_stream_bp.route("/tenant/<tenant_id>/events", methods=["GET"])
+@activity_stream_bp.route("/tenant/<tenant_id>/events", methods=["GET", "HEAD"])
 @require_tenant_access(api_mode=True)
 def activity_events(tenant_id, **kwargs):
     """Server-Sent Events endpoint for real-time activity updates."""
+
+    # Handle HEAD requests for authentication checks
+    if request.method == "HEAD":
+        return Response(status=200)
+
     # Validate tenant_id
     if not tenant_id or not isinstance(tenant_id, str) or len(tenant_id) > 50:
         logger.error(f"Invalid tenant_id for SSE endpoint: {tenant_id}")
