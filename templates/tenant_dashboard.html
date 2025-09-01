@@ -784,7 +784,7 @@ async function connectActivityStream() {
         }
 
         // Authentication successful, create EventSource connection
-        eventSource = new EventSource(streamUrl);
+        eventSource = new EventSource(streamUrl, { withCredentials: true });
 
         eventSource.onopen = function(e) {
             console.log('SSE connection opened');
