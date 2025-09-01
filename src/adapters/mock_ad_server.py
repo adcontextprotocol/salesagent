@@ -412,12 +412,22 @@ class MockAdServer(AdServerAdapter):
     def get_media_buy_delivery(
         self, media_buy_id: str, date_range: ReportingPeriod, today: datetime
     ) -> AdapterGetMediaBuyDeliveryResponse:
-        """Simulates getting delivery data for a media buy."""
+        """Simulates getting delivery data for a media buy with testing hooks support."""
         self.log(
             f"[bold]MockAdServer.get_media_buy_delivery[/bold] for principal '{self.principal.name}' and media buy '{media_buy_id}'",
             dry_run_prefix=False,
         )
         self.log(f"Reporting date: {today}")
+
+        # Apply testing hooks if strategy context contains them
+        if self.strategy_context and hasattr(self.strategy_context, "force_error"):
+            if self.strategy_context.force_error == "platform_error":
+                self.log("[red]Simulating platform error[/red]")
+                raise Exception("Platform connectivity error (simulated)")
+            elif self.strategy_context.force_error == "budget_exceeded":
+                self.log("[yellow]Simulating budget exceeded scenario[/yellow]")
+            elif self.strategy_context.force_error == "low_delivery":
+                self.log("[yellow]Simulating low delivery scenario[/yellow]")
 
         # Simulate API call
         if self.dry_run:

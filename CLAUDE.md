@@ -120,7 +120,17 @@ The server provides:
 
 ## Recent Major Changes
 
-### JSON-RPC 2.0 Protocol Fixes & Security Enhancements (Latest - Dec 2024)
+### AdCP Testing Specification Implementation (Latest - Aug 2025)
+- **Full Testing Backend**: Complete implementation of AdCP Testing Specification (https://adcontextprotocol.org/docs/media-buy/testing/)
+- **Testing Hooks System**: All 9 request headers (X-Dry-Run, X-Mock-Time, X-Jump-To-Event, etc.) with session isolation
+- **Response Headers**: Required AdCP response headers (X-Next-Event, X-Next-Event-Time, X-Simulated-Spend)
+- **Campaign Lifecycle Simulation**: 16-event campaign progression with time controls and spend tracking
+- **Session Management**: Isolated test sessions with `TestSessionManager` for parallel testing
+- **Mock Server Focus**: Test files clearly named with `mock_server` prefix to indicate scope
+- **Consolidation Pattern**: Avoided file proliferation by updating existing docs instead of creating new ones
+- **FastMCP Integration**: Proper context header extraction and response header injection patterns
+
+### JSON-RPC 2.0 Protocol Fixes & Security Enhancements (Dec 2024)
 - **A2A Protocol Compliance**: Fixed JSON-RPC 2.0 implementation to use string `messageId` per spec
 - **Removed Proxy Workaround**: Eliminated unnecessary `/a2a-internal` endpoint and messageId conversion
 - **Backward Compatibility**: Added middleware to handle both numeric and string messageId formats
@@ -293,6 +303,20 @@ def test_standard_a2a_endpoints(client):
 **Issue**: Policy check blocking requests
 - **Cause**: Gemini API key invalid or policy service returning BLOCKED status
 - **Fix**: Check GEMINI_API_KEY environment variable and review policy settings
+
+### Troubleshooting Testing Backend Issues
+
+**Issue**: Testing hooks not working (X-Dry-Run, X-Mock-Time, etc.)
+- **Cause**: Headers not being extracted from FastMCP context properly
+- **Fix**: Use `context.meta.get("headers", {})` to extract headers from FastMCP context
+
+**Issue**: Response headers missing (X-Next-Event, X-Next-Event-Time, X-Simulated-Spend)
+- **Cause**: Response headers not being set after apply_testing_hooks
+- **Fix**: Ensure `campaign_info` dict is passed to testing hooks for event calculation
+
+**Issue**: Session isolation not working in parallel tests
+- **Cause**: Missing or incorrect X-Test-Session-ID header
+- **Fix**: Generate unique session IDs per test and include in all requests
 
 ### Troubleshooting A2A Issues
 

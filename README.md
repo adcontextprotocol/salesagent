@@ -81,6 +81,44 @@ JSON-RPC 2.0 compliant server for agent-to-agent communication:
 - **Authentication**: Bearer tokens via Authorization header
 - **Library**: Built with standard `python-a2a` library
 
+## Testing Backend
+
+The mock server provides comprehensive AdCP testing capabilities for developers:
+
+### Testing Headers Support
+- **X-Dry-Run**: Test operations without real execution
+- **X-Mock-Time**: Control time for deterministic testing
+- **X-Jump-To-Event**: Skip to specific campaign events
+- **X-Test-Session-ID**: Isolate parallel test sessions
+- **X-Auto-Advance**: Automatic event progression
+- **X-Force-Error**: Simulate error conditions
+
+### Response Headers
+- **X-Next-Event**: Next expected campaign event
+- **X-Next-Event-Time**: Timestamp for next event
+- **X-Simulated-Spend**: Current campaign spend simulation
+
+### Testing Features
+- **Campaign Lifecycle Simulation**: Complete event progression (creation → completion)
+- **Error Scenario Testing**: Budget exceeded, delivery issues, platform errors
+- **Time Simulation**: Fast-forward campaigns for testing
+- **Session Isolation**: Parallel test execution without conflicts
+- **Production Safety**: Zero real spend during testing
+
+```python
+# Example: Test with time simulation
+headers = {
+    "x-adcp-auth": "your_token",
+    "X-Dry-Run": "true",
+    "X-Mock-Time": "2025-02-15T12:00:00Z",
+    "X-Test-Session-ID": "test-123"
+}
+
+# Use with any MCP client for safe testing
+```
+
+See `examples/mock_server_testing_demo.py` for complete testing examples.
+
 ## Using the MCP Client
 
 ```python
