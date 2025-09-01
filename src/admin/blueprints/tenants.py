@@ -18,7 +18,7 @@ from sqlalchemy.orm import joinedload
 
 from src.admin.utils import get_tenant_config_from_db, require_auth, require_tenant_access
 from src.core.database.database_session import get_db_session
-from src.core.database.models import Context, MediaBuy, Principal, Product, Tenant, User
+from src.core.database.models import MediaBuy, Principal, Product, Task, Tenant, User
 from src.core.validation import sanitize_form_data, validate_form_data
 
 logger = logging.getLogger(__name__)
@@ -107,37 +107,30 @@ def dashboard(tenant_id):
             # Calculate pending buys
             pending_buys = db_session.query(MediaBuy).filter_by(tenant_id=tenant_id, status="pending").count()
 
-            # Calculate workflow-based metrics
-            from src.core.database.models import WorkflowStep
-
-            # Get pending workflow steps that require action
+            # Calculate task-based metrics (temporary fallback from workflow system)
+            # Get pending tasks that require action
             pending_steps = (
-                db_session.query(WorkflowStep)
-                .join(Context, WorkflowStep.context_id == Context.context_id)
+                db_session.query(Task)
                 .filter(
-                    Context.tenant_id == tenant_id,
-                    WorkflowStep.status.in_(["requires_approval", "pending", "active"]),
+                    Task.tenant_id == tenant_id,
+                    Task.status.in_(["pending", "active", "requires_approval"]),
                 )
                 .count()
             )
 
-            # Get workflow steps requiring immediate attention (approval needed)
+            # Get tasks requiring immediate attention (approval needed)
             approval_needed = (
-                db_session.query(WorkflowStep)
-                .join(Context, WorkflowStep.context_id == Context.context_id)
-                .filter(Context.tenant_id == tenant_id, WorkflowStep.status == "requires_approval")
-                .count()
+                db_session.query(Task).filter(Task.tenant_id == tenant_id, Task.status == "requires_approval").count()
             )
 
-            # Get recent completed workflow steps (for activity feed)
+            # Get recent completed tasks (for activity feed)
             recent_activity = (
-                db_session.query(WorkflowStep)
-                .join(Context, WorkflowStep.context_id == Context.context_id)
+                db_session.query(Task)
                 .filter(
-                    Context.tenant_id == tenant_id,
-                    WorkflowStep.status.in_(["completed", "failed", "requires_approval"]),
+                    Task.tenant_id == tenant_id,
+                    Task.status.in_(["completed", "failed", "requires_approval"]),
                 )
-                .order_by(WorkflowStep.created_at.desc())
+                .order_by(Task.created_at.desc())
                 .limit(10)
                 .all()
             )
