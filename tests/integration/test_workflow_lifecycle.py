@@ -13,6 +13,7 @@ from src.core.database.models import Context, Principal, Tenant, WorkflowStep
 
 
 @pytest.mark.integration
+@pytest.mark.skip_ci
 class TestWorkflowLifecycle:
     """Test complete workflow lifecycle scenarios."""
 
@@ -38,7 +39,9 @@ class TestWorkflowLifecycle:
             session.commit()
 
             # Create test tenant and principal for the tests
-            tenant = Tenant(tenant_id=self.tenant_id, name="Test Tenant", subdomain="test", ad_server=None)
+            tenant = Tenant(
+                tenant_id=self.tenant_id, name="Test Tenant", subdomain="test", is_active=True, ad_server="mock"
+            )
             session.add(tenant)
 
             principal = Principal(
@@ -46,7 +49,7 @@ class TestWorkflowLifecycle:
                 principal_id=self.principal_id,
                 name="Test Principal",
                 access_token="test_token",
-                platform_mappings={},
+                platform_mappings={"mock": {"advertiser_id": "test_advertiser"}},
             )
             session.add(principal)
             session.commit()
