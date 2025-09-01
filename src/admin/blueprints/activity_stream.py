@@ -180,7 +180,7 @@ def get_recent_activities(tenant_id: str, since: datetime = None, limit: int = 5
 
 
 @activity_stream_bp.route("/tenant/<tenant_id>/events", methods=["GET"])
-@require_tenant_access()
+@require_tenant_access(api_mode=True)
 def activity_events(tenant_id, **kwargs):
     """Server-Sent Events endpoint for real-time activity updates."""
     # Validate tenant_id
