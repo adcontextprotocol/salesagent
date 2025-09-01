@@ -183,7 +183,9 @@ def create_app(config=None):
     app.register_blueprint(adapters_bp, url_prefix="/tenant/<tenant_id>")
     app.register_blueprint(inventory_bp)  # Has its own internal routing
     app.register_blueprint(api_bp, url_prefix="/api")
-    app.register_blueprint(activity_stream_bp)  # SSE endpoints - no prefix needed, proxy provides /admin
+    app.register_blueprint(
+        activity_stream_bp, url_prefix="/admin"
+    )  # SSE endpoints need /admin prefix to match nginx routing
     app.register_blueprint(mcp_test_bp)
     # app.register_blueprint(tasks_bp)  # Tasks management - Disabled, tasks eliminated in favor of workflow system
 
