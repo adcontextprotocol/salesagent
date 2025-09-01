@@ -8,68 +8,26 @@ from pydantic import BaseModel, Field, model_validator
 
 
 # --- Core Models ---
-class DeliveryOptions(BaseModel):
-    hosted: dict[str, Any] | None = None
-    vast: dict[str, Any] | None = None
+class AssetRequirement(BaseModel):
+    """Asset requirement specification per AdCP spec."""
 
-
-class Asset(BaseModel):
-    """Individual asset within a creative format."""
-
-    asset_id: str = Field(..., description="Unique identifier for this asset within the format")
-    asset_type: Literal["video", "image", "text", "url", "audio", "html"] = Field(..., description="Type of asset")
-    required: bool = Field(True, description="Whether this asset is required")
-
-    # Common properties
-    name: str | None = Field(None, description="Human-readable name for the asset")
-    description: str | None = Field(None, description="Description of the asset's purpose")
-
-    # Type-specific properties (flattened structure)
-    # Video properties
-    duration_seconds: int | None = Field(None, description="Video duration in seconds")
-    min_bitrate_mbps: float | None = Field(None, description="Minimum bitrate in Mbps")
-    max_bitrate_mbps: float | None = Field(None, description="Maximum bitrate in Mbps")
-
-    # Image/Display properties
-    width: int | None = Field(None, description="Width in pixels")
-    height: int | None = Field(None, description="Height in pixels")
-
-    # File properties
-    acceptable_formats: list[str] | None = Field(None, description="Acceptable file formats (e.g., ['mp4', 'webm'])")
-    max_file_size_mb: float | None = Field(None, description="Maximum file size in MB")
-
-    # Text properties
-    max_length: int | None = Field(None, description="Maximum character length for text")
-
-    # Additional specifications
-    additional_specs: dict[str, Any] | None = Field(None, description="Any additional asset-specific requirements")
+    asset_type: str = Field(..., description="Type of asset required")
+    quantity: int = Field(1, minimum=1, description="Number of assets of this type required")
+    requirements: dict[str, Any] | None = Field(None, description="Specific requirements for this asset type")
 
 
 class Format(BaseModel):
     format_id: str
     name: str
-    type: Literal["video", "audio", "display", "native", "dooh"]
-    description: str
-    assets: list[Asset] = Field(default_factory=list, description="List of assets required for this format")
-    delivery_options: DeliveryOptions
-
-
-class DaypartSchedule(BaseModel):
-    """Time-based targeting schedule."""
-
-    days: list[int] = Field(..., description="Days of week (0=Sunday, 6=Saturday)")
-    start_hour: int = Field(..., ge=0, le=23, description="Start hour (0-23)")
-    end_hour: int = Field(..., ge=0, le=23, description="End hour (0-23)")
-    timezone: str | None = Field("UTC", description="Timezone for schedule")
-
-
-class Dayparting(BaseModel):
-    """Dayparting configuration for time-based targeting."""
-
-    timezone: str = Field("UTC", description="Default timezone for all schedules")
-    schedules: list[DaypartSchedule] = Field(..., description="List of time windows")
-    # Special presets for audio
-    presets: list[str] | None = Field(None, description="Named presets like 'drive_time_morning'")
+    type: Literal["video", "audio", "display", "native", "dooh"]  # Extended beyond spec
+    is_standard: bool | None = Field(None, description="Whether this follows IAB standards")
+    iab_specification: str | None = Field(None, description="Name of the IAB specification (if applicable)")
+    requirements: dict[str, Any] | None = Field(
+        None, description="Format-specific requirements (varies by format type)"
+    )
+    assets_required: list[AssetRequirement] | None = Field(
+        None, description="Array of required assets for composite formats"
+    )
 
 
 class FrequencyCap(BaseModel):
@@ -148,9 +106,6 @@ class Targeting(BaseModel):
     media_type_any_of: list[str] | None = None  # ["video", "audio", "display", "native"]
     media_type_none_of: list[str] | None = None
 
-    # Time-based targeting
-    dayparting: Dayparting | None = None  # Schedule by day of week and hour
-
     # Frequency control
     frequency_cap: FrequencyCap | None = None  # Impression limits per user/period
 
@@ -165,6 +120,20 @@ class Targeting(BaseModel):
     # These are not exposed in overlay - only set by orchestrator/AEE
     key_value_pairs: dict[str, str] | None = None  # e.g., {"aee_segment": "high_value", "aee_score": "0.85"}
 
+    def model_dump(self, **kwargs):
+        """Override model_dump to always exclude key_value_pairs from client responses."""
+        kwargs["exclude"] = kwargs.get("exclude", set())
+        if isinstance(kwargs["exclude"], set):
+            kwargs["exclude"].add("key_value_pairs")
+        return super().model_dump(**kwargs)
+
+    def dict(self, **kwargs):
+        """Override dict to always exclude key_value_pairs (for backward compat)."""
+        kwargs["exclude"] = kwargs.get("exclude", set())
+        if isinstance(kwargs["exclude"], set):
+            kwargs["exclude"].add("key_value_pairs")
+        return super().dict(**kwargs)
+
 
 class Budget(BaseModel):
     """Budget object with multi-currency support."""
@@ -175,14 +144,6 @@ class Budget(BaseModel):
     pacing: Literal["even", "asap", "daily_budget"] = Field("even", description="Budget pacing strategy")
 
 
-class PriceGuidance(BaseModel):
-    floor: float
-    p25: float | None = None
-    p50: float | None = None
-    p75: float | None = None
-    p90: float | None = None
-
-
 class Product(BaseModel):
     product_id: str
     name: str
@@ -191,7 +152,6 @@ class Product(BaseModel):
     delivery_type: Literal["guaranteed", "non_guaranteed"]
     is_fixed_price: bool
     cpm: float | None = None
-    price_guidance: PriceGuidance | None = None
     is_custom: bool = Field(default=False)
     expires_at: datetime | None = None
     implementation_config: dict[str, Any] | None = Field(
@@ -212,14 +172,6 @@ class Product(BaseModel):
         if isinstance(kwargs["exclude"], set):
             kwargs["exclude"].add("implementation_config")
         return super().dict(**kwargs)
-
-    # Audience characteristics fields
-    targeted_ages: Literal["children", "teens", "adults"] | None = Field(
-        default=None, description="Target age group for this product's audience"
-    )
-    verified_minimum_age: int | None = Field(
-        default=None, description="Minimum age requirement with age verification/gating implemented (e.g., 18, 21)"
-    )
 
 
 # --- Core Schemas ---
@@ -298,8 +250,22 @@ class GetProductsRequest(BaseModel):
     )
 
 
+class Error(BaseModel):
+    """Standard error structure per AdCP spec."""
+
+    code: str = Field(..., description="Error code")
+    message: str = Field(..., description="Human-readable error message")
+    details: dict[str, Any] | None = Field(None, description="Additional error details")
+
+
 class GetProductsResponse(BaseModel):
+    """AdCP spec compliant response for get_products."""
+
     products: list[Product]
+    message: str | None = Field(None, description="Human-readable summary of the response")
+    context_id: str | None = Field(None, description="Session continuity identifier")
+    clarification_needed: bool | None = Field(None, description="Whether clarification is needed")
+    errors: list[Error] | None = Field(None, description="Non-fatal warnings")
 
     def model_dump(self, **kwargs):
         """Override to ensure products exclude implementation_config."""
@@ -310,6 +276,14 @@ class GetProductsResponse(BaseModel):
                 if "implementation_config" in product:
                     del product["implementation_config"]
         return data
+
+
+class ListCreativeFormatsResponse(BaseModel):
+    """Response for list_creative_formats (AdCP spec compliant)."""
+
+    formats: list[Format]
+    message: str | None = Field(None, description="Human-readable summary of available formats")
+    context_id: str | None = Field(None, description="Session continuity identifier")
 
 
 # --- Creative Lifecycle ---
@@ -330,20 +304,48 @@ class Creative(BaseModel):
     creative_id: str
     principal_id: str
     group_id: str | None = None  # Optional group membership
-    format_id: str
-    content_uri: str
+
+    # AdCP spec compliant fields (new names)
+    format: str = Field(alias="format_id", description="Creative format type per AdCP spec")
+    url: str = Field(alias="content_uri", description="URL of the creative content per AdCP spec")
+    click_url: str | None = Field(None, alias="click_through_url", description="Landing page URL per AdCP spec")
+
     name: str
-    click_through_url: str | None = None
     metadata: dict[str, Any] | None = {}  # Platform-specific metadata
     created_at: datetime
     updated_at: datetime
+
     # Macro information
     has_macros: bool | None = False
     macro_validation: dict[str, Any] | None = None  # Validation result from creative_macros
+
     # Asset mapping - maps asset_id to uploaded content
     asset_mapping: dict[str, str] | None = Field(
         default_factory=dict, description="Maps asset_id from format definition to actual uploaded content URIs"
     )
+
+    # Backward compatibility properties
+    @property
+    def format_id(self) -> str:
+        """Backward compatibility for format_id."""
+        return self.format
+
+    @property
+    def content_uri(self) -> str:
+        """Backward compatibility for content_uri."""
+        return self.url
+
+    @property
+    def click_through_url(self) -> str | None:
+        """Backward compatibility for click_through_url."""
+        return self.click_url
+
+    def model_dump(self, **kwargs):
+        """Override to support both field names based on context."""
+        # For AdCP spec compliance, use new field names
+        data = super().model_dump(**kwargs)
+        # Remove aliases from output - clients will see spec-compliant names
+        return data
 
 
 class CreativeAdaptation(BaseModel):
@@ -552,7 +554,7 @@ class CreateMediaBuyRequest(BaseModel):
 
     # Common fields
     targeting_overlay: Targeting | None = None
-    po_number: str | None = None
+    po_number: str = Field(..., description="Purchase order number for tracking (REQUIRED per AdCP spec)")
     pacing: Literal["even", "asap", "daily_budget"] = "even"  # Legacy field
     daily_budget: float | None = None  # Legacy field
     creatives: list[Creative] | None = None

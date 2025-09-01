@@ -92,8 +92,6 @@ class Kevel(AdServerAdapter):
                     "Media buy level frequency capping not supported (Kevel only supports package/flight level)"
                 )
 
-        # Kevel supports dayparting - removing this check
-
         return unsupported
 
     def _build_targeting(self, targeting_overlay):
@@ -131,25 +129,6 @@ class Kevel(AdServerAdapter):
                     devices.append(device)
             if devices:
                 kevel_targeting["devices"] = devices
-
-        # Dayparting - Kevel supports day/hour targeting
-        if targeting_overlay.dayparting:
-            dayparting = []
-            for schedule in targeting_overlay.dayparting.schedules:
-                # Convert our day numbers (0=Sunday) to Kevel format
-                # Kevel uses 0=Monday, so we need to adjust
-                kevel_days = []
-                for day in schedule.days:
-                    # Convert: our 0=Sun becomes Kevel 6, our 1=Mon becomes Kevel 0, etc.
-                    kevel_day = (day + 6) % 7
-                    kevel_days.append(kevel_day)
-
-                # Add hour range
-                for hour in range(schedule.start_hour, schedule.end_hour):
-                    dayparting.append({"days": kevel_days, "hours": [hour]})
-
-            if dayparting:
-                kevel_targeting["dayparting"] = dayparting
 
         # Audience/Interest targeting via UserDB
         if targeting_overlay.audiences_any_of and self.userdb_enabled:
