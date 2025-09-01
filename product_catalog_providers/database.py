@@ -11,6 +11,7 @@ from src.core.schemas import Product
 from .base import ProductCatalogProvider
 
 logger = logging.getLogger(__name__)
+logger.setLevel(logging.DEBUG)
 
 
 class DatabaseProductCatalog(ProductCatalogProvider):
@@ -63,8 +64,12 @@ class DatabaseProductCatalog(ProductCatalogProvider):
                 product_data.pop("targeting_template", None)
 
                 if product_data.get("price_guidance"):
+                    logger.debug(
+                        f"Processing price_guidance for {product_data.get('product_id')}: {product_data['price_guidance']} (type: {type(product_data['price_guidance'])})"
+                    )
                     if isinstance(product_data["price_guidance"], str):
                         product_data["price_guidance"] = json.loads(product_data["price_guidance"])
+                        logger.debug(f"Parsed price_guidance: {product_data['price_guidance']}")
 
                     # Fix price_guidance structure - convert min/max to floor/percentiles
                     if isinstance(product_data["price_guidance"], dict):
@@ -74,11 +79,13 @@ class DatabaseProductCatalog(ProductCatalogProvider):
                             # Convert min/max to floor and percentiles
                             min_val = pg.get("min", pg.get("min_spend", pg.get("floor", 0)))
                             max_val = pg.get("max", pg.get("max_spend", 10))
-                            product_data["price_guidance"] = {
+                            fixed_price_guidance = {
                                 "floor": min_val,
                                 "p50": (min_val + max_val) / 2,  # Median as midpoint
                                 "p90": max_val * 0.9,  # 90th percentile
                             }
+                            product_data["price_guidance"] = fixed_price_guidance
+                            logger.debug(f"Fixed price_guidance structure: {fixed_price_guidance}")
 
                 # Remove implementation_config - it's internal and should NEVER be exposed to buyers
                 # This contains proprietary ad server configuration details
@@ -171,8 +178,12 @@ class DatabaseProductCatalog(ProductCatalogProvider):
 
                 # Validate against AdCP protocol schema before returning
                 try:
+                    logger.debug(
+                        f"About to validate product {product_data.get('product_id')}: price_guidance={product_data.get('price_guidance')} (type: {type(product_data.get('price_guidance'))})"
+                    )
                     validated_product = Product(**product_data)
                     loaded_products.append(validated_product)
+                    logger.debug(f"Successfully validated product {product_data.get('product_id')}")
                 except Exception as e:
                     logger.error(f"Product {product_data.get('product_id')} failed validation: {e}")
                     logger.debug(f"Product data that failed: {product_data}")
