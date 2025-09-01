@@ -266,9 +266,11 @@ def activity_events(tenant_id, **kwargs):
 
                 except GeneratorExit:
                     logger.info(f"SSE client disconnected for tenant {tenant_id}")
+                    cleanup_needed = True
                     break
                 except Exception as e:
                     logger.error(f"Error in SSE stream for tenant {tenant_id}: {e}")
+                    cleanup_needed = True
                     # Send error event
                     error_data = json.dumps(
                         {
@@ -282,6 +284,7 @@ def activity_events(tenant_id, **kwargs):
 
         except Exception as e:
             logger.error(f"Failed to start SSE stream for tenant {tenant_id}: {e}")
+            cleanup_needed = True
             error_data = json.dumps(
                 {
                     "type": "error",
@@ -293,9 +296,11 @@ def activity_events(tenant_id, **kwargs):
         finally:
             # Clean up resources
             if cleanup_needed:
-                logger.info(f"Cleaning up SSE stream resources for tenant {tenant_id}")
-                # Decrement connection count
+                old_count = connection_counts[tenant_id]
                 connection_counts[tenant_id] = max(0, connection_counts[tenant_id] - 1)
+                logger.info(
+                    f"Cleaning up SSE stream resources for tenant {tenant_id} - connection count: {old_count} -> {connection_counts[tenant_id]}"
+                )
                 # Force garbage collection for any lingering resources
                 import gc
 
