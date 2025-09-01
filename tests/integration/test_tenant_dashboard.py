@@ -132,7 +132,7 @@ class TestTenantDashboard:
         # Look for key dashboard elements rather than broad error checking
         assert b"Total Revenue" in response.data
         assert b"Active Media Buys" in response.data
-        assert b"Open Tasks" in response.data
+        assert b"Active Workflows" in response.data
 
         # Check for specific error messages that would indicate dashboard failures
         assert b"Error loading dashboard" not in response.data
