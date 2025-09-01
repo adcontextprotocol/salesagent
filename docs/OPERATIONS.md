@@ -147,16 +147,16 @@ Monitor all system activity:
 - Filter by tenant, status, date
 - Export to CSV
 
-### Tasks View
-- Pending approvals
-- Human-in-the-loop tasks
-- Task assignment and completion
-- Audit trail
+### Workflow Activity View
+- Workflow steps requiring approval
+- Human-in-the-loop workflow steps
+- Step completion and progression
+- Workflow audit trail
 
 ### Metrics Summary
 - Total active campaigns
 - Total spend across system
-- Pending tasks count
+- Pending workflow steps count
 - Success/failure rates
 
 ## Monitoring and Logs

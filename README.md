@@ -57,8 +57,8 @@ This starts:
 - **Multi-Tenant System** - Isolated data per publisher
 - **Adapter Pattern** - Support for multiple ad servers
 - **Real-time Dashboard** - Live activity feed with Server-Sent Events (SSE)
-- **Task Management** - Complete workflow for human-in-the-loop approvals
-- **Operations Monitoring** - Track all media buys, tasks, and system activities
+- **Workflow Management** - Unified system for human-in-the-loop approvals
+- **Operations Monitoring** - Track all media buys, workflows, and system activities
 - **Admin Interface** - Web UI with Google OAuth
 - **Audit Logging** - Complete operational history
 
@@ -136,7 +136,7 @@ salesagent/
 │       ├── app.py         # Flask application
 │       ├── blueprints/    # Flask blueprints
 │       │   ├── tenants.py # Tenant dashboard
-│       │   ├── tasks.py   # Task management
+│       │   ├── tasks.py   # Task management (DEPRECATED - see workflow system)
 │       │   └── activity_stream.py # Real-time activity feed
 │       └── server.py      # Admin server
 ├── scripts/               # Utility scripts
