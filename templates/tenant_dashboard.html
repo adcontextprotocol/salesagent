@@ -720,7 +720,7 @@ function escapeHtmlAttr(text) {
     });
 }
 
-function connectActivityStream() {
+async function connectActivityStream() {
     const statusEl = document.getElementById('connection-status');
     const statusDot = document.querySelector('.status-dot');
 
@@ -737,8 +737,53 @@ function connectActivityStream() {
             statusDot.classList.add('connecting');
         }
 
-        // Create new EventSource connection
+        // Pre-flight authentication check
         const streamUrl = `{{ script_name }}/tenant/{{ tenant.tenant_id }}/events`;
+
+        try {
+            const authCheck = await fetch(streamUrl, {
+                method: 'HEAD',
+                credentials: 'same-origin'
+            });
+
+            if (authCheck.status === 401) {
+                // Authentication failed - show error and don't retry
+                if (statusEl) {
+                    statusEl.textContent = 'Authentication required';
+                    statusEl.style.color = '#ef4444';
+                }
+                if (statusDot) {
+                    statusDot.classList.remove('connecting', 'active');
+                    statusDot.classList.add('idle');
+                }
+                console.log('SSE authentication failed - please log in');
+                return; // Don't retry
+            }
+
+            if (authCheck.status === 403) {
+                // Access forbidden - show error and don't retry
+                if (statusEl) {
+                    statusEl.textContent = 'Access denied';
+                    statusEl.style.color = '#ef4444';
+                }
+                if (statusDot) {
+                    statusDot.classList.remove('connecting', 'active');
+                    statusDot.classList.add('idle');
+                }
+                console.log('SSE access denied - insufficient permissions');
+                return; // Don't retry
+            }
+
+            if (!authCheck.ok) {
+                throw new Error(`HTTP ${authCheck.status}`);
+            }
+        } catch (authError) {
+            console.log('SSE pre-flight check failed:', authError);
+            // For other errors (network, 500, etc.), we'll retry with backoff
+            throw authError;
+        }
+
+        // Authentication successful, create EventSource connection
         eventSource = new EventSource(streamUrl);
 
         eventSource.onopen = function(e) {
