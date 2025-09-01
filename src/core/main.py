@@ -2282,8 +2282,8 @@ def update_performance_index(req: UpdatePerformanceIndexRequest, context: Contex
 # --- Human-in-the-Loop Task Queue Tools ---
 
 
-@mcp.tool
-def create_workflow_step_for_task(req: CreateHumanTaskRequest, context: Context) -> CreateHumanTaskResponse:
+# @mcp.tool  # DEPRECATED - removed from MCP interface
+def create_workflow_step_for_task(req, context):
     """Create a task requiring human intervention."""
     principal_id = get_principal_from_context(context)
     if not principal_id:
@@ -2445,8 +2445,8 @@ def create_workflow_step_for_task(req: CreateHumanTaskRequest, context: Context)
 # Removed assign_task - assignment handled through admin UI workflow management
 
 
-@mcp.tool
-def complete_task(req: CompleteTaskRequest, context: Context) -> dict[str, str]:
+# @mcp.tool  # DEPRECATED - removed from MCP interface
+def complete_task(req, context):
     """Complete a human task with resolution details."""
     # Admin only
     principal_id = get_principal_from_context(context)
@@ -2653,8 +2653,8 @@ def complete_task(req: CompleteTaskRequest, context: Context) -> dict[str, str]:
     }
 
 
-@mcp.tool
-def verify_task(req: VerifyTaskRequest, context: Context) -> VerifyTaskResponse:
+# @mcp.tool  # DEPRECATED - removed from MCP interface
+def verify_task(req, context):
     """Verify if a task was completed correctly by checking actual state."""
     # Get task from database
     tenant = get_current_tenant()
@@ -2728,8 +2728,8 @@ def verify_task(req: VerifyTaskRequest, context: Context) -> VerifyTaskResponse:
     )
 
 
-@mcp.tool
-def mark_task_complete(req: MarkTaskCompleteRequest, context: Context) -> dict[str, Any]:
+# @mcp.tool  # DEPRECATED - removed from MCP interface
+def mark_task_complete(req, context):
     """Mark a task as complete with automatic verification."""
     # Admin only
     principal_id = get_principal_from_context(context)

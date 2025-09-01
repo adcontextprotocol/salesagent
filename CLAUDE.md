@@ -82,7 +82,14 @@ The server provides:
 - Context parameter provides access to HTTP request headers
 - Tools are exposed as MCP methods
 
-### 4. A2A Protocol Support
+### 4. Unified Workflow System (Key Architecture)
+- **Single Source of Truth**: All work tracking uses `WorkflowStep` and `ObjectWorkflowMapping` tables
+- **No Task Models**: Eliminated `Task` and `HumanTask` models that caused schema conflicts
+- **Human-in-the-Loop**: Workflow steps with `requires_approval` status for manual intervention
+- **Activity Tracking**: Dashboard shows workflow progression and pending approvals
+- **Database Consistency**: Unified schema prevents type mismatches and query errors
+
+### 5. A2A Protocol Support
 - Standard `python-a2a` library implementation
 - No custom protocol code - using library's base classes only
 - Supports both REST and JSON-RPC transports
@@ -120,7 +127,16 @@ The server provides:
 
 ## Recent Major Changes
 
-### JSON-RPC 2.0 Protocol Fixes & Security Enhancements (Latest - Dec 2024)
+### Task System Elimination & Workflow Unification (Latest - Aug 2025)
+- **Architecture Simplification**: Eliminated dual task systems (`Task` and `HumanTask` models) in favor of unified `WorkflowStep` system
+- **Production Fix**: Resolved critical database schema errors causing production crashes
+- **Migration Chain Repair**: Fixed broken Alembic migration chain preventing deployments
+- **Workflow-Based Dashboard**: Transformed admin dashboard into activity stream showing workflow steps requiring attention
+- **Code Cleanup**: Removed all deprecated task-related code from MCP server and Admin UI
+- **Database Schema**: Cleaned up orphaned task tables and schema inconsistencies
+- **Activity Stream**: Real-time dashboard now shows workflow activity instead of generic tasks
+
+### JSON-RPC 2.0 Protocol Fixes & Security Enhancements (Dec 2024)
 - **A2A Protocol Compliance**: Fixed JSON-RPC 2.0 implementation to use string `messageId` per spec
 - **Removed Proxy Workaround**: Eliminated unnecessary `/a2a-internal` endpoint and messageId conversion
 - **Backward Compatibility**: Added middleware to handle both numeric and string messageId formats
@@ -129,14 +145,13 @@ The server provides:
 - **Test Infrastructure**: Added `--skip-docker` option for E2E tests with external services
 - **Token Security**: Removed hard-coded test tokens, now uses environment variables
 
-### Real-Time Dashboard & Task Management System
-- **Activity Stream**: Live dashboard with Server-Sent Events (SSE) for real-time updates
-- **Task Management UI**: Complete task management system with listing, detail, and approval pages
-- **Database Schema**: Added `tasks` table with full column set matching SQLAlchemy models
-- **Templates**: Created `tasks.html`, `task_detail.html`, and enhanced `tenant_dashboard.html`
-- **Blueprints**: Added `activity_stream.py` and `tasks.py` for handling task operations
-- **Bug Fixes**: Fixed missing table columns, removed invalid model references, corrected import paths
-- **Refactored Task Storage**: Removed in-memory `human_tasks` dictionary, now using direct database queries only
+### Workflow-Based Activity System (Replaces Task Management)
+- **Unified Architecture**: Single `WorkflowStep` model replaces dual `Task`/`HumanTask` systems
+- **Activity Dashboard**: Live workflow activity stream showing steps requiring human intervention
+- **Database Schema**: Uses existing `workflow_steps` and `object_workflow_mappings` tables
+- **Template Updates**: Enhanced `tenant_dashboard.html` to show workflow activity feed
+- **Blueprint Cleanup**: Removed deprecated `tasks.py` blueprint and related templates
+- **Production Ready**: Eliminates schema conflicts and simplifies operational monitoring
 
 ### A2A Protocol Integration with python-a2a
 - **Standard Library**: Now using `python-a2a` library for all A2A protocol handling
@@ -294,6 +309,34 @@ def test_standard_a2a_endpoints(client):
 - **Cause**: Gemini API key invalid or policy service returning BLOCKED status
 - **Fix**: Check GEMINI_API_KEY environment variable and review policy settings
 
+### Troubleshooting Production Issues
+
+**Issue**: "operator does not exist: text < timestamp with time zone"
+- **Cause**: Database schema mismatch - columns created as TEXT instead of TIMESTAMP WITH TIME ZONE
+- **Root Cause**: Deprecated task system with conflicting schema definitions
+- **Fix**: Migrate to unified workflow system and eliminate task tables
+- **Prevention**: Use consistent schema definitions and avoid dual systems
+
+**Issue**: "Can't locate revision identified by '[revision_id]'"
+- **Cause**: Broken Alembic migration chain with missing or incorrect revision links
+- **Symptoms**: App crashes on startup, deployment failures, migration errors
+- **Fix Process**:
+  1. Check migration history: `alembic history`
+  2. Identify last known good revision
+  3. Reset to good revision: `alembic stamp [good_revision]`
+  4. Create new migration with correct `down_revision`
+  5. Deploy migration fix before code changes
+- **Prevention**: Never modify committed migration files, always test migrations locally
+
+**Issue**: Production crashes after PR merge
+- **Debugging Process**:
+  1. Check deployment status: `fly status --app adcp-sales-agent`
+  2. Review logs: `fly logs --app adcp-sales-agent`
+  3. Identify specific error patterns (database, import, runtime)
+  4. Check git history for recent changes
+  5. Test fixes locally before deploying
+- **Recovery**: Deploy minimal fix first, then implement broader changes
+
 ### Troubleshooting A2A Issues
 
 **Issue**: "404 NOT FOUND" for `/.well-known/agent-card.json`
@@ -373,14 +416,21 @@ ADMIN_UI_PORT=8001
 ### Database Schema
 
 ```sql
--- Multi-tenant tables
+-- Multi-tenant tables (active)
 tenants (tenant_id, name, subdomain, config, billing_plan)
 principals (tenant_id, principal_id, name, access_token, platform_mappings)
 products (tenant_id, product_id, name, formats, targeting_template)
 media_buys (tenant_id, media_buy_id, principal_id, status, config, budget, dates)
 creatives (tenant_id, creative_id, principal_id, status, format)
-tasks (tenant_id, task_id, media_buy_id, task_type, status, details)
 audit_logs (tenant_id, timestamp, operation, principal_id, success, details)
+
+-- Workflow system (unified work tracking)
+workflow_steps (step_id, tenant_id, workflow_id, status, step_type, created_at)
+object_workflow_mappings (object_type, object_id, workflow_id, tenant_id)
+
+-- Legacy tables (deprecated - may exist but not used by application)
+-- tasks (eliminated in favor of workflow_steps)
+-- human_tasks (eliminated in favor of workflow_steps with requires_approval status)
 ```
 
 ## Common Operations
@@ -587,39 +637,16 @@ fly secrets set GEMINI_API_KEY="your-key" --app adcp-sales-agent
 
 ### Common Issues and Solutions
 
-#### "Error loading dashboard"
-- **Cause**: Missing `tasks` table or columns
-- **Solution**: Create the table with all required columns:
-```sql
--- Run in PostgreSQL
-CREATE TABLE IF NOT EXISTS tasks (
-    task_id VARCHAR(100) PRIMARY KEY,
-    tenant_id VARCHAR(50) NOT NULL REFERENCES tenants(tenant_id) ON DELETE CASCADE,
-    media_buy_id VARCHAR(100),
-    task_type VARCHAR(50) NOT NULL,
-    title VARCHAR(255) NOT NULL DEFAULT '',
-    description TEXT,
-    status VARCHAR(20) NOT NULL DEFAULT 'pending',
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    assigned_to VARCHAR(255),
-    due_date TIMESTAMP WITH TIME ZONE,
-    completed_at TIMESTAMP WITH TIME ZONE,
-    completed_by VARCHAR(255),
-    task_metadata JSONB,
-    details JSONB,
-    strategy_id VARCHAR(255),
-    resolution VARCHAR(50),
-    resolution_notes TEXT,
-    resolved_by VARCHAR(255),
-    resolved_at TIMESTAMP WITH TIME ZONE,
-    context_id VARCHAR(100)
-);
-```
+#### "Error loading dashboard" (FIXED)
+- **Historical Issue**: Admin dashboard was querying deprecated `Task` model causing schema errors
+- **Resolution**: Dashboard now uses `WorkflowStep` queries for activity feed
+- **Current State**: Dashboard shows workflow activity instead of task lists
 
-#### "Task not found" or "Error loading tasks"
-- **Cause**: Missing template files
-- **Solution**: Ensure `templates/tasks.html` and `templates/task_detail.html` exist
+#### Database schema errors with task queries (FIXED)
+- **Historical Issue**: `tasks.due_date` column type mismatch (TEXT vs TIMESTAMP WITH TIME ZONE)
+- **Root Cause**: Dual task systems with inconsistent schema definitions
+- **Resolution**: Eliminated all task-related code, unified on workflow system
+- **Lesson Learned**: Avoid duplicate data models for similar concepts
 
 #### Port conflicts
 - **Solution**: Update `.env` file:

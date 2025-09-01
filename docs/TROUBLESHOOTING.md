@@ -1,53 +1,71 @@
 # Troubleshooting Guide
 
+## Production Emergency Response
+
+### Critical Production Failures
+
+#### Database Schema Conflicts
+**Symptoms**: `operator does not exist: text < timestamp with time zone`
+- **Immediate Action**: Identify which queries are failing
+- **Root Cause**: Schema type mismatches between expected and actual column types
+- **Emergency Fix**: Comment out problematic queries temporarily
+- **Permanent Fix**: Migrate to consistent schema or eliminate conflicting systems
+
+#### Broken Migration Chain
+**Symptoms**: `Can't locate revision identified by '[revision_id]'`
+- **Immediate Diagnosis**: `alembic history` to check chain integrity
+- **Emergency Repair**:
+  1. Identify last known good revision: `alembic current`
+  2. Reset to good revision: `alembic stamp [good_revision]`
+  3. Create new migration with correct `down_revision`
+  4. Test locally before deploying
+- **Deploy**: Migration fix first, then code changes
+
+#### Application Crash Loops
+**Symptoms**: App repeatedly crashes on startup, "smoke checks failed"
+- **Immediate Response**: Check `fly logs --app adcp-sales-agent`
+- **Debug Process**:
+  1. Identify specific error in logs
+  2. Check recent PR changes: `git log --oneline -10`
+  3. Test fix locally with Docker
+  4. Deploy minimal fix to restore service
+  5. Implement broader changes incrementally
+
+#### Emergency Recovery Steps
+```bash
+# 1. Check current production status
+fly status --app adcp-sales-agent
+
+# 2. Review recent logs for errors
+fly logs --app adcp-sales-agent --limit 100
+
+# 3. Check deployment history
+fly releases --app adcp-sales-agent
+
+# 4. Rollback if needed (last resort)
+fly releases rollback --app adcp-sales-agent [release_id]
+
+# 5. Deploy emergency fix
+fly deploy --app adcp-sales-agent
+```
+
 ## Common Issues and Solutions
 
 ### Dashboard and UI Issues
 
-#### "Error loading dashboard"
-This typically indicates missing database tables or columns.
+#### "Error loading dashboard" (HISTORICAL - FIXED)
+This was caused by the dashboard querying deprecated `Task` models.
 
-**Solution:**
-```sql
--- Create tasks table with all required columns
-CREATE TABLE IF NOT EXISTS tasks (
-    task_id VARCHAR(100) PRIMARY KEY,
-    tenant_id VARCHAR(50) NOT NULL REFERENCES tenants(tenant_id) ON DELETE CASCADE,
-    media_buy_id VARCHAR(100),
-    task_type VARCHAR(50) NOT NULL,
-    title VARCHAR(255) NOT NULL DEFAULT '',
-    description TEXT,
-    status VARCHAR(20) NOT NULL DEFAULT 'pending',
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    assigned_to VARCHAR(255),
-    due_date TIMESTAMP WITH TIME ZONE,
-    completed_at TIMESTAMP WITH TIME ZONE,
-    completed_by VARCHAR(255),
-    task_metadata JSONB,
-    details JSONB,
-    strategy_id VARCHAR(255),
-    resolution VARCHAR(50),
-    resolution_notes TEXT,
-    resolved_by VARCHAR(255),
-    resolved_at TIMESTAMP WITH TIME ZONE,
-    context_id VARCHAR(100)
-);
+**Historical Issue**: Dashboard was querying `tasks` table that had schema conflicts.
+**Resolution**: Dashboard now uses `WorkflowStep` model for activity tracking.
+**Current State**: No task-related queries - dashboard shows workflow activity.
 
--- Create indexes
-CREATE INDEX IF NOT EXISTS idx_tasks_tenant ON tasks(tenant_id);
-CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status);
-CREATE INDEX IF NOT EXISTS idx_tasks_strategy ON tasks(strategy_id);
-```
+#### Task-related errors (HISTORICAL - FIXED)
+These errors are resolved by the workflow system migration.
 
-#### "Task not found" or "Error loading tasks"
-Missing template files for task management.
-
-**Solution:**
-Ensure these template files exist:
-- `templates/tasks.html` - Task listing page
-- `templates/task_detail.html` - Task detail view
-- `templates/task_approve.html` - Task approval interface
+**Historical Issue**: Missing task management templates and deprecated task models.
+**Resolution**: Task system eliminated in favor of unified workflow system.
+**Current State**: Dashboard shows workflow activity feed instead of task lists.
 
 #### Activity Feed Not Updating
 The activity feed uses Server-Sent Events (SSE) for real-time updates.

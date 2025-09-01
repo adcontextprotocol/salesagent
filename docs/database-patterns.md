@@ -217,8 +217,8 @@ with get_db_session() as session:
     ).first()
 ```
 
-### Example 2: INSERT Operation Migration
-**Before:**
+### Example 2: INSERT Operation Migration (Updated for Workflow System)
+**Before (Deprecated Task System):**
 ```python
 conn = get_db_connection()
 conn.execute("""
@@ -229,22 +229,22 @@ conn.connection.commit()
 conn.close()
 ```
 
-**After:**
+**After (Unified Workflow System):**
 ```python
 with get_db_session() as session:
-    new_task = Task(
+    workflow_step = WorkflowStep(
         tenant_id=tenant_id,
-        task_id=task_id,
-        task_type='policy_review',
-        status='pending',
+        workflow_id=workflow_id,
+        step_type='policy_review',
+        status='requires_approval',
         details=details  # ORM handles JSON serialization
     )
-    session.add(new_task)
+    session.add(workflow_step)
     session.commit()
 ```
 
-### Example 3: UPDATE Operation Migration
-**Before:**
+### Example 3: UPDATE Operation Migration (Updated for Workflow System)
+**Before (Deprecated Task System):**
 ```python
 conn = get_db_connection()
 conn.execute("""
@@ -255,16 +255,16 @@ conn.connection.commit()
 conn.close()
 ```
 
-**After:**
+**After (Unified Workflow System):**
 ```python
 with get_db_session() as session:
-    task = session.query(Task).filter_by(
-        task_id=task_id,
+    workflow_step = session.query(WorkflowStep).filter_by(
+        step_id=step_id,
         tenant_id=tenant_id
     ).first()
-    if task:
-        task.status = status
-        task.completed_at = datetime.now()
+    if workflow_step:
+        workflow_step.status = 'completed'
+        workflow_step.completed_at = datetime.now()
         session.commit()
 ```
 
