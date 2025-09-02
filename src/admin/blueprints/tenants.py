@@ -109,7 +109,7 @@ def dashboard(tenant_id):
 
             # Calculate task-based metrics (temporary fallback from workflow system)
             # Get pending workflow steps that require action
-            from src.database.models import Context, WorkflowStep
+            from src.core.database.models import Context, WorkflowStep
 
             pending_steps = (
                 db_session.query(WorkflowStep)
