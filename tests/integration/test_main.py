@@ -207,8 +207,10 @@ class TestAdcpServerV2_3(unittest.TestCase):
                     text(
                         """
                     INSERT INTO products (product_id, tenant_id, name, description, formats, delivery_type,
-                                       is_fixed_price, cpm, price_guidance, countries, targeting_template)
-                    VALUES (:pid, :tid, :name, :desc, :formats, :delivery, :fixed, :cpm, :guidance, :countries, :targeting)
+                                       is_fixed_price, cpm, price_guidance, countries, targeting_template,
+                                       min_spend, measurement, creative_policy)
+                    VALUES (:pid, :tid, :name, :desc, :formats, :delivery, :fixed, :cpm, :guidance, :countries, :targeting,
+                            :min_spend, :measurement, :creative_policy)
                 """
                     ),
                     {
@@ -223,6 +225,9 @@ class TestAdcpServerV2_3(unittest.TestCase):
                         "guidance": prod_data[7],
                         "countries": json.dumps({"countries": ["US", "CA"]}),
                         "targeting": json.dumps({}),
+                        "min_spend": None,  # AdCP field, nullable
+                        "measurement": None,  # AdCP field, nullable
+                        "creative_policy": None,  # AdCP field, nullable
                     },
                 )
 
