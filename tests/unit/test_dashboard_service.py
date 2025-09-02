@@ -1,0 +1,222 @@
+"""Tests for DashboardService using single data source pattern."""
+
+# ruff: noqa: excessive-mocking
+
+from datetime import UTC, datetime
+from unittest.mock import Mock, patch
+
+import pytest
+
+from src.admin.services.dashboard_service import DashboardService
+from src.core.database.models import MediaBuy, Principal, Tenant
+
+
+class TestDashboardService:
+    """Test DashboardService single data source pattern."""
+
+    def test_init_validates_tenant_id(self):
+        """Test that invalid tenant IDs are rejected."""
+        with pytest.raises(ValueError, match="Invalid tenant_id"):
+            DashboardService("")
+
+        with pytest.raises(ValueError, match="Invalid tenant_id"):
+            DashboardService("x" * 51)  # Too long
+
+    def test_init_valid_tenant_id(self):
+        """Test that valid tenant IDs are accepted."""
+        service = DashboardService("test_tenant")
+        assert service.tenant_id == "test_tenant"
+        assert service._tenant is None  # Not loaded yet
+
+    @patch("src.admin.services.dashboard_service.get_db_session")
+    def test_get_tenant_caches_result(self, mock_get_db):
+        """Test that tenant is cached after first load."""
+        # Mock database session
+        mock_session = Mock()
+        mock_get_db.return_value.__enter__.return_value = mock_session
+
+        # Mock tenant
+        mock_tenant = Mock(spec=Tenant)
+        mock_tenant.tenant_id = "test_tenant"
+        mock_session.query.return_value.filter_by.return_value.first.return_value = mock_tenant
+
+        service = DashboardService("test_tenant")
+
+        # First call should query database
+        result1 = service.get_tenant()
+        assert result1 == mock_tenant
+        assert service._tenant == mock_tenant
+
+        # Second call should use cache
+        result2 = service.get_tenant()
+        assert result2 == mock_tenant
+
+        # Should only have called database once
+        mock_session.query.assert_called_once()
+
+    @patch("src.admin.services.dashboard_service.get_db_session")
+    @patch("src.admin.services.dashboard_service.get_recent_activities")
+    def test_get_dashboard_metrics_single_data_source(self, mock_get_activities, mock_get_db):
+        """Test that dashboard metrics use single data source pattern."""
+        # Mock database session
+        mock_session = Mock()
+        mock_get_db.return_value.__enter__.return_value = mock_session
+
+        # Mock tenant
+        mock_tenant = Mock(spec=Tenant)
+        mock_tenant.tenant_id = "test_tenant"
+
+        # Mock query results
+        mock_session.query.return_value.filter_by.return_value.count.return_value = 5
+        mock_session.query.return_value.filter_by.return_value.filter.return_value.all.return_value = []
+
+        # Mock recent activities (SINGLE DATA SOURCE)
+        mock_activities = [{"operation": "test", "success": True}]
+        mock_get_activities.return_value = mock_activities
+
+        service = DashboardService("test_tenant")
+        service._tenant = mock_tenant  # Skip tenant lookup
+
+        metrics = service.get_dashboard_metrics()
+
+        # Verify single data source pattern
+        assert metrics["recent_activity"] == mock_activities
+        mock_get_activities.assert_called_once_with("test_tenant", limit=10)
+
+        # Verify workflow metrics are hardcoded (no database dependency)
+        assert metrics["pending_workflows"] == 0
+        assert metrics["approval_needed"] == 0
+        assert metrics["pending_approvals"] == 0
+
+        # Verify business metrics are calculated
+        assert "total_revenue" in metrics
+        assert "active_buys" in metrics
+        assert "pending_buys" in metrics
+
+    @patch("src.admin.services.dashboard_service.get_db_session")
+    def test_get_recent_media_buys_eager_loading(self, mock_get_db):
+        """Test that media buys use eager loading to avoid N+1 queries."""
+        # Mock database session
+        mock_session = Mock()
+        mock_get_db.return_value.__enter__.return_value = mock_session
+
+        # Mock media buy with principal
+        mock_buy = Mock(spec=MediaBuy)
+        mock_buy.principal = Mock(spec=Principal)
+        mock_buy.principal.name = "Test Advertiser"
+        mock_buy.created_at = datetime.now(UTC)
+
+        mock_session.query.return_value.filter.return_value.options.return_value.order_by.return_value.limit.return_value.all.return_value = [
+            mock_buy
+        ]
+
+        service = DashboardService("test_tenant")
+        recent_buys = service.get_recent_media_buys(limit=5)
+
+        assert len(recent_buys) == 1
+        assert recent_buys[0].advertiser_name == "Test Advertiser"
+        assert recent_buys[0].spend == 0  # TODO field
+
+        # Verify eager loading was used
+        mock_session.query.return_value.filter.return_value.options.assert_called_once()
+
+    def test_calculate_revenue_change(self):
+        """Test revenue change calculation logic."""
+        service = DashboardService("test_tenant")
+
+        # Test with sufficient data (14 days)
+        revenue_data = [{"revenue": 100} for _ in range(14)]  # Flat revenue
+        change = service._calculate_revenue_change(revenue_data)
+        assert change == 0.0  # No change
+
+        # Test with growth
+        revenue_data = [{"revenue": 50} for _ in range(7)] + [{"revenue": 100} for _ in range(7)]
+        change = service._calculate_revenue_change(revenue_data)
+        assert change == 100.0  # 100% increase
+
+        # Test with insufficient data
+        revenue_data = [{"revenue": 100} for _ in range(5)]
+        change = service._calculate_revenue_change(revenue_data)
+        assert change == 0.0
+
+    def test_get_chart_data_format(self):
+        """Test that chart data is formatted correctly for frontend."""
+        service = DashboardService("test_tenant")
+
+        # Mock the get_dashboard_metrics method
+        mock_revenue_data = [{"date": "2025-01-01", "revenue": 100}, {"date": "2025-01-02", "revenue": 150}]
+
+        with patch.object(service, "get_dashboard_metrics") as mock_metrics:
+            mock_metrics.return_value = {"revenue_data": mock_revenue_data}
+
+            chart_data = service.get_chart_data()
+
+            assert chart_data["labels"] == ["2025-01-01", "2025-01-02"]
+            assert chart_data["data"] == [100, 150]
+
+    @patch("src.admin.services.dashboard_service.get_db_session")
+    @patch("src.admin.services.dashboard_service.get_recent_activities")
+    def test_health_check_healthy(self, mock_get_activities, mock_get_db):
+        """Test health check when system is healthy."""
+        # Mock successful database connection
+        mock_session = Mock()
+        mock_get_db.return_value.__enter__.return_value = mock_session
+        mock_session.execute.return_value.scalar.return_value = 1
+
+        # Mock successful activity fetch
+        mock_get_activities.return_value = []
+
+        health = DashboardService.health_check()
+
+        assert health["status"] == "healthy"
+        assert health["single_data_source"] == "audit_logs"
+        assert "tasks" in health["deprecated_sources"]
+        assert "human_tasks" in health["deprecated_sources"]
+
+    @patch("src.admin.services.dashboard_service.get_db_session")
+    def test_health_check_unhealthy(self, mock_get_db):
+        """Test health check when system is unhealthy."""
+        # Mock database connection failure
+        mock_get_db.side_effect = Exception("Database connection failed")
+
+        health = DashboardService.health_check()
+
+        assert health["status"] == "unhealthy"
+        assert "Database connection failed" in health["error"]
+
+
+class TestDashboardServiceIntegration:
+    """Integration tests for DashboardService with real database."""
+
+    @pytest.mark.requires_db
+    def test_real_tenant_lookup(self, test_tenant):
+        """Test service with real tenant from database."""
+        service = DashboardService(test_tenant.tenant_id)
+        tenant = service.get_tenant()
+
+        assert tenant is not None
+        assert tenant.tenant_id == test_tenant.tenant_id
+
+    @pytest.mark.requires_db
+    def test_real_metrics_calculation(self, test_tenant, test_media_buy):
+        """Test metrics calculation with real database data."""
+        service = DashboardService(test_tenant.tenant_id)
+        metrics = service.get_dashboard_metrics()
+
+        # Should return metrics dictionary
+        assert isinstance(metrics, dict)
+        assert "total_revenue" in metrics
+        assert "active_buys" in metrics
+        assert "recent_activity" in metrics
+
+        # Workflow metrics should be hardcoded
+        assert metrics["pending_workflows"] == 0
+        assert metrics["approval_needed"] == 0
+
+    @pytest.mark.requires_db
+    def test_error_handling_invalid_tenant(self):
+        """Test error handling for invalid tenant."""
+        service = DashboardService("nonexistent_tenant")
+
+        with pytest.raises(ValueError, match="not found"):
+            service.get_dashboard_metrics()

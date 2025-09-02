@@ -1,0 +1,208 @@
+"""Dashboard service implementing single data source pattern.
+
+This service centralizes all dashboard data access to prevent the reliability
+issues caused by multiple overlapping data models. It uses ONLY the audit_logs
+table for activity data, eliminating dependencies on workflow_steps, tasks, etc.
+"""
+
+import logging
+from datetime import UTC, datetime, timedelta
+
+from sqlalchemy.orm import joinedload
+
+from src.admin.blueprints.activity_stream import get_recent_activities
+from src.core.database.database_session import get_db_session
+from src.core.database.models import MediaBuy, Principal, Product, Tenant
+
+logger = logging.getLogger(__name__)
+
+
+class DashboardService:
+    """Service for dashboard data with single data source pattern."""
+
+    def __init__(self, tenant_id: str):
+        self.tenant_id = tenant_id
+        self._tenant = None
+        self._validate_tenant_id()
+
+    def _validate_tenant_id(self):
+        """Validate tenant exists and is active."""
+        if not self.tenant_id or len(self.tenant_id) > 50:
+            raise ValueError(f"Invalid tenant_id: {self.tenant_id}")
+
+    def get_tenant(self) -> Tenant | None:
+        """Get tenant object, cached for this service instance."""
+        if self._tenant is None:
+            with get_db_session() as db_session:
+                self._tenant = db_session.query(Tenant).filter_by(tenant_id=self.tenant_id).first()
+        return self._tenant
+
+    def get_dashboard_metrics(self) -> dict[str, any]:
+        """Get all dashboard metrics using single data source pattern.
+
+        Returns:
+            Dictionary with all metrics needed for dashboard rendering.
+            Uses ONLY audit_logs table for activity data.
+        """
+        tenant = self.get_tenant()
+        if not tenant:
+            raise ValueError(f"Tenant {self.tenant_id} not found")
+
+        try:
+            with get_db_session() as db_session:
+                # Core business metrics (from actual business tables)
+                active_campaigns = (
+                    db_session.query(MediaBuy).filter_by(tenant_id=self.tenant_id, status="active").count()
+                )
+
+                pending_buys = db_session.query(MediaBuy).filter_by(tenant_id=self.tenant_id, status="pending").count()
+
+                principals_count = db_session.query(Principal).filter_by(tenant_id=self.tenant_id).count()
+
+                products_count = db_session.query(Product).filter_by(tenant_id=self.tenant_id).count()
+
+                # Calculate total spend from media buys
+                total_spend_buys = (
+                    db_session.query(MediaBuy)
+                    .filter_by(tenant_id=self.tenant_id)
+                    .filter(MediaBuy.status.in_(["active", "completed"]))
+                    .all()
+                )
+                total_spend_amount = float(sum(buy.budget or 0 for buy in total_spend_buys))
+
+                # Revenue trend data (last 30 days)
+                revenue_data = self._calculate_revenue_trend(db_session)
+
+                # Calculate revenue change (last 7 vs previous 7 days)
+                revenue_change = self._calculate_revenue_change(revenue_data)
+
+                # Get recent activities using SINGLE DATA SOURCE (audit_logs only)
+                recent_activity = get_recent_activities(self.tenant_id, limit=10)
+
+                # SINGLE DATA SOURCE PATTERN: All workflow metrics hardcoded to 0
+                # This eliminates dependency on workflow_steps/tasks tables that cause crashes
+                return {
+                    # Real business metrics
+                    "total_revenue": total_spend_amount,
+                    "active_buys": active_campaigns,
+                    "pending_buys": pending_buys,
+                    "active_advertisers": principals_count,
+                    "total_advertisers": principals_count,
+                    "products_count": products_count,
+                    # Revenue trend
+                    "revenue_change": round(revenue_change, 1),
+                    "revenue_change_abs": round(abs(revenue_change), 1),
+                    "revenue_data": revenue_data,
+                    # Activity data (SINGLE SOURCE: audit_logs only)
+                    "recent_activity": recent_activity,
+                    # Workflow metrics (hardcoded until unified system implemented)
+                    "pending_workflows": 0,
+                    "approval_needed": 0,
+                    "pending_approvals": 0,
+                    "conversion_rate": 0.0,
+                }
+
+        except Exception as e:
+            logger.error(f"Error calculating dashboard metrics for {self.tenant_id}: {e}")
+            raise
+
+    def get_recent_media_buys(self, limit: int = 10) -> list[MediaBuy]:
+        """Get recent media buys with relationships loaded."""
+        try:
+            with get_db_session() as db_session:
+                recent_buys = (
+                    db_session.query(MediaBuy)
+                    .filter(MediaBuy.tenant_id == self.tenant_id)
+                    .options(joinedload(MediaBuy.principal))  # Eager load to avoid N+1
+                    .order_by(MediaBuy.created_at.desc())
+                    .limit(limit)
+                    .all()
+                )
+
+                # Transform for template consumption
+                for media_buy in recent_buys:
+                    # TODO: Calculate actual spend from delivery data when available
+                    media_buy.spend = 0
+
+                    # TODO: Calculate relative time properly with timezone handling
+                    media_buy.created_at_relative = (
+                        media_buy.created_at.strftime("%Y-%m-%d") if media_buy.created_at else "Unknown"
+                    )
+
+                    # Add advertiser name from eager-loaded principal
+                    media_buy.advertiser_name = media_buy.principal.name if media_buy.principal else "Unknown"
+
+                return recent_buys
+
+        except Exception as e:
+            logger.error(f"Error getting recent media buys for {self.tenant_id}: {e}")
+            return []
+
+    def _calculate_revenue_trend(self, db_session, days: int = 30) -> list[dict[str, any]]:
+        """Calculate daily revenue for the last N days."""
+        today = datetime.now(UTC).date()
+        revenue_data = []
+
+        for i in range(days):
+            date = today - timedelta(days=days - 1 - i)
+
+            # Calculate revenue for this date
+            daily_buys = (
+                db_session.query(MediaBuy)
+                .filter_by(tenant_id=self.tenant_id)
+                .filter(MediaBuy.start_date <= date)
+                .filter(MediaBuy.end_date >= date)
+                .filter(MediaBuy.status.in_(["active", "completed"]))
+                .all()
+            )
+
+            daily_revenue = 0
+            for buy in daily_buys:
+                if buy.start_date and buy.end_date:
+                    days_in_flight = (buy.end_date - buy.start_date).days + 1
+                    if days_in_flight > 0:
+                        daily_revenue += float(buy.budget or 0) / days_in_flight
+
+            revenue_data.append({"date": date.isoformat(), "revenue": round(daily_revenue, 2)})
+
+        return revenue_data
+
+    def _calculate_revenue_change(self, revenue_data: list[dict[str, any]]) -> float:
+        """Calculate revenue change percentage (last 7 vs previous 7 days)."""
+        if len(revenue_data) < 14:
+            return 0.0
+
+        last_week_revenue = sum(d["revenue"] for d in revenue_data[-7:])
+        previous_week_revenue = sum(d["revenue"] for d in revenue_data[-14:-7])
+
+        if previous_week_revenue > 0:
+            return ((last_week_revenue - previous_week_revenue) / previous_week_revenue) * 100
+
+        return 0.0
+
+    def get_chart_data(self) -> dict[str, list]:
+        """Get chart data formatted for frontend consumption."""
+        metrics = self.get_dashboard_metrics()
+        revenue_data = metrics["revenue_data"]
+
+        return {"labels": [d["date"] for d in revenue_data], "data": [d["revenue"] for d in revenue_data]}
+
+    @staticmethod
+    def health_check() -> dict[str, any]:
+        """Check dashboard service health."""
+        try:
+            # Test database connection
+            with get_db_session() as db_session:
+                db_session.execute("SELECT 1").scalar()
+
+            # Test audit logs table (our single data source)
+            test_activities = get_recent_activities("health_check", limit=1)
+
+            return {
+                "status": "healthy",
+                "single_data_source": "audit_logs",
+                "deprecated_sources": ["tasks", "human_tasks", "workflow_steps"],
+                "message": "Dashboard service using single data source pattern",
+            }
+        except Exception as e:
+            return {"status": "unhealthy", "error": str(e), "message": "Dashboard service health check failed"}

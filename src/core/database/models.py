@@ -236,62 +236,10 @@ class MediaBuy(Base):
     )
 
 
-# Task table - still used for backward compatibility
-class Task(Base):
-    __tablename__ = "tasks"
-
-    task_id = Column(String(100), primary_key=True)
-    tenant_id = Column(String(50), ForeignKey("tenants.tenant_id", ondelete="CASCADE"), nullable=False)
-    media_buy_id = Column(
-        String(100),
-        ForeignKey("media_buys.media_buy_id", ondelete="CASCADE"),
-        nullable=True,
-    )
-    task_type = Column(String(50), nullable=False)
-    title = Column(String(255), nullable=False, default="")
-    description = Column(Text)
-    status = Column(String(20), nullable=False, default="pending")
-    assigned_to = Column(String(255))
-    due_date = Column(DateTime)
-    completed_at = Column(DateTime)
-    completed_by = Column(String(255))
-    task_metadata = Column(JSON)  # JSONB in PostgreSQL
-    details = Column(JSON)  # JSONB in PostgreSQL (for backward compatibility)
-    strategy_id = Column(String(255), nullable=True)  # Strategy reference for linking operations
-    created_at = Column(DateTime, server_default=func.now())
-    version = Column(Integer, nullable=False, default=1)  # For optimistic locking
-
-    __table_args__ = (
-        ForeignKeyConstraint(
-            ["strategy_id"],
-            ["strategies.strategy_id"],
-            ondelete="SET NULL",
-        ),
-        Index("idx_tasks_tenant", "tenant_id"),
-        Index("idx_tasks_status", "status"),
-        Index("idx_tasks_strategy", "strategy_id"),
-    )
-
-
-class HumanTask(Base):
-    __tablename__ = "human_tasks"
-
-    task_id = Column(String(100), primary_key=True)
-    tenant_id = Column(String(50), ForeignKey("tenants.tenant_id"), nullable=False)
-    media_buy_id = Column(String(100), ForeignKey("media_buys.media_buy_id"))
-    task_type = Column(String(50), nullable=False)
-    priority = Column(String(20), nullable=False)
-    status = Column(String(50), nullable=False, default="pending")
-    operation = Column(String(100))
-    error_detail = Column(Text)
-    context_data = Column(JSON)
-    assigned_to = Column(String(255))
-    due_at = Column(DateTime)
-    created_at = Column(DateTime, server_default=func.now())
-    updated_at = Column(DateTime)
-    completed_at = Column(DateTime)
-    completed_by = Column(String(255))
-    resolution = Column(Text)
+# DEPRECATED: Task and HumanTask models removed - replaced by WorkflowStep system
+# Tables may still exist in database for backward compatibility but are not used by application
+# Dashboard now uses only audit_logs table for activity tracking
+# Workflow operations use WorkflowStep and ObjectWorkflowMapping tables
 
 
 class AuditLog(Base):
