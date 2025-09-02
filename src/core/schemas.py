@@ -419,14 +419,13 @@ class Error(BaseModel):
 class GetProductsResponse(BaseModel):
     """Response for get_products tool.
 
-    Contains both AdCP spec fields (products) and protocol fields for MCP/A2A.
-    The validator extracts only AdCP fields for schema compliance checking.
+    Now only contains AdCP spec fields. Context management is handled
+    automatically by the MCP wrapper at the protocol layer.
     """
 
     products: list[Product]
-    message: str | None = None  # Protocol field for human-readable messages
-    context_id: str | None = None  # Protocol field for conversation tracking
-    errors: list[Error] | None = None  # Protocol field for error reporting
+    message: str | None = None  # Optional human-readable message
+    errors: list[Error] | None = None  # Optional error reporting
 
     def model_dump(self, **kwargs):
         """Override to ensure products exclude implementation_config and convert formats for AdCP compliance."""
@@ -463,14 +462,14 @@ class GetProductsResponse(BaseModel):
 class ListCreativeFormatsResponse(BaseModel):
     """Response for list_creative_formats tool.
 
-    Contains both AdCP spec fields (formats) and protocol fields for MCP/A2A.
-    The validator extracts only AdCP fields for schema compliance checking.
+
+    Now only contains AdCP spec fields. Context management is handled
+    automatically by the MCP wrapper at the protocol layer.
     """
 
     formats: list[str]  # Format IDs per updated AdCP spec
-    message: str | None = None  # Protocol field for human-readable messages
-    context_id: str | None = None  # Protocol field for conversation tracking
-    errors: list[Error] | None = None  # Protocol field for error reporting
+    message: str | None = None  # Optional human-readable message
+    errors: list[Error] | None = None  # Optional error reporting
 
 
 # --- Creative Lifecycle ---
@@ -833,10 +832,20 @@ class CreateMediaBuyRequest(BaseModel):
 
 
 class CreateMediaBuyResponse(BaseModel):
+    """Response from create_media_buy operation.
+
+    This is an async operation that may require manual approval or additional steps.
+    The status field indicates the current state of the media buy creation.
+    """
+
     media_buy_id: str
-    buyer_ref: str
+    buyer_ref: str | None = None  # May not have buyer_ref if failed
+    status: str | None = None  # pending_manual, failed, active, etc.
+    detail: str | None = None  # Additional status details
+    message: str | None = None  # Human-readable message
     packages: list[dict[str, Any]] = Field(default_factory=list, description="Created packages with IDs")
     creative_deadline: datetime | None = None
+    errors: list[Error] | None = None  # Protocol-compliant error reporting
 
 
 class CheckMediaBuyStatusRequest(BaseModel):

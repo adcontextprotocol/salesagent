@@ -3,7 +3,7 @@
 
 import sys
 import uuid
-from datetime import datetime
+from datetime import UTC, datetime
 
 from rich.console import Console
 from rich.table import Table
@@ -27,7 +27,6 @@ def test_workflow_architecture():
     # Create test database session
     engine = create_engine(DatabaseConfig.get_connection_string())
     SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-    session = SessionLocal()
 
     # Initialize context manager
     ctx_mgr = ContextManager()
@@ -38,31 +37,33 @@ def test_workflow_architecture():
     media_buy_id = f"mb_{uuid.uuid4().hex[:8]}"
     creative_id = f"cr_{uuid.uuid4().hex[:8]}"
 
-    try:
-        # Clean up any existing test data
-        session.query(ObjectWorkflowMapping).filter(
-            ObjectWorkflowMapping.object_id.in_([media_buy_id, creative_id])
-        ).delete()
-        session.query(WorkflowStep).filter(WorkflowStep.context_id.like("ctx_%")).delete()
-        session.query(Context).filter_by(tenant_id=tenant_id, principal_id=principal_id).delete()
-        session.commit()
+    # Use proper context manager pattern for session
+    with SessionLocal() as session:
+        try:
+            # Clean up any existing test data
+            session.query(ObjectWorkflowMapping).filter(
+                ObjectWorkflowMapping.object_id.in_([media_buy_id, creative_id])
+            ).delete()
+            session.query(WorkflowStep).filter(WorkflowStep.context_id.like("ctx_%")).delete()
+            session.query(Context).filter_by(tenant_id=tenant_id, principal_id=principal_id).delete()
+            session.commit()
 
-        console.print("\n[yellow]Test 1: Create context for async workflow[/yellow]")
-        context = ctx_mgr.create_context(
+            console.print("\n[yellow]Test 1: Create context for async workflow[/yellow]")
+            context = ctx_mgr.create_context(
             tenant_id=tenant_id,
             principal_id=principal_id,
             initial_conversation=[
                 {
                     "role": "user",
                     "content": "Create a media buy for sports content",
-                    "timestamp": datetime.utcnow().isoformat(),
+                    "timestamp": datetime.now(UTC).isoformat(),
                 }
             ],
         )
-        console.print(f"✓ Created context: {context.context_id}")
+            console.print(f"✓ Created context: {context.context_id}")
 
-        console.print("\n[yellow]Test 2: Create workflow step for media buy creation[/yellow]")
-        step1 = ctx_mgr.create_workflow_step(
+            console.print("\n[yellow]Test 2: Create workflow step for media buy creation[/yellow]")
+            step1 = ctx_mgr.create_workflow_step(
             context_id=context.context_id,
             step_type="tool_call",
             owner="system",
@@ -77,13 +78,13 @@ def test_workflow_architecture():
             object_mappings=[{"object_type": "media_buy", "object_id": media_buy_id, "action": "create"}],
             initial_comment="Creating media buy for sports content campaign",
         )
-        console.print(f"✓ Created step: {step1.step_id}")
-        console.print(f"  - Type: {step1.step_type}")
-        console.print(f"  - Owner: {step1.owner}")
-        console.print(f"  - Status: {step1.status}")
+            console.print(f"✓ Created step: {step1.step_id}")
+            console.print(f"  - Type: {step1.step_type}")
+            console.print(f"  - Owner: {step1.owner}")
+            console.print(f"  - Status: {step1.status}")
 
-        console.print("\n[yellow]Test 3: Create approval step (waiting on publisher)[/yellow]")
-        step2 = ctx_mgr.create_workflow_step(
+            console.print("\n[yellow]Test 3: Create approval step (waiting on publisher)[/yellow]")
+            step2 = ctx_mgr.create_workflow_step(
             context_id=context.context_id,
             step_type="approval",
             owner="publisher",  # Publisher needs to approve
@@ -93,12 +94,12 @@ def test_workflow_architecture():
             assigned_to="admin@publisher.com",
             object_mappings=[{"object_type": "media_buy", "object_id": media_buy_id, "action": "approve"}],
         )
-        console.print(f"✓ Created approval step: {step2.step_id}")
-        console.print(f"  - Owner: {step2.owner} (waiting on publisher)")
-        console.print(f"  - Assigned to: {step2.assigned_to}")
+            console.print(f"✓ Created approval step: {step2.step_id}")
+            console.print(f"  - Owner: {step2.owner} (waiting on publisher)")
+            console.print(f"  - Assigned to: {step2.assigned_to}")
 
-        console.print("\n[yellow]Test 4: Add creative and track its lifecycle[/yellow]")
-        step3 = ctx_mgr.create_workflow_step(
+            console.print("\n[yellow]Test 4: Add creative and track its lifecycle[/yellow]")
+            step3 = ctx_mgr.create_workflow_step(
             context_id=context.context_id,
             step_type="tool_call",
             owner="principal",  # Principal submitting creative
@@ -115,132 +116,131 @@ def test_workflow_architecture():
                 {"object_type": "media_buy", "object_id": media_buy_id, "action": "add_creative"},
             ],
         )
-        console.print(f"✓ Created creative step: {step3.step_id}")
+            console.print(f"✓ Created creative step: {step3.step_id}")
 
-        console.print("\n[yellow]Test 5: Query pending steps by owner[/yellow]")
+            console.print("\n[yellow]Test 5: Query pending steps by owner[/yellow]")
 
-        # Get steps waiting on publisher
-        publisher_steps = ctx_mgr.get_pending_steps(owner="publisher")
-        console.print(f"✓ Found {len(publisher_steps)} steps waiting on publisher:")
-        for step in publisher_steps:
-            console.print(f"  - {step.step_id}: {step.step_type} ({step.status})")
+            # Get steps waiting on publisher
+            publisher_steps = ctx_mgr.get_pending_steps(owner="publisher")
+            console.print(f"✓ Found {len(publisher_steps)} steps waiting on publisher:")
+            for step in publisher_steps:
+                console.print(f"  - {step.step_id}: {step.step_type} ({step.status})")
 
-        # Get steps waiting on principal (should be none in this test)
-        principal_steps = ctx_mgr.get_pending_steps(owner="principal")
-        console.print(f"✓ Found {len(principal_steps)} steps waiting on principal")
+            # Get steps waiting on principal (should be none in this test)
+            principal_steps = ctx_mgr.get_pending_steps(owner="principal")
+            console.print(f"✓ Found {len(principal_steps)} steps waiting on principal")
 
-        console.print("\n[yellow]Test 6: Get object lifecycle for media buy[/yellow]")
-        lifecycle = ctx_mgr.get_object_lifecycle("media_buy", media_buy_id)
-        console.print(f"✓ Media buy {media_buy_id} lifecycle:")
-        for event in lifecycle:
-            console.print(f"  - {event['action']}: {event['step_type']} ({event['status']})")
-            console.print(f"    Owner: {event['owner']}, Created: {event['created_at']}")
+            console.print("\n[yellow]Test 6: Get object lifecycle for media buy[/yellow]")
+            lifecycle = ctx_mgr.get_object_lifecycle("media_buy", media_buy_id)
+            console.print(f"✓ Media buy {media_buy_id} lifecycle:")
+            for event in lifecycle:
+                console.print(f"  - {event['action']}: {event['step_type']} ({event['status']})")
+                console.print(f"    Owner: {event['owner']}, Created: {event['created_at']}")
 
-        console.print("\n[yellow]Test 7: Add comment to workflow step[/yellow]")
-        ctx_mgr.update_workflow_step(
+            console.print("\n[yellow]Test 7: Add comment to workflow step[/yellow]")
+            ctx_mgr.update_workflow_step(
             step_id=step2.step_id,
             add_comment={
                 "user": "reviewer@publisher.com",
                 "comment": "Reviewing campaign parameters, will approve shortly",
             },
         )
-        console.print(f"✓ Added comment to step {step2.step_id}")
+            console.print(f"✓ Added comment to step {step2.step_id}")
 
-        # Verify comment was added
-        session.expire_all()
-        updated_step = session.query(WorkflowStep).filter_by(step_id=step2.step_id).first()
-        if updated_step and updated_step.comments:
-            console.print(f"  Comments: {len(updated_step.comments)}")
-            for comment in updated_step.comments:
-                console.print(f"    - {comment['user']}: {comment['comment']}")
+            # Verify comment was added
+            session.expire_all()
+            updated_step = session.query(WorkflowStep).filter_by(step_id=step2.step_id).first()
+            if updated_step and updated_step.comments:
+                console.print(f"  Comments: {len(updated_step.comments)}")
+                for comment in updated_step.comments:
+                    console.print(f"    - {comment['user']}: {comment['comment']}")
 
-        console.print("\n[yellow]Test 8: Complete approval step[/yellow]")
-        ctx_mgr.update_workflow_step(
+            console.print("\n[yellow]Test 8: Complete approval step[/yellow]")
+            ctx_mgr.update_workflow_step(
             step_id=step2.step_id,
             status="completed",
             response_data={
                 "approved": True,
                 "approved_by": "admin@publisher.com",
-                "approved_at": datetime.utcnow().isoformat(),
+                "approved_at": datetime.now(UTC).isoformat(),
             },
         )
-        console.print(f"✓ Completed step {step2.step_id}")
+            console.print(f"✓ Completed step {step2.step_id}")
 
-        console.print("\n[yellow]Test 9: Check context status[/yellow]")
-        status = ctx_mgr.get_context_status(context.context_id)
-        console.print(f"✓ Context status: {status['status']}")
-        console.print(f"  - Total steps: {status['total_steps']}")
-        console.print("  - Status breakdown:")
-        for stat, count in status["counts"].items():
-            if count > 0:
-                console.print(f"    - {stat}: {count}")
+            console.print("\n[yellow]Test 9: Check context status[/yellow]")
+            status = ctx_mgr.get_context_status(context.context_id)
+            console.print(f"✓ Context status: {status['status']}")
+            console.print(f"  - Total steps: {status['total_steps']}")
+            console.print("  - Status breakdown:")
+            for stat, count in status["counts"].items():
+                if count > 0:
+                    console.print(f"    - {stat}: {count}")
 
-        console.print("\n[yellow]Test 10: Verify simplified Context model[/yellow]")
-        ctx = session.query(Context).filter_by(context_id=context.context_id).first()
+            console.print("\n[yellow]Test 10: Verify simplified Context model[/yellow]")
+            ctx = session.query(Context).filter_by(context_id=context.context_id).first()
 
-        # These fields should NOT exist
-        assert not hasattr(ctx, "status"), "Context should not have status field"
-        assert not hasattr(ctx, "session_type"), "Context should not have session_type field"
-        assert not hasattr(ctx, "expires_at"), "Context should not have expires_at field"
-        assert not hasattr(ctx, "human_needed"), "Context should not have human_needed field"
+            # These fields should NOT exist
+            assert not hasattr(ctx, "status"), "Context should not have status field"
+            assert not hasattr(ctx, "session_type"), "Context should not have session_type field"
+            assert not hasattr(ctx, "expires_at"), "Context should not have expires_at field"
+            assert not hasattr(ctx, "human_needed"), "Context should not have human_needed field"
 
-        # These fields SHOULD exist
-        assert hasattr(ctx, "context_id"), "Context should have context_id"
-        assert hasattr(ctx, "tenant_id"), "Context should have tenant_id"
-        assert hasattr(ctx, "principal_id"), "Context should have principal_id"
-        assert hasattr(ctx, "conversation_history"), "Context should have conversation_history"
-        assert hasattr(ctx, "created_at"), "Context should have created_at"
-        assert hasattr(ctx, "last_activity_at"), "Context should have last_activity_at"
+            # These fields SHOULD exist
+            assert hasattr(ctx, "context_id"), "Context should have context_id"
+            assert hasattr(ctx, "tenant_id"), "Context should have tenant_id"
+            assert hasattr(ctx, "principal_id"), "Context should have principal_id"
+            assert hasattr(ctx, "conversation_history"), "Context should have conversation_history"
+            assert hasattr(ctx, "created_at"), "Context should have created_at"
+            assert hasattr(ctx, "last_activity_at"), "Context should have last_activity_at"
 
-        console.print("✓ Context model correctly simplified")
+            console.print("✓ Context model correctly simplified")
 
-        console.print("\n[yellow]Test 11: Verify WorkflowStep has no started_at[/yellow]")
-        step = session.query(WorkflowStep).filter_by(step_id=step1.step_id).first()
-        assert not hasattr(step, "started_at"), "WorkflowStep should not have started_at field"
-        assert hasattr(step, "comments"), "WorkflowStep should have comments field"
-        console.print("✓ WorkflowStep correctly updated (no started_at, has comments)")
+            console.print("\n[yellow]Test 11: Verify WorkflowStep has no started_at[/yellow]")
+            step = session.query(WorkflowStep).filter_by(step_id=step1.step_id).first()
+            assert not hasattr(step, "started_at"), "WorkflowStep should not have started_at field"
+            assert hasattr(step, "comments"), "WorkflowStep should have comments field"
+            console.print("✓ WorkflowStep correctly updated (no started_at, has comments)")
 
-        console.print("\n[yellow]Test 12: Verify ObjectWorkflowMapping works[/yellow]")
-        mappings = session.query(ObjectWorkflowMapping).filter_by(object_type="media_buy", object_id=media_buy_id).all()
-        console.print(f"✓ Found {len(mappings)} mappings for media_buy {media_buy_id}")
-        for mapping in mappings:
-            console.print(f"  - Action: {mapping.action}, Step: {mapping.step_id}")
+            console.print("\n[yellow]Test 12: Verify ObjectWorkflowMapping works[/yellow]")
+            mappings = session.query(ObjectWorkflowMapping).filter_by(object_type="media_buy", object_id=media_buy_id).all()
+            console.print(f"✓ Found {len(mappings)} mappings for media_buy {media_buy_id}")
+            for mapping in mappings:
+                console.print(f"  - Action: {mapping.action}, Step: {mapping.step_id}")
 
-        console.print("\n[bold green]✅ All tests passed![/bold green]")
+            console.print("\n[bold green]✅ All tests passed![/bold green]")
 
-        # Display summary table
-        table = Table(title="Architecture Summary")
-        table.add_column("Component", style="cyan")
-        table.add_column("Purpose", style="white")
-        table.add_column("Key Change", style="yellow")
+            # Display summary table
+            table = Table(title="Architecture Summary")
+            table.add_column("Component", style="cyan")
+            table.add_column("Purpose", style="white")
+            table.add_column("Key Change", style="yellow")
 
-        table.add_row("Context", "Track async conversations", "Simplified - no status/expires")
-        table.add_row("WorkflowStep", "Work queue for tasks", "Added comments, removed started_at")
-        table.add_row("ObjectWorkflowMapping", "Track object lifecycles", "New - loose coupling")
-        table.add_row("Owner field", "Who needs to act", "principal/publisher/system")
+            table.add_row("Context", "Track async conversations", "Simplified - no status/expires")
+            table.add_row("WorkflowStep", "Work queue for tasks", "Added comments, removed started_at")
+            table.add_row("ObjectWorkflowMapping", "Track object lifecycles", "New - loose coupling")
+            table.add_row("Owner field", "Who needs to act", "principal/publisher/system")
 
-        console.print("\n")
-        console.print(table)
+            console.print("\n")
+            console.print(table)
 
-        console.print("\n[bold cyan]Key Insights:[/bold cyan]")
-        console.print("1. Synchronous operations don't need context")
-        console.print("2. Context is just for async conversation tracking")
-        console.print("3. WorkflowStep is the actual work queue")
-        console.print("4. Object lifecycles tracked via ObjectWorkflowMapping")
-        console.print("5. Owner field clearly shows who's waiting (principal vs publisher)")
-        console.print("6. Comments array enables collaboration on steps")
-        console.print("7. No more tasks table - everything in workflow_steps")
+            console.print("\n[bold cyan]Key Insights:[/bold cyan]")
+            console.print("1. Synchronous operations don't need context")
+            console.print("2. Context is just for async conversation tracking")
+            console.print("3. WorkflowStep is the actual work queue")
+            console.print("4. Object lifecycles tracked via ObjectWorkflowMapping")
+            console.print("5. Owner field clearly shows who's waiting (principal vs publisher)")
+            console.print("6. Comments array enables collaboration on steps")
+            console.print("7. No more tasks table - everything in workflow_steps")
 
-    except Exception as e:
-        console.print(f"\n[bold red]❌ Test failed: {e}[/bold red]")
-        import traceback
+            # If we reach here, all operations succeeded
+            return True
 
-        traceback.print_exc()
-        return False
-    finally:
-        session.close()
+        except Exception as e:
+            console.print(f"\n[bold red]❌ Test failed: {e}[/bold red]")
+            import traceback
 
-    return True
+            traceback.print_exc()
+            return False
 
 
 if __name__ == "__main__":
