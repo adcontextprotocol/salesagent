@@ -15,12 +15,15 @@ The E2E tests exercise:
 
 ```
 tests/e2e/
-├── conftest.py                      # Shared fixtures and test infrastructure
-├── test_adcp_full_lifecycle.py      # Main comprehensive test suite
-├── test_testing_hooks.py            # Testing hooks implementation (PR #34)
-├── test_line_item_api.py           # Legacy line item tests
-├── test_strategy_simulation_end_to_end.py  # Strategy simulation tests
-└── README.md                        # This file
+├── conftest.py                        # Shared fixtures and test infrastructure
+├── test_adcp_full_lifecycle.py        # Main comprehensive test suite
+├── test_adcp_schema_compliance.py     # Schema validation compliance tests
+├── test_schema_validation_standalone.py  # Standalone schema validation tests
+├── test_testing_hooks.py              # Testing hooks implementation (PR #34)
+├── adcp_schema_validator.py            # AdCP schema validation system
+├── schemas/                           # Versioned schema cache for offline validation
+│   └── v1/                           # AdCP v1 schemas (37 files, ~160KB)
+└── README.md                          # This file
 ```
 
 ## Running Tests
@@ -148,6 +151,56 @@ headers = {"X-Simulated-Spend": "true"}
 4. **Launch** - Campaign activation
 5. **Optimization** - Mid-flight adjustments
 6. **Completion** - Final reporting
+
+## Schema Validation
+
+The test suite includes comprehensive AdCP protocol schema validation:
+
+### Features
+- **Automatic validation** of all MCP tool calls against official AdCP schemas
+- **Multi-version support** (currently v1, ready for v2+)
+- **Offline validation** for reliable CI execution
+- **Detailed error reporting** with JSON path locations
+
+### Usage
+```python
+# Automatic validation in E2E tests (enabled by default)
+async with AdCPTestClient(
+    mcp_url="http://localhost:8080",
+    auth_token="test-token",
+    validate_schemas=True  # Default: True
+) as client:
+    # Both request and response automatically validated
+    products = await client.call_mcp_tool("get_products", {...})
+    # Console output:
+    # ✓ Request schema validation passed for get-products
+    # ✓ Response schema validation passed for get-products
+```
+
+### Schema Compliance Tests
+```bash
+# Run full protocol compliance validation
+pytest tests/e2e/test_adcp_schema_compliance.py -v
+
+# Test specific operations
+pytest tests/e2e/test_schema_validation_standalone.py -v
+```
+
+### Cached Schemas
+- **Location**: `tests/e2e/schemas/v1/` (37 schemas, ~160KB)
+- **Purpose**: Offline validation, CI reliability, version pinning
+- **Update**: Manual updates when AdCP specification changes
+
+### Multi-Version Support
+```python
+# Use specific schema version
+async with AdCPSchemaValidator(adcp_version="v1") as validator:
+    await validator.validate_response("get-products", data)
+
+# Future: Support multiple versions for different partners
+async with AdCPSchemaValidator(adcp_version="v2") as validator:
+    await validator.validate_response("get-products", data)
+```
 
 ## Writing New Tests
 

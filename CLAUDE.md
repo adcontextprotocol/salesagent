@@ -678,6 +678,30 @@ fly secrets set GEMINI_API_KEY="your-key" --app adcp-sales-agent
 ADMIN_UI_PORT=8001  # Change from 8052 or other conflicting port
 ```
 
+## Schema Validation
+
+The project includes AdCP protocol schema validation for compliance testing:
+
+### Features
+- **Automatic validation** of all AdCP protocol requests/responses
+- **Multi-version support** (v1 schemas cached, ready for v2)
+- **Offline validation** for reliable CI without network dependencies
+- **37 cached schemas** (~160KB) for complete protocol coverage
+
+### Usage
+```bash
+# Run schema compliance tests
+uv run pytest tests/e2e/test_adcp_schema_compliance.py -v
+
+# E2E tests with automatic validation (default)
+uv run pytest tests/e2e/test_adcp_full_lifecycle.py -v
+```
+
+### Schema Management
+- **Location**: `tests/e2e/schemas/v1/` (checked into git)
+- **Update**: Manual updates when AdCP specification changes
+- **Versions**: Currently v1, structured for future v2+ support
+
 ## Support
 
 For issues or questions:
