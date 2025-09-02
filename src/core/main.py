@@ -3,7 +3,7 @@ import logging
 import os
 import time
 import uuid
-from datetime import date, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
 from fastmcp import FastMCP
@@ -546,18 +546,29 @@ def log_tool_activity(context: Context, tool_name: str, start_time: float = None
 
 @mcp.tool
 async def get_products(req: GetProductsRequest, context: Context) -> GetProductsResponse:
+    """Get available products matching the brief.
+
+    This tool now uses automatic context management. The context parameter
+    can be either a FastMCP Context (for backward compatibility) or a ToolContext
+    (for new context management).
+    """
+    from src.core.tool_context import ToolContext
+
     start_time = time.time()
 
-    # Extract testing context first
-    testing_ctx = get_testing_context(context)
-
-    # Authentication and tenant setup
-    principal_id = _get_principal_id_from_context(context)  # Authenticate
-
-    # Get tenant information
-    tenant = get_current_tenant()
-    if not tenant:
-        raise ToolError("No tenant context available")
+    # Handle both old Context and new ToolContext
+    if isinstance(context, ToolContext):
+        # New context management - everything is already extracted
+        testing_ctx = context.testing_context
+        principal_id = context.principal_id
+        tenant = {"tenant_id": context.tenant_id}  # Simplified tenant info
+    else:
+        # Legacy path - extract from FastMCP Context
+        testing_ctx = get_testing_context(context)
+        principal_id = _get_principal_id_from_context(context)
+        tenant = get_current_tenant()
+        if not tenant:
+            raise ToolError("No tenant context available")
 
     # Get the Principal object with ad server mappings
     principal = get_principal_object(principal_id) if principal_id else None
@@ -641,7 +652,7 @@ async def get_products(req: GetProductsRequest, context: Context) -> GetProducts
     if policy_result.status == PolicyStatus.RESTRICTED and policy_settings.get("require_manual_review", False):
         # Create a manual review task
         with get_db_session() as session:
-            task_id = f"policy_review_{tenant['tenant_id']}_{int(datetime.utcnow().timestamp())}"
+            task_id = f"policy_review_{tenant['tenant_id']}_{int(datetime.now(UTC).timestamp())}"
 
             task_details = {
                 "brief": req.brief,
@@ -659,7 +670,7 @@ async def get_products(req: GetProductsRequest, context: Context) -> GetProducts
                 task_type="policy_review",
                 status="pending",
                 details=task_details,
-                created_at=datetime.utcnow(),
+                created_at=datetime.now(UTC),
             )
             session.add(new_task)
             session.commit()
@@ -710,11 +721,7 @@ async def get_products(req: GetProductsRequest, context: Context) -> GetProducts
     # Log activity
     log_tool_activity(context, "get_products", start_time)
 
-    return GetProductsResponse(
-        products=modified_products,
-        message=f"Found {len(modified_products)} matching products",
-        context_id=context.meta.get("headers", {}).get("x-context-id") if hasattr(context, "meta") else None,
-    )
+    return GetProductsResponse(products=modified_products, message=f"Found {len(modified_products)} matching products")
 
 
 @mcp.tool
@@ -784,11 +791,7 @@ def list_creative_formats(context: Context) -> ListCreativeFormatsResponse:
     # Log activity
     log_tool_activity(context, "list_creative_formats", start_time)
 
-    return ListCreativeFormatsResponse(
-        formats=formats,
-        message=f"Found {len(formats)} available creative formats",
-        context_id=context.meta.get("headers", {}).get("x-context-id") if hasattr(context, "meta") else None,
-    )
+    return ListCreativeFormatsResponse(formats=formats, message=f"Found {len(formats)} available creative formats")
 
 
 @mcp.tool
@@ -940,7 +943,7 @@ def create_media_buy(req: CreateMediaBuyRequest, context: Context) -> CreateMedi
         # 2. DateTime validation
         from datetime import datetime
 
-        now = datetime.utcnow()
+        now = datetime.now(UTC)
 
         if req.start_time < now:
             error_msg = f"Invalid start time: {req.start_time}. Start time cannot be in the past."
@@ -982,7 +985,6 @@ def create_media_buy(req: CreateMediaBuyRequest, context: Context) -> CreateMedi
             detail=str(e),
             creative_deadline=None,
             message=f"Media buy creation failed: {str(e)}",
-            context_id=persistent_ctx.context_id,
             errors=[{"code": "validation_error", "message": str(e)}],
         )
 
@@ -997,7 +999,6 @@ def create_media_buy(req: CreateMediaBuyRequest, context: Context) -> CreateMedi
             detail=error_msg,
             creative_deadline=None,
             message=f"Media buy creation failed: {error_msg}",
-            context_id=persistent_ctx.context_id,
             errors=[{"code": "authentication_error", "message": error_msg}],
         )
 
@@ -1037,7 +1038,6 @@ def create_media_buy(req: CreateMediaBuyRequest, context: Context) -> CreateMedi
                 detail=response_msg,
                 creative_deadline=None,
                 message="Your media buy request requires manual approval from the publisher. The request has been queued and will be reviewed shortly.",
-                context_id=persistent_ctx.context_id,
             )
 
         # Get products for the media buy to check product-level auto-creation settings
@@ -1067,7 +1067,6 @@ def create_media_buy(req: CreateMediaBuyRequest, context: Context) -> CreateMedi
                 detail=response_msg,
                 creative_deadline=None,
                 message=f"This media buy requires manual approval due to {reason.lower()}. Your request has been submitted for review.",
-                context_id=persistent_ctx.context_id,
             )
 
         # Continue with synchronized media buy creation
@@ -1165,8 +1164,10 @@ def create_media_buy(req: CreateMediaBuyRequest, context: Context) -> CreateMedi
         adcp_response = CreateMediaBuyResponse(
             media_buy_id=response.media_buy_id,
             buyer_ref=req.buyer_ref,
+            status="active",  # Successful synchronous creation
             packages=response_packages,
             creative_deadline=response.creative_deadline,
+            message="Media buy created successfully",
         )
 
         # Log activity
@@ -1224,7 +1225,6 @@ def create_media_buy(req: CreateMediaBuyRequest, context: Context) -> CreateMedi
             detail=str(e),
             creative_deadline=None,
             message=f"Media buy creation failed: {str(e)}",
-            context_id=persistent_ctx.context_id if persistent_ctx else None,
             errors=[{"code": "execution_error", "message": str(e)}],
         )
 

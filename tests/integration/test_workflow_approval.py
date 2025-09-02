@@ -3,7 +3,7 @@
 Test workflow approval system for manual approvals.
 """
 
-from datetime import datetime
+from datetime import UTC, datetime
 
 import pytest
 
@@ -42,7 +42,7 @@ class TestWorkflowApproval:
             tenant_id=tenant_id,
             principal_id=principal_id,
             initial_conversation=[
-                {"role": "user", "content": "Create a media buy", "timestamp": datetime.utcnow().isoformat()}
+                {"role": "user", "content": "Create a media buy", "timestamp": datetime.now(UTC).isoformat()}
             ],
         )
 
@@ -96,7 +96,7 @@ class TestWorkflowApproval:
             response_data={
                 "approved": True,
                 "approved_by": "admin@publisher.com",
-                "approved_at": datetime.utcnow().isoformat(),
+                "approved_at": datetime.now(UTC).isoformat(),
             },
             add_comment={"user": "admin@publisher.com", "comment": "Approved after review"},
         )

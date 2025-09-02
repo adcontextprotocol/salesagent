@@ -48,7 +48,11 @@ class FormValidator:
                 return "URL must use http or https protocol"
 
             return None
-        except Exception:
+        except Exception as e:
+            # Log the specific error for debugging but return generic message
+            import logging
+
+            logging.getLogger(__name__).debug(f"URL validation error: {e}")
             return "Invalid URL format"
 
     @staticmethod

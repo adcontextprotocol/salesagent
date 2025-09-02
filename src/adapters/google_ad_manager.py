@@ -1239,9 +1239,8 @@ class GoogleAdManager(AdServerAdapter):
             # Create database session
             engine = create_engine(DatabaseConfig.get_connection_string())
             Session = sessionmaker(bind=engine)
-            session = Session()
 
-            try:
+            with Session() as session:
                 # Check if inventory has been synced
                 inventory_count = session.query(GAMInventory).filter(GAMInventory.tenant_id == self.tenant_id).count()
 
@@ -1385,9 +1384,6 @@ class GoogleAdManager(AdServerAdapter):
                         "from_cache": True,
                     },
                 }
-
-            finally:
-                session.close()
 
         except Exception as e:
             self.logger.error(f"Error fetching GAM inventory from cache: {e}")

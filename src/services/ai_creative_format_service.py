@@ -21,6 +21,7 @@ from bs4 import BeautifulSoup
 
 from src.core.database.database_session import get_db_session
 from src.core.database.models import CreativeFormat
+from src.core.retry_utils import http_retry
 
 logger = logging.getLogger(__name__)
 
@@ -86,6 +87,7 @@ class AICreativeFormatService:
         logger.info(f"Loaded {len(examples)} parsing examples for few-shot learning")
         return examples
 
+    @http_retry
     async def fetch_standard_formats(self) -> list[FormatSpecification]:
         """Fetch standard formats from adcontextprotocol.org."""
         formats = []
@@ -476,6 +478,7 @@ class AICreativeFormatService:
 
         return formats
 
+    @http_retry
     async def discover_format_from_url(self, url: str) -> list[FormatSpecification]:
         """Discover creative format specifications from a URL."""
         try:
