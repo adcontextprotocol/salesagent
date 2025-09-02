@@ -18,7 +18,7 @@ from sqlalchemy.orm import joinedload
 
 from src.admin.utils import get_tenant_config_from_db, require_auth, require_tenant_access
 from src.core.database.database_session import get_db_session
-from src.core.database.models import MediaBuy, Principal, Product, Task, Tenant, User
+from src.core.database.models import MediaBuy, Principal, Product, Tenant, User
 from src.core.validation import sanitize_form_data, validate_form_data
 
 logger = logging.getLogger(__name__)
@@ -108,32 +108,31 @@ def dashboard(tenant_id):
             pending_buys = db_session.query(MediaBuy).filter_by(tenant_id=tenant_id, status="pending").count()
 
             # Calculate task-based metrics (temporary fallback from workflow system)
-            # Get pending tasks that require action
+            # Get pending workflow steps that require action
+            from src.database.models import Context, WorkflowStep
+
             pending_steps = (
-                db_session.query(Task)
+                db_session.query(WorkflowStep)
+                .join(Context)
                 .filter(
-                    Task.tenant_id == tenant_id,
-                    Task.status.in_(["pending", "active", "requires_approval"]),
+                    Context.tenant_id == tenant_id,
+                    WorkflowStep.status.in_(["pending", "active", "requires_approval"]),
                 )
                 .count()
             )
 
-            # Get tasks requiring immediate attention (approval needed)
+            # Get workflow steps requiring immediate attention (approval needed)
             approval_needed = (
-                db_session.query(Task).filter(Task.tenant_id == tenant_id, Task.status == "requires_approval").count()
+                db_session.query(WorkflowStep)
+                .join(Context)
+                .filter(Context.tenant_id == tenant_id, WorkflowStep.status == "requires_approval")
+                .count()
             )
 
-            # Get recent completed tasks (for activity feed)
-            recent_activity = (
-                db_session.query(Task)
-                .filter(
-                    Task.tenant_id == tenant_id,
-                    Task.status.in_(["completed", "failed", "requires_approval"]),
-                )
-                .order_by(Task.created_at.desc())
-                .limit(10)
-                .all()
-            )
+            # Get recent activities from audit logs (for activity feed)
+            from src.admin.blueprints.activity_stream import get_recent_activities
+
+            recent_activity = get_recent_activities(tenant_id, limit=10)
 
             # Calculate advertiser metrics
             active_advertisers = db_session.query(Principal).filter_by(tenant_id=tenant_id).count()

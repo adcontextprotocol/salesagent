@@ -693,12 +693,10 @@
 
 <script src="https://cdn.jsdelivr.net/npm/chart.js@3.9.1/dist/chart.min.js?v=3.9.1"></script>
 <script>
-// Real-time activity feed using Server-Sent Events (SSE)
-let eventSource = null;
+// Activity feed using simple polling (more reliable than SSE)
+let pollingInterval = null;
 let activityBuffer = [];
 const MAX_ACTIVITIES = 50;
-let reconnectDelay = 1000; // Start with 1 second
-const maxReconnectDelay = 30000; // Max 30 seconds
 
 // HTML escaping functions to prevent XSS
 function escapeHtml(text) {
@@ -720,14 +718,110 @@ function escapeHtmlAttr(text) {
     });
 }
 
+async function pollActivities() {
+    const statusEl = document.getElementById('connection-status');
+    const statusDot = document.querySelector('.status-dot');
+
+    try {
+        const activityUrl = `{{ script_name }}/tenant/{{ tenant.tenant_id }}/activity`;
+        console.log('Polling activities from:', activityUrl);
+
+        const response = await fetch(activityUrl, {
+            credentials: 'same-origin', // This works reliably with regular requests
+            headers: {
+                'Accept': 'application/json'
+            }
+        });
+
+        if (response.status === 401) {
+            // Authentication failed - redirect to login
+            if (statusEl) {
+                statusEl.textContent = 'Authentication required - redirecting...';
+                statusEl.style.color = '#ef4444';
+            }
+            console.log('Authentication failed - redirecting to login');
+            window.location.reload(); // This will redirect to login via Flask
+            return;
+        }
+
+        if (response.status === 403) {
+            // Access denied
+            if (statusEl) {
+                statusEl.textContent = 'Access denied';
+                statusEl.style.color = '#ef4444';
+            }
+            if (statusDot) {
+                statusDot.classList.remove('active', 'connecting');
+                statusDot.classList.add('idle');
+            }
+            console.log('Access denied to activity feed');
+            return;
+        }
+
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}`);
+        }
+
+        const data = await response.json();
+
+        // Update status to connected
+        if (statusEl) {
+            statusEl.textContent = `Connected (${data.count} activities)`;
+            statusEl.style.color = '#10b981'; // Green
+        }
+        if (statusDot) {
+            statusDot.classList.remove('connecting', 'idle');
+            statusDot.classList.add('active');
+        }
+
+        // Update activities - for simplicity, replace all activities
+        updateActivities(data.activities);
+
+        console.log(`Loaded ${data.count} activities at ${data.timestamp}`);
+
+    } catch (error) {
+        console.error('Polling failed:', error);
+
+        // Update status to error
+        if (statusEl) {
+            statusEl.textContent = 'Connection error - will retry';
+            statusEl.style.color = '#ef4444';
+        }
+        if (statusDot) {
+            statusDot.classList.remove('active', 'connecting');
+            statusDot.classList.add('idle');
+        }
+
+        // Don't retry immediately - let the interval handle it
+    }
+}
+
+function updateActivities(activities) {
+    const list = document.getElementById('activity-list');
+
+    // Clear existing activities
+    list.innerHTML = '';
+
+    if (activities.length === 0) {
+        list.innerHTML = '<div class="activity-item">No recent activities</div>';
+        return;
+    }
+
+    // Add all activities (they come in reverse chronological order)
+    activities.forEach(activity => {
+        addActivity(activity);
+    });
+}
+
 async function connectActivityStream() {
     const statusEl = document.getElementById('connection-status');
     const statusDot = document.querySelector('.status-dot');
 
     try {
-        // Close existing connection if any
-        if (eventSource) {
-            eventSource.close();
+        // Stop any existing polling
+        if (pollingInterval) {
+            clearInterval(pollingInterval);
+            pollingInterval = null;
         }
 
         // Update status to connecting
@@ -737,111 +831,28 @@ async function connectActivityStream() {
             statusDot.classList.add('connecting');
         }
 
-        // Create EventSource connection directly - it handles authentication automatically
-        const streamUrl = `{{ script_name }}/tenant/{{ tenant.tenant_id }}/events`;
-        console.log('Creating SSE connection to:', streamUrl);
-        eventSource = new EventSource(streamUrl, { withCredentials: true });
+        // Use simple polling instead of EventSource for reliability
+        const activityUrl = `{{ script_name }}/tenant/{{ tenant.tenant_id }}/activity`;
+        console.log('Starting activity polling to:', activityUrl);
 
-        eventSource.onopen = function(e) {
-            console.log('SSE connection opened');
-            reconnectDelay = 1000; // Reset delay on successful connection
+        // Start polling immediately, then every 5 seconds
+        await pollActivities();
+        pollingInterval = setInterval(pollActivities, 5000);
 
-            // Update status to connected
-            if (statusEl) {
-                statusEl.textContent = 'Connected';
-                statusEl.style.color = '#10b981'; // Green
-            }
-            if (statusDot) {
-                statusDot.classList.remove('connecting', 'idle');
-                statusDot.classList.add('active');
-            }
-        };
-
-        eventSource.onmessage = function(e) {
-            try {
-                const activity = JSON.parse(e.data);
-                addActivity(activity);
-            } catch (error) {
-                console.error('Failed to parse activity data:', error);
-            }
-        };
-
-        eventSource.onerror = function(e) {
-            console.error('SSE connection error:', e);
-
-            // Check if this might be an authentication error (connection failed immediately)
-            const connectionNeverOpened = eventSource && eventSource.readyState === EventSource.CONNECTING;
-
-            if (connectionNeverOpened && reconnectDelay === 1000) {
-                // Likely authentication error on first connection attempt
-                if (statusEl) {
-                    statusEl.textContent = 'Authentication required - please log in';
-                    statusEl.style.color = '#ef4444';
-                }
-                if (statusDot) {
-                    statusDot.classList.remove('active', 'connecting');
-                    statusDot.classList.add('idle');
-                }
-                console.log('SSE connection failed immediately - likely authentication issue');
-
-                // Close connection but don't retry automatically for auth failures
-                if (eventSource) {
-                    eventSource.close();
-                    eventSource = null;
-                }
-                return; // Don't retry auth failures
-            }
-
-            // For other errors, show generic connection error
-            if (statusEl) {
-                statusEl.textContent = 'Connection error';
-                statusEl.style.color = '#ef4444'; // Red
-            }
-            if (statusDot) {
-                statusDot.classList.remove('active', 'connecting');
-                statusDot.classList.add('idle');
-            }
-
-            // Close and retry with exponential backoff
-            if (eventSource) {
-                eventSource.close();
-                eventSource = null;
-            }
-
-            setTimeout(() => {
-                console.log(`Retrying SSE connection in ${reconnectDelay}ms`);
-                connectActivityStream();
-                reconnectDelay = Math.min(reconnectDelay * 2, maxReconnectDelay);
-            }, reconnectDelay);
-        };
-
-        // Handle specific error events
-        eventSource.addEventListener('error', function(e) {
-            if (e.data) {
-                try {
-                    const errorData = JSON.parse(e.data);
-                    console.error('Activity stream error:', errorData.message);
-                } catch (parseError) {
-                    console.error('Activity stream error event');
-                }
-            }
-        });
+        // Simple polling setup completed
 
     } catch (error) {
-        console.error('Failed to create SSE connection:', error);
+        console.error('Failed to setup polling:', error);
 
         // Update status to error
         if (statusEl) {
-            statusEl.textContent = 'Connection setup failed';
+            statusEl.textContent = 'Setup failed';
             statusEl.style.color = '#ef4444';
         }
         if (statusDot) {
             statusDot.classList.remove('active', 'connecting');
             statusDot.classList.add('idle');
         }
-
-        // Don't retry here - let EventSource error handler handle retries
-        // This catch is only for JavaScript errors in connection setup
     }
 }
 
@@ -1052,15 +1063,16 @@ function viewTaskDetails(activityId) {
     }
 }
 
-// Initialize activity stream connection
+// Initialize activity polling
 document.addEventListener('DOMContentLoaded', function() {
     connectActivityStream();
 });
 
-// Clean up on page unload
+// Clean up polling on page unload
 window.addEventListener('beforeunload', function() {
-    if (eventSource) {
-        eventSource.close();
+    if (pollingInterval) {
+        clearInterval(pollingInterval);
+        pollingInterval = null;
     }
 });
 </script>
