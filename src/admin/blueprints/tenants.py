@@ -107,27 +107,10 @@ def dashboard(tenant_id):
             # Calculate pending buys
             pending_buys = db_session.query(MediaBuy).filter_by(tenant_id=tenant_id, status="pending").count()
 
-            # Calculate task-based metrics (temporary fallback from workflow system)
-            # Get pending workflow steps that require action
-            from src.core.database.models import Context, WorkflowStep
-
-            pending_steps = (
-                db_session.query(WorkflowStep)
-                .join(Context)
-                .filter(
-                    Context.tenant_id == tenant_id,
-                    WorkflowStep.status.in_(["pending", "active", "requires_approval"]),
-                )
-                .count()
-            )
-
-            # Get workflow steps requiring immediate attention (approval needed)
-            approval_needed = (
-                db_session.query(WorkflowStep)
-                .join(Context)
-                .filter(Context.tenant_id == tenant_id, WorkflowStep.status == "requires_approval")
-                .count()
-            )
+            # Simplified metrics - workflow system metrics removed as we use audit logs only
+            # These were causing production crashes due to missing workflow_steps table
+            pending_steps = 0
+            approval_needed = 0
 
             # Get recent activities from audit logs (for activity feed)
             from src.admin.blueprints.activity_stream import get_recent_activities
