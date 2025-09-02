@@ -26,7 +26,7 @@ class TestProductCompliance:
             "product_id": "test_minimal",
             "name": "Minimal Product",
             "description": "A minimal test product",
-            "formats": [{"format_id": "display_300x250", "name": "Medium Rectangle"}],
+            "formats": ["display_300x250"],  # Format IDs per updated AdCP spec
             "delivery_type": "guaranteed",
             "is_fixed_price": True,
         }
@@ -42,38 +42,8 @@ class TestProductCompliance:
             "name": "Comprehensive Product",
             "description": "A product with all AdCP fields populated for testing",
             "formats": [
-                {
-                    "format_id": "display_300x250",
-                    "name": "Medium Rectangle",
-                    "type": "display",
-                    "is_standard": True,
-                    "iab_specification": "IAB Display Standard",
-                    "requirements": {
-                        "width": 300,
-                        "height": 250,
-                        "file_types": ["jpg", "png", "gif"],
-                        "max_file_size": "150kb",
-                    },
-                },
-                {
-                    "format_id": "video_preroll",
-                    "name": "Pre-Roll Video",
-                    "type": "video",
-                    "is_standard": True,
-                    "requirements": {
-                        "duration_min": 15,
-                        "duration_max": 30,
-                        "aspect_ratio": "16:9",
-                        "codecs": ["H.264", "H.265"],
-                    },
-                    "assets_required": [
-                        {
-                            "asset_type": "video_file",
-                            "quantity": 1,
-                            "requirements": {"format": "mp4", "bitrate_min": 1000, "bitrate_max": 5000},
-                        }
-                    ],
-                },
+                "display_300x250",  # Medium Rectangle
+                "video_preroll",  # Pre-Roll Video
             ],
             "delivery_type": "guaranteed",
             "is_fixed_price": True,
@@ -115,7 +85,7 @@ class TestProductCompliance:
                 "product_id": "guaranteed_product",
                 "name": "Guaranteed Product",
                 "description": "A guaranteed delivery product",
-                "formats": [{"format_id": "display_300x250", "name": "Rectangle"}],
+                "formats": ["display_300x250"],
                 "delivery_type": "guaranteed",
                 "is_fixed_price": True,
                 "cpm": 15.0,
@@ -124,7 +94,7 @@ class TestProductCompliance:
                 "product_id": "non_guaranteed_product",
                 "name": "Non-Guaranteed Product",
                 "description": "A non-guaranteed delivery product",
-                "formats": [{"format_id": "display_728x90", "name": "Leaderboard"}],
+                "formats": ["display_728x90"],
                 "delivery_type": "non_guaranteed",
                 "is_fixed_price": False,
             },
@@ -158,7 +128,7 @@ class TestProductCompliance:
                     "product_id": f"measurement_test_{i}",
                     "name": f"Measurement Test {i}",
                     "description": f"Testing measurement type: {measurement['type']}",
-                    "formats": [{"format_id": "display_300x250", "name": "Rectangle"}],
+                    "formats": ["display_300x250"],
                     "delivery_type": "guaranteed",
                     "is_fixed_price": True,
                     "measurement": measurement,
@@ -184,7 +154,7 @@ class TestProductCompliance:
                     "product_id": f"policy_test_{i}",
                     "name": f"Policy Test {i}",
                     "description": f"Testing creative policy: {policy['co_branding']}",
-                    "formats": [{"format_id": "display_300x250", "name": "Rectangle"}],
+                    "formats": ["display_300x250"],
                     "delivery_type": "guaranteed",
                     "is_fixed_price": True,
                     "creative_policy": policy,
@@ -210,14 +180,7 @@ class TestFormatCompliance:
                     "product_id": f"{format_type}_product",
                     "name": f"{format_type.title()} Product",
                     "description": f"Product for {format_type} formats",
-                    "formats": [
-                        {
-                            "format_id": f"{format_type}_test",
-                            "name": f"{format_type.title()} Format",
-                            "type": format_type,
-                            "is_standard": True,
-                        }
-                    ],
+                    "formats": [f"{format_type}_test"],
                     "delivery_type": "guaranteed",
                     "is_fixed_price": True,
                 }
@@ -248,7 +211,7 @@ class TestFormatCompliance:
             "product_id": "native_test",
             "name": "Native Test Product",
             "description": "Testing native format with required assets",
-            "formats": [format_with_assets],
+            "formats": ["native_composite"],  # Format ID per updated AdCP spec
             "delivery_type": "guaranteed",
             "is_fixed_price": True,
         }
@@ -273,7 +236,7 @@ class TestEdgeCasesAndValidation:
             "product_id": "invalid_delivery",
             "name": "Invalid Product",
             "description": "Product with invalid delivery type",
-            "formats": [{"format_id": "display_300x250", "name": "Rectangle"}],
+            "formats": ["display_300x250"],
             "delivery_type": "invalid_type",  # Invalid value
             "is_fixed_price": True,
         }
@@ -290,9 +253,7 @@ class TestEdgeCasesAndValidation:
             "product_id": "invalid_format",
             "name": "Invalid Format Product",
             "description": "Product with invalid format type",
-            "formats": [
-                {"format_id": "invalid_format", "name": "Invalid Format", "type": "invalid_type"}  # Invalid value
-            ],
+            "formats": ["invalid_format"],  # Invalid format for testing
             "delivery_type": "guaranteed",
             "is_fixed_price": True,
         }
@@ -323,7 +284,7 @@ class TestEdgeCasesAndValidation:
             "product_id": "extra_field",
             "name": "Product with Extra Field",
             "description": "This product has an extra field",
-            "formats": [{"format_id": "display_300x250", "name": "Rectangle"}],
+            "formats": ["display_300x250"],
             "delivery_type": "guaranteed",
             "is_fixed_price": True,
             "non_spec_field": "This field is not in the AdCP spec",  # Should be rejected
@@ -345,16 +306,7 @@ class TestRealWorldScenarios:
             "product_id": "homepage_takeover_premium",
             "name": "Homepage Takeover - Premium",
             "description": "Premium guaranteed placement on homepage with brand lift measurement and co-branding requirements",
-            "formats": [
-                {
-                    "format_id": "display_970x250",
-                    "name": "Billboard",
-                    "type": "display",
-                    "is_standard": True,
-                    "iab_specification": "IAB Rising Stars",
-                    "requirements": {"width": 970, "height": 250, "max_file_size": "200kb", "animation_length_max": 30},
-                }
-            ],
+            "formats": ["display_970x250"],  # Billboard format
             "delivery_type": "guaranteed",
             "is_fixed_price": True,
             "cpm": 45.0,
@@ -380,36 +332,7 @@ class TestRealWorldScenarios:
             "product_id": "video_preroll_standard",
             "name": "Video Pre-Roll Standard",
             "description": "Standard 15-30 second pre-roll video with completion rate measurement and VAST compliance",
-            "formats": [
-                {
-                    "format_id": "video_preroll_16_9",
-                    "name": "Pre-Roll Video 16:9",
-                    "type": "video",
-                    "is_standard": True,
-                    "iab_specification": "VAST 4.0",
-                    "requirements": {
-                        "aspect_ratio": "16:9",
-                        "duration_min_seconds": 15,
-                        "duration_max_seconds": 30,
-                        "bitrate_min": 1500,
-                        "bitrate_max": 8000,
-                        "codecs": ["H.264", "H.265"],
-                        "container": "mp4",
-                    },
-                    "assets_required": [
-                        {
-                            "asset_type": "video_file",
-                            "quantity": 1,
-                            "requirements": {"format": "mp4", "codec": "H.264", "audio_required": True},
-                        },
-                        {
-                            "asset_type": "companion_banner",
-                            "quantity": 1,
-                            "requirements": {"width": 300, "height": 250, "formats": ["jpg", "png"]},
-                        },
-                    ],
-                }
-            ],
+            "formats": ["video_preroll_16_9"],  # Pre-Roll Video 16:9
             "delivery_type": "non_guaranteed",
             "is_fixed_price": False,
             "min_spend": 2000.0,

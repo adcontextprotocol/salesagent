@@ -174,7 +174,7 @@ class Product(BaseModel):
     product_id: str
     name: str
     description: str
-    formats: list[Format]
+    formats: list[str]  # Format IDs per updated AdCP spec
     delivery_type: Literal["guaranteed", "non_guaranteed"]
     is_fixed_price: bool
     cpm: float | None = None
@@ -320,7 +320,7 @@ class ListCreativeFormatsResponse(BaseModel):
     The validator extracts only AdCP fields for schema compliance checking.
     """
 
-    formats: list[Format]
+    formats: list[str]  # Format IDs per updated AdCP spec
     message: str | None = None  # Protocol field for human-readable messages
     context_id: str | None = None  # Protocol field for conversation tracking
     errors: list[Error] | None = None  # Protocol field for error reporting

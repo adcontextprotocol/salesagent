@@ -23,10 +23,10 @@ def get_default_products() -> list[dict[str, Any]]:
             "cpm": None,
             "min_spend": 100.0,  # Use AdCP-compliant field
             "formats": [
-                {"format_id": "display_300x250", "name": "Medium Rectangle", "type": "display", "is_standard": True},
-                {"format_id": "display_728x90", "name": "Leaderboard", "type": "display", "is_standard": True},
-                {"format_id": "display_320x50", "name": "Mobile Banner", "type": "display", "is_standard": True},
-                {"format_id": "display_300x600", "name": "Half Page Ad", "type": "display", "is_standard": True},
+                "display_300x250",  # Medium Rectangle
+                "display_728x90",  # Leaderboard
+                "display_320x50",  # Mobile Banner
+                "display_300x600",  # Half Page Ad
             ],
             "measurement": {
                 "type": "viewability_measurement",
@@ -47,9 +47,9 @@ def get_default_products() -> list[dict[str, Any]]:
             "cpm": 25.0,
             "min_spend": 1000.0,
             "formats": [
-                {"format_id": "display_970x250", "name": "Billboard", "type": "display", "is_standard": True},
-                {"format_id": "display_728x90", "name": "Leaderboard", "type": "display", "is_standard": True},
-                {"format_id": "display_320x50", "name": "Mobile Banner", "type": "display", "is_standard": True},
+                "display_970x250",  # Billboard
+                "display_728x90",  # Leaderboard
+                "display_320x50",  # Mobile Banner
             ],
             "measurement": {
                 "type": "brand_lift",
@@ -73,8 +73,8 @@ def get_default_products() -> list[dict[str, Any]]:
             "cpm": 15.0,
             "min_spend": 500.0,
             "formats": [
-                {"format_id": "display_320x480", "name": "Mobile Interstitial", "type": "display", "is_standard": True},
-                {"format_id": "display_300x250", "name": "Medium Rectangle", "type": "display", "is_standard": True},
+                "display_320x480",  # Mobile Interstitial
+                "display_300x250",  # Medium Rectangle
             ],
             "measurement": {"type": "engagement_rate", "attribution": "probabilistic", "reporting": "weekly_dashboard"},
             "creative_policy": {"co_branding": "optional", "landing_page": "any", "templates_available": False},
@@ -94,7 +94,7 @@ def get_default_products() -> list[dict[str, Any]]:
             "cpm": None,
             "min_spend": 1000.0,
             "formats": [
-                {"format_id": "video_vast", "name": "VAST Video", "type": "video", "is_standard": True},
+                "video_vast",  # VAST Video
             ],
             "measurement": {
                 "type": "video_completion_rate",
@@ -118,7 +118,7 @@ def get_default_products() -> list[dict[str, Any]]:
             "cpm": None,
             "min_spend": 200.0,
             "formats": [
-                {"format_id": "native_infeed", "name": "Native In-Feed", "type": "native", "is_standard": True},
+                "native_infeed",  # Native In-Feed
             ],
             "measurement": {"type": "engagement_rate", "attribution": "probabilistic", "reporting": "weekly_dashboard"},
             "creative_policy": {
@@ -145,9 +145,9 @@ def get_default_products() -> list[dict[str, Any]]:
             "cpm": None,
             "min_spend": 200.0,
             "formats": [
-                {"format_id": "display_300x250", "name": "Medium Rectangle", "type": "display", "is_standard": True},
-                {"format_id": "display_728x90", "name": "Leaderboard", "type": "display", "is_standard": True},
-                {"format_id": "display_160x600", "name": "Wide Skyscraper", "type": "display", "is_standard": True},
+                "display_300x250",  # Medium Rectangle
+                "display_728x90",  # Leaderboard
+                "display_160x600",  # Wide Skyscraper
             ],
             "measurement": {
                 "type": "viewability_measurement",
