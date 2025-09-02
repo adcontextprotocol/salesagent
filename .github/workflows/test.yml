@@ -98,6 +98,13 @@ jobs:
       run: |
         uv sync --extra dev
 
+    - name: Initialize test database
+      env:
+        DATABASE_URL: sqlite:///test.db
+        ADCP_TESTING: true
+      run: |
+        uv run python scripts/ops/migrate.py || echo "Migration failed, continuing with schema creation"
+
     - name: Run unit tests
       env:
         GEMINI_API_KEY: test_key_for_mocking

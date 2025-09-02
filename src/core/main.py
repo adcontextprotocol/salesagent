@@ -75,7 +75,6 @@ from src.core.schemas import (
     CreativeAssignment,
     CreativeGroup,
     CreativeStatus,
-    Error,
     GetAllMediaBuyDeliveryRequest,
     GetAllMediaBuyDeliveryResponse,
     GetCreativesRequest,
@@ -635,12 +634,8 @@ async def get_products(req: GetProductsRequest, context: Context) -> GetProducts
     if policy_result.status == PolicyStatus.BLOCKED:
         # Always block if policy says blocked
         logger.warning(f"Brief blocked by policy: {policy_result.reason}")
-        return GetProductsResponse(
-            products=[],
-            message="No products available due to policy restrictions",
-            context_id=context.meta.get("headers", {}).get("x-context-id") if hasattr(context, "meta") else None,
-            errors=[Error(code="POLICY_BLOCKED", message=policy_result.reason)],
-        )
+        # Return empty products list per AdCP spec (errors handled at transport layer)
+        return GetProductsResponse(products=[])
 
     # If restricted and manual review is required, create a task
     if policy_result.status == PolicyStatus.RESTRICTED and policy_settings.get("require_manual_review", False):
@@ -676,7 +671,6 @@ async def get_products(req: GetProductsRequest, context: Context) -> GetProducts
             products=[],
             message="Request pending manual review due to policy restrictions",
             context_id=context.meta.get("headers", {}).get("x-context-id") if hasattr(context, "meta") else None,
-            clarification_needed=True,
         )
 
     # Get the product catalog provider for this tenant
@@ -909,291 +903,330 @@ def create_media_buy(req: CreateMediaBuyRequest, context: Context) -> CreateMedi
     principal_id = _get_principal_id_from_context(context)
     tenant = get_current_tenant()
 
-    # Context management - only needed for async operations
+    # Context management and workflow step creation - create workflow step FIRST
     ctx_manager = get_context_manager()
     ctx_id = context.headers.get("x-context-id") if hasattr(context, "headers") else None
     persistent_ctx = None
     step = None
 
-    # Get the Principal object
+    # Create workflow step immediately for tracking all operations
+    if not persistent_ctx:
+        # Check if we have an existing context ID
+        if ctx_id:
+            persistent_ctx = ctx_manager.get_context(ctx_id)
+
+        # Create new context if needed
+        if not persistent_ctx:
+            persistent_ctx = ctx_manager.create_context(tenant_id=tenant["tenant_id"], principal_id=principal_id)
+
+    # Create workflow step for tracking this operation
+    step = ctx_manager.create_workflow_step(
+        context_id=persistent_ctx.context_id,
+        step_type="media_buy_creation",
+        owner="system",
+        status="in_progress",
+        tool_name="create_media_buy",
+        request_data=req.model_dump(mode="json"),
+    )
+
+    try:
+        # Validate input parameters
+        # 1. Budget validation
+        total_budget = req.get_total_budget()
+        if total_budget <= 0:
+            error_msg = f"Invalid budget: {total_budget}. Budget must be positive."
+            raise ValueError(error_msg)
+
+        # 2. DateTime validation
+        from datetime import datetime
+
+        now = datetime.utcnow()
+
+        if req.start_time < now:
+            error_msg = f"Invalid start time: {req.start_time}. Start time cannot be in the past."
+            raise ValueError(error_msg)
+
+        if req.end_time <= req.start_time:
+            error_msg = f"Invalid time range: end time ({req.end_time}) must be after start time ({req.start_time})."
+            raise ValueError(error_msg)
+
+        # 3. Package/Product validation
+        product_ids = req.get_product_ids()
+        if not product_ids:
+            error_msg = "At least one product is required."
+            raise ValueError(error_msg)
+
+        if req.packages:
+            for package in req.packages:
+                if not package.products:
+                    error_msg = f"Package {package.buyer_ref} must contain at least one product."
+                    raise ValueError(error_msg)
+
+        # Validate targeting doesn't use managed-only dimensions
+        if req.targeting_overlay:
+            from src.services.targeting_capabilities import validate_overlay_targeting
+
+            violations = validate_overlay_targeting(req.targeting_overlay.model_dump(exclude_none=True))
+            if violations:
+                error_msg = f"Targeting validation failed: {'; '.join(violations)}"
+                raise ValueError(error_msg)
+
+    except (ValueError, PermissionError) as e:
+        # Update workflow step as failed
+        ctx_manager.update_workflow_step(step.step_id, status="failed", error=str(e))
+
+        # Return proper error response instead of raising ToolError
+        return CreateMediaBuyResponse(
+            media_buy_id="",
+            status="failed",
+            detail=str(e),
+            creative_deadline=None,
+            message=f"Media buy creation failed: {str(e)}",
+            context_id=persistent_ctx.context_id,
+            errors=[{"code": "validation_error", "message": str(e)}],
+        )
+
+    # Get the Principal object (needed for adapter)
     principal = get_principal_object(principal_id)
     if not principal:
         error_msg = f"Principal {principal_id} not found"
-        raise ToolError(error_msg)
-
-    # Validate input parameters
-    # 1. Budget validation
-    total_budget = req.get_total_budget()
-    if total_budget <= 0:
-        error_msg = f"Invalid budget: {total_budget}. Budget must be positive."
-        raise ToolError(error_msg)
-
-    # 2. DateTime validation
-    from datetime import datetime
-
-    now = datetime.utcnow()
-
-    if req.start_time < now:
-        error_msg = f"Invalid start time: {req.start_time}. Start time cannot be in the past."
-        raise ToolError(error_msg)
-
-    if req.end_time <= req.start_time:
-        error_msg = f"Invalid time range: end time ({req.end_time}) must be after start time ({req.start_time})."
-        raise ToolError(error_msg)
-
-    # 3. Package/Product validation
-    product_ids = req.get_product_ids()
-    if not product_ids:
-        error_msg = "At least one product is required."
-        raise ToolError(error_msg)
-
-    if req.packages:
-        for package in req.packages:
-            if not package.products:
-                error_msg = f"Package {package.buyer_ref} must contain at least one product."
-                raise ToolError(error_msg)
-
-    # Validate targeting doesn't use managed-only dimensions
-    if req.targeting_overlay:
-        from src.services.targeting_capabilities import validate_overlay_targeting
-
-        violations = validate_overlay_targeting(req.targeting_overlay.model_dump(exclude_none=True))
-        if violations:
-            error_msg = f"Targeting validation failed: {'; '.join(violations)}"
-            raise ToolError(error_msg)
-
-    # Get the appropriate adapter with testing context
-    adapter = get_adapter(principal, dry_run=DRY_RUN_MODE or testing_ctx.dry_run, testing_context=testing_ctx)
-
-    # Check if manual approval is required
-    manual_approval_required = (
-        adapter.manual_approval_required if hasattr(adapter, "manual_approval_required") else False
-    )
-    manual_approval_operations = (
-        adapter.manual_approval_operations if hasattr(adapter, "manual_approval_operations") else []
-    )
-
-    # Check if auto-creation is disabled in tenant config
-    auto_create_enabled = tenant.get("auto_create_media_buys", True)
-    product_auto_create = (
-        all(p.get("auto_create_enabled", True) for p in products_in_buy) if "products_in_buy" in locals() else True
-    )
-
-    if manual_approval_required and "create_media_buy" in manual_approval_operations:
-        # NOW we need a context since this is going async
-        if not persistent_ctx:
-            # Check if we have an existing context ID
-            if ctx_id:
-                persistent_ctx = ctx_manager.get_context(ctx_id)
-
-            # Create new context if needed
-            if not persistent_ctx:
-                persistent_ctx = ctx_manager.create_context(tenant_id=tenant["tenant_id"], principal_id=principal_id)
-
-        # Create workflow step for this async operation
-        step = ctx_manager.create_workflow_step(
-            context_id=persistent_ctx.context_id,
-            step_type="approval",
-            owner="publisher",
-            status="requires_approval",
-            tool_name="create_media_buy",
-            request_data=req.model_dump(mode="json"),  # Convert dates to strings
-        )
-
-        # Workflow step already created above - no need for separate task
-        pending_media_buy_id = f"pending_{uuid.uuid4().hex[:8]}"
-
-        response_msg = (
-            f"Manual approval required. Workflow Step ID: {step.step_id}. Context ID: {persistent_ctx.context_id}"
-        )
-        ctx_manager.add_message(persistent_ctx.context_id, "assistant", response_msg)
-
+        ctx_manager.update_workflow_step(step.step_id, status="failed", error=error_msg)
         return CreateMediaBuyResponse(
-            media_buy_id=pending_media_buy_id,
-            status="pending_manual",
-            detail=response_msg,
+            media_buy_id="",
+            status="failed",
+            detail=error_msg,
             creative_deadline=None,
-            message="Your media buy request requires manual approval from the publisher. The request has been queued and will be reviewed shortly.",
+            message=f"Media buy creation failed: {error_msg}",
             context_id=persistent_ctx.context_id,
+            errors=[{"code": "authentication_error", "message": error_msg}],
         )
 
-    # Check if either tenant or product disables auto-creation
-    if not auto_create_enabled or not product_auto_create:
-        reason = "Tenant configuration" if not auto_create_enabled else "Product configuration"
+    try:
+        # Get the appropriate adapter with testing context
+        adapter = get_adapter(principal, dry_run=DRY_RUN_MODE or testing_ctx.dry_run, testing_context=testing_ctx)
 
-        # NOW we need a context since this is going async
-        if not persistent_ctx:
-            # Check if we have an existing context ID
-            if ctx_id:
-                persistent_ctx = ctx_manager.get_context(ctx_id)
-
-            # Create new context if needed
-            if not persistent_ctx:
-                persistent_ctx = ctx_manager.create_context(tenant_id=tenant["tenant_id"], principal_id=principal_id)
-
-        # Create workflow step for this async operation
-        step = ctx_manager.create_workflow_step(
-            context_id=persistent_ctx.context_id,
-            step_type="approval",
-            owner="publisher",
-            status="requires_approval",
-            tool_name="create_media_buy",
-            request_data=req.model_dump(mode="json"),  # Convert dates to strings
+        # Check if manual approval is required
+        manual_approval_required = (
+            adapter.manual_approval_required if hasattr(adapter, "manual_approval_required") else False
+        )
+        manual_approval_operations = (
+            adapter.manual_approval_operations if hasattr(adapter, "manual_approval_operations") else []
         )
 
-        # Workflow step already created above - no need for separate task
-        pending_media_buy_id = f"pending_{uuid.uuid4().hex[:8]}"
+        # Check if auto-creation is disabled in tenant config
+        auto_create_enabled = tenant.get("auto_create_media_buys", True)
+        product_auto_create = True  # Will be set correctly when we get products later
 
-        response_msg = f"Media buy requires approval due to {reason.lower()}. Workflow Step ID: {step.step_id}. Context ID: {persistent_ctx.context_id}"
-        ctx_manager.add_message(persistent_ctx.context_id, "assistant", response_msg)
-
-        return CreateMediaBuyResponse(
-            media_buy_id=pending_media_buy_id,
-            status="pending_manual",
-            detail=response_msg,
-            creative_deadline=None,
-            message=f"This media buy requires manual approval due to {reason.lower()}. Your request has been submitted for review.",
-            context_id=persistent_ctx.context_id,
-        )
-
-    # Get products for the media buy
-    catalog = get_product_catalog()
-    product_ids = req.get_product_ids()
-    products_in_buy = [p for p in catalog if p.product_id in product_ids]
-
-    # Note: Key-value pairs are NOT aggregated here anymore.
-    # Each product maintains its own custom_targeting_keys in implementation_config
-    # which will be applied separately to its corresponding line item in GAM.
-    # The adapter (google_ad_manager.py) handles this per-product targeting at line 491-494
-
-    # Convert products to MediaPackages (simplified for now)
-    packages = []
-    for product in products_in_buy:
-        # Use the first format for now
-        format_info = product.formats[0] if product.formats else None
-        packages.append(
-            MediaPackage(
-                package_id=product.product_id,
-                name=product.name,
-                delivery_type=product.delivery_type,
-                cpm=product.cpm if product.cpm else 10.0,  # Default CPM
-                impressions=int(total_budget / (product.cpm if product.cpm else 10.0) * 1000),
-                format_ids=[format_info.format_id] if format_info else [],
+        if manual_approval_required and "create_media_buy" in manual_approval_operations:
+            # Update existing workflow step to require approval
+            ctx_manager.update_workflow_step(
+                step.step_id, status="requires_approval", step_type="approval", owner="publisher"
             )
-        )
 
-    # Create the media buy using the adapter (SYNCHRONOUS operation)
-    response = adapter.create_media_buy(req, packages, req.start_time, req.end_time)
+            # Workflow step already created above - no need for separate task
+            pending_media_buy_id = f"pending_{uuid.uuid4().hex[:8]}"
 
-    # Store the media buy in memory (for backward compatibility)
-    media_buys[response.media_buy_id] = (req, principal_id)
+            response_msg = (
+                f"Manual approval required. Workflow Step ID: {step.step_id}. Context ID: {persistent_ctx.context_id}"
+            )
+            ctx_manager.add_message(persistent_ctx.context_id, "assistant", response_msg)
 
-    # Store the media buy in database (context_id is NULL for synchronous operations)
-    tenant = get_current_tenant()
-    with get_db_session() as session:
-        new_media_buy = MediaBuy(
-            media_buy_id=response.media_buy_id,
-            tenant_id=tenant["tenant_id"],
-            principal_id=principal_id,
-            buyer_ref=req.buyer_ref,  # AdCP v2.4 buyer reference
-            order_name=req.po_number or f"Order-{response.media_buy_id}",
-            advertiser_name=principal.name,
-            campaign_objective=getattr(req, "campaign_objective", ""),  # Optional field
-            kpi_goal=getattr(req, "kpi_goal", ""),  # Optional field
-            budget=total_budget,  # Extract total budget
-            currency=req.budget.currency if req.budget else "USD",  # AdCP v2.4 currency field
-            start_date=req.start_time.date(),  # Legacy field for compatibility
-            end_date=req.end_time.date(),  # Legacy field for compatibility
-            start_time=req.start_time,  # AdCP v2.4 datetime scheduling
-            end_time=req.end_time,  # AdCP v2.4 datetime scheduling
-            status=response.status or "active",
-            raw_request=req.model_dump(mode="json"),
-        )
-        session.add(new_media_buy)
-        session.commit()
+            return CreateMediaBuyResponse(
+                media_buy_id=pending_media_buy_id,
+                status="pending_manual",
+                detail=response_msg,
+                creative_deadline=None,
+                message="Your media buy request requires manual approval from the publisher. The request has been queued and will be reviewed shortly.",
+                context_id=persistent_ctx.context_id,
+            )
 
-    # Handle creatives if provided
-    if req.creatives:
-        # Convert Creative to asset format expected by adapter
-        assets = []
-        for creative in req.creatives:
-            assets.append(
+        # Get products for the media buy to check product-level auto-creation settings
+        catalog = get_product_catalog()
+        product_ids = req.get_product_ids()
+        products_in_buy = [p for p in catalog if p.product_id in product_ids]
+        product_auto_create = all(p.get("auto_create_enabled", True) for p in products_in_buy)
+
+        # Check if either tenant or product disables auto-creation
+        if not auto_create_enabled or not product_auto_create:
+            reason = "Tenant configuration" if not auto_create_enabled else "Product configuration"
+
+            # Update existing workflow step to require approval
+            ctx_manager.update_workflow_step(
+                step.step_id, status="requires_approval", step_type="approval", owner="publisher"
+            )
+
+            # Workflow step already created above - no need for separate task
+            pending_media_buy_id = f"pending_{uuid.uuid4().hex[:8]}"
+
+            response_msg = f"Media buy requires approval due to {reason.lower()}. Workflow Step ID: {step.step_id}. Context ID: {persistent_ctx.context_id}"
+            ctx_manager.add_message(persistent_ctx.context_id, "assistant", response_msg)
+
+            return CreateMediaBuyResponse(
+                media_buy_id=pending_media_buy_id,
+                status="pending_manual",
+                detail=response_msg,
+                creative_deadline=None,
+                message=f"This media buy requires manual approval due to {reason.lower()}. Your request has been submitted for review.",
+                context_id=persistent_ctx.context_id,
+            )
+
+        # Continue with synchronized media buy creation
+
+        # Note: products_in_buy was already calculated above for product_auto_create check
+        # No need to recalculate
+
+        # Note: Key-value pairs are NOT aggregated here anymore.
+        # Each product maintains its own custom_targeting_keys in implementation_config
+        # which will be applied separately to its corresponding line item in GAM.
+        # The adapter (google_ad_manager.py) handles this per-product targeting at line 491-494
+
+        # Convert products to MediaPackages (simplified for now)
+        packages = []
+        for product in products_in_buy:
+            # Use the first format for now
+            first_format_id = product.formats[0] if product.formats else None
+            packages.append(
+                MediaPackage(
+                    package_id=product.product_id,
+                    name=product.name,
+                    delivery_type=product.delivery_type,
+                    cpm=product.cpm if product.cpm else 10.0,  # Default CPM
+                    impressions=int(total_budget / (product.cpm if product.cpm else 10.0) * 1000),
+                    format_ids=[first_format_id] if first_format_id else [],
+                )
+            )
+
+        # Create the media buy using the adapter (SYNCHRONOUS operation)
+        response = adapter.create_media_buy(req, packages, req.start_time, req.end_time)
+
+        # Store the media buy in memory (for backward compatibility)
+        media_buys[response.media_buy_id] = (req, principal_id)
+
+        # Store the media buy in database (context_id is NULL for synchronous operations)
+        tenant = get_current_tenant()
+        with get_db_session() as session:
+            new_media_buy = MediaBuy(
+                media_buy_id=response.media_buy_id,
+                tenant_id=tenant["tenant_id"],
+                principal_id=principal_id,
+                buyer_ref=req.buyer_ref,  # AdCP v2.4 buyer reference
+                order_name=req.po_number or f"Order-{response.media_buy_id}",
+                advertiser_name=principal.name,
+                campaign_objective=getattr(req, "campaign_objective", ""),  # Optional field
+                kpi_goal=getattr(req, "kpi_goal", ""),  # Optional field
+                budget=total_budget,  # Extract total budget
+                currency=req.budget.currency if req.budget else "USD",  # AdCP v2.4 currency field
+                start_date=req.start_time.date(),  # Legacy field for compatibility
+                end_date=req.end_time.date(),  # Legacy field for compatibility
+                start_time=req.start_time,  # AdCP v2.4 datetime scheduling
+                end_time=req.end_time,  # AdCP v2.4 datetime scheduling
+                status=response.status or "active",
+                raw_request=req.model_dump(mode="json"),
+            )
+            session.add(new_media_buy)
+            session.commit()
+
+        # Handle creatives if provided
+        if req.creatives:
+            # Convert Creative to asset format expected by adapter
+            assets = []
+            for creative in req.creatives:
+                assets.append(
+                    {
+                        "id": creative.creative_id,
+                        "name": f"Creative {creative.creative_id}",
+                        "format": "image",  # Simplified - would need to determine from format_id
+                        "media_url": creative.content_uri,
+                        "click_url": "https://example.com",  # Placeholder
+                        "package_assignments": req.product_ids,
+                    }
+                )
+            statuses = adapter.add_creative_assets(response.media_buy_id, assets, datetime.now())
+            for status in statuses:
+                creative_statuses[status.creative_id] = CreativeStatus(
+                    creative_id=status.creative_id,
+                    status="approved" if status.status == "approved" else "pending_review",
+                    detail="Creative submitted to ad server",
+                )
+
+        # Build packages list for response (AdCP v2.4 format)
+        response_packages = []
+        for i, package in enumerate(req.packages):
+            response_packages.append(
                 {
-                    "id": creative.creative_id,
-                    "name": f"Creative {creative.creative_id}",
-                    "format": "image",  # Simplified - would need to determine from format_id
-                    "media_url": creative.content_uri,
-                    "click_url": "https://example.com",  # Placeholder
-                    "package_assignments": req.product_ids,
+                    "package_id": f"{response.media_buy_id}_pkg_{i+1}",
+                    "buyer_ref": package.buyer_ref,
+                    "products": package.products,
+                    "status": "active",
                 }
             )
-        statuses = adapter.add_creative_assets(response.media_buy_id, assets, datetime.now())
-        for status in statuses:
-            creative_statuses[status.creative_id] = CreativeStatus(
-                creative_id=status.creative_id,
-                status="approved" if status.status == "approved" else "pending_review",
-                detail="Creative submitted to ad server",
-            )
 
-    # Build packages list for response (AdCP v2.4 format)
-    response_packages = []
-    for i, package in enumerate(req.packages):
-        response_packages.append(
-            {
-                "package_id": f"{response.media_buy_id}_pkg_{i+1}",
-                "buyer_ref": package.buyer_ref,
-                "products": package.products,
-                "status": "active",
-            }
-        )
-
-    # Create AdCP v2.4 compliant response
-    adcp_response = CreateMediaBuyResponse(
-        media_buy_id=response.media_buy_id,
-        buyer_ref=req.buyer_ref,
-        packages=response_packages,
-        creative_deadline=response.creative_deadline,
-    )
-
-    # Log activity
-    log_tool_activity(context, "create_media_buy", start_time)
-
-    # Also log specific media buy activity
-    try:
-        principal_name = "Unknown"
-        with get_db_session() as session:
-            principal = (
-                session.query(ModelPrincipal)
-                .filter_by(principal_id=principal_id, tenant_id=tenant["tenant_id"])
-                .first()
-            )
-            if principal:
-                principal_name = principal.name
-
-        # Calculate duration using new datetime fields
-        duration_days = (req.end_time - req.start_time).days + 1
-
-        activity_feed.log_media_buy(
-            tenant_id=tenant["tenant_id"],
-            principal_name=principal_name,
+        # Create AdCP v2.4 compliant response
+        adcp_response = CreateMediaBuyResponse(
             media_buy_id=response.media_buy_id,
-            budget=total_budget,  # Extract total budget
-            duration_days=duration_days,
-            action="created",
+            buyer_ref=req.buyer_ref,
+            packages=response_packages,
+            creative_deadline=response.creative_deadline,
         )
-    except:
-        pass
 
-    # Apply testing hooks to response with campaign information
-    campaign_info = {"start_date": req.start_time, "end_date": req.end_time, "total_budget": total_budget}
+        # Log activity
+        log_tool_activity(context, "create_media_buy", start_time)
 
-    response_data = adcp_response.model_dump()
-    response_data = apply_testing_hooks(response_data, testing_ctx, "create_media_buy", campaign_info)
+        # Also log specific media buy activity
+        try:
+            principal_name = "Unknown"
+            with get_db_session() as session:
+                principal_db = (
+                    session.query(ModelPrincipal)
+                    .filter_by(principal_id=principal_id, tenant_id=tenant["tenant_id"])
+                    .first()
+                )
+                if principal_db:
+                    principal_name = principal_db.name
 
-    # Reconstruct response from modified data
-    modified_response = CreateMediaBuyResponse(**response_data)
+            # Calculate duration using new datetime fields
+            duration_days = (req.end_time - req.start_time).days + 1
 
-    return modified_response
+            activity_feed.log_media_buy(
+                tenant_id=tenant["tenant_id"],
+                principal_name=principal_name,
+                media_buy_id=response.media_buy_id,
+                budget=total_budget,  # Extract total budget
+                duration_days=duration_days,
+                action="created",
+            )
+        except:
+            pass
+
+        # Apply testing hooks to response with campaign information
+        campaign_info = {"start_date": req.start_time, "end_date": req.end_time, "total_budget": total_budget}
+
+        response_data = adcp_response.model_dump()
+        response_data = apply_testing_hooks(response_data, testing_ctx, "create_media_buy", campaign_info)
+
+        # Reconstruct response from modified data
+        modified_response = CreateMediaBuyResponse(**response_data)
+
+        # Mark workflow step as completed on success
+        ctx_manager.update_workflow_step(step.step_id, status="completed")
+
+        return modified_response
+
+    except Exception as e:
+        # Update workflow step as failed on any error during execution
+        if step:
+            ctx_manager.update_workflow_step(step.step_id, status="failed", error=str(e))
+
+        # Return proper error response instead of raising ToolError
+        return CreateMediaBuyResponse(
+            media_buy_id="",
+            status="failed",
+            detail=str(e),
+            creative_deadline=None,
+            message=f"Media buy creation failed: {str(e)}",
+            context_id=persistent_ctx.context_id if persistent_ctx else None,
+            errors=[{"code": "execution_error", "message": str(e)}],
+        )
 
 
 @mcp.tool
@@ -1574,8 +1607,12 @@ def update_media_buy(req: UpdateMediaBuyRequest, context: Context) -> UpdateMedi
     principal = get_principal_object(principal_id)
     if not principal:
         error_msg = f"Principal {principal_id} not found"
-        ctx_manager.update_workflow_step(step.step_id, status="failed", error_message=error_msg)
-        raise ToolError(error_msg)
+        ctx_manager.update_workflow_step(step.step_id, status="failed", error=error_msg)
+        return UpdateMediaBuyResponse(
+            status="failed",
+            message=f"Update failed: {error_msg}",
+            errors=[{"code": "principal_not_found", "message": error_msg}],
+        )
 
     adapter = get_adapter(principal, dry_run=DRY_RUN_MODE)
     today = req.today or date.today()
@@ -1753,7 +1790,11 @@ def update_package(req: UpdatePackageRequest, context: Context) -> UpdateMediaBu
 
     principal = get_principal_object(principal_id)
     if not principal:
-        raise ToolError(f"Principal {principal_id} not found")
+        return UpdateMediaBuyResponse(
+            status="failed",
+            message=f"Principal {principal_id} not found",
+            errors=[{"code": "principal_not_found", "message": f"Principal {principal_id} not found"}],
+        )
 
     adapter = get_adapter(principal, dry_run=DRY_RUN_MODE)
     today = req.today or date.today()
@@ -1821,7 +1862,12 @@ def _get_media_buy_delivery_impl(req: GetMediaBuyDeliveryRequest, context: Conte
     # Get the Principal object
     principal = get_principal_object(principal_id)
     if not principal:
-        raise ToolError(f"Principal {principal_id} not found")
+        return GetMediaBuysResponse(
+            media_buys=[],
+            status="failed",
+            message=f"Principal {principal_id} not found",
+            errors=[{"code": "principal_not_found", "message": f"Principal {principal_id} not found"}],
+        )
 
     # Get the appropriate adapter
     adapter = get_adapter(principal, dry_run=DRY_RUN_MODE)
@@ -2136,60 +2182,96 @@ def create_creative(req: CreateCreativeRequest, context: Context) -> CreateCreat
     """Create a creative in the library (not tied to a specific media buy)."""
     principal_id = _get_principal_id_from_context(context)
     principal = get_principal_object(principal_id)
+    tenant = get_current_tenant()
 
-    # Verify group ownership if specified
-    if req.group_id and req.group_id in creative_groups:
-        group = creative_groups[req.group_id]
-        if group.principal_id != principal_id:
-            raise PermissionError(f"Principal does not own group '{req.group_id}'")
-
-    creative = Creative(
-        creative_id=f"creative_{uuid.uuid4().hex[:8]}",
+    # Create workflow step for tracking
+    ctx_manager = get_context_manager()
+    ctx_id = context.headers.get("x-context-id") if hasattr(context, "headers") else None
+    persistent_ctx = ctx_manager.get_or_create_context(
+        tenant_id=tenant["tenant_id"],
         principal_id=principal_id,
-        group_id=req.group_id,
-        format_id=req.format_id,
-        content_uri=req.content_uri,
-        name=req.name,
-        click_through_url=req.click_through_url,
-        metadata=req.metadata or {},
-        created_at=datetime.now(),
-        updated_at=datetime.now(),
+        context_id=ctx_id,
+        is_async=True,
     )
 
-    creative_library[creative.creative_id] = creative
-
-    # Initialize creative engine with tenant config
-    tenant = get_current_tenant()
-    # Build creative engine config from tenant fields
-    creative_engine_config = {
-        "auto_approve_formats": tenant.get("auto_approve_formats", []),
-        "human_review_required": tenant.get("human_review_required", True),
-    }
-    creative_engine = MockCreativeEngine(creative_engine_config)
-
-    # Process through creative engine for approval
-    status = creative_engine.process_creatives([creative])[0]
-    creative_statuses[creative.creative_id] = status
-
-    # Log the creation
-    from src.core.audit_logger import get_audit_logger
-
-    tenant = get_current_tenant()
-    logger = get_audit_logger("AdCP", tenant["tenant_id"])
-    logger.log_operation(
-        operation="create_creative",
-        principal_name=principal.name,
-        principal_id=principal_id,
-        adapter_id="N/A",
-        success=True,
-        details={
-            "creative_id": creative.creative_id,
-            "name": creative.name,
-            "format": creative.format_id,
-        },
+    step = ctx_manager.create_workflow_step(
+        context_id=persistent_ctx.context_id,
+        step_type="creative_creation",
+        owner="principal",
+        status="in_progress",
+        tool_name="create_creative",
+        request_data=req.model_dump(mode="json"),
     )
 
-    return CreateCreativeResponse(creative=creative, status=status)
+    try:
+        # Verify group ownership if specified
+        if req.group_id and req.group_id in creative_groups:
+            group = creative_groups[req.group_id]
+            if group.principal_id != principal_id:
+                error_msg = f"Principal does not own group '{req.group_id}'"
+                ctx_manager.update_workflow_step(step.step_id, status="failed", error=error_msg)
+                return CreateCreativeResponse(
+                    creative=None,
+                    status="failed",
+                    message=f"Creative creation failed: {error_msg}",
+                    errors=[{"code": "permission_error", "message": error_msg}],
+                )
+
+        creative = Creative(
+            creative_id=f"creative_{uuid.uuid4().hex[:8]}",
+            principal_id=principal_id,
+            group_id=req.group_id,
+            format_id=req.format_id,
+            content_uri=req.content_uri,
+            name=req.name,
+            click_through_url=req.click_through_url,
+            metadata=req.metadata or {},
+            created_at=datetime.now(),
+            updated_at=datetime.now(),
+        )
+
+        creative_library[creative.creative_id] = creative
+
+        # Build creative engine config from tenant fields
+        creative_engine_config = {
+            "auto_approve_formats": tenant.get("auto_approve_formats", []),
+            "human_review_required": tenant.get("human_review_required", True),
+        }
+        creative_engine = MockCreativeEngine(creative_engine_config)
+
+        # Process through creative engine for approval
+        status = creative_engine.process_creatives([creative])[0]
+        creative_statuses[creative.creative_id] = status
+
+        # Log the creation
+        from src.core.audit_logger import get_audit_logger
+
+        logger = get_audit_logger("AdCP", tenant["tenant_id"])
+        logger.log_operation(
+            operation="create_creative",
+            principal_name=principal.name,
+            principal_id=principal_id,
+            adapter_id="N/A",
+            success=True,
+            details={
+                "creative_id": creative.creative_id,
+                "name": creative.name,
+                "format": creative.format_id,
+            },
+        )
+
+        ctx_manager.update_workflow_step(step.step_id, status="completed")
+        return CreateCreativeResponse(creative=creative, status=status)
+
+    except Exception as e:
+        error_msg = str(e)
+        ctx_manager.update_workflow_step(step.step_id, status="failed", error=error_msg)
+        return CreateCreativeResponse(
+            creative=None,
+            status="failed",
+            message=f"Creative creation failed: {error_msg}",
+            errors=[{"code": "creation_error", "message": error_msg}],
+        )
 
 
 @mcp.tool
@@ -2197,60 +2279,105 @@ def assign_creative(req: AssignCreativeRequest, context: Context) -> AssignCreat
     """Assign a creative from the library to a package in a media buy."""
     _verify_principal(req.media_buy_id, context)
     principal_id = _get_principal_id_from_context(context)
-
-    # Verify creative ownership
-    if req.creative_id not in creative_library:
-        raise ValueError(f"Creative '{req.creative_id}' not found")
-
-    creative = creative_library[req.creative_id]
-    if creative.principal_id != principal_id:
-        raise PermissionError(f"Principal does not own creative '{req.creative_id}'")
-
-    # Create assignment
-    assignment = CreativeAssignment(
-        assignment_id=f"assign_{uuid.uuid4().hex[:8]}",
-        media_buy_id=req.media_buy_id,
-        package_id=req.package_id,
-        creative_id=req.creative_id,
-        weight=req.weight,
-        percentage_goal=req.percentage_goal,
-        rotation_type=req.rotation_type,
-        override_click_url=req.override_click_url,
-        override_start_date=req.override_start_date,
-        override_end_date=req.override_end_date,
-        targeting_overlay=req.targeting_overlay,
-        is_active=True,
-    )
-
-    creative_assignments_v2[assignment.assignment_id] = assignment
-
-    # Also update legacy creative_assignments for backward compatibility
-    if req.media_buy_id not in creative_assignments:
-        creative_assignments[req.media_buy_id] = {}
-    if req.package_id not in creative_assignments[req.media_buy_id]:
-        creative_assignments[req.media_buy_id][req.package_id] = []
-    creative_assignments[req.media_buy_id][req.package_id].append(req.creative_id)
-
-    # Log the assignment
-    from src.core.audit_logger import get_audit_logger
-
     tenant = get_current_tenant()
-    logger = get_audit_logger("AdCP", tenant["tenant_id"])
-    logger.log_operation(
-        operation="assign_creative",
-        principal_name=get_principal_object(principal_id).name,
+
+    # Create workflow step for tracking
+    ctx_manager = get_context_manager()
+    ctx_id = context.headers.get("x-context-id") if hasattr(context, "headers") else None
+    persistent_ctx = ctx_manager.get_or_create_context(
+        tenant_id=tenant["tenant_id"],
         principal_id=principal_id,
-        adapter_id="N/A",
-        success=True,
-        details={
-            "assignment_id": assignment.assignment_id,
-            "creative_id": req.creative_id,
-            "package_id": req.package_id,
-            "media_buy_id": req.media_buy_id,
-        },
+        context_id=ctx_id,
+        is_async=True,
     )
 
-    return AssignCreativeResponse(assignment=assignment)
+    step = ctx_manager.create_workflow_step(
+        context_id=persistent_ctx.context_id,
+        step_type="creative_assignment",
+        owner="principal",
+        status="in_progress",
+        tool_name="assign_creative",
+        request_data=req.model_dump(mode="json"),
+    )
+
+    try:
+        # Verify creative ownership
+        if req.creative_id not in creative_library:
+            error_msg = f"Creative '{req.creative_id}' not found"
+            ctx_manager.update_workflow_step(step.step_id, status="failed", error=error_msg)
+            return AssignCreativeResponse(
+                assignment=None,
+                status="failed",
+                message=f"Creative assignment failed: {error_msg}",
+                errors=[{"code": "not_found_error", "message": error_msg}],
+            )
+
+        creative = creative_library[req.creative_id]
+        if creative.principal_id != principal_id:
+            error_msg = f"Principal does not own creative '{req.creative_id}'"
+            ctx_manager.update_workflow_step(step.step_id, status="failed", error=error_msg)
+            return AssignCreativeResponse(
+                assignment=None,
+                status="failed",
+                message=f"Creative assignment failed: {error_msg}",
+                errors=[{"code": "permission_error", "message": error_msg}],
+            )
+
+        # Create assignment
+        assignment = CreativeAssignment(
+            assignment_id=f"assign_{uuid.uuid4().hex[:8]}",
+            media_buy_id=req.media_buy_id,
+            package_id=req.package_id,
+            creative_id=req.creative_id,
+            weight=req.weight,
+            percentage_goal=req.percentage_goal,
+            rotation_type=req.rotation_type,
+            override_click_url=req.override_click_url,
+            override_start_date=req.override_start_date,
+            override_end_date=req.override_end_date,
+            targeting_overlay=req.targeting_overlay,
+            is_active=True,
+        )
+
+        creative_assignments_v2[assignment.assignment_id] = assignment
+
+        # Also update legacy creative_assignments for backward compatibility
+        if req.media_buy_id not in creative_assignments:
+            creative_assignments[req.media_buy_id] = {}
+        if req.package_id not in creative_assignments[req.media_buy_id]:
+            creative_assignments[req.media_buy_id][req.package_id] = []
+        creative_assignments[req.media_buy_id][req.package_id].append(req.creative_id)
+
+        # Log the assignment
+        from src.core.audit_logger import get_audit_logger
+
+        logger = get_audit_logger("AdCP", tenant["tenant_id"])
+        logger.log_operation(
+            operation="assign_creative",
+            principal_name=get_principal_object(principal_id).name,
+            principal_id=principal_id,
+            adapter_id="N/A",
+            success=True,
+            details={
+                "assignment_id": assignment.assignment_id,
+                "creative_id": req.creative_id,
+                "package_id": req.package_id,
+                "media_buy_id": req.media_buy_id,
+            },
+        )
+
+        ctx_manager.update_workflow_step(step.step_id, status="completed")
+        return AssignCreativeResponse(assignment=assignment, status="success")
+
+    except Exception as e:
+        error_msg = str(e)
+        ctx_manager.update_workflow_step(step.step_id, status="failed", error=error_msg)
+        return AssignCreativeResponse(
+            assignment=None,
+            status="failed",
+            message=f"Creative assignment failed: {error_msg}",
+            errors=[{"code": "assignment_error", "message": error_msg}],
+        )
 
 
 # --- Admin Tools ---
@@ -2334,7 +2461,12 @@ def approve_creative(req: ApproveCreativeRequest, context: Context) -> ApproveCr
     _require_admin(context)
 
     if req.creative_id not in creative_library:
-        raise ValueError(f"Creative '{req.creative_id}' not found")
+        return ApproveCreativeResponse(
+            creative_id=req.creative_id,
+            status="failed",
+            message=f"Creative '{req.creative_id}' not found",
+            errors=[{"code": "not_found_error", "message": f"Creative '{req.creative_id}' not found"}],
+        )
 
     creative = creative_library[req.creative_id]
 
@@ -2408,7 +2540,11 @@ def update_performance_index(req: UpdatePerformanceIndexRequest, context: Contex
     # Get the Principal object
     principal = get_principal_object(principal_id)
     if not principal:
-        raise ToolError(f"Principal {principal_id} not found")
+        return UpdatePerformanceIndexResponse(
+            status="failed",
+            message=f"Principal {principal_id} not found",
+            errors=[{"code": "principal_not_found", "message": f"Principal {principal_id} not found"}],
+        )
 
     # Get the appropriate adapter
     adapter = get_adapter(principal, dry_run=DRY_RUN_MODE)
@@ -2730,7 +2866,7 @@ def complete_task(req, context):
                     # Convert products to MediaPackages
                     packages = []
                     for product in products_in_buy:
-                        format_info = product.formats[0] if product.formats else None
+                        first_format_id = product.formats[0] if product.formats else None
                         packages.append(
                             MediaPackage(
                                 package_id=product.product_id,
@@ -2740,7 +2876,7 @@ def complete_task(req, context):
                                 impressions=int(
                                     original_req.total_budget / (product.cpm if product.cpm else 10.0) * 1000
                                 ),
-                                format_ids=[format_info.format_id] if format_info else [],
+                                format_ids=[first_format_id] if first_format_id else [],
                             )
                         )
 
@@ -2994,17 +3130,34 @@ def get_product_catalog() -> list[Product]:
                         return value
                 return value
 
+            # Parse formats - now stored as strings by the validator
+            format_ids = safe_json_parse(product.formats) or []
+            # Ensure it's a list of strings (validator guarantees this)
+            if not isinstance(format_ids, list):
+                format_ids = []
+
             product_data = {
                 "product_id": product.product_id,
                 "name": product.name,
                 "description": product.description,
-                "formats": safe_json_parse(product.formats),
+                "formats": format_ids,
                 "delivery_type": product.delivery_type,
                 "is_fixed_price": product.is_fixed_price,
                 "cpm": float(product.cpm) if product.cpm else None,
-                "price_guidance": safe_json_parse(product.price_guidance),
+                "min_spend": float(product.min_spend) if hasattr(product, "min_spend") and product.min_spend else None,
+                "measurement": (
+                    safe_json_parse(product.measurement)
+                    if hasattr(product, "measurement") and product.measurement
+                    else None
+                ),
+                "creative_policy": (
+                    safe_json_parse(product.creative_policy)
+                    if hasattr(product, "creative_policy") and product.creative_policy
+                    else None
+                ),
                 "is_custom": product.is_custom,
-                "countries": safe_json_parse(product.countries),
+                "expires_at": product.expires_at,
+                # Note: brief_relevance is populated dynamically when brief is provided
                 "implementation_config": safe_json_parse(product.implementation_config),
             }
             loaded_products.append(Product(**product_data))
