@@ -1,5 +1,5 @@
 import random
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from src.adapters.base import AdServerAdapter
@@ -73,7 +73,7 @@ class MockAdServer(AdServerAdapter):
         """Get current time for simulation (real or simulated)."""
         if self._is_simulation() and self._current_simulation_time:
             return self._current_simulation_time
-        return datetime.utcnow()
+        return datetime.now(UTC)
 
     def set_simulation_time(self, simulation_time: datetime):
         """Set the current simulation time."""
@@ -349,7 +349,7 @@ class MockAdServer(AdServerAdapter):
         return CreateMediaBuyResponse(
             media_buy_id=media_buy_id,
             buyer_ref=request.buyer_ref,
-            creative_deadline=datetime.now() + timedelta(days=2),
+            creative_deadline=datetime.now(UTC) + timedelta(days=2),
         )
 
     def add_creative_assets(

@@ -42,9 +42,9 @@ def create_tenant(args):
             sys.exit(1)
 
         # Create tenant with new schema
-        from datetime import datetime
+        from datetime import UTC, datetime
 
-        now = datetime.utcnow()
+        now = datetime.now(UTC)
 
         tenant = Tenant(
             tenant_id=tenant_id,

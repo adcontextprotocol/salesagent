@@ -2,7 +2,7 @@
 
 import json
 import logging
-from datetime import datetime
+from datetime import UTC, datetime
 
 from flask import Blueprint, jsonify, render_template, request, session
 
@@ -365,7 +365,7 @@ def view_gam_line_item(tenant_id, line_item_id):
                     impressions_delivered=0,
                     clicks_delivered=0,
                     ctr=0.0,
-                    last_synced=datetime.utcnow(),
+                    last_synced=datetime.now(UTC),
                     raw_data=json.dumps(line_item_data),
                 )
 

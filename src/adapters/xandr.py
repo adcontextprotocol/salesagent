@@ -12,6 +12,7 @@ from typing import Any
 import requests
 
 from src.adapters.base import AdServerAdapter
+from src.core.retry_utils import api_retry
 from src.core.schemas import (
     CreateMediaBuyRequest,
     CreateMediaBuyResponse,
@@ -73,6 +74,7 @@ class XandrAdapter(AdServerAdapter):
 
         logger.info(f"Initialized Xandr adapter for principal {principal.name}")
 
+    @api_retry
     def _authenticate(self):
         """Authenticate with Xandr API and get session token."""
         if self.token and self.token_expiry and datetime.now(UTC) < self.token_expiry:
@@ -98,6 +100,7 @@ class XandrAdapter(AdServerAdapter):
             logger.error(f"Xandr authentication error: {e}")
             raise
 
+    @api_retry
     def _make_request(self, method: str, endpoint: str, data: dict | None = None) -> dict:
         """Make authenticated request to Xandr API."""
         self._authenticate()

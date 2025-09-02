@@ -71,9 +71,9 @@ def init_db(exit_on_error=False):
             secrets.token_urlsafe(32)
 
             # Create default tenant
-            from datetime import datetime
+            from datetime import UTC, datetime
 
-            now = datetime.utcnow()
+            now = datetime.now(UTC)
             default_tenant = Tenant(
                 tenant_id="default",
                 name="Default Publisher",
