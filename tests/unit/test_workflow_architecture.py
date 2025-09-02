@@ -50,34 +50,34 @@ def test_workflow_architecture():
 
             console.print("\n[yellow]Test 1: Create context for async workflow[/yellow]")
             context = ctx_mgr.create_context(
-            tenant_id=tenant_id,
-            principal_id=principal_id,
-            initial_conversation=[
-                {
-                    "role": "user",
-                    "content": "Create a media buy for sports content",
-                    "timestamp": datetime.now(UTC).isoformat(),
-                }
-            ],
-        )
+                tenant_id=tenant_id,
+                principal_id=principal_id,
+                initial_conversation=[
+                    {
+                        "role": "user",
+                        "content": "Create a media buy for sports content",
+                        "timestamp": datetime.now(UTC).isoformat(),
+                    }
+                ],
+            )
             console.print(f"✓ Created context: {context.context_id}")
 
             console.print("\n[yellow]Test 2: Create workflow step for media buy creation[/yellow]")
             step1 = ctx_mgr.create_workflow_step(
-            context_id=context.context_id,
-            step_type="tool_call",
-            owner="system",
-            status="pending",
-            tool_name="create_media_buy",
-            request_data={
-                "product_ids": ["prod_1", "prod_2"],
-                "budget": 5000.0,
-                "start_date": "2025-02-01",
-                "end_date": "2025-02-28",
-            },
-            object_mappings=[{"object_type": "media_buy", "object_id": media_buy_id, "action": "create"}],
-            initial_comment="Creating media buy for sports content campaign",
-        )
+                context_id=context.context_id,
+                step_type="tool_call",
+                owner="system",
+                status="pending",
+                tool_name="create_media_buy",
+                request_data={
+                    "product_ids": ["prod_1", "prod_2"],
+                    "budget": 5000.0,
+                    "start_date": "2025-02-01",
+                    "end_date": "2025-02-28",
+                },
+                object_mappings=[{"object_type": "media_buy", "object_id": media_buy_id, "action": "create"}],
+                initial_comment="Creating media buy for sports content campaign",
+            )
             console.print(f"✓ Created step: {step1.step_id}")
             console.print(f"  - Type: {step1.step_type}")
             console.print(f"  - Owner: {step1.owner}")
@@ -85,37 +85,40 @@ def test_workflow_architecture():
 
             console.print("\n[yellow]Test 3: Create approval step (waiting on publisher)[/yellow]")
             step2 = ctx_mgr.create_workflow_step(
-            context_id=context.context_id,
-            step_type="approval",
-            owner="publisher",  # Publisher needs to approve
-            status="requires_approval",
-            tool_name=None,
-            request_data={"media_buy_id": media_buy_id, "reason": "Manual approval required for high-value campaign"},
-            assigned_to="admin@publisher.com",
-            object_mappings=[{"object_type": "media_buy", "object_id": media_buy_id, "action": "approve"}],
-        )
+                context_id=context.context_id,
+                step_type="approval",
+                owner="publisher",  # Publisher needs to approve
+                status="requires_approval",
+                tool_name=None,
+                request_data={
+                    "media_buy_id": media_buy_id,
+                    "reason": "Manual approval required for high-value campaign",
+                },
+                assigned_to="admin@publisher.com",
+                object_mappings=[{"object_type": "media_buy", "object_id": media_buy_id, "action": "approve"}],
+            )
             console.print(f"✓ Created approval step: {step2.step_id}")
             console.print(f"  - Owner: {step2.owner} (waiting on publisher)")
             console.print(f"  - Assigned to: {step2.assigned_to}")
 
             console.print("\n[yellow]Test 4: Add creative and track its lifecycle[/yellow]")
             step3 = ctx_mgr.create_workflow_step(
-            context_id=context.context_id,
-            step_type="tool_call",
-            owner="principal",  # Principal submitting creative
-            status="completed",
-            tool_name="add_creative_assets",
-            request_data={
-                "creative_id": creative_id,
-                "format": "display_300x250",
-                "url": "https://example.com/creative.jpg",
-            },
-            response_data={"success": True, "creative_id": creative_id},
-            object_mappings=[
-                {"object_type": "creative", "object_id": creative_id, "action": "create"},
-                {"object_type": "media_buy", "object_id": media_buy_id, "action": "add_creative"},
-            ],
-        )
+                context_id=context.context_id,
+                step_type="tool_call",
+                owner="principal",  # Principal submitting creative
+                status="completed",
+                tool_name="add_creative_assets",
+                request_data={
+                    "creative_id": creative_id,
+                    "format": "display_300x250",
+                    "url": "https://example.com/creative.jpg",
+                },
+                response_data={"success": True, "creative_id": creative_id},
+                object_mappings=[
+                    {"object_type": "creative", "object_id": creative_id, "action": "create"},
+                    {"object_type": "media_buy", "object_id": media_buy_id, "action": "add_creative"},
+                ],
+            )
             console.print(f"✓ Created creative step: {step3.step_id}")
 
             console.print("\n[yellow]Test 5: Query pending steps by owner[/yellow]")
@@ -139,12 +142,12 @@ def test_workflow_architecture():
 
             console.print("\n[yellow]Test 7: Add comment to workflow step[/yellow]")
             ctx_mgr.update_workflow_step(
-            step_id=step2.step_id,
-            add_comment={
-                "user": "reviewer@publisher.com",
-                "comment": "Reviewing campaign parameters, will approve shortly",
-            },
-        )
+                step_id=step2.step_id,
+                add_comment={
+                    "user": "reviewer@publisher.com",
+                    "comment": "Reviewing campaign parameters, will approve shortly",
+                },
+            )
             console.print(f"✓ Added comment to step {step2.step_id}")
 
             # Verify comment was added
@@ -157,14 +160,14 @@ def test_workflow_architecture():
 
             console.print("\n[yellow]Test 8: Complete approval step[/yellow]")
             ctx_mgr.update_workflow_step(
-            step_id=step2.step_id,
-            status="completed",
-            response_data={
-                "approved": True,
-                "approved_by": "admin@publisher.com",
-                "approved_at": datetime.now(UTC).isoformat(),
-            },
-        )
+                step_id=step2.step_id,
+                status="completed",
+                response_data={
+                    "approved": True,
+                    "approved_by": "admin@publisher.com",
+                    "approved_at": datetime.now(UTC).isoformat(),
+                },
+            )
             console.print(f"✓ Completed step {step2.step_id}")
 
             console.print("\n[yellow]Test 9: Check context status[/yellow]")
@@ -202,7 +205,9 @@ def test_workflow_architecture():
             console.print("✓ WorkflowStep correctly updated (no started_at, has comments)")
 
             console.print("\n[yellow]Test 12: Verify ObjectWorkflowMapping works[/yellow]")
-            mappings = session.query(ObjectWorkflowMapping).filter_by(object_type="media_buy", object_id=media_buy_id).all()
+            mappings = (
+                session.query(ObjectWorkflowMapping).filter_by(object_type="media_buy", object_id=media_buy_id).all()
+            )
             console.print(f"✓ Found {len(mappings)} mappings for media_buy {media_buy_id}")
             for mapping in mappings:
                 console.print(f"  - Action: {mapping.action}, Step: {mapping.step_id}")
