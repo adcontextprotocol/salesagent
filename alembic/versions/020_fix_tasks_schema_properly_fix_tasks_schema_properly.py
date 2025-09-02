@@ -10,6 +10,7 @@ from typing import Sequence, Union
 
 from alembic import op
 import sqlalchemy as sa
+from sqlalchemy.engine import reflection
 
 
 # revision identifiers, used by Alembic.
@@ -26,8 +27,6 @@ def upgrade() -> None:
     It ensures workflow_steps and object_workflow_mapping tables exist, which are
     referenced by the application code but may be missing in production.
     """
-    from sqlalchemy.engine import reflection
-
     # Get database connection
     connection = op.get_bind()
     inspector = reflection.Inspector.from_engine(connection)
