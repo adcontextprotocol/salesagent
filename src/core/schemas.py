@@ -30,6 +30,122 @@ class Format(BaseModel):
     )
 
 
+# Format Registry for AdCP Compliance
+# This registry converts format ID strings to Format objects for AdCP protocol responses
+FORMAT_REGISTRY: dict[str, Format] = {
+    # Display Formats
+    "display_300x250": Format(
+        format_id="display_300x250",
+        name="Medium Rectangle",
+        type="display",
+        is_standard=True,
+        iab_specification="IAB Display",
+        requirements={"width": 300, "height": 250},
+    ),
+    "display_728x90": Format(
+        format_id="display_728x90",
+        name="Leaderboard",
+        type="display",
+        is_standard=True,
+        iab_specification="IAB Display",
+        requirements={"width": 728, "height": 90},
+    ),
+    "display_320x50": Format(
+        format_id="display_320x50",
+        name="Mobile Banner",
+        type="display",
+        is_standard=True,
+        iab_specification="IAB Display",
+        requirements={"width": 320, "height": 50},
+    ),
+    "display_300x600": Format(
+        format_id="display_300x600",
+        name="Half Page Ad",
+        type="display",
+        is_standard=True,
+        iab_specification="IAB Display",
+        requirements={"width": 300, "height": 600},
+    ),
+    "display_970x250": Format(
+        format_id="display_970x250",
+        name="Billboard",
+        type="display",
+        is_standard=True,
+        iab_specification="IAB Display",
+        requirements={"width": 970, "height": 250},
+    ),
+    "display_970x90": Format(
+        format_id="display_970x90",
+        name="Super Leaderboard",
+        type="display",
+        is_standard=True,
+        iab_specification="IAB Display",
+        requirements={"width": 970, "height": 90},
+    ),
+    # Video Formats
+    "video_640x360": Format(
+        format_id="video_640x360",
+        name="Video 360p",
+        type="video",
+        is_standard=True,
+        iab_specification="VAST",
+        requirements={"width": 640, "height": 360, "duration_max": 30},
+    ),
+    "video_1280x720": Format(
+        format_id="video_1280x720",
+        name="Video 720p",
+        type="video",
+        is_standard=True,
+        iab_specification="VAST",
+        requirements={"width": 1280, "height": 720, "duration_max": 30},
+    ),
+    # Audio Formats
+    "audio_30s": Format(
+        format_id="audio_30s",
+        name="Audio 30 Second",
+        type="audio",
+        is_standard=True,
+        iab_specification="DAAST",
+        requirements={"duration": 30, "bitrate_min": 128},
+    ),
+    # Native Formats
+    "native_article": Format(
+        format_id="native_article",
+        name="Native Article",
+        type="native",
+        is_standard=True,
+        iab_specification="OpenRTB Native",
+        requirements={"title_length": 25, "description_length": 90},
+    ),
+}
+
+
+def get_format_by_id(format_id: str) -> Format | None:
+    """Get a Format object by its ID."""
+    return FORMAT_REGISTRY.get(format_id)
+
+
+def convert_format_ids_to_formats(format_ids: list[str]) -> list[Format]:
+    """Convert a list of format ID strings to Format objects.
+
+    This function is used to ensure AdCP schema compliance by converting
+    internal format ID representations to full Format objects.
+    """
+    formats = []
+    for format_id in format_ids:
+        format_obj = get_format_by_id(format_id)
+        if format_obj:
+            formats.append(format_obj)
+        else:
+            # For unknown format IDs, create a minimal Format object
+            formats.append(
+                Format(
+                    format_id=format_id, name=format_id.replace("_", " ").title(), type="display"  # Default to display
+                )
+            )
+    return formats
+
+
 class FrequencyCap(BaseModel):
     """Simple frequency capping configuration.
 
@@ -198,6 +314,16 @@ class Product(BaseModel):
             kwargs["exclude"].add("implementation_config")
         return super().model_dump(**kwargs)
 
+    def model_dump_adcp_compliant(self, **kwargs):
+        """Return model dump with Format objects for AdCP schema compliance."""
+        data = self.model_dump(**kwargs)
+
+        # Convert format IDs to Format objects for AdCP schema compliance
+        if "formats" in data:
+            data["formats"] = [fmt.model_dump() for fmt in convert_format_ids_to_formats(data["formats"])]
+
+        return data
+
     def dict(self, **kwargs):
         """Override dict to always exclude implementation_config (for backward compat)."""
         kwargs["exclude"] = kwargs.get("exclude", set())
@@ -303,13 +429,34 @@ class GetProductsResponse(BaseModel):
     errors: list[Error] | None = None  # Protocol field for error reporting
 
     def model_dump(self, **kwargs):
-        """Override to ensure products exclude implementation_config."""
+        """Override to ensure products exclude implementation_config and convert formats for AdCP compliance."""
         data = super().model_dump(**kwargs)
-        # Ensure each product excludes implementation_config
+        # Ensure each product excludes implementation_config and converts formats to Format objects
         if "products" in data:
             for product in data["products"]:
                 if "implementation_config" in product:
                     del product["implementation_config"]
+                # Convert format IDs to Format objects for AdCP schema compliance
+                if "formats" in product and isinstance(product["formats"], list):
+                    format_objects = []
+                    for format_id in product["formats"]:
+                        if isinstance(format_id, str):
+                            format_obj = get_format_by_id(format_id)
+                            if format_obj:
+                                format_objects.append(format_obj.model_dump())
+                            else:
+                                # Create minimal Format object for unknown format IDs
+                                format_objects.append(
+                                    {
+                                        "format_id": format_id,
+                                        "name": format_id.replace("_", " ").title(),
+                                        "type": "display",
+                                    }
+                                )
+                        else:
+                            # Already a format object
+                            format_objects.append(format_id)
+                    product["formats"] = format_objects
         return data
 
 

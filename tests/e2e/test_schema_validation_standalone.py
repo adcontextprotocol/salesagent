@@ -45,8 +45,9 @@ async def test_valid_get_products_response():
                             "requirements": {"width": 300, "height": 250},
                         }
                     ],
-                    "pricing": {"model": "cpm", "price_range": {"min": 2.50, "max": 10.00}, "currency": "USD"},
-                    "targeting_capabilities": {"geo": ["country", "region"], "device": ["mobile", "desktop"]},
+                    "delivery_type": "guaranteed",
+                    "is_fixed_price": True,
+                    "cpm": 5.0,
                 }
             ]
         }
@@ -85,9 +86,9 @@ async def test_get_products_request_validation():
         # Should not raise exception
         await validator.validate_request("get-products", valid_request)
 
-        # Test with empty request (should still be valid since all fields are optional)
-        empty_request = {}
-        await validator.validate_request("get-products", empty_request)
+        # Test with minimal required request
+        minimal_request = {"promoted_offering": "test product"}
+        await validator.validate_request("get-products", minimal_request)
 
 
 @pytest.mark.asyncio
