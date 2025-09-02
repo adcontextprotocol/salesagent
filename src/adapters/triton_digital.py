@@ -48,16 +48,6 @@ class TritonDigital(AdServerAdapter):
     # Only audio media type supported
     SUPPORTED_MEDIA_TYPES = {"audio"}
 
-    # Audio daypart presets
-    AUDIO_PRESETS = {
-        "drive_time_morning": {"days": [1, 2, 3, 4, 5], "start_hour": 6, "end_hour": 10},
-        "drive_time_evening": {"days": [1, 2, 3, 4, 5], "start_hour": 16, "end_hour": 19},
-        "midday": {"days": [1, 2, 3, 4, 5], "start_hour": 10, "end_hour": 15},
-        "evening": {"days": [0, 1, 2, 3, 4, 5, 6], "start_hour": 19, "end_hour": 24},
-        "overnight": {"days": [0, 1, 2, 3, 4, 5, 6], "start_hour": 0, "end_hour": 6},
-        "weekend": {"days": [0, 6], "start_hour": 0, "end_hour": 24},
-    }
-
     def _validate_targeting(self, targeting_overlay):
         """Validate targeting and return unsupported features."""
         unsupported = []
@@ -108,27 +98,6 @@ class TritonDigital(AdServerAdapter):
 
         if targeting_obj:
             triton_targeting["targeting"] = targeting_obj
-
-        # Dayparting (special audio presets)
-        if targeting_overlay.dayparting:
-            if targeting_overlay.dayparting.presets:
-                triton_targeting["dayparts"] = targeting_overlay.dayparting.presets
-            else:
-                # Try to map schedules to presets
-                daypart_names = []
-                for schedule in targeting_overlay.dayparting.schedules:
-                    # Check if schedule matches any preset
-                    for preset_name, preset_data in self.AUDIO_PRESETS.items():
-                        if (
-                            schedule.days == preset_data["days"]
-                            and schedule.start_hour == preset_data["start_hour"]
-                            and schedule.end_hour == preset_data["end_hour"]
-                        ):
-                            daypart_names.append(preset_name)
-                            break
-
-                if daypart_names:
-                    triton_targeting["dayparts"] = daypart_names
 
         # Audio-specific targeting from custom field
         if targeting_overlay.custom and "triton" in targeting_overlay.custom:
@@ -245,8 +214,6 @@ class TritonDigital(AdServerAdapter):
                     targeting = self._build_targeting(request.targeting_overlay)
                     if targeting and "targeting" in targeting:
                         flight_payload["targeting"] = targeting["targeting"]
-                    if targeting and "dayparts" in targeting:
-                        flight_payload["dayparts"] = targeting["dayparts"]
                     if targeting and "stationIds" in targeting:
                         flight_payload["stationIds"] = targeting["stationIds"]
 

@@ -220,25 +220,6 @@
           "sports_enthusiasts"
         ]
       },
-      "dayparting": {
-        "timezone": "America/New_York",
-        "schedules": [
-          {
-            "days": [
-              "MONDAY"
-            ],
-            "start_hour": 6,
-            "end_hour": 23
-          },
-          {
-            "days": [
-              "TUESDAY"
-            ],
-            "start_hour": 6,
-            "end_hour": 23
-          }
-        ]
-      },
       "frequency_cap": {
         "suppress_minutes": 1440,
         "scope": "media_buy"

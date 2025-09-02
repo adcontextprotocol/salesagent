@@ -339,22 +339,6 @@ class GoogleAdManager(AdServerAdapter):
                 content_targeting["targetedKeywords"] = targeting_overlay.keywords_any_of
             gam_targeting["contentTargeting"] = content_targeting
 
-        # Dayparting
-        if targeting_overlay.dayparting:
-            daypart_targeting = []
-
-            for schedule in targeting_overlay.dayparting.schedules:
-                daypart_targeting.append(
-                    {
-                        "dayOfWeek": [f"DAY_{d}" for d in schedule.days],
-                        "startTime": {"hour": schedule.start_hour, "minute": 0},
-                        "endTime": {"hour": schedule.end_hour, "minute": 0},
-                        "timeZone": schedule.timezone or targeting_overlay.dayparting.timezone,
-                    }
-                )
-
-            gam_targeting["dayPartTargeting"] = daypart_targeting
-
         # Custom key-value targeting
         custom_targeting = {}
 

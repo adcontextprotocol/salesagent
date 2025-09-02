@@ -17,6 +17,17 @@ from src.adapters.mock_ad_server import MockAdServer as MockAdServerAdapter
 from src.adapters.mock_creative_engine import MockCreativeEngine
 from src.adapters.triton_digital import TritonDigital
 from src.core.audit_logger import get_audit_logger
+from src.core.testing_api import (
+    TestingControlRequest,
+    TestingControlResponse,
+    handle_testing_control,
+)
+from src.core.testing_hooks import (
+    DeliverySimulator,
+    TimeSimulator,
+    apply_testing_hooks,
+    get_testing_context,
+)
 from src.services.activity_feed import activity_feed
 
 logger = logging.getLogger(__name__)
@@ -64,6 +75,7 @@ from src.core.schemas import (
     CreativeAssignment,
     CreativeGroup,
     CreativeStatus,
+    Error,
     GetAllMediaBuyDeliveryRequest,
     GetAllMediaBuyDeliveryResponse,
     GetCreativesRequest,
@@ -79,6 +91,7 @@ from src.core.schemas import (
     GetTargetingCapabilitiesRequest,
     GetTargetingCapabilitiesResponse,
     LegacyUpdateMediaBuyRequest,
+    ListCreativeFormatsResponse,
     MediaBuyDeliveryData,
     MediaPackage,
     PackagePerformance,
@@ -316,7 +329,7 @@ def get_adapter_principal_id(principal_id: str, adapter: str) -> str | None:
     return None
 
 
-def get_adapter(principal: Principal, dry_run: bool = False):
+def get_adapter(principal: Principal, dry_run: bool = False, testing_context=None):
     """Get the appropriate adapter instance for the selected adapter type."""
     # Get tenant and adapter config from database
     tenant = get_current_tenant()
@@ -350,10 +363,12 @@ def get_adapter(principal: Principal, dry_run: bool = False):
         selected_adapter = "mock"
         adapter_config = {"enabled": True}
 
-    # Create the appropriate adapter instance with tenant_id
+    # Create the appropriate adapter instance with tenant_id and testing context
     tenant_id = tenant["tenant_id"]
     if selected_adapter == "mock":
-        return MockAdServerAdapter(adapter_config, principal, dry_run, tenant_id=tenant_id)
+        return MockAdServerAdapter(
+            adapter_config, principal, dry_run, tenant_id=tenant_id, strategy_context=testing_context
+        )
     elif selected_adapter == "google_ad_manager":
         return GoogleAdManager(adapter_config, principal, dry_run, tenant_id=tenant_id)
     elif selected_adapter == "kevel":
@@ -362,7 +377,9 @@ def get_adapter(principal: Principal, dry_run: bool = False):
         return TritonDigital(adapter_config, principal, dry_run, tenant_id=tenant_id)
     else:
         # Default to mock for unsupported adapters
-        return MockAdServerAdapter(adapter_config, principal, dry_run, tenant_id=tenant_id)
+        return MockAdServerAdapter(
+            adapter_config, principal, dry_run, tenant_id=tenant_id, strategy_context=testing_context
+        )
 
 
 # --- Initialization ---
@@ -531,6 +548,11 @@ def log_tool_activity(context: Context, tool_name: str, start_time: float = None
 @mcp.tool
 async def get_products(req: GetProductsRequest, context: Context) -> GetProductsResponse:
     start_time = time.time()
+
+    # Extract testing context first
+    testing_ctx = get_testing_context(context)
+
+    # Authentication and tenant setup
     principal_id = _get_principal_id_from_context(context)  # Authenticate
 
     # Get tenant information
@@ -613,7 +635,12 @@ async def get_products(req: GetProductsRequest, context: Context) -> GetProducts
     if policy_result.status == PolicyStatus.BLOCKED:
         # Always block if policy says blocked
         logger.warning(f"Brief blocked by policy: {policy_result.reason}")
-        return GetProductsResponse(products=[])
+        return GetProductsResponse(
+            products=[],
+            message="No products available due to policy restrictions",
+            context_id=context.meta.get("headers", {}).get("x-context-id") if hasattr(context, "meta") else None,
+            errors=[Error(code="POLICY_BLOCKED", message=policy_result.reason)],
+        )
 
     # If restricted and manual review is required, create a task
     if policy_result.status == PolicyStatus.RESTRICTED and policy_settings.get("require_manual_review", False):
@@ -645,7 +672,12 @@ async def get_products(req: GetProductsRequest, context: Context) -> GetProducts
         logger.info(f"Created policy review task {task_id} for restricted brief")
 
         # Return empty list with message about pending review
-        return GetProductsResponse(products=[])
+        return GetProductsResponse(
+            products=[],
+            message="Request pending manual review due to policy restrictions",
+            context_id=context.meta.get("headers", {}).get("x-context-id") if hasattr(context, "meta") else None,
+            clarification_needed=True,
+        )
 
     # Get the product catalog provider for this tenant
     provider = await get_product_catalog_provider(
@@ -674,10 +706,95 @@ async def get_products(req: GetProductsRequest, context: Context) -> GetProducts
         else:
             logger.info(f"Product {product.product_id} excluded: {reason}")
 
+    # Apply testing hooks to response
+    response_data = {"products": [p.model_dump() for p in eligible_products]}
+    response_data = apply_testing_hooks(response_data, testing_ctx, "get_products")
+
+    # Reconstruct products from modified data
+    modified_products = [Product(**p) for p in response_data["products"]]
+
     # Log activity
     log_tool_activity(context, "get_products", start_time)
 
-    return GetProductsResponse(products=eligible_products)
+    return GetProductsResponse(
+        products=modified_products,
+        message=f"Found {len(modified_products)} matching products",
+        context_id=context.meta.get("headers", {}).get("x-context-id") if hasattr(context, "meta") else None,
+    )
+
+
+@mcp.tool
+def list_creative_formats(context: Context) -> ListCreativeFormatsResponse:
+    """List all available creative formats (AdCP spec endpoint)."""
+    start_time = time.time()
+
+    # Authentication
+    principal_id = _get_principal_id_from_context(context)
+
+    # Get tenant information
+    tenant = get_current_tenant()
+    if not tenant:
+        raise ToolError("No tenant context available")
+
+    # Query database for formats
+    with get_db_session() as session:
+        from src.core.database.models import CreativeFormat
+        from src.core.schemas import AssetRequirement, Format
+
+        # Get formats for this tenant (or global formats)
+        db_formats = (
+            session.query(CreativeFormat)
+            .filter(
+                (CreativeFormat.tenant_id == tenant["tenant_id"])
+                | (CreativeFormat.tenant_id.is_(None))  # Global formats
+            )
+            .all()
+        )
+
+        formats = []
+        for db_format in db_formats:
+            # Convert database model to schema format
+            assets_required = []
+            if db_format.specs and isinstance(db_format.specs, dict):
+                # Convert old specs format to new assets_required format
+                if "assets" in db_format.specs:
+                    for asset in db_format.specs["assets"]:
+                        assets_required.append(
+                            AssetRequirement(
+                                asset_type=asset.get("asset_type", "unknown"), quantity=1, requirements=asset
+                            )
+                        )
+
+            format_obj = Format(
+                format_id=db_format.format_id,
+                name=db_format.name,
+                type=db_format.type,
+                is_standard=db_format.is_standard or False,
+                iab_specification=None,  # Not stored in our current schema
+                requirements=db_format.specs or {},
+                assets_required=assets_required if assets_required else None,
+            )
+            formats.append(format_obj)
+
+    # Log the operation
+    audit_logger = get_audit_logger("AdCP", tenant["tenant_id"])
+    audit_logger.log_operation(
+        operation="list_creative_formats",
+        principal_name=principal_id,
+        principal_id=principal_id,
+        adapter_id="N/A",
+        success=True,
+        details={"format_count": len(formats)},
+    )
+
+    # Log activity
+    log_tool_activity(context, "list_creative_formats", start_time)
+
+    return ListCreativeFormatsResponse(
+        formats=formats,
+        message=f"Found {len(formats)} available creative formats",
+        context_id=context.meta.get("headers", {}).get("x-context-id") if hasattr(context, "meta") else None,
+    )
 
 
 @mcp.tool
@@ -784,6 +901,11 @@ async def get_signals(req: GetSignalsRequest, context: Context) -> GetSignalsRes
 @mcp.tool
 def create_media_buy(req: CreateMediaBuyRequest, context: Context) -> CreateMediaBuyResponse:
     start_time = time.time()
+
+    # Extract testing context first
+    testing_ctx = get_testing_context(context)
+
+    # Authentication and tenant setup
     principal_id = _get_principal_id_from_context(context)
     tenant = get_current_tenant()
 
@@ -840,8 +962,8 @@ def create_media_buy(req: CreateMediaBuyRequest, context: Context) -> CreateMedi
             error_msg = f"Targeting validation failed: {'; '.join(violations)}"
             raise ToolError(error_msg)
 
-    # Get the appropriate adapter
-    adapter = get_adapter(principal, dry_run=DRY_RUN_MODE)
+    # Get the appropriate adapter with testing context
+    adapter = get_adapter(principal, dry_run=DRY_RUN_MODE or testing_ctx.dry_run, testing_context=testing_ctx)
 
     # Check if manual approval is required
     manual_approval_required = (
@@ -1062,7 +1184,16 @@ def create_media_buy(req: CreateMediaBuyRequest, context: Context) -> CreateMedi
     except:
         pass
 
-    return adcp_response
+    # Apply testing hooks to response with campaign information
+    campaign_info = {"start_date": req.start_time, "end_date": req.end_time, "total_budget": total_budget}
+
+    response_data = adcp_response.model_dump()
+    response_data = apply_testing_hooks(response_data, testing_ctx, "create_media_buy", campaign_info)
+
+    # Reconstruct response from modified data
+    modified_response = CreateMediaBuyResponse(**response_data)
+
+    return modified_response
 
 
 @mcp.tool
@@ -1682,6 +1813,9 @@ def _get_media_buy_delivery_impl(req: GetMediaBuyDeliveryRequest, context: Conte
     - All active buys: filter="active" (default)
     - All buys: filter="all"
     """
+    # Extract testing context for time simulation and event jumping
+    testing_ctx = get_testing_context(context)
+
     principal_id = _get_principal_id_from_context(context)
 
     # Get the Principal object
@@ -1736,34 +1870,79 @@ def _get_media_buy_delivery_impl(req: GetMediaBuyDeliveryRequest, context: Conte
         )
 
         try:
-            # Get delivery data from the adapter
+            # Apply time simulation from testing context
             simulation_datetime = datetime.combine(req.today, datetime.min.time())
+            if testing_ctx.mock_time:
+                simulation_datetime = testing_ctx.mock_time
+            elif testing_ctx.jump_to_event:
+                # Calculate time based on event
+                simulation_datetime = TimeSimulator.jump_to_event_time(
+                    testing_ctx.jump_to_event,
+                    datetime.combine(buy_request.flight_start_date, datetime.min.time()),
+                    datetime.combine(buy_request.flight_end_date, datetime.min.time()),
+                )
+
+            # Get delivery data from the adapter
             delivery_response = adapter.get_media_buy_delivery(media_buy_id, reporting_period, simulation_datetime)
 
-            # Calculate totals from the adapter response
-            spend = delivery_response.totals.spend if hasattr(delivery_response, "totals") else 0
-            impressions = delivery_response.totals.impressions if hasattr(delivery_response, "totals") else 0
+            # Apply testing hooks for enhanced simulation
+            if any(
+                [testing_ctx.dry_run, testing_ctx.mock_time, testing_ctx.jump_to_event, testing_ctx.test_session_id]
+            ):
+                # Calculate campaign progress based on simulated time
+                start_dt = datetime.combine(buy_request.flight_start_date, datetime.min.time())
+                end_dt = datetime.combine(buy_request.flight_end_date, datetime.min.time())
+                progress = TimeSimulator.calculate_campaign_progress(start_dt, end_dt, simulation_datetime)
 
-            # Calculate days elapsed
-            days_elapsed = (req.today - buy_request.flight_start_date).days
-            total_days = (buy_request.flight_end_date - buy_request.flight_start_date).days
+                # Generate simulated metrics
+                simulated_metrics = DeliverySimulator.calculate_simulated_metrics(
+                    buy_request.total_budget, progress, testing_ctx
+                )
 
-            # Determine pacing
-            expected_spend = (buy_request.total_budget / total_days) * days_elapsed if total_days > 0 else 0
-            if spend > expected_spend * 1.1:
-                pacing = "ahead"
-            elif spend < expected_spend * 0.9:
-                pacing = "behind"
+                spend = simulated_metrics["spend"]
+                impressions = simulated_metrics["impressions"]
+                status = simulated_metrics["status"]
+
+                # Calculate days based on simulated time
+                days_elapsed = max(0, (simulation_datetime.date() - buy_request.flight_start_date).days)
+                total_days = (buy_request.flight_end_date - buy_request.flight_start_date).days
+
+                # Determine pacing from simulation
+                expected_spend = (buy_request.total_budget / total_days) * days_elapsed if total_days > 0 else 0
+                if spend > expected_spend * 1.1:
+                    pacing = "ahead"
+                elif spend < expected_spend * 0.9:
+                    pacing = "behind"
+                else:
+                    pacing = "on_track"
+
             else:
-                pacing = "on_track"
+                # Normal adapter response processing
+                spend = delivery_response.totals.spend if hasattr(delivery_response, "totals") else 0
+                impressions = delivery_response.totals.impressions if hasattr(delivery_response, "totals") else 0
 
-            # Determine status
-            if req.today < buy_request.flight_start_date:
-                status = "pending_start"
-            elif req.today > buy_request.flight_end_date:
-                status = "completed"
-            else:
-                status = "delivering"
+                # Calculate days elapsed
+                days_elapsed = (req.today - buy_request.flight_start_date).days
+                total_days = (buy_request.flight_end_date - buy_request.flight_start_date).days
+
+                # Determine pacing
+                expected_spend = (buy_request.total_budget / total_days) * days_elapsed if total_days > 0 else 0
+                if spend > expected_spend * 1.1:
+                    pacing = "ahead"
+                elif spend < expected_spend * 0.9:
+                    pacing = "behind"
+                else:
+                    pacing = "on_track"
+
+                # Determine status
+                if req.today < buy_request.flight_start_date:
+                    status = "pending_start"
+                elif req.today > buy_request.flight_end_date:
+                    status = "completed"
+                else:
+                    status = "delivering"
+
+            if status == "delivering" or status == "active":
                 active_count += 1
 
             # Add to deliveries list
@@ -1787,12 +1966,39 @@ def _get_media_buy_delivery_impl(req: GetMediaBuyDeliveryRequest, context: Conte
             console.print(f"[red]Error getting delivery for {media_buy_id}: {e}[/red]")
             # Continue with other media buys
 
+    # Apply testing hooks to response with campaign information
+    campaign_info = None
+    if target_media_buys:
+        # Use the first media buy for campaign timing info
+        first_buy = target_media_buys[0][1]  # (media_buy_id, buy_request)
+        campaign_info = {
+            "start_date": datetime.combine(first_buy.flight_start_date, datetime.min.time()),
+            "end_date": datetime.combine(first_buy.flight_end_date, datetime.min.time()),
+            "total_budget": (
+                first_buy.get_total_budget()
+                if hasattr(first_buy, "get_total_budget")
+                else getattr(first_buy, "total_budget", 0)
+            ),
+        }
+
+    response_data = {
+        "deliveries": [d.model_dump() for d in deliveries],
+        "total_spend": total_spend,
+        "total_impressions": total_impressions,
+        "active_count": active_count,
+        "summary_date": req.today,
+    }
+    response_data = apply_testing_hooks(response_data, testing_ctx, "get_media_buy_delivery", campaign_info)
+
+    # Reconstruct deliveries from modified data
+    modified_deliveries = [MediaBuyDeliveryData(**d) for d in response_data["deliveries"]]
+
     return GetMediaBuyDeliveryResponse(
-        deliveries=deliveries,
-        total_spend=total_spend,
-        total_impressions=total_impressions,
-        active_count=active_count,
-        summary_date=req.today,
+        deliveries=modified_deliveries,
+        total_spend=response_data["total_spend"],
+        total_impressions=response_data["total_impressions"],
+        active_count=response_data["active_count"],
+        summary_date=response_data["summary_date"],
     )
 
 
@@ -2996,6 +3202,20 @@ def get_strategy_manager(context: Context | None) -> StrategyManager:
         raise ToolError("No tenant configuration found")
 
     return StrategyManager(tenant_id=tenant_config.get("tenant_id"), principal_id=principal_id)
+
+
+@mcp.tool
+def testing_control(req: TestingControlRequest, context: Context) -> TestingControlResponse:
+    """Control and manage testing features.
+
+    Supports actions:
+    - create_session: Create new isolated test session
+    - cleanup_session: Clean up test session
+    - list_sessions: List active test sessions
+    - get_capabilities: Get testing capabilities
+    - inspect_context: Inspect current testing context
+    """
+    return handle_testing_control(req, context)
 
 
 @mcp.custom_route("/health", methods=["GET"])
