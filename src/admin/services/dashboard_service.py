@@ -186,58 +186,58 @@ class DashboardService:
 
     def _calculate_estimated_spend(self, media_buy) -> float:
         """Calculate estimated spend based on campaign progress.
-        
+
         For active campaigns, estimate based on days elapsed.
         For completed campaigns, return full budget.
         For pending/draft campaigns, return 0.
         """
         if not media_buy.budget or not media_buy.start_date:
             return 0.0
-        
+
         budget = float(media_buy.budget)
-        
+
         # Return 0 for pending/draft campaigns
-        if media_buy.status in ['pending', 'draft']:
+        if media_buy.status in ["pending", "draft"]:
             return 0.0
-        
+
         # Return full budget for completed campaigns
-        if media_buy.status == 'completed':
+        if media_buy.status == "completed":
             return budget
-        
+
         # For active campaigns, estimate based on elapsed time
-        if media_buy.status == 'active' and media_buy.end_date:
+        if media_buy.status == "active" and media_buy.end_date:
             today = datetime.now(UTC).date()
-            
+
             # If campaign hasn't started yet
             if today < media_buy.start_date:
                 return 0.0
-            
+
             # If campaign is past end date, return full budget
             if today > media_buy.end_date:
                 return budget
-            
+
             # Calculate spend based on elapsed days
             total_days = (media_buy.end_date - media_buy.start_date).days + 1
             elapsed_days = (today - media_buy.start_date).days + 1
-            
+
             if total_days > 0:
                 return budget * (elapsed_days / total_days)
-        
+
         return 0.0
 
     def _format_relative_time(self, timestamp) -> str:
         """Format timestamp as relative time string with timezone handling."""
         if not timestamp:
             return "Unknown"
-        
+
         # Ensure timestamp is timezone-aware
         if timestamp.tzinfo is None:
             # Assume UTC for naive timestamps
             timestamp = timestamp.replace(tzinfo=UTC)
-        
+
         now = datetime.now(UTC)
         delta = now - timestamp
-        
+
         if delta.days > 0:
             if delta.days == 1:
                 return "1 day ago"
@@ -248,15 +248,15 @@ class DashboardService:
                 return f"{weeks} week{'s' if weeks != 1 else ''} ago"
             else:
                 return timestamp.strftime("%Y-%m-%d")
-        
+
         hours = delta.seconds // 3600
         if hours > 0:
             return f"{hours} hour{'s' if hours != 1 else ''} ago"
-        
+
         minutes = delta.seconds // 60
         if minutes > 0:
             return f"{minutes} minute{'s' if minutes != 1 else ''} ago"
-        
+
         return "Just now"
 
     def get_chart_data(self) -> dict[str, list]:

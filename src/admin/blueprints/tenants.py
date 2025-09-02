@@ -80,18 +80,31 @@ def dashboard(tenant_id):
         # Secure error handling - show safe errors to users, log full details
         error_str = str(e).lower()
         sensitive_keywords = [
-            "database", "connection", "password", "secret", "key", "token", 
-            "postgresql", "psycopg2", "sqlalchemy", "alembic", "psql",
-            "host=", "port=", "user=", "dbname=", "sslmode="
+            "database",
+            "connection",
+            "password",
+            "secret",
+            "key",
+            "token",
+            "postgresql",
+            "psycopg2",
+            "sqlalchemy",
+            "alembic",
+            "psql",
+            "host=",
+            "port=",
+            "user=",
+            "dbname=",
+            "sslmode=",
         ]
-        
+
         # Check if error contains sensitive information
         if any(keyword in error_str for keyword in sensitive_keywords):
             flash("Dashboard temporarily unavailable - please contact administrator", "error")
         else:
             # Safe to show user-friendly errors (validation, not found, etc.)
             flash(f"Dashboard Error: {str(e)}", "error")
-        
+
         # Always log full details for debugging (only visible to administrators)
         logger.error(f"Dashboard traceback: {error_detail}")
         return redirect(url_for("core.index"))
