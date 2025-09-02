@@ -529,13 +529,26 @@ def log_tool_activity(context: Context, tool_name: str, start_time: float = None
         if start_time:
             response_time_ms = int((time.time() - start_time) * 1000)
 
-        # Log to activity feed
+        # Log to activity feed (for WebSocket real-time updates)
         activity_feed.log_api_call(
             tenant_id=tenant["tenant_id"],
             principal_name=principal_name,
             method=tool_name,
             status_code=200,
             response_time_ms=response_time_ms,
+        )
+
+        # Also log to audit logs (for persistent dashboard activity feed)
+        audit_logger = get_audit_logger("MCP", tenant["tenant_id"])
+        details = {"tool": tool_name, "status": "success"}
+        if response_time_ms:
+            details["response_time_ms"] = response_time_ms
+
+        audit_logger.log_operation(
+            operation=tool_name,
+            principal_name=principal_name,
+            success=True,
+            details=details,
         )
     except Exception as e:
         # Don't let activity logging break the main flow

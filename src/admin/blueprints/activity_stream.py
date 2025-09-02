@@ -93,6 +93,19 @@ def format_activity_from_audit_log(audit_log: AuditLog) -> dict:
         full_details["task_details"] = parsed_details.get("details", {})
         action_required = True
 
+    elif adapter_name == "A2A" or audit_log.operation.startswith("A2A."):
+        # Handle A2A operations with rich details
+        details["primary"] = "🔄 A2A Protocol"
+        if parsed_details.get("query"):
+            details["secondary"] = (
+                f'Query: "{parsed_details["query"][:60]}..."'
+                if len(parsed_details.get("query", "")) > 60
+                else f'Query: "{parsed_details.get("query")}"'
+            )
+
+        # Include all A2A details for expansion
+        full_details = parsed_details.copy()  # Show all A2A details when expanded
+
     elif not audit_log.success:
         details["primary"] = "❌ Failed"
         if audit_log.error_message:
