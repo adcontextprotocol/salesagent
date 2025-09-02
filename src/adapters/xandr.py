@@ -4,7 +4,6 @@ Xandr (Microsoft Monetize) adapter for AdCP.
 Implements the AdServerAdapter interface for Microsoft's Xandr platform.
 """
 
-import json
 import logging
 from datetime import UTC, datetime, timedelta
 from typing import Any

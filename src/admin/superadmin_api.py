@@ -65,8 +65,9 @@ def health_check():
 @require_superadmin_api_key
 def list_tenants():
     """List all tenants."""
-    from src.core.database.models import AdapterConfig
     from sqlalchemy import func
+
+    from src.core.database.models import AdapterConfig
 
     with get_db_session() as db_session:
         try:
