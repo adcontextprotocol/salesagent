@@ -141,12 +141,12 @@ class TestAdCPSchemaCompliance:
     ):
         """Test get-products operation compliance."""
 
-        # Test various valid request patterns
+        # Test various valid request patterns per AdCP schema
         valid_requests = [
-            {},  # Empty request (all optional)
-            {"brief": "display advertising"},
+            {"promoted_offering": "eco-friendly products"},  # Minimal valid request (promoted_offering required)
+            {"brief": "display advertising", "promoted_offering": "eco-friendly products"},
             {"brief": "video ads", "promoted_offering": "premium video"},
-            {"targeting_requirements": {"geo_country": ["US"], "device_type": ["mobile"]}},
+            {"promoted_offering": "mobile apps", "filters": {"format_types": ["video"], "is_fixed_price": True}},
         ]
 
         for i, request in enumerate(valid_requests):
@@ -154,11 +154,12 @@ class TestAdCPSchemaCompliance:
                 await schema_validator.validate_request("get-products", request)
                 compliance_report.add_result("get-products", f"request-{i+1}", "pass", "Valid request structure")
             except SchemaValidationError as e:
-                compliance_report.add_result("get-products", f"request-{i+1}", "fail", str(e))
+                error_details = f"{str(e)} | Errors: {'; '.join(e.validation_errors)}"
+                compliance_report.add_result("get-products", f"request-{i+1}", "fail", error_details)
             except Exception as e:
                 compliance_report.add_result("get-products", f"request-{i+1}", "warning", f"Validation error: {e}")
 
-        # Test valid response patterns
+        # Test valid response patterns per AdCP schema (only 'products' field allowed)
         valid_responses = [
             {"products": []},  # Minimal valid response
             {
@@ -168,21 +169,20 @@ class TestAdCPSchemaCompliance:
                         "name": "Test Product",
                         "description": "Test description",
                         "formats": [{"format_id": "display_300x250", "name": "Rectangle", "type": "display"}],
+                        "delivery_type": "guaranteed",
+                        "is_fixed_price": True,
                     }
                 ],
-                "message": "Found 1 matching product",
             },
         ]
 
-        for i, _response in enumerate(valid_responses):
+        for i, response in enumerate(valid_responses):
             try:
-                # For now, skip validation due to reference resolution issues
-                # await schema_validator.validate_response("get-products", response)
-                compliance_report.add_result(
-                    "get-products", f"response-{i+1}", "warning", "Skipped due to reference resolution"
-                )
+                await schema_validator.validate_response("get-products", response)
+                compliance_report.add_result("get-products", f"response-{i+1}", "pass", "Valid response structure")
             except SchemaValidationError as e:
-                compliance_report.add_result("get-products", f"response-{i+1}", "fail", str(e))
+                error_details = f"{str(e)} | Errors: {'; '.join(e.validation_errors)}"
+                compliance_report.add_result("get-products", f"response-{i+1}", "fail", error_details)
             except Exception as e:
                 compliance_report.add_result("get-products", f"response-{i+1}", "warning", f"Validation error: {e}")
 
@@ -192,7 +192,7 @@ class TestAdCPSchemaCompliance:
     ):
         """Test create-media-buy operation compliance."""
 
-        # Valid request structure
+        # Valid request structure per AdCP schema
         valid_request = {
             "product_ids": ["product-1"],
             "total_budget": 1000.0,

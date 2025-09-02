@@ -75,7 +75,6 @@ from src.core.schemas import (
     CreativeAssignment,
     CreativeGroup,
     CreativeStatus,
-    Error,
     GetAllMediaBuyDeliveryRequest,
     GetAllMediaBuyDeliveryResponse,
     GetCreativesRequest,
@@ -635,12 +634,8 @@ async def get_products(req: GetProductsRequest, context: Context) -> GetProducts
     if policy_result.status == PolicyStatus.BLOCKED:
         # Always block if policy says blocked
         logger.warning(f"Brief blocked by policy: {policy_result.reason}")
-        return GetProductsResponse(
-            products=[],
-            message="No products available due to policy restrictions",
-            context_id=context.meta.get("headers", {}).get("x-context-id") if hasattr(context, "meta") else None,
-            errors=[Error(code="POLICY_BLOCKED", message=policy_result.reason)],
-        )
+        # Return empty products list per AdCP spec (errors handled at transport layer)
+        return GetProductsResponse(products=[])
 
     # If restricted and manual review is required, create a task
     if policy_result.status == PolicyStatus.RESTRICTED and policy_settings.get("require_manual_review", False):

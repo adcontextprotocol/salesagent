@@ -101,7 +101,19 @@ class AdCPSchemaValidator:
         """Get local cache path for a schema reference."""
         # Convert schema reference to safe filename
         safe_name = schema_ref.replace("/", "_").replace(".", "_") + ".json"
-        return self.cache_dir / safe_name
+
+        # Try main cache directory first
+        main_cache_path = self.cache_dir / safe_name
+        if main_cache_path.exists():
+            return main_cache_path
+
+        # Try cache subdirectory (legacy location)
+        cache_subdir_path = self.cache_dir / "cache" / safe_name
+        if cache_subdir_path.exists():
+            return cache_subdir_path
+
+        # Return main path for new files
+        return main_cache_path
 
     def _is_cache_valid(self, cache_path: Path, max_age_hours: int = 24) -> bool:
         """Check if cached schema is still valid."""
@@ -230,9 +242,9 @@ class AdCPSchemaValidator:
                 pass
 
         # If not in cache, we can't resolve it synchronously
-        # Return a minimal schema that won't cause validation to fail
-        print(f"Warning: Could not resolve schema reference {url} - using permissive fallback")
-        return {"type": "object", "additionalProperties": True}
+        # Use a strict schema instead of permissive one to catch more validation issues
+        print(f"Warning: Could not resolve schema reference {url} - using strict fallback")
+        return {"type": "object", "additionalProperties": False, "properties": {}}
 
     def _resolve_http_schema_ref(self, url: str) -> dict[str, Any]:
         """Resolve HTTP schema reference synchronously."""
@@ -242,9 +254,9 @@ class AdCPSchemaValidator:
             path_part = url.split("adcontextprotocol.org")[-1]
             return self._resolve_adcp_schema_ref(path_part)
 
-        # Unknown HTTP reference - use permissive fallback
-        print(f"Warning: Could not resolve HTTP schema reference {url} - using permissive fallback")
-        return {"type": "object", "additionalProperties": True}
+        # Unknown HTTP reference - use strict fallback
+        print(f"Warning: Could not resolve HTTP schema reference {url} - using strict fallback")
+        return {"type": "object", "additionalProperties": False, "properties": {}}
 
     async def _find_schema_ref_for_task(self, task_name: str, request_or_response: str) -> str | None:
         """Find the schema reference for a specific task and type."""
@@ -292,9 +304,12 @@ class AdCPSchemaValidator:
         """
         Validate a response against AdCP schema.
 
+        This method understands protocol layering - it will extract the AdCP payload
+        from MCP/A2A wrapper fields and validate only the payload against the schema.
+
         Args:
             task_name: Name of the AdCP task (e.g., "get-products")
-            response_data: The response data to validate
+            response_data: The response data to validate (may include protocol wrapper fields)
 
         Raises:
             SchemaValidationError: If validation fails
@@ -305,10 +320,50 @@ class AdCPSchemaValidator:
             print(f"Warning: No response schema found for task '{task_name}'")
             return
 
+        # Extract AdCP payload from protocol wrapper if present
+        adcp_payload = self._extract_adcp_payload(response_data)
+
         # Preload any referenced schemas before validation
         await self._preload_schema_references(schema_ref)
 
-        await self._validate_against_schema(schema_ref, response_data, f"{task_name} response")
+        await self._validate_against_schema(schema_ref, adcp_payload, f"{task_name} response")
+
+    def _extract_adcp_payload(self, response_data: dict[str, Any]) -> dict[str, Any]:
+        """
+        Extract the AdCP payload from protocol wrapper fields.
+
+        MCP and A2A protocols may add wrapper fields like:
+        - message: Human-readable message from the transport layer
+        - context_id: Session continuity identifier
+        - errors: Transport-layer errors (not part of AdCP spec)
+        - clarification_needed: Non-spec field that should be removed
+
+        This method removes these protocol-layer fields and returns only
+        the AdCP payload for validation.
+
+        Args:
+            response_data: The full response including protocol wrapper fields
+
+        Returns:
+            The AdCP payload with protocol-layer fields removed
+        """
+        # List of known protocol-layer fields that are not part of AdCP spec
+        protocol_fields = {
+            "message",  # MCP/A2A transport layer message
+            "context_id",  # MCP session continuity
+            "clarification_needed",  # Non-spec field
+            "errors",  # Transport-layer errors (not in AdCP spec)
+            # Note: Some AdCP responses do have "error" fields defined in spec,
+            # but "errors" (plural) is typically a transport-layer addition
+        }
+
+        # Create a copy of the response without protocol fields
+        adcp_payload = {}
+        for key, value in response_data.items():
+            if key not in protocol_fields:
+                adcp_payload[key] = value
+
+        return adcp_payload
 
     async def _preload_schema_references(self, schema_ref: str) -> None:
         """Preload all schemas referenced by the given schema."""
@@ -382,6 +437,9 @@ class AdCPSchemaValidator:
 
         except SchemaDownloadError:
             # Re-raise schema download errors
+            raise
+        except SchemaValidationError:
+            # Re-raise schema validation errors without wrapping them
             raise
         except Exception as e:
             raise SchemaValidationError(f"Unexpected error validating {context}: {e}", [str(e)])

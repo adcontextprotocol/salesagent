@@ -259,13 +259,13 @@ class Error(BaseModel):
 
 
 class GetProductsResponse(BaseModel):
-    """AdCP spec compliant response for get_products."""
+    """AdCP spec compliant response for get_products.
+
+    Per AdCP specification, only contains the products field.
+    Protocol-layer fields (message, context_id) are added by MCP/A2A transport.
+    """
 
     products: list[Product]
-    message: str | None = Field(None, description="Human-readable summary of the response")
-    context_id: str | None = Field(None, description="Session continuity identifier")
-    clarification_needed: bool | None = Field(None, description="Whether clarification is needed")
-    errors: list[Error] | None = Field(None, description="Non-fatal warnings")
 
     def model_dump(self, **kwargs):
         """Override to ensure products exclude implementation_config."""
@@ -279,11 +279,13 @@ class GetProductsResponse(BaseModel):
 
 
 class ListCreativeFormatsResponse(BaseModel):
-    """Response for list_creative_formats (AdCP spec compliant)."""
+    """Response for list_creative_formats (AdCP spec compliant).
+
+    Per AdCP specification, only contains the formats field.
+    Protocol-layer fields (message, context_id) are added by MCP/A2A transport.
+    """
 
     formats: list[Format]
-    message: str | None = Field(None, description="Human-readable summary of available formats")
-    context_id: str | None = Field(None, description="Session continuity identifier")
 
 
 # --- Creative Lifecycle ---
