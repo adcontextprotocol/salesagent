@@ -522,7 +522,7 @@
     <!-- Activity Feed -->
     <div class="activity-feed">
         <div class="activity-header">
-            <h3>Workflow Activity</h3>
+            <h3>Recent Activity</h3>
             <div class="activity-status">
                 <span class="status-dot active"></span>
                 <span id="connection-status">Connected</span>
@@ -532,32 +532,33 @@
         <div class="activity-list" id="activity-list">
             <!-- Show recent workflow activity -->
             {% if metrics.recent_activity %}
-                {% for step in metrics.recent_activity %}
-                    <div class="activity-item {{ 'action-required' if step.status == 'requires_approval' else 'info' }}">
-                        <div style="padding: 0.75rem; display: flex; justify-content: between; align-items: center;">
+                {% for activity in metrics.recent_activity %}
+                    <div class="activity-item {{ activity.type if activity.type else 'info' }} {{ 'action-required' if activity.action_required else '' }}">
+                        <div style="padding: 0.75rem; display: flex; justify-content: space-between; align-items: center;">
                             <div style="flex: 1;">
                                 <div style="font-weight: 600; margin-bottom: 0.25rem;">
-                                    {% if step.step_type == 'approval' %}
-                                        <i class="fas fa-hand-paper" style="color: #f59e0b; margin-right: 0.5rem;"></i>
-                                        {{ step.step_type|title }} Required
-                                    {% elif step.status == 'completed' %}
-                                        <i class="fas fa-check-circle" style="color: #10b981; margin-right: 0.5rem;"></i>
-                                        {{ step.step_type|title }} Completed
-                                    {% elif step.status == 'failed' %}
+                                    {% if activity.success == false %}
                                         <i class="fas fa-times-circle" style="color: #ef4444; margin-right: 0.5rem;"></i>
-                                        {{ step.step_type|title }} Failed
+                                    {% elif activity.operation.startswith('A2A.') %}
+                                        <i class="fas fa-exchange-alt" style="color: #3b82f6; margin-right: 0.5rem;"></i>
+                                    {% elif activity.operation in ['get_products', 'create_media_buy', 'check_media_buy_status'] %}
+                                        <i class="fas fa-shopping-cart" style="color: #10b981; margin-right: 0.5rem;"></i>
+                                    {% elif activity.operation == 'policy_check' %}
+                                        <i class="fas fa-shield-alt" style="color: #f59e0b; margin-right: 0.5rem;"></i>
                                     {% else %}
-                                        <i class="fas fa-cog fa-spin" style="color: #6b7280; margin-right: 0.5rem;"></i>
-                                        {{ step.step_type|title }} {{ step.status|title }}
+                                        <i class="fas fa-cog" style="color: #6b7280; margin-right: 0.5rem;"></i>
                                     {% endif %}
+                                    {{ activity.operation }}
                                 </div>
                                 <div style="color: #6b7280; font-size: 0.875rem;">
-                                    {% if step.tool_name %}Tool: {{ step.tool_name }}{% endif %}
-                                    {% if step.assigned_to %} • Assigned to: {{ step.assigned_to }}{% endif %}
+                                    by {{ activity.principal_name or 'System' }}
+                                    {% if activity.success == false %}
+                                        <span style="color: #ef4444;">• Failed</span>
+                                    {% endif %}
                                 </div>
                             </div>
                             <div style="color: #9ca3af; font-size: 0.75rem; text-align: right;">
-                                {{ step.created_at.strftime('%H:%M') if step.created_at else 'Unknown' }}
+                                {{ activity.time_relative }}
                             </div>
                         </div>
                     </div>
@@ -565,14 +566,14 @@
             {% else %}
                 <div class="activity-item info" style="text-align: center; padding: 2rem; color: #6b7280;">
                     <i class="fas fa-stream" style="font-size: 2rem; margin-bottom: 1rem; opacity: 0.5;"></i>
-                    <p>No recent workflow activity</p>
-                    <p style="font-size: 0.875rem;">Workflow steps will appear here as they're processed</p>
+                    <p>Loading recent activities...</p>
+                    <p style="font-size: 0.875rem;">API calls and operations will appear here</p>
                 </div>
             {% endif %}
         </div>
 
         <div style="text-align: center; padding: 1rem; border-top: 1px solid #e5e7eb;">
-            <small style="color: #6b7280;">Showing recent workflow steps • Live updates via SSE</small>
+            <small style="color: #6b7280;">Showing recent activity • Live updates every 5 seconds</small>
         </div>
     </div>
 
