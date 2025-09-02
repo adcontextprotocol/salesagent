@@ -678,6 +678,44 @@ fly secrets set GEMINI_API_KEY="your-key" --app adcp-sales-agent
 ADMIN_UI_PORT=8001  # Change from 8052 or other conflicting port
 ```
 
+## Schema Validation
+
+The project includes AdCP protocol schema validation for compliance testing:
+
+### Features
+- **Automatic validation** of all AdCP protocol requests/responses
+- **Multi-version support** (v1 schemas cached, ready for v2)
+- **Offline validation** for reliable CI without network dependencies
+- **37 cached schemas** (~160KB) for complete protocol coverage
+- **Protocol layering awareness** - correctly handles MCP/A2A wrapper fields
+
+### Protocol Layering
+The validation system understands the distinction between protocol layers:
+
+- **AdCP Application Layer**: The actual data payload defined by AdCP schemas (e.g., `products` field for get_products)
+- **MCP/A2A Transport Layer**: Protocol wrapper fields added by transport protocols (e.g., `message`, `context_id`)
+
+**Server Compliance**: Response models now strictly follow AdCP spec, containing only spec-defined fields. Transport-layer concerns are handled by FastMCP/A2A protocols.
+
+**Validation Intelligence**: The validator automatically extracts the AdCP payload from protocol wrappers before validation, ensuring:
+- Server responses are strictly AdCP-compliant (no extra fields)
+- MCP/A2A can add transport metadata without breaking validation
+- Clear separation between application and transport layers
+
+### Usage
+```bash
+# Run schema compliance tests
+uv run pytest tests/e2e/test_adcp_schema_compliance.py -v
+
+# E2E tests with automatic validation (default)
+uv run pytest tests/e2e/test_adcp_full_lifecycle.py -v
+```
+
+### Schema Management
+- **Location**: `tests/e2e/schemas/v1/` (checked into git)
+- **Update**: Manual updates when AdCP specification changes
+- **Versions**: Currently v1, structured for future v2+ support
+
 ## Support
 
 For issues or questions:

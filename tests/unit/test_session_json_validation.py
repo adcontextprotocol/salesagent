@@ -387,7 +387,7 @@ class TestIntegration:
             p = session.query(Product).filter_by(product_id="prod_1").first()
             assert p is not None
             assert len(p.formats) == 1
-            assert p.formats[0]["type"] == "display"
+            assert p.formats[0] == "display_300x250"  # Format now stored as string ID
             assert p.targeting_template["geo_targets"] == ["US", "CA"]
 
             # Check principal

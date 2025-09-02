@@ -164,7 +164,7 @@ class JSONValidatorMixin:
 
     @validates("formats")
     def validate_formats(self, key, value):
-        """Validate formats field is a list of proper format objects."""
+        """Validate formats field is a list of format IDs (strings)."""
         if value is None:
             return []
 
@@ -180,17 +180,18 @@ class JSONValidatorMixin:
         validated_formats = []
         for fmt in value:
             if isinstance(fmt, dict):
-                # Validate and normalize using Pydantic
-                validated = CreativeFormatModel(**fmt)
-                validated_formats.append(validated.model_dump(mode="json"))
+                # Legacy: Extract format_id from Format object for backward compatibility
+                format_id = fmt.get("format_id", "unknown")
+                if not format_id or format_id == "unknown":
+                    raise ValueError("Format object must have a valid format_id")
+                validated_formats.append(format_id)
             elif isinstance(fmt, str):
-                # Accept simple format IDs as strings for backward compatibility
-                # Create a minimal format object
-                validated_formats.append(
-                    {"format_id": fmt, "name": fmt, "type": "display"}  # Use ID as name fallback  # Default type
-                )
+                # Current approach: Store format IDs as strings
+                if not fmt.strip():
+                    raise ValueError("Format ID cannot be empty")
+                validated_formats.append(fmt.strip())
             else:
-                raise ValueError("Each format must be a dictionary or string")
+                raise ValueError("Each format must be a dictionary (legacy) or string (current)")
 
         return validated_formats
 
