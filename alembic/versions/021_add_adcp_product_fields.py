@@ -7,6 +7,7 @@ Create Date: 2025-09-02 17:20:00.000000
 This migration was expected by production but missing from fix-prod branch.
 Creating as a stub migration to fix the broken chain.
 """
+
 from typing import Sequence, Union
 
 from alembic import op
@@ -22,7 +23,7 @@ depends_on: Union[str, Sequence[str], None] = None
 
 def upgrade() -> None:
     """Stub upgrade - no changes needed.
-    
+
     This migration exists only to fix the broken alembic chain.
     The actual AdCP v2.4 product fields were already added in previous migrations.
     """
