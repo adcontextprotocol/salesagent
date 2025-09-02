@@ -75,6 +75,7 @@ from src.core.schemas import (
     CreativeAssignment,
     CreativeGroup,
     CreativeStatus,
+    Error,
     GetAllMediaBuyDeliveryRequest,
     GetAllMediaBuyDeliveryResponse,
     GetCreativesRequest,
@@ -90,6 +91,7 @@ from src.core.schemas import (
     GetTargetingCapabilitiesRequest,
     GetTargetingCapabilitiesResponse,
     LegacyUpdateMediaBuyRequest,
+    ListCreativeFormatsResponse,
     MediaBuyDeliveryData,
     MediaPackage,
     PackagePerformance,
@@ -633,7 +635,12 @@ async def get_products(req: GetProductsRequest, context: Context) -> GetProducts
     if policy_result.status == PolicyStatus.BLOCKED:
         # Always block if policy says blocked
         logger.warning(f"Brief blocked by policy: {policy_result.reason}")
-        return GetProductsResponse(products=[])
+        return GetProductsResponse(
+            products=[],
+            message="No products available due to policy restrictions",
+            context_id=context.meta.get("headers", {}).get("x-context-id") if hasattr(context, "meta") else None,
+            errors=[Error(code="POLICY_BLOCKED", message=policy_result.reason)],
+        )
 
     # If restricted and manual review is required, create a task
     if policy_result.status == PolicyStatus.RESTRICTED and policy_settings.get("require_manual_review", False):
@@ -665,7 +672,12 @@ async def get_products(req: GetProductsRequest, context: Context) -> GetProducts
         logger.info(f"Created policy review task {task_id} for restricted brief")
 
         # Return empty list with message about pending review
-        return GetProductsResponse(products=[])
+        return GetProductsResponse(
+            products=[],
+            message="Request pending manual review due to policy restrictions",
+            context_id=context.meta.get("headers", {}).get("x-context-id") if hasattr(context, "meta") else None,
+            clarification_needed=True,
+        )
 
     # Get the product catalog provider for this tenant
     provider = await get_product_catalog_provider(
@@ -704,7 +716,85 @@ async def get_products(req: GetProductsRequest, context: Context) -> GetProducts
     # Log activity
     log_tool_activity(context, "get_products", start_time)
 
-    return GetProductsResponse(products=modified_products)
+    return GetProductsResponse(
+        products=modified_products,
+        message=f"Found {len(modified_products)} matching products",
+        context_id=context.meta.get("headers", {}).get("x-context-id") if hasattr(context, "meta") else None,
+    )
+
+
+@mcp.tool
+def list_creative_formats(context: Context) -> ListCreativeFormatsResponse:
+    """List all available creative formats (AdCP spec endpoint)."""
+    start_time = time.time()
+
+    # Authentication
+    principal_id = _get_principal_id_from_context(context)
+
+    # Get tenant information
+    tenant = get_current_tenant()
+    if not tenant:
+        raise ToolError("No tenant context available")
+
+    # Query database for formats
+    with get_db_session() as session:
+        from src.core.database.models import CreativeFormat
+        from src.core.schemas import AssetRequirement, Format
+
+        # Get formats for this tenant (or global formats)
+        db_formats = (
+            session.query(CreativeFormat)
+            .filter(
+                (CreativeFormat.tenant_id == tenant["tenant_id"])
+                | (CreativeFormat.tenant_id.is_(None))  # Global formats
+            )
+            .all()
+        )
+
+        formats = []
+        for db_format in db_formats:
+            # Convert database model to schema format
+            assets_required = []
+            if db_format.specs and isinstance(db_format.specs, dict):
+                # Convert old specs format to new assets_required format
+                if "assets" in db_format.specs:
+                    for asset in db_format.specs["assets"]:
+                        assets_required.append(
+                            AssetRequirement(
+                                asset_type=asset.get("asset_type", "unknown"), quantity=1, requirements=asset
+                            )
+                        )
+
+            format_obj = Format(
+                format_id=db_format.format_id,
+                name=db_format.name,
+                type=db_format.type,
+                is_standard=db_format.is_standard or False,
+                iab_specification=None,  # Not stored in our current schema
+                requirements=db_format.specs or {},
+                assets_required=assets_required if assets_required else None,
+            )
+            formats.append(format_obj)
+
+    # Log the operation
+    audit_logger = get_audit_logger("AdCP", tenant["tenant_id"])
+    audit_logger.log_operation(
+        operation="list_creative_formats",
+        principal_name=principal_id,
+        principal_id=principal_id,
+        adapter_id="N/A",
+        success=True,
+        details={"format_count": len(formats)},
+    )
+
+    # Log activity
+    log_tool_activity(context, "list_creative_formats", start_time)
+
+    return ListCreativeFormatsResponse(
+        formats=formats,
+        message=f"Found {len(formats)} available creative formats",
+        context_id=context.meta.get("headers", {}).get("x-context-id") if hasattr(context, "meta") else None,
+    )
 
 
 @mcp.tool

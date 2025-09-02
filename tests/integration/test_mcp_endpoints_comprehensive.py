@@ -104,7 +104,6 @@ class TestMCPEndpointsComprehensive:
                     targeting_template={"content_category": {"values": ["sports"], "required": True}},
                     delivery_type="non_guaranteed",
                     is_fixed_price=False,
-                    price_guidance={"floor": 15.0, "p50": 20.0, "p75": 25.0},
                     is_custom=False,
                     countries=["US"],
                 ),
@@ -158,8 +157,9 @@ class TestMCPEndpointsComprehensive:
                 assert "delivery_type" in product
                 assert product["delivery_type"] in ["guaranteed", "non_guaranteed"]
                 assert "is_fixed_price" in product
-                # Either cpm or price_guidance should be present
-                assert "cpm" in product or "price_guidance" in product
+                # cpm should be present for fixed-price products
+                if product["is_fixed_price"]:
+                    assert "cpm" in product
 
     @pytest.mark.requires_server
     async def test_get_products_filtering(self, mcp_client):
@@ -208,6 +208,7 @@ class TestMCPEndpointsComprehensive:
             total_budget=5000.0,
             start_date=date.today(),
             end_date=date.today() + timedelta(days=30),
+            po_number="PO-LEGACY-12345",  # Required per AdCP spec
             targeting_overlay={"geo_country_any_of": ["US"]},
         )
 
@@ -232,6 +233,7 @@ class TestMCPEndpointsComprehensive:
         # Test 2: New v2.4 format should work
         new_request = CreateMediaBuyRequest(
             buyer_ref="custom_ref_123",
+            po_number="PO-V24-67890",  # Required per AdCP spec
             budget=Budget(total=10000.0, currency="EUR", pacing="asap"),
             packages=[
                 Package(buyer_ref="pkg_1", products=["prod_1", "prod_3"], budget=Budget(total=6000.0, currency="EUR")),
@@ -249,6 +251,7 @@ class TestMCPEndpointsComprehensive:
         # Test 3: Mixed format should work (legacy with some new fields)
         mixed_request = CreateMediaBuyRequest(
             buyer_ref="mixed_ref",
+            po_number="PO-MIXED-99999",  # Required per AdCP spec
             product_ids=["prod_1"],
             total_budget=3000.0,
             start_date=date.today(),

@@ -47,12 +47,6 @@ class TargetingCapabilities(BaseModel):
 # Common dimensions across all channels
 COMMON_OVERLAY_DIMENSIONS = [
     TargetingDimension(
-        key="dayparting",
-        display_name="Dayparting",
-        description="Time-based targeting based on user's timezone",
-        data_type="object",
-    ),
-    TargetingDimension(
         key="browser",
         display_name="Browser",
         description="Web browser type and version",
@@ -91,13 +85,6 @@ COMMON_OVERLAY_DIMENSIONS = [
 
 # Additional AEE dimensions (beyond overlay dimensions)
 COMMON_AEE_DIMENSIONS = [
-    TargetingDimension(
-        key="timezone",
-        display_name="Timezone",
-        description="User's timezone for dayparting calculations",
-        data_type="string",
-        required=True,
-    ),
     TargetingDimension(
         key="postal_code", display_name="Postal Code", description="User's postal/ZIP code", data_type="string"
     ),

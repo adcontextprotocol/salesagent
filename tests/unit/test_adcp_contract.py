@@ -92,8 +92,8 @@ class TestAdCPContract:
         assert format_obj.format_id == "display_300x250"
         assert format_obj.type in ["display", "video", "audio", "native"]
 
-    def test_product_with_price_guidance(self):
-        """Test product with price_guidance (non-guaranteed in AdCP)."""
+    def test_product_non_guaranteed(self):
+        """Test non-guaranteed product (AdCP spec compliant - no price_guidance)."""
         model = ProductModel(
             tenant_id="test_tenant",
             product_id="test_ng_product",
@@ -104,21 +104,13 @@ class TestAdCPContract:
                     "format_id": "video_15s",
                     "name": "15 Second Video",
                     "type": "video",
-                    "description": "Video ad format",
                     "duration": 15,
-                    "delivery_options": {"vast": {"mime_types": ["video/mp4"]}},
                 }
             ],
             targeting_template={},
             delivery_type="non_guaranteed",
             is_fixed_price=False,
             cpm=None,
-            price_guidance={
-                "floor": 5.0,
-                "p50": 10.0,
-                "p75": 15.0,
-                "p90": 20.0,
-            },
             is_custom=False,
             expires_at=None,
             countries=["US"],
@@ -133,18 +125,16 @@ class TestAdCPContract:
             "delivery_type": model.delivery_type,
             "is_fixed_price": model.is_fixed_price,
             "cpm": None,
-            "price_guidance": model.price_guidance,
             "is_custom": model.is_custom,
             "expires_at": model.expires_at,
         }
 
         schema = ProductSchema(**model_dict)
 
-        # AdCP requires non_guaranteed products to have price_guidance
+        # AdCP spec: non_guaranteed products use auction-based pricing (no price_guidance)
         assert schema.delivery_type == "non_guaranteed"
-        assert schema.price_guidance is not None
-        assert schema.price_guidance.floor == 5.0
-        assert schema.cpm is None  # Should not have fixed CPM
+        assert schema.is_fixed_price is False
+        assert schema.cpm is None  # No fixed CPM for non-guaranteed
 
     def test_principal_model_to_schema(self):
         """Test that Principal model matches AdCP authentication requirements."""
@@ -200,6 +190,7 @@ class TestAdCPContract:
             total_budget=5000.0,
             start_date=start_date.date(),
             end_date=end_date.date(),
+            po_number="PO-12345",  # Required per AdCP spec
             targeting_overlay={
                 "geo_country_any_of": ["US", "CA"],
                 "device_type_any_of": ["desktop", "mobile"],
@@ -224,34 +215,32 @@ class TestAdCPContract:
             "format_id": "native_feed",
             "name": "Native Feed Ad",
             "type": "native",
-            "description": "Native advertisement in content feed",
-            "delivery_options": {
-                "hosted": {"preview_url": "https://example.com/preview"},
-            },
-            # Assets should follow the correct schema structure
-            "assets": [],  # Native assets are optional
+            "is_standard": True,
+            "iab_specification": "IAB Native Ad Specification",
+            "requirements": {"width": 300, "height": 250},
+            # assets_required follows new AdCP spec structure
+            "assets_required": [{"asset_type": "image", "quantity": 1, "requirements": {"width": 300, "height": 250}}],
         }
 
         format_obj = Format(**format_data)
 
-        # AdCP format requirements
+        # AdCP format requirements (new spec structure)
         assert format_obj.format_id is not None
-        assert format_obj.type in ["display", "video", "audio", "native"]
-        assert format_obj.description is not None
-        assert format_obj.delivery_options is not None
+        assert format_obj.type in ["display", "video", "audio", "native", "dooh"]
+        assert format_obj.is_standard is True
+        assert format_obj.requirements is not None
 
     def test_field_mapping_consistency(self):
         """Test that field names are consistent between models and schemas."""
         # These fields should map correctly
         model_to_schema_mapping = {
-            # Model field -> Schema field
+            # Model field -> Schema field (AdCP spec compliant - no price_guidance)
             "product_id": "product_id",
             "name": "name",
             "description": "description",
             "delivery_type": "delivery_type",  # Must be "guaranteed" or "non_guaranteed"
             "is_fixed_price": "is_fixed_price",
             "cpm": "cpm",
-            "price_guidance": "price_guidance",
             "formats": "formats",
             "is_custom": "is_custom",
             "expires_at": "expires_at",
@@ -339,6 +328,7 @@ class TestAdCPContract:
             total_budget=1000.0,
             start_date=datetime.now().date(),
             end_date=(datetime.now() + timedelta(days=7)).date(),
+            po_number="PO-SIGNAL-TEST",  # Required per AdCP spec
             targeting_overlay={
                 "signals": [
                     "sports_enthusiasts",

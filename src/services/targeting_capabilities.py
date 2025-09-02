@@ -52,8 +52,6 @@ TARGETING_CAPABILITIES: dict[str, TargetingCapability] = {
     "audience_segment": TargetingCapability(
         dimension="audience_segment", access="overlay", description="Third-party audience segments"
     ),
-    # Time targeting - available for overlay
-    "daypart": TargetingCapability(dimension="daypart", access="overlay", description="Day and hour targeting"),
     # Frequency capping - available for overlay
     "frequency_cap": TargetingCapability(
         dimension="frequency_cap", access="overlay", description="Impression frequency limits"
