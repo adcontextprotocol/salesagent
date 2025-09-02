@@ -144,6 +144,32 @@ class Budget(BaseModel):
     pacing: Literal["even", "asap", "daily_budget"] = Field("even", description="Budget pacing strategy")
 
 
+# AdCP Compliance Models
+class Measurement(BaseModel):
+    """Measurement capabilities included with a product per AdCP spec."""
+
+    type: str = Field(
+        ..., description="Type of measurement", examples=["incremental_sales_lift", "brand_lift", "foot_traffic"]
+    )
+    attribution: str = Field(
+        ..., description="Attribution methodology", examples=["deterministic_purchase", "probabilistic"]
+    )
+    window: str | None = Field(None, description="Attribution window", examples=["30_days", "7_days"])
+    reporting: str = Field(
+        ..., description="Reporting frequency and format", examples=["weekly_dashboard", "real_time_api"]
+    )
+
+
+class CreativePolicy(BaseModel):
+    """Creative requirements and restrictions for a product per AdCP spec."""
+
+    co_branding: Literal["required", "optional", "none"] = Field(..., description="Co-branding requirement")
+    landing_page: Literal["any", "retailer_site_only", "must_include_retailer"] = Field(
+        ..., description="Landing page requirements"
+    )
+    templates_available: bool = Field(..., description="Whether creative templates are provided")
+
+
 class Product(BaseModel):
     product_id: str
     name: str
@@ -152,7 +178,13 @@ class Product(BaseModel):
     delivery_type: Literal["guaranteed", "non_guaranteed"]
     is_fixed_price: bool
     cpm: float | None = None
+    min_spend: float | None = Field(None, description="Minimum budget requirement in USD", ge=0)
+    measurement: Measurement | None = Field(None, description="Measurement capabilities included with this product")
+    creative_policy: CreativePolicy | None = Field(None, description="Creative requirements and restrictions")
     is_custom: bool = Field(default=False)
+    brief_relevance: str | None = Field(
+        None, description="Explanation of why this product matches the brief (populated when brief is provided)"
+    )
     expires_at: datetime | None = None
     implementation_config: dict[str, Any] | None = Field(
         default=None,

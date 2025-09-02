@@ -2988,17 +2988,44 @@ def get_product_catalog() -> list[Product]:
                         return value
                 return value
 
+            # Parse formats and ensure they are Format objects
+            formats_data = safe_json_parse(product.formats)
+            formats = []
+            if isinstance(formats_data, list):
+                for fmt in formats_data:
+                    if isinstance(fmt, dict):
+                        # Already a Format object structure
+                        formats.append(Format(**fmt))
+                    elif isinstance(fmt, str):
+                        # Legacy format string - convert to Format object
+                        formats.append(
+                            Format(
+                                format_id=fmt, name=fmt.replace("_", " ").title(), type="display"  # Default assumption
+                            )
+                        )
+
             product_data = {
                 "product_id": product.product_id,
                 "name": product.name,
                 "description": product.description,
-                "formats": safe_json_parse(product.formats),
+                "formats": formats,
                 "delivery_type": product.delivery_type,
                 "is_fixed_price": product.is_fixed_price,
                 "cpm": float(product.cpm) if product.cpm else None,
-                "price_guidance": safe_json_parse(product.price_guidance),
+                "min_spend": float(product.min_spend) if hasattr(product, "min_spend") and product.min_spend else None,
+                "measurement": (
+                    safe_json_parse(product.measurement)
+                    if hasattr(product, "measurement") and product.measurement
+                    else None
+                ),
+                "creative_policy": (
+                    safe_json_parse(product.creative_policy)
+                    if hasattr(product, "creative_policy") and product.creative_policy
+                    else None
+                ),
                 "is_custom": product.is_custom,
-                "countries": safe_json_parse(product.countries),
+                "expires_at": product.expires_at,
+                # Note: brief_relevance is populated dynamically when brief is provided
                 "implementation_config": safe_json_parse(product.implementation_config),
             }
             loaded_products.append(Product(**product_data))
