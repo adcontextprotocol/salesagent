@@ -96,6 +96,10 @@ def admin_client(integration_db):
     admin_app.config["TESTING"] = True
     admin_app.config["SECRET_KEY"] = "test-secret-key"
     admin_app.config["PROPAGATE_EXCEPTIONS"] = True  # Critical for catching template errors
+    admin_app.config["SESSION_COOKIE_PATH"] = "/"  # Allow session cookies for all paths in tests
+    admin_app.config["SESSION_COOKIE_HTTPONLY"] = False  # Allow test client to access cookies
+    admin_app.config["SESSION_COOKIE_SECURE"] = False  # Allow HTTP in tests
+    admin_app.config["WTF_CSRF_ENABLED"] = False  # Disable CSRF for tests
     with admin_app.test_client() as client:
         yield client
 
