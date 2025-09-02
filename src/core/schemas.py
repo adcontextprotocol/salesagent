@@ -259,13 +259,16 @@ class Error(BaseModel):
 
 
 class GetProductsResponse(BaseModel):
-    """AdCP spec compliant response for get_products.
+    """Response for get_products tool.
 
-    Per AdCP specification, only contains the products field.
-    Protocol-layer fields (message, context_id) are added by MCP/A2A transport.
+    Contains both AdCP spec fields (products) and protocol fields for MCP/A2A.
+    The validator extracts only AdCP fields for schema compliance checking.
     """
 
     products: list[Product]
+    message: str | None = None  # Protocol field for human-readable messages
+    context_id: str | None = None  # Protocol field for conversation tracking
+    errors: list[Error] | None = None  # Protocol field for error reporting
 
     def model_dump(self, **kwargs):
         """Override to ensure products exclude implementation_config."""
@@ -279,13 +282,16 @@ class GetProductsResponse(BaseModel):
 
 
 class ListCreativeFormatsResponse(BaseModel):
-    """Response for list_creative_formats (AdCP spec compliant).
+    """Response for list_creative_formats tool.
 
-    Per AdCP specification, only contains the formats field.
-    Protocol-layer fields (message, context_id) are added by MCP/A2A transport.
+    Contains both AdCP spec fields (formats) and protocol fields for MCP/A2A.
+    The validator extracts only AdCP fields for schema compliance checking.
     """
 
     formats: list[Format]
+    message: str | None = None  # Protocol field for human-readable messages
+    context_id: str | None = None  # Protocol field for conversation tracking
+    errors: list[Error] | None = None  # Protocol field for error reporting
 
 
 # --- Creative Lifecycle ---

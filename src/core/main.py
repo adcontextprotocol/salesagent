@@ -671,7 +671,6 @@ async def get_products(req: GetProductsRequest, context: Context) -> GetProducts
             products=[],
             message="Request pending manual review due to policy restrictions",
             context_id=context.meta.get("headers", {}).get("x-context-id") if hasattr(context, "meta") else None,
-            clarification_needed=True,
         )
 
     # Get the product catalog provider for this tenant
