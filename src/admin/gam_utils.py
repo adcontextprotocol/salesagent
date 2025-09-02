@@ -92,13 +92,6 @@ def convert_line_item_to_product_json(line_item, creatives):
                                 countries.add(country_map[location.displayName])
                 product["countries"] = list(countries)
 
-        # Day part targeting
-        if hasattr(targeting, "dayPartTargeting") and targeting.dayPartTargeting:
-            product["targeting_template"]["dayparts"] = {
-                "days": getattr(targeting.dayPartTargeting, "dayOfWeek", []),
-                "hours": getattr(targeting.dayPartTargeting, "startTime", {}),
-            }
-
         # Technology targeting
         if hasattr(targeting, "technologyTargeting") and targeting.technologyTargeting:
             tech = targeting.technologyTargeting

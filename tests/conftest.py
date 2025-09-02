@@ -449,3 +449,18 @@ def benchmark(request):
     # Mark as slow if > 5 seconds
     if duration > 5:
         request.node.add_marker(pytest.mark.slow)
+
+
+# ============================================================================
+# Pytest Hooks
+# ============================================================================
+
+
+def pytest_collection_modifyitems(config, items):
+    """Modify test collection to skip certain tests in CI."""
+    skip_server = pytest.mark.skip(reason="requires_server tests skipped in CI - no MCP server available")
+
+    for item in items:
+        # Skip requires_server tests in CI (when GITHUB_ACTIONS is set)
+        if "requires_server" in item.keywords and os.environ.get("GITHUB_ACTIONS"):
+            item.add_marker(skip_server)

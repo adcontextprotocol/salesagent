@@ -23,30 +23,30 @@ def validate_schemas_py():
         tree = ast.parse(content)
         print("✓ schemas.py has valid Python syntax")
 
-        # Find the Asset class
-        asset_class = None
+        # Find the AssetRequirement class (new AdCP spec structure)
+        asset_requirement_class = None
         format_class = None
 
         for node in ast.walk(tree):
             if isinstance(node, ast.ClassDef):
-                if node.name == "Asset":
-                    asset_class = node
+                if node.name == "AssetRequirement":
+                    asset_requirement_class = node
                 elif node.name == "Format":
                     format_class = node
 
-        if asset_class:
-            print("✓ Found Asset class definition")
-            # Check for required fields
+        if asset_requirement_class:
+            print("✓ Found AssetRequirement class definition (AdCP spec compliant)")
+            # Check for required fields per AdCP spec
             asset_fields = {
                 field.target.id
-                for field in ast.walk(asset_class)
+                for field in ast.walk(asset_requirement_class)
                 if isinstance(field, ast.AnnAssign) and hasattr(field.target, "id")
             }
-            required_fields = {"asset_id", "asset_type", "required"}
+            required_fields = {"asset_type", "quantity"}  # AdCP spec required fields
             if required_fields.issubset(asset_fields):
-                print("✓ Asset class has required fields")
+                print("✓ AssetRequirement class has required AdCP spec fields")
             else:
-                print(f"✗ Asset class missing fields: {required_fields - asset_fields}")
+                print(f"✗ AssetRequirement class missing fields: {required_fields - asset_fields}")
         else:
             print("✗ Asset class not found")
 
