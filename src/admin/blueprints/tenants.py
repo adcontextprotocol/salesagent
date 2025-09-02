@@ -8,7 +8,6 @@
 
 import json
 import logging
-import os
 import secrets
 import uuid
 from datetime import UTC, datetime
@@ -107,12 +106,13 @@ def dashboard(tenant_id):
             # Calculate pending buys
             pending_buys = db_session.query(MediaBuy).filter_by(tenant_id=tenant_id, status="pending").count()
 
-            # Simplified metrics - workflow system metrics removed as we use audit logs only
-            # These were causing production crashes due to missing workflow_steps table
+            # SINGLE DATA SOURCE PATTERN: Use only audit_logs table for dashboard activity
+            # This eliminates dependency on workflow_steps/tasks tables that cause production crashes
+            # All workflow metrics are hardcoded to 0 until unified workflow system is implemented
             pending_steps = 0
             approval_needed = 0
 
-            # Get recent activities from audit logs (for activity feed)
+            # Get recent activities from audit logs (ONLY data source for dashboard)
             from src.admin.blueprints.activity_stream import get_recent_activities
 
             recent_activity = get_recent_activities(tenant_id, limit=10)
@@ -178,11 +178,10 @@ def dashboard(tenant_id):
 
         error_detail = traceback.format_exc()
         logger.error(f"Error loading tenant dashboard: {e}\nFull traceback:\n{error_detail}")
-        # Show more specific error in development/debugging
-        if os.environ.get("DEBUG_ERRORS") == "true":
-            flash(f"Error loading dashboard: {str(e)}", "error")
-        else:
-            flash("Error loading dashboard", "error")
+        # Always show the actual error - no more masking production issues
+        flash(f"Dashboard Error: {str(e)}", "error")
+        # For debugging, also include the traceback in logs
+        logger.error(f"Dashboard traceback: {error_detail}")
         return redirect(url_for("core.index"))
 
 
