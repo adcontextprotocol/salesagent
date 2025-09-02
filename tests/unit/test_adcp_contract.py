@@ -41,17 +41,7 @@ class TestAdCPContract:
             product_id="test_product",
             name="Test Product",
             description="A test product for AdCP protocol",
-            formats=[
-                {
-                    "format_id": "display_300x250",
-                    "name": "Medium Rectangle",
-                    "type": "display",
-                    "description": "Standard display format",
-                    "width": 300,
-                    "height": 250,
-                    "delivery_options": {"hosted": None, "vast": None},
-                }
-            ],
+            formats=["display_300x250"],  # Now stores format IDs as strings
             targeting_template={"geo_country": {"values": ["US", "CA"], "required": False}},
             delivery_type="guaranteed",  # AdCP: guaranteed or non_guaranteed
             is_fixed_price=True,
@@ -63,12 +53,13 @@ class TestAdCPContract:
             implementation_config={"internal": "config"},
         )
 
-        # Convert to dict (simulating database retrieval)
+        # Convert to dict (simulating database retrieval and conversion)
+        # The validator now ensures formats are stored as strings
         model_dict = {
             "product_id": model.product_id,
             "name": model.name,
             "description": model.description,
-            "formats": model.formats,
+            "formats": model.formats,  # Now guaranteed to be strings by validator
             "delivery_type": model.delivery_type,
             "is_fixed_price": model.is_fixed_price,
             "cpm": float(model.cpm) if model.cpm else None,
@@ -87,10 +78,8 @@ class TestAdCPContract:
         assert schema.delivery_type in ["guaranteed", "non_guaranteed"]
         assert len(schema.formats) > 0
 
-        # Verify format structure matches AdCP
-        format_obj = schema.formats[0]
-        assert format_obj.format_id == "display_300x250"
-        assert format_obj.type in ["display", "video", "audio", "native"]
+        # Verify format IDs match AdCP (now strings)
+        assert schema.formats[0] == "display_300x250"
 
     def test_product_non_guaranteed(self):
         """Test non-guaranteed product (AdCP spec compliant - no price_guidance)."""
@@ -99,14 +88,7 @@ class TestAdCPContract:
             product_id="test_ng_product",
             name="Non-Guaranteed Product",
             description="AdCP non-guaranteed product",
-            formats=[
-                {
-                    "format_id": "video_15s",
-                    "name": "15 Second Video",
-                    "type": "video",
-                    "duration": 15,
-                }
-            ],
+            formats=["video_15s"],  # Now stores format IDs as strings
             targeting_template={},
             delivery_type="non_guaranteed",
             is_fixed_price=False,

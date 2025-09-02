@@ -251,7 +251,7 @@ def create_tenant():
             if "UNIQUE constraint failed: tenants.subdomain" in str(e):
                 return jsonify({"error": "Subdomain already exists"}), 409
             logger.error(f"Error creating tenant: {str(e)}")
-            return jsonify({"error": f"Failed to create tenant: {str(e)}"}), 500
+            return jsonify({"error": "Failed to create tenant"}), 500
 
 
 @superadmin_api.route("/tenants/<tenant_id>", methods=["GET"])

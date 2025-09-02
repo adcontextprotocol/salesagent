@@ -30,6 +30,122 @@ class Format(BaseModel):
     )
 
 
+# Format Registry for AdCP Compliance
+# This registry converts format ID strings to Format objects for AdCP protocol responses
+FORMAT_REGISTRY: dict[str, Format] = {
+    # Display Formats
+    "display_300x250": Format(
+        format_id="display_300x250",
+        name="Medium Rectangle",
+        type="display",
+        is_standard=True,
+        iab_specification="IAB Display",
+        requirements={"width": 300, "height": 250},
+    ),
+    "display_728x90": Format(
+        format_id="display_728x90",
+        name="Leaderboard",
+        type="display",
+        is_standard=True,
+        iab_specification="IAB Display",
+        requirements={"width": 728, "height": 90},
+    ),
+    "display_320x50": Format(
+        format_id="display_320x50",
+        name="Mobile Banner",
+        type="display",
+        is_standard=True,
+        iab_specification="IAB Display",
+        requirements={"width": 320, "height": 50},
+    ),
+    "display_300x600": Format(
+        format_id="display_300x600",
+        name="Half Page Ad",
+        type="display",
+        is_standard=True,
+        iab_specification="IAB Display",
+        requirements={"width": 300, "height": 600},
+    ),
+    "display_970x250": Format(
+        format_id="display_970x250",
+        name="Billboard",
+        type="display",
+        is_standard=True,
+        iab_specification="IAB Display",
+        requirements={"width": 970, "height": 250},
+    ),
+    "display_970x90": Format(
+        format_id="display_970x90",
+        name="Super Leaderboard",
+        type="display",
+        is_standard=True,
+        iab_specification="IAB Display",
+        requirements={"width": 970, "height": 90},
+    ),
+    # Video Formats
+    "video_640x360": Format(
+        format_id="video_640x360",
+        name="Video 360p",
+        type="video",
+        is_standard=True,
+        iab_specification="VAST",
+        requirements={"width": 640, "height": 360, "duration_max": 30},
+    ),
+    "video_1280x720": Format(
+        format_id="video_1280x720",
+        name="Video 720p",
+        type="video",
+        is_standard=True,
+        iab_specification="VAST",
+        requirements={"width": 1280, "height": 720, "duration_max": 30},
+    ),
+    # Audio Formats
+    "audio_30s": Format(
+        format_id="audio_30s",
+        name="Audio 30 Second",
+        type="audio",
+        is_standard=True,
+        iab_specification="DAAST",
+        requirements={"duration": 30, "bitrate_min": 128},
+    ),
+    # Native Formats
+    "native_article": Format(
+        format_id="native_article",
+        name="Native Article",
+        type="native",
+        is_standard=True,
+        iab_specification="OpenRTB Native",
+        requirements={"title_length": 25, "description_length": 90},
+    ),
+}
+
+
+def get_format_by_id(format_id: str) -> Format | None:
+    """Get a Format object by its ID."""
+    return FORMAT_REGISTRY.get(format_id)
+
+
+def convert_format_ids_to_formats(format_ids: list[str]) -> list[Format]:
+    """Convert a list of format ID strings to Format objects.
+
+    This function is used to ensure AdCP schema compliance by converting
+    internal format ID representations to full Format objects.
+    """
+    formats = []
+    for format_id in format_ids:
+        format_obj = get_format_by_id(format_id)
+        if format_obj:
+            formats.append(format_obj)
+        else:
+            # For unknown format IDs, create a minimal Format object
+            formats.append(
+                Format(
+                    format_id=format_id, name=format_id.replace("_", " ").title(), type="display"  # Default to display
+                )
+            )
+    return formats
+
+
 class FrequencyCap(BaseModel):
     """Simple frequency capping configuration.
 
@@ -144,15 +260,47 @@ class Budget(BaseModel):
     pacing: Literal["even", "asap", "daily_budget"] = Field("even", description="Budget pacing strategy")
 
 
+# AdCP Compliance Models
+class Measurement(BaseModel):
+    """Measurement capabilities included with a product per AdCP spec."""
+
+    type: str = Field(
+        ..., description="Type of measurement", examples=["incremental_sales_lift", "brand_lift", "foot_traffic"]
+    )
+    attribution: str = Field(
+        ..., description="Attribution methodology", examples=["deterministic_purchase", "probabilistic"]
+    )
+    window: str | None = Field(None, description="Attribution window", examples=["30_days", "7_days"])
+    reporting: str = Field(
+        ..., description="Reporting frequency and format", examples=["weekly_dashboard", "real_time_api"]
+    )
+
+
+class CreativePolicy(BaseModel):
+    """Creative requirements and restrictions for a product per AdCP spec."""
+
+    co_branding: Literal["required", "optional", "none"] = Field(..., description="Co-branding requirement")
+    landing_page: Literal["any", "retailer_site_only", "must_include_retailer"] = Field(
+        ..., description="Landing page requirements"
+    )
+    templates_available: bool = Field(..., description="Whether creative templates are provided")
+
+
 class Product(BaseModel):
     product_id: str
     name: str
     description: str
-    formats: list[Format]
+    formats: list[str]  # Format IDs per updated AdCP spec
     delivery_type: Literal["guaranteed", "non_guaranteed"]
     is_fixed_price: bool
     cpm: float | None = None
+    min_spend: float | None = Field(None, description="Minimum budget requirement in USD", ge=0)
+    measurement: Measurement | None = Field(None, description="Measurement capabilities included with this product")
+    creative_policy: CreativePolicy | None = Field(None, description="Creative requirements and restrictions")
     is_custom: bool = Field(default=False)
+    brief_relevance: str | None = Field(
+        None, description="Explanation of why this product matches the brief (populated when brief is provided)"
+    )
     expires_at: datetime | None = None
     implementation_config: dict[str, Any] | None = Field(
         default=None,
@@ -165,6 +313,16 @@ class Product(BaseModel):
         if isinstance(kwargs["exclude"], set):
             kwargs["exclude"].add("implementation_config")
         return super().model_dump(**kwargs)
+
+    def model_dump_adcp_compliant(self, **kwargs):
+        """Return model dump with Format objects for AdCP schema compliance."""
+        data = self.model_dump(**kwargs)
+
+        # Convert format IDs to Format objects for AdCP schema compliance
+        if "formats" in data:
+            data["formats"] = [fmt.model_dump() for fmt in convert_format_ids_to_formats(data["formats"])]
+
+        return data
 
     def dict(self, **kwargs):
         """Override dict to always exclude implementation_config (for backward compat)."""
@@ -259,31 +417,59 @@ class Error(BaseModel):
 
 
 class GetProductsResponse(BaseModel):
-    """AdCP spec compliant response for get_products."""
+    """Response for get_products tool.
+
+    Now only contains AdCP spec fields. Context management is handled
+    automatically by the MCP wrapper at the protocol layer.
+    """
 
     products: list[Product]
-    message: str | None = Field(None, description="Human-readable summary of the response")
-    context_id: str | None = Field(None, description="Session continuity identifier")
-    clarification_needed: bool | None = Field(None, description="Whether clarification is needed")
-    errors: list[Error] | None = Field(None, description="Non-fatal warnings")
+    message: str | None = None  # Optional human-readable message
+    errors: list[Error] | None = None  # Optional error reporting
 
     def model_dump(self, **kwargs):
-        """Override to ensure products exclude implementation_config."""
+        """Override to ensure products exclude implementation_config and convert formats for AdCP compliance."""
         data = super().model_dump(**kwargs)
-        # Ensure each product excludes implementation_config
+        # Ensure each product excludes implementation_config and converts formats to Format objects
         if "products" in data:
             for product in data["products"]:
                 if "implementation_config" in product:
                     del product["implementation_config"]
+                # Convert format IDs to Format objects for AdCP schema compliance
+                if "formats" in product and isinstance(product["formats"], list):
+                    format_objects = []
+                    for format_id in product["formats"]:
+                        if isinstance(format_id, str):
+                            format_obj = get_format_by_id(format_id)
+                            if format_obj:
+                                format_objects.append(format_obj.model_dump())
+                            else:
+                                # Create minimal Format object for unknown format IDs
+                                format_objects.append(
+                                    {
+                                        "format_id": format_id,
+                                        "name": format_id.replace("_", " ").title(),
+                                        "type": "display",
+                                    }
+                                )
+                        else:
+                            # Already a format object
+                            format_objects.append(format_id)
+                    product["formats"] = format_objects
         return data
 
 
 class ListCreativeFormatsResponse(BaseModel):
-    """Response for list_creative_formats (AdCP spec compliant)."""
+    """Response for list_creative_formats tool.
 
-    formats: list[Format]
-    message: str | None = Field(None, description="Human-readable summary of available formats")
-    context_id: str | None = Field(None, description="Session continuity identifier")
+
+    Now only contains AdCP spec fields. Context management is handled
+    automatically by the MCP wrapper at the protocol layer.
+    """
+
+    formats: list[str]  # Format IDs per updated AdCP spec
+    message: str | None = None  # Optional human-readable message
+    errors: list[Error] | None = None  # Optional error reporting
 
 
 # --- Creative Lifecycle ---
@@ -646,10 +832,20 @@ class CreateMediaBuyRequest(BaseModel):
 
 
 class CreateMediaBuyResponse(BaseModel):
+    """Response from create_media_buy operation.
+
+    This is an async operation that may require manual approval or additional steps.
+    The status field indicates the current state of the media buy creation.
+    """
+
     media_buy_id: str
-    buyer_ref: str
+    buyer_ref: str | None = None  # May not have buyer_ref if failed
+    status: str | None = None  # pending_manual, failed, active, etc.
+    detail: str | None = None  # Additional status details
+    message: str | None = None  # Human-readable message
     packages: list[dict[str, Any]] = Field(default_factory=list, description="Created packages with IDs")
     creative_deadline: datetime | None = None
+    errors: list[Error] | None = None  # Protocol-compliant error reporting
 
 
 class CheckMediaBuyStatusRequest(BaseModel):

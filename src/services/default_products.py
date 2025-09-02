@@ -19,9 +19,21 @@ def get_default_products() -> list[dict[str, Any]]:
             "name": "Run of Site - Display",
             "description": "Non-guaranteed display advertising across all available inventory. Supports standard IAB display formats.",
             "delivery_type": "non_guaranteed",
+            "is_fixed_price": False,
             "cpm": None,
-            "price_guidance": {"min": 1.0, "max": 10.0},
-            "formats": ["display_300x250", "display_728x90", "display_320x50", "display_300x600"],
+            "min_spend": 100.0,  # Use AdCP-compliant field
+            "formats": [
+                "display_300x250",  # Medium Rectangle
+                "display_728x90",  # Leaderboard
+                "display_320x50",  # Mobile Banner
+                "display_300x600",  # Half Page Ad
+            ],
+            "measurement": {
+                "type": "viewability_measurement",
+                "attribution": "probabilistic",
+                "reporting": "weekly_dashboard",
+            },
+            "creative_policy": {"co_branding": "optional", "landing_page": "any", "templates_available": False},
             "countries": None,  # All countries
             "targeting_template": {"device_targets": {"device_types": ["desktop", "mobile", "tablet"]}},
             "implementation_config": {"is_run_of_site": True, "priority": "low"},
@@ -31,9 +43,20 @@ def get_default_products() -> list[dict[str, Any]]:
             "name": "Homepage Takeover",
             "description": "Premium guaranteed placement on homepage with high viewability. Desktop and mobile optimized.",
             "delivery_type": "guaranteed",
+            "is_fixed_price": True,
             "cpm": 25.0,
-            "price_guidance": None,
-            "formats": ["display_970x250", "display_728x90", "display_320x50"],
+            "min_spend": 1000.0,
+            "formats": [
+                "display_970x250",  # Billboard
+                "display_728x90",  # Leaderboard
+                "display_320x50",  # Mobile Banner
+            ],
+            "measurement": {
+                "type": "brand_lift",
+                "attribution": "deterministic_purchase",
+                "reporting": "real_time_api",
+            },
+            "creative_policy": {"co_branding": "required", "landing_page": "any", "templates_available": True},
             "countries": ["US", "CA", "GB"],
             "targeting_template": {
                 "placement_targets": {"ad_unit_ids": ["homepage_top", "homepage_leaderboard"]},
@@ -46,9 +69,15 @@ def get_default_products() -> list[dict[str, Any]]:
             "name": "Mobile Interstitial",
             "description": "Full-screen mobile interstitial ads with frequency capping. High engagement rates.",
             "delivery_type": "guaranteed",
+            "is_fixed_price": True,
             "cpm": 15.0,
-            "price_guidance": None,
-            "formats": ["display_320x480", "display_300x250"],
+            "min_spend": 500.0,
+            "formats": [
+                "display_320x480",  # Mobile Interstitial
+                "display_300x250",  # Medium Rectangle
+            ],
+            "measurement": {"type": "engagement_rate", "attribution": "probabilistic", "reporting": "weekly_dashboard"},
+            "creative_policy": {"co_branding": "optional", "landing_page": "any", "templates_available": False},
             "countries": None,
             "targeting_template": {
                 "device_targets": {"device_types": ["mobile"]},
@@ -61,9 +90,18 @@ def get_default_products() -> list[dict[str, Any]]:
             "name": "Video Pre-Roll",
             "description": "Standard pre-roll video advertising. VAST 4.0 compliant with viewability measurement.",
             "delivery_type": "non_guaranteed",
+            "is_fixed_price": False,
             "cpm": None,
-            "price_guidance": {"min": 10.0, "max": 50.0},
-            "formats": ["video_vast"],
+            "min_spend": 1000.0,
+            "formats": [
+                "video_vast",  # VAST Video
+            ],
+            "measurement": {
+                "type": "video_completion_rate",
+                "attribution": "probabilistic",
+                "reporting": "real_time_api",
+            },
+            "creative_policy": {"co_branding": "optional", "landing_page": "any", "templates_available": False},
             "countries": None,
             "targeting_template": {"device_targets": {"device_types": ["desktop", "mobile", "tablet", "ctv"]}},
             "implementation_config": {
@@ -76,9 +114,18 @@ def get_default_products() -> list[dict[str, Any]]:
             "name": "Native In-Feed",
             "description": "Native advertising that matches your site's look and feel. Appears within content feeds.",
             "delivery_type": "non_guaranteed",
+            "is_fixed_price": False,
             "cpm": None,
-            "price_guidance": {"min": 2.0, "max": 15.0},
-            "formats": ["native_infeed"],
+            "min_spend": 200.0,
+            "formats": [
+                "native_infeed",  # Native In-Feed
+            ],
+            "measurement": {"type": "engagement_rate", "attribution": "probabilistic", "reporting": "weekly_dashboard"},
+            "creative_policy": {
+                "co_branding": "optional",
+                "landing_page": "must_include_retailer",
+                "templates_available": True,
+            },
             "countries": None,
             "targeting_template": {"device_targets": {"device_types": ["desktop", "mobile", "tablet"]}},
             "implementation_config": {
@@ -94,9 +141,20 @@ def get_default_products() -> list[dict[str, Any]]:
             "name": "Contextual Display",
             "description": "Display advertising with contextual targeting based on page content. No cookies required.",
             "delivery_type": "non_guaranteed",
+            "is_fixed_price": False,
             "cpm": None,
-            "price_guidance": {"min": 2.0, "max": 12.0},
-            "formats": ["display_300x250", "display_728x90", "display_160x600"],
+            "min_spend": 200.0,
+            "formats": [
+                "display_300x250",  # Medium Rectangle
+                "display_728x90",  # Leaderboard
+                "display_160x600",  # Wide Skyscraper
+            ],
+            "measurement": {
+                "type": "viewability_measurement",
+                "attribution": "probabilistic",
+                "reporting": "weekly_dashboard",
+            },
+            "creative_policy": {"co_branding": "optional", "landing_page": "any", "templates_available": False},
             "countries": None,
             "targeting_template": {
                 "device_targets": {"device_types": ["desktop", "mobile", "tablet"]},

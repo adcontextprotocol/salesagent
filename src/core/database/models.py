@@ -122,7 +122,10 @@ class Product(Base, JSONValidatorMixin):
     delivery_type = Column(String(50), nullable=False)
     is_fixed_price = Column(Boolean, nullable=False)
     cpm = Column(DECIMAL(10, 2))
-    price_guidance = Column(JSON)  # JSONB in PostgreSQL
+    min_spend = Column(DECIMAL(10, 2), nullable=True)  # AdCP spec field
+    measurement = Column(JSON, nullable=True)  # JSONB in PostgreSQL - AdCP measurement object
+    creative_policy = Column(JSON, nullable=True)  # JSONB in PostgreSQL - AdCP creative policy object
+    price_guidance = Column(JSON)  # JSONB in PostgreSQL - Legacy field
     is_custom = Column(Boolean, default=False)
     expires_at = Column(DateTime)
     countries = Column(JSON)  # JSONB in PostgreSQL

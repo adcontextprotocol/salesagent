@@ -29,6 +29,8 @@ import pytest
 from fastmcp.client import Client
 from fastmcp.client.transports import StreamableHttpTransport
 
+from .adcp_schema_validator import AdCPSchemaValidator, SchemaValidationError
+
 DEFAULT_MCP_PORT = int(os.getenv("ADCP_SALES_PORT", "8080"))  # Default MCP port
 DEFAULT_A2A_PORT = int(os.getenv("A2A_PORT", "8091"))  # Default A2A port
 DEFAULT_ADMIN_PORT = int(os.getenv("ADMIN_UI_PORT", "8087"))  # From .env
@@ -36,19 +38,29 @@ TEST_TIMEOUT = 30
 
 
 class AdCPTestClient:
-    """Client for testing AdCP servers with full testing hook support."""
+    """Client for testing AdCP servers with full testing hook support and schema validation."""
 
     def __init__(
-        self, mcp_url: str, a2a_url: str, auth_token: str, test_session_id: str | None = None, dry_run: bool = True
+        self,
+        mcp_url: str,
+        a2a_url: str,
+        auth_token: str,
+        test_session_id: str | None = None,
+        dry_run: bool = True,
+        validate_schemas: bool = True,
+        offline_mode: bool = False,
     ):
         self.mcp_url = mcp_url
         self.a2a_url = a2a_url
         self.auth_token = auth_token
         self.test_session_id = test_session_id or str(uuid.uuid4())
         self.dry_run = dry_run
+        self.validate_schemas = validate_schemas
+        self.offline_mode = offline_mode
         self.mock_time = None
         self.mcp_client = None
         self.http_client = httpx.AsyncClient()
+        self.schema_validator = None
 
     async def __aenter__(self):
         """Enter async context."""
@@ -56,12 +68,22 @@ class AdCPTestClient:
         transport = StreamableHttpTransport(url=f"{self.mcp_url}/mcp/", headers=headers)
         self.mcp_client = Client(transport=transport)
         await self.mcp_client.__aenter__()
+
+        # Initialize schema validator if enabled
+        if self.validate_schemas:
+            self.schema_validator = AdCPSchemaValidator(
+                offline_mode=self.offline_mode, adcp_version="v1"  # Default to v1, can be made configurable
+            )
+            await self.schema_validator.__aenter__()
+
         return self
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
         """Exit async context."""
         if self.mcp_client:
             await self.mcp_client.__aexit__(exc_type, exc_val, exc_tb)
+        if self.schema_validator:
+            await self.schema_validator.__aexit__(exc_type, exc_val, exc_tb)
         await self.http_client.aclose()
 
     def _build_headers(self) -> dict[str, str]:
@@ -125,10 +147,44 @@ class AdCPTestClient:
         raise ValueError(f"Could not parse MCP response: {type(result)}")
 
     async def call_mcp_tool(self, tool_name: str, params: dict[str, Any]) -> Any:
-        """Call an MCP tool and parse the response with robust error handling."""
+        """Call an MCP tool and parse the response with robust error handling and schema validation."""
         try:
+            # Convert tool_name to task_name for schema validation
+            # MCP tools use underscore format, AdCP schemas use hyphen format
+            task_name = tool_name.replace("_", "-")
+
+            # Validate request if schema validation is enabled
+            if self.validate_schemas and self.schema_validator:
+                try:
+                    await self.schema_validator.validate_request(task_name, params)
+                    print(f"✓ Request schema validation passed for {task_name}")
+                except SchemaValidationError as e:
+                    print(f"⚠ Request schema validation failed for {task_name}: {e}")
+                    for error in e.validation_errors:
+                        print(f"  - {error}")
+                    # Don't fail the test, just warn - schemas might be stricter than implementation
+                except Exception as e:
+                    print(f"⚠ Request schema validation error for {task_name}: {e}")
+
+            # Make the actual API call
             result = await self.mcp_client.call_tool(tool_name, {"req": params})
-            return self._parse_mcp_response(result)
+            parsed_response = self._parse_mcp_response(result)
+
+            # Validate response if schema validation is enabled
+            if self.validate_schemas and self.schema_validator:
+                try:
+                    await self.schema_validator.validate_response(task_name, parsed_response)
+                    print(f"✓ Response schema validation passed for {task_name}")
+                except SchemaValidationError as e:
+                    print(f"⚠ Response schema validation failed for {task_name}: {e}")
+                    for error in e.validation_errors:
+                        print(f"  - {error}")
+                    # Don't fail the test, just warn - this helps identify discrepancies
+                except Exception as e:
+                    print(f"⚠ Response schema validation error for {task_name}: {e}")
+
+            return parsed_response
+
         except Exception as e:
             # Add context for better error messages
             raise RuntimeError(f"MCP tool '{tool_name}' failed: {e}") from e

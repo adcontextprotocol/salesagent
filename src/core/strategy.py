@@ -7,7 +7,7 @@ Provides unified strategy system that works for both:
 2. Simulation strategies (testing, time progression)
 """
 
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from enum import Enum
 from typing import Any
 
@@ -278,7 +278,7 @@ class SimulationContext:
     def __init__(self, strategy: StrategyContext):
         self.strategy = strategy
         self.strategy_id = strategy.strategy_id
-        self.current_time = datetime.utcnow()
+        self.current_time = datetime.now(UTC)
         self.events_triggered: list[dict[str, Any]] = []
         self.media_buy_states: dict[str, dict[str, Any]] = {}
         self._load_state()
@@ -316,7 +316,7 @@ class SimulationContext:
 
         if existing:
             existing.state_value = value
-            existing.updated_at = datetime.utcnow()
+            existing.updated_at = datetime.now(UTC)
         else:
             state = StrategyState(strategy_id=self.strategy_id, state_key=key, state_value=value)
             session.add(state)
@@ -343,7 +343,7 @@ class SimulationContext:
                         "old_time": old_time.isoformat(),
                         "new_time": self.current_time.isoformat(),
                         "target": event,
-                        "triggered_at": datetime.utcnow().isoformat(),
+                        "triggered_at": datetime.now(UTC).isoformat(),
                     }
                 )
                 self._save_state()
@@ -368,7 +368,7 @@ class SimulationContext:
                 "old_time": old_time.isoformat(),
                 "new_time": self.current_time.isoformat(),
                 "duration": duration_str,
-                "triggered_at": datetime.utcnow().isoformat(),
+                "triggered_at": datetime.now(UTC).isoformat(),
             }
         )
 
@@ -384,7 +384,7 @@ class SimulationContext:
     def _trigger_event(self, event: str) -> dict[str, Any]:
         """Trigger a specific simulation event."""
         self.events_triggered.append(
-            {"event": event, "triggered_at": self.current_time.isoformat(), "real_time": datetime.utcnow().isoformat()}
+            {"event": event, "triggered_at": self.current_time.isoformat(), "real_time": datetime.now(UTC).isoformat()}
         )
 
         # Apply event-specific state changes
@@ -413,7 +413,7 @@ class SimulationContext:
 
     def reset(self) -> dict[str, Any]:
         """Reset simulation to initial state."""
-        self.current_time = datetime.utcnow()
+        self.current_time = datetime.now(UTC)
         self.events_triggered = []
         self.media_buy_states = {}
 
