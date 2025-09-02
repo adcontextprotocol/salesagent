@@ -17,7 +17,6 @@ from src.core.database.models import (
     Principal,
     Product,
     SuperadminConfig,
-    Task,
     Tenant,
     User,
 )
@@ -462,7 +461,6 @@ def delete_tenant(tenant_id):
                 db_session.query(Principal).filter_by(tenant_id=tenant_id).delete()
                 db_session.query(Product).filter_by(tenant_id=tenant_id).delete()
                 db_session.query(MediaBuy).filter_by(tenant_id=tenant_id).delete()
-                db_session.query(Task).filter_by(tenant_id=tenant_id).delete()
                 db_session.query(AuditLog).filter_by(tenant_id=tenant_id).delete()
                 db_session.query(User).filter_by(tenant_id=tenant_id).delete()
 

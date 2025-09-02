@@ -2624,15 +2624,8 @@ def create_workflow_step_for_task(req, context):
 # @mcp.tool  # DEPRECATED - removed from MCP interface
 def complete_task(req, context):
     """Complete a human task with resolution details."""
-    # Admin only
-    principal_id = get_principal_from_context(context)
-    tenant = get_current_tenant()
-    if principal_id != f"{tenant['tenant_id']}_admin":
-        raise ToolError("PERMISSION_DENIED", "Only administrators can complete tasks")
-
-    # Update task in database
-    from src.core.database.database_session import get_db_session
-    from src.core.database.models import Task
+    # DEPRECATED: This function has been deprecated in favor of workflow steps
+    raise ToolError("DEPRECATED", "Task system has been replaced with workflow steps. Use Admin UI workflow management.")
 
     with get_db_session() as db_session:
         db_task = db_session.query(Task).filter_by(task_id=req.task_id, tenant_id=tenant["tenant_id"]).first()
@@ -2927,7 +2920,8 @@ def mark_task_complete(req, context):
 
     # Update task in database directly
     from src.core.database.database_session import get_db_session
-    from src.core.database.models import Task
+    # DEPRECATED: Task model removed in favor of workflow system
+    raise ToolError("DEPRECATED", "Task system has been replaced with workflow steps.")
 
     with get_db_session() as db_session:
         db_task = db_session.query(Task).filter_by(task_id=req.task_id, tenant_id=tenant["tenant_id"]).first()

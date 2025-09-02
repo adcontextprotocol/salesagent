@@ -135,25 +135,14 @@ class XandrAdapter(AdServerAdapter):
 
         from database_session import get_db_session
 
-        from src.core.database.models import Task, Tenant
+        from src.core.database.models import Tenant
 
         task_id = f"task_{uuid.uuid4().hex[:8]}"
 
         with get_db_session() as session:
-            # Create task
-            new_task = Task(
-                task_id=task_id,
-                tenant_id=self.tenant_id,
-                media_buy_id=details.get("media_buy_id", "N/A"),
-                task_type=operation,
-                title=f"Xandr: {operation.replace('_', ' ').title()}",
-                description=json.dumps(details),
-                status="pending",
-                metadata=json.dumps(details),
-                created_at=datetime.now(UTC),
-            )
-            session.add(new_task)
-            session.commit()
+            # DEPRECATED: Task system replaced with workflow steps
+            # TODO: Update to use workflow system for human-in-the-loop operations
+            pass
 
             # Get tenant config for Slack webhooks
             tenant = session.query(Tenant).filter_by(tenant_id=self.tenant_id).first()
