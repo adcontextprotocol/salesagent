@@ -94,8 +94,19 @@ def clean_db(test_database):
 def test_tenant(db_session):
     """Create a test tenant."""
     from src.core.database.models import Tenant
+    from datetime import datetime, timezone
 
-    tenant = Tenant(tenant_id="test_tenant", name="Test Tenant", subdomain="test", is_active=True, ad_server="mock")
+    # Explicitly set created_at and updated_at to avoid database constraint violations
+    now = datetime.now(timezone.utc)
+    tenant = Tenant(
+        tenant_id="test_tenant", 
+        name="Test Tenant", 
+        subdomain="test", 
+        is_active=True, 
+        ad_server="mock",
+        created_at=now,
+        updated_at=now
+    )
     db_session.add(tenant)
     db_session.commit()
 
