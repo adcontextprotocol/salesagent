@@ -60,53 +60,11 @@ class DatabaseProductCatalog(ProductCatalogProvider):
                     if isinstance(product_data["formats"], str):
                         product_data["formats"] = json.loads(product_data["formats"])
 
-                # Remove targeting_template - it's internal and shouldn't be exposed
-                product_data.pop("targeting_template", None)
-
-                if product_data.get("price_guidance"):
-                    logger.debug(
-                        f"Processing price_guidance for {product_data.get('product_id')}: {product_data['price_guidance']} (type: {type(product_data['price_guidance'])})"
-                    )
-                    if isinstance(product_data["price_guidance"], str):
-                        product_data["price_guidance"] = json.loads(product_data["price_guidance"])
-                        logger.debug(f"Parsed price_guidance: {product_data['price_guidance']}")
-
-                    # Fix price_guidance structure - convert min/max to floor/percentiles
-                    if isinstance(product_data["price_guidance"], dict):
-                        pg = product_data["price_guidance"]
-                        logger.debug(f"price_guidance dict keys: {list(pg.keys())}")
-
-                        # Always convert if we have spending ranges (regardless of field names)
-                        # Handle multiple legacy formats: min/max, min_spend/max_spend, etc.
-                        min_val = None
-                        max_val = None
-
-                        # Try different field name combinations
-                        if "min_spend" in pg and "max_spend" in pg:
-                            min_val = pg["min_spend"]
-                            max_val = pg["max_spend"]
-                        elif "min" in pg and "max" in pg:
-                            min_val = pg["min"]
-                            max_val = pg["max"]
-                        elif "floor" in pg:
-                            # Already in correct format
-                            logger.debug("price_guidance already in AdCP format")
-
-                        if min_val is not None and max_val is not None:
-                            # Convert to AdCP format
-                            fixed_price_guidance = {
-                                "floor": float(min_val),
-                                "p50": float(min_val + max_val) / 2,  # Median as midpoint
-                                "p90": float(max_val) * 0.9,  # 90th percentile
-                            }
-                            product_data["price_guidance"] = fixed_price_guidance
-                            logger.debug(f"Fixed price_guidance structure: {fixed_price_guidance}")
-                        else:
-                            logger.debug(f"No conversion needed for price_guidance: {pg}")
-
-                # Remove implementation_config - it's internal and should NEVER be exposed to buyers
-                # This contains proprietary ad server configuration details
-                product_data.pop("implementation_config", None)
+                # Remove internal fields that shouldn't be exposed to buyers
+                product_data.pop("targeting_template", None)  # Internal targeting config
+                product_data.pop("price_guidance", None)  # Not part of Product schema
+                product_data.pop("implementation_config", None)  # Proprietary ad server config
+                product_data.pop("countries", None)  # Not part of Product schema
 
                 # Fix missing required fields for Pydantic validation
 
@@ -118,80 +76,71 @@ class DatabaseProductCatalog(ProductCatalogProvider):
                 if product_data.get("is_custom") is None:
                     product_data["is_custom"] = False
 
-                # 3. Fix incomplete format objects
+                # 3. Convert formats to format IDs (strings) as expected by Product schema
                 if product_data.get("formats"):
-                    fixed_formats = []
-                    for format_obj in product_data["formats"]:
+                    logger.debug(
+                        f"Original formats for {product_data.get('product_id')}: {product_data['formats']} (type: {type(product_data['formats'])})"
+                    )
+                    format_ids = []
+                    for i, format_obj in enumerate(product_data["formats"]):
+                        logger.debug(f"Processing format {i}: {format_obj} (type: {type(format_obj)})")
                         # Handle case where format_obj might be a string instead of dict
                         if isinstance(format_obj, str):
                             # Check if it's a JSON string first
                             try:
                                 parsed = json.loads(format_obj)
-                                if isinstance(parsed, dict):
-                                    format_obj = parsed
+                                if isinstance(parsed, dict) and "format_id" in parsed:
+                                    # It's a format object with format_id
+                                    format_ids.append(parsed["format_id"])
+                                    logger.debug(f"Extracted format_id from JSON string: {parsed['format_id']}")
                                 else:
-                                    # It's just a format identifier string like "display_300x250"
-                                    # Convert to proper format object
-                                    format_parts = format_obj.split("_")
-                                    if len(format_parts) >= 2:
-                                        format_type = format_parts[0]  # e.g., "display"
-                                        dimensions = "_".join(format_parts[1:])  # e.g., "300x250"
-                                    else:
-                                        format_type = "unknown"
-                                        dimensions = format_obj
-
-                                    format_obj = {
-                                        "format_id": format_obj,  # Use the string as the format_id
-                                        "name": format_obj,
-                                        "type": format_type,
-                                        "description": f"{format_type.title()} {dimensions} format",
-                                        "delivery_options": {
-                                            "hosted": None,
-                                            "vast": None if format_type != "video" else {"required": False},
-                                        },
-                                    }
+                                    # It's just a format identifier string
+                                    format_ids.append(format_obj)
+                                    logger.debug(f"Using string as format_id: {format_obj}")
                             except (json.JSONDecodeError, TypeError):
                                 # It's a plain string format identifier
-                                format_parts = format_obj.split("_")
-                                if len(format_parts) >= 2:
-                                    format_type = format_parts[0]  # e.g., "display"
-                                    dimensions = "_".join(format_parts[1:])  # e.g., "300x250"
-                                else:
-                                    format_type = "unknown"
-                                    dimensions = format_obj
-
-                                format_obj = {
-                                    "format_id": format_obj,  # Use the string as the format_id
-                                    "name": format_obj,
-                                    "type": format_type,
-                                    "description": f"{format_type.title()} {dimensions} format",
-                                    "delivery_options": {
-                                        "hosted": None,
-                                        "vast": None if format_type != "video" else {"required": False},
-                                    },
-                                }
-
-                        # Ensure we have a dictionary
-                        if not isinstance(format_obj, dict):
-                            logger.warning(f"Skipping non-dict format after conversion: {format_obj}")
+                                format_ids.append(format_obj)
+                                logger.debug(f"Using plain string as format_id: {format_obj}")
+                        elif isinstance(format_obj, dict):
+                            # It's a format object, extract the format_id
+                            format_id = format_obj.get("format_id")
+                            if format_id:
+                                format_ids.append(format_id)
+                                logger.debug(f"Extracted format_id from dict: {format_id}")
+                            else:
+                                # Try to construct format_id from other fields
+                                name = format_obj.get("name", "unknown_format")
+                                format_ids.append(name)
+                                logger.debug(f"Using name as format_id: {name}")
+                        else:
+                            logger.warning(f"Skipping unexpected format type: {type(format_obj)} - {format_obj}")
                             continue
 
-                        # Ensure format has required format_id field
-                        if not format_obj.get("format_id"):
-                            format_obj["format_id"] = format_obj.get("name", "unknown_format")
+                    product_data["formats"] = format_ids
+                    logger.debug(f"Final converted formats for {product_data.get('product_id')}: {format_ids}")
 
-                        # Ensure format has required description field
-                        if not format_obj.get("description"):
-                            format_obj["description"] = (
-                                f"{format_obj.get('name', 'Unknown Format')} - {format_obj.get('type', 'unknown')} format"
-                            )
+                # 4. Convert DECIMAL fields to float for Pydantic validation
+                if product_data.get("min_spend") is not None:
+                    logger.debug(
+                        f"Original min_spend for {product_data.get('product_id')}: {product_data['min_spend']} (type: {type(product_data['min_spend'])})"
+                    )
+                    try:
+                        product_data["min_spend"] = float(product_data["min_spend"])
+                        logger.debug(f"Converted min_spend to float: {product_data['min_spend']}")
+                    except (ValueError, TypeError) as e:
+                        logger.warning(f"Failed to convert min_spend to float: {e}, setting to None")
+                        product_data["min_spend"] = None
 
-                        # Ensure format has required delivery_options field
-                        if not format_obj.get("delivery_options"):
-                            format_obj["delivery_options"] = {"hosted": None, "vast": None}
-
-                        fixed_formats.append(format_obj)
-                    product_data["formats"] = fixed_formats
+                if product_data.get("cpm") is not None:
+                    logger.debug(
+                        f"Original cpm for {product_data.get('product_id')}: {product_data['cpm']} (type: {type(product_data['cpm'])})"
+                    )
+                    try:
+                        product_data["cpm"] = float(product_data["cpm"])
+                        logger.debug(f"Converted cpm to float: {product_data['cpm']}")
+                    except (ValueError, TypeError) as e:
+                        logger.warning(f"Failed to convert cpm to float: {e}, setting to None")
+                        product_data["cpm"] = None
 
                 # Validate against AdCP protocol schema before returning
                 try:
