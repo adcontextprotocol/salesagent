@@ -222,16 +222,18 @@ class TestProductAPIs:
         app.config["TESTING"] = True
         app.config["SECRET_KEY"] = "test_secret"
         app.config["WTF_CSRF_ENABLED"] = False
+        app.config["SESSION_COOKIE_PATH"] = "/"  # Allow session cookies for all paths in tests
+        app.config["SESSION_COOKIE_HTTPONLY"] = False  # Allow test client to access cookies
+        app.config["SESSION_COOKIE_SECURE"] = False  # Allow HTTP in tests
 
         client = app.test_client()
         
         # Use test_user for ADCP_AUTH_TEST_MODE 
         with client.session_transaction() as sess:
-            sess["test_user"] = {
-                "email": "test@example.com",
-                "name": "Test Admin", 
-                "role": "super_admin"
-            }
+            sess["test_user"] = "test@example.com"  # String format as expected by auth logic
+            sess["user"] = "test@example.com"  # Also set user for consistency
+            sess["test_user_name"] = "Test Admin"
+            sess["test_user_role"] = "super_admin"
             print(f"Set session keys: {list(sess.keys())}")
             print(f"test_user: {sess.get('test_user')}")
             

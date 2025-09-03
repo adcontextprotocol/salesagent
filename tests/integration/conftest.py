@@ -342,6 +342,9 @@ def test_admin_app(integration_db):
     app.config["TESTING"] = True
     app.config["SECRET_KEY"] = "test-secret-key"
     app.config["WTF_CSRF_ENABLED"] = False
+    app.config["SESSION_COOKIE_PATH"] = "/"  # Allow session cookies for all paths in tests
+    app.config["SESSION_COOKIE_HTTPONLY"] = False  # Allow test client to access cookies
+    app.config["SESSION_COOKIE_SECURE"] = False  # Allow HTTP in tests
 
     yield app
 
@@ -356,6 +359,10 @@ def authenticated_admin_client(test_admin_app):
         sess["authenticated"] = True
         sess["role"] = "super_admin"
         sess["email"] = "admin@example.com"
+        # Add test mode session keys for require_tenant_access() decorator
+        sess["test_user"] = "admin@example.com"
+        sess["test_user_role"] = "super_admin"
+        sess["test_user_name"] = "Admin User"
 
     yield client
 

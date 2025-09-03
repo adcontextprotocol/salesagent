@@ -328,15 +328,15 @@ class TestMCPTestPage:
         response = client.get("/mcp-test")
         assert response.status_code == 302  # Redirect to login
 
-    def test_mcp_test_page_requires_super_admin(self, client, integration_db):
+    def test_mcp_test_page_requires_super_admin(self, admin_client, integration_db):
         """Test that MCP test page requires super admin role."""
-        with client.session_transaction() as sess:
+        with admin_client.session_transaction() as sess:
             sess["authenticated"] = True
             sess["email"] = "user@example.com"
             sess["role"] = "tenant_admin"
             sess["user"] = {"email": "user@example.com", "role": "tenant_admin"}
 
-        response = client.get("/mcp-test")
+        response = admin_client.get("/mcp-test")
         assert response.status_code == 403  # Forbidden
 
     def test_mcp_test_page_loads_for_super_admin(self, auth_session):
