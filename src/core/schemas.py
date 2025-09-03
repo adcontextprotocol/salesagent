@@ -1,4 +1,5 @@
 import uuid
+import warnings
 from datetime import date, datetime, time
 from typing import Any, Literal
 
@@ -32,15 +33,16 @@ class Format(BaseModel):
 
 # Format Registry for AdCP Compliance
 # This registry converts format ID strings to Format objects for AdCP protocol responses
+# Updated to support comprehensive modern advertising formats per AdCP standard
 FORMAT_REGISTRY: dict[str, Format] = {
-    # Display Formats
+    # Standard IAB Display Formats
     "display_300x250": Format(
         format_id="display_300x250",
         name="Medium Rectangle",
         type="display",
         is_standard=True,
         iab_specification="IAB Display",
-        requirements={"width": 300, "height": 250},
+        requirements={"width": 300, "height": 250, "file_types": ["jpg", "png", "gif", "html5"]},
     ),
     "display_728x90": Format(
         format_id="display_728x90",
@@ -48,7 +50,7 @@ FORMAT_REGISTRY: dict[str, Format] = {
         type="display",
         is_standard=True,
         iab_specification="IAB Display",
-        requirements={"width": 728, "height": 90},
+        requirements={"width": 728, "height": 90, "file_types": ["jpg", "png", "gif", "html5"]},
     ),
     "display_320x50": Format(
         format_id="display_320x50",
@@ -56,7 +58,7 @@ FORMAT_REGISTRY: dict[str, Format] = {
         type="display",
         is_standard=True,
         iab_specification="IAB Display",
-        requirements={"width": 320, "height": 50},
+        requirements={"width": 320, "height": 50, "file_types": ["jpg", "png", "gif", "html5"]},
     ),
     "display_300x600": Format(
         format_id="display_300x600",
@@ -64,7 +66,7 @@ FORMAT_REGISTRY: dict[str, Format] = {
         type="display",
         is_standard=True,
         iab_specification="IAB Display",
-        requirements={"width": 300, "height": 600},
+        requirements={"width": 300, "height": 600, "file_types": ["jpg", "png", "gif", "html5"]},
     ),
     "display_970x250": Format(
         format_id="display_970x250",
@@ -72,7 +74,7 @@ FORMAT_REGISTRY: dict[str, Format] = {
         type="display",
         is_standard=True,
         iab_specification="IAB Display",
-        requirements={"width": 970, "height": 250},
+        requirements={"width": 970, "height": 250, "file_types": ["jpg", "png", "gif", "html5"]},
     ),
     "display_970x90": Format(
         format_id="display_970x90",
@@ -80,33 +82,136 @@ FORMAT_REGISTRY: dict[str, Format] = {
         type="display",
         is_standard=True,
         iab_specification="IAB Display",
-        requirements={"width": 970, "height": 90},
+        requirements={"width": 970, "height": 90, "file_types": ["jpg", "png", "gif", "html5"]},
     ),
-    # Video Formats
+    # Additional Standard IAB Display Formats
+    "display_160x600": Format(
+        format_id="display_160x600",
+        name="Wide Skyscraper",
+        type="display",
+        is_standard=True,
+        iab_specification="IAB Display",
+        requirements={"width": 160, "height": 600, "file_types": ["jpg", "png", "gif", "html5"]},
+    ),
+    "display_320x480": Format(
+        format_id="display_320x480",
+        name="Mobile Interstitial",
+        type="display",
+        is_standard=True,
+        iab_specification="IAB Display",
+        requirements={"width": 320, "height": 480, "file_types": ["jpg", "png", "gif", "html5"]},
+    ),
+    "display_336x280": Format(
+        format_id="display_336x280",
+        name="Large Rectangle",
+        type="display",
+        is_standard=True,
+        iab_specification="IAB Display",
+        requirements={"width": 336, "height": 280, "file_types": ["jpg", "png", "gif", "html5"]},
+    ),
+    "display_970x550": Format(
+        format_id="display_970x550",
+        name="Panorama",
+        type="display",
+        is_standard=True,
+        iab_specification="IAB Display",
+        requirements={"width": 970, "height": 550, "file_types": ["jpg", "png", "gif", "html5"]},
+    ),
+    # Video Formats (Multiple Aspect Ratios & Resolutions)
     "video_640x360": Format(
         format_id="video_640x360",
-        name="Video 360p",
+        name="Video 360p (16:9)",
         type="video",
         is_standard=True,
-        iab_specification="VAST",
-        requirements={"width": 640, "height": 360, "duration_max": 30},
+        iab_specification="VAST 4.0",
+        requirements={
+            "width": 640,
+            "height": 360,
+            "duration_max": 30,
+            "aspect_ratio": "16:9",
+            "codecs": ["h264", "vp9"],
+        },
     ),
     "video_1280x720": Format(
         format_id="video_1280x720",
-        name="Video 720p",
+        name="Video 720p HD (16:9)",
         type="video",
         is_standard=True,
-        iab_specification="VAST",
-        requirements={"width": 1280, "height": 720, "duration_max": 30},
+        iab_specification="VAST 4.0",
+        requirements={
+            "width": 1280,
+            "height": 720,
+            "duration_max": 30,
+            "aspect_ratio": "16:9",
+            "codecs": ["h264", "vp9"],
+        },
+    ),
+    "video_1920x1080": Format(
+        format_id="video_1920x1080",
+        name="Video 1080p Full HD (16:9)",
+        type="video",
+        is_standard=True,
+        iab_specification="VAST 4.0",
+        requirements={
+            "width": 1920,
+            "height": 1080,
+            "duration_max": 30,
+            "aspect_ratio": "16:9",
+            "codecs": ["h264", "vp9"],
+        },
+    ),
+    "video_1080x1920": Format(
+        format_id="video_1080x1920",
+        name="Vertical Video (9:16)",
+        type="video",
+        is_standard=True,
+        iab_specification="VAST 4.0",
+        requirements={
+            "width": 1080,
+            "height": 1920,
+            "duration_max": 15,
+            "aspect_ratio": "9:16",
+            "codecs": ["h264", "vp9"],
+        },
+    ),
+    "video_1080x1080": Format(
+        format_id="video_1080x1080",
+        name="Square Video (1:1)",
+        type="video",
+        is_standard=True,
+        iab_specification="VAST 4.0",
+        requirements={
+            "width": 1080,
+            "height": 1080,
+            "duration_max": 15,
+            "aspect_ratio": "1:1",
+            "codecs": ["h264", "vp9"],
+        },
     ),
     # Audio Formats
-    "audio_30s": Format(
-        format_id="audio_30s",
-        name="Audio 30 Second",
+    "audio_15s": Format(
+        format_id="audio_15s",
+        name="Audio 15 Second Spot",
         type="audio",
         is_standard=True,
-        iab_specification="DAAST",
-        requirements={"duration": 30, "bitrate_min": 128},
+        iab_specification="DAAST 1.0",
+        requirements={"duration": 15, "bitrate_min": 128, "formats": ["mp3", "aac"], "sample_rate": 44100},
+    ),
+    "audio_30s": Format(
+        format_id="audio_30s",
+        name="Audio 30 Second Spot",
+        type="audio",
+        is_standard=True,
+        iab_specification="DAAST 1.0",
+        requirements={"duration": 30, "bitrate_min": 128, "formats": ["mp3", "aac"], "sample_rate": 44100},
+    ),
+    "audio_60s": Format(
+        format_id="audio_60s",
+        name="Audio 60 Second Spot",
+        type="audio",
+        is_standard=True,
+        iab_specification="DAAST 1.0",
+        requirements={"duration": 60, "bitrate_min": 128, "formats": ["mp3", "aac"], "sample_rate": 44100},
     ),
     # Native Formats
     "native_article": Format(
@@ -114,8 +219,433 @@ FORMAT_REGISTRY: dict[str, Format] = {
         name="Native Article",
         type="native",
         is_standard=True,
-        iab_specification="OpenRTB Native",
+        iab_specification="OpenRTB Native 1.2",
         requirements={"title_length": 25, "description_length": 90},
+        assets_required=[
+            AssetRequirement(asset_type="title", quantity=1, requirements={"max_characters": 25, "required": True}),
+            AssetRequirement(
+                asset_type="description", quantity=1, requirements={"max_characters": 90, "required": True}
+            ),
+            AssetRequirement(
+                asset_type="image", quantity=1, requirements={"min_width": 300, "min_height": 200, "required": True}
+            ),
+        ],
+    ),
+    "native_feed": Format(
+        format_id="native_feed",
+        name="Native Feed Ad",
+        type="native",
+        is_standard=True,
+        iab_specification="OpenRTB Native 1.2",
+        requirements={"title_length": 50, "description_length": 150},
+        assets_required=[
+            AssetRequirement(asset_type="title", quantity=1, requirements={"max_characters": 50, "required": True}),
+            AssetRequirement(
+                asset_type="description", quantity=1, requirements={"max_characters": 150, "required": True}
+            ),
+            AssetRequirement(
+                asset_type="image", quantity=1, requirements={"width": 1200, "height": 628, "required": True}
+            ),
+            AssetRequirement(
+                asset_type="logo", quantity=1, requirements={"width": 200, "height": 200, "required": False}
+            ),
+        ],
+    ),
+    "native_content": Format(
+        format_id="native_content",
+        name="Native Content Ad",
+        type="native",
+        is_standard=True,
+        iab_specification="OpenRTB Native 1.2",
+        requirements={"headline_length": 60, "body_length": 200},
+        assets_required=[
+            AssetRequirement(asset_type="headline", quantity=1, requirements={"max_characters": 60, "required": True}),
+            AssetRequirement(asset_type="body", quantity=1, requirements={"max_characters": 200, "required": True}),
+            AssetRequirement(
+                asset_type="image", quantity=1, requirements={"min_width": 600, "min_height": 400, "required": True}
+            ),
+            AssetRequirement(asset_type="cta", quantity=1, requirements={"max_characters": 15, "required": True}),
+        ],
+    ),
+    # Digital Out-of-Home (DOOH) Formats
+    "dooh_billboard_landscape": Format(
+        format_id="dooh_billboard_landscape",
+        name="Digital Billboard Landscape",
+        type="dooh",
+        is_standard=True,
+        iab_specification="DOOH 2.0",
+        requirements={"width": 1920, "height": 1080, "duration": 15, "file_types": ["jpg", "png", "mp4"]},
+    ),
+    "dooh_billboard_portrait": Format(
+        format_id="dooh_billboard_portrait",
+        name="Digital Billboard Portrait",
+        type="dooh",
+        is_standard=True,
+        iab_specification="DOOH 2.0",
+        requirements={"width": 1080, "height": 1920, "duration": 15, "file_types": ["jpg", "png", "mp4"]},
+    ),
+    "dooh_transit_screen": Format(
+        format_id="dooh_transit_screen",
+        name="Transit Digital Screen",
+        type="dooh",
+        is_standard=True,
+        iab_specification="DOOH 2.0",
+        requirements={"width": 1920, "height": 540, "duration": 10, "file_types": ["jpg", "png", "mp4"]},
+    ),
+    "dooh_mall_kiosk": Format(
+        format_id="dooh_mall_kiosk",
+        name="Mall Kiosk Display",
+        type="dooh",
+        is_standard=True,
+        iab_specification="DOOH 2.0",
+        requirements={
+            "width": 1080,
+            "height": 1920,
+            "duration": 20,
+            "file_types": ["jpg", "png", "mp4"],
+            "interactive": True,
+        },
+    ),
+    # Rich Media & Interactive Formats
+    "rich_media_expandable": Format(
+        format_id="rich_media_expandable",
+        name="Expandable Rich Media",
+        type="display",
+        is_standard=True,
+        iab_specification="MRAID 3.0",
+        requirements={
+            "collapsed_width": 300,
+            "collapsed_height": 250,
+            "expanded_width": 600,
+            "expanded_height": 500,
+            "file_types": ["html5"],
+            "max_file_size_mb": 2,
+        },
+        assets_required=[
+            AssetRequirement(
+                asset_type="collapsed_creative",
+                quantity=1,
+                requirements={"width": 300, "height": 250, "required": True},
+            ),
+            AssetRequirement(
+                asset_type="expanded_creative", quantity=1, requirements={"width": 600, "height": 500, "required": True}
+            ),
+        ],
+    ),
+    "rich_media_interstitial": Format(
+        format_id="rich_media_interstitial",
+        name="Rich Media Interstitial",
+        type="display",
+        is_standard=True,
+        iab_specification="MRAID 3.0",
+        requirements={"width": "100%", "height": "100%", "file_types": ["html5"], "max_file_size_mb": 5},
+    ),
+    # Connected TV (CTV) Formats
+    "ctv_preroll": Format(
+        format_id="ctv_preroll",
+        name="Connected TV Pre-Roll",
+        type="video",
+        is_standard=True,
+        iab_specification="VAST 4.0",
+        requirements={
+            "width": 1920,
+            "height": 1080,
+            "duration": 30,
+            "aspect_ratio": "16:9",
+            "codecs": ["h264"],
+            "bitrate_min": 3000,
+        },
+    ),
+    "ctv_midroll": Format(
+        format_id="ctv_midroll",
+        name="Connected TV Mid-Roll",
+        type="video",
+        is_standard=True,
+        iab_specification="VAST 4.0",
+        requirements={
+            "width": 1920,
+            "height": 1080,
+            "duration": 15,
+            "aspect_ratio": "16:9",
+            "codecs": ["h264"],
+            "bitrate_min": 3000,
+        },
+    ),
+    # Social Media Optimized Formats
+    "social_story": Format(
+        format_id="social_story",
+        name="Social Media Story",
+        type="video",
+        is_standard=False,
+        requirements={"width": 1080, "height": 1920, "duration": 15, "aspect_ratio": "9:16", "codecs": ["h264", "vp9"]},
+    ),
+    "social_feed_video": Format(
+        format_id="social_feed_video",
+        name="Social Feed Video",
+        type="video",
+        is_standard=False,
+        requirements={"width": 1080, "height": 1080, "duration": 30, "aspect_ratio": "1:1", "codecs": ["h264", "vp9"]},
+    ),
+    # Foundational Formats (AdCP Standard Extensions)
+    "foundation_immersive_canvas": Format(
+        format_id="foundation_immersive_canvas",
+        name="Immersive Canvas",
+        type="display",
+        is_standard=True,
+        iab_specification="AdCP Foundational",
+        requirements={
+            "responsive": True,
+            "platforms": ["desktop", "tablet", "mobile"],
+            "animation_allowed": True,
+            "max_animation_duration_seconds": 30,
+            "user_initiated_expansion": True,
+        },
+        assets_required=[
+            AssetRequirement(
+                asset_type="html",
+                quantity=1,
+                requirements={
+                    "name": "Main Creative HTML",
+                    "description": "Responsive HTML5 creative that adapts to different viewports",
+                    "acceptable_formats": ["html", "html5"],
+                    "max_file_size_mb": 5,
+                    "responsive": True,
+                    "required": True,
+                },
+            ),
+            AssetRequirement(
+                asset_type="image",
+                quantity=1,
+                requirements={
+                    "name": "Backup Image",
+                    "description": "Static backup image for environments that don't support HTML5",
+                    "acceptable_formats": ["jpg", "png", "gif"],
+                    "max_file_size_mb": 0.2,
+                    "width": 970,
+                    "height": 250,
+                    "required": False,
+                },
+            ),
+        ],
+    ),
+    "foundation_product_showcase_carousel": Format(
+        format_id="foundation_product_showcase_carousel",
+        name="Product Showcase Carousel",
+        type="display",
+        is_standard=True,
+        iab_specification="AdCP Foundational",
+        requirements={
+            "product_count_min": 3,
+            "product_count_max": 10,
+            "aspect_ratio": "1:1",
+        },
+        assets_required=[
+            AssetRequirement(
+                asset_type="image",
+                quantity=10,
+                requirements={
+                    "name": "Product Images",
+                    "description": "Collection of product images for the carousel (3-10 images)",
+                    "acceptable_formats": ["jpg", "png"],
+                    "max_file_size_mb": 0.2,
+                    "min_count": 3,
+                    "max_count": 10,
+                    "aspect_ratio": "1:1",
+                    "required": True,
+                },
+            ),
+            AssetRequirement(
+                asset_type="text",
+                quantity=10,
+                requirements={
+                    "name": "Product Titles",
+                    "description": "Title text for each product in the carousel",
+                    "max_length": 50,
+                    "count": "matches product_images count",
+                    "required": True,
+                },
+            ),
+            AssetRequirement(
+                asset_type="text",
+                quantity=10,
+                requirements={
+                    "name": "Product Descriptions",
+                    "description": "Description text for each product",
+                    "max_length": 100,
+                    "count": "matches product_images count",
+                    "required": False,
+                },
+            ),
+            AssetRequirement(
+                asset_type="url",
+                quantity=10,
+                requirements={
+                    "name": "Product Click-Through URLs",
+                    "description": "Landing page URL for each product",
+                    "count": "matches product_images count",
+                    "required": True,
+                },
+            ),
+        ],
+    ),
+    "foundation_expandable_display": Format(
+        format_id="foundation_expandable_display",
+        name="Expandable Display",
+        type="display",
+        is_standard=True,
+        iab_specification="AdCP Foundational",
+        requirements={"user_interaction_required": True, "close_button_required": True, "polite_load": True},
+        assets_required=[
+            AssetRequirement(
+                asset_type="html",
+                quantity=1,
+                requirements={
+                    "name": "Collapsed State Creative",
+                    "description": "Creative shown in collapsed state",
+                    "acceptable_formats": ["html", "html5", "jpg", "png"],
+                    "max_file_size_mb": 1,
+                    "dimensions": {
+                        "desktop": {"width": 970, "height": 90},
+                        "tablet": {"width": 728, "height": 90},
+                        "mobile": {"width": 320, "height": 50},
+                    },
+                    "required": True,
+                },
+            ),
+            AssetRequirement(
+                asset_type="html",
+                quantity=1,
+                requirements={
+                    "name": "Expanded State Creative",
+                    "description": "Creative shown when expanded",
+                    "acceptable_formats": ["html", "html5"],
+                    "max_file_size_mb": 2,
+                    "dimensions": {
+                        "desktop": {"width": 970, "height": 500},
+                        "tablet": {"width": 728, "height": 500},
+                        "mobile": {"width": 320, "height": 480},
+                    },
+                    "animation_allowed": True,
+                    "polite_load": True,
+                    "close_button_required": True,
+                    "required": True,
+                },
+            ),
+        ],
+    ),
+    "foundation_scroll_triggered_experience": Format(
+        format_id="foundation_scroll_triggered_experience",
+        name="Scroll-Triggered Experience",
+        type="display",
+        is_standard=True,
+        iab_specification="AdCP Foundational",
+        requirements={
+            "mobile_first": True,
+            "trigger_type": "scroll",
+            "trigger_threshold": "25%",
+            "parallax_enabled": True,
+            "sticky_duration_seconds": 5,
+        },
+        assets_required=[
+            AssetRequirement(
+                asset_type="html",
+                quantity=1,
+                requirements={
+                    "name": "Main Content",
+                    "description": "Primary creative content triggered on scroll",
+                    "acceptable_formats": ["html", "html5"],
+                    "max_file_size_mb": 3,
+                    "platforms": ["mobile", "tablet"],
+                    "dimensions": {
+                        "mobile": {"width": "100vw", "height": "100vh"},
+                        "tablet": {"width": "100vw", "height": "50vh"},
+                    },
+                    "required": True,
+                },
+            ),
+            AssetRequirement(
+                asset_type="video",
+                quantity=1,
+                requirements={
+                    "name": "Background Video",
+                    "description": "Optional background video for enhanced experience",
+                    "acceptable_formats": ["mp4", "webm"],
+                    "max_file_size_mb": 5,
+                    "duration_seconds": 15,
+                    "autoplay": True,
+                    "muted": True,
+                    "controls": False,
+                    "loop": True,
+                    "required": False,
+                },
+            ),
+            AssetRequirement(
+                asset_type="image",
+                quantity=1,
+                requirements={
+                    "name": "Background Image",
+                    "description": "Fallback image when video is not supported",
+                    "acceptable_formats": ["jpg", "png"],
+                    "max_file_size_mb": 1,
+                    "required": False,
+                },
+            ),
+        ],
+    ),
+    "foundation_universal_video": Format(
+        format_id="foundation_universal_video",
+        name="Universal Video",
+        type="video",
+        is_standard=True,
+        iab_specification="AdCP Foundational",
+        requirements={
+            "aspect_ratios": ["16:9", "9:16", "1:1", "4:5"],
+            "duration_range": {"min": 6, "max": 30, "extended_max": 180},
+            "codecs": ["h264", "vp9"],
+            "max_bitrate_mbps": 10,
+        },
+        assets_required=[
+            AssetRequirement(
+                asset_type="video",
+                quantity=1,
+                requirements={
+                    "name": "Video File",
+                    "description": "Main video creative file",
+                    "acceptable_formats": ["mp4", "webm"],
+                    "max_file_size_mb": 50,
+                    "duration_seconds": 30,
+                    "max_bitrate_mbps": 10,
+                    "aspect_ratios": ["16:9", "9:16", "1:1", "4:5"],
+                    "codecs": ["h264", "vp9"],
+                    "audio": {"codec": "aac", "bitrate_kbps": 128, "muted_by_default": True},
+                    "required": True,
+                },
+            ),
+            AssetRequirement(
+                asset_type="text",
+                quantity=1,
+                requirements={
+                    "name": "Captions",
+                    "description": "Caption file for accessibility",
+                    "acceptable_formats": ["srt", "vtt"],
+                    "burned_in_alternative": "Captions can be burned into the video file",
+                    "required": True,
+                },
+            ),
+            AssetRequirement(
+                asset_type="image",
+                quantity=1,
+                requirements={
+                    "name": "Companion Banner",
+                    "description": "Static companion banner for video ads",
+                    "acceptable_formats": ["jpg", "png"],
+                    "max_file_size_mb": 0.2,
+                    "width": 300,
+                    "height": 250,
+                    "required": False,
+                },
+            ),
+        ],
     ),
 }
 
@@ -236,15 +766,39 @@ class Targeting(BaseModel):
     # These are not exposed in overlay - only set by orchestrator/AEE
     key_value_pairs: dict[str, str] | None = None  # e.g., {"aee_segment": "high_value", "aee_score": "0.85"}
 
+    # Internal fields (not in AdCP spec)
+    tenant_id: str | None = Field(None, description="Internal: Tenant ID for multi-tenancy")
+    created_at: datetime | None = Field(None, description="Internal: Creation timestamp")
+    updated_at: datetime | None = Field(None, description="Internal: Last update timestamp")
+    metadata: dict[str, Any] | None = Field(None, description="Internal: Additional metadata")
+
     def model_dump(self, **kwargs):
-        """Override model_dump to always exclude key_value_pairs from client responses."""
-        kwargs["exclude"] = kwargs.get("exclude", set())
-        if isinstance(kwargs["exclude"], set):
-            kwargs["exclude"].add("key_value_pairs")
+        """Override to provide AdCP-compliant responses while preserving internal fields."""
+        # Default to excluding internal and managed fields for AdCP compliance
+        exclude = kwargs.get("exclude", set())
+        if isinstance(exclude, set):
+            # Add internal and managed fields to exclude by default
+            exclude.update(
+                {
+                    "key_value_pairs",  # Managed-only field
+                    "tenant_id",
+                    "created_at",
+                    "updated_at",
+                    "metadata",  # Internal fields
+                }
+            )
+            kwargs["exclude"] = exclude
+
+        return super().model_dump(**kwargs)
+
+    def model_dump_internal(self, **kwargs):
+        """Dump including internal and managed fields for database storage and internal processing."""
+        # Don't exclude internal fields or managed fields
+        kwargs.pop("exclude", None)  # Remove any exclude parameter
         return super().model_dump(**kwargs)
 
     def dict(self, **kwargs):
-        """Override dict to always exclude key_value_pairs (for backward compat)."""
+        """Override dict to always exclude managed fields (for backward compat)."""
         kwargs["exclude"] = kwargs.get("exclude", set())
         if isinstance(kwargs["exclude"], set):
             kwargs["exclude"].add("key_value_pairs")
@@ -294,7 +848,7 @@ class Product(BaseModel):
     delivery_type: Literal["guaranteed", "non_guaranteed"]
     is_fixed_price: bool
     cpm: float | None = None
-    min_spend: float | None = Field(None, description="Minimum budget requirement in USD", ge=0)
+    min_spend: float | None = Field(None, description="Minimum budget requirement in USD", gt=-1)
     measurement: Measurement | None = Field(None, description="Measurement capabilities included with this product")
     creative_policy: CreativePolicy | None = Field(None, description="Creative requirements and restrictions")
     is_custom: bool = Field(default=False)
@@ -462,14 +1016,14 @@ class GetProductsResponse(BaseModel):
 class ListCreativeFormatsResponse(BaseModel):
     """Response for list_creative_formats tool.
 
-
-    Now only contains AdCP spec fields. Context management is handled
-    automatically by the MCP wrapper at the protocol layer.
+    Returns comprehensive Format objects per AdCP specification.
+    Context management is handled automatically by the MCP wrapper at the protocol layer.
     """
 
-    formats: list[str]  # Format IDs per updated AdCP spec
+    formats: list[Format]  # Full Format objects per AdCP spec
     message: str | None = None  # Optional human-readable message
     errors: list[Error] | None = None  # Optional error reporting
+    specification_version: str | None = Field(None, description="AdCP format specification version")
 
 
 # --- Creative Lifecycle ---
@@ -485,53 +1039,129 @@ class CreativeGroup(BaseModel):
 
 
 class Creative(BaseModel):
-    """Individual creative asset in the creative library."""
+    """Individual creative asset in the creative library - AdCP spec compliant."""
 
+    # Core identification fields
     creative_id: str
-    principal_id: str
-    group_id: str | None = None  # Optional group membership
+    name: str
 
-    # AdCP spec compliant fields (new names)
+    # AdCP spec compliant fields
     format: str = Field(alias="format_id", description="Creative format type per AdCP spec")
     url: str = Field(alias="content_uri", description="URL of the creative content per AdCP spec")
+    media_url: str | None = Field(None, description="Alternative media URL (typically same as url)")
     click_url: str | None = Field(None, alias="click_through_url", description="Landing page URL per AdCP spec")
 
-    name: str
-    metadata: dict[str, Any] | None = {}  # Platform-specific metadata
-    created_at: datetime
-    updated_at: datetime
+    # Content dimensions and properties (AdCP spec)
+    duration: float | None = Field(None, description="Duration in seconds (for video/audio)", gt=-1)
+    width: int | None = Field(None, description="Width in pixels (for video/display)", gt=-1)
+    height: int | None = Field(None, description="Height in pixels (for video/display)", gt=-1)
 
-    # Macro information
-    has_macros: bool | None = False
-    macro_validation: dict[str, Any] | None = None  # Validation result from creative_macros
+    # Creative status and review (AdCP spec)
+    status: str = Field(default="pending", description="Creative status per AdCP spec")
+    platform_id: str | None = Field(None, description="Platform-specific ID assigned to the creative")
+    review_feedback: str | None = Field(None, description="Feedback from platform review (if any)")
 
-    # Asset mapping - maps asset_id to uploaded content
-    asset_mapping: dict[str, str] | None = Field(
-        default_factory=dict, description="Maps asset_id from format definition to actual uploaded content URIs"
+    # Compliance information (AdCP spec)
+    compliance: dict[str, Any] | None = Field(None, description="Compliance review status")
+
+    # Package assignments (AdCP spec)
+    package_assignments: list[str] | None = Field(
+        None, description="Package IDs or buyer_refs to assign this creative to"
     )
 
-    # Backward compatibility properties
+    # Multi-asset support (AdCP spec)
+    assets: list[dict[str, Any]] | None = Field(None, description="For multi-asset formats like carousels")
+
+    # Internal fields (not in AdCP spec, but available for internal use)
+    principal_id: str  # Internal - not in AdCP spec
+    group_id: str | None = None  # Internal - not in AdCP spec
+    created_at: datetime  # Internal timestamp
+    updated_at: datetime  # Internal timestamp
+    has_macros: bool | None = False  # Internal processing
+    macro_validation: dict[str, Any] | None = None  # Internal processing
+    asset_mapping: dict[str, str] | None = Field(default_factory=dict)  # Internal mapping
+    metadata: dict[str, Any] | None = Field(default_factory=dict)  # Internal metadata
+
+    # Backward compatibility properties (deprecated)
     @property
     def format_id(self) -> str:
-        """Backward compatibility for format_id."""
+        """Backward compatibility for format_id.
+
+        DEPRECATED: Use format instead.
+        This property will be removed in a future version.
+        """
+        warnings.warn(
+            "format_id is deprecated and will be removed in a future version. " "Use format instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
         return self.format
 
     @property
     def content_uri(self) -> str:
-        """Backward compatibility for content_uri."""
+        """Backward compatibility for content_uri.
+
+        DEPRECATED: Use url instead.
+        This property will be removed in a future version.
+        """
+        warnings.warn(
+            "content_uri is deprecated and will be removed in a future version. " "Use url instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
         return self.url
 
     @property
     def click_through_url(self) -> str | None:
-        """Backward compatibility for click_through_url."""
+        """Backward compatibility for click_through_url.
+
+        DEPRECATED: Use click_url instead.
+        This property will be removed in a future version.
+        """
+        warnings.warn(
+            "click_through_url is deprecated and will be removed in a future version. " "Use click_url instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
         return self.click_url
 
     def model_dump(self, **kwargs):
-        """Override to support both field names based on context."""
-        # For AdCP spec compliance, use new field names
+        """Override to provide AdCP-compliant responses while preserving internal fields."""
+        # Default to excluding internal fields for AdCP compliance
+        exclude = kwargs.get("exclude", set())
+        if isinstance(exclude, set):
+            # Add internal fields to exclude by default
+            exclude.update(
+                {
+                    "principal_id",
+                    "group_id",
+                    "created_at",
+                    "updated_at",
+                    "has_macros",
+                    "macro_validation",
+                    "asset_mapping",
+                    "metadata",
+                }
+            )
+            kwargs["exclude"] = exclude
+
         data = super().model_dump(**kwargs)
-        # Remove aliases from output - clients will see spec-compliant names
+
+        # Ensure media_url defaults to url if not set (AdCP spec requirement)
+        if "media_url" in data and data["media_url"] is None and "url" in data:
+            data["media_url"] = data["url"]
+
+        # Set default compliance status if not provided
+        if "compliance" in data and data["compliance"] is None:
+            data["compliance"] = {"status": "pending", "issues": []}
+
         return data
+
+    def model_dump_internal(self, **kwargs):
+        """Dump including internal fields for database storage and internal processing."""
+        # Don't exclude internal fields
+        kwargs.pop("exclude", None)  # Remove any exclude parameter
+        return super().model_dump(**kwargs)
 
 
 class CreativeAdaptation(BaseModel):
@@ -715,12 +1345,59 @@ class AdaptCreativeRequest(BaseModel):
 
 
 class Package(BaseModel):
-    """Package object with buyer reference and product arrays."""
+    """Package object - AdCP spec compliant.
 
-    buyer_ref: str = Field(..., description="Buyer reference for tracking")
-    products: list[str] = Field(..., description="Array of product IDs in this package")
-    budget: Budget | None = Field(None, description="Optional package-specific budget")
+    Note: In create-media-buy-request, clients only provide buyer_ref+products.
+    Server generates package_id and sets initial status per AdCP package schema.
+    """
+
+    # AdCP Package object fields (required in responses, generated during creation)
+    package_id: str | None = Field(None, description="Publisher's unique identifier for the package")
+    status: Literal["draft", "active", "paused", "completed"] | None = Field(None, description="Status of the package")
+
+    # AdCP optional fields
+    buyer_ref: str | None = Field(None, description="Buyer's reference identifier for this package")
+    product_id: str | None = Field(None, description="ID of the product this package is based on (single product)")
+    products: list[str] | None = Field(None, description="Array of product IDs to include in this package")
+    budget: Budget | None = Field(None, description="Package-specific budget")
+    impressions: float | None = Field(None, description="Impression goal for this package", gt=-1)
     targeting_overlay: Targeting | None = Field(None, description="Package-specific targeting")
+    creative_assignments: list[dict[str, Any]] | None = Field(
+        None, description="Creative assets assigned to this package"
+    )
+
+    # Internal fields (not in AdCP spec)
+    tenant_id: str | None = Field(None, description="Internal: Tenant ID for multi-tenancy")
+    media_buy_id: str | None = Field(None, description="Internal: Associated media buy ID")
+    created_at: datetime | None = Field(None, description="Internal: Creation timestamp")
+    updated_at: datetime | None = Field(None, description="Internal: Last update timestamp")
+    metadata: dict[str, Any] | None = Field(None, description="Internal: Additional metadata")
+
+    def model_dump(self, **kwargs):
+        """Override to provide AdCP-compliant responses while preserving internal fields."""
+        # Default to excluding internal fields for AdCP compliance
+        exclude = kwargs.get("exclude", set())
+        if isinstance(exclude, set):
+            # Add internal fields to exclude by default
+            exclude.update({"tenant_id", "media_buy_id", "created_at", "updated_at", "metadata"})
+            kwargs["exclude"] = exclude
+
+        data = super().model_dump(**kwargs)
+
+        # Ensure required AdCP fields are present for responses
+        # (These should be set during package creation/processing)
+        if data.get("package_id") is None:
+            raise ValueError("Package missing required package_id for AdCP response")
+        if data.get("status") is None:
+            raise ValueError("Package missing required status for AdCP response")
+
+        return data
+
+    def model_dump_internal(self, **kwargs):
+        """Dump including internal fields for database storage and internal processing."""
+        # Don't exclude internal fields
+        kwargs.pop("exclude", None)  # Remove any exclude parameter
+        return super().model_dump(**kwargs)
 
 
 # --- Media Buy Lifecycle ---
@@ -766,10 +1443,20 @@ class CreateMediaBuyRequest(BaseModel):
                 values["buyer_ref"] = f"buy_{uuid.uuid4().hex[:8]}"
 
             # Convert product_ids to packages
+            # Note: AdCP create-media-buy-request only requires buyer_ref+products from client
+            # Server generates package_id and initial status per AdCP package schema
             product_ids = values.get("product_ids", [])
             packages = []
             for i, pid in enumerate(product_ids):
-                packages.append({"buyer_ref": f"pkg_{i}_{uuid.uuid4().hex[:6]}", "products": [pid]})
+                package_uuid = uuid.uuid4().hex[:6]
+                packages.append(
+                    {
+                        "package_id": f"pkg_{i}_{package_uuid}",  # Server-generated per AdCP spec
+                        "buyer_ref": f"pkg_{i}_{package_uuid}",  # Client reference for tracking
+                        "products": [pid],
+                        "status": "draft",  # Server sets initial status per AdCP package schema
+                    }
+                )
             values["packages"] = packages
 
         # Convert dates to datetimes
@@ -1269,17 +1956,88 @@ class CheckAEERequirementsResponse(BaseModel):
 
 
 # --- Signal Discovery ---
-class Signal(BaseModel):
-    """Represents an available signal (audience, contextual, geographic, etc.)"""
+class SignalDeployment(BaseModel):
+    """Platform deployment information for a signal - AdCP spec compliant."""
 
-    signal_id: str
-    name: str
-    description: str
-    type: Literal["audience", "contextual", "geographic", "behavioral", "custom"]
-    category: str | None = None  # e.g., "automotive", "finance", "sports"
-    reach: float | None = None  # Estimated reach percentage
-    cpm_uplift: float | None = None  # Expected CPM increase when using this signal
-    metadata: dict[str, Any] | None = {}
+    platform: str = Field(..., description="Platform name")
+    account: str | None = Field(None, description="Specific account if applicable")
+    is_live: bool = Field(..., description="Whether signal is currently active")
+    scope: Literal["platform-wide", "account-specific"] = Field(..., description="Deployment scope")
+    decisioning_platform_segment_id: str | None = Field(None, description="Platform-specific segment ID")
+    estimated_activation_duration_minutes: float | None = Field(None, description="Time to activate if not live", gt=-1)
+
+
+class SignalPricing(BaseModel):
+    """Pricing information for a signal - AdCP spec compliant."""
+
+    cpm: float = Field(..., description="Cost per thousand impressions", gt=-1)
+    currency: str = Field(..., description="Currency code", pattern="^[A-Z]{3}$")
+
+
+class Signal(BaseModel):
+    """Represents an available signal - AdCP spec compliant."""
+
+    # Core AdCP fields (required)
+    signal_agent_segment_id: str = Field(..., description="Unique identifier for the signal")
+    name: str = Field(..., description="Human-readable signal name")
+    description: str = Field(..., description="Detailed signal description")
+    signal_type: Literal["marketplace", "custom", "owned"] = Field(..., description="Type of signal")
+    data_provider: str = Field(..., description="Name of the data provider")
+    coverage_percentage: float = Field(..., description="Percentage of audience coverage", gt=-1, le=100)
+    deployments: list[SignalDeployment] = Field(..., description="Array of platform deployments")
+    pricing: SignalPricing = Field(..., description="Pricing information")
+
+    # Internal fields (not in AdCP spec)
+    tenant_id: str | None = Field(None, description="Internal: Tenant ID for multi-tenancy")
+    created_at: datetime | None = Field(None, description="Internal: Creation timestamp")
+    updated_at: datetime | None = Field(None, description="Internal: Last update timestamp")
+    metadata: dict[str, Any] | None = Field(None, description="Internal: Additional metadata")
+
+    # Backward compatibility properties (deprecated)
+    @property
+    def signal_id(self) -> str:
+        """Backward compatibility for signal_id.
+
+        DEPRECATED: Use signal_agent_segment_id instead.
+        This property will be removed in a future version.
+        """
+        warnings.warn(
+            "signal_id is deprecated and will be removed in a future version. " "Use signal_agent_segment_id instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return self.signal_agent_segment_id
+
+    @property
+    def type(self) -> str:
+        """Backward compatibility for type.
+
+        DEPRECATED: Use signal_type instead.
+        This property will be removed in a future version.
+        """
+        warnings.warn(
+            "type is deprecated and will be removed in a future version. " "Use signal_type instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return self.signal_type
+
+    def model_dump(self, **kwargs):
+        """Override to provide AdCP-compliant responses while preserving internal fields."""
+        # Default to excluding internal fields for AdCP compliance
+        exclude = kwargs.get("exclude", set())
+        if isinstance(exclude, set):
+            # Add internal fields to exclude by default
+            exclude.update({"tenant_id", "created_at", "updated_at", "metadata"})
+            kwargs["exclude"] = exclude
+
+        return super().model_dump(**kwargs)
+
+    def model_dump_internal(self, **kwargs):
+        """Dump including internal fields for database storage and internal processing."""
+        # Don't exclude internal fields
+        kwargs.pop("exclude", None)  # Remove any exclude parameter
+        return super().model_dump(**kwargs)
 
 
 class GetSignalsRequest(BaseModel):
