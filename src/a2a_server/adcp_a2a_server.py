@@ -49,6 +49,7 @@ from fastmcp.client import Client
 from fastmcp.client.transports import StreamableHttpTransport
 
 # Import database models for authentication
+from src.core.audit_logger import get_audit_logger
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
@@ -67,6 +68,41 @@ class AdCPRequestHandler(RequestHandler):
         self.mcp_server_url = mcp_server_url or os.getenv("MCP_SERVER_URL", "http://localhost:8080/mcp/")
         self.tasks = {}  # In-memory task storage
         logger.info(f"AdCP Request Handler initialized - MCP Server: {self.mcp_server_url}")
+
+    def _get_tenant_id_from_context(self, context: ServerCallContext | None) -> str | None:
+        """Extract tenant ID from A2A request context."""
+        # For now, use a default tenant for A2A operations
+        # In production, this could extract from Bearer token or other auth
+        default_tenant = os.getenv("A2A_DEFAULT_TENANT", "default")
+        return default_tenant
+
+    def _log_a2a_operation(
+        self,
+        operation: str,
+        context: ServerCallContext | None,
+        success: bool = True,
+        details: dict = None,
+        error: str = None,
+    ):
+        """Log A2A operations to audit system for visibility in activity feed."""
+        try:
+            tenant_id = self._get_tenant_id_from_context(context)
+            if not tenant_id:
+                return
+
+            audit_logger = get_audit_logger("A2A", tenant_id)
+            audit_logger.log_operation(
+                operation=operation,
+                principal_name="A2A_Client",  # Since A2A doesn't have principal auth
+                principal_id="a2a_anonymous",
+                adapter_id="a2a_client",
+                success=success,
+                details=details,
+                error=error,
+                tenant_id=tenant_id,
+            )
+        except Exception as e:
+            logger.warning(f"Failed to log A2A operation: {e}")
 
     async def on_message_send(
         self,
@@ -111,9 +147,18 @@ class AdCPRequestHandler(RequestHandler):
         self.tasks[task_id] = task
 
         try:
-            # Route based on keywords
+            # Route based on keywords and log operations
             if any(word in text for word in ["product", "inventory", "available", "catalog"]):
                 result = await self._get_products(text)
+                self._log_a2a_operation(
+                    "get_products",
+                    context,
+                    True,
+                    {
+                        "query": text[:100],
+                        "product_count": len(result.get("products", [])) if isinstance(result, dict) else 0,
+                    },
+                )
                 task.artifacts = [
                     Artifact(
                         artifactId="product_catalog_1", name="product_catalog", parts=[Part(type="data", data=result)]
@@ -121,6 +166,15 @@ class AdCPRequestHandler(RequestHandler):
                 ]
             elif any(word in text for word in ["price", "pricing", "cost", "cpm", "budget"]):
                 result = self._get_pricing()
+                self._log_a2a_operation(
+                    "get_pricing",
+                    context,
+                    True,
+                    {
+                        "query": text[:100],
+                        "pricing_models": len(result.get("pricing_models", [])) if isinstance(result, dict) else 0,
+                    },
+                )
                 task.artifacts = [
                     Artifact(
                         artifactId="pricing_info_1", name="pricing_information", parts=[Part(type="data", data=result)]
@@ -128,6 +182,17 @@ class AdCPRequestHandler(RequestHandler):
                 ]
             elif any(word in text for word in ["target", "audience"]):
                 result = self._get_targeting()
+                self._log_a2a_operation(
+                    "get_targeting",
+                    context,
+                    True,
+                    {
+                        "query": text[:100],
+                        "targeting_categories": (
+                            len(result.get("targeting_options", {})) if isinstance(result, dict) else 0
+                        ),
+                    },
+                )
                 task.artifacts = [
                     Artifact(
                         artifactId="targeting_opts_1", name="targeting_options", parts=[Part(type="data", data=result)]
@@ -135,6 +200,13 @@ class AdCPRequestHandler(RequestHandler):
                 ]
             elif any(word in text for word in ["create", "buy", "campaign", "media"]):
                 result = await self._create_media_buy(text)
+                self._log_a2a_operation(
+                    "create_media_buy",
+                    context,
+                    result.get("success", False),
+                    {"query": text[:100], "success": result.get("success", False)},
+                    result.get("message") if not result.get("success") else None,
+                )
                 if result.get("success"):
                     task.artifacts = [
                         Artifact(
@@ -165,6 +237,9 @@ class AdCPRequestHandler(RequestHandler):
                         "How do I create a media buy?",
                     ],
                 }
+                self._log_a2a_operation(
+                    "get_capabilities", context, True, {"query": text[:100], "response_type": "capabilities"}
+                )
                 task.artifacts = [
                     Artifact(
                         artifactId="capabilities_1", name="capabilities", parts=[Part(type="data", data=capabilities)]
@@ -176,6 +251,9 @@ class AdCPRequestHandler(RequestHandler):
 
         except Exception as e:
             logger.error(f"Error processing message: {e}")
+            self._log_a2a_operation(
+                "message_processing", context, False, {"query": text[:100], "error_type": type(e).__name__}, str(e)
+            )
             task.status = TaskStatus(state=TaskState.failed)
             task.artifacts = [Artifact(artifactId="error_1", name="error", parts=[Part(type="text", text=str(e))])]
 

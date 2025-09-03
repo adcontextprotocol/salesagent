@@ -528,13 +528,26 @@ def log_tool_activity(context: Context, tool_name: str, start_time: float = None
         if start_time:
             response_time_ms = int((time.time() - start_time) * 1000)
 
-        # Log to activity feed
+        # Log to activity feed (for WebSocket real-time updates)
         activity_feed.log_api_call(
             tenant_id=tenant["tenant_id"],
             principal_name=principal_name,
             method=tool_name,
             status_code=200,
             response_time_ms=response_time_ms,
+        )
+
+        # Also log to audit logs (for persistent dashboard activity feed)
+        audit_logger = get_audit_logger("MCP", tenant["tenant_id"])
+        details = {"tool": tool_name, "status": "success"}
+        if response_time_ms:
+            details["response_time_ms"] = response_time_ms
+
+        audit_logger.log_operation(
+            operation=tool_name,
+            principal_name=principal_name,
+            success=True,
+            details=details,
         )
     except Exception as e:
         # Don't let activity logging break the main flow
@@ -2747,15 +2760,10 @@ def create_workflow_step_for_task(req, context):
 # @mcp.tool  # DEPRECATED - removed from MCP interface
 def complete_task(req, context):
     """Complete a human task with resolution details."""
-    # Admin only
-    principal_id = get_principal_from_context(context)
-    tenant = get_current_tenant()
-    if principal_id != f"{tenant['tenant_id']}_admin":
-        raise ToolError("PERMISSION_DENIED", "Only administrators can complete tasks")
-
-    # Update task in database
-    from src.core.database.database_session import get_db_session
-    from src.core.database.models import Task
+    # DEPRECATED: This function has been deprecated in favor of workflow steps
+    raise ToolError(
+        "DEPRECATED", "Task system has been replaced with workflow steps. Use Admin UI workflow management."
+    )
 
     with get_db_session() as db_session:
         db_task = db_session.query(Task).filter_by(task_id=req.task_id, tenant_id=tenant["tenant_id"]).first()
@@ -3050,7 +3058,9 @@ def mark_task_complete(req, context):
 
     # Update task in database directly
     from src.core.database.database_session import get_db_session
-    from src.core.database.models import Task
+
+    # DEPRECATED: Task model removed in favor of workflow system
+    raise ToolError("DEPRECATED", "Task system has been replaced with workflow steps.")
 
     with get_db_session() as db_session:
         db_task = db_session.query(Task).filter_by(task_id=req.task_id, tenant_id=tenant["tenant_id"]).first()
