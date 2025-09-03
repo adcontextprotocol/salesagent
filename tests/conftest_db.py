@@ -95,13 +95,17 @@ def test_tenant(db_session):
     """Create a test tenant."""
     from src.core.database.models import Tenant
     from datetime import datetime, timezone
+    import uuid
 
+    # Generate unique tenant data for each test
+    unique_id = str(uuid.uuid4())[:8]
+    
     # Explicitly set created_at and updated_at to avoid database constraint violations
     now = datetime.now(timezone.utc)
     tenant = Tenant(
-        tenant_id="test_tenant", 
-        name="Test Tenant", 
-        subdomain="test", 
+        tenant_id=f"test_tenant_{unique_id}", 
+        name=f"Test Tenant {unique_id}", 
+        subdomain=f"test_{unique_id}", 
         is_active=True, 
         ad_server="mock",
         created_at=now,
@@ -117,13 +121,16 @@ def test_tenant(db_session):
 def test_principal(db_session, test_tenant):
     """Create a test principal."""
     from src.core.database.models import Principal
+    import uuid
 
+    unique_id = str(uuid.uuid4())[:8]
+    
     principal = Principal(
         tenant_id=test_tenant.tenant_id,
-        principal_id="test_principal",
-        name="Test Principal",
-        access_token="test_token_12345",
-        platform_mappings={"mock": {"advertiser_id": "test_advertiser"}},
+        principal_id=f"test_principal_{unique_id}",
+        name=f"Test Principal {unique_id}",
+        access_token=f"test_token_{unique_id}",
+        platform_mappings={"mock": {"advertiser_id": f"test_advertiser_{unique_id}"}},
     )
     db_session.add(principal)
     db_session.commit()
@@ -135,11 +142,14 @@ def test_principal(db_session, test_tenant):
 def test_product(db_session, test_tenant):
     """Create a test product."""
     from src.core.database.models import Product
+    import uuid
 
+    unique_id = str(uuid.uuid4())[:8]
+    
     product = Product(
-        product_id="test_product",
+        product_id=f"test_product_{unique_id}",
         tenant_id=test_tenant.tenant_id,
-        name="Test Product",
+        name=f"Test Product {unique_id}",
         formats=["display_300x250"],
         targeting_template={},
         delivery_type="guaranteed",
@@ -149,6 +159,56 @@ def test_product(db_session, test_tenant):
     db_session.commit()
 
     return product
+
+
+@pytest.fixture
+def test_audit_log(db_session, test_tenant, test_principal):
+    """Create a test audit log entry."""
+    from src.core.database.models import AuditLog
+    from datetime import UTC, datetime
+    
+    # Create a minimal audit log without strategy_id (which may not exist in all test environments)
+    audit_log = AuditLog(
+        tenant_id=test_tenant.tenant_id,
+        principal_id=test_principal.principal_id,
+        principal_name=test_principal.name,
+        operation="get_products",
+        timestamp=datetime.now(UTC),
+        success=True,
+        details={"product_count": 3, "brief": "Test query"}
+        # Note: Omitting strategy_id as it may not exist in all test database schemas
+    )
+    db_session.add(audit_log)
+    db_session.commit()
+    
+    return audit_log
+
+
+@pytest.fixture
+def test_media_buy(db_session, test_tenant, test_principal, test_product):
+    """Create a test media buy."""
+    from src.core.database.models import MediaBuy
+    from datetime import datetime, timezone, timedelta
+    import uuid
+    
+    unique_id = str(uuid.uuid4())[:8]
+    now = datetime.now(timezone.utc)
+    media_buy = MediaBuy(
+        media_buy_id=f"test_media_buy_{unique_id}",
+        tenant_id=test_tenant.tenant_id,
+        principal_id=test_principal.principal_id,
+        order_name=f"Test Order {unique_id}",
+        advertiser_name=f"Test Advertiser {unique_id}",
+        budget=1000.00,
+        start_date=(now + timedelta(days=1)).date(),
+        end_date=(now + timedelta(days=8)).date(),
+        status="active",
+        raw_request={"test": "data"}  # Required field
+    )
+    db_session.add(media_buy)
+    db_session.commit()
+    
+    return media_buy
 
 
 @pytest.fixture
