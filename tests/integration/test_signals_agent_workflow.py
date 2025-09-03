@@ -1,6 +1,5 @@
 """Integration tests for signals agent workflow."""
 
-from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -9,11 +8,11 @@ from fastmcp.server.context import Context
 from src.core.database.database_session import get_db_session
 from src.core.database.models import Product as ModelProduct
 from src.core.database.models import Tenant
-from src.core.main import get_products
 from src.core.schemas import GetProductsRequest, Signal
 from tests.fixtures.builders import create_test_tenant_with_principal
 
 
+@pytest.mark.requires_server
 @pytest.mark.asyncio
 class TestSignalsAgentWorkflow:
     """Integration tests for signals agent workflow."""
@@ -91,7 +90,7 @@ class TestSignalsAgentWorkflow:
         """Test get_products with tenant that has no signals configuration."""
         tenant_data = tenant_without_signals_config
         tenant_id = tenant_data["tenant"]["tenant_id"]
-        principal_id = tenant_data["principal"]["principal_id"]
+        principal_id = tenant_data["principal"].principal_id
 
         # Add some database products
         await self._add_test_products(tenant_id)
@@ -127,7 +126,7 @@ class TestSignalsAgentWorkflow:
         """Test get_products with signals configuration and brief provided."""
         tenant_data = tenant_with_signals_config
         tenant_id = tenant_data["tenant"]["tenant_id"]
-        principal_id = tenant_data["principal"]["principal_id"]
+        principal_id = tenant_data["principal"].principal_id
 
         # Add some database products
         await self._add_test_products(tenant_id)
@@ -214,7 +213,7 @@ class TestSignalsAgentWorkflow:
         """Test that no signals call is made when brief is empty (optimization requirement)."""
         tenant_data = tenant_with_signals_config
         tenant_id = tenant_data["tenant"]["tenant_id"]
-        principal_id = tenant_data["principal"]["principal_id"]
+        principal_id = tenant_data["principal"].principal_id
 
         # Add some database products
         await self._add_test_products(tenant_id)
@@ -268,7 +267,7 @@ class TestSignalsAgentWorkflow:
         """Test fallback behavior when upstream signals agent fails."""
         tenant_data = tenant_with_signals_config
         tenant_id = tenant_data["tenant"]["tenant_id"]
-        principal_id = tenant_data["principal"]["principal_id"]
+        principal_id = tenant_data["principal"].principal_id
 
         # Add some database products
         await self._add_test_products(tenant_id)
@@ -322,7 +321,7 @@ class TestSignalsAgentWorkflow:
         """Test that signals products are ranked first in hybrid provider."""
         tenant_data = tenant_with_signals_config
         tenant_id = tenant_data["tenant"]["tenant_id"]
-        principal_id = tenant_data["principal"]["principal_id"]
+        principal_id = tenant_data["principal"].principal_id
 
         # Add some database products
         await self._add_test_products(tenant_id)
@@ -405,34 +404,26 @@ class TestSignalsAgentWorkflow:
                     tenant_id=tenant_id,
                     name="Database Sports Package",
                     description="Sports content advertising package",
-                    product_type="programmatic",
+                    delivery_type="non_guaranteed",
+                    is_fixed_price=True,
                     formats=["display_300x250", "display_728x90"],
-                    price_model="cpm",
-                    base_price=4.50,
+                    cpm=4.50,
                     min_spend=500.0,
                     countries=["US", "CA"],
                     targeting_template={},
-                    targeting_overlay={},
-                    is_active=True,
-                    created_at=datetime.now(UTC),
-                    updated_at=datetime.now(UTC),
                 ),
                 ModelProduct(
                     product_id="test_db_2",
                     tenant_id=tenant_id,
                     name="Database Automotive Package",
                     description="Automotive content advertising package",
-                    product_type="programmatic",
+                    delivery_type="non_guaranteed",
+                    is_fixed_price=True,
                     formats=["display_300x250", "video_pre_roll"],
-                    price_model="cpm",
-                    base_price=5.25,
+                    cpm=5.25,
                     min_spend=750.0,
                     countries=["US"],
                     targeting_template={},
-                    targeting_overlay={},
-                    is_active=True,
-                    created_at=datetime.now(UTC),
-                    updated_at=datetime.now(UTC),
                 ),
             ]
 
@@ -446,7 +437,7 @@ class TestSignalsAgentWorkflow:
         """Test that signals products have expected characteristics."""
         tenant_data = tenant_with_signals_config
         tenant_id = tenant_data["tenant"]["tenant_id"]
-        principal_id = tenant_data["principal"]["principal_id"]
+        principal_id = tenant_data["principal"].principal_id
 
         request = GetProductsRequest(
             brief="detailed test for signals product features", promoted_offering="Feature Test Product 2025"
