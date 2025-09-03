@@ -97,45 +97,7 @@ class TestDashboardService:
         assert "active_buys" in metrics
         assert "pending_buys" in metrics
 
-    @pytest.mark.skip(reason="Complex mock setup - test moved to integration suite")
-    def test_get_recent_media_buys_eager_loading(self, mock_get_db):
-        """Test that media buys use eager loading to avoid N+1 queries."""
-        # Mock database session
-        mock_session = Mock()
-        mock_get_db.return_value.__enter__.return_value = mock_session
-
-        # Mock media buy with principal - needs realistic attributes for dashboard calculations
-        mock_buy = Mock(spec=MediaBuy)
-        mock_buy.principal = Mock(spec=Principal)
-        mock_buy.principal.name = "Test Advertiser"
-        mock_buy.created_at = datetime.now(UTC)
-        mock_buy.budget = 1000.0  # Numeric budget for calculations
-        mock_buy.media_buy_id = "test_buy_123"
-        mock_buy.buyer_reference_id = "buyer_ref_123"
-        mock_buy.status = "active"
-        # Add date fields that might be used in comparisons
-        from datetime import date
-        mock_buy.flight_start_date = date(2025, 1, 1)
-        mock_buy.flight_end_date = date(2025, 1, 31)
-
-        # Mock the query chain for eager loading
-        mock_query_chain = Mock()
-        mock_query_chain.filter.return_value = mock_query_chain
-        mock_query_chain.options.return_value = mock_query_chain
-        mock_query_chain.order_by.return_value = mock_query_chain
-        mock_query_chain.limit.return_value = mock_query_chain
-        mock_query_chain.all.return_value = [mock_buy]
-        mock_session.query.return_value = mock_query_chain
-
-        service = DashboardService("test_tenant")
-        recent_buys = service.get_recent_media_buys(limit=5)
-
-        assert len(recent_buys) == 1
-        assert recent_buys[0].advertiser_name == "Test Advertiser"
-        assert recent_buys[0].spend == 0  # TODO field
-
-        # Verify eager loading was used
-        mock_session.query.return_value.filter.return_value.options.assert_called_once()
+    # Note: Complex eager loading test moved to integration suite for better database testing
 
     def test_calculate_revenue_change(self):
         """Test revenue change calculation logic."""
@@ -205,30 +167,7 @@ class TestDashboardService:
 class TestDashboardServiceIntegration:
     """Integration tests for DashboardService with real database."""
 
-    @pytest.mark.skip(reason="Integration test moved to integration suite to avoid readonly database issues")
-    def test_real_tenant_lookup(self, test_tenant):
-        """Test service with real tenant from database."""
-        service = DashboardService(test_tenant.tenant_id)
-        tenant = service.get_tenant()
-
-        assert tenant is not None
-        assert tenant.tenant_id == test_tenant.tenant_id
-
-    @pytest.mark.skip(reason="Integration test moved to integration suite to avoid readonly database issues")
-    def test_real_metrics_calculation(self, test_tenant, test_media_buy):
-        """Test metrics calculation with real database data."""
-        service = DashboardService(test_tenant.tenant_id)
-        metrics = service.get_dashboard_metrics()
-
-        # Should return metrics dictionary
-        assert isinstance(metrics, dict)
-        assert "total_revenue" in metrics
-        assert "active_buys" in metrics
-        assert "recent_activity" in metrics
-
-        # Workflow metrics should be hardcoded
-        assert metrics["pending_workflows"] == 0
-        assert metrics["approval_needed"] == 0
+    # Note: Integration tests moved to integration test suite for better database coverage
 
     @pytest.mark.requires_db
     def test_error_handling_invalid_tenant(self):

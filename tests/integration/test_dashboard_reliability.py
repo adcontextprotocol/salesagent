@@ -183,7 +183,8 @@ class TestDashboardTemplateIntegration:
 
         # Should not contain error indicators
         assert "Error loading" not in data
-        assert "500" not in data
+        assert "500 Internal Server Error" not in data  # More specific check for actual HTTP errors
+        assert "HTTP 500" not in data
 
     @pytest.mark.requires_db
     def test_dashboard_chart_data_format(self, authenticated_admin_client, test_tenant):
