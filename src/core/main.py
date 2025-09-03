@@ -572,7 +572,14 @@ async def get_products(req: GetProductsRequest, context: Context) -> GetProducts
     # Handle both old Context and new ToolContext
     if isinstance(context, ToolContext):
         # New context management - everything is already extracted
-        testing_ctx = context.testing_context
+        testing_ctx_raw = context.testing_context
+        # Convert dict testing context back to TestingContext object if needed
+        if isinstance(testing_ctx_raw, dict):
+            from src.core.testing_hooks import TestingContext
+
+            testing_ctx = TestingContext(**testing_ctx_raw)
+        else:
+            testing_ctx = testing_ctx_raw
         principal_id = context.principal_id
         tenant = {"tenant_id": context.tenant_id}  # Simplified tenant info
     else:

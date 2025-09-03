@@ -7,6 +7,7 @@ Supports both standard A2A message format and JSON-RPC 2.0.
 import logging
 import os
 import sys
+import threading
 from collections.abc import AsyncGenerator
 from typing import Any
 
@@ -44,57 +45,95 @@ sys.path = original_path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
-# Import MCP client for AdCP integration
-from fastmcp.client import Client
-from fastmcp.client.transports import StreamableHttpTransport
+# Import core functions for direct calls
+from datetime import UTC, datetime
 
-# Import database models for authentication
 from src.core.audit_logger import get_audit_logger
+from src.core.auth_utils import get_principal_from_token
+from src.core.config_loader import get_current_tenant
+from src.core.main import get_products as core_get_products_tool
+from src.core.schemas import GetProductsRequest
+from src.core.testing_hooks import TestingContext
+from src.core.tool_context import ToolContext
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
 
+# Thread-local storage for current request auth token
+_request_context = threading.local()
+
 
 class AdCPRequestHandler(RequestHandler):
     """Request handler for AdCP A2A operations supporting JSON-RPC 2.0."""
 
-    def __init__(self, mcp_server_url: str = None):
-        """Initialize the AdCP A2A request handler.
+    def __init__(self):
+        """Initialize the AdCP A2A request handler."""
+        self.tasks = {}  # In-memory task storage
+        logger.info("AdCP Request Handler initialized for direct function calls")
+
+    def _get_auth_token(self) -> str | None:
+        """Extract Bearer token from current request context."""
+        return getattr(_request_context, "auth_token", None)
+
+    def _create_tool_context_from_a2a(self, auth_token: str, tool_name: str, context_id: str = None) -> ToolContext:
+        """Create a ToolContext from A2A authentication information.
 
         Args:
-            mcp_server_url: URL of the MCP server (e.g., http://localhost:8080/mcp/)
-        """
-        self.mcp_server_url = mcp_server_url or os.getenv("MCP_SERVER_URL", "http://localhost:8080/mcp/")
-        self.tasks = {}  # In-memory task storage
-        logger.info(f"AdCP Request Handler initialized - MCP Server: {self.mcp_server_url}")
+            auth_token: Bearer token from Authorization header
+            tool_name: Name of the tool being called
+            context_id: Optional context ID for conversation tracking
 
-    def _get_tenant_id_from_context(self, context: ServerCallContext | None) -> str | None:
-        """Extract tenant ID from A2A request context."""
-        # For now, use a default tenant for A2A operations
-        # In production, this could extract from Bearer token or other auth
-        default_tenant = os.getenv("A2A_DEFAULT_TENANT", "default")
-        return default_tenant
+        Returns:
+            ToolContext for calling core functions
+
+        Raises:
+            ValueError: If authentication fails
+        """
+        # Authenticate using the token
+        principal_id = get_principal_from_token(auth_token)
+        if not principal_id:
+            raise ValueError("Invalid or missing authentication token")
+
+        # Get tenant info (set as side effect of authentication)
+        tenant = get_current_tenant()
+        if not tenant:
+            raise ValueError("Unable to determine tenant from authentication")
+
+        # Generate context ID if not provided
+        if not context_id:
+            context_id = f"a2a_{datetime.now(UTC).timestamp()}"
+
+        # Create ToolContext
+        return ToolContext(
+            context_id=context_id,
+            tenant_id=tenant["tenant_id"],
+            principal_id=principal_id,
+            tool_name=tool_name,
+            request_timestamp=datetime.now(UTC),
+            metadata={"source": "a2a_server", "protocol": "a2a_jsonrpc"},
+            testing_context=TestingContext().model_dump(),  # Default testing context for A2A requests
+        )
 
     def _log_a2a_operation(
         self,
         operation: str,
-        context: ServerCallContext | None,
+        tenant_id: str,
+        principal_id: str,
         success: bool = True,
         details: dict = None,
         error: str = None,
     ):
         """Log A2A operations to audit system for visibility in activity feed."""
         try:
-            tenant_id = self._get_tenant_id_from_context(context)
             if not tenant_id:
                 return
 
             audit_logger = get_audit_logger("A2A", tenant_id)
             audit_logger.log_operation(
                 operation=operation,
-                principal_name="A2A_Client",  # Since A2A doesn't have principal auth
-                principal_id="a2a_anonymous",
+                principal_name=f"A2A_Client_{principal_id}",
+                principal_id=principal_id,
                 adapter_id="a2a_client",
                 success=success,
                 details=details,
@@ -147,12 +186,28 @@ class AdCPRequestHandler(RequestHandler):
         self.tasks[task_id] = task
 
         try:
+            # Get authentication token
+            auth_token = self._get_auth_token()
+            if not auth_token:
+                raise ValueError("Missing authentication token - Bearer token required in Authorization header")
+
             # Route based on keywords and log operations
             if any(word in text for word in ["product", "inventory", "available", "catalog"]):
-                result = await self._get_products(text)
+                result = await self._get_products(text, auth_token)
+                # Extract tenant and principal for logging
+                try:
+                    tool_context = self._create_tool_context_from_a2a(auth_token, "get_products")
+                    tenant_id = tool_context.tenant_id
+                    principal_id = tool_context.principal_id
+                except Exception as e:
+                    logger.warning(f"Could not extract context for logging: {e}")
+                    tenant_id = "unknown"
+                    principal_id = "unknown"
+
                 self._log_a2a_operation(
                     "get_products",
-                    context,
+                    tenant_id,
+                    principal_id,
                     True,
                     {
                         "query": text[:100],
@@ -166,9 +221,20 @@ class AdCPRequestHandler(RequestHandler):
                 ]
             elif any(word in text for word in ["price", "pricing", "cost", "cpm", "budget"]):
                 result = self._get_pricing()
+                # Extract tenant and principal for logging
+                try:
+                    tool_context = self._create_tool_context_from_a2a(auth_token, "get_pricing")
+                    tenant_id = tool_context.tenant_id
+                    principal_id = tool_context.principal_id
+                except Exception as e:
+                    logger.warning(f"Could not extract context for logging: {e}")
+                    tenant_id = "unknown"
+                    principal_id = "unknown"
+
                 self._log_a2a_operation(
                     "get_pricing",
-                    context,
+                    tenant_id,
+                    principal_id,
                     True,
                     {
                         "query": text[:100],
@@ -182,9 +248,20 @@ class AdCPRequestHandler(RequestHandler):
                 ]
             elif any(word in text for word in ["target", "audience"]):
                 result = self._get_targeting()
+                # Extract tenant and principal for logging
+                try:
+                    tool_context = self._create_tool_context_from_a2a(auth_token, "get_targeting")
+                    tenant_id = tool_context.tenant_id
+                    principal_id = tool_context.principal_id
+                except Exception as e:
+                    logger.warning(f"Could not extract context for logging: {e}")
+                    tenant_id = "unknown"
+                    principal_id = "unknown"
+
                 self._log_a2a_operation(
                     "get_targeting",
-                    context,
+                    tenant_id,
+                    principal_id,
                     True,
                     {
                         "query": text[:100],
@@ -199,10 +276,21 @@ class AdCPRequestHandler(RequestHandler):
                     )
                 ]
             elif any(word in text for word in ["create", "buy", "campaign", "media"]):
-                result = await self._create_media_buy(text)
+                result = await self._create_media_buy(text, auth_token)
+                # Extract tenant and principal for logging
+                try:
+                    tool_context = self._create_tool_context_from_a2a(auth_token, "create_media_buy")
+                    tenant_id = tool_context.tenant_id
+                    principal_id = tool_context.principal_id
+                except Exception as e:
+                    logger.warning(f"Could not extract context for logging: {e}")
+                    tenant_id = "unknown"
+                    principal_id = "unknown"
+
                 self._log_a2a_operation(
                     "create_media_buy",
-                    context,
+                    tenant_id,
+                    principal_id,
                     result.get("success", False),
                     {"query": text[:100], "success": result.get("success", False)},
                     result.get("message") if not result.get("success") else None,
@@ -237,8 +325,22 @@ class AdCPRequestHandler(RequestHandler):
                         "How do I create a media buy?",
                     ],
                 }
+                # Extract tenant and principal for logging
+                try:
+                    tool_context = self._create_tool_context_from_a2a(auth_token, "get_capabilities")
+                    tenant_id = tool_context.tenant_id
+                    principal_id = tool_context.principal_id
+                except Exception as e:
+                    logger.warning(f"Could not extract context for logging: {e}")
+                    tenant_id = "unknown"
+                    principal_id = "unknown"
+
                 self._log_a2a_operation(
-                    "get_capabilities", context, True, {"query": text[:100], "response_type": "capabilities"}
+                    "get_capabilities",
+                    tenant_id,
+                    principal_id,
+                    True,
+                    {"query": text[:100], "response_type": "capabilities"},
                 )
                 task.artifacts = [
                     Artifact(
@@ -251,8 +353,27 @@ class AdCPRequestHandler(RequestHandler):
 
         except Exception as e:
             logger.error(f"Error processing message: {e}")
+            # Try to get context for error logging
+            try:
+                auth_token = self._get_auth_token()
+                if auth_token:
+                    tool_context = self._create_tool_context_from_a2a(auth_token, "error_handler")
+                    tenant_id = tool_context.tenant_id
+                    principal_id = tool_context.principal_id
+                else:
+                    tenant_id = "unknown"
+                    principal_id = "unknown"
+            except:
+                tenant_id = "unknown"
+                principal_id = "unknown"
+
             self._log_a2a_operation(
-                "message_processing", context, False, {"query": text[:100], "error_type": type(e).__name__}, str(e)
+                "message_processing",
+                tenant_id,
+                principal_id,
+                False,
+                {"query": text[:100], "error_type": type(e).__name__},
+                str(e),
             )
             task.status = TaskStatus(state=TaskState.failed)
             task.artifacts = [Artifact(artifactId="error_1", name="error", parts=[Part(type="text", text=str(e))])]
@@ -374,163 +495,75 @@ class AdCPRequestHandler(RequestHandler):
 
         raise UnsupportedOperationError("Push notifications not supported")
 
-    async def _get_products(self, query: str) -> dict:
-        """Get available advertising products from MCP server.
+    async def _get_products(self, query: str, auth_token: str) -> dict:
+        """Get available advertising products by calling core functions directly.
 
         Args:
             query: User's product query
+            auth_token: Bearer token for authentication
 
         Returns:
             Dictionary containing product information
         """
         try:
-            # Try to connect to MCP server
-            # TODO: Extract auth token from A2A request context when available
-            # For now, use environment variable or skip auth for internal calls
-            auth_token = os.getenv("A2A_MCP_AUTH_TOKEN", "")
-            headers = {"x-adcp-auth": auth_token} if auth_token else {}
-            transport = StreamableHttpTransport(url=self.mcp_server_url, headers=headers)
+            # Create ToolContext from A2A auth info
+            tool_context = self._create_tool_context_from_a2a(
+                auth_token=auth_token,
+                tool_name="get_products",
+            )
 
-            async with Client(transport=transport) as client:
-                # Call get_products tool
-                result = await client.tools.get_products(brief=query)
-                return {"products": result}
+            # Create request object - need a promoted_offering for AdCP compliance
+            # Extract promoted offering from the query or use a reasonable default
+            promoted_offering = self._extract_promoted_offering_from_query(query)
+
+            request = GetProductsRequest(brief=query, promoted_offering=promoted_offering)
+
+            # Call core function directly using the underlying function
+            response = await core_get_products_tool.fn(request, tool_context)
+
+            # Convert to A2A response format
+            return {
+                "products": [product.model_dump() for product in response.products],
+                "message": response.message or "Products retrieved successfully",
+            }
 
         except Exception as e:
-            logger.warning(f"Could not connect to MCP server: {e}")
-            # Return comprehensive inventory data for premium coffee beans campaign
-            return {
-                "campaign_context": "Premium Coffee Beans Advertising Inventory",
-                "products": [
-                    {
-                        "id": "video_premium_coffee",
-                        "name": "Premium Video - Coffee & Lifestyle",
-                        "description": "High-impact video ads on coffee and lifestyle content",
-                        "formats": {
-                            "instream": {"15s": "available", "30s": "available"},
-                            "outstream": {"6s": "available", "15s": "available"},
-                        },
-                        "inventory_available": True,
-                        "estimated_reach": "2.5M coffee enthusiasts monthly",
-                        "audience_match": "85% match - premium coffee buyers",
-                        "pricing": {
-                            "cpm": {"min": 25, "max": 45},
-                            "minimum_spend": 5000,
-                            "volume_discount": "10% at $25k+",
-                        },
-                        "creative_specs": {
-                            "video": "MP4, 1920x1080, max 50MB",
-                            "duration": "6-30 seconds",
-                            "captions": "required",
-                        },
-                        "performance_benchmarks": {
-                            "avg_ctr": "2.8%",
-                            "avg_completion_rate": "75%",
-                            "similar_campaigns": "3.2% conversion rate",
-                        },
-                    },
-                    {
-                        "id": "display_coffee_sites",
-                        "name": "Display Network - Coffee Publications",
-                        "description": "Banner ads across premium coffee and food sites",
-                        "formats": {
-                            "300x250": "high availability",
-                            "728x90": "medium availability",
-                            "320x50": "mobile - high availability",
-                        },
-                        "inventory_available": True,
-                        "estimated_reach": "5M impressions/month",
-                        "audience_match": "78% match - coffee consumers",
-                        "pricing": {
-                            "cpm": {"min": 8, "max": 15},
-                            "cpc": {"min": 0.75, "max": 2.50},
-                            "minimum_spend": 2000,
-                        },
-                        "creative_specs": {
-                            "formats": "JPG, PNG, HTML5",
-                            "max_file_size": "150KB",
-                            "animation": "15 seconds max",
-                        },
-                        "performance_benchmarks": {
-                            "avg_ctr": "0.15%",
-                            "viewability": "72%",
-                            "similar_campaigns": "1.8% conversion rate",
-                        },
-                    },
-                    {
-                        "id": "native_coffee_content",
-                        "name": "Native Advertising - Coffee Content",
-                        "description": "Native ads in coffee blogs and recipe sites",
-                        "formats": {
-                            "sponsored_content": "available",
-                            "in_feed": "high availability",
-                            "recommendation_widget": "available",
-                        },
-                        "inventory_available": True,
-                        "estimated_reach": "1.8M engaged coffee readers",
-                        "audience_match": "92% match - premium coffee buyers",
-                        "pricing": {"cpm": {"min": 12, "max": 25}, "minimum_spend": 3000},
-                        "creative_specs": {
-                            "headline": "25-40 characters",
-                            "description": "90-120 characters",
-                            "image": "1200x628px recommended",
-                        },
-                        "performance_benchmarks": {
-                            "avg_ctr": "0.8%",
-                            "engagement_rate": "4.5%",
-                            "similar_campaigns": "2.5% conversion rate",
-                        },
-                    },
-                    {
-                        "id": "search_coffee_keywords",
-                        "name": "Search Ads - Coffee Keywords",
-                        "description": "Search advertising on coffee-related queries",
-                        "formats": {
-                            "text_ads": "available",
-                            "shopping_ads": "available",
-                            "display_remarketing": "available",
-                        },
-                        "inventory_available": True,
-                        "keyword_opportunities": [
-                            "premium coffee beans (high intent)",
-                            "best coffee beans online (high competition)",
-                            "organic coffee (medium competition)",
-                            "specialty coffee (low competition)",
-                        ],
-                        "pricing": {"cpc": {"min": 1.50, "max": 4.00}, "minimum_spend": 1000},
-                        "performance_benchmarks": {
-                            "avg_ctr": "3.5%",
-                            "conversion_rate": "4.2%",
-                            "quality_score": "7/10 average",
-                        },
-                    },
-                ],
-                "targeting_options": {
-                    "demographics": {
-                        "age": ["25-34", "35-44", "45-54"],
-                        "income": ["$50k-$100k", "$100k+"],
-                        "education": ["college+"],
-                    },
-                    "interests": [
-                        "Premium coffee",
-                        "Specialty beverages",
-                        "Organic foods",
-                        "Cooking & recipes",
-                        "Sustainable living",
-                    ],
-                    "behaviors": ["Online grocery shoppers", "Premium brand affinity", "Subscription box users"],
-                    "geography": {
-                        "coverage": "US nationwide",
-                        "top_markets": ["NYC", "SF", "Seattle", "Portland", "Austin"],
-                    },
-                },
-                "campaign_recommendations": {
-                    "optimal_mix": "40% video, 30% native, 20% display, 10% search",
-                    "budget_allocation": "$8k video, $6k native, $4k display, $2k search",
-                    "duration": "45-60 days recommended for testing",
-                    "seasonality": "Peak performance Sept-Dec, March-May",
-                },
-            }
+            logger.error(f"Error getting products: {e}")
+            # Return empty products list instead of fallback data
+            return {"products": [], "message": f"Unable to retrieve products: {str(e)}"}
+
+    def _extract_promoted_offering_from_query(self, query: str) -> str:
+        """Extract or infer promoted_offering from the user query.
+
+        AdCP requires promoted_offering to be provided. We'll try to extract
+        it from the query or provide a reasonable default.
+        """
+        # Look for common patterns that might indicate the promoted offering
+        query_lower = query.lower()
+
+        # If the query mentions specific brands or products, use those
+        if "advertise" in query_lower or "promote" in query_lower:
+            # Try to extract what they're promoting
+            parts = query.split()
+            for i, word in enumerate(parts):
+                if word.lower() in ["advertise", "promote", "advertising", "promoting"]:
+                    if i + 1 < len(parts):
+                        # Take the next few words as the offering
+                        offering_parts = parts[i + 1 : i + 4]  # Take up to 3 words
+                        offering = " ".join(offering_parts).strip(".,!?")
+                        if len(offering) > 5:  # Make sure it's substantial
+                            return f"Business promoting {offering}"
+
+        # Default offering based on query type
+        if any(word in query_lower for word in ["video", "display", "banner", "ad"]):
+            return "Brand advertising products and services"
+        elif any(word in query_lower for word in ["coffee", "beverage", "food"]):
+            return "Food and beverage company"
+        elif any(word in query_lower for word in ["tech", "software", "app", "digital"]):
+            return "Technology company digital products"
+        else:
+            # Generic fallback that should pass AdCP validation
+            return "Business advertising products and services"
 
     def _get_pricing(self) -> dict:
         """Get pricing information.
@@ -605,28 +638,40 @@ class AdCPRequestHandler(RequestHandler):
             }
         }
 
-    async def _create_media_buy(self, request: str) -> dict:
+    async def _create_media_buy(self, request: str, auth_token: str) -> dict:
         """Create a media buy based on the request.
 
         Args:
             request: User's media buy request
+            auth_token: Bearer token for authentication
 
         Returns:
             Dictionary containing media buy creation result
         """
-        # This would normally parse the request and create via MCP
-        # For now, return a mock response
-        return {
-            "success": False,
-            "message": "Please provide more details: product IDs, budget, and flight dates",
-            "required_fields": ["product_ids", "total_budget", "flight_start_date", "flight_end_date"],
-            "example": {
-                "product_ids": ["video_premium"],
-                "total_budget": 10000,
-                "flight_start_date": "2025-02-01",
-                "flight_end_date": "2025-02-28",
-            },
-        }
+        # For now, return a mock response indicating authentication is working
+        # but media buy creation needs more implementation
+        try:
+            # Verify authentication works
+            tool_context = self._create_tool_context_from_a2a(
+                auth_token=auth_token,
+                tool_name="create_media_buy",
+            )
+
+            return {
+                "success": False,
+                "message": f"Authentication successful for {tool_context.principal_id}, but media buy creation needs more details",
+                "required_fields": ["product_ids", "total_budget", "flight_start_date", "flight_end_date"],
+                "authenticated_tenant": tool_context.tenant_id,
+                "authenticated_principal": tool_context.principal_id,
+                "example": {
+                    "product_ids": ["video_premium"],
+                    "total_budget": 10000,
+                    "flight_start_date": "2025-02-01",
+                    "flight_end_date": "2025-02-28",
+                },
+            }
+        except Exception as e:
+            return {"success": False, "message": f"Authentication failed: {str(e)}", "error": str(e)}
 
 
 def create_agent_card() -> AgentCard:
@@ -755,6 +800,31 @@ def main():
             request = Request(request.scope, receive=lambda: {"type": "http.request", "body": body})
 
         response = await call_next(request)
+        return response
+
+    # Add authentication middleware for Bearer token extraction
+    @app.middleware("http")
+    async def auth_middleware(request, call_next):
+        """Extract Bearer token and set authentication context for A2A requests."""
+        # Only process A2A endpoint requests
+        if request.url.path == "/a2a" and request.method == "POST":
+            # Extract Bearer token from Authorization header
+            auth_header = request.headers.get("authorization", "")
+            if auth_header.startswith("Bearer "):
+                token = auth_header[7:]  # Remove "Bearer " prefix
+                # Store token in thread-local storage for handler access
+                _request_context.auth_token = token
+                logger.info(f"Extracted Bearer token for A2A request: {token[:10]}...")
+            else:
+                logger.warning("A2A request missing Bearer token in Authorization header")
+                _request_context.auth_token = None
+
+        response = await call_next(request)
+
+        # Clean up thread-local storage
+        if hasattr(_request_context, "auth_token"):
+            delattr(_request_context, "auth_token")
+
         return response
 
     # Add alias for agent-card.json (some clients look for this)
