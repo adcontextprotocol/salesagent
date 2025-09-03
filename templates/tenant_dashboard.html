@@ -808,9 +808,9 @@ function updateActivities(activities) {
         return;
     }
 
-    // Add all activities (they come in reverse chronological order)
+    // Add all activities (they come in newest-first order)
     activities.forEach(activity => {
-        addActivity(activity);
+        addActivity(activity, false); // false = initial load, don't insert at top
     });
 }
 
@@ -857,7 +857,7 @@ async function connectActivityStream() {
     }
 }
 
-function addActivity(activity) {
+function addActivity(activity, isNewActivity = true) {
     const list = document.getElementById('activity-list');
 
     // Clear loading message on first activity
@@ -947,23 +947,28 @@ function addActivity(activity) {
         </div>
     `;
 
-    // Add to beginning of list
-    list.insertBefore(item, list.firstChild);
-
-    // Add a brief highlight animation for new items
-    const bgColor = activity.action_required ? '#fff3cd' : '#e8f4f8';
-    item.style.backgroundColor = bgColor;
-    setTimeout(() => {
-        item.style.backgroundColor = '';
-    }, 3000);
+    if (isNewActivity) {
+        // For real-time updates, add to top (most recent first)
+        list.insertBefore(item, list.firstChild);
+        // Store at beginning of buffer for new activities
+        activityBuffer.unshift(activity);
+        // Add highlight animation for new real-time activities
+        const bgColor = activity.action_required ? '#fff3cd' : '#e8f4f8';
+        item.style.backgroundColor = bgColor;
+        setTimeout(() => {
+            item.style.backgroundColor = '';
+        }, 3000);
+    } else {
+        // For initial load, add to end (preserve backend order)
+        list.appendChild(item);
+        // Store at end of buffer for initial load
+        activityBuffer.push(activity);
+    }
 
     // Keep only MAX_ACTIVITIES items
     while (list.children.length > MAX_ACTIVITIES) {
         list.removeChild(list.lastChild);
     }
-
-    // Store in buffer for persistence
-    activityBuffer.unshift(activity);
     if (activityBuffer.length > MAX_ACTIVITIES) {
         activityBuffer.pop();
     }
