@@ -9,7 +9,7 @@ from fastmcp.client.transports import StreamableHttpTransport
 
 from src.core.database.database_session import get_db_session
 from src.core.database.models import Product as ModelProduct
-from src.core.schemas import Product, Signal
+from src.core.schemas import Product
 
 from .base import ProductCatalogProvider
 
@@ -136,7 +136,7 @@ class SignalsDiscoveryProvider(ProductCatalogProvider):
         principal_id: str | None,
         context: dict[str, Any] | None,
         principal_data: dict[str, Any] | None,
-    ) -> list[Signal]:
+    ) -> list[dict[str, Any]]:
         """Call upstream signals discovery agent to get relevant signals."""
         if not self.client:
             await self.initialize()
@@ -167,24 +167,22 @@ class SignalsDiscoveryProvider(ProductCatalogProvider):
         try:
             result = await asyncio.wait_for(self.client.call_tool("get_signals", request_data), timeout=self.timeout)
 
-            # Parse signals from response
-            signals = []
-            for signal_data in result.get("signals", []):
-                signals.append(Signal(**signal_data))
-
-            return signals
+            # Return raw signal data (AdCP protocol format)
+            return result.get("signals", [])
 
         except TimeoutError as err:
             raise Exception(f"Signals discovery timeout after {self.timeout} seconds") from err
 
-    async def _transform_signals_to_products(self, signals: list[Signal], brief: str, tenant_id: str) -> list[Product]:
+    async def _transform_signals_to_products(
+        self, signals: list[dict[str, Any]], brief: str, tenant_id: str
+    ) -> list[Product]:
         """Transform signals into custom products with appropriate targeting and pricing."""
         products = []
 
         # Group signals by category for better organization
         signals_by_category = {}
         for signal in signals:
-            category = signal.category or "general"
+            category = signal.get("category") or "general"
             if category not in signals_by_category:
                 signals_by_category[category] = []
             signals_by_category[category].append(signal)
@@ -204,39 +202,39 @@ class SignalsDiscoveryProvider(ProductCatalogProvider):
         return products
 
     async def _create_product_from_signals(
-        self, signals: list[Signal], category: str, brief: str, tenant_id: str
+        self, signals: list[dict[str, Any]], category: str, brief: str, tenant_id: str
     ) -> Product | None:
         """Create a single product from a group of related signals."""
         if not signals:
             return None
 
-        # Calculate average CPM uplift and reach
-        cpm_uplifts = [s.cpm_uplift for s in signals if s.cpm_uplift is not None]
-        reaches = [s.reach for s in signals if s.reach is not None]
+        # Calculate average CPM and coverage
+        cpm_values = [s["pricing"]["cpm"] for s in signals if s.get("pricing") and s["pricing"].get("cpm") is not None]
+        coverage_percentages = [s["coverage_percentage"] for s in signals if s.get("coverage_percentage") is not None]
 
-        avg_cpm_uplift = sum(cpm_uplifts) / len(cpm_uplifts) if cpm_uplifts else 0
-        total_reach = sum(reaches) if reaches else 0
+        avg_cpm = sum(cpm_values) / len(cpm_values) if cpm_values else 5.0
+        total_coverage = sum(coverage_percentages) if coverage_percentages else 0
 
         # Create targeting overlay with signal IDs
-        signal_ids = [s.signal_id for s in signals]
+        signal_ids = [s["signal_agent_segment_id"] for s in signals]
         targeting_overlay = {
             "signals": signal_ids,
             "signal_category": category,
-            "signal_types": list({s.type for s in signals}),
+            "signal_types": list({s["signal_type"] for s in signals}),
         }
 
         # Create product name and description
-        signal_names = [s.name for s in signals[:3]]  # Use first 3 for name
+        signal_names = [s["name"] for s in signals[:3]]  # Use first 3 for name
         product_name = f"Signal-Enhanced {category.title()}: {', '.join(signal_names)}"
         if len(signals) > 3:
             product_name += f" (+{len(signals) - 3} more)"
 
         product_description = f"Custom product targeting based on signals discovery for brief: '{brief[:100]}...'"
-        product_description += f"\n\nTargeted signals: {', '.join([s.name for s in signals])}"
+        product_description += f"\n\nTargeted signals: {', '.join([s['name'] for s in signals])}"
 
         # Base price calculation (could be enhanced with more sophisticated logic)
         base_price = 5.00  # Base CPM
-        adjusted_price = base_price * (1 + avg_cpm_uplift / 100) if avg_cpm_uplift > 0 else base_price
+        adjusted_price = avg_cpm if avg_cpm > 0 else base_price
 
         # Generate unique product ID
         import hashlib

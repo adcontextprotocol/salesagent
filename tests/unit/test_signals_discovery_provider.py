@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from product_catalog_providers.signals import SignalsDiscoveryProvider
-from src.core.schemas import Product, Signal
+from src.core.schemas import Product
 
 
 class TestSignalsDiscoveryProvider:
@@ -153,26 +153,46 @@ class TestSignalsDiscoveryProvider:
         }
         provider = SignalsDiscoveryProvider(config)
 
-        # Mock signals from upstream
+        # Mock signals from upstream (using AdCP protocol schema as dicts)
         mock_signals = [
-            Signal(
-                signal_id="auto_intenders",
-                name="Auto Intenders",
-                description="Users interested in automotive",
-                type="audience",
-                category="automotive",
-                reach=5.0,
-                cpm_uplift=2.0,
-            ),
-            Signal(
-                signal_id="sports_content",
-                name="Sports Content",
-                description="Sports-related pages",
-                type="contextual",
-                category="sports",
-                reach=10.0,
-                cpm_uplift=1.5,
-            ),
+            {
+                "signal_agent_segment_id": "auto_intenders",
+                "name": "Auto Intenders",
+                "description": "Users interested in automotive",
+                "signal_type": "marketplace",
+                "data_provider": "Automotive Data Inc",
+                "coverage_percentage": 5.0,
+                "category": "automotive",
+                "deployments": [
+                    {
+                        "platform": "google_ad_manager",
+                        "is_live": True,
+                        "scope": "platform-wide",
+                        "decisioning_platform_segment_id": "123456",
+                        "estimated_activation_duration_minutes": 0,
+                    }
+                ],
+                "pricing": {"cpm": 2.0, "currency": "USD"},
+            },
+            {
+                "signal_agent_segment_id": "sports_content",
+                "name": "Sports Content",
+                "description": "Sports-related pages",
+                "signal_type": "marketplace",
+                "data_provider": "Sports Data Corp",
+                "coverage_percentage": 10.0,
+                "category": "sports",
+                "deployments": [
+                    {
+                        "platform": "google_ad_manager",
+                        "is_live": True,
+                        "scope": "platform-wide",
+                        "decisioning_platform_segment_id": "789012",
+                        "estimated_activation_duration_minutes": 0,
+                    }
+                ],
+                "pricing": {"cpm": 1.5, "currency": "USD"},
+            },
         ]
 
         with patch.object(provider, "_get_signals_from_upstream", new_callable=AsyncMock) as mock_signals_call:
@@ -205,24 +225,44 @@ class TestSignalsDiscoveryProvider:
         provider = SignalsDiscoveryProvider({"max_signal_products": 5})
 
         signals = [
-            Signal(
-                signal_id="signal_1",
-                name="Test Signal 1",
-                description="First test signal",
-                type="audience",
-                category="automotive",
-                reach=5.0,
-                cpm_uplift=2.0,
-            ),
-            Signal(
-                signal_id="signal_2",
-                name="Test Signal 2",
-                description="Second test signal",
-                type="contextual",
-                category="automotive",
-                reach=3.0,
-                cpm_uplift=1.5,
-            ),
+            {
+                "signal_agent_segment_id": "signal_1",
+                "name": "Test Signal 1",
+                "description": "First test signal",
+                "signal_type": "marketplace",
+                "data_provider": "Test Provider 1",
+                "coverage_percentage": 5.0,
+                "category": "automotive",
+                "deployments": [
+                    {
+                        "platform": "google_ad_manager",
+                        "is_live": True,
+                        "scope": "platform-wide",
+                        "decisioning_platform_segment_id": "123456",
+                        "estimated_activation_duration_minutes": 0,
+                    }
+                ],
+                "pricing": {"cpm": 2.0, "currency": "USD"},
+            },
+            {
+                "signal_agent_segment_id": "signal_2",
+                "name": "Test Signal 2",
+                "description": "Second test signal",
+                "signal_type": "marketplace",
+                "data_provider": "Test Provider 2",
+                "coverage_percentage": 3.0,
+                "category": "automotive",
+                "deployments": [
+                    {
+                        "platform": "google_ad_manager",
+                        "is_live": True,
+                        "scope": "platform-wide",
+                        "decisioning_platform_segment_id": "789012",
+                        "estimated_activation_duration_minutes": 0,
+                    }
+                ],
+                "pricing": {"cpm": 1.5, "currency": "USD"},
+            },
         ]
 
         products = await provider._transform_signals_to_products(signals, "test brief", "test_tenant")
@@ -237,8 +277,8 @@ class TestSignalsDiscoveryProvider:
         assert product.is_custom is True  # Signals products are custom
         assert product.brief_relevance is not None  # Should have brief relevance
 
-        # Check price calculation (base + average uplift)
-        expected_price = 5.0 * (1 + (2.0 + 1.5) / 2 / 100)  # 5.0 * 1.0175
+        # Check price calculation (average CPM from signals)
+        expected_price = (2.0 + 1.5) / 2  # 1.75 (average of signal CPMs)
         assert abs(product.cpm - expected_price) < 0.01
 
     @pytest.mark.asyncio
@@ -247,15 +287,25 @@ class TestSignalsDiscoveryProvider:
         provider = SignalsDiscoveryProvider({})
 
         signals = [
-            Signal(
-                signal_id="test_signal",
-                name="Test Signal",
-                description="A test signal",
-                type="audience",
-                category="test",
-                reach=10.0,
-                cpm_uplift=5.0,
-            )
+            {
+                "signal_agent_segment_id": "test_signal",
+                "name": "Test Signal",
+                "description": "A test signal",
+                "signal_type": "marketplace",
+                "data_provider": "Test Provider",
+                "coverage_percentage": 10.0,
+                "category": "test",
+                "deployments": [
+                    {
+                        "platform": "google_ad_manager",
+                        "is_live": True,
+                        "scope": "platform-wide",
+                        "decisioning_platform_segment_id": "123456",
+                        "estimated_activation_duration_minutes": 0,
+                    }
+                ],
+                "pricing": {"cpm": 5.0, "currency": "USD"},
+            }
         ]
 
         product = await provider._create_product_from_signals(signals, "test", "test brief", "test_tenant")
