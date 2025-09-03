@@ -806,17 +806,25 @@ def main():
     @app.middleware("http")
     async def auth_middleware(request, call_next):
         """Extract Bearer token and set authentication context for A2A requests."""
-        # Only process A2A endpoint requests
-        if request.url.path == "/a2a" and request.method == "POST":
-            # Extract Bearer token from Authorization header
-            auth_header = request.headers.get("authorization", "")
+        # Only process A2A endpoint requests (handle both /a2a and /a2a/)
+        if request.url.path in ["/a2a", "/a2a/"] and request.method == "POST":
+            # Extract Bearer token from Authorization header (case-insensitive)
+            auth_header = request.headers.get("authorization", "").strip()
+            # Also try Authorization with capital A (case variations)
+            if not auth_header:
+                auth_header = request.headers.get("Authorization", "").strip()
+
+            logger.info(
+                f"Processing A2A request to {request.url.path} with auth header: {'Bearer...' if auth_header.startswith('Bearer ') else repr(auth_header[:20]) + '...' if auth_header else 'missing'}"
+            )
+
             if auth_header.startswith("Bearer "):
                 token = auth_header[7:]  # Remove "Bearer " prefix
                 # Store token in thread-local storage for handler access
                 _request_context.auth_token = token
                 logger.info(f"Extracted Bearer token for A2A request: {token[:10]}...")
             else:
-                logger.warning("A2A request missing Bearer token in Authorization header")
+                logger.warning(f"A2A request to {request.url.path} missing Bearer token in Authorization header")
                 _request_context.auth_token = None
 
         response = await call_next(request)
