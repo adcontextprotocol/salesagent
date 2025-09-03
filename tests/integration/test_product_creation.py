@@ -218,13 +218,17 @@ def test_add_product_empty_json_fields(client, test_tenant, integration_db):
             session.commit()
 
     with client.session_transaction() as sess:
-        sess["authenticated"] = True
+        # Use consistent session setup pattern from our authentication fixes
+        sess["test_user"] = "test@example.com"
         sess["user"] = {
             "email": "test@example.com",
             "is_super_admin": False,
             "tenant_id": "test_product_tenant",
             "role": "admin",
         }
+        sess["test_user_role"] = "tenant_admin"
+        sess["test_user_name"] = "Test User"
+        sess["authenticated"] = True
         sess["email"] = "test@example.com"
         sess["tenant_id"] = "test_product_tenant"
         sess["role"] = "tenant_admin"
