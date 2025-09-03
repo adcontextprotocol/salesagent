@@ -303,52 +303,32 @@ class TestMCPTestPage:
         """Get Flask test client."""
         return flask_app.test_client()
 
-    @pytest.fixture
-    def auth_session(self, client, integration_db):
-        """Create authenticated session with proper super admin setup."""
-        from src.core.database.database_session import get_db_session
-        from src.core.database.models import SuperadminConfig
-
-        # Set up super admin in database
-        with get_db_session() as session:
-            # Add the test email as a super admin
-            email_config = SuperadminConfig(config_key="super_admin_emails", config_value="admin@example.com")
-            session.add(email_config)
-            session.commit()
-
-        with client.session_transaction() as sess:
-            sess["authenticated"] = True
-            sess["email"] = "admin@example.com"
-            sess["role"] = "super_admin"
-            sess["user"] = {"email": "admin@example.com", "role": "super_admin"}
-        return client
-
-    def test_mcp_test_page_requires_auth(self, client):
+    def test_mcp_test_page_requires_auth(self, admin_client):
         """Test that MCP test page requires authentication."""
-        response = client.get("/mcp-test")
+        response = admin_client.get("/mcp-test")
         assert response.status_code == 302  # Redirect to login
 
-    def test_mcp_test_page_requires_super_admin(self, client, integration_db):
+    def test_mcp_test_page_requires_super_admin(self, admin_client, integration_db):
         """Test that MCP test page requires super admin role."""
-        with client.session_transaction() as sess:
+        with admin_client.session_transaction() as sess:
             sess["authenticated"] = True
             sess["email"] = "user@example.com"
             sess["role"] = "tenant_admin"
             sess["user"] = {"email": "user@example.com", "role": "tenant_admin"}
 
-        response = client.get("/mcp-test")
+        response = admin_client.get("/mcp-test")
         assert response.status_code == 403  # Forbidden
 
-    def test_mcp_test_page_loads_for_super_admin(self, auth_session):
+    def test_mcp_test_page_loads_for_super_admin(self, authenticated_admin_session):
         """Test that MCP test page loads for super admin."""
-        response = auth_session.get("/mcp-test")
+        response = authenticated_admin_session.get("/mcp-test")
         assert response.status_code == 200
         assert b"MCP Protocol Test" in response.data
         assert b"get_products" in response.data
         assert b"create_media_buy" in response.data
 
     @pytest.mark.xfail(reason="Complex MCP mocking - actual server call happening")
-    def test_mcp_test_api_endpoint(self, auth_session, sample_principal):
+    def test_mcp_test_api_endpoint(self, authenticated_admin_session, sample_principal):
         """Test the MCP test API endpoint."""
         # Mock the MCP client call - patch where it's imported
         with patch("fastmcp.client.Client") as MockClient:
@@ -382,7 +362,7 @@ class TestMCPTestPage:
             mock_client.__aexit__ = async_exit
 
             # Make API call
-            response = auth_session.post(
+            response = authenticated_admin_session.post(
                 "/api/mcp-test/call",
                 json={
                     "server_url": "http://localhost:8080/mcp/",
@@ -398,19 +378,19 @@ class TestMCPTestPage:
             assert data["success"] is True
             assert "result" in data
 
-    def test_mcp_test_page_shows_principals(self, auth_session, sample_tenant, sample_principal):
+    def test_mcp_test_page_shows_principals(self, authenticated_admin_session, sample_tenant, sample_principal):
         """Test that MCP test page shows available principals."""
         # The page dynamically loads principals, so we just check the page loads
-        response = auth_session.get("/mcp-test")
+        response = authenticated_admin_session.get("/mcp-test")
         assert response.status_code == 200
 
         # Check that the principal select element exists
         assert b"principal_select" in response.data
         assert b"-- Select a Principal --" in response.data
 
-    def test_mcp_test_response_parsing(self, auth_session):
+    def test_mcp_test_response_parsing(self, authenticated_admin_session):
         """Test that the test page includes response parsing functionality."""
-        response = auth_session.get("/mcp-test")
+        response = authenticated_admin_session.get("/mcp-test")
         assert response.status_code == 200
 
         # Check for parsing functions in JavaScript
@@ -418,9 +398,9 @@ class TestMCPTestPage:
         assert b"useParsedData" in response.data
         assert b"Parsed Data from Previous Response" in response.data
 
-    def test_mcp_test_country_targeting_ui(self, auth_session):
+    def test_mcp_test_country_targeting_ui(self, authenticated_admin_session):
         """Test that country targeting is in the UI examples."""
-        response = auth_session.get("/mcp-test")
+        response = authenticated_admin_session.get("/mcp-test")
         assert response.status_code == 200
 
         # Check for country targeting in sample parameters

@@ -8,17 +8,16 @@
 
 import json
 import logging
-import os
 import secrets
 import uuid
 from datetime import UTC, datetime
 
 from flask import Blueprint, flash, jsonify, redirect, render_template, request, session, url_for
-from sqlalchemy.orm import joinedload
 
+from src.admin.services import DashboardService
 from src.admin.utils import get_tenant_config_from_db, require_auth, require_tenant_access
 from src.core.database.database_session import get_db_session
-from src.core.database.models import MediaBuy, Principal, Product, Task, Tenant, User
+from src.core.database.models import Principal, Tenant, User
 from src.core.validation import sanitize_form_data, validate_form_data
 
 logger = logging.getLogger(__name__)
@@ -30,177 +29,84 @@ tenants_bp = Blueprint("tenants", __name__, url_prefix="/tenant")
 @tenants_bp.route("/<tenant_id>")
 @require_tenant_access()
 def dashboard(tenant_id):
-    """Show tenant dashboard."""
+    """Show tenant dashboard using single data source pattern."""
     try:
-        with get_db_session() as db_session:
-            # Get tenant info
-            tenant = db_session.query(Tenant).filter_by(tenant_id=tenant_id).first()
-            if not tenant:
-                flash("Tenant not found", "error")
-                return redirect(url_for("core.index"))
+        # Use DashboardService for all dashboard data (SINGLE DATA SOURCE PATTERN)
+        dashboard_service = DashboardService(tenant_id)
+        tenant = dashboard_service.get_tenant()
 
-            # Get stats
-            active_campaigns = db_session.query(MediaBuy).filter_by(tenant_id=tenant_id, status="active").count()
+        if not tenant:
+            flash("Tenant not found", "error")
+            return redirect(url_for("core.index"))
 
-            total_spend = (
-                db_session.query(MediaBuy)
-                .filter_by(tenant_id=tenant_id)
-                .filter(MediaBuy.status.in_(["active", "completed"]))
-                .all()
-            )
-            total_spend_amount = float(sum(buy.budget or 0 for buy in total_spend))
+        # Get all metrics from centralized service
+        metrics = dashboard_service.get_dashboard_metrics()
 
-            principals_count = db_session.query(Principal).filter_by(tenant_id=tenant_id).count()
+        # Get recent media buys
+        recent_buys = dashboard_service.get_recent_media_buys(limit=10)
 
-            products_count = db_session.query(Product).filter_by(tenant_id=tenant_id).count()
+        # Get chart data
+        chart_data_dict = dashboard_service.get_chart_data()
 
-            # Get recent media buys with eager loading to avoid N+1 queries
-            recent_buys = (
-                db_session.query(MediaBuy)
-                .filter(MediaBuy.tenant_id == tenant_id)
-                .options(joinedload(MediaBuy.principal))  # Eager load principal relationship
-                .order_by(MediaBuy.created_at.desc())
-                .limit(10)
-                .all()
-            )
+        # Get tenant config for features
+        config = get_tenant_config_from_db(tenant_id)
+        features = config.get("features", {})
 
-            # Get tenant config for features
-            config = get_tenant_config_from_db(tenant_id)
-            features = config.get("features", {})
-
-            # Get recent revenue data for chart
-            from datetime import timedelta
-
-            today = datetime.now(UTC).date()
-            revenue_data = []
-
-            for i in range(30):
-                date = today - timedelta(days=29 - i)
-                # Calculate revenue for this date
-                daily_buys = (
-                    db_session.query(MediaBuy)
-                    .filter_by(tenant_id=tenant_id)
-                    .filter(MediaBuy.start_date <= date)
-                    .filter(MediaBuy.end_date >= date)
-                    .filter(MediaBuy.status.in_(["active", "completed"]))
-                    .all()
-                )
-
-                daily_revenue = 0
-                for buy in daily_buys:
-                    if buy.start_date and buy.end_date:
-                        days_in_flight = (buy.end_date - buy.start_date).days + 1
-                        if days_in_flight > 0:
-                            daily_revenue += float(buy.budget or 0) / days_in_flight
-
-                revenue_data.append({"date": date.isoformat(), "revenue": round(daily_revenue, 2)})
-
-            # Calculate revenue change (comparing last 7 days to previous 7 days)
-            last_week_revenue = sum(d["revenue"] for d in revenue_data[-7:])
-            previous_week_revenue = sum(d["revenue"] for d in revenue_data[-14:-7]) if len(revenue_data) >= 14 else 0
-            revenue_change = (
-                ((last_week_revenue - previous_week_revenue) / previous_week_revenue * 100)
-                if previous_week_revenue > 0
-                else 0
-            )
-
-            # Calculate pending buys
-            pending_buys = db_session.query(MediaBuy).filter_by(tenant_id=tenant_id, status="pending").count()
-
-            # Calculate task-based metrics (temporary fallback from workflow system)
-            # Get pending tasks that require action
-            pending_steps = (
-                db_session.query(Task)
-                .filter(
-                    Task.tenant_id == tenant_id,
-                    Task.status.in_(["pending", "active", "requires_approval"]),
-                )
-                .count()
-            )
-
-            # Get tasks requiring immediate attention (approval needed)
-            approval_needed = (
-                db_session.query(Task).filter(Task.tenant_id == tenant_id, Task.status == "requires_approval").count()
-            )
-
-            # Get recent completed tasks (for activity feed)
-            recent_activity = (
-                db_session.query(Task)
-                .filter(
-                    Task.tenant_id == tenant_id,
-                    Task.status.in_(["completed", "failed", "requires_approval"]),
-                )
-                .order_by(Task.created_at.desc())
-                .limit(10)
-                .all()
-            )
-
-            # Calculate advertiser metrics
-            active_advertisers = db_session.query(Principal).filter_by(tenant_id=tenant_id).count()
-
-            # Calculate metrics for the template
-            metrics = {
-                "total_revenue": total_spend_amount,
-                "active_buys": active_campaigns,
-                "pending_buys": pending_buys,
-                "pending_approvals": 0,  # Could be calculated from tasks if needed
-                "conversion_rate": 0.0,  # Could be calculated from actual data
-                "revenue_change": round(revenue_change, 1),
-                "revenue_change_abs": round(abs(revenue_change), 1),  # Absolute value for display
-                "pending_workflows": pending_steps,
-                "approval_needed": approval_needed,
-                "recent_activity": recent_activity,
-                "active_advertisers": active_advertisers,
-                "total_advertisers": active_advertisers,  # Same for now, could differentiate active vs total
-            }
-
-            # Prepare chart data for template
-            chart_labels = [d["date"] for d in revenue_data]
-            chart_data = [d["revenue"] for d in revenue_data]
-
-            # Transform recent_buys to list with extra properties
-            recent_media_buys_list = []
-            for media_buy in recent_buys:
-                # TODO: Calculate actual spend from delivery data when available
-                media_buy.spend = 0
-
-                # TODO: Calculate relative time properly with timezone handling
-                media_buy.created_at_relative = (
-                    media_buy.created_at.strftime("%Y-%m-%d") if media_buy.created_at else "Unknown"
-                )
-
-                # Add advertiser name from eager-loaded principal
-                media_buy.advertiser_name = media_buy.principal.name if media_buy.principal else "Unknown"
-
-                recent_media_buys_list.append(media_buy)
-
-            return render_template(
-                "tenant_dashboard.html",
-                tenant=tenant,
-                tenant_id=tenant_id,
-                active_campaigns=active_campaigns,
-                total_spend=total_spend_amount,
-                principals_count=principals_count,
-                products_count=products_count,
-                recent_buys=recent_buys,
-                recent_media_buys=recent_media_buys_list,  # Pass transformed list
-                features=features,
-                revenue_data=json.dumps(revenue_data),
-                chart_labels=chart_labels,
-                chart_data=chart_data,
-                metrics=metrics,
-            )
+        return render_template(
+            "tenant_dashboard.html",
+            tenant=tenant,
+            tenant_id=tenant_id,
+            # Legacy template variables (calculated by service)
+            active_campaigns=metrics["active_buys"],
+            total_spend=metrics["total_revenue"],
+            principals_count=metrics["total_advertisers"],
+            products_count=metrics["products_count"],
+            recent_buys=recent_buys,
+            recent_media_buys=recent_buys,  # Same data, different name for template
+            features=features,
+            # Chart data
+            revenue_data=json.dumps(metrics["revenue_data"]),
+            chart_labels=chart_data_dict["labels"],
+            chart_data=chart_data_dict["data"],
+            # Metrics object (single source of truth)
+            metrics=metrics,
+        )
 
     except Exception as e:
         import traceback
 
         error_detail = traceback.format_exc()
         logger.error(f"Error loading tenant dashboard: {e}\nFull traceback:\n{error_detail}")
-        # Show more specific error in development/debugging
-        if os.environ.get("DEBUG_ERRORS") == "true":
-            flash(f"Error loading dashboard: {str(e)}", "error")
+        # Secure error handling - show safe errors to users, log full details
+        error_str = str(e).lower()
+        sensitive_keywords = [
+            "database",
+            "connection",
+            "password",
+            "secret",
+            "key",
+            "token",
+            "postgresql",
+            "psycopg2",
+            "sqlalchemy",
+            "alembic",
+            "psql",
+            "host=",
+            "port=",
+            "user=",
+            "dbname=",
+            "sslmode=",
+        ]
+
+        # Check if error contains sensitive information
+        if any(keyword in error_str for keyword in sensitive_keywords):
+            flash("Dashboard temporarily unavailable - please contact administrator", "error")
         else:
-            flash("Error loading dashboard", "error")
+            # Safe to show user-friendly errors (validation, not found, etc.)
+            flash(f"Dashboard Error: {str(e)}", "error")
+
+        # Always log full details for debugging (only visible to administrators)
+        logger.error(f"Dashboard traceback: {error_detail}")
         return redirect(url_for("core.index"))
 
 

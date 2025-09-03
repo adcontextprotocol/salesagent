@@ -522,7 +522,7 @@
     <!-- Activity Feed -->
     <div class="activity-feed">
         <div class="activity-header">
-            <h3>Workflow Activity</h3>
+            <h3>Recent Activity</h3>
             <div class="activity-status">
                 <span class="status-dot active"></span>
                 <span id="connection-status">Connected</span>
@@ -532,32 +532,33 @@
         <div class="activity-list" id="activity-list">
             <!-- Show recent workflow activity -->
             {% if metrics.recent_activity %}
-                {% for step in metrics.recent_activity %}
-                    <div class="activity-item {{ 'action-required' if step.status == 'requires_approval' else 'info' }}">
-                        <div style="padding: 0.75rem; display: flex; justify-content: between; align-items: center;">
+                {% for activity in metrics.recent_activity %}
+                    <div class="activity-item {{ activity.type if activity.type else 'info' }} {{ 'action-required' if activity.action_required else '' }}">
+                        <div style="padding: 0.75rem; display: flex; justify-content: space-between; align-items: center;">
                             <div style="flex: 1;">
                                 <div style="font-weight: 600; margin-bottom: 0.25rem;">
-                                    {% if step.step_type == 'approval' %}
-                                        <i class="fas fa-hand-paper" style="color: #f59e0b; margin-right: 0.5rem;"></i>
-                                        {{ step.step_type|title }} Required
-                                    {% elif step.status == 'completed' %}
-                                        <i class="fas fa-check-circle" style="color: #10b981; margin-right: 0.5rem;"></i>
-                                        {{ step.step_type|title }} Completed
-                                    {% elif step.status == 'failed' %}
+                                    {% if activity.success == false %}
                                         <i class="fas fa-times-circle" style="color: #ef4444; margin-right: 0.5rem;"></i>
-                                        {{ step.step_type|title }} Failed
+                                    {% elif activity.operation.startswith('A2A.') %}
+                                        <i class="fas fa-exchange-alt" style="color: #3b82f6; margin-right: 0.5rem;"></i>
+                                    {% elif activity.operation in ['get_products', 'create_media_buy', 'check_media_buy_status'] %}
+                                        <i class="fas fa-shopping-cart" style="color: #10b981; margin-right: 0.5rem;"></i>
+                                    {% elif activity.operation == 'policy_check' %}
+                                        <i class="fas fa-shield-alt" style="color: #f59e0b; margin-right: 0.5rem;"></i>
                                     {% else %}
-                                        <i class="fas fa-cog fa-spin" style="color: #6b7280; margin-right: 0.5rem;"></i>
-                                        {{ step.step_type|title }} {{ step.status|title }}
+                                        <i class="fas fa-cog" style="color: #6b7280; margin-right: 0.5rem;"></i>
                                     {% endif %}
+                                    {{ activity.operation }}
                                 </div>
                                 <div style="color: #6b7280; font-size: 0.875rem;">
-                                    {% if step.tool_name %}Tool: {{ step.tool_name }}{% endif %}
-                                    {% if step.assigned_to %} • Assigned to: {{ step.assigned_to }}{% endif %}
+                                    by {{ activity.principal_name or 'System' }}
+                                    {% if activity.success == false %}
+                                        <span style="color: #ef4444;">• Failed</span>
+                                    {% endif %}
                                 </div>
                             </div>
                             <div style="color: #9ca3af; font-size: 0.75rem; text-align: right;">
-                                {{ step.created_at.strftime('%H:%M') if step.created_at else 'Unknown' }}
+                                {{ activity.time_relative }}
                             </div>
                         </div>
                     </div>
@@ -565,14 +566,14 @@
             {% else %}
                 <div class="activity-item info" style="text-align: center; padding: 2rem; color: #6b7280;">
                     <i class="fas fa-stream" style="font-size: 2rem; margin-bottom: 1rem; opacity: 0.5;"></i>
-                    <p>No recent workflow activity</p>
-                    <p style="font-size: 0.875rem;">Workflow steps will appear here as they're processed</p>
+                    <p>Loading recent activities...</p>
+                    <p style="font-size: 0.875rem;">API calls and operations will appear here</p>
                 </div>
             {% endif %}
         </div>
 
         <div style="text-align: center; padding: 1rem; border-top: 1px solid #e5e7eb;">
-            <small style="color: #6b7280;">Showing recent workflow steps • Live updates via SSE</small>
+            <small style="color: #6b7280;">Showing recent activity • Live updates every 5 seconds</small>
         </div>
     </div>
 
@@ -693,12 +694,10 @@
 
 <script src="https://cdn.jsdelivr.net/npm/chart.js@3.9.1/dist/chart.min.js?v=3.9.1"></script>
 <script>
-// Real-time activity feed using Server-Sent Events (SSE)
-let eventSource = null;
+// Activity feed using simple polling (more reliable than SSE)
+let pollingInterval = null;
 let activityBuffer = [];
 const MAX_ACTIVITIES = 50;
-let reconnectDelay = 1000; // Start with 1 second
-const maxReconnectDelay = 30000; // Max 30 seconds
 
 // HTML escaping functions to prevent XSS
 function escapeHtml(text) {
@@ -720,14 +719,110 @@ function escapeHtmlAttr(text) {
     });
 }
 
+async function pollActivities() {
+    const statusEl = document.getElementById('connection-status');
+    const statusDot = document.querySelector('.status-dot');
+
+    try {
+        const activityUrl = `{{ script_name }}/tenant/{{ tenant.tenant_id }}/activity`;
+        console.log('Polling activities from:', activityUrl);
+
+        const response = await fetch(activityUrl, {
+            credentials: 'same-origin', // This works reliably with regular requests
+            headers: {
+                'Accept': 'application/json'
+            }
+        });
+
+        if (response.status === 401) {
+            // Authentication failed - redirect to login
+            if (statusEl) {
+                statusEl.textContent = 'Authentication required - redirecting...';
+                statusEl.style.color = '#ef4444';
+            }
+            console.log('Authentication failed - redirecting to login');
+            window.location.reload(); // This will redirect to login via Flask
+            return;
+        }
+
+        if (response.status === 403) {
+            // Access denied
+            if (statusEl) {
+                statusEl.textContent = 'Access denied';
+                statusEl.style.color = '#ef4444';
+            }
+            if (statusDot) {
+                statusDot.classList.remove('active', 'connecting');
+                statusDot.classList.add('idle');
+            }
+            console.log('Access denied to activity feed');
+            return;
+        }
+
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}`);
+        }
+
+        const data = await response.json();
+
+        // Update status to connected
+        if (statusEl) {
+            statusEl.textContent = `Connected (${data.count} activities)`;
+            statusEl.style.color = '#10b981'; // Green
+        }
+        if (statusDot) {
+            statusDot.classList.remove('connecting', 'idle');
+            statusDot.classList.add('active');
+        }
+
+        // Update activities - for simplicity, replace all activities
+        updateActivities(data.activities);
+
+        console.log(`Loaded ${data.count} activities at ${data.timestamp}`);
+
+    } catch (error) {
+        console.error('Polling failed:', error);
+
+        // Update status to error
+        if (statusEl) {
+            statusEl.textContent = 'Connection error - will retry';
+            statusEl.style.color = '#ef4444';
+        }
+        if (statusDot) {
+            statusDot.classList.remove('active', 'connecting');
+            statusDot.classList.add('idle');
+        }
+
+        // Don't retry immediately - let the interval handle it
+    }
+}
+
+function updateActivities(activities) {
+    const list = document.getElementById('activity-list');
+
+    // Clear existing activities
+    list.innerHTML = '';
+
+    if (activities.length === 0) {
+        list.innerHTML = '<div class="activity-item">No recent activities</div>';
+        return;
+    }
+
+    // Add all activities (they come in newest-first order)
+    activities.forEach(activity => {
+        addActivity(activity, false); // false = initial load, don't insert at top
+    });
+}
+
 async function connectActivityStream() {
     const statusEl = document.getElementById('connection-status');
     const statusDot = document.querySelector('.status-dot');
 
     try {
-        // Close existing connection if any
-        if (eventSource) {
-            eventSource.close();
+        // Stop any existing polling
+        if (pollingInterval) {
+            clearInterval(pollingInterval);
+            pollingInterval = null;
         }
 
         // Update status to connecting
@@ -737,138 +832,32 @@ async function connectActivityStream() {
             statusDot.classList.add('connecting');
         }
 
-        // Pre-flight authentication check
-        const streamUrl = `{{ script_name }}/tenant/{{ tenant.tenant_id }}/events`;
+        // Use simple polling instead of EventSource for reliability
+        const activityUrl = `{{ script_name }}/tenant/{{ tenant.tenant_id }}/activity`;
+        console.log('Starting activity polling to:', activityUrl);
 
-        try {
-            const authCheck = await fetch(streamUrl, {
-                method: 'HEAD',
-                credentials: 'same-origin'
-            });
+        // Start polling immediately, then every 5 seconds
+        await pollActivities();
+        pollingInterval = setInterval(pollActivities, 5000);
 
-            if (authCheck.status === 401) {
-                // Authentication failed - show error and don't retry
-                if (statusEl) {
-                    statusEl.textContent = 'Authentication required';
-                    statusEl.style.color = '#ef4444';
-                }
-                if (statusDot) {
-                    statusDot.classList.remove('connecting', 'active');
-                    statusDot.classList.add('idle');
-                }
-                console.log('SSE authentication failed - please log in');
-                return; // Don't retry
-            }
-
-            if (authCheck.status === 403) {
-                // Access forbidden - show error and don't retry
-                if (statusEl) {
-                    statusEl.textContent = 'Access denied';
-                    statusEl.style.color = '#ef4444';
-                }
-                if (statusDot) {
-                    statusDot.classList.remove('connecting', 'active');
-                    statusDot.classList.add('idle');
-                }
-                console.log('SSE access denied - insufficient permissions');
-                return; // Don't retry
-            }
-
-            if (!authCheck.ok) {
-                throw new Error(`HTTP ${authCheck.status}`);
-            }
-        } catch (authError) {
-            console.log('SSE pre-flight check failed:', authError);
-            // For other errors (network, 500, etc.), we'll retry with backoff
-            throw authError;
-        }
-
-        // Authentication successful, create EventSource connection
-        eventSource = new EventSource(streamUrl, { withCredentials: true });
-
-        eventSource.onopen = function(e) {
-            console.log('SSE connection opened');
-            reconnectDelay = 1000; // Reset delay on successful connection
-
-            // Update status to connected
-            if (statusEl) {
-                statusEl.textContent = 'Connected';
-                statusEl.style.color = '#10b981'; // Green
-            }
-            if (statusDot) {
-                statusDot.classList.remove('connecting', 'idle');
-                statusDot.classList.add('active');
-            }
-        };
-
-        eventSource.onmessage = function(e) {
-            try {
-                const activity = JSON.parse(e.data);
-                addActivity(activity);
-            } catch (error) {
-                console.error('Failed to parse activity data:', error);
-            }
-        };
-
-        eventSource.onerror = function(e) {
-            console.error('SSE connection error:', e);
-
-            // Update status to error
-            if (statusEl) {
-                statusEl.textContent = 'Connection error';
-                statusEl.style.color = '#ef4444'; // Red
-            }
-            if (statusDot) {
-                statusDot.classList.remove('active', 'connecting');
-                statusDot.classList.add('idle');
-            }
-
-            // Close and retry with exponential backoff
-            if (eventSource) {
-                eventSource.close();
-                eventSource = null;
-            }
-
-            setTimeout(() => {
-                console.log(`Retrying SSE connection in ${reconnectDelay}ms`);
-                connectActivityStream();
-                reconnectDelay = Math.min(reconnectDelay * 2, maxReconnectDelay);
-            }, reconnectDelay);
-        };
-
-        // Handle specific error events
-        eventSource.addEventListener('error', function(e) {
-            if (e.data) {
-                try {
-                    const errorData = JSON.parse(e.data);
-                    console.error('Activity stream error:', errorData.message);
-                } catch (parseError) {
-                    console.error('Activity stream error event');
-                }
-            }
-        });
+        // Simple polling setup completed
 
     } catch (error) {
-        console.error('Failed to create SSE connection:', error);
+        console.error('Failed to setup polling:', error);
 
         // Update status to error
         if (statusEl) {
-            statusEl.textContent = 'Connection failed';
+            statusEl.textContent = 'Setup failed';
             statusEl.style.color = '#ef4444';
         }
         if (statusDot) {
             statusDot.classList.remove('active', 'connecting');
             statusDot.classList.add('idle');
         }
-
-        // Retry after delay
-        setTimeout(() => {
-            connectActivityStream();
-        }, reconnectDelay);
     }
 }
 
-function addActivity(activity) {
+function addActivity(activity, isNewActivity = true) {
     const list = document.getElementById('activity-list');
 
     // Clear loading message on first activity
@@ -958,23 +947,28 @@ function addActivity(activity) {
         </div>
     `;
 
-    // Add to beginning of list
-    list.insertBefore(item, list.firstChild);
-
-    // Add a brief highlight animation for new items
-    const bgColor = activity.action_required ? '#fff3cd' : '#e8f4f8';
-    item.style.backgroundColor = bgColor;
-    setTimeout(() => {
-        item.style.backgroundColor = '';
-    }, 3000);
+    if (isNewActivity) {
+        // For real-time updates, add to top (most recent first)
+        list.insertBefore(item, list.firstChild);
+        // Store at beginning of buffer for new activities
+        activityBuffer.unshift(activity);
+        // Add highlight animation for new real-time activities
+        const bgColor = activity.action_required ? '#fff3cd' : '#e8f4f8';
+        item.style.backgroundColor = bgColor;
+        setTimeout(() => {
+            item.style.backgroundColor = '';
+        }, 3000);
+    } else {
+        // For initial load, add to end (preserve backend order)
+        list.appendChild(item);
+        // Store at end of buffer for initial load
+        activityBuffer.push(activity);
+    }
 
     // Keep only MAX_ACTIVITIES items
     while (list.children.length > MAX_ACTIVITIES) {
         list.removeChild(list.lastChild);
     }
-
-    // Store in buffer for persistence
-    activityBuffer.unshift(activity);
     if (activityBuffer.length > MAX_ACTIVITIES) {
         activityBuffer.pop();
     }
@@ -1075,15 +1069,16 @@ function viewTaskDetails(activityId) {
     }
 }
 
-// Initialize activity stream connection
+// Initialize activity polling
 document.addEventListener('DOMContentLoaded', function() {
     connectActivityStream();
 });
 
-// Clean up on page unload
+// Clean up polling on page unload
 window.addEventListener('beforeunload', function() {
-    if (eventSource) {
-        eventSource.close();
+    if (pollingInterval) {
+        clearInterval(pollingInterval);
+        pollingInterval = null;
     }
 });
 </script>

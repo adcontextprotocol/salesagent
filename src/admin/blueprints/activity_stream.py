@@ -6,7 +6,7 @@ import time
 from collections import defaultdict
 from datetime import UTC, datetime, timedelta
 
-from flask import Blueprint, Response, request
+from flask import Blueprint, Response, jsonify, request
 
 from src.admin.utils import require_tenant_access
 from src.core.database.database_session import get_db_session
@@ -93,6 +93,19 @@ def format_activity_from_audit_log(audit_log: AuditLog) -> dict:
         full_details["task_details"] = parsed_details.get("details", {})
         action_required = True
 
+    elif adapter_name == "A2A" or audit_log.operation.startswith("A2A."):
+        # Handle A2A operations with rich details
+        details["primary"] = "🔄 A2A Protocol"
+        if parsed_details.get("query"):
+            details["secondary"] = (
+                f'Query: "{parsed_details["query"][:60]}..."'
+                if len(parsed_details.get("query", "")) > 60
+                else f'Query: "{parsed_details.get("query")}"'
+            )
+
+        # Include all A2A details for expansion
+        full_details = parsed_details.copy()  # Show all A2A details when expanded
+
     elif not audit_log.success:
         details["primary"] = "❌ Failed"
         if audit_log.error_message:
@@ -177,6 +190,29 @@ def get_recent_activities(tenant_id: str, since: datetime = None, limit: int = 5
     except Exception as e:
         logger.error(f"Failed to query activities for tenant {tenant_id}: {e}")
         return []
+
+
+@activity_stream_bp.route("/tenant/<tenant_id>/activity", methods=["GET"])
+@require_tenant_access(api_mode=False)  # Use normal redirect auth for polling
+def activity_feed(tenant_id, **kwargs):
+    """JSON endpoint for polling recent activities."""
+
+    # Validate tenant_id
+    if not tenant_id or not isinstance(tenant_id, str) or len(tenant_id) > 50:
+        logger.error(f"Invalid tenant_id for activity endpoint: {tenant_id}")
+        return jsonify({"error": "Invalid tenant ID"}), 400
+
+    try:
+        # Get recent activities (last 50)
+        activities = get_recent_activities(tenant_id, limit=50)
+
+        logger.info(f"Activity polling request - tenant: {tenant_id}, activities: {len(activities)}")
+
+        return jsonify({"activities": activities, "timestamp": datetime.now(UTC).isoformat(), "count": len(activities)})
+
+    except Exception as e:
+        logger.error(f"Error getting activities for tenant {tenant_id}: {e}")
+        return jsonify({"error": "Failed to get activities"}), 500
 
 
 @activity_stream_bp.route("/tenant/<tenant_id>/events", methods=["GET", "HEAD"])

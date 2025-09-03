@@ -243,3 +243,4 @@ MIT License - see [LICENSE](LICENSE) file for details.
 - [AdCP Specification](https://github.com/adcontextprotocol/adcp-spec) - Protocol specification
 - [MCP SDK](https://github.com/modelcontextprotocol) - Model Context Protocol tools
 - [FastMCP](https://github.com/jlowin/fastmcp) - MCP server framework
+# CI test trigger Tue Sep  2 16:01:44 EDT 2025

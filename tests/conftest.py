@@ -87,8 +87,9 @@ def test_db_path():
 @pytest.fixture(autouse=True)
 def test_environment(monkeypatch):
     """Configure test environment variables without global pollution."""
-    # Set testing flag
+    # Set testing flags
     monkeypatch.setenv("ADCP_TESTING", "true")
+    monkeypatch.setenv("ADCP_AUTH_TEST_MODE", "true")  # Enable test mode for auth
 
     # Set default test values if not already configured
     if "DATABASE_URL" not in os.environ:
@@ -104,35 +105,9 @@ def test_environment(monkeypatch):
     # Cleanup happens automatically with monkeypatch
 
 
-@pytest.fixture
-def db_session(test_db_path):
-    """Provide a test database session with isolated data."""
-    # Save original DATABASE_URL
-    original_url = os.environ.get("DATABASE_URL")
-
-    # Use temporary database for this test
-    os.environ["DATABASE_URL"] = f"sqlite:///{test_db_path}"
-
-    # Initialize database
-    from src.core.database.database import init_db
-
-    init_db()
-
-    # Create session
-    from src.core.database.db_config import get_db_connection
-
-    conn = get_db_connection()
-
-    yield conn
-
-    # Cleanup
-    conn.close()
-
-    # Restore original DATABASE_URL
-    if original_url:
-        os.environ["DATABASE_URL"] = original_url
-    else:
-        os.environ["DATABASE_URL"] = "sqlite:///:memory:"
+# NOTE: db_session fixture is now imported from conftest_db.py
+# This fixture is deprecated in favor of the conftest_db version
+# which properly returns SQLAlchemy Session objects
 
 
 # ============================================================================
@@ -262,13 +237,24 @@ def auth_headers(sample_principal):
 @pytest.fixture
 def admin_session():
     """Provide admin session data."""
-    return {"authenticated": True, "role": "super_admin", "email": "admin@example.com", "name": "Admin User"}
+    return {
+        "user": {"email": "admin@example.com", "name": "Admin User", "role": "super_admin"},
+        "authenticated": True, 
+        "role": "super_admin", 
+        "email": "admin@example.com", 
+        "name": "Admin User"
+    }
 
 
 @pytest.fixture
 def tenant_admin_session(sample_tenant):
     """Provide tenant admin session data."""
     return {
+        "user": {
+            "email": "tenant.admin@example.com", 
+            "name": "Tenant Admin", 
+            "role": "tenant_admin"
+        },
         "authenticated": True,
         "role": "tenant_admin",
         "tenant_id": sample_tenant["tenant_id"],
