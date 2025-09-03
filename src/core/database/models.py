@@ -57,10 +57,10 @@ class Tenant(Base, JSONValidatorMixin):
     products = relationship("Product", back_populates="tenant", cascade="all, delete-orphan")
     principals = relationship("Principal", back_populates="tenant", cascade="all, delete-orphan")
     users = relationship("User", back_populates="tenant", cascade="all, delete-orphan")
-    media_buys = relationship("MediaBuy", back_populates="tenant", cascade="all, delete-orphan")
+    media_buys = relationship("MediaBuy", back_populates="tenant", cascade="all, delete-orphan", overlaps="media_buys")
     # tasks table removed - replaced by workflow_steps
     audit_logs = relationship("AuditLog", back_populates="tenant", cascade="all, delete-orphan")
-    strategies = relationship("Strategy", back_populates="tenant", cascade="all, delete-orphan")
+    strategies = relationship("Strategy", back_populates="tenant", cascade="all, delete-orphan", overlaps="strategies")
     adapter_config = relationship(
         "AdapterConfig",
         back_populates="tenant",
@@ -153,8 +153,8 @@ class Principal(Base, JSONValidatorMixin):
 
     # Relationships
     tenant = relationship("Tenant", back_populates="principals")
-    media_buys = relationship("MediaBuy", back_populates="principal")
-    strategies = relationship("Strategy", back_populates="principal")
+    media_buys = relationship("MediaBuy", back_populates="principal", overlaps="media_buys")
+    strategies = relationship("Strategy", back_populates="principal", overlaps="strategies")
 
     __table_args__ = (
         Index("idx_principals_tenant", "tenant_id"),
@@ -676,8 +676,8 @@ class Strategy(Base, JSONValidatorMixin):
     updated_at = Column(DateTime, nullable=False, server_default=func.now(), onupdate=func.now())
 
     # Relationships
-    tenant = relationship("Tenant", back_populates="strategies")
-    principal = relationship("Principal", back_populates="strategies")
+    tenant = relationship("Tenant", back_populates="strategies", overlaps="strategies,tenant")
+    principal = relationship("Principal", back_populates="strategies", overlaps="strategies,tenant")
     states = relationship("StrategyState", back_populates="strategy", cascade="all, delete-orphan")
     media_buys = relationship("MediaBuy", back_populates="strategy")
 

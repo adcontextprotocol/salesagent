@@ -352,6 +352,7 @@ def authenticated_admin_client(test_admin_app):
     client = test_admin_app.test_client()
 
     with client.session_transaction() as sess:
+        sess["user"] = {"email": "admin@example.com", "name": "Admin User", "role": "super_admin"}
         sess["authenticated"] = True
         sess["role"] = "super_admin"
         sess["email"] = "admin@example.com"

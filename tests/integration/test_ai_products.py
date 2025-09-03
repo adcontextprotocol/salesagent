@@ -11,8 +11,6 @@ import pytest
 
 from src.admin.app import create_app
 
-app, _ = create_app()
-
 # Import modules to test
 from src.services.ai_product_service import AdServerInventory, AIProductConfigurationService, ProductDescription
 from src.services.default_products import (
@@ -216,40 +214,36 @@ class TestProductAPIs:
     """Test the Flask API endpoints - requires database."""
 
     @pytest.fixture
-    def client(self, integration_db):
-        """Create test client with database."""
+    def auth_client(self, integration_db):
+        """Create authenticated test client using test mode."""
+        from src.admin.app import create_app
+        
+        app, _ = create_app()
         app.config["TESTING"] = True
         app.config["SECRET_KEY"] = "test_secret"
-        app.config["WTF_CSRF_ENABLED"] = False  # Disable CSRF for testing
+        app.config["WTF_CSRF_ENABLED"] = False
 
-        with app.test_client() as client:
-            with app.app_context():
-                yield client
-
-    @pytest.fixture
-    def auth_session(self, client, integration_db):
-        """Create authenticated session with proper super admin setup."""
-        from src.core.database.database_session import get_db_session
-        from src.core.database.models import SuperadminConfig
-
-        # Set up super admin in database
-        with get_db_session() as session:
-            # Add the test email as a super admin
-            email_config = SuperadminConfig(config_key="super_admin_emails", config_value="test@example.com")
-            session.add(email_config)
-            session.commit()
-
+        client = app.test_client()
+        
+        # Use test_user for ADCP_AUTH_TEST_MODE 
         with client.session_transaction() as sess:
-            sess["authenticated"] = True  # Mark as authenticated
-            sess["email"] = "test@example.com"
-            sess["role"] = "super_admin"
-            sess["tenant_id"] = "test_tenant"
-            # Add user dict for require_auth decorator
-            sess["user"] = {"email": "test@example.com", "role": "super_admin"}
+            sess["test_user"] = {
+                "email": "test@example.com",
+                "name": "Test Admin", 
+                "role": "super_admin"
+            }
+            print(f"Set session keys: {list(sess.keys())}")
+            print(f"test_user: {sess.get('test_user')}")
+            
         return client
 
-    def test_product_suggestions_api(self, client, auth_session, integration_db):
+    def test_product_suggestions_api(self, auth_client, integration_db):
         """Test product suggestions API endpoint."""
+        # Debug auth test mode
+        import os
+        print(f"ADCP_AUTH_TEST_MODE: {os.environ.get('ADCP_AUTH_TEST_MODE')}")
+        print(f"ADCP_TESTING: {os.environ.get('ADCP_TESTING')}")
+        
         # Create a real tenant in the database with unique ID
         import uuid
         from datetime import UTC, datetime
@@ -285,8 +279,8 @@ class TestProductAPIs:
                 }
             ]
 
-            # Test with industry filter (use auth_session, not client)
-            response = auth_session.get(f"/api/tenant/{tenant_id}/products/suggestions?industry=news")
+            # Test with industry filter using authenticated client
+            response = auth_client.get(f"/api/tenant/{tenant_id}/products/suggestions?industry=news")
             if response.status_code != 200:
                 print(f"Response: {response.status_code}")
                 print(f"Data: {response.data}")
@@ -297,7 +291,7 @@ class TestProductAPIs:
             assert data["total_count"] > 0
             assert data["criteria"]["industry"] == "news"
 
-    def test_bulk_product_upload_csv(self, client, auth_session, integration_db):
+    def test_bulk_product_upload_csv(self, authenticated_admin_client, integration_db):
         """Test CSV bulk upload."""
         # Create tenant first with unique ID
         import uuid
@@ -330,7 +324,7 @@ Test Product,test_prod,"[{""format_id"":""display_300x250"",""name"":""Medium Re
         # Create proper file upload data
         data = {"file": (BytesIO(csv_data.encode()), "products.csv")}
 
-        response = auth_session.post(
+        response = authenticated_admin_client.post(
             f"/tenant/{tenant_id}/products/bulk/upload", data=data, content_type="multipart/form-data"
         )
 
@@ -349,7 +343,7 @@ Test Product,test_prod,"[{""format_id"":""display_300x250"",""name"":""Medium Re
             assert product.name == "Test Product"
             assert product.cpm == 15.0
 
-    def test_quick_create_products_api(self, client, auth_session, integration_db):
+    def test_quick_create_products_api(self, authenticated_admin_client, integration_db):
         """Test quick create API."""
         # Create tenant first with unique ID
         import uuid
@@ -385,7 +379,7 @@ Test Product,test_prod,"[{""format_id"":""display_300x250"",""name"":""Medium Re
                 }
             ]
 
-            response = client.post(
+            response = authenticated_admin_client.post(
                 f"/api/tenant/{tenant_id}/products/quick-create", json={"product_ids": ["run_of_site_display"]}
             )
 
