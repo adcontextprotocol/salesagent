@@ -746,7 +746,11 @@ async def get_products(req: GetProductsRequest, context: Context) -> GetProducts
 
 @mcp.tool
 def list_creative_formats(context: Context) -> ListCreativeFormatsResponse:
-    """List all available creative formats (AdCP spec endpoint)."""
+    """List all available creative formats (AdCP spec endpoint).
+
+    Returns comprehensive standard formats from AdCP registry plus any custom tenant formats.
+    Prioritizes database formats over registry formats when format_id conflicts exist.
+    """
     start_time = time.time()
 
     # Authentication
@@ -757,7 +761,10 @@ def list_creative_formats(context: Context) -> ListCreativeFormatsResponse:
     if not tenant:
         raise ToolError("No tenant context available")
 
-    # Query database for formats
+    formats = []
+    format_ids_seen = set()
+
+    # First, query database for tenant-specific and custom formats
     with get_db_session() as session:
         from src.core.database.models import CreativeFormat
         from src.core.schemas import AssetRequirement, Format
@@ -772,7 +779,6 @@ def list_creative_formats(context: Context) -> ListCreativeFormatsResponse:
             .all()
         )
 
-        formats = []
         for db_format in db_formats:
             # Convert database model to schema format
             assets_required = []
@@ -791,11 +797,23 @@ def list_creative_formats(context: Context) -> ListCreativeFormatsResponse:
                 name=db_format.name,
                 type=db_format.type,
                 is_standard=db_format.is_standard or False,
-                iab_specification=None,  # Not stored in our current schema
+                iab_specification=getattr(db_format, "iab_specification", None),
                 requirements=db_format.specs or {},
                 assets_required=assets_required if assets_required else None,
             )
             formats.append(format_obj)
+            format_ids_seen.add(db_format.format_id)
+
+    # Add standard formats from FORMAT_REGISTRY that aren't already in database
+    from src.core.schemas import FORMAT_REGISTRY
+
+    for format_id, standard_format in FORMAT_REGISTRY.items():
+        if format_id not in format_ids_seen:
+            formats.append(standard_format)
+            format_ids_seen.add(format_id)
+
+    # Sort formats by type and name for consistent ordering
+    formats.sort(key=lambda f: (f.type, f.name))
 
     # Log the operation
     audit_logger = get_audit_logger("AdCP", tenant["tenant_id"])
@@ -805,13 +823,19 @@ def list_creative_formats(context: Context) -> ListCreativeFormatsResponse:
         principal_id=principal_id,
         adapter_id="N/A",
         success=True,
-        details={"format_count": len(formats)},
+        details={
+            "format_count": len(formats),
+            "standard_formats": len([f for f in formats if f.is_standard]),
+            "custom_formats": len([f for f in formats if not f.is_standard]),
+            "format_types": list({f.type for f in formats}),
+        },
     )
 
     # Log activity
     log_tool_activity(context, "list_creative_formats", start_time)
 
-    return ListCreativeFormatsResponse(formats=formats, message=f"Found {len(formats)} available creative formats")
+    message = f"Found {len(formats)} creative formats across {len({f.type for f in formats})} format types"
+    return ListCreativeFormatsResponse(formats=formats, message=message, specification_version="AdCP v2.4")
 
 
 @mcp.tool

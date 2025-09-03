@@ -46,7 +46,13 @@ class TestResponseSchemas:
 
     def test_list_creative_formats_response_no_context_id(self):
         """Verify ListCreativeFormatsResponse doesn't have context_id."""
-        response = ListCreativeFormatsResponse(formats=["display_300x250", "video_16x9"], message="2 formats available")
+        from src.core.schemas import Format
+
+        test_formats = [
+            Format(format_id="display_300x250", name="Medium Rectangle", type="display"),
+            Format(format_id="video_16x9", name="16:9 Video", type="video"),
+        ]
+        response = ListCreativeFormatsResponse(formats=test_formats, message="2 formats available")
 
         # Verify context_id is not in the schema
         assert not hasattr(response, "context_id")
@@ -54,6 +60,8 @@ class TestResponseSchemas:
         # Verify fields
         assert len(response.formats) == 2
         assert response.message == "2 formats available"
+        assert response.formats[0].format_id == "display_300x250"
+        assert response.formats[1].format_id == "video_16x9"
 
     def test_error_reporting_in_responses(self):
         """Verify error reporting is protocol-compliant."""
