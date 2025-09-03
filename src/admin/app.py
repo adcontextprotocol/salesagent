@@ -106,9 +106,9 @@ def create_app(config=None):
         app.config["SESSION_COOKIE_PATH"] = "/admin/"  # Ensure cookies work for all /admin/* paths
     else:
         app.config["SESSION_COOKIE_SECURE"] = False  # Allow HTTP in dev
-        app.config["SESSION_COOKIE_HTTPONLY"] = False  # Allow EventSource to access cookies
-        app.config["SESSION_COOKIE_SAMESITE"] = "None"  # Consistent behavior in dev
-        app.config["SESSION_COOKIE_PATH"] = "/admin/"  # Consistent cookie path in dev too
+        app.config["SESSION_COOKIE_HTTPONLY"] = True  # Standard setting for dev
+        app.config["SESSION_COOKIE_SAMESITE"] = "Lax"  # Works with HTTP in development
+        app.config["SESSION_COOKIE_PATH"] = "/"  # Standard root path for dev
 
     # Add custom Jinja2 filters
     def from_json_filter(s):

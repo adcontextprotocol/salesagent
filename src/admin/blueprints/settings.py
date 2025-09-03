@@ -257,3 +257,148 @@ def update_slack(tenant_id):
         flash(f"Error updating Slack settings: {str(e)}", "error")
 
     return redirect(url_for("tenants.tenant_settings", tenant_id=tenant_id, section="integrations"))
+
+
+@settings_bp.route("/signals", methods=["POST"])
+@require_tenant_access()
+def update_signals(tenant_id):
+    """Update signals discovery agent settings."""
+
+    try:
+        # Get form data
+        enabled = request.form.get("signals_enabled") == "on"
+        upstream_url = request.form.get("signals_upstream_url", "").strip()
+        upstream_token = request.form.get("signals_auth_token", "").strip()
+        auth_header = request.form.get("signals_auth_header", "x-adcp-auth").strip()
+        timeout = int(request.form.get("signals_timeout", "30"))
+        forward_promoted_offering = request.form.get("signals_forward_offering") == "on"
+        fallback_to_database = request.form.get("signals_fallback") == "on"
+
+        # Validate required fields if enabled
+        if enabled and not upstream_url:
+            flash("Upstream URL is required when signals discovery is enabled", "error")
+            return redirect(url_for("tenants.tenant_settings", tenant_id=tenant_id, section="integrations"))
+
+        # Validate timeout range
+        if timeout < 5 or timeout > 120:
+            flash("Timeout must be between 5 and 120 seconds", "error")
+            return redirect(url_for("tenants.tenant_settings", tenant_id=tenant_id, section="integrations"))
+
+        # Create configuration object
+        signals_config = {
+            "enabled": enabled,
+            "upstream_url": upstream_url,
+            "upstream_token": upstream_token,
+            "auth_header": auth_header,
+            "timeout": timeout,
+            "forward_promoted_offering": forward_promoted_offering,
+            "fallback_to_database": fallback_to_database,
+            "updated_at": datetime.now(UTC).isoformat(),
+        }
+
+        with get_db_session() as db_session:
+            tenant = db_session.query(Tenant).filter_by(tenant_id=tenant_id).first()
+            if not tenant:
+                flash("Tenant not found", "error")
+                return redirect(url_for("core.index"))
+
+            # Update signals agent configuration
+            tenant.signals_agent_config = signals_config
+            tenant.updated_at = datetime.now(UTC)
+            db_session.commit()
+
+            if enabled:
+                flash("Signals discovery agent configured successfully", "success")
+            else:
+                flash("Signals discovery agent disabled", "info")
+
+    except ValueError as e:
+        logger.error(f"Invalid timeout value: {e}")
+        flash("Invalid timeout value - must be a number between 5 and 120", "error")
+    except Exception as e:
+        logger.error(f"Error updating signals settings: {e}", exc_info=True)
+        flash(f"Error updating signals settings: {str(e)}", "error")
+
+    return redirect(url_for("tenants.tenant_settings", tenant_id=tenant_id, section="integrations"))
+
+
+@settings_bp.route("/test_signals", methods=["POST"])
+@require_tenant_access()
+def test_signals(tenant_id):
+    """Test connection to signals discovery agent."""
+    import asyncio
+    import time
+
+    from fastmcp.client import Client
+    from fastmcp.client.transports import StreamableHttpTransport
+
+    try:
+        data = request.get_json()
+        upstream_url = data.get("upstream_url", "").strip()
+        upstream_token = data.get("upstream_token", "").strip()
+        auth_header = data.get("auth_header", "x-adcp-auth").strip()
+
+        if not upstream_url:
+            return jsonify({"success": False, "error": "Upstream URL is required"}), 400
+
+        async def test_connection():
+            """Test the connection to the signals agent."""
+            start_time = time.time()
+
+            try:
+                # Set up headers
+                headers = {}
+                if upstream_token:
+                    headers[auth_header] = upstream_token
+
+                # Create MCP client
+                transport = StreamableHttpTransport(url=upstream_url, headers=headers)
+                client = Client(transport=transport)
+
+                async with client:
+                    # Try to call a simple test endpoint or get_signals with empty brief
+                    try:
+                        # First try to get server info/capabilities
+                        result = await asyncio.wait_for(client.call_tool("get_signals", {"brief": "test"}), timeout=10)
+
+                        end_time = time.time()
+                        response_time = int((end_time - start_time) * 1000)
+
+                        return {
+                            "success": True,
+                            "server_info": "AdCP Signals Discovery Agent",
+                            "response_time": response_time,
+                            "signals_count": len(result.get("signals", [])) if result else 0,
+                        }
+
+                    except Exception as tool_error:
+                        # If get_signals fails, the server might still be reachable
+                        # Try a basic connection test
+                        end_time = time.time()
+                        response_time = int((end_time - start_time) * 1000)
+
+                        # If we got here, at least the transport connected
+                        return {
+                            "success": True,
+                            "server_info": f"Server reachable (tool error: {str(tool_error)[:100]})",
+                            "response_time": response_time,
+                            "note": "Server connected but get_signals tool may not be available",
+                        }
+
+            except Exception as e:
+                end_time = time.time()
+                response_time = int((end_time - start_time) * 1000)
+
+                return {"success": False, "error": str(e), "response_time": response_time}
+
+        # Run the async test
+        result = asyncio.run(test_connection())
+
+        if result["success"]:
+            return jsonify(result), 200
+        else:
+            return jsonify(result), 400
+
+    except Exception as e:
+        logger.error(f"Error testing signals connection: {e}", exc_info=True)
+        return jsonify({"success": False, "error": f"Test failed: {str(e)}"}), 500

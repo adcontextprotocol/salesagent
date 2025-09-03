@@ -704,19 +704,56 @@ async def get_products(req: GetProductsRequest, context: Context) -> GetProducts
             context_id=context.meta.get("headers", {}).get("x-context-id") if hasattr(context, "meta") else None,
         )
 
+    # Determine product catalog configuration based on tenant's signals discovery settings
+    catalog_config = {"provider": "database", "config": {}}  # Default to database provider
+
+    # Check if signals discovery is configured for this tenant
+    if hasattr(tenant, "signals_agent_config") and tenant.get("signals_agent_config"):
+        signals_config = tenant["signals_agent_config"]
+
+        # Parse signals config if it's a string (SQLite) vs dict (PostgreSQL JSONB)
+        if isinstance(signals_config, str):
+            import json
+
+            try:
+                signals_config = json.loads(signals_config)
+            except json.JSONDecodeError:
+                logger.error(f"Invalid signals_agent_config JSON for tenant {tenant['tenant_id']}")
+                signals_config = {}
+
+        # If signals discovery is enabled, use hybrid provider
+        if isinstance(signals_config, dict) and signals_config.get("enabled", False):
+            logger.info(f"Using hybrid provider with signals discovery for tenant {tenant['tenant_id']}")
+            catalog_config = {
+                "provider": "hybrid",
+                "config": {
+                    "database": {},  # Use database provider defaults
+                    "signals_discovery": signals_config,
+                    "ranking_strategy": "signals_first",  # Prioritize signals-enhanced products
+                    "max_products": 20,
+                    "deduplicate": True,
+                },
+            }
+
     # Get the product catalog provider for this tenant
     provider = await get_product_catalog_provider(
         tenant["tenant_id"],
-        {},  # Config is no longer needed for provider initialization
+        catalog_config,
     )
 
-    # Query products using the brief
+    # Query products using the brief, including context for signals forwarding
+    context_data = {
+        "promoted_offering": req.promoted_offering,
+        "tenant_id": tenant["tenant_id"],
+        "principal_id": principal_id,
+    }
+
     products = await provider.get_products(
         brief=req.brief,
         tenant_id=tenant["tenant_id"],
         principal_id=principal_id,
         principal_data=principal_data,
-        context=None,  # Could add additional context here if needed
+        context=context_data,
     )
 
     # Filter products based on policy compliance
