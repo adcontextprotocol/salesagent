@@ -30,8 +30,12 @@ from a2a.server.request_handlers.request_handler import RequestHandler
 from a2a.types import (
     AgentCard,
     Artifact,
+    InternalError,
+    InvalidParamsError,
+    InvalidRequestError,
     Message,
     MessageSendParams,
+    MethodNotFoundError,
     Part,
     Task,
     TaskIdParams,
@@ -39,6 +43,7 @@ from a2a.types import (
     TaskState,
     TaskStatus,
 )
+from a2a.utils.errors import ServerError
 
 # Restore paths and add parent directories for local imports
 sys.path = original_path
@@ -109,12 +114,12 @@ class AdCPRequestHandler(RequestHandler):
         # Authenticate using the token
         principal_id = get_principal_from_token(auth_token)
         if not principal_id:
-            raise ValueError("Invalid or missing authentication token")
+            raise ServerError(InvalidRequestError(message="Invalid or missing authentication token"))
 
         # Get tenant info (set as side effect of authentication)
         tenant = get_current_tenant()
         if not tenant:
-            raise ValueError("Unable to determine tenant from authentication")
+            raise ServerError(InvalidRequestError(message="Unable to determine tenant from authentication"))
 
         # Generate context ID if not provided
         if not context_id:
@@ -235,7 +240,11 @@ class AdCPRequestHandler(RequestHandler):
             # Get authentication token
             auth_token = self._get_auth_token()
             if not auth_token:
-                raise ValueError("Missing authentication token - Bearer token required in Authorization header")
+                raise ServerError(
+                    InvalidRequestError(
+                        message="Missing authentication token - Bearer token required in Authorization header"
+                    )
+                )
 
             # Route: Handle explicit skill invocations first, then natural language fallback
             if skill_invocations:
@@ -249,6 +258,9 @@ class AdCPRequestHandler(RequestHandler):
                     try:
                         result = await self._handle_explicit_skill(skill_name, parameters, auth_token)
                         results.append({"skill": skill_name, "result": result, "success": True})
+                    except ServerError:
+                        # ServerError should bubble up immediately (JSON-RPC error)
+                        raise
                     except Exception as e:
                         logger.error(f"Error in explicit skill {skill_name}: {e}")
                         results.append({"skill": skill_name, "error": str(e), "success": False})
@@ -447,6 +459,9 @@ class AdCPRequestHandler(RequestHandler):
             # Mark task as completed
             task.status = TaskStatus(state=TaskState.completed)
 
+        except ServerError:
+            # Re-raise ServerError as-is (will be caught by JSON-RPC handler)
+            raise
         except Exception as e:
             logger.error(f"Error processing message: {e}")
             # Try to get context for error logging
@@ -471,10 +486,8 @@ class AdCPRequestHandler(RequestHandler):
                 {"error_type": type(e).__name__},
                 str(e),
             )
-            task.status = TaskStatus(state=TaskState.failed)
-            task.artifacts = [
-                Artifact(artifactId="error_1", name="error", parts=[Part(type="data", data={"error": str(e)})])
-            ]
+            # Raise ServerError instead of creating failed task
+            raise ServerError(InternalError(message=f"Message processing failed: {str(e)}"))
 
         self.tasks[task_id] = task
         return task
@@ -630,7 +643,9 @@ class AdCPRequestHandler(RequestHandler):
 
         if skill_name not in skill_handlers:
             available_skills = list(skill_handlers.keys())
-            raise ValueError(f"Unknown skill '{skill_name}'. Available skills: {available_skills}")
+            raise ServerError(
+                MethodNotFoundError(message=f"Unknown skill '{skill_name}'. Available skills: {available_skills}")
+            )
 
         try:
             handler = skill_handlers[skill_name]
@@ -640,9 +655,12 @@ class AdCPRequestHandler(RequestHandler):
             else:
                 # These are async handlers that call core tools
                 return await handler(parameters, auth_token)
+        except ServerError:
+            # Re-raise ServerError as-is (already properly formatted)
+            raise
         except Exception as e:
             logger.error(f"Error in skill handler {skill_name}: {e}")
-            raise ValueError(f"Skill {skill_name} failed: {str(e)}")
+            raise ServerError(InternalError(message=f"Skill {skill_name} failed: {str(e)}"))
 
     async def _handle_get_products_skill(self, parameters: dict, auth_token: str) -> dict:
         """Handle explicit get_products skill invocation."""
@@ -658,7 +676,9 @@ class AdCPRequestHandler(RequestHandler):
             promoted_offering = parameters.get("promoted_offering", "")
 
             if not brief and not promoted_offering:
-                raise ValueError("Either 'brief' or 'promoted_offering' parameter is required")
+                raise ServerError(
+                    InvalidParamsError(message="Either 'brief' or 'promoted_offering' parameter is required")
+                )
 
             # Use brief as promoted_offering if not provided
             if not promoted_offering and brief:
@@ -677,7 +697,7 @@ class AdCPRequestHandler(RequestHandler):
 
         except Exception as e:
             logger.error(f"Error in get_products skill: {e}")
-            return {"products": [], "message": f"Unable to retrieve products: {str(e)}"}
+            raise ServerError(InternalError(message=f"Unable to retrieve products: {str(e)}"))
 
     async def _handle_create_media_buy_skill(self, parameters: dict, auth_token: str) -> dict:
         """Handle explicit create_media_buy skill invocation."""
@@ -729,11 +749,7 @@ class AdCPRequestHandler(RequestHandler):
 
         except Exception as e:
             logger.error(f"Error in create_media_buy skill: {e}")
-            return {
-                "success": False,
-                "message": f"Failed to create media buy: {str(e)}",
-                "error": str(e),
-            }
+            raise ServerError(InternalError(message=f"Failed to create media buy: {str(e)}"))
 
     async def _handle_add_creative_assets_skill(self, parameters: dict, auth_token: str) -> dict:
         """Handle explicit add_creative_assets skill invocation."""
@@ -783,11 +799,7 @@ class AdCPRequestHandler(RequestHandler):
 
         except Exception as e:
             logger.error(f"Error in add_creative_assets skill: {e}")
-            return {
-                "success": False,
-                "message": f"Failed to add creative assets: {str(e)}",
-                "error": str(e),
-            }
+            raise ServerError(InternalError(message=f"Failed to add creative assets: {str(e)}"))
 
     async def _handle_approve_creative_skill(self, parameters: dict, auth_token: str) -> dict:
         """Handle explicit approve_creative skill invocation."""
@@ -825,11 +837,7 @@ class AdCPRequestHandler(RequestHandler):
 
         except Exception as e:
             logger.error(f"Error in get_signals skill: {e}")
-            return {
-                "signals": [],
-                "message": f"Unable to retrieve signals: {str(e)}",
-                "error": str(e),
-            }
+            raise ServerError(InternalError(message=f"Unable to retrieve signals: {str(e)}"))
 
     async def _handle_search_signals_skill(self, parameters: dict, auth_token: str) -> dict:
         """Handle explicit search_signals skill invocation."""
@@ -1034,7 +1042,8 @@ class AdCPRequestHandler(RequestHandler):
                 },
             }
         except Exception as e:
-            return {"success": False, "message": f"Authentication failed: {str(e)}", "error": str(e)}
+            logger.error(f"Error in media buy creation: {e}")
+            raise ServerError(InternalError(message=f"Authentication failed: {str(e)}"))
 
 
 def create_agent_card() -> AgentCard:
