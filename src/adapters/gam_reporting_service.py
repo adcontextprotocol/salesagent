@@ -9,16 +9,38 @@ Provides comprehensive reporting data from GAM including:
 
 import csv
 import gzip
+import io
 import logging
-import tempfile
 import time
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Any, Literal
+from urllib.parse import urlparse
 
 import pytz
+import requests
 
 logger = logging.getLogger(__name__)
+
+
+class ReportingConfig:
+    """Configuration constants for GAM reporting operations."""
+
+    # Security settings
+    ALLOWED_DOMAINS = [".google.com", ".googleapis.com"]
+
+    # Memory management
+    MAX_ROWS_PER_REPORT = 100000  # Prevent OOM from large reports
+    MAX_CSV_SIZE_BYTES = 10 * 1024 * 1024  # 10MB limit for CSV data
+
+    # Network and timing
+    REPORT_TIMEOUT_SECONDS = 600  # 10 minutes maximum for report completion
+    POLL_INTERVAL_SECONDS = 5  # Check report status every 5 seconds
+    HTTP_CONNECT_TIMEOUT = 30  # 30 seconds for connection establishment
+    HTTP_READ_TIMEOUT = 300  # 5 minutes for data transfer
+
+    # User agent for HTTP requests
+    USER_AGENT = "AdCP-Sales-Agent/1.0"
 
 
 @dataclass
@@ -49,8 +71,6 @@ class GAMReportingService:
         """
         self.client = gam_client
         self.report_service = self.client.GetService("ReportService")
-        # TODO: Replace deprecated GetDataDownloader with ReportService method
-        self.report_downloader = self.client.GetDataDownloader()
 
         # Get network timezone from GAM if not provided
         if network_timezone:
@@ -305,9 +325,9 @@ class GAMReportingService:
             logger.info(f"Started GAM report job with ID: {report_job_id}")
 
             # Wait for completion - longer timeout for reports with multiple dimensions
-            max_wait = 600  # 10 minutes maximum for complex reports
+            max_wait = ReportingConfig.REPORT_TIMEOUT_SECONDS
             wait_time = 0
-            poll_interval = 5  # Check every 5 seconds instead of 2
+            poll_interval = ReportingConfig.POLL_INTERVAL_SECONDS
 
             while wait_time < max_wait:
                 status = self.report_service.getReportJobStatus(report_job_id)
@@ -326,36 +346,58 @@ class GAMReportingService:
             if self.report_service.getReportJobStatus(report_job_id) != "COMPLETED":
                 raise Exception(f"GAM report job timed out after {max_wait} seconds")
 
-            # Download the report with proper cleanup
-            tmp_file_path = None
+            # Use modern ReportService method instead of deprecated GetDataDownloader
             try:
-                with tempfile.NamedTemporaryFile(suffix=".csv.gz", delete=False) as tmp_file:
-                    self.report_downloader.DownloadReportToFile(report_job_id, "CSV_DUMP", tmp_file)
-                    tmp_file_path = tmp_file.name
+                download_url = self.report_service.getReportDownloadURL(report_job_id, "CSV_DUMP")
+            except Exception as e:
+                raise Exception(f"Failed to get GAM report download URL: {str(e)}") from e
 
-                # Parse the CSV data
-                with gzip.open(tmp_file_path, "rt") as gz_file:
+            # Validate URL is from Google for security
+            parsed_url = urlparse(download_url)
+            if not parsed_url.hostname or not any(
+                parsed_url.hostname.endswith(domain) for domain in ReportingConfig.ALLOWED_DOMAINS
+            ):
+                raise Exception(f"Invalid download URL: not from Google domain ({parsed_url.hostname})")
+
+            # Download the report using requests with proper timeout and error handling
+            try:
+                response = requests.get(
+                    download_url,
+                    timeout=(ReportingConfig.HTTP_CONNECT_TIMEOUT, ReportingConfig.HTTP_READ_TIMEOUT),
+                    headers={"User-Agent": ReportingConfig.USER_AGENT},
+                    stream=True,  # For better memory handling of large files
+                )
+                response.raise_for_status()
+            except requests.exceptions.Timeout as e:
+                raise Exception(f"GAM report download timed out: {str(e)}") from e
+            except requests.exceptions.RequestException as e:
+                raise Exception(f"Failed to download GAM report: {str(e)}") from e
+
+            # Parse the CSV data directly from the response with memory limits
+            try:
+                data = []
+
+                with gzip.open(io.BytesIO(response.content), "rt") as gz_file:
                     csv_reader = csv.DictReader(gz_file)
-                    data = list(csv_reader)
+                    for i, row in enumerate(csv_reader):
+                        if i >= ReportingConfig.MAX_ROWS_PER_REPORT:
+                            logger.warning(
+                                f"GAM report truncated at {ReportingConfig.MAX_ROWS_PER_REPORT} rows to prevent memory issues"
+                            )
+                            break
+                        data.append(row)
+            except Exception as e:
+                raise Exception(f"Failed to parse GAM report CSV data: {str(e)}") from e
 
-                # Debug: Log the first row to see column names
-                if data:
-                    logger.info(f"CSV columns: {list(data[0].keys())}")
-                    logger.info(f"First row sample: {data[0]}")
-                    logger.info(f"Total rows in report: {len(data)}")
-                else:
-                    logger.warning("GAM report returned no data rows")
+            # Debug: Log the first row to see column names
+            if data:
+                logger.info(f"CSV columns: {list(data[0].keys())}")
+                logger.info(f"First row sample: {data[0]}")
+                logger.info(f"Total rows in report: {len(data)}")
+            else:
+                logger.warning("GAM report returned no data rows")
 
-                return data
-            finally:
-                # Always clean up temp file
-                if tmp_file_path:
-                    try:
-                        import os
-
-                        os.unlink(tmp_file_path)
-                    except Exception as e:
-                        logger.warning(f"Failed to clean up temp file {tmp_file_path}: {e}")
+            return data
 
         except Exception as e:
             raise Exception(f"Error running GAM report: {str(e)}")

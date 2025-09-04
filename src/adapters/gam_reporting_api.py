@@ -13,8 +13,8 @@ from functools import wraps
 
 import pytz
 from flask import Blueprint, jsonify, request, session
-from gam_helper import get_ad_manager_client_for_tenant
 
+from scripts.ops.gam_helper import get_ad_manager_client_for_tenant
 from src.adapters.gam_reporting_service import GAMReportingService
 from src.core.database.database_session import get_db_session
 from src.core.database.models import Principal, Tenant
@@ -151,7 +151,7 @@ def get_gam_reporting(tenant_id: str):
             return jsonify({"error": "GAM client not configured for this tenant"}), 500
 
         # Get the network timezone (fetching if necessary)
-        from gam_helper import ensure_network_timezone
+        from scripts.ops.gam_helper import ensure_network_timezone
 
         logger.info(f"Getting network timezone for tenant {tenant_id}")
         network_timezone = ensure_network_timezone(tenant_id)
@@ -234,7 +234,7 @@ def get_advertiser_summary(tenant_id: str, advertiser_id: str):
         gam_client = get_ad_manager_client_for_tenant(tenant_id)
 
         # Get the network timezone (fetching if necessary)
-        from gam_helper import ensure_network_timezone
+        from scripts.ops.gam_helper import ensure_network_timezone
 
         network_timezone = ensure_network_timezone(tenant_id)
 
@@ -428,7 +428,7 @@ def get_country_breakdown(tenant_id: str):
             return jsonify({"error": "GAM client not configured for this tenant"}), 500
 
         # Get the network timezone
-        from gam_helper import ensure_network_timezone
+        from scripts.ops.gam_helper import ensure_network_timezone
 
         network_timezone = ensure_network_timezone(tenant_id)
 
@@ -514,7 +514,7 @@ def get_ad_unit_breakdown(tenant_id: str):
             return jsonify({"error": "GAM client not configured for this tenant"}), 500
 
         # Get the network timezone
-        from gam_helper import ensure_network_timezone
+        from scripts.ops.gam_helper import ensure_network_timezone
 
         network_timezone = ensure_network_timezone(tenant_id)
 
