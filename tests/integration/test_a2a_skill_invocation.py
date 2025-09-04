@@ -13,6 +13,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from a2a.types import Message, MessageSendParams, Part, Role, Task, TaskStatus
+from a2a.utils.errors import ServerError
 
 # Add parent directories to path for imports
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
@@ -378,14 +379,15 @@ class TestA2ASkillInvocation:
         message = self.create_message_with_skill("unknown_skill", skill_params)
         params = MessageSendParams(message=message)
 
-        # Process the message
-        result = await handler.on_message_send(params)
+        # Process the message - should raise ServerError
+        with pytest.raises(ServerError) as exc_info:
+            await handler.on_message_send(params)
 
-        # Verify error handling
-        assert isinstance(result, Task)
-        assert result.status.state.value == "failed"
-        assert result.artifacts is not None
-        assert "error" in result.artifacts[0].name.lower()
+        # Verify method not found error
+        server_error = exc_info.value
+        assert server_error.error is not None
+        assert server_error.error.code == -32601  # MethodNotFoundError code
+        assert "unknown_skill" in server_error.error.message
 
     @pytest.mark.asyncio
     async def test_multiple_skill_invocations(self, handler, mock_principal_context):
@@ -439,13 +441,15 @@ class TestA2ASkillInvocation:
         message = self.create_message_with_text("test query")
         params = MessageSendParams(message=message)
 
-        # Process the message
-        result = await handler.on_message_send(params)
+        # Process the message - should raise ServerError
+        with pytest.raises(ServerError) as exc_info:
+            await handler.on_message_send(params)
 
-        # Verify authentication error
-        assert isinstance(result, Task)
-        assert result.status.state.value == "failed"
-        assert "authentication" in result.artifacts[0].parts[0].root.data["error"].lower()
+        # Verify authentication error details
+        server_error = exc_info.value
+        assert server_error.error is not None
+        assert server_error.error.code == -32600  # InvalidRequestError code
+        assert "authentication" in server_error.error.message.lower()
 
     @pytest.mark.asyncio
     async def test_adcp_schema_validation_integration(self, validator):
