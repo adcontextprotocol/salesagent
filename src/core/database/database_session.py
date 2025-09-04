@@ -10,13 +10,34 @@ from contextlib import contextmanager
 from typing import Any
 
 from sqlalchemy import create_engine
-from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.exc import DisconnectionError, OperationalError, SQLAlchemyError
 from sqlalchemy.orm import Session, scoped_session, sessionmaker
 
 from src.core.database.db_config import DatabaseConfig
 
-# Create engine and session factory
-engine = create_engine(DatabaseConfig.get_connection_string())
+# Create engine and session factory with production-ready settings
+connection_string = DatabaseConfig.get_connection_string()
+
+# Configure engine with appropriate pooling and retry settings
+if "postgresql" in connection_string:
+    # PostgreSQL production settings
+    engine = create_engine(
+        connection_string,
+        pool_size=10,  # Base connections in pool
+        max_overflow=20,  # Additional connections beyond pool_size
+        pool_timeout=30,  # Seconds to wait for connection
+        pool_recycle=3600,  # Recycle connections after 1 hour
+        pool_pre_ping=True,  # Test connections before use
+        echo=False,  # Set to True for SQL logging in debug
+    )
+else:
+    # SQLite settings (development) - SQLite doesn't support all pool options
+    engine = create_engine(
+        connection_string,
+        pool_pre_ping=True,
+        echo=False,
+    )
+
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 import logging
 
@@ -34,7 +55,7 @@ def get_engine():
 @contextmanager
 def get_db_session() -> Generator[Session, None, None]:
     """
-    Context manager for database sessions with automatic cleanup.
+    Context manager for database sessions with automatic cleanup and retry logic.
 
     Usage:
         with get_db_session() as session:
@@ -43,11 +64,17 @@ def get_db_session() -> Generator[Session, None, None]:
             session.commit()  # Explicit commit needed
 
     The session will automatically rollback on exception and
-    always be properly closed.
+    always be properly closed. Connection errors are logged with more detail.
     """
     session = db_session()
     try:
         yield session
+    except (OperationalError, DisconnectionError) as e:
+        logger.error(f"Database connection error: {e}")
+        session.rollback()
+        # Remove session from registry to force reconnection
+        db_session.remove()
+        raise
     except SQLAlchemyError as e:
         logger.error(f"Database error: {e}")
         session.rollback()
@@ -57,18 +84,20 @@ def get_db_session() -> Generator[Session, None, None]:
         db_session.remove()
 
 
-def execute_with_retry(func, max_retries: int = 3, retry_on: tuple = (SQLAlchemyError,)) -> Any:
+def execute_with_retry(func, max_retries: int = 3, retry_on: tuple = (OperationalError, DisconnectionError)) -> Any:
     """
-    Execute a database operation with retry logic.
+    Execute a database operation with retry logic for connection issues.
 
     Args:
         func: Function that takes a session as its first argument
         max_retries: Maximum number of retry attempts
-        retry_on: Tuple of exception types to retry on
+        retry_on: Tuple of exception types to retry on (defaults to connection errors)
 
     Returns:
         The result of the function
     """
+    import time
+
     last_exception = None
 
     for attempt in range(max_retries):
@@ -79,10 +108,18 @@ def execute_with_retry(func, max_retries: int = 3, retry_on: tuple = (SQLAlchemy
                 return result
         except retry_on as e:
             last_exception = e
-            logger.warning(f"Attempt {attempt + 1} failed: {e}")
+            logger.warning(f"Database connection attempt {attempt + 1}/{max_retries} failed: {e}")
             if attempt < max_retries - 1:
+                # Exponential backoff: 0.5s, 1s, 2s
+                wait_time = 0.5 * (2**attempt)
+                logger.info(f"Waiting {wait_time}s before retry...")
+                time.sleep(wait_time)
                 db_session.remove()  # Clear the session registry
                 continue
+            raise
+        except SQLAlchemyError as e:
+            # Don't retry non-connection errors
+            logger.error(f"Non-retryable database error: {e}")
             raise
 
     if last_exception:

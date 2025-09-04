@@ -4,14 +4,14 @@ from fastmcp.server import Context
 from rich.console import Console
 
 from src.core.config_loader import set_current_tenant
-from src.core.database.database_session import get_db_session
+from src.core.database.database_session import execute_with_retry
 from src.core.database.models import Principal, Tenant
 
 console = Console()
 
 
 def get_principal_from_token(token: str, tenant_id: str | None = None) -> str | None:
-    """Looks up a principal_id from the database using a token.
+    """Looks up a principal_id from the database using a token with retry logic.
 
     If tenant_id is provided, only looks in that specific tenant.
     If not provided, searches globally by token and sets the tenant context.
@@ -23,18 +23,33 @@ def get_principal_from_token(token: str, tenant_id: str | None = None) -> str | 
     Returns:
         Principal ID if found, None otherwise
     """
-    with get_db_session() as session:
-        with session.begin():
-            if tenant_id:
-                # If tenant_id specified, ONLY look in that tenant
-                principal = session.query(Principal).filter_by(access_token=token, tenant_id=tenant_id).first()
-                if principal:
-                    return principal.principal_id
 
-                # Also check if it's the admin token for this specific tenant
-                tenant = session.query(Tenant).filter_by(tenant_id=tenant_id, is_active=True).first()
-                if tenant and token == tenant.admin_token:
-                    # Set tenant context for admin token
+    def _lookup_principal(session):
+        if tenant_id:
+            # If tenant_id specified, ONLY look in that tenant
+            principal = session.query(Principal).filter_by(access_token=token, tenant_id=tenant_id).first()
+            if principal:
+                return principal.principal_id
+
+            # Also check if it's the admin token for this specific tenant
+            tenant = session.query(Tenant).filter_by(tenant_id=tenant_id, is_active=True).first()
+            if tenant and token == tenant.admin_token:
+                # Set tenant context for admin token
+                tenant_dict = {
+                    "tenant_id": tenant.tenant_id,
+                    "name": tenant.name,
+                    "subdomain": tenant.subdomain,
+                    "ad_server": tenant.ad_server,
+                }
+                set_current_tenant(tenant_dict)
+                return f"admin_{tenant.tenant_id}"
+        else:
+            # No tenant specified - search globally
+            principal = session.query(Principal).filter_by(access_token=token).first()
+            if principal:
+                # Found principal - set tenant context
+                tenant = session.query(Tenant).filter_by(tenant_id=principal.tenant_id, is_active=True).first()
+                if tenant:
                     tenant_dict = {
                         "tenant_id": tenant.tenant_id,
                         "name": tenant.name,
@@ -42,24 +57,15 @@ def get_principal_from_token(token: str, tenant_id: str | None = None) -> str | 
                         "ad_server": tenant.ad_server,
                     }
                     set_current_tenant(tenant_dict)
-                    return f"admin_{tenant.tenant_id}"
-            else:
-                # No tenant specified - search globally
-                principal = session.query(Principal).filter_by(access_token=token).first()
-                if principal:
-                    # Found principal - set tenant context
-                    tenant = session.query(Tenant).filter_by(tenant_id=principal.tenant_id, is_active=True).first()
-                    if tenant:
-                        tenant_dict = {
-                            "tenant_id": tenant.tenant_id,
-                            "name": tenant.name,
-                            "subdomain": tenant.subdomain,
-                            "ad_server": tenant.ad_server,
-                        }
-                        set_current_tenant(tenant_dict)
-                        return principal.principal_id
+                    return principal.principal_id
 
-    return None
+        return None
+
+    try:
+        return execute_with_retry(_lookup_principal)
+    except Exception as e:
+        console.print(f"[red]Database error during principal lookup: {e}[/red]")
+        return None
 
 
 def get_principal_from_context(context: Context | None) -> str | None:
@@ -96,7 +102,7 @@ def get_principal_from_context(context: Context | None) -> str | None:
 
 
 def get_principal_object(principal_id: str) -> Principal | None:
-    """Get the Principal object with platform mappings.
+    """Get the Principal object with platform mappings using retry logic.
 
     Args:
         principal_id: The principal ID to look up
@@ -107,7 +113,7 @@ def get_principal_object(principal_id: str) -> Principal | None:
     if not principal_id:
         return None
 
-    with get_db_session() as session:
+    def _get_principal_object(session):
         from src.core.schemas import Principal as PrincipalSchema
 
         # Query the database for the principal
@@ -121,4 +127,10 @@ def get_principal_object(principal_id: str) -> Principal | None:
                 platform_mappings=db_principal.platform_mappings or {},
             )
 
-    return None
+        return None
+
+    try:
+        return execute_with_retry(_get_principal_object)
+    except Exception as e:
+        console.print(f"[red]Database error during principal object lookup: {e}[/red]")
+        return None
