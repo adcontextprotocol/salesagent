@@ -52,6 +52,7 @@ class Tenant(Base, JSONValidatorMixin):
     auto_approve_formats = Column(JSON)  # JSON array
     human_review_required = Column(Boolean, nullable=False, default=True)
     policy_settings = Column(JSON)  # JSON object
+    signals_agent_config = Column(JSON)  # JSON object for upstream signals discovery agent configuration
 
     # Relationships
     products = relationship("Product", back_populates="tenant", cascade="all, delete-orphan")

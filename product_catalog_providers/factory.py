@@ -5,13 +5,17 @@ from typing import Any
 from .ai import AIProductCatalog
 from .base import ProductCatalogProvider
 from .database import DatabaseProductCatalog
+from .hybrid import HybridProductCatalog
 from .mcp import MCPProductCatalog
+from .signals import SignalsDiscoveryProvider
 
 # Registry of available providers
 PROVIDER_REGISTRY = {
     "database": DatabaseProductCatalog,
     "mcp": MCPProductCatalog,
     "ai": AIProductCatalog,
+    "signals": SignalsDiscoveryProvider,
+    "hybrid": HybridProductCatalog,
 }
 
 # Cache for provider instances (one per tenant)
@@ -28,11 +32,14 @@ async def get_product_catalog_provider(tenant_id: str, tenant_config: dict[str, 
     Example tenant config:
     {
         "product_catalog": {
-            "provider": "ai",  # or "database", "mcp"
+            "provider": "hybrid",  # or "database", "mcp", "ai", "signals"
             "config": {
                 # Provider-specific configuration
-                "model": "gemini-1.5-flash",
-                "max_products": 5
+                "signals_discovery": {
+                    "enabled": True,
+                    "upstream_url": "http://signals-agent:8080/mcp/"
+                },
+                "ranking_strategy": "signals_first"
             }
         }
     }
