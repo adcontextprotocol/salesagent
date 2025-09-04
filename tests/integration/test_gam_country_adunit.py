@@ -6,10 +6,60 @@ Tests the GAM reporting service with mock data to verify country breakdown,
 ad unit analysis, and combined reporting features.
 """
 
+import unittest.mock
 
 import pytest
 
 from src.adapters.gam_reporting_service import GAMReportingService
+
+
+def mock_requests_get(url, **kwargs):
+    """Mock requests.get to return gzipped CSV data"""
+    import csv
+    import gzip
+    import io
+
+    # Generate mock CSV data with country and ad unit info
+    rows = []
+    countries = ["United States", "Canada", "United Kingdom", "Germany", "France"]
+    ad_units = ["Homepage_Top", "Article_Sidebar", "Video_Pre-Roll", "Mobile_Banner"]
+
+    for country in countries:
+        for ad_unit in ad_units:
+            rows.append(
+                {
+                    "Dimension.DATE": "2025-01-13",
+                    "Dimension.ADVERTISER_ID": "12345",
+                    "Dimension.ADVERTISER_NAME": "Test Advertiser",
+                    "Dimension.ORDER_ID": "67890",
+                    "Dimension.ORDER_NAME": "Test Campaign",
+                    "Dimension.LINE_ITEM_ID": "11111",
+                    "Dimension.LINE_ITEM_NAME": "Test Line Item",
+                    "Dimension.COUNTRY_NAME": country,
+                    "Dimension.AD_UNIT_ID": f"unit_{ad_unit}",
+                    "Dimension.AD_UNIT_NAME": ad_unit,
+                    "Column.AD_SERVER_IMPRESSIONS": str(10000 + hash(country + ad_unit) % 5000),
+                    "Column.AD_SERVER_CLICKS": str(100 + hash(country + ad_unit) % 50),
+                    "Column.AD_SERVER_CPM_AND_CPC_REVENUE": str(5000000 + hash(country + ad_unit) % 2000000),
+                }
+            )
+
+    # Create gzipped CSV data
+    csv_buffer = io.StringIO()
+    writer = csv.DictWriter(csv_buffer, fieldnames=rows[0].keys())
+    writer.writeheader()
+    writer.writerows(rows)
+
+    # Gzip the CSV data
+    gz_buffer = io.BytesIO()
+    with gzip.open(gz_buffer, "wt", newline="") as gz_file:
+        gz_file.write(csv_buffer.getvalue())
+
+    # Create mock response
+    mock_response = unittest.mock.Mock()
+    mock_response.content = gz_buffer.getvalue()
+    mock_response.raise_for_status = unittest.mock.Mock()
+    return mock_response
 
 
 def create_mock_gam_client():
@@ -22,9 +72,6 @@ def create_mock_gam_client():
             elif service_name == "NetworkService":
                 return MockNetworkService()
             return None
-
-        def GetDataDownloader(self):
-            return MockDataDownloader()
 
     class MockNetworkService:
         def getCurrentNetwork(self):
@@ -40,41 +87,8 @@ def create_mock_gam_client():
         def getReportJobStatus(self, job_id):
             return "COMPLETED"
 
-    class MockDataDownloader:
-        def DownloadReportToFile(self, job_id, format_type, file_obj):
-            import csv
-            import gzip
-
-            # Generate mock CSV data with country and ad unit info
-            rows = []
-            countries = ["United States", "Canada", "United Kingdom", "Germany", "France"]
-            ad_units = ["Homepage_Top", "Article_Sidebar", "Video_Pre-Roll", "Mobile_Banner"]
-
-            for country in countries:
-                for ad_unit in ad_units:
-                    rows.append(
-                        {
-                            "Dimension.DATE": "2025-01-13",
-                            "Dimension.ADVERTISER_ID": "12345",
-                            "Dimension.ADVERTISER_NAME": "Test Advertiser",
-                            "Dimension.ORDER_ID": "67890",
-                            "Dimension.ORDER_NAME": "Test Campaign",
-                            "Dimension.LINE_ITEM_ID": "11111",
-                            "Dimension.LINE_ITEM_NAME": "Test Line Item",
-                            "Dimension.COUNTRY_NAME": country,
-                            "Dimension.AD_UNIT_ID": f"unit_{ad_unit}",
-                            "Dimension.AD_UNIT_NAME": ad_unit,
-                            "Column.AD_SERVER_IMPRESSIONS": str(10000 + hash(country + ad_unit) % 5000),
-                            "Column.AD_SERVER_CLICKS": str(100 + hash(country + ad_unit) % 50),
-                            "Column.AD_SERVER_CPM_AND_CPC_REVENUE": str(5000000 + hash(country + ad_unit) % 2000000),
-                        }
-                    )
-
-            # Write to gzipped CSV
-            with gzip.open(file_obj.name, "wt", newline="") as gz_file:
-                writer = csv.DictWriter(gz_file, fieldnames=rows[0].keys())
-                writer.writeheader()
-                writer.writerows(rows)
+        def getReportDownloadURL(self, job_id, format_type):
+            return "https://storage.googleapis.com/gam-reports/mock-report.csv.gz"
 
     return MockGAMClient()
 
@@ -84,10 +98,13 @@ def test_country_breakdown():
     """Test the country breakdown functionality"""
     # Create mock client and service
     mock_client = create_mock_gam_client()
-    service = GAMReportingService(mock_client, "America/New_York")
 
-    # Test get_country_breakdown
-    result = service.get_country_breakdown(date_range="this_month", advertiser_id="12345")
+    # Patch requests.get to return mock data
+    with unittest.mock.patch("requests.get", side_effect=mock_requests_get):
+        service = GAMReportingService(mock_client, "America/New_York")
+
+        # Test get_country_breakdown
+        result = service.get_country_breakdown(date_range="this_month", advertiser_id="12345")
 
     # Assertions for test validation
     assert result["total_countries"] > 0, "Should have country data"
@@ -114,12 +131,15 @@ def test_ad_unit_breakdown():
     """Test the ad unit breakdown functionality"""
     # Create mock client and service
     mock_client = create_mock_gam_client()
-    service = GAMReportingService(mock_client, "America/New_York")
 
-    # Test get_ad_unit_breakdown
-    result = service.get_ad_unit_breakdown(
-        date_range="this_month", advertiser_id="12345", country="United States"  # Filter by US
-    )
+    # Patch requests.get to return mock data
+    with unittest.mock.patch("requests.get", side_effect=mock_requests_get):
+        service = GAMReportingService(mock_client, "America/New_York")
+
+        # Test get_ad_unit_breakdown
+        result = service.get_ad_unit_breakdown(
+            date_range="this_month", advertiser_id="12345", country="United States"  # Filter by US
+        )
 
     # Assertions for test validation
     assert result["total_ad_units"] > 0, "Should have ad unit data"
@@ -150,12 +170,15 @@ def test_combined_reporting():
     """Test getting both country and ad unit data with the include flags"""
     # Create mock client and service
     mock_client = create_mock_gam_client()
-    service = GAMReportingService(mock_client, "America/New_York")
 
-    # Get reporting data with both dimensions
-    result = service.get_reporting_data(
-        date_range="today", advertiser_id="12345", include_country=True, include_ad_unit=True
-    )
+    # Patch requests.get to return mock data
+    with unittest.mock.patch("requests.get", side_effect=mock_requests_get):
+        service = GAMReportingService(mock_client, "America/New_York")
+
+        # Get reporting data with both dimensions
+        result = service.get_reporting_data(
+            date_range="today", advertiser_id="12345", include_country=True, include_ad_unit=True
+        )
 
     # Assertions for test validation
     assert hasattr(result, "dimensions"), "Result should have dimensions attribute"
@@ -188,20 +211,23 @@ def test_gam_reporting_integration():
     """Integration test that runs all GAM reporting functionality"""
     # Create mock client and service for integration test
     mock_client = create_mock_gam_client()
-    service = GAMReportingService(mock_client, "America/New_York")
 
-    # Test country breakdown
-    country_result = service.get_country_breakdown(date_range="this_month", advertiser_id="12345")
+    # Patch requests.get to return mock data
+    with unittest.mock.patch("requests.get", side_effect=mock_requests_get):
+        service = GAMReportingService(mock_client, "America/New_York")
 
-    # Test ad unit breakdown
-    ad_unit_result = service.get_ad_unit_breakdown(
-        date_range="this_month", advertiser_id="12345", country="United States"
-    )
+        # Test country breakdown
+        country_result = service.get_country_breakdown(date_range="this_month", advertiser_id="12345")
 
-    # Test combined reporting
-    combined_result = service.get_reporting_data(
-        date_range="today", advertiser_id="12345", include_country=True, include_ad_unit=True
-    )
+        # Test ad unit breakdown
+        ad_unit_result = service.get_ad_unit_breakdown(
+            date_range="this_month", advertiser_id="12345", country="United States"
+        )
+
+        # Test combined reporting
+        combined_result = service.get_reporting_data(
+            date_range="today", advertiser_id="12345", include_country=True, include_ad_unit=True
+        )
 
     # Additional integration assertions
     assert country_result["total_countries"] > 0, "Integration: Should have country data"
@@ -220,11 +246,10 @@ class TestGAMCountryAdUnitReporting:
         # Test that required services can be obtained
         report_service = mock_client.GetService("ReportService")
         network_service = mock_client.GetService("NetworkService")
-        data_downloader = mock_client.GetDataDownloader()
 
         assert report_service is not None
         assert network_service is not None
-        assert data_downloader is not None
+        assert hasattr(report_service, "getReportDownloadURL")
 
     def test_gam_service_initialization(self):
         """Test that GAM reporting service can be initialized"""
@@ -237,10 +262,13 @@ class TestGAMCountryAdUnitReporting:
         """Detailed test of country breakdown functionality"""
         # Create mock client and service
         mock_client = create_mock_gam_client()
-        service = GAMReportingService(mock_client, "America/New_York")
 
-        # Get country breakdown
-        result = service.get_country_breakdown(date_range="this_month", advertiser_id="12345")
+        # Patch requests.get to return mock data
+        with unittest.mock.patch("requests.get", side_effect=mock_requests_get):
+            service = GAMReportingService(mock_client, "America/New_York")
+
+            # Get country breakdown
+            result = service.get_country_breakdown(date_range="this_month", advertiser_id="12345")
 
         # Test specific countries are present (from our mock data)
         country_names = [c["country"] for c in result["countries"]]
@@ -254,10 +282,15 @@ class TestGAMCountryAdUnitReporting:
         """Detailed test of ad unit breakdown functionality"""
         # Create mock client and service
         mock_client = create_mock_gam_client()
-        service = GAMReportingService(mock_client, "America/New_York")
 
-        # Get ad unit breakdown
-        result = service.get_ad_unit_breakdown(date_range="this_month", advertiser_id="12345", country="United States")
+        # Patch requests.get to return mock data
+        with unittest.mock.patch("requests.get", side_effect=mock_requests_get):
+            service = GAMReportingService(mock_client, "America/New_York")
+
+            # Get ad unit breakdown
+            result = service.get_ad_unit_breakdown(
+                date_range="this_month", advertiser_id="12345", country="United States"
+            )
 
         # Test specific ad units are present (from our mock data)
         ad_unit_names = [au["ad_unit_name"] for au in result["ad_units"]]
