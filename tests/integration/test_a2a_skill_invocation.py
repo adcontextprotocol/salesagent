@@ -406,6 +406,7 @@ class TestA2ASkillInvocation:
             message = Message(
                 message_id="msg_multi",
                 context_id="ctx_multi",
+                role=Role.user,
                 parts=[
                     Part(data={"skill": "get_products", "parameters": {"brief": "video ads"}}),
                     Part(data={"skill": "get_signals", "parameters": {"signal_types": ["audience"]}}),
@@ -444,7 +445,7 @@ class TestA2ASkillInvocation:
         # Verify authentication error
         assert isinstance(result, Task)
         assert result.status.state.value == "failed"
-        assert "authentication" in result.artifacts[0].parts[0].text.lower()
+        assert "authentication" in result.artifacts[0].parts[0].root.data["error"].lower()
 
     @pytest.mark.asyncio
     async def test_adcp_schema_validation_integration(self, validator):

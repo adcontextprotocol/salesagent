@@ -260,14 +260,21 @@ class AdCPRequestHandler(RequestHandler):
                     task.artifacts.append(
                         Artifact(
                             artifactId=f"skill_result_{i+1}",
-                            name=f"{res['skill']}_result",
+                            name=f"{'error' if not res['success'] else res['skill']}_result",
                             parts=[Part(type="data", data=artifact_data)],
                         )
                     )
 
-                # Log successful skill invocations
+                # Check if any skills failed and determine task status
+                failed_skills = [res["skill"] for res in results if not res["success"]]
                 successful_skills = [res["skill"] for res in results if res["success"]]
-                if successful_skills:
+
+                if failed_skills and not successful_skills:
+                    # All skills failed - mark task as failed
+                    task.status = TaskStatus(state=TaskState.failed)
+                    return task
+                elif successful_skills:
+                    # Log successful skill invocations
                     try:
                         tool_context = self._create_tool_context_from_a2a(auth_token, successful_skills[0])
                         self._log_a2a_operation(
@@ -461,11 +468,13 @@ class AdCPRequestHandler(RequestHandler):
                 tenant_id,
                 principal_id,
                 False,
-                {"query": text[:100], "error_type": type(e).__name__},
+                {"error_type": type(e).__name__},
                 str(e),
             )
             task.status = TaskStatus(state=TaskState.failed)
-            task.artifacts = [Artifact(artifactId="error_1", name="error", parts=[Part(type="text", text=str(e))])]
+            task.artifacts = [
+                Artifact(artifactId="error_1", name="error", parts=[Part(type="data", data={"error": str(e)})])
+            ]
 
         self.tasks[task_id] = task
         return task
