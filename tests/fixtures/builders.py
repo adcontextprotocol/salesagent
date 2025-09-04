@@ -329,3 +329,76 @@ class TestDataBuilder:
             .with_creatives(count=2)
             .build()
         )
+
+
+async def create_test_tenant_with_principal(**kwargs) -> dict:
+    """Create a test tenant with an associated principal for integration tests."""
+    from src.core.database.database_session import get_db_session
+    from src.core.database.models import Principal as ModelPrincipal
+    from src.core.database.models import Tenant
+    from src.core.schemas import Principal
+
+    from .factories import PrincipalFactory
+
+    # Create tenant and principal data
+    tenant, principal = PrincipalFactory.create_with_tenant()
+
+    # Apply any overrides from kwargs
+    if "tenant_name" in kwargs:
+        tenant["name"] = kwargs["tenant_name"]
+    if "principal_name" in kwargs:
+        principal["name"] = kwargs["principal_name"]
+
+    # Save tenant and principal to database
+    with get_db_session() as db_session:
+        # Create tenant with correct fields
+        from datetime import UTC, datetime
+
+        db_tenant = Tenant(
+            tenant_id=tenant["tenant_id"],
+            name=tenant["name"],
+            subdomain=tenant["subdomain"],
+            is_active=tenant["is_active"],
+            billing_plan=tenant["billing_plan"],
+            ad_server=tenant.get("ad_server", "mock"),
+            max_daily_budget=10000,
+            enable_aee_signals=True,
+            authorized_emails=["test@example.com"],
+            authorized_domains=["example.com"],
+            auto_approve_formats=["display_300x250", "display_728x90"],
+            human_review_required=False,
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
+        )
+        db_session.add(db_tenant)
+
+        # Create principal in database
+        platform_mappings = (
+            json.loads(principal["platform_mappings"])
+            if isinstance(principal["platform_mappings"], str)
+            else principal["platform_mappings"]
+        )
+        db_principal = ModelPrincipal(
+            tenant_id=principal["tenant_id"],
+            principal_id=principal["principal_id"],
+            name=principal["name"],
+            access_token=principal["access_token"],
+            platform_mappings=platform_mappings,
+            created_at=datetime.now(UTC),
+        )
+        db_session.add(db_principal)
+        db_session.commit()
+
+    # Convert principal dict to Principal schema object for compatibility
+    principal_obj = Principal(
+        tenant_id=principal["tenant_id"],
+        principal_id=principal["principal_id"],
+        name=principal["name"],
+        access_token=principal["access_token"],
+        platform_mappings=platform_mappings,
+    )
+
+    return {
+        "tenant": tenant,
+        "principal": principal_obj,  # Return as Principal schema object
+    }

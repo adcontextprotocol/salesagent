@@ -883,6 +883,89 @@
                     </div>
                 </form>
             </div>
+
+            <div class="form-section">
+                <h3>AdCP Signals Discovery</h3>
+                <p class="form-section-description">
+                    Connect an upstream AdCP signals discovery agent to enhance product recommendations with intelligent signal-based targeting.
+                </p>
+
+                <form method="POST" action="/tenant/{{ tenant.tenant_id }}/settings/signals">
+                    <div class="checkbox-group">
+                        <label class="checkbox-label">
+                            <input type="checkbox" id="signals_enabled" name="signals_enabled"
+                                   {% if tenant.signals_agent_config and tenant.signals_agent_config.enabled %}checked{% endif %}>
+                            <span class="checkbox-custom"></span>
+                            <span class="checkbox-text">Enable Signals Discovery</span>
+                        </label>
+                        <small>When enabled, the sales agent will query the upstream signals agent for intelligent product customization</small>
+                    </div>
+
+                    <div id="signals-config" class="signals-config-section"
+                         style="{% if not (tenant.signals_agent_config and tenant.signals_agent_config.enabled) %}display: none;{% endif %}">
+
+                        <div class="form-group">
+                            <label for="signals_upstream_url">Upstream Signals Agent URL</label>
+                            <input type="url" id="signals_upstream_url" name="signals_upstream_url"
+                                   value="{{ (tenant.signals_agent_config.upstream_url if tenant.signals_agent_config else '') or '' }}"
+                                   placeholder="http://signals-agent:8080/mcp/"
+                                   required>
+                            <small>The MCP endpoint URL of your AdCP signals discovery agent</small>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="signals_auth_token">Authentication Token</label>
+                            <input type="text" id="signals_auth_token" name="signals_auth_token"
+                                   value="{{ (tenant.signals_agent_config.upstream_token if tenant.signals_agent_config else '') or '' }}"
+                                   placeholder="your-signals-agent-token">
+                            <small>Token for authenticating with the signals discovery agent (optional)</small>
+                        </div>
+
+                        <div class="form-grid">
+                            <div class="form-group">
+                                <label for="signals_auth_header">Auth Header Name</label>
+                                <input type="text" id="signals_auth_header" name="signals_auth_header"
+                                       value="{{ (tenant.signals_agent_config.auth_header if tenant.signals_agent_config else '') or 'x-adcp-auth' }}"
+                                       placeholder="x-adcp-auth">
+                                <small>HTTP header name for token authentication</small>
+                            </div>
+
+                            <div class="form-group">
+                                <label for="signals_timeout">Timeout (seconds)</label>
+                                <input type="number" id="signals_timeout" name="signals_timeout"
+                                       value="{{ (tenant.signals_agent_config.timeout if tenant.signals_agent_config else '') or '30' }}"
+                                       min="5" max="120" placeholder="30">
+                                <small>Request timeout for signals discovery calls</small>
+                            </div>
+                        </div>
+
+                        <div class="checkbox-group">
+                            <label class="checkbox-label">
+                                <input type="checkbox" id="signals_forward_offering" name="signals_forward_offering"
+                                       {% if not tenant.signals_agent_config or tenant.signals_agent_config.forward_promoted_offering != False %}checked{% endif %}>
+                                <span class="checkbox-custom"></span>
+                                <span class="checkbox-text">Forward Promoted Offering</span>
+                            </label>
+                            <small>Include the promoted offering in signals discovery requests</small>
+                        </div>
+
+                        <div class="checkbox-group">
+                            <label class="checkbox-label">
+                                <input type="checkbox" id="signals_fallback" name="signals_fallback"
+                                       {% if not tenant.signals_agent_config or tenant.signals_agent_config.fallback_to_database != False %}checked{% endif %}>
+                                <span class="checkbox-custom"></span>
+                                <span class="checkbox-text">Fallback to Database Products</span>
+                            </label>
+                            <small>Use database products if signals discovery fails or returns no results</small>
+                        </div>
+                    </div>
+
+                    <div class="button-group">
+                        <button type="submit" class="btn btn-primary">Save Signals Settings</button>
+                        <button type="button" onclick="testSignalsConnection()" class="btn btn-secondary">Test Connection</button>
+                    </div>
+                </form>
+            </div>
         </div>
 
         <!-- API Settings -->
@@ -1487,6 +1570,72 @@ function deletePrincipal(principalId, principalName) {
         alert('Failed to delete advertiser: ' + error.message);
     });
 }
+
+// Signals Discovery Functions
+function testSignalsConnection() {
+    const upstreamUrl = document.getElementById('signals_upstream_url').value;
+    const authToken = document.getElementById('signals_auth_token').value;
+
+    if (!upstreamUrl) {
+        alert('Please enter the upstream signals agent URL first');
+        return;
+    }
+
+    const button = event.target;
+    const originalText = button.textContent;
+    button.textContent = 'Testing...';
+    button.disabled = true;
+
+    fetch('{{ script_name }}/tenant/{{ tenant.tenant_id }}/test_signals', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+            upstream_url: upstreamUrl,
+            upstream_token: authToken,
+            auth_header: document.getElementById('signals_auth_header').value || 'x-adcp-auth'
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            alert('✅ Signals agent connection successful!\n\n' +
+                  'Server: ' + data.server_info + '\n' +
+                  'Response time: ' + data.response_time + 'ms');
+        } else {
+            alert('❌ Signals agent connection failed:\n\n' + (data.error || 'Unknown error'));
+        }
+    })
+    .catch(error => {
+        console.error('Error testing signals connection:', error);
+        alert('Error testing connection: ' + error.message);
+    })
+    .finally(() => {
+        button.textContent = originalText;
+        button.disabled = false;
+    });
+}
+
+// Toggle signals configuration visibility
+document.addEventListener('DOMContentLoaded', function() {
+    const enableCheckbox = document.getElementById('signals_enabled');
+    const configSection = document.getElementById('signals-config');
+
+    if (enableCheckbox && configSection) {
+        enableCheckbox.addEventListener('change', function() {
+            if (this.checked) {
+                configSection.style.display = 'block';
+                // Make required fields actually required
+                document.getElementById('signals_upstream_url').required = true;
+            } else {
+                configSection.style.display = 'none';
+                // Remove required attribute when disabled
+                document.getElementById('signals_upstream_url').required = false;
+            }
+        });
+    }
+});
 
 // Debug: Log the current adapter state from backend
 console.log('Backend says active_adapter is:', '{{ active_adapter }}');
