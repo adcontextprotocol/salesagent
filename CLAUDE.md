@@ -157,7 +157,8 @@ def test_[model]_adcp_compliance(self):
 - No custom protocol code - using library's base classes only
 - Supports both REST and JSON-RPC transports
 - Compatible with `a2a` CLI and other standard A2A clients
-- Intelligent response handling for product queries
+- Dual skill invocation patterns: natural language and explicit skill calls (AdCP PR #48)
+- All responses validated against AdCP schemas for compliance
 
 ## Core Components
 
