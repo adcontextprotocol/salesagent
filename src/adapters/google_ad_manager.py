@@ -1,16 +1,23 @@
+import csv
+import gzip
+import io
 import json
 import logging
 import os
 import random
+import time
 from datetime import datetime, timedelta
 from typing import Any
+from urllib.parse import urlparse
 
 import google.oauth2.service_account
+import requests
 from flask import Flask, flash, redirect, render_template, request, url_for
 
 from src.adapters.base import AdServerAdapter, CreativeEngineAdapter
 from src.adapters.constants import REQUIRED_UPDATE_ACTIONS
 from src.adapters.gam_implementation_config_schema import GAMImplementationConfig
+from src.adapters.gam_reporting_service import ReportingConfig
 from src.core.schemas import (
     AdapterGetMediaBuyDeliveryResponse,
     AssetStatus,
@@ -791,8 +798,6 @@ class GoogleAdManager(AdServerAdapter):
             )
 
         report_service = self.client.GetService("ReportService")
-        # TODO: Replace deprecated GetDataDownloader with ReportService method
-        report_downloader = self.client.GetDataDownloader()
 
         report_job = {
             "reportQuery": {
@@ -823,22 +828,67 @@ class GoogleAdManager(AdServerAdapter):
         try:
             report_job_id = report_service.runReportJob(report_job)
 
-            import time
+            # Wait for completion with timeout
+            max_wait = ReportingConfig.REPORT_TIMEOUT_SECONDS
+            wait_time = 0
+            poll_interval = ReportingConfig.POLL_INTERVAL_SECONDS
 
-            while report_service.getReportJobStatus(report_job_id) == "IN_PROGRESS":
-                time.sleep(1)
+            while wait_time < max_wait:
+                status = report_service.getReportJobStatus(report_job_id)
+                if status == "COMPLETED":
+                    break
+                elif status == "FAILED":
+                    raise Exception("GAM report job failed")
+
+                time.sleep(poll_interval)
+                wait_time += poll_interval
 
             if report_service.getReportJobStatus(report_job_id) != "COMPLETED":
-                raise Exception("GAM report failed to complete.")
+                raise Exception(f"GAM report timed out after {max_wait} seconds")
 
-            _ = report_downloader.DownloadReportToFile(report_job_id, "CSV_DUMP", open("/tmp/gam_report.csv.gz", "wb"))
+            # Use modern ReportService method instead of deprecated GetDataDownloader
+            try:
+                download_url = report_service.getReportDownloadURL(report_job_id, "CSV_DUMP")
+            except Exception as e:
+                raise Exception(f"Failed to get GAM report download URL: {str(e)}") from e
 
-            import csv
-            import gzip
-            import io
+            # Validate URL is from Google for security
+            parsed_url = urlparse(download_url)
+            if not parsed_url.hostname or not any(
+                parsed_url.hostname.endswith(domain) for domain in ReportingConfig.ALLOWED_DOMAINS
+            ):
+                raise Exception(f"Invalid download URL: not from Google domain ({parsed_url.hostname})")
 
-            report_csv = gzip.open("/tmp/gam_report.csv.gz", "rt").read()
-            report_reader = csv.reader(io.StringIO(report_csv))
+            # Download the report using requests with proper timeout and error handling
+            try:
+                response = requests.get(
+                    download_url,
+                    timeout=(ReportingConfig.HTTP_CONNECT_TIMEOUT, ReportingConfig.HTTP_READ_TIMEOUT),
+                    headers={"User-Agent": ReportingConfig.USER_AGENT},
+                    stream=True,  # For better memory handling of large files
+                )
+                response.raise_for_status()
+            except requests.exceptions.Timeout as e:
+                raise Exception(f"GAM report download timed out: {str(e)}") from e
+            except requests.exceptions.RequestException as e:
+                raise Exception(f"Failed to download GAM report: {str(e)}") from e
+
+            # Parse the CSV data directly from the response with memory safety
+            try:
+                # The response content is gzipped CSV data
+                with gzip.open(io.BytesIO(response.content), "rt") as gz_file:
+                    report_csv = gz_file.read()
+
+                # Limit CSV size to prevent memory issues
+                if len(report_csv) > ReportingConfig.MAX_CSV_SIZE_BYTES:
+                    logger.warning(
+                        f"GAM report CSV size ({len(report_csv)} bytes) exceeds limit ({ReportingConfig.MAX_CSV_SIZE_BYTES} bytes)"
+                    )
+                    report_csv = report_csv[: ReportingConfig.MAX_CSV_SIZE_BYTES]
+
+                report_reader = csv.reader(io.StringIO(report_csv))
+            except Exception as e:
+                raise Exception(f"Failed to parse GAM report CSV data: {str(e)}") from e
 
             # Skip header row
             header = next(report_reader)
