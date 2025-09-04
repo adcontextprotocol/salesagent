@@ -4,7 +4,10 @@ A protocol-aware client for A2A (Agent-to-Agent) Protocol servers that understan
 
 ## Features
 
+- **Dual Invocation Patterns**: Supports both natural language and explicit skill invocation (AdCP PR #48)
+- **AdCP Schema Validation**: All responses validated against official AdCP schemas for compliance
 - **Protocol-Aware**: Understands A2A protocol semantics including Agent Cards, skills, and task states
+- **Complete AdCP Coverage**: All 8 AdCP skills (6 media buy + 2 signals) with proper parameter mapping
 - **Session Management**: Maintains context_id for conversation continuity across multiple interactions
 - **Task Lifecycle**: Handles task creation, polling, and completion with progress indicators
 - **Interactive Chat**: Persistent chat mode with session context
@@ -97,6 +100,65 @@ Automatically fetches and parses Agent Cards to:
 - Discover available skills and capabilities
 - Get correct RPC endpoint URLs
 - Display agent metadata and descriptions
+
+### Skill Invocation Patterns (AdCP PR #48)
+
+The server supports two invocation patterns for maximum flexibility:
+
+#### 1. Natural Language Invocation
+```javascript
+// Client sends natural language request
+{
+  "message": {
+    "parts": [{
+      "kind": "text",
+      "text": "Find video products for sports advertising"
+    }]
+  }
+}
+```
+
+#### 2. Explicit Skill Invocation
+```javascript
+// Client sends structured skill request
+{
+  "message": {
+    "parts": [{
+      "kind": "data",
+      "data": {
+        "skill": "get_products",
+        "parameters": {
+          "brief": "Video advertising for sports content",
+          "promoted_offering": "Athletic apparel brand"
+        }
+      }
+    }]
+  }
+}
+```
+
+#### 3. Hybrid Invocation (Both Patterns)
+```javascript
+// Client sends both text and structured data
+{
+  "message": {
+    "parts": [
+      {"kind": "text", "text": "I need sports advertising products"},
+      {"kind": "data", "data": {"skill": "get_products", "parameters": {...}}}
+    ]
+  }
+}
+```
+
+**Available AdCP Skills:**
+- `get_products` - Browse available advertising products
+- `create_media_buy` - Create advertising campaigns
+- `add_creative_assets` - Upload and associate creatives
+- `approve_creative` - Review and approve creatives (admin)
+- `get_media_buy_status` - Check campaign status
+- `optimize_media_buy` - Optimize campaign performance
+- `get_signals` - Discover targeting signals
+- `search_signals` - Search and filter signals
 
 ## Key Advantages Over Basic Clients
 

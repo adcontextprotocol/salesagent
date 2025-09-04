@@ -51,8 +51,24 @@ from datetime import UTC, datetime
 from src.core.audit_logger import get_audit_logger
 from src.core.auth_utils import get_principal_from_token
 from src.core.config_loader import get_current_tenant
-from src.core.main import get_products as core_get_products_tool
-from src.core.schemas import GetProductsRequest
+from src.core.main import (
+    add_creative_assets as core_add_creative_assets_tool,
+)
+from src.core.main import (
+    create_media_buy as core_create_media_buy_tool,
+)
+from src.core.main import (
+    get_products as core_get_products_tool,
+)
+from src.core.main import (
+    get_signals as core_get_signals_tool,
+)
+from src.core.schemas import (
+    AddCreativeAssetsRequest,
+    CreateMediaBuyRequest,
+    GetProductsRequest,
+    GetSignalsRequest,
+)
 from src.core.testing_hooks import TestingContext
 from src.core.tool_context import ToolContext
 
@@ -150,6 +166,10 @@ class AdCPRequestHandler(RequestHandler):
     ) -> Task | Message:
         """Handle 'message/send' method for non-streaming requests.
 
+        Supports both invocation patterns from AdCP PR #48:
+        1. Natural Language: parts[{kind: "text", text: "..."}]
+        2. Explicit Skill: parts[{kind: "data", data: {skill: "...", parameters: {...}}}]
+
         Args:
             params: Parameters including the message and configuration
             context: Server call context
@@ -159,29 +179,55 @@ class AdCPRequestHandler(RequestHandler):
         """
         logger.info(f"Handling message/send request: {params}")
 
-        # Extract message text
+        # Parse message for both text and structured data parts
         message = params.message
-        text = ""
+        text_parts = []
+        skill_invocations = []
+
         if hasattr(message, "parts") and message.parts:
             for part in message.parts:
-                # Handle both direct text and nested root.text structure
+                # Handle text parts (natural language invocation)
                 if hasattr(part, "text"):
-                    text += part.text + " "
+                    text_parts.append(part.text)
                 elif hasattr(part, "root") and hasattr(part.root, "text"):
-                    text += part.root.text + " "
-        text = text.strip().lower()
+                    text_parts.append(part.root.text)
+
+                # Handle structured data parts (explicit skill invocation)
+                elif hasattr(part, "data") and isinstance(part.data, dict):
+                    if "skill" in part.data and "parameters" in part.data:
+                        skill_invocations.append({"skill": part.data["skill"], "parameters": part.data["parameters"]})
+                        logger.info(f"Found explicit skill invocation: {part.data['skill']}")
+
+                # Handle nested data structure (some A2A clients use this format)
+                elif hasattr(part, "root") and hasattr(part.root, "data"):
+                    data = part.root.data
+                    if isinstance(data, dict) and "skill" in data and "parameters" in data:
+                        skill_invocations.append({"skill": data["skill"], "parameters": data["parameters"]})
+                        logger.info(f"Found explicit skill invocation (nested): {data['skill']}")
+
+        # Combine text for natural language fallback
+        combined_text = " ".join(text_parts).strip().lower()
 
         # Create task for tracking
         task_id = f"task_{len(self.tasks) + 1}"
         # Handle message_id being a number or string
         msg_id = str(params.message.message_id) if hasattr(params.message, "message_id") else None
         context_id = params.message.context_id or msg_id or f"ctx_{task_id}"
+
+        # Prepare task metadata with both invocation types
+        task_metadata = {
+            "request_text": combined_text,
+            "invocation_type": "explicit_skill" if skill_invocations else "natural_language",
+        }
+        if skill_invocations:
+            task_metadata["skills_requested"] = [inv["skill"] for inv in skill_invocations]
+
         task = Task(
             id=task_id,
             context_id=context_id,
             kind="task",
             status=TaskStatus(state=TaskState.working),
-            metadata={"request": text},
+            metadata=task_metadata,
         )
         self.tasks[task_id] = task
 
@@ -191,9 +237,59 @@ class AdCPRequestHandler(RequestHandler):
             if not auth_token:
                 raise ValueError("Missing authentication token - Bearer token required in Authorization header")
 
-            # Route based on keywords and log operations
-            if any(word in text for word in ["product", "inventory", "available", "catalog"]):
-                result = await self._get_products(text, auth_token)
+            # Route: Handle explicit skill invocations first, then natural language fallback
+            if skill_invocations:
+                # Process explicit skill invocations
+                results = []
+                for invocation in skill_invocations:
+                    skill_name = invocation["skill"]
+                    parameters = invocation["parameters"]
+                    logger.info(f"Processing explicit skill: {skill_name} with parameters: {parameters}")
+
+                    try:
+                        result = await self._handle_explicit_skill(skill_name, parameters, auth_token)
+                        results.append({"skill": skill_name, "result": result, "success": True})
+                    except Exception as e:
+                        logger.error(f"Error in explicit skill {skill_name}: {e}")
+                        results.append({"skill": skill_name, "error": str(e), "success": False})
+
+                # Create artifacts for all skill results
+                for i, res in enumerate(results):
+                    artifact_data = res["result"] if res["success"] else {"error": res["error"]}
+                    task.artifacts = task.artifacts or []
+                    task.artifacts.append(
+                        Artifact(
+                            artifactId=f"skill_result_{i+1}",
+                            name=f"{'error' if not res['success'] else res['skill']}_result",
+                            parts=[Part(type="data", data=artifact_data)],
+                        )
+                    )
+
+                # Check if any skills failed and determine task status
+                failed_skills = [res["skill"] for res in results if not res["success"]]
+                successful_skills = [res["skill"] for res in results if res["success"]]
+
+                if failed_skills and not successful_skills:
+                    # All skills failed - mark task as failed
+                    task.status = TaskStatus(state=TaskState.failed)
+                    return task
+                elif successful_skills:
+                    # Log successful skill invocations
+                    try:
+                        tool_context = self._create_tool_context_from_a2a(auth_token, successful_skills[0])
+                        self._log_a2a_operation(
+                            "explicit_skill_invocation",
+                            tool_context.tenant_id,
+                            tool_context.principal_id,
+                            True,
+                            {"skills": successful_skills, "count": len(successful_skills)},
+                        )
+                    except Exception as e:
+                        logger.warning(f"Could not log skill invocations: {e}")
+
+            # Natural language fallback (existing keyword-based routing)
+            elif any(word in combined_text for word in ["product", "inventory", "available", "catalog"]):
+                result = await self._get_products(combined_text, auth_token)
                 # Extract tenant and principal for logging
                 try:
                     tool_context = self._create_tool_context_from_a2a(auth_token, "get_products")
@@ -210,7 +306,7 @@ class AdCPRequestHandler(RequestHandler):
                     principal_id,
                     True,
                     {
-                        "query": text[:100],
+                        "query": combined_text[:100],
                         "product_count": len(result.get("products", [])) if isinstance(result, dict) else 0,
                     },
                 )
@@ -219,7 +315,7 @@ class AdCPRequestHandler(RequestHandler):
                         artifactId="product_catalog_1", name="product_catalog", parts=[Part(type="data", data=result)]
                     )
                 ]
-            elif any(word in text for word in ["price", "pricing", "cost", "cpm", "budget"]):
+            elif any(word in combined_text for word in ["price", "pricing", "cost", "cpm", "budget"]):
                 result = self._get_pricing()
                 # Extract tenant and principal for logging
                 try:
@@ -237,7 +333,7 @@ class AdCPRequestHandler(RequestHandler):
                     principal_id,
                     True,
                     {
-                        "query": text[:100],
+                        "query": combined_text[:100],
                         "pricing_models": len(result.get("pricing_models", [])) if isinstance(result, dict) else 0,
                     },
                 )
@@ -246,7 +342,7 @@ class AdCPRequestHandler(RequestHandler):
                         artifactId="pricing_info_1", name="pricing_information", parts=[Part(type="data", data=result)]
                     )
                 ]
-            elif any(word in text for word in ["target", "audience"]):
+            elif any(word in combined_text for word in ["target", "audience"]):
                 result = self._get_targeting()
                 # Extract tenant and principal for logging
                 try:
@@ -264,7 +360,7 @@ class AdCPRequestHandler(RequestHandler):
                     principal_id,
                     True,
                     {
-                        "query": text[:100],
+                        "query": combined_text[:100],
                         "targeting_categories": (
                             len(result.get("targeting_options", {})) if isinstance(result, dict) else 0
                         ),
@@ -275,8 +371,8 @@ class AdCPRequestHandler(RequestHandler):
                         artifactId="targeting_opts_1", name="targeting_options", parts=[Part(type="data", data=result)]
                     )
                 ]
-            elif any(word in text for word in ["create", "buy", "campaign", "media"]):
-                result = await self._create_media_buy(text, auth_token)
+            elif any(word in combined_text for word in ["create", "buy", "campaign", "media"]):
+                result = await self._create_media_buy(combined_text, auth_token)
                 # Extract tenant and principal for logging
                 try:
                     tool_context = self._create_tool_context_from_a2a(auth_token, "create_media_buy")
@@ -372,11 +468,13 @@ class AdCPRequestHandler(RequestHandler):
                 tenant_id,
                 principal_id,
                 False,
-                {"query": text[:100], "error_type": type(e).__name__},
+                {"error_type": type(e).__name__},
                 str(e),
             )
             task.status = TaskStatus(state=TaskState.failed)
-            task.artifacts = [Artifact(artifactId="error_1", name="error", parts=[Part(type="text", text=str(e))])]
+            task.artifacts = [
+                Artifact(artifactId="error_1", name="error", parts=[Part(type="data", data={"error": str(e)})])
+            ]
 
         self.tasks[task_id] = task
         return task
@@ -494,6 +592,271 @@ class AdCPRequestHandler(RequestHandler):
         from a2a.types import UnsupportedOperationError
 
         raise UnsupportedOperationError("Push notifications not supported")
+
+    async def _handle_explicit_skill(self, skill_name: str, parameters: dict, auth_token: str) -> dict:
+        """Handle explicit AdCP skill invocations.
+
+        Maps skill names to appropriate handlers and validates parameters.
+
+        Args:
+            skill_name: The AdCP skill name (e.g., "get_products")
+            parameters: Dictionary of skill-specific parameters
+            auth_token: Bearer token for authentication
+
+        Returns:
+            Dictionary containing the skill result
+
+        Raises:
+            ValueError: For unknown skills or invalid parameters
+        """
+        logger.info(f"Handling explicit skill: {skill_name} with parameters: {list(parameters.keys())}")
+
+        # Map skill names to handlers
+        skill_handlers = {
+            # Core AdCP Media Buy Skills (6 total)
+            "get_products": self._handle_get_products_skill,
+            "create_media_buy": self._handle_create_media_buy_skill,
+            "add_creative_assets": self._handle_add_creative_assets_skill,
+            "approve_creative": self._handle_approve_creative_skill,
+            "get_media_buy_status": self._handle_get_media_buy_status_skill,
+            "optimize_media_buy": self._handle_optimize_media_buy_skill,
+            # Core AdCP Signals Skills (2 total)
+            "get_signals": self._handle_get_signals_skill,
+            "search_signals": self._handle_search_signals_skill,
+            # Legacy skill names (for backward compatibility)
+            "get_pricing": lambda params, token: self._get_pricing(),
+            "get_targeting": lambda params, token: self._get_targeting(),
+        }
+
+        if skill_name not in skill_handlers:
+            available_skills = list(skill_handlers.keys())
+            raise ValueError(f"Unknown skill '{skill_name}'. Available skills: {available_skills}")
+
+        try:
+            handler = skill_handlers[skill_name]
+            if skill_name in ["get_pricing", "get_targeting"]:
+                # These are simple handlers without async
+                return handler(parameters, auth_token)
+            else:
+                # These are async handlers that call core tools
+                return await handler(parameters, auth_token)
+        except Exception as e:
+            logger.error(f"Error in skill handler {skill_name}: {e}")
+            raise ValueError(f"Skill {skill_name} failed: {str(e)}")
+
+    async def _handle_get_products_skill(self, parameters: dict, auth_token: str) -> dict:
+        """Handle explicit get_products skill invocation."""
+        try:
+            # Create ToolContext from A2A auth info
+            tool_context = self._create_tool_context_from_a2a(
+                auth_token=auth_token,
+                tool_name="get_products",
+            )
+
+            # Map A2A parameters to GetProductsRequest
+            brief = parameters.get("brief", "")
+            promoted_offering = parameters.get("promoted_offering", "")
+
+            if not brief and not promoted_offering:
+                raise ValueError("Either 'brief' or 'promoted_offering' parameter is required")
+
+            # Use brief as promoted_offering if not provided
+            if not promoted_offering and brief:
+                promoted_offering = f"Business seeking to advertise: {brief}"
+
+            request = GetProductsRequest(brief=brief, promoted_offering=promoted_offering)
+
+            # Call core function directly
+            response = await core_get_products_tool.fn(request, tool_context)
+
+            # Convert to A2A response format
+            return {
+                "products": [product.model_dump() for product in response.products],
+                "message": response.message or "Products retrieved successfully",
+            }
+
+        except Exception as e:
+            logger.error(f"Error in get_products skill: {e}")
+            return {"products": [], "message": f"Unable to retrieve products: {str(e)}"}
+
+    async def _handle_create_media_buy_skill(self, parameters: dict, auth_token: str) -> dict:
+        """Handle explicit create_media_buy skill invocation."""
+        try:
+            # Create ToolContext from A2A auth info
+            tool_context = self._create_tool_context_from_a2a(
+                auth_token=auth_token,
+                tool_name="create_media_buy",
+            )
+
+            # Map A2A parameters to CreateMediaBuyRequest
+            # Required parameters
+            required_params = ["product_ids", "total_budget", "flight_start_date", "flight_end_date"]
+            missing_params = [param for param in required_params if param not in parameters]
+
+            if missing_params:
+                return {
+                    "success": False,
+                    "message": f"Missing required parameters: {missing_params}",
+                    "required_parameters": required_params,
+                    "received_parameters": list(parameters.keys()),
+                }
+
+            # Create request object with parameter mapping
+            request = CreateMediaBuyRequest(
+                product_ids=parameters["product_ids"],
+                total_budget=float(parameters["total_budget"]),
+                flight_start_date=parameters["flight_start_date"],
+                flight_end_date=parameters["flight_end_date"],
+                # Optional parameters with defaults
+                preferred_deal_ids=parameters.get("preferred_deal_ids", []),
+                custom_targeting=parameters.get("custom_targeting", {}),
+                creative_requirements=parameters.get("creative_requirements", {}),
+                optimization_goal=parameters.get("optimization_goal", "impressions"),
+            )
+
+            # Call core function directly
+            response = core_create_media_buy_tool.fn(request, tool_context)
+
+            # Convert response to A2A format
+            return {
+                "success": True,
+                "media_buy_id": response.media_buy_id,
+                "status": response.status,
+                "message": response.message or "Media buy created successfully",
+                "packages": [package.model_dump() for package in response.packages] if response.packages else [],
+                "next_steps": response.next_steps if hasattr(response, "next_steps") else [],
+            }
+
+        except Exception as e:
+            logger.error(f"Error in create_media_buy skill: {e}")
+            return {
+                "success": False,
+                "message": f"Failed to create media buy: {str(e)}",
+                "error": str(e),
+            }
+
+    async def _handle_add_creative_assets_skill(self, parameters: dict, auth_token: str) -> dict:
+        """Handle explicit add_creative_assets skill invocation."""
+        try:
+            # Create ToolContext from A2A auth info
+            tool_context = self._create_tool_context_from_a2a(
+                auth_token=auth_token,
+                tool_name="add_creative_assets",
+            )
+
+            # Map A2A parameters to AddCreativeAssetsRequest
+            # Required parameters
+            if "media_buy_id" not in parameters and "buyer_ref" not in parameters:
+                return {
+                    "success": False,
+                    "message": "Either 'media_buy_id' or 'buyer_ref' parameter is required",
+                    "required_parameters": ["media_buy_id OR buyer_ref", "assets"],
+                    "received_parameters": list(parameters.keys()),
+                }
+
+            if "assets" not in parameters:
+                return {
+                    "success": False,
+                    "message": "Missing required parameter: 'assets'",
+                    "required_parameters": ["media_buy_id OR buyer_ref", "assets"],
+                    "received_parameters": list(parameters.keys()),
+                }
+
+            # Create request object with parameter mapping
+            request = AddCreativeAssetsRequest(
+                media_buy_id=parameters.get("media_buy_id"),
+                buyer_ref=parameters.get("buyer_ref"),
+                assets=parameters["assets"],
+                creative_group_name=parameters.get("creative_group_name"),
+            )
+
+            # Call core function directly
+            response = core_add_creative_assets_tool.fn(request, tool_context)
+
+            # Convert response to A2A format
+            return {
+                "success": True,
+                "message": response.message or "Creative assets added successfully",
+                "creative_ids": response.creative_ids if hasattr(response, "creative_ids") else [],
+                "status": response.status if hasattr(response, "status") else "pending_review",
+            }
+
+        except Exception as e:
+            logger.error(f"Error in add_creative_assets skill: {e}")
+            return {
+                "success": False,
+                "message": f"Failed to add creative assets: {str(e)}",
+                "error": str(e),
+            }
+
+    async def _handle_approve_creative_skill(self, parameters: dict, auth_token: str) -> dict:
+        """Handle explicit approve_creative skill invocation."""
+        # TODO: Implement full approve_creative skill handler
+        return {
+            "success": False,
+            "message": "approve_creative skill not yet implemented in explicit invocation",
+            "parameters_received": parameters,
+        }
+
+    async def _handle_get_signals_skill(self, parameters: dict, auth_token: str) -> dict:
+        """Handle explicit get_signals skill invocation."""
+        try:
+            # Create ToolContext from A2A auth info
+            tool_context = self._create_tool_context_from_a2a(
+                auth_token=auth_token,
+                tool_name="get_signals",
+            )
+
+            # Map A2A parameters to GetSignalsRequest (no required parameters)
+            request = GetSignalsRequest(
+                signal_types=parameters.get("signal_types", []),
+                categories=parameters.get("categories", []),
+            )
+
+            # Call core function directly
+            response = await core_get_signals_tool.fn(request, tool_context)
+
+            # Convert response to A2A format
+            return {
+                "signals": [signal.model_dump() for signal in response.signals],
+                "message": response.message or "Signals retrieved successfully",
+                "total_count": len(response.signals),
+            }
+
+        except Exception as e:
+            logger.error(f"Error in get_signals skill: {e}")
+            return {
+                "signals": [],
+                "message": f"Unable to retrieve signals: {str(e)}",
+                "error": str(e),
+            }
+
+    async def _handle_search_signals_skill(self, parameters: dict, auth_token: str) -> dict:
+        """Handle explicit search_signals skill invocation."""
+        # TODO: Implement full search_signals skill handler
+        return {
+            "signals": [],
+            "message": "search_signals skill not yet implemented in explicit invocation",
+            "parameters_received": parameters,
+        }
+
+    async def _handle_get_media_buy_status_skill(self, parameters: dict, auth_token: str) -> dict:
+        """Handle explicit get_media_buy_status skill invocation."""
+        # TODO: Implement full get_media_buy_status skill handler
+        return {
+            "success": False,
+            "message": "get_media_buy_status skill not yet implemented in explicit invocation",
+            "parameters_received": parameters,
+        }
+
+    async def _handle_optimize_media_buy_skill(self, parameters: dict, auth_token: str) -> dict:
+        """Handle explicit optimize_media_buy skill invocation."""
+        # TODO: Implement full optimize_media_buy skill handler
+        return {
+            "success": False,
+            "message": "optimize_media_buy skill not yet implemented in explicit invocation",
+            "parameters_received": parameters,
+        }
 
     async def _get_products(self, query: str, auth_token: str) -> dict:
         """Get available advertising products by calling core functions directly.
@@ -701,29 +1064,68 @@ def create_agent_card() -> AgentCard:
         default_input_modes=["message"],
         default_output_modes=["message"],
         skills=[
+            # Core AdCP Media Buy Skills (6 total)
             AgentSkill(
                 id="get_products",
                 name="get_products",
                 description="Browse available advertising products and inventory",
-                tags=["products", "inventory", "catalog"],
+                tags=["products", "inventory", "catalog", "adcp"],
             ),
+            AgentSkill(
+                id="create_media_buy",
+                name="create_media_buy",
+                description="Create advertising campaigns with products, targeting, and budget",
+                tags=["campaign", "media", "buy", "adcp"],
+            ),
+            AgentSkill(
+                id="add_creative_assets",
+                name="add_creative_assets",
+                description="Upload and associate creative assets with media buys",
+                tags=["creative", "assets", "upload", "adcp"],
+            ),
+            AgentSkill(
+                id="approve_creative",
+                name="approve_creative",
+                description="Review and approve/reject creative assets (admin only)",
+                tags=["creative", "approval", "review", "adcp"],
+            ),
+            AgentSkill(
+                id="get_media_buy_status",
+                name="get_media_buy_status",
+                description="Check status and performance of media buys",
+                tags=["status", "performance", "tracking", "adcp"],
+            ),
+            AgentSkill(
+                id="optimize_media_buy",
+                name="optimize_media_buy",
+                description="Optimize media buy performance and targeting",
+                tags=["optimization", "performance", "targeting", "adcp"],
+            ),
+            # Core AdCP Signals Skills (2 total)
+            AgentSkill(
+                id="get_signals",
+                name="get_signals",
+                description="Discover available targeting signals (audiences, contextual, etc.)",
+                tags=["signals", "targeting", "discovery", "adcp"],
+            ),
+            AgentSkill(
+                id="search_signals",
+                name="search_signals",
+                description="Search and filter targeting signals by criteria",
+                tags=["signals", "search", "targeting", "adcp"],
+            ),
+            # Legacy Skills (for backward compatibility)
             AgentSkill(
                 id="get_pricing",
                 name="get_pricing",
                 description="Get pricing information and rate cards",
-                tags=["pricing", "cost", "budget"],
+                tags=["pricing", "cost", "budget", "legacy"],
             ),
             AgentSkill(
                 id="get_targeting",
                 name="get_targeting",
                 description="Explore available targeting options",
-                tags=["targeting", "audience", "demographics"],
-            ),
-            AgentSkill(
-                id="create_media_buy",
-                name="create_media_buy",
-                description="Create and manage advertising campaigns",
-                tags=["campaign", "media", "buy"],
+                tags=["targeting", "audience", "demographics", "legacy"],
             ),
         ],
         url=server_url,
