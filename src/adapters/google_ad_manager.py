@@ -92,7 +92,7 @@ class GoogleAdManager(AdServerAdapter):
         try:
             # Use the new helper function if we have a tenant_id
             if self.tenant_id:
-                from gam_helper import get_ad_manager_client_for_tenant
+                from scripts.ops.gam_helper import get_ad_manager_client_for_tenant
 
                 return get_ad_manager_client_for_tenant(self.tenant_id)
 
@@ -115,9 +115,9 @@ class GoogleAdManager(AdServerAdapter):
 
     def _get_oauth_credentials(self):
         """Get OAuth credentials using refresh token and superadmin config."""
-        from database_session import get_db_session
         from googleads import oauth2
 
+        from src.core.database.database_session import get_db_session
         from src.core.database.models import SuperadminConfig
 
         # Get OAuth client credentials from superadmin config
@@ -371,8 +371,7 @@ class GoogleAdManager(AdServerAdapter):
     ) -> CreateMediaBuyResponse:
         """Creates a new Order and associated LineItems in Google Ad Manager."""
         # Get products to access implementation_config
-        from database_session import get_db_session
-
+        from src.core.database.database_session import get_db_session
         from src.core.database.models import Product
 
         # Create a map of package_id to product for easy lookup
@@ -1088,8 +1087,7 @@ class GoogleAdManager(AdServerAdapter):
         @app.route("/adapters/gam/config/<tenant_id>/<product_id>", methods=["GET", "POST"])
         def gam_product_config(tenant_id, product_id):
             # Get tenant and product
-            from database_session import get_db_session
-
+            from src.core.database.database_session import get_db_session
             from src.core.database.models import AdapterConfig, Product, Tenant
 
             with get_db_session() as db_session:

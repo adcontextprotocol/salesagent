@@ -224,6 +224,15 @@ def create_app(config=None):
     # Register adapter-specific routes
     register_adapter_routes(app)
 
+    # Register GAM inventory endpoints
+    try:
+        from src.services.gam_inventory_service import create_inventory_endpoints
+
+        create_inventory_endpoints(app)
+        logger.info("Registered GAM inventory endpoints")
+    except ImportError:
+        logger.warning("gam_inventory_service not found")
+
     # WebSocket handlers
     @socketio.on("connect")
     def handle_connect():

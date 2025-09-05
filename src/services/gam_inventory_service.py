@@ -802,7 +802,7 @@ def create_inventory_endpoints(app):
             }
 
             # Create dummy principal for client initialization
-            from schemas import Principal
+            from src.core.schemas import Principal
 
             principal = Principal(
                 principal_id="system",

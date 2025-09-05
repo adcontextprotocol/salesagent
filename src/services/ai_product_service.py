@@ -98,7 +98,7 @@ class AIProductConfigurationService:
 
             if not principal_model:
                 # Create a temporary principal for inventory fetching
-                from schemas import Principal
+                from src.core.schemas import Principal
 
                 principal = Principal(
                     principal_id="ai_config_temp",
@@ -107,7 +107,7 @@ class AIProductConfigurationService:
                     platform_mappings={"mock": {"id": "system"}},  # Default mock mapping
                 )
             else:
-                from schemas import Principal
+                from src.core.schemas import Principal
 
                 mappings = principal_model.platform_mappings
                 if isinstance(mappings, str):
@@ -131,7 +131,7 @@ class AIProductConfigurationService:
                 )
 
         # Get adapter instance
-        from adapters import get_adapter_class
+        from src.adapters import get_adapter_class
         from src.core.database.models import AdapterConfig
 
         adapter_class = get_adapter_class(adapter_type)

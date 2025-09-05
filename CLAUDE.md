@@ -917,6 +917,31 @@ pre-commit run smoke-tests --all-files
 3. **For AdCP compliance**: Add required compliance tests before merging
 4. **For migration issues**: Fix migrations locally before pushing
 
+### Import Path Patterns
+- **Always use absolute imports** following project structure:
+  ```python
+  # ✅ Core business logic
+  from src.core.schemas import Principal
+  from src.core.database.database_session import get_db_session
+
+  # ✅ Adapters and services
+  from src.adapters import get_adapter
+  from src.services.gam_inventory_service import GAMInventoryService
+
+  # ✅ Operational scripts
+  from scripts.ops.gam_helper import get_ad_manager_client_for_tenant
+  ```
+- **Service Registration Pattern**: New Flask services should register endpoints:
+  ```python
+  # In src/admin/app.py
+  try:
+      from src.services.your_service import create_endpoints
+      create_endpoints(app)
+      logger.info("Registered your service endpoints")
+  except ImportError:
+      logger.warning("your_service not found")
+  ```
+
 ### Database Patterns
 - Always use context managers for database sessions
 - Explicit commits required (`session.commit()`)
@@ -995,6 +1020,38 @@ fly secrets set GEMINI_API_KEY="your-key" --app adcp-sales-agent
 ```bash
 ADMIN_UI_PORT=8001  # Change from 8052 or other conflicting port
 ```
+
+#### GAM Inventory Sync Issues (FIXED - Sep 2025)
+- **Issue**: Inventory browser returns `{"error": "Not yet implemented"}`
+- **Root Causes**:
+  1. **Import Path Issues**: Code reorganization broke import paths
+  2. **Missing Endpoint Registration**: `create_inventory_endpoints()` not called during app init
+  3. **Route Conflicts**: Duplicate `/inventory` routes in multiple blueprints
+- **Solutions Applied**:
+  1. **Fixed Import Paths**: Updated to absolute imports following project structure:
+     ```python
+     # ✅ Correct patterns
+     from scripts.ops.gam_helper import get_ad_manager_client_for_tenant
+     from src.core.database.database_session import get_db_session
+     from src.core.schemas import Principal
+     from src.adapters import get_adapter
+     ```
+  2. **Added Endpoint Registration** in `src/admin/app.py`:
+     ```python
+     try:
+         from src.services.gam_inventory_service import create_inventory_endpoints
+         create_inventory_endpoints(app)
+         logger.info("Registered GAM inventory endpoints")
+     except ImportError:
+         logger.warning("gam_inventory_service not found")
+     ```
+  3. **Fixed Route Conflicts**: Commented out conflicting placeholder routes in `operations_bp`
+- **Debugging Process**:
+  1. Check logs for "Not yet implemented" error source
+  2. Search codebase for all instances of error message
+  3. Identify route registration order and conflicts
+  4. Test import paths systematically
+- **Prevention**: Always use absolute imports and verify endpoint registration for new services
 
 ## Schema Validation
 
