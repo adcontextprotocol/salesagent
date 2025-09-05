@@ -48,10 +48,13 @@ class MockSetup:
     @staticmethod
     def get_test_data():
         """Get standard test data objects."""
+        mock_context_manager = Mock()
+        mock_context_manager.get_or_create_context.return_value = None
+
         return {
             "tenant": {"tenant_id": "tenant_test", "name": "Test Tenant"},
             "principal_id": "principal_test",
-            "context_manager": Mock(),
+            "context_manager": mock_context_manager,
         }
 
 
