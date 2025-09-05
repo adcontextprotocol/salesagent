@@ -20,12 +20,12 @@ def targeting(tenant_id, **kwargs):
     return jsonify({"error": "Not yet implemented"}), 501
 
 
-@operations_bp.route("/inventory", methods=["GET"])
-@require_tenant_access()
-def inventory(tenant_id, **kwargs):
-    """TODO: Extract implementation from admin_ui.py."""
-    # Placeholder implementation
-    return jsonify({"error": "Not yet implemented"}), 501
+# @operations_bp.route("/inventory", methods=["GET"])
+# @require_tenant_access()
+# def inventory(tenant_id, **kwargs):
+#     """TODO: Extract implementation from admin_ui.py."""
+#     # Placeholder implementation - DISABLED: Conflicts with inventory_bp.inventory_browser route
+#     return jsonify({"error": "Not yet implemented"}), 501
 
 
 @operations_bp.route("/orders", methods=["GET"])

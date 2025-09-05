@@ -290,10 +290,10 @@ def analyze_ad_server_inventory(tenant_id):
         # Find enabled adapter from database
         with get_db_session() as db_session:
             tenant = db_session.query(Tenant).filter_by(tenant_id=tenant_id).first()
-            
+
             adapter_type = None
             adapter_config = {}
-            
+
             # Check database for adapter configuration
             if tenant and tenant.ad_server:
                 adapter_type = tenant.ad_server
@@ -331,7 +331,7 @@ def analyze_ad_server_inventory(tenant_id):
                 return jsonify({"error": "No principal found for tenant"}), 404
 
             # Create principal object
-            from schemas import Principal as PrincipalSchema
+            from src.core.schemas import Principal as PrincipalSchema
 
             mappings = (
                 principal_obj.platform_mappings
@@ -347,7 +347,7 @@ def analyze_ad_server_inventory(tenant_id):
             )
 
         # Get adapter instance
-        from adapters import get_adapter
+        from src.adapters import get_adapter
 
         adapter = get_adapter(adapter_type, principal, config=config, dry_run=False)
 
