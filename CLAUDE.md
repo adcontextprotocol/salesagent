@@ -425,6 +425,31 @@ def test_standard_a2a_endpoints(client):
   5. Test fixes locally before deploying
 - **Recovery**: Deploy minimal fix first, then implement broader changes
 
+### Troubleshooting Test Issues
+
+**Issue**: Pre-commit hook "excessive mocking" failure
+- **Cause**: Test file has more than 10 mocks (detected via `@patch|MagicMock|Mock()` count)
+- **Fix**: Apply mock reduction patterns from "Test Quality & Mocking Best Practices" section:
+  1. Create centralized `MockSetup` class for duplicate mock creation
+  2. Use `patch.multiple()` helper methods to consolidate patches
+  3. Move database testing to integration tests with real DB connections
+  4. Focus mocking on external dependencies only (APIs, third-party services)
+
+**Issue**: Tests failing after mock refactoring
+- **Common Causes**:
+  - Missing imports: Add `from src.core.main import function_name`
+  - Mock return type mismatches: Ensure mocks return correct data types (list, dict, not Mock)
+  - Schema validation errors: Update test data to match current model requirements
+  - Test class naming: Rename `TestModel` classes to `ModelClass` to avoid pytest collection
+
+**Issue**: Integration tests slow or flaky
+- **Fix**: Use proper database session management and isolation
+- **Pattern**: Create/cleanup test data in fixtures rather than mocking database calls
+
+**Issue**: Async test failures
+- **Fix**: Ensure proper `@pytest.mark.asyncio` and `AsyncMock` usage
+- **Pattern**: Use `async with` for async context managers, `await` for all async calls
+
 ### Troubleshooting A2A Issues
 
 **Issue**: "404 NOT FOUND" for `/.well-known/agent-card.json`
@@ -649,6 +674,100 @@ tests/
 ### Running Tests in CI
 Tests marked with `@pytest.mark.requires_server` or `@pytest.mark.skip_ci` are automatically skipped in CI.
 
+### Test Quality & Mocking Best Practices
+
+**🚨 MOCK LIMIT ENFORCEMENT**: Pre-commit hook enforces maximum 10 mocks per test file to prevent excessive mocking that makes tests brittle and hard to maintain.
+
+**Unit vs Integration Test Guidelines:**
+- **Unit Tests**: Focus on pure logic, mock external dependencies only
+  - Mock external APIs, database connections, file I/O
+  - Test business logic, algorithms, data transformations
+  - Should be fast (< 1ms per test) and isolated
+- **Integration Tests**: Use real dependencies where practical
+  - Real database connections with test data
+  - Real internal service calls and business logic
+  - Mock only external services (APIs, third-party systems)
+
+**Recommended Mock Reduction Patterns:**
+
+1. **Centralized Mock Setup** - Eliminate duplicate mocking
+```python
+class MockSetup:
+    """Centralized mock setup to reduce duplicate mocking."""
+
+    @staticmethod
+    def create_standard_context():
+        """Single method creates consistent mock context."""
+        context = Mock(spec=FastMCPContext)
+        context.meta = {"headers": {"x-adcp-auth": "test-token"}}
+        return context
+
+    @staticmethod
+    def get_test_data():
+        """Standard test data objects."""
+        return {"tenant": {...}, "principal_id": "test_principal"}
+```
+
+2. **Helper Methods for Context Patching** - Consolidate repeated patches
+```python
+def _mock_auth_context(self, tenant_data):
+    """Helper to create authentication context patches."""
+    return patch.multiple(
+        "src.core.main",
+        _get_principal_id_from_context=Mock(return_value=tenant_data["principal"].principal_id),
+        get_current_tenant=Mock(return_value={"tenant_id": tenant_data["tenant"]["tenant_id"]}),
+        get_principal_object=Mock(return_value=tenant_data["principal"]),
+    )
+```
+
+3. **Factory Fixtures** - Reusable test data creation
+```python
+@pytest.fixture
+def test_context_factory(self) -> Callable[[str, str], Mock]:
+    """Factory for creating test contexts with authentication."""
+    def _create_context(token="test-token", context_id="test-ctx"):
+        context = Mock(spec=Context)
+        context.meta = {"headers": {"x-adcp-auth": token, "x-context-id": context_id}}
+        return context
+    return _create_context
+```
+
+4. **Class-Level Patches** - Reduce method-level patch decorators
+```python
+@patch.multiple(
+    "src.core.module",
+    dependency1=Mock(),
+    dependency2=Mock(),
+    dependency3=Mock()
+)
+class TestMyClass:
+    # All methods share these patches automatically
+```
+
+**Type Safety in Tests:**
+- Add type hints to fixture methods: `-> Dict[str, Any]`, `-> Callable[...]`
+- Use `Mock(spec=OriginalClass)` to prevent attribute errors
+- Import types for better IDE support: `from typing import Any, Callable, Dict`
+
+**Async Test Patterns:**
+- Use `@pytest.mark.asyncio` for async test methods
+- Use `AsyncMock` for mocking async functions and methods
+- Proper async fixture design with cleanup
+```python
+@pytest.fixture
+async def async_resource(self) -> AsyncGenerator[Resource, None]:
+    resource = await create_resource()
+    try:
+        yield resource
+    finally:
+        await resource.cleanup()
+```
+
+**Test Naming Conventions:**
+- Avoid `Test*` class names for non-test classes (use `*Model`, `*Factory` instead)
+- Use descriptive test method names: `test_auth_failure_returns_401_error`
+- Group related tests in classes: `TestDatabaseHealthLogic`, `TestSignalsWorkflow`
+
 ### Common Test Patterns
 - Use `get_db_session()` context manager for database access
 - Import `Principal` from `schemas` (not `models`) for business logic
@@ -751,6 +870,52 @@ uv run pytest tests/unit/test_adcp_contract.py --cov=src.core.schemas --cov-repo
 - Run pre-commit hooks: `pre-commit run --all-files`
 - Follow existing patterns in the codebase
 - Use type hints for all function signatures
+
+### Pre-Commit Quality Gates
+
+The project enforces several quality gates via pre-commit hooks:
+
+**Test Quality Enforcement:**
+- **`no-excessive-mocking`**: Prevents more than 10 mocks per test file
+  - Encourages better test architecture (unit vs integration separation)
+  - Prevents brittle, hard-to-maintain test suites
+  - Forces focus on testing behavior rather than implementation details
+- **`no-skip-tests`**: Prevents `@pytest.mark.skip` decorators (except `skip_ci`)
+  - Ensures test suite completeness
+  - Prevents accumulation of disabled tests
+- **`adcp-contract-tests`**: Validates AdCP protocol compliance
+  - All client-facing models must have compliance tests
+  - Prevents protocol violations and data leakage
+
+**Code Quality:**
+- **Black formatting**: Consistent code style
+- **Ruff linting**: Code quality and error detection
+- **Type checking**: Static type validation
+- **YAML/JSON validation**: Configuration file correctness
+
+**Database Safety:**
+- **`test-migrations`**: Validates database migrations can run cleanly
+- **`no-tenant-config`**: Prevents deprecated `tenant.config` references
+
+**Running Pre-commit Hooks:**
+```bash
+# Run all hooks on all files
+pre-commit run --all-files
+
+# Run specific hook
+pre-commit run no-excessive-mocking --all-files
+pre-commit run adcp-contract-tests --all-files
+
+# Run manual-only hooks
+pre-commit run test-migrations --all-files
+pre-commit run smoke-tests --all-files
+```
+
+**When Pre-commit Fails:**
+1. **Fix the underlying issue** rather than bypassing with `--no-verify`
+2. **For test mocking violations**: Refactor tests using patterns from "Test Quality & Mocking Best Practices"
+3. **For AdCP compliance**: Add required compliance tests before merging
+4. **For migration issues**: Fix migrations locally before pushing
 
 ### Database Patterns
 - Always use context managers for database sessions
