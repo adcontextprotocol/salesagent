@@ -571,7 +571,7 @@ def create_principal(tenant_id):
                 "create_principal.html",
                 tenant=tenant,
                 tenant_id=tenant_id,
-                gam_enabled=gam_enabled,
+                has_gam=gam_enabled,  # Template expects has_gam not gam_enabled
             )
 
     except Exception as e:
