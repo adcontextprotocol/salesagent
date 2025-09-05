@@ -14,11 +14,11 @@ from datetime import UTC, datetime
 from functools import wraps
 
 from flask import Blueprint, jsonify, request
-from gam_inventory_service import GAMInventoryService
-from gam_inventory_service import db_session as gam_db_session
 
 from src.core.database.database_session import get_db_session
 from src.core.database.models import AdapterConfig, SuperadminConfig, SyncJob, Tenant
+from src.services.gam_inventory_service import GAMInventoryService
+from src.services.gam_inventory_service import db_session as gam_db_session
 
 logger = logging.getLogger(__name__)
 
@@ -141,9 +141,8 @@ def trigger_sync(tenant_id: str):
             db_session.commit()
 
             # Initialize GAM client
-            from schemas import Principal
-
             from src.adapters.google_ad_manager import GoogleAdManager
+            from src.core.schemas import Principal
 
             # Create dummy principal for sync
             principal = Principal(
@@ -468,9 +467,9 @@ def sync_tenant_orders(tenant_id):
         try:
             # Initialize GAM client
             from gam_orders_service import GAMOrdersService
-            from schemas import Principal
 
             from src.adapters.google_ad_manager import GoogleAdManager
+            from src.core.schemas import Principal
 
             # Create dummy principal for sync
             principal = Principal(
