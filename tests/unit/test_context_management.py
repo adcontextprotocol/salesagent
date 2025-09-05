@@ -1,7 +1,7 @@
 """Tests for the new automatic context management system."""
 
 from datetime import UTC, datetime
-from unittest.mock import MagicMock, patch
+from unittest.mock import Mock, patch
 
 import pytest
 from fastmcp.server import Context as FastMCPContext
@@ -11,53 +11,48 @@ from src.core.mcp_context_wrapper import MCPContextWrapper
 from src.core.tool_context import ToolContext
 
 
-class TestRequest(BaseModel):
+class RequestModel(BaseModel):
     """Test request model."""
 
     query: str
 
 
-class TestResponse(BaseModel):
+class ResponseModel(BaseModel):
     """Test response model."""
 
     result: str
     message: str | None = None
 
 
-@pytest.fixture
-def mock_fastmcp_context():
-    """Create a simplified mock FastMCP context."""
-    context = MagicMock(spec=FastMCPContext)
+class MockSetup:
+    """Centralized mock setup to reduce duplicate mocking."""
 
-    # Headers for both meta access and HTTP request access
-    headers = {
-        "x-adcp-auth": "test_token_123",
-        "x-context-id": "ctx_test123",
-        "X-Test-Session-ID": "test_session_123",
-        "X-Force-Error": "none",
-    }
+    @staticmethod
+    def create_fastmcp_context():
+        """Create a mock FastMCP context with standard test data."""
+        context = Mock(spec=FastMCPContext)
+        headers = {
+            "x-adcp-auth": "test_token_123",
+            "x-context-id": "ctx_test123",
+            "X-Test-Session-ID": "test_session_123",
+            "X-Force-Error": "none",
+        }
 
-    # Mock for meta access (used by MCP context wrapper)
-    context.meta = {"headers": headers}
+        context.meta = {"headers": headers}
+        mock_request = Mock()
+        mock_request.headers = headers
+        context.get_http_request.return_value = mock_request
 
-    # Mock for HTTP request access (used by testing hooks)
-    mock_request = MagicMock()
-    mock_request.headers = headers
-    context.get_http_request.return_value = mock_request
+        return context
 
-    return context
-
-
-@pytest.fixture
-def mock_tenant():
-    """Mock tenant data."""
-    return {"tenant_id": "tenant_test", "name": "Test Tenant"}
-
-
-@pytest.fixture
-def mock_principal():
-    """Mock principal data."""
-    return {"principal_id": "principal_test", "name": "Test Principal", "platform_mappings": {}}
+    @staticmethod
+    def get_test_data():
+        """Get standard test data objects."""
+        return {
+            "tenant": {"tenant_id": "tenant_test", "name": "Test Tenant"},
+            "principal_id": "principal_test",
+            "context_manager": Mock(),
+        }
 
 
 class TestToolContext:
@@ -123,137 +118,106 @@ class TestToolContext:
         assert "timestamp" in context.conversation_history[0]
 
 
+@patch("src.core.mcp_context_wrapper.get_principal_from_context")
+@patch("src.core.mcp_context_wrapper.get_current_tenant")
+@patch("src.core.mcp_context_wrapper.get_context_manager")
 class TestMCPContextWrapper:
-    """Test the MCP context wrapper."""
+    """Test the MCP context wrapper with consolidated mocking."""
 
-    @patch("src.core.mcp_context_wrapper.get_principal_from_context")
-    @patch("src.core.mcp_context_wrapper.get_current_tenant")
-    @patch("src.core.mcp_context_wrapper.get_context_manager")
+    def setup_method(self):
+        """Set up test data and mocks."""
+        self.mock_setup = MockSetup()
+        self.fastmcp_context = self.mock_setup.create_fastmcp_context()
+        self.test_data = self.mock_setup.get_test_data()
+
     def test_sync_tool_wrapping(
         self,
         mock_get_context_manager,
         mock_get_tenant,
         mock_get_principal,
-        mock_fastmcp_context,
-        mock_tenant,
-        mock_principal,
     ):
         """Test wrapping a synchronous tool."""
-        # Setup mocks
-        mock_get_principal.return_value = "principal_test"
-        mock_get_tenant.return_value = mock_tenant
-        mock_context_manager = MagicMock()
-        mock_get_context_manager.return_value = mock_context_manager
+        # Setup mocks with test data
+        mock_get_principal.return_value = self.test_data["principal_id"]
+        mock_get_tenant.return_value = self.test_data["tenant"]
+        mock_get_context_manager.return_value = self.test_data["context_manager"]
 
-        # Create wrapper
         wrapper = MCPContextWrapper()
 
-        # Define a test tool
-        def test_tool(req: TestRequest, context: ToolContext) -> TestResponse:
-            """Test tool function."""
+        def test_tool(req: RequestModel, context: ToolContext) -> ResponseModel:
             assert isinstance(context, ToolContext)
             assert context.principal_id == "principal_test"
             assert context.tenant_id == "tenant_test"
-            return TestResponse(result=f"Processed: {req.query}")
+            return ResponseModel(result=f"Processed: {req.query}")
 
-        # Wrap the tool
         wrapped_tool = wrapper.wrap_tool(test_tool)
+        request = RequestModel(query="test query")
+        result = wrapped_tool(request, context=self.fastmcp_context)
 
-        # Call the wrapped tool
-        request = TestRequest(query="test query")
-        result = wrapped_tool(request, context=mock_fastmcp_context)
-
-        assert isinstance(result, TestResponse)
+        assert isinstance(result, ResponseModel)
         assert result.result == "Processed: test query"
 
-    @patch("src.core.mcp_context_wrapper.get_principal_from_context")
-    @patch("src.core.mcp_context_wrapper.get_current_tenant")
-    @patch("src.core.mcp_context_wrapper.get_context_manager")
     async def test_async_tool_wrapping(
         self,
         mock_get_context_manager,
         mock_get_tenant,
         mock_get_principal,
-        mock_fastmcp_context,
-        mock_tenant,
-        mock_principal,
     ):
         """Test wrapping an asynchronous tool."""
-        # Setup mocks
-        mock_get_principal.return_value = "principal_test"
-        mock_get_tenant.return_value = mock_tenant
-        mock_context_manager = MagicMock()
-        mock_get_context_manager.return_value = mock_context_manager
+        mock_get_principal.return_value = self.test_data["principal_id"]
+        mock_get_tenant.return_value = self.test_data["tenant"]
+        mock_get_context_manager.return_value = self.test_data["context_manager"]
 
-        # Create wrapper
         wrapper = MCPContextWrapper()
 
-        # Define an async test tool
-        async def async_test_tool(req: TestRequest, context: ToolContext) -> TestResponse:
-            """Async test tool function."""
+        async def async_test_tool(req: RequestModel, context: ToolContext) -> ResponseModel:
             assert isinstance(context, ToolContext)
             assert context.principal_id == "principal_test"
             assert context.tenant_id == "tenant_test"
-            assert context.context_id == "ctx_test123"  # From mock headers
-            return TestResponse(result=f"Async processed: {req.query}")
+            assert context.context_id == "ctx_test123"
+            return ResponseModel(result=f"Async processed: {req.query}")
 
-        # Wrap the tool
         wrapped_tool = wrapper.wrap_tool(async_test_tool)
+        request = RequestModel(query="async test query")
+        result = await wrapped_tool(request, context=self.fastmcp_context)
 
-        # Call the wrapped tool
-        request = TestRequest(query="async test query")
-        result = await wrapped_tool(request, context=mock_fastmcp_context)
-
-        assert isinstance(result, TestResponse)
+        assert isinstance(result, ResponseModel)
         assert result.result == "Async processed: async test query"
 
-    @patch("src.core.mcp_context_wrapper.get_principal_from_context")
-    @patch("src.core.mcp_context_wrapper.get_current_tenant")
-    @patch("src.core.mcp_context_wrapper.get_context_manager")
     def test_context_extraction(
-        self, mock_get_context_manager, mock_get_tenant, mock_get_principal, mock_fastmcp_context, mock_tenant
+        self,
+        mock_get_context_manager,
+        mock_get_tenant,
+        mock_get_principal,
     ):
         """Test extracting context from FastMCP context."""
-        # Setup mocks
-        mock_get_principal.return_value = "principal_test"
-        mock_get_tenant.return_value = mock_tenant
-        mock_context_manager = MagicMock()
-        mock_get_context_manager.return_value = mock_context_manager
-
-        # Create wrapper
         wrapper = MCPContextWrapper()
 
-        # Test extraction from kwargs
-        context = wrapper._extract_fastmcp_context((), {"context": mock_fastmcp_context})
-        assert context == mock_fastmcp_context
+        # Test extraction patterns
+        context = wrapper._extract_fastmcp_context((), {"context": self.fastmcp_context})
+        assert context == self.fastmcp_context
 
-        # Test extraction from args
-        context = wrapper._extract_fastmcp_context((mock_fastmcp_context,), {})
-        assert context == mock_fastmcp_context
+        context = wrapper._extract_fastmcp_context((self.fastmcp_context,), {})
+        assert context == self.fastmcp_context
 
-        # Test no context found
         context = wrapper._extract_fastmcp_context((), {})
         assert context is None
 
-    @patch("src.core.mcp_context_wrapper.get_principal_from_context")
-    @patch("src.core.mcp_context_wrapper.get_current_tenant")
-    @patch("src.core.mcp_context_wrapper.get_context_manager")
     def test_tool_context_creation(
-        self, mock_get_context_manager, mock_get_tenant, mock_get_principal, mock_fastmcp_context, mock_tenant
+        self,
+        mock_get_context_manager,
+        mock_get_tenant,
+        mock_get_principal,
     ):
         """Test creating ToolContext from FastMCP context."""
-        # Setup mocks
-        mock_get_principal.return_value = "principal_test"
-        mock_get_tenant.return_value = mock_tenant
-        mock_context_manager = MagicMock()
+        mock_get_principal.return_value = self.test_data["principal_id"]
+        mock_get_tenant.return_value = self.test_data["tenant"]
+        mock_context_manager = self.test_data["context_manager"]
         mock_context_manager.get_or_create_context.return_value = None
         mock_get_context_manager.return_value = mock_context_manager
 
-        # Create wrapper
         wrapper = MCPContextWrapper()
-
-        # Create ToolContext
-        tool_context = wrapper._create_tool_context(mock_fastmcp_context, "test_tool")
+        tool_context = wrapper._create_tool_context(self.fastmcp_context, "test_tool")
 
         assert isinstance(tool_context, ToolContext)
         assert tool_context.context_id == "ctx_test123"
@@ -262,38 +226,26 @@ class TestMCPContextWrapper:
         assert tool_context.tool_name == "test_tool"
         assert tool_context.metadata["headers"]["x-context-id"] == "ctx_test123"
 
-
-class TestContextInjection:
-    """Test context_id injection at protocol layer."""
-
-    @patch("src.core.mcp_context_wrapper.get_principal_from_context")
-    @patch("src.core.mcp_context_wrapper.get_current_tenant")
-    @patch("src.core.mcp_context_wrapper.get_context_manager")
     def test_response_enhancement(
-        self, mock_get_context_manager, mock_get_tenant, mock_get_principal, mock_fastmcp_context, mock_tenant
+        self,
+        mock_get_context_manager,
+        mock_get_tenant,
+        mock_get_principal,
     ):
         """Test that context_id is stored for protocol layer."""
-        # Setup mocks
-        mock_get_principal.return_value = "principal_test"
-        mock_get_tenant.return_value = mock_tenant
-        mock_context_manager = MagicMock()
-        mock_get_context_manager.return_value = mock_context_manager
+        mock_get_principal.return_value = self.test_data["principal_id"]
+        mock_get_tenant.return_value = self.test_data["tenant"]
+        mock_get_context_manager.return_value = self.test_data["context_manager"]
 
-        # Create wrapper
         wrapper = MCPContextWrapper()
 
-        # Define a tool that returns a response
-        def test_tool(req: TestRequest, context: ToolContext) -> TestResponse:
-            return TestResponse(result="test")
+        def test_tool(req: RequestModel, context: ToolContext) -> ResponseModel:
+            return ResponseModel(result="test")
 
-        # Wrap the tool
         wrapped_tool = wrapper.wrap_tool(test_tool)
+        request = RequestModel(query="test")
+        result = wrapped_tool(request, context=self.fastmcp_context)
 
-        # Call the wrapped tool
-        request = TestRequest(query="test")
-        result = wrapped_tool(request, context=mock_fastmcp_context)
-
-        # Check that context_id is stored for protocol layer
         assert hasattr(result, "_mcp_context_id")
         assert result._mcp_context_id == "ctx_test123"
 
