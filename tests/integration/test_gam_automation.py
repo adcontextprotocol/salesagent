@@ -61,15 +61,17 @@ class TestGAMAutomaticActivation:
     def create_test_products(self, mock_packages):
         """Create test products in database with different automation configurations."""
         with get_db_session() as db_session:
-            # Create test tenant first
-            test_tenant = Tenant(
-                tenant_id="test_tenant",
-                name="Test Tenant",
-                subdomain="test",
-                created_at=datetime.now(),
-                updated_at=datetime.now(),
-            )
-            db_session.add(test_tenant)
+            # Create test tenant first (only if it doesn't exist)
+            existing_tenant = db_session.query(Tenant).filter_by(tenant_id="test_tenant").first()
+            if not existing_tenant:
+                test_tenant = Tenant(
+                    tenant_id="test_tenant",
+                    name="Test Tenant",
+                    subdomain="test",
+                    created_at=datetime.now(),
+                    updated_at=datetime.now(),
+                )
+                db_session.add(test_tenant)
             # Non-guaranteed product with automatic activation
             product_network = Product(
                 tenant_id="test_tenant",
@@ -257,15 +259,17 @@ class TestGAMAutomaticActivation:
         """Test that manual mode keeps default behavior."""
         # Create product with manual mode
         with get_db_session() as db_session:
-            # Create test tenant first
-            test_tenant = Tenant(
-                tenant_id="test_tenant",
-                name="Test Tenant",
-                subdomain="test",
-                created_at=datetime.now(),
-                updated_at=datetime.now(),
-            )
-            db_session.add(test_tenant)
+            # Create test tenant first (only if it doesn't exist)
+            existing_tenant = db_session.query(Tenant).filter_by(tenant_id="test_tenant").first()
+            if not existing_tenant:
+                test_tenant = Tenant(
+                    tenant_id="test_tenant",
+                    name="Test Tenant",
+                    subdomain="test",
+                    created_at=datetime.now(),
+                    updated_at=datetime.now(),
+                )
+                db_session.add(test_tenant)
 
             product_manual = Product(
                 tenant_id="test_tenant",
