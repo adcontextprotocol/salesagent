@@ -26,7 +26,8 @@ def upgrade() -> None:
     conn = op.get_bind()
 
     if conn.dialect.name == "postgresql":
-        op.alter_column("tenants", "enable_aee_signals", new_column_name="enable_axe_signals")
+        # PostgreSQL rename column syntax
+        op.execute("ALTER TABLE tenants RENAME COLUMN enable_aee_signals TO enable_axe_signals")
     else:
         # SQLite requires batch operations
         with op.batch_alter_table("tenants", schema=None) as batch_op:
@@ -40,7 +41,8 @@ def downgrade() -> None:
     conn = op.get_bind()
 
     if conn.dialect.name == "postgresql":
-        op.alter_column("tenants", "enable_axe_signals", new_column_name="enable_aee_signals")
+        # PostgreSQL rename column syntax
+        op.execute("ALTER TABLE tenants RENAME COLUMN enable_axe_signals TO enable_aee_signals")
     else:
         # SQLite requires batch operations
         with op.batch_alter_table("tenants", schema=None) as batch_op:
