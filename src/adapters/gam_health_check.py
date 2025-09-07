@@ -152,7 +152,7 @@ class GAMHealthChecker:
             from googleads import ad_manager
 
             statement = (
-                ad_manager.StatementBuilder(version="v202411")
+                ad_manager.StatementBuilder(version="v202505")
                 .Where("id = :id")
                 .WithBindVariable("id", int(advertiser_id))
                 .ToStatement()
@@ -280,7 +280,7 @@ class GAMHealthChecker:
             for ad_unit_id in ad_unit_ids[:5]:  # Check first 5 only
                 try:
                     statement = (
-                        ad_manager.StatementBuilder(version="v202411")
+                        ad_manager.StatementBuilder(version="v202505")
                         .Where("id = :id")
                         .WithBindVariable("id", int(ad_unit_id))
                         .ToStatement()

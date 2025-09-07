@@ -104,6 +104,12 @@ class GAMImplementationConfig(BaseModel):
     # Native ad settings
     native_style_id: str | None = Field(None, description="GAM native style ID if using native ads")
 
+    # Automation settings for non-guaranteed orders
+    non_guaranteed_automation: str = Field(
+        "manual",
+        description="Automation mode for non-guaranteed line item types: 'automatic' (instant activation), 'confirmation_required' (human approval then auto-activation), 'manual' (human handles all steps)",
+    )
+
     @field_validator("line_item_type")
     def validate_line_item_type(cls, v):
         valid_types = {"STANDARD", "SPONSORSHIP", "NETWORK", "HOUSE", "PRICE_PRIORITY"}
@@ -122,6 +128,13 @@ class GAMImplementationConfig(BaseModel):
         valid_types = {"CPM", "CPC", "CPD", "CPA"}
         if v not in valid_types:
             raise ValueError(f"Invalid cost_type. Must be one of: {valid_types}")
+        return v
+
+    @field_validator("non_guaranteed_automation")
+    def validate_non_guaranteed_automation(cls, v):
+        valid_modes = {"automatic", "confirmation_required", "manual"}
+        if v not in valid_modes:
+            raise ValueError(f"Invalid non_guaranteed_automation. Must be one of: {valid_modes}")
         return v
 
 
