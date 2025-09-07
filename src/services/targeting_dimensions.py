@@ -3,9 +3,12 @@ Channel-specific targeting dimensions for AdCP.
 
 Defines which targeting dimensions are available for:
 1. Targeting overlays (buyer-specified targeting)
-2. AXE signals (orchestrator-provided context for principals)
+2. AXE signals (orchestrator-provided, limited to: include, exclude, creative macros)
 
 Per channel (audio, web, mobile app, CTV, DOOH).
+
+Note: AXE signals are specifically limited to three types and can use custom
+key names in the ad server. AXE is not used beyond include/exclude/macros.
 """
 
 from enum import Enum
@@ -41,7 +44,9 @@ class TargetingCapabilities(BaseModel):
     overlay_dimensions: list[TargetingDimension] = Field(
         description="Dimensions available for buyer targeting overlays"
     )
-    axe_dimensions: list[TargetingDimension] = Field(description="Dimensions provided to AXE for decisioning")
+    axe_dimensions: list[TargetingDimension] = Field(
+        description="Dimensions for AXE signals (include/exclude/macros only)"
+    )
 
 
 # Common dimensions across all channels
@@ -342,7 +347,7 @@ def get_overlay_dimensions(channel: Channel) -> list[TargetingDimension]:
 
 
 def get_axe_dimensions(channel: Channel) -> list[TargetingDimension]:
-    """Get AXE signal dimensions for a channel."""
+    """Get AXE signal dimensions for a channel (include/exclude/macros only)."""
     return CHANNEL_CAPABILITIES[channel].axe_dimensions
 
 
