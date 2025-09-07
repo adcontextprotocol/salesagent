@@ -141,7 +141,7 @@ def create_tenant():
                 billing_plan=data.get("billing_plan", "standard"),
                 billing_contact=data.get("billing_contact"),
                 max_daily_budget=data.get("max_daily_budget", 10000),
-                enable_aee_signals=data.get("enable_aee_signals", True),
+                enable_axe_signals=data.get("enable_axe_signals", True),
                 authorized_emails=json.dumps(data.get("authorized_emails", [])),
                 authorized_domains=json.dumps(data.get("authorized_domains", [])),
                 slack_webhook_url=data.get("slack_webhook_url"),
@@ -278,7 +278,7 @@ def get_tenant(tenant_id):
                 "updated_at": tenant.updated_at.isoformat() if tenant.updated_at else None,
                 "settings": {
                     "max_daily_budget": tenant.max_daily_budget,
-                    "enable_aee_signals": bool(tenant.enable_aee_signals),
+                    "enable_axe_signals": bool(tenant.enable_axe_signals),
                     "authorized_emails": tenant.authorized_emails if tenant.authorized_emails else [],
                     "authorized_domains": tenant.authorized_domains if tenant.authorized_domains else [],
                     "slack_webhook_url": tenant.slack_webhook_url,
@@ -360,8 +360,8 @@ def update_tenant(tenant_id):
                 tenant.billing_contact = data["billing_contact"]
             if "max_daily_budget" in data:
                 tenant.max_daily_budget = data["max_daily_budget"]
-            if "enable_aee_signals" in data:
-                tenant.enable_aee_signals = data["enable_aee_signals"]
+            if "enable_axe_signals" in data:
+                tenant.enable_axe_signals = data["enable_axe_signals"]
             if "authorized_emails" in data:
                 tenant.authorized_emails = json.dumps(data["authorized_emails"])
             if "authorized_domains" in data:
