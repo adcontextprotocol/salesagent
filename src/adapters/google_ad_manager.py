@@ -166,13 +166,14 @@ class GoogleAdManager(AdServerAdapter):
 
         return oauth2_client
 
-    # Supported device types and their GAM mappings
+    # Supported device types and their GAM numeric device category IDs
+    # These are GAM's standard device category IDs that work across networks
     DEVICE_TYPE_MAP = {
-        "mobile": "MOBILE",
-        "desktop": "DESKTOP",
-        "tablet": "TABLET",
-        "ctv": "CONNECTED_TV",
-        "dooh": "SET_TOP_BOX",
+        "mobile": 30000,  # Mobile devices
+        "desktop": 30001,  # Desktop computers
+        "tablet": 30002,  # Tablet devices
+        "ctv": 30003,  # Connected TV / Streaming devices
+        "dooh": 30004,  # Digital out-of-home / Set-top box
     }
 
     def _load_geo_mappings(self):
@@ -340,34 +341,37 @@ class GoogleAdManager(AdServerAdapter):
         if geo_targeting:
             gam_targeting["geoTargeting"] = geo_targeting
 
-        # Technology/Device targeting
-        tech_targeting = {}
-
+        # Technology/Device targeting - NOT SUPPORTED, MUST FAIL LOUDLY
         if targeting_overlay.device_type_any_of:
-            device_categories = []
-            for device in targeting_overlay.device_type_any_of:
-                if device in self.DEVICE_TYPE_MAP:
-                    device_categories.append(self.DEVICE_TYPE_MAP[device])
-            if device_categories:
-                tech_targeting["deviceCategories"] = device_categories
+            raise ValueError(
+                f"Device targeting requested but not supported. "
+                f"Cannot fulfill buyer contract for device types: {targeting_overlay.device_type_any_of}."
+            )
 
         if targeting_overlay.os_any_of:
-            tech_targeting["operatingSystems"] = [os.upper() for os in targeting_overlay.os_any_of]
+            raise ValueError(
+                f"OS targeting requested but not supported. "
+                f"Cannot fulfill buyer contract for OS types: {targeting_overlay.os_any_of}."
+            )
 
         if targeting_overlay.browser_any_of:
-            tech_targeting["browsers"] = [b.upper() for b in targeting_overlay.browser_any_of]
+            raise ValueError(
+                f"Browser targeting requested but not supported. "
+                f"Cannot fulfill buyer contract for browsers: {targeting_overlay.browser_any_of}."
+            )
 
-        if tech_targeting:
-            gam_targeting["technologyTargeting"] = tech_targeting
+        # Content targeting - NOT SUPPORTED, MUST FAIL LOUDLY
+        if targeting_overlay.content_cat_any_of:
+            raise ValueError(
+                f"Content category targeting requested but not supported. "
+                f"Cannot fulfill buyer contract for categories: {targeting_overlay.content_cat_any_of}."
+            )
 
-        # Content targeting
-        if targeting_overlay.content_cat_any_of or targeting_overlay.keywords_any_of:
-            content_targeting = {}
-            if targeting_overlay.content_cat_any_of:
-                content_targeting["targetedContentCategories"] = targeting_overlay.content_cat_any_of
-            if targeting_overlay.keywords_any_of:
-                content_targeting["targetedKeywords"] = targeting_overlay.keywords_any_of
-            gam_targeting["contentTargeting"] = content_targeting
+        if targeting_overlay.keywords_any_of:
+            raise ValueError(
+                f"Keyword targeting requested but not supported. "
+                f"Cannot fulfill buyer contract for keywords: {targeting_overlay.keywords_any_of}."
+            )
 
         # Custom key-value targeting
         custom_targeting = {}
@@ -440,6 +444,32 @@ class GoogleAdManager(AdServerAdapter):
 
         media_buy_id = f"gam_{int(datetime.now().timestamp())}"
 
+        # Determine automation behavior BEFORE creating orders
+        has_non_guaranteed = False
+        automation_mode = "manual"  # Default
+
+        for package in packages:
+            product = products_map.get(package.package_id)
+            impl_config = product.get("implementation_config", {}) if product else {}
+            line_item_type = impl_config.get("line_item_type", "STANDARD")
+
+            if line_item_type in NON_GUARANTEED_LINE_ITEM_TYPES:
+                has_non_guaranteed = True
+                automation_mode = impl_config.get("non_guaranteed_automation", "manual")
+                break  # Use first non-guaranteed product's automation setting
+
+        # Handle manual mode - don't create orders, just create workflow
+        if has_non_guaranteed and automation_mode == "manual":
+            self.log("[bold blue]Manual mode: Creating human workflow step instead of GAM order[/bold blue]")
+            self._create_manual_order_workflow_step(request, packages, start_time, end_time, media_buy_id)
+            return CreateMediaBuyResponse(
+                media_buy_id=media_buy_id,
+                status="pending_manual_creation",
+                detail="Awaiting manual creation of GAM order by human operator",
+                creative_deadline=datetime.now() + timedelta(days=2),
+            )
+
+        # Continue with order creation for automatic and confirmation_required modes
         # Get order name template from first product's config (they should all be the same)
         order_name_template = "AdCP-{po_number}-{timestamp}"
         applied_team_ids = []
@@ -521,6 +551,22 @@ class GoogleAdManager(AdServerAdapter):
                     {"placementId": placement_id} for placement_id in impl_config["targeted_placement_ids"]
                 ]
 
+            # Fallback: If no inventory targeting specified, use root ad unit from network config (GAM requires inventory targeting)
+            if "inventoryTargeting" not in targeting or not targeting["inventoryTargeting"]:
+                self.log(
+                    "[yellow]Warning: No inventory targeting specified in product config. Using network root ad unit as fallback.[/yellow]"
+                )
+
+                # Get root ad unit ID from GAM network info (fallback only)
+                # This should be rare - products should specify their own targeted_ad_unit_ids
+                network_service = self.client.GetService("NetworkService")
+                current_network = network_service.getCurrentNetwork()
+                root_ad_unit_id = current_network["effectiveRootAdUnitId"]
+
+                targeting["inventoryTargeting"] = {
+                    "targetedAdUnits": [{"adUnitId": root_ad_unit_id, "includeDescendants": True}]
+                }
+
             # Add custom targeting from product config
             if impl_config.get("custom_targeting_keys"):
                 if "customTargeting" not in targeting:
@@ -544,6 +590,16 @@ class GoogleAdManager(AdServerAdapter):
                     {"size": {"width": 300, "height": 250}, "expectedCreativeCount": 1, "creativeSizeType": "PIXEL"}
                 ]
 
+            # Determine goal type based on flight duration
+            # GAM doesn't allow DAILY for flights < 3 days
+            flight_duration_days = (end_time - start_time).days
+            if flight_duration_days < 3:
+                goal_type = "LIFETIME"
+                goal_units = package.impressions  # Use full impression count for lifetime
+            else:
+                goal_type = impl_config.get("primary_goal_type", "DAILY")
+                goal_units = min(package.impressions, 100)  # Cap daily impressions for test accounts
+
             line_item = {
                 "name": package.name,
                 "orderId": media_buy_id,
@@ -554,12 +610,27 @@ class GoogleAdManager(AdServerAdapter):
                 "costType": impl_config.get("cost_type", "CPM"),
                 "costPerUnit": {"currencyCode": "USD", "microAmount": int(package.cpm * 1_000_000)},
                 "primaryGoal": {
-                    "goalType": impl_config.get("primary_goal_type", "LIFETIME"),
+                    "goalType": goal_type,
                     "unitType": impl_config.get("primary_goal_unit_type", "IMPRESSIONS"),
-                    "units": package.impressions,
+                    "units": goal_units,
                 },
                 "creativeRotationType": impl_config.get("creative_rotation_type", "EVEN"),
                 "deliveryRateType": impl_config.get("delivery_rate_type", "EVENLY"),
+                # Add line item dates (required by GAM) - inherit from order
+                "startDateTime": {
+                    "date": {"year": start_time.year, "month": start_time.month, "day": start_time.day},
+                    "hour": start_time.hour,
+                    "minute": start_time.minute,
+                    "second": start_time.second,
+                    "timeZoneId": "America/New_York",  # Line items require timezone (orders don't) - Note: lowercase 'd'
+                },
+                "endDateTime": {
+                    "date": {"year": end_time.year, "month": end_time.month, "day": end_time.day},
+                    "hour": end_time.hour,
+                    "minute": end_time.minute,
+                    "second": end_time.second,
+                    "timeZoneId": "America/New_York",  # Line items require timezone (orders don't) - Note: lowercase 'd'
+                },
             }
 
             # Add frequency caps if configured
@@ -635,31 +706,24 @@ class GoogleAdManager(AdServerAdapter):
                         f"  Video Settings: max duration {impl_config.get('video_max_duration', 'N/A')}ms, skip after {impl_config.get('skip_offset', 'N/A')}ms"
                     )
             else:
-                line_item_service = self.client.GetService("LineItemService")
-                created_line_items = line_item_service.createLineItems([line_item])
-                if created_line_items:
-                    self.log(f"✓ Created LineItem ID: {created_line_items[0]['id']} for {package.name}")
-                    self.audit_logger.log_success(f"Created GAM LineItem ID: {created_line_items[0]['id']}")
+                try:
+                    line_item_service = self.client.GetService("LineItemService")
+                    created_line_items = line_item_service.createLineItems([line_item])
+                    if created_line_items:
+                        self.log(f"✓ Created LineItem ID: {created_line_items[0]['id']} for {package.name}")
+                        self.audit_logger.log_success(f"Created GAM LineItem ID: {created_line_items[0]['id']}")
+                except Exception as e:
+                    error_msg = f"Failed to create LineItem for {package.name}: {str(e)}"
+                    self.log(f"[red]Error: {error_msg}[/red]")
+                    self.audit_logger.log_warning(error_msg)
+                    # Log the targeting structure for debugging
+                    self.log(f"[red]Targeting structure that caused error: {targeting}[/red]")
+                    raise
 
-        # Determine automation behavior based on line item types and configuration
+        # Apply automation logic for orders that were created (automatic and confirmation_required)
         status = "pending_activation"
         detail = "Media buy created in Google Ad Manager"
 
-        # Check if any line items are non-guaranteed types
-        has_non_guaranteed = False
-        automation_mode = "manual"  # Default
-
-        for package in packages:
-            product = products_map.get(package.package_id)
-            impl_config = product.get("implementation_config", {}) if product else {}
-            line_item_type = impl_config.get("line_item_type", "STANDARD")
-
-            if line_item_type in NON_GUARANTEED_LINE_ITEM_TYPES:
-                has_non_guaranteed = True
-                automation_mode = impl_config.get("non_guaranteed_automation", "manual")
-                break  # Use first non-guaranteed product's automation setting
-
-        # Apply automation logic for non-guaranteed orders
         if has_non_guaranteed:
             if automation_mode == "automatic":
                 self.log("[bold green]Non-guaranteed order with automatic activation enabled[/bold green]")
@@ -677,9 +741,8 @@ class GoogleAdManager(AdServerAdapter):
                 status = "pending_confirmation"
                 detail = "Media buy created, awaiting approval for automatic activation"
 
-            else:  # manual mode
-                self.log("[bold blue]Non-guaranteed order with manual activation (no automation)[/bold blue]")
-                # Keep default pending_activation status
+            # Note: manual mode is handled earlier and returns before this point
+
         else:
             self.log("[bold blue]Guaranteed order types always require manual activation[/bold blue]")
             # Guaranteed orders always stay pending_activation regardless of config
@@ -772,11 +835,10 @@ class GoogleAdManager(AdServerAdapter):
         """
         import uuid
 
-        from src.core.context_manager import ContextManager
         from src.core.database.database_session import get_db_session
         from src.core.database.models import ObjectWorkflowMapping, WorkflowStep
 
-        step_id = f"activate_{media_buy_id}_{uuid.uuid4().hex[:8]}"
+        step_id = f"a{uuid.uuid4().hex[:5]}"  # 6 chars total
 
         # Build detailed action list for humans
         action_details = {
@@ -798,7 +860,10 @@ class GoogleAdManager(AdServerAdapter):
 
         try:
             with get_db_session() as db_session:
-                context_id = ContextManager.get_current_context_id()
+                # Create a context for this workflow if needed
+                import uuid
+
+                context_id = f"ctx_{uuid.uuid4().hex[:12]}"
 
                 # Create workflow step
                 workflow_step = WorkflowStep(
@@ -807,7 +872,7 @@ class GoogleAdManager(AdServerAdapter):
                     step_type="approval",
                     tool_name="activate_gam_order",
                     request_data=action_details,
-                    status="requires_approval",
+                    status="approval",  # Shortened to fit database field
                     owner="publisher",  # Publisher needs to approve GAM order activation
                     assigned_to=None,  # Will be assigned by admin
                     transaction_details={"gam_order_id": media_buy_id},
@@ -826,10 +891,238 @@ class GoogleAdManager(AdServerAdapter):
                 self.log(f"✓ Created workflow step {step_id} for GAM order activation approval")
                 self.audit_logger.log_success(f"Created activation approval workflow step: {step_id}")
 
+                # Send Slack notification if configured
+                self._send_workflow_notification(step_id, action_details)
+
         except Exception as e:
             error_msg = f"Failed to create activation workflow step for order {media_buy_id}: {str(e)}"
             self.log(f"[red]Error: {error_msg}[/red]")
             self.audit_logger.log_warning(error_msg)
+
+    def _create_manual_order_workflow_step(
+        self,
+        request: CreateMediaBuyRequest,
+        packages: list[MediaPackage],
+        start_time: datetime,
+        end_time: datetime,
+        media_buy_id: str,
+    ) -> None:
+        """Creates a workflow step for manual creation of GAM order (manual mode).
+
+        Args:
+            request: The original media buy request
+            packages: List of packages to be created
+            start_time: Campaign start time
+            end_time: Campaign end time
+            media_buy_id: Generated media buy ID for tracking
+        """
+        import uuid
+
+        from src.core.database.database_session import get_db_session
+        from src.core.database.models import ObjectWorkflowMapping, WorkflowStep
+
+        step_id = f"c{uuid.uuid4().hex[:5]}"  # 6 chars total
+
+        # Build detailed action list for humans to manually create the order
+        action_details = {
+            "action_type": "create_gam_order",
+            "media_buy_id": media_buy_id,
+            "platform": "Google Ad Manager",
+            "automation_mode": "manual",
+            "instructions": [
+                "Manually create a new order in Google Ad Manager with the following details:",
+                f"Order Name: {request.po_number or media_buy_id}",
+                f"Advertiser: {self.advertiser_id}",
+                f"Total Budget: ${request.total_budget:,.2f}",
+                f"Flight Dates: {start_time.date()} to {end_time.date()}",
+                "Create line items for each package listed below",
+                "Set up targeting, creative placeholders, and delivery settings",
+                "Once order is created, update this task with the GAM Order ID",
+            ],
+            "order_details": {
+                "po_number": request.po_number,
+                "total_budget": request.total_budget,
+                "flight_start": start_time.isoformat(),
+                "flight_end": end_time.isoformat(),
+                "advertiser_id": self.advertiser_id,
+                "trafficker_id": self.trafficker_id,
+            },
+            "packages": [
+                {
+                    "name": pkg.name,
+                    "impressions": pkg.impressions,
+                    "cpm": pkg.cpm,
+                    "delivery_type": pkg.delivery_type,
+                    "format_ids": pkg.format_ids,
+                }
+                for pkg in packages
+            ],
+            "targeting": request.targeting_overlay.model_dump() if request.targeting_overlay else {},
+            "next_action_after_completion": "order_created",
+            "gam_network_url": f"https://admanager.google.com/{self.network_code}",
+        }
+
+        try:
+            with get_db_session() as db_session:
+                # Create a context for this workflow if needed
+                import uuid
+
+                context_id = f"ctx_{uuid.uuid4().hex[:12]}"
+
+                # Create workflow step
+                workflow_step = WorkflowStep(
+                    step_id=step_id,
+                    context_id=context_id,
+                    step_type="manual_task",
+                    tool_name="create_gam_order",
+                    request_data=action_details,
+                    status="pending",  # Shortened to fit database field
+                    owner="publisher",  # Publisher needs to manually create the order
+                    assigned_to=None,  # Will be assigned by admin
+                    transaction_details={"media_buy_id": media_buy_id, "expected_gam_order_id": None},
+                )
+                db_session.add(workflow_step)
+
+                # Create object mapping to link this step with the media buy
+                object_mapping = ObjectWorkflowMapping(
+                    object_type="media_buy", object_id=media_buy_id, step_id=step_id, action="create"
+                )
+                db_session.add(object_mapping)
+
+                db_session.commit()
+
+                self.log(f"✓ Created manual workflow step {step_id} for GAM order creation")
+                self.audit_logger.log_success(f"Created manual order creation workflow step: {step_id}")
+
+                # Send Slack notification if configured
+                self._send_workflow_notification(step_id, action_details)
+
+        except Exception as e:
+            error_msg = f"Failed to create manual order workflow step for {media_buy_id}: {str(e)}"
+            self.log(f"[red]Error: {error_msg}[/red]")
+            self.audit_logger.log_warning(error_msg)
+
+    def _send_workflow_notification(self, step_id: str, action_details: dict) -> None:
+        """Send Slack notification for workflow step if configured.
+
+        Args:
+            step_id: The workflow step ID
+            action_details: Details about the workflow step
+        """
+        try:
+            from src.core.config_loader import get_tenant_config
+
+            tenant_config = get_tenant_config(self.tenant_id)
+            slack_webhook_url = tenant_config.get("slack", {}).get("webhook_url")
+
+            if not slack_webhook_url:
+                self.log("[yellow]No Slack webhook configured - skipping notification[/yellow]")
+                return
+
+            import requests
+
+            action_type = action_details.get("action_type", "workflow_step")
+            automation_mode = action_details.get("automation_mode", "unknown")
+
+            if action_type == "create_gam_order":
+                title = "🔨 Manual GAM Order Creation Required"
+                color = "#FF9500"  # Orange
+                description = "Manual mode activated - human intervention needed to create GAM order"
+            elif action_type == "activate_gam_order":
+                title = "✅ GAM Order Activation Approval Required"
+                color = "#FFD700"  # Gold
+                description = "Order created successfully - approval needed for activation"
+            else:
+                title = "🔔 Workflow Step Requires Attention"
+                color = "#36A2EB"  # Blue
+                description = f"Workflow step {step_id} needs human intervention"
+
+            # Build Slack message
+            slack_payload = {
+                "attachments": [
+                    {
+                        "color": color,
+                        "title": title,
+                        "text": description,
+                        "fields": [
+                            {"title": "Step ID", "value": step_id, "short": True},
+                            {
+                                "title": "Automation Mode",
+                                "value": automation_mode.replace("_", " ").title(),
+                                "short": True,
+                            },
+                            {
+                                "title": "Action Required",
+                                "value": action_details.get("instructions", ["Check admin dashboard"])[0],
+                                "short": False,
+                            },
+                        ],
+                        "footer": "AdCP Sales Agent",
+                        "ts": int(datetime.now().timestamp()),
+                    }
+                ]
+            }
+
+            # Send notification
+            response = requests.post(
+                slack_webhook_url, json=slack_payload, timeout=10, headers={"Content-Type": "application/json"}
+            )
+
+            if response.status_code == 200:
+                self.log(f"✓ Sent Slack notification for workflow step {step_id}")
+                self.audit_logger.log_success(f"Sent Slack notification for workflow step: {step_id}")
+            else:
+                self.log(f"[yellow]Slack notification failed with status {response.status_code}[/yellow]")
+
+        except Exception as e:
+            self.log(f"[yellow]Failed to send Slack notification: {str(e)}[/yellow]")
+            # Don't fail the workflow creation if notification fails
+
+    def archive_order(self, order_id: str) -> bool:
+        """Archive a GAM order for cleanup purposes.
+
+        Args:
+            order_id: The GAM order ID to archive
+
+        Returns:
+            bool: True if archival succeeded, False otherwise
+        """
+        self.log(f"[bold yellow]Archiving GAM Order {order_id} for cleanup[/bold yellow]")
+
+        if self.dry_run:
+            self.log(f"Would call: order_service.performOrderAction(ArchiveOrders, {order_id})")
+            return True
+
+        try:
+            from googleads import ad_manager
+
+            order_service = self.client.GetService("OrderService")
+
+            # Use ArchiveOrders action
+            archive_action = {"xsi_type": "ArchiveOrders"}
+
+            order_statement_builder = ad_manager.StatementBuilder()
+            order_statement_builder.Where("id = :orderId")
+            order_statement_builder.WithBindVariable("orderId", int(order_id))
+            order_statement = order_statement_builder.ToStatement()
+
+            result = order_service.performOrderAction(archive_action, order_statement)
+
+            if result and result.get("numChanges", 0) > 0:
+                self.log(f"✓ Successfully archived GAM Order {order_id}")
+                self.audit_logger.log_success(f"Archived GAM Order {order_id}")
+                return True
+            else:
+                self.log(
+                    f"[yellow]Warning: No changes made when archiving Order {order_id} (may already be archived)[/yellow]"
+                )
+                return True  # Consider this successful
+
+        except Exception as e:
+            error_msg = f"Failed to archive GAM Order {order_id}: {str(e)}"
+            self.log(f"[red]Error: {error_msg}[/red]")
+            self.audit_logger.log_warning(error_msg)
+            return False
 
     def get_advertisers(self) -> list[dict[str, Any]]:
         """Get list of advertisers (companies) from GAM for advertiser selection.

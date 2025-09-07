@@ -870,6 +870,57 @@ uv run pytest tests/unit/test_adcp_contract.py --cov=src.core.schemas --cov-repo
 - Run pre-commit hooks: `pre-commit run --all-files`
 - Follow existing patterns in the codebase
 - Use type hints for all function signatures
+- **🚨 ZERO HARDCODED IDs**: NO hardcoded external system IDs (GAM, Kevel, etc.) in code - use configuration/database only
+- **🛡️ TEST SAFETY**: Never test against production systems - use dedicated test configuration files (e.g., `.gam-test-config.json`) with validation
+
+### ⛔ NO QUIET FAILURES - CONTRACT FULFILLMENT POLICY
+
+**CRITICAL**: We NEVER quietly fail or skip requested features. This is a CONTRACT VIOLATION with buyers.
+
+**REQUIRED BEHAVIOR:**
+1. **Requested Features MUST Work or Fail Loudly**
+   - If a buyer requests device targeting, it MUST be applied or the request MUST fail
+   - If geo targeting is requested, it MUST be applied or the request MUST fail
+   - If any targeting dimension cannot be fulfilled, the entire request MUST fail
+
+2. **No Silent Skipping or Graceful Degradation**
+   - ❌ NEVER: Log a warning and continue without the feature
+   - ❌ NEVER: Return success when requested features were skipped
+   - ❌ NEVER: Silently downgrade capabilities
+   - ✅ ALWAYS: Raise an exception when unable to fulfill a request
+   - ✅ ALWAYS: Return an error response with clear explanation
+
+3. **Exception Handling Pattern**
+   ```python
+   # ❌ WRONG - Silent failure
+   if not self.supports_device_targeting:
+       logger.warning("Device targeting not supported, skipping...")
+       # Continue without device targeting
+
+   # ✅ CORRECT - Explicit failure
+   if not self.supports_device_targeting and targeting.device_type_any_of:
+       raise TargetingNotSupportedException(
+           "Device targeting requested but not supported by this adapter. "
+           "Cannot fulfill buyer contract."
+       )
+   ```
+
+4. **Test Requirements**
+   - Every test MUST verify that requested features are actually applied
+   - Tests MUST fail if features are silently skipped
+   - Mock adapters MUST match real adapter behavior exactly
+   - Tests MUST check for explicit errors when features are unsupported
+
+5. **Response Validation**
+   - Responses MUST include confirmation of applied features
+   - Missing confirmations MUST be treated as failures
+   - Partial fulfillment is NOT acceptable without explicit buyer consent
+
+**WHY THIS MATTERS:**
+- Buyers pay for specific targeting and features
+- Silent failures lead to incorrect campaign delivery
+- Trust erosion when contracts aren't fulfilled
+- Legal and financial liability for unfulfilled contracts
 
 ### Pre-Commit Quality Gates
 
