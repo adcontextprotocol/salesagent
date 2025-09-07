@@ -1041,7 +1041,7 @@ class TestAdCPFullLifecycle:
 
         # Test optional endpoint availability
         print("\n  Testing Optional Endpoint Availability")
-        optional_endpoints = ["list_creative_formats", "get_signals", "check_aee_requirements"]
+        optional_endpoints = ["list_creative_formats", "get_signals", "check_axe_requirements"]
 
         for endpoint in optional_endpoints:
             try:
@@ -1049,7 +1049,7 @@ class TestAdCPFullLifecycle:
                     await test_client.call_mcp_tool(endpoint, {})
                 elif endpoint == "get_signals":
                     await test_client.call_mcp_tool(endpoint, {})
-                elif endpoint == "check_aee_requirements":
+                elif endpoint == "check_axe_requirements":
                     await test_client.call_mcp_tool(endpoint, {"channel": "web"})
 
                 print(f"    ✓ Optional endpoint {endpoint} available")
@@ -1194,7 +1194,7 @@ class TestAdCPFullLifecycle:
         print("\n=== Testing AEE Compliance ===")
 
         result = await test_client.call_mcp_tool(
-            "check_aee_requirements", {"channel": "web", "required_dimensions": ["geo", "daypart", "frequency"]}
+            "check_axe_requirements", {"channel": "web", "required_dimensions": ["geo", "daypart", "frequency"]}
         )
 
         assert "supported" in result or "compliant" in result or "status" in result

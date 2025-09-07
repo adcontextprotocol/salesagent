@@ -134,7 +134,7 @@ headers = {"X-Simulated-Spend": "true"}
 - ✅ `get_media_buy_delivery` - Performance metrics
 - ✅ `get_all_media_buy_delivery` - Bulk delivery data
 - ✅ `simulation_control` - Time progression control
-- ✅ `check_aee_requirements` - AEE compliance
+- ✅ `check_axe_requirements` - AEE compliance
 - ✅ `create_creative_group` - Creative organization
 - ✅ `update_performance_index` - Performance optimization
 
