@@ -42,12 +42,18 @@ class TestGAMAutomaticActivation:
             MediaPackage(
                 package_id="test_product_network",
                 name="Network Test Package",
+                delivery_type="non_guaranteed",
                 impressions=10000,
                 cpm=2.50,
-                format="display",
+                format_ids=["display_300x250"],
             ),
             MediaPackage(
-                package_id="test_product_house", name="House Test Package", impressions=5000, cpm=1.00, format="display"
+                package_id="test_product_house",
+                name="House Test Package",
+                delivery_type="non_guaranteed",
+                impressions=5000,
+                cpm=1.00,
+                format_ids=["display_300x250"],
             ),
         ]
 
@@ -198,7 +204,12 @@ class TestGAMAutomaticActivation:
 
         # Create guaranteed package (STANDARD type with automatic setting - should be ignored)
         guaranteed_package = MediaPackage(
-            package_id="test_product_standard", name="Standard Package", impressions=50000, cpm=5.00, format="display"
+            package_id="test_product_standard",
+            name="Standard Package",
+            delivery_type="guaranteed",
+            impressions=50000,
+            cpm=5.00,
+            format_ids=["display_300x250"],
         )
 
         request = CreateMediaBuyRequest(
@@ -238,7 +249,12 @@ class TestGAMAutomaticActivation:
         adapter = GoogleAdManager(config=gam_config, principal=mock_principal, dry_run=True, tenant_id="test_tenant")
 
         manual_package = MediaPackage(
-            package_id="test_product_manual", name="Manual Package", impressions=15000, cpm=3.00, format="display"
+            package_id="test_product_manual",
+            name="Manual Package",
+            delivery_type="non_guaranteed",
+            impressions=15000,
+            cpm=3.00,
+            format_ids=["display_300x250"],
         )
 
         request = CreateMediaBuyRequest(po_number="TEST-MANUAL-001", total_budget=450.0, targeting_overlay=Targeting())
@@ -260,14 +276,20 @@ class TestGAMAutomaticActivation:
         # Mix of guaranteed and non-guaranteed packages
         mixed_packages = [
             MediaPackage(
-                package_id="test_product_network", name="Network Package", impressions=10000, cpm=2.50, format="display"
+                package_id="test_product_network",
+                name="Network Package",
+                delivery_type="non_guaranteed",
+                impressions=10000,
+                cpm=2.50,
+                format_ids=["display_300x250"],
             ),
             MediaPackage(
                 package_id="test_product_standard",
                 name="Standard Package",
+                delivery_type="guaranteed",
                 impressions=20000,
                 cpm=4.00,
-                format="display",
+                format_ids=["display_300x250"],
             ),
         ]
 

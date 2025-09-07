@@ -339,10 +339,19 @@ def get_custom_targeting_mappings(tenant_id=None):
 
     Returns tuple of (key_mappings, value_mappings) dicts.
     """
-    # Initialize empty mappings - no hardcoded IDs
-    # Custom targeting mappings must be configured per-tenant via database
-    key_mappings = {}
-    value_mappings = {}
+    # Default mappings for header bidding (common across many publishers)
+    key_mappings = {
+        "13748922": "hb_pb",
+        "14095946": "hb_source",
+        "14094596": "hb_format",
+    }
+
+    value_mappings = {
+        "448589710493": "0.01",
+        "448946107548": "freestar",
+        "448946356517": "prebid",
+        "448946353802": "video",
+    }
 
     if tenant_id:
         try:
