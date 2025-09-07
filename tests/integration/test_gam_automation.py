@@ -66,6 +66,11 @@ class TestGAMAutomaticActivation:
                 tenant_id="test_tenant",
                 product_id="test_product_network",
                 name="Network Product",
+                formats=[{"format_id": "display_300x250", "name": "Display 300x250", "type": "display"}],
+                targeting_template={},
+                delivery_type="non_guaranteed",
+                is_fixed_price=True,
+                cpm=2.50,
                 implementation_config=json.dumps(
                     {
                         "line_item_type": "NETWORK",
@@ -80,6 +85,11 @@ class TestGAMAutomaticActivation:
                 tenant_id="test_tenant",
                 product_id="test_product_house",
                 name="House Product",
+                formats=[{"format_id": "display_728x90", "name": "Leaderboard 728x90", "type": "display"}],
+                targeting_template={},
+                delivery_type="non_guaranteed",
+                is_fixed_price=True,
+                cpm=1.00,
                 implementation_config=json.dumps(
                     {
                         "line_item_type": "HOUSE",
@@ -94,6 +104,11 @@ class TestGAMAutomaticActivation:
                 tenant_id="test_tenant",
                 product_id="test_product_standard",
                 name="Standard Product",
+                formats=[{"format_id": "display_300x250", "name": "Display 300x250", "type": "display"}],
+                targeting_template={},
+                delivery_type="guaranteed",
+                is_fixed_price=True,
+                cpm=5.00,
                 implementation_config=json.dumps(
                     {
                         "line_item_type": "STANDARD",
@@ -235,6 +250,11 @@ class TestGAMAutomaticActivation:
                 tenant_id="test_tenant",
                 product_id="test_product_manual",
                 name="Manual Product",
+                formats=[{"format_id": "display_300x250", "name": "Display 300x250", "type": "display"}],
+                targeting_template={},
+                delivery_type="non_guaranteed",
+                is_fixed_price=True,
+                cpm=3.00,
                 implementation_config=json.dumps(
                     {
                         "line_item_type": "NETWORK",
