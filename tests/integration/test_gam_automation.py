@@ -12,7 +12,7 @@ import pytest
 
 from src.adapters.google_ad_manager import GUARANTEED_LINE_ITEM_TYPES, NON_GUARANTEED_LINE_ITEM_TYPES, GoogleAdManager
 from src.core.database.database_session import get_db_session
-from src.core.database.models import ObjectWorkflowMapping, Product, WorkflowStep
+from src.core.database.models import AuditLog, ObjectWorkflowMapping, Product, Tenant, WorkflowStep
 from src.core.schemas import CreateMediaBuyRequest, MediaPackage, Principal, Targeting
 
 
@@ -61,6 +61,15 @@ class TestGAMAutomaticActivation:
     def create_test_products(self, mock_packages):
         """Create test products in database with different automation configurations."""
         with get_db_session() as db_session:
+            # Create test tenant first
+            test_tenant = Tenant(
+                tenant_id="test_tenant",
+                name="Test Tenant",
+                subdomain="test",
+                created_at=datetime.now(),
+                updated_at=datetime.now(),
+            )
+            db_session.add(test_tenant)
             # Non-guaranteed product with automatic activation
             product_network = Product(
                 tenant_id="test_tenant",
@@ -126,6 +135,8 @@ class TestGAMAutomaticActivation:
         # Cleanup
         with get_db_session() as db_session:
             db_session.query(Product).filter_by(tenant_id="test_tenant").delete()
+            db_session.query(AuditLog).filter_by(tenant_id="test_tenant").delete()
+            db_session.query(Tenant).filter_by(tenant_id="test_tenant").delete()
             db_session.commit()
 
     def test_line_item_type_constants(self):
@@ -246,6 +257,16 @@ class TestGAMAutomaticActivation:
         """Test that manual mode keeps default behavior."""
         # Create product with manual mode
         with get_db_session() as db_session:
+            # Create test tenant first
+            test_tenant = Tenant(
+                tenant_id="test_tenant",
+                name="Test Tenant",
+                subdomain="test",
+                created_at=datetime.now(),
+                updated_at=datetime.now(),
+            )
+            db_session.add(test_tenant)
+
             product_manual = Product(
                 tenant_id="test_tenant",
                 product_id="test_product_manual",
