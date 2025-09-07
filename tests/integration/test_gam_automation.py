@@ -164,6 +164,16 @@ class TestGAMAutomaticActivation:
         # Create GAM adapter in dry-run mode
         adapter = GoogleAdManager(config=gam_config, principal=mock_principal, dry_run=True, tenant_id="test_tenant")
 
+        # Mock the client that would be used for network service calls
+        mock_client = Mock()
+        mock_network_service = Mock()
+        mock_network_service.getCurrentNetwork.return_value = {
+            "effectiveRootAdUnitId": "123456",
+            "rootAdUnitId": "123456",
+        }
+        mock_client.GetService.return_value = mock_network_service
+        adapter.client = mock_client
+
         # Create request with targeting overlay
         request = CreateMediaBuyRequest(po_number="TEST-AUTO-001", total_budget=1000.0, targeting_overlay=Targeting())
 
@@ -183,45 +193,46 @@ class TestGAMAutomaticActivation:
         self, mock_init_client, mock_principal, gam_config, mock_packages, create_test_products
     ):
         """Test that confirmation_required mode creates workflow step."""
-        with patch("src.core.context_manager.ContextManager.get_current_context_id", return_value="test_context"):
-            adapter = GoogleAdManager(
-                config=gam_config, principal=mock_principal, dry_run=True, tenant_id="test_tenant"
+        adapter = GoogleAdManager(config=gam_config, principal=mock_principal, dry_run=True, tenant_id="test_tenant")
+
+        # Mock the client
+        mock_client = Mock()
+        mock_network_service = Mock()
+        mock_network_service.getCurrentNetwork.return_value = {
+            "effectiveRootAdUnitId": "123456",
+            "rootAdUnitId": "123456",
+        }
+        mock_client.GetService.return_value = mock_network_service
+        adapter.client = mock_client
+
+        request = CreateMediaBuyRequest(po_number="TEST-CONF-001", total_budget=500.0, targeting_overlay=Targeting())
+
+        start_time = datetime.now()
+        end_time = start_time + timedelta(days=7)
+
+        response = adapter.create_media_buy(request, [mock_packages[1]], start_time, end_time)
+
+        # Should return pending_confirmation status
+        assert response.status == "pending_confirmation"
+        assert "awaiting approval" in response.detail
+
+        # Check that workflow step was created
+        with get_db_session() as db_session:
+            workflow_step = db_session.query(WorkflowStep).filter_by(status="requires_approval").first()
+
+            assert workflow_step is not None
+            assert workflow_step.step_type == "approval"
+            assert workflow_step.tool_name == "activate_gam_order"
+            assert "activate_gam_order" in workflow_step.request_data["action_type"]
+
+            # Check object mapping exists
+            object_mapping = (
+                db_session.query(ObjectWorkflowMapping)
+                .filter_by(step_id=workflow_step.step_id, object_type="media_buy", action="activate")
+                .first()
             )
 
-            request = CreateMediaBuyRequest(
-                po_number="TEST-CONF-001", total_budget=500.0, targeting_overlay=Targeting()
-            )
-
-            start_time = datetime.now()
-            end_time = start_time + timedelta(days=7)
-
-            response = adapter.create_media_buy(request, [mock_packages[1]], start_time, end_time)
-
-            # Should return pending_confirmation status
-            assert response.status == "pending_confirmation"
-            assert "awaiting approval" in response.detail
-
-            # Check that workflow step was created
-            with get_db_session() as db_session:
-                workflow_step = (
-                    db_session.query(WorkflowStep)
-                    .filter_by(context_id="test_context", status="requires_approval")
-                    .first()
-                )
-
-                assert workflow_step is not None
-                assert workflow_step.step_type == "approval"
-                assert workflow_step.tool_name == "activate_gam_order"
-                assert "activate_gam_order" in workflow_step.request_data["action_type"]
-
-                # Check object mapping exists
-                object_mapping = (
-                    db_session.query(ObjectWorkflowMapping)
-                    .filter_by(step_id=workflow_step.step_id, object_type="media_buy", action="activate")
-                    .first()
-                )
-
-                assert object_mapping is not None
+            assert object_mapping is not None
 
     @patch("src.adapters.google_ad_manager.GoogleAdManager._init_client")
     def test_guaranteed_orders_ignore_automation(
@@ -229,6 +240,16 @@ class TestGAMAutomaticActivation:
     ):
         """Test that guaranteed order types ignore automation settings."""
         adapter = GoogleAdManager(config=gam_config, principal=mock_principal, dry_run=True, tenant_id="test_tenant")
+
+        # Mock the client
+        mock_client = Mock()
+        mock_network_service = Mock()
+        mock_network_service.getCurrentNetwork.return_value = {
+            "effectiveRootAdUnitId": "123456",
+            "rootAdUnitId": "123456",
+        }
+        mock_client.GetService.return_value = mock_network_service
+        adapter.client = mock_client
 
         # Create guaranteed package (STANDARD type with automatic setting - should be ignored)
         guaranteed_package = MediaPackage(
@@ -317,6 +338,16 @@ class TestGAMAutomaticActivation:
     def test_mixed_order_types_behavior(self, mock_init_client, mock_principal, gam_config, create_test_products):
         """Test behavior when order contains both guaranteed and non-guaranteed line items."""
         adapter = GoogleAdManager(config=gam_config, principal=mock_principal, dry_run=True, tenant_id="test_tenant")
+
+        # Mock the client
+        mock_client = Mock()
+        mock_network_service = Mock()
+        mock_network_service.getCurrentNetwork.return_value = {
+            "effectiveRootAdUnitId": "123456",
+            "rootAdUnitId": "123456",
+        }
+        mock_client.GetService.return_value = mock_network_service
+        adapter.client = mock_client
 
         # Mix of guaranteed and non-guaranteed packages
         mixed_packages = [
