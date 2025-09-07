@@ -328,14 +328,14 @@ def update_tenant(tenant_id):
         try:
             # Get form data for individual fields
             max_daily_budget = request.form.get("max_daily_budget", type=int)
-            enable_aee_signals = request.form.get("enable_aee_signals") == "true"
+            enable_axe_signals = request.form.get("enable_axe_signals") == "true"
             human_review_required = request.form.get("human_review_required") == "true"
 
             # Find and update tenant
             tenant = db_session.query(Tenant).filter_by(tenant_id=tenant_id).first()
             if tenant:
                 tenant.max_daily_budget = max_daily_budget
-                tenant.enable_aee_signals = enable_aee_signals
+                tenant.enable_axe_signals = enable_axe_signals
                 tenant.human_review_required = human_review_required
                 tenant.updated_at = datetime.now().isoformat()
 

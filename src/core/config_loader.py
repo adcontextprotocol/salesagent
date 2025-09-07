@@ -59,7 +59,7 @@ def get_default_tenant() -> dict[str, Any] | None:
                     "subdomain": tenant.subdomain,
                     "ad_server": tenant.ad_server,
                     "max_daily_budget": tenant.max_daily_budget,
-                    "enable_aee_signals": tenant.enable_aee_signals,
+                    "enable_axe_signals": tenant.enable_axe_signals,
                     "authorized_emails": safe_json_loads(tenant.authorized_emails, []),
                     "authorized_domains": safe_json_loads(tenant.authorized_domains, []),
                     "slack_webhook_url": tenant.slack_webhook_url,
@@ -96,7 +96,7 @@ def load_config() -> dict[str, Any]:
         },
         "features": {
             "max_daily_budget": tenant.get("max_daily_budget", 10000),
-            "enable_aee_signals": tenant.get("enable_aee_signals", True),
+            "enable_axe_signals": tenant.get("enable_axe_signals", True),
             "slack_webhook_url": tenant.get("slack_webhook_url"),
             "slack_audit_webhook_url": tenant.get("slack_audit_webhook_url"),
             "hitl_webhook_url": tenant.get("hitl_webhook_url"),

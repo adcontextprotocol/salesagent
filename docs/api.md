@@ -286,7 +286,7 @@ POST /api/v1/superadmin/tenants
   "gam_network_code": "123456789",
   "features": {
     "max_daily_budget": 50000,
-    "enable_aee_signals": true
+    "enable_axe_signals": true
   }
 }
 ```

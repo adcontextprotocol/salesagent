@@ -48,7 +48,7 @@ class TestAdcpServerV2_3(unittest.TestCase):
                     billing_contact TEXT,
                     ad_server VARCHAR(50) NOT NULL,
                     max_daily_budget REAL DEFAULT 10000,
-                    enable_aee_signals BOOLEAN DEFAULT 1,
+                    enable_axe_signals BOOLEAN DEFAULT 1,
                     auto_approve_formats TEXT DEFAULT '[]',
                     human_review_required BOOLEAN DEFAULT 0,
                     manual_approval_required BOOLEAN DEFAULT 0,
@@ -153,7 +153,7 @@ class TestAdcpServerV2_3(unittest.TestCase):
                 text(
                     f"""
                 INSERT INTO tenants (tenant_id, name, subdomain, billing_plan, created_at, updated_at,
-                                   ad_server, max_daily_budget, enable_aee_signals,
+                                   ad_server, max_daily_budget, enable_axe_signals,
                                    auto_approve_formats, human_review_required)
                 VALUES (:tid, :name, :subdomain, :plan, {timestamp_func}, {timestamp_func}, :server, :budget, :signals, :formats, :review)
             """
@@ -165,7 +165,7 @@ class TestAdcpServerV2_3(unittest.TestCase):
                     "plan": "test",
                     "server": "mock",  # ad_server
                     "budget": 10000,  # max_daily_budget
-                    "signals": True,  # enable_aee_signals
+                    "signals": True,  # enable_axe_signals
                     "formats": json.dumps(["display_300x250", "display_728x90"]),  # auto_approve_formats
                     "review": False,  # human_review_required
                 },
@@ -255,7 +255,7 @@ class TestAdcpServerV2_3(unittest.TestCase):
                 "subdomain": f"test_{tenant_id[:8]}",
                 "ad_server": "mock",
                 "max_daily_budget": 10000,
-                "enable_aee_signals": True,
+                "enable_axe_signals": True,
                 "auto_approve_formats": ["display_300x250", "display_728x90"],
                 "human_review_required": False,
             }

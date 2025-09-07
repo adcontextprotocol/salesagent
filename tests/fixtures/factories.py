@@ -34,7 +34,7 @@ class TenantFactory:
                 "auto_approve_formats": ["display_300x250", "display_728x90"],
                 "human_review_required": False,
             },
-            "features": {"max_daily_budget": 10000, "enable_aee_signals": True},
+            "features": {"max_daily_budget": 10000, "enable_axe_signals": True},
             "authorized_emails": ["test@example.com"],
             "authorized_domains": ["example.com"],
         }
