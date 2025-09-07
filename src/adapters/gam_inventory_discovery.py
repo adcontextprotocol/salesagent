@@ -270,7 +270,7 @@ class GAMInventoryDiscovery:
         discovered_units = []
 
         # Build statement to query ad units
-        statement_builder = ad_manager.StatementBuilder(version="v202411")
+        statement_builder = ad_manager.StatementBuilder(version="v202505")
 
         if parent_id:
             statement_builder = statement_builder.Where("parentId = :parentId").WithBindVariable(
@@ -311,7 +311,7 @@ class GAMInventoryDiscovery:
         placement_service = self.client.GetService("PlacementService")
         discovered_placements = []
 
-        statement_builder = ad_manager.StatementBuilder(version="v202411")
+        statement_builder = ad_manager.StatementBuilder(version="v202505")
 
         while True:
             response = placement_service.getPlacementsByStatement(statement_builder.ToStatement())
@@ -339,7 +339,7 @@ class GAMInventoryDiscovery:
         label_service = self.client.GetService("LabelService")
         discovered_labels = []
 
-        statement_builder = ad_manager.StatementBuilder(version="v202411")
+        statement_builder = ad_manager.StatementBuilder(version="v202505")
 
         while True:
             response = label_service.getLabelsByStatement(statement_builder.ToStatement())
@@ -368,7 +368,7 @@ class GAMInventoryDiscovery:
         discovered_keys = []
 
         # Discover keys first
-        statement_builder = ad_manager.StatementBuilder(version="v202411")
+        statement_builder = ad_manager.StatementBuilder(version="v202505")
 
         while True:
             response = custom_targeting_service.getCustomTargetingKeysByStatement(statement_builder.ToStatement())
@@ -405,7 +405,7 @@ class GAMInventoryDiscovery:
         discovered_values = []
 
         statement_builder = (
-            ad_manager.StatementBuilder(version="v202411")
+            ad_manager.StatementBuilder(version="v202505")
             .Where("customTargetingKeyId = :keyId")
             .WithBindVariable("keyId", int(key_id))
         )
@@ -436,7 +436,7 @@ class GAMInventoryDiscovery:
         audience_segment_service = self.client.GetService("AudienceSegmentService")
         discovered_segments = []
 
-        statement_builder = ad_manager.StatementBuilder(version="v202411")
+        statement_builder = ad_manager.StatementBuilder(version="v202505")
 
         while True:
             try:

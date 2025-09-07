@@ -233,6 +233,51 @@ class MockAdServer(AdServerAdapter):
         """Mock adapter accepts all targeting."""
         return []  # No unsupported features
 
+    def _validate_media_buy_request(
+        self, request: CreateMediaBuyRequest, packages: list[MediaPackage], start_time: datetime, end_time: datetime
+    ):
+        """Validate media buy request with GAM-like validation rules."""
+        errors = []
+
+        # Date validation (like GAM)
+        if start_time >= end_time:
+            errors.append("NotNullError.NULL @ lineItem[0].endDateTime")
+
+        if end_time <= datetime.now():
+            errors.append("InvalidArgumentError @ lineItem[0].endDateTime")
+
+        # Inventory targeting validation (like GAM requirement)
+        has_inventory_targeting = False
+        if request.targeting_overlay and hasattr(request.targeting_overlay, "custom"):
+            if request.targeting_overlay.custom and "inventory" in str(request.targeting_overlay.custom):
+                has_inventory_targeting = True
+
+        # For non-guaranteed line items, require some form of inventory targeting
+        for package in packages:
+            if package.delivery_type == "non_guaranteed":
+                if not has_inventory_targeting:
+                    errors.append("RequiredError.REQUIRED @ lineItem[0].targeting.inventoryTargeting")
+                    break
+
+        # Goal validation (like GAM limits)
+        for package in packages:
+            if package.impressions > 1000000:  # Mock limit
+                errors.append(
+                    f"ReservationDetailsError.PERCENTAGE_UNITS_BOUGHT_TOO_HIGH @ lineItem[0].primaryGoal.units; trigger:'{package.impressions}'"
+                )
+
+        # Budget validation
+        if request.total_budget <= 0:
+            errors.append("InvalidArgumentError @ order.totalBudget")
+
+        if request.total_budget > 1000000:  # Mock limit
+            errors.append("InvalidArgumentError.VALUE_TOO_LARGE @ order.totalBudget")
+
+        # If we have errors, format them like GAM does
+        if errors:
+            error_message = "[" + ", ".join(errors) + "]"
+            raise Exception(error_message)
+
     def create_media_buy(
         self,
         request: CreateMediaBuyRequest,
@@ -241,6 +286,42 @@ class MockAdServer(AdServerAdapter):
         end_time: datetime,
     ) -> CreateMediaBuyResponse:
         """Simulates the creation of a media buy using GAM-like templates."""
+        # NO QUIET FAILURES policy - Check for unsupported targeting
+        if request.targeting_overlay:
+            # Mock adapter mirrors GAM behavior - these targeting types are not supported
+            if request.targeting_overlay.device_type_any_of:
+                raise ValueError(
+                    f"Device targeting requested but not supported. "
+                    f"Cannot fulfill buyer contract for device types: {request.targeting_overlay.device_type_any_of}."
+                )
+
+            if request.targeting_overlay.os_any_of:
+                raise ValueError(
+                    f"OS targeting requested but not supported. "
+                    f"Cannot fulfill buyer contract for OS types: {request.targeting_overlay.os_any_of}."
+                )
+
+            if request.targeting_overlay.browser_any_of:
+                raise ValueError(
+                    f"Browser targeting requested but not supported. "
+                    f"Cannot fulfill buyer contract for browsers: {request.targeting_overlay.browser_any_of}."
+                )
+
+            if request.targeting_overlay.content_cat_any_of:
+                raise ValueError(
+                    f"Content category targeting requested but not supported. "
+                    f"Cannot fulfill buyer contract for categories: {request.targeting_overlay.content_cat_any_of}."
+                )
+
+            if request.targeting_overlay.keywords_any_of:
+                raise ValueError(
+                    f"Keyword targeting requested but not supported. "
+                    f"Cannot fulfill buyer contract for keywords: {request.targeting_overlay.keywords_any_of}."
+                )
+
+        # GAM-like validation (based on real GAM behavior)
+        self._validate_media_buy_request(request, packages, start_time, end_time)
+
         # Generate a unique media_buy_id
         import uuid
 
@@ -322,8 +403,10 @@ class MockAdServer(AdServerAdapter):
                     self.log(f"      'countries': {request.targeting_overlay.geo_country_any_of},")
                 if request.targeting_overlay.geo_region_any_of:
                     self.log(f"      'regions': {request.targeting_overlay.geo_region_any_of},")
-                if request.targeting_overlay.device_type_any_of:
-                    self.log(f"      'devices': {request.targeting_overlay.device_type_any_of},")
+                if request.targeting_overlay.geo_metro_any_of:
+                    self.log(f"      'metros': {request.targeting_overlay.geo_metro_any_of},")
+                if request.targeting_overlay.key_value_pairs:
+                    self.log(f"      'key_values': {request.targeting_overlay.key_value_pairs},")
                 if request.targeting_overlay.media_type_any_of:
                     self.log(f"      'media_types': {request.targeting_overlay.media_type_any_of},")
             self.log("    }")
