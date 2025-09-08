@@ -103,6 +103,137 @@ docker exec -it adcp-server python setup_tenant.py "Test Publisher" \
   --adapter mock
 ```
 
+## Admin UI Management
+
+The Admin UI provides secure web-based management at http://localhost:8001
+
+### Access Levels
+
+1. **Super Admin** - Full system access
+   - Manage all tenants (publishers)
+   - View all operations
+   - System configuration
+
+2. **Tenant Admin** - Publisher management
+   - Manage products and advertisers
+   - View tenant operations
+   - Configure integrations
+
+3. **Tenant User** - Read-only access
+   - View products and campaigns
+   - Monitor performance
+
+### Key Features
+
+- **Publisher Management** - Create and configure tenants
+- **Advertiser Management** - Add principals (advertisers)
+- **Product Catalog** - Define inventory products
+- **Creative Approval** - Review and approve creatives
+- **Operations Dashboard** - Monitor all activity
+- **Audit Logs** - Track all operations
+
+### Publisher Configuration
+
+Each publisher has JSON configuration:
+
+```json
+{
+  "adapters": {
+    "google_ad_manager": {
+      "enabled": true,
+      "network_code": "123456",
+      "manual_approval_required": false
+    }
+  },
+  "creative_engine": {
+    "auto_approve_formats": ["display_300x250"],
+    "human_review_required": true
+  },
+  "features": {
+    "max_daily_budget": 10000,
+    "enable_axe_signals": true
+  }
+}
+```
+
+### Advertiser (Principal) Management
+
+Add advertisers to publishers:
+
+```bash
+# Via Admin UI (recommended)
+# 1. Login to http://localhost:8001
+# 2. Navigate to tenant
+# 3. Add new advertiser/principal
+# 4. Configure GAM advertiser ID
+
+# Via API
+curl -X POST "http://localhost:8001/admin/tenant/{tenant_id}/principals" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Advertiser Name",
+    "platform_mappings": {
+      "gam_advertiser_id": "123456"
+    }
+  }'
+```
+
+### Product Management
+
+#### AI-Powered Product Creation
+
+Create products with AI assistance:
+
+```bash
+# Quick create from templates
+curl -X POST "/admin/tenant/{tenant_id}/products/quick-create" \
+  -d '{"template": "news_display", "name": "News Display Ads"}'
+
+# Get AI suggestions
+curl -X POST "/admin/tenant/{tenant_id}/products/ai-suggest" \
+  -d '{"description": "Video ads for sports content"}'
+```
+
+#### Default Products
+
+New tenants get 6 standard products:
+- Premium Display (guaranteed)
+- Standard Display (non-guaranteed)
+- Video Pre-Roll (guaranteed)
+- Native Content (guaranteed)
+- Mobile Display (non-guaranteed)
+- Newsletter Sponsorship (guaranteed)
+
+#### Bulk Operations
+
+```bash
+# Upload CSV
+curl -X POST "/admin/tenant/{tenant_id}/products/upload" \
+  -F "file=@products.csv"
+
+# JSON import
+curl -X POST "/admin/tenant/{tenant_id}/products/import" \
+  -H "Content-Type: application/json" \
+  -d @products.json
+```
+
+### Creative Management
+
+#### Auto-Approval Workflow
+
+1. Configure auto-approve formats per tenant
+2. Standard formats approved instantly
+3. Non-standard sent to review queue
+4. Admin reviews in UI
+5. Email notifications on status change
+
+#### Creative Groups
+
+Organize creatives across campaigns:
+- Group by advertiser, campaign, or theme
+- Share creatives across media buys
+- Track performance by group
+
 ## Database Migrations
 
 Migrations run automatically on startup, but can be managed manually:

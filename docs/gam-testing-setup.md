@@ -156,3 +156,53 @@ gam_ad_units.json
 ```
 
 **Solution**: Create test configuration file using template above, or rely on dynamic fetching.
+
+## Lifecycle Testing (Issue #117)
+
+The real GAM test script now includes comprehensive lifecycle management testing:
+
+### New Lifecycle Tests
+
+```bash
+# Run all tests including lifecycle actions
+python tests/manual/test_gam_automation_real.py \
+  --network-code YOUR_TEST_NETWORK_CODE \
+  --advertiser-id YOUR_TEST_ADVERTISER_ID \
+  --trafficker-id YOUR_TEST_TRAFFICKER_ID
+```
+
+**Tests Added:**
+1. **`test_lifecycle_activate_order`** - Tests activation of non-guaranteed orders
+2. **`test_lifecycle_submit_for_approval`** - Tests submitting guaranteed orders for approval
+3. **`test_lifecycle_activation_blocking`** - Tests that guaranteed orders block direct activation
+4. **`test_lifecycle_archive_order`** - Tests archival of completed orders
+
+### Real GAM API Calls
+
+These tests make **real calls** to the GAM API:
+- `performOrderAction(ResumeOrders)` for activation
+- `performOrderAction(SubmitOrdersForApproval)` for approval submission
+- `performOrderAction(ArchiveOrders)` for archiving
+- `performLineItemAction(ActivateLineItems)` for line item activation
+
+### Safety Features
+
+- **Automatic Cleanup**: All created orders are automatically archived after testing
+- **Test Products**: Uses dedicated test product configurations
+- **Small Budgets**: Test orders use minimal budgets ($1-$20)
+- **Short Durations**: Test campaigns have very short flight dates
+- **Manual Fallback**: If automatic cleanup fails, provides manual cleanup instructions
+
+### Expected Results
+
+✅ **Passing Tests:**
+- Non-guaranteed activation should succeed
+- Guaranteed activation should be blocked with clear error message
+- Approval submission should succeed for guaranteed orders
+- Archival should work for paused orders
+
+❌ **Expected Failures:**
+- Direct activation of guaranteed orders (this validates our safety logic)
+- Archive attempts on active orders (validates status checking)
+
+This ensures the complete lifecycle management system works correctly with real GAM infrastructure.

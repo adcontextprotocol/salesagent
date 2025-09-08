@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """
-Manual test script for GAM automatic activation with real GAM test account.
+Manual test script for GAM automation and lifecycle management with real GAM test account.
 
-This script tests the implementation of Issue #116 using a real GAM test publisher account.
-It creates actual orders in GAM, tests activation, and cleans up afterwards.
+This script tests the implementation of Issues #116 and #117 using a real GAM test publisher account.
+It creates actual orders in GAM, tests activation, lifecycle actions, and cleans up afterwards.
 
 Usage:
     python test_gam_automation_real.py --network-code 12345678 --advertiser-id 987654 --trafficker-id 123456
@@ -151,10 +151,102 @@ class GAMAutomationTester:
                 ),
             )
 
-            db_session.add_all([product_auto, product_confirm, product_manual, product_guaranteed])
+            # Lifecycle test specific products
+            product_lifecycle_network = Product(
+                tenant_id=self.test_tenant_id,
+                product_id="gam_test_lifecycle_network",
+                name="GAM Lifecycle Network Test",
+                implementation_config=json.dumps(
+                    {
+                        "order_name_template": "TEST-LIFECYCLE-NET-{po_number}-{timestamp}",
+                        "line_item_type": "NETWORK",
+                        "non_guaranteed_automation": "manual",  # Manual so we can test activation
+                        "priority": 12,
+                        "cost_type": "CPM",
+                        "creative_rotation_type": "EVEN",
+                        "delivery_rate_type": "EVENLY",
+                        "primary_goal_type": "LIFETIME",
+                        "primary_goal_unit_type": "IMPRESSIONS",
+                        "creative_placeholders": [{"width": 300, "height": 250, "expected_creative_count": 1}],
+                    }
+                ),
+            )
+
+            product_lifecycle_standard = Product(
+                tenant_id=self.test_tenant_id,
+                product_id="gam_test_lifecycle_standard",
+                name="GAM Lifecycle Standard Test",
+                implementation_config=json.dumps(
+                    {
+                        "order_name_template": "TEST-LIFECYCLE-STD-{po_number}-{timestamp}",
+                        "line_item_type": "STANDARD",
+                        "non_guaranteed_automation": "manual",
+                        "priority": 8,
+                        "cost_type": "CPM",
+                        "creative_rotation_type": "EVEN",
+                        "delivery_rate_type": "EVENLY",
+                        "primary_goal_type": "LIFETIME",
+                        "primary_goal_unit_type": "IMPRESSIONS",
+                        "creative_placeholders": [{"width": 300, "height": 250, "expected_creative_count": 1}],
+                    }
+                ),
+            )
+
+            product_lifecycle_standard_block = Product(
+                tenant_id=self.test_tenant_id,
+                product_id="gam_test_lifecycle_standard_block",
+                name="GAM Lifecycle Block Test",
+                implementation_config=json.dumps(
+                    {
+                        "order_name_template": "TEST-LIFECYCLE-BLOCK-{po_number}-{timestamp}",
+                        "line_item_type": "STANDARD",
+                        "non_guaranteed_automation": "manual",
+                        "priority": 8,
+                        "cost_type": "CPM",
+                        "creative_rotation_type": "EVEN",
+                        "delivery_rate_type": "EVENLY",
+                        "primary_goal_type": "LIFETIME",
+                        "primary_goal_unit_type": "IMPRESSIONS",
+                        "creative_placeholders": [{"width": 300, "height": 250, "expected_creative_count": 1}],
+                    }
+                ),
+            )
+
+            product_lifecycle_archive = Product(
+                tenant_id=self.test_tenant_id,
+                product_id="gam_test_lifecycle_archive",
+                name="GAM Lifecycle Archive Test",
+                implementation_config=json.dumps(
+                    {
+                        "order_name_template": "TEST-LIFECYCLE-ARCH-{po_number}-{timestamp}",
+                        "line_item_type": "HOUSE",
+                        "non_guaranteed_automation": "manual",
+                        "priority": 16,
+                        "cost_type": "CPM",
+                        "creative_rotation_type": "EVEN",
+                        "delivery_rate_type": "EVENLY",
+                        "primary_goal_type": "LIFETIME",
+                        "primary_goal_unit_type": "IMPRESSIONS",
+                        "creative_placeholders": [{"width": 300, "height": 250, "expected_creative_count": 1}],
+                    }
+                ),
+            )
+
+            db_session.add_all(
+                [
+                    product_auto,
+                    product_confirm,
+                    product_manual,
+                    product_guaranteed,
+                    product_lifecycle_network,
+                    product_lifecycle_standard,
+                    product_lifecycle_standard_block,
+                    product_lifecycle_archive,
+                ]
+            )
             db_session.commit()
 
-        print("✅ Test products created successfully")
+        print("✅ Test products created successfully (including Issue #117 lifecycle products)")
 
     def cleanup_test_products(self):
         """Remove test products from database."""
@@ -366,6 +458,267 @@ class GAMAutomationTester:
             print(f"❌ Guaranteed order test failed: {str(e)}")
             return {"test": "guaranteed_ignores_automation", "success": False, "error": str(e)}
 
+    def test_lifecycle_activate_order(self) -> dict[str, Any]:
+        """Test activate_order lifecycle action with real GAM calls."""
+        print("\n🔄 Testing Lifecycle: Activate Order...")
+
+        adapter = GoogleAdManager(
+            config=self.gam_config,
+            principal=self.principal,
+            dry_run=False,  # REAL GAM CALLS
+            tenant_id=self.test_tenant_id,
+        )
+
+        # Create a non-guaranteed order first
+        package = MediaPackage(
+            package_id="gam_test_lifecycle_network",
+            name="Lifecycle Activate Test Package",
+            impressions=500,
+            cpm=1.50,
+            format="display",
+        )
+
+        request = CreateMediaBuyRequest(po_number="LIFECYCLE001", total_budget=7.50, targeting_overlay=Targeting())
+
+        start_time = datetime.now() + timedelta(hours=2)
+        end_time = start_time + timedelta(days=1)
+
+        try:
+            # Create the order (should be pending_activation)
+            response = adapter.create_media_buy(request, [package], start_time, end_time)
+            self.created_orders.append(response.media_buy_id)
+            order_id = response.media_buy_id
+
+            print(f"✅ Order created: {order_id}")
+            print(f"   Initial Status: {response.status}")
+
+            # Test activate_order action
+            activate_response = adapter.update_media_buy(
+                media_buy_id=order_id, action="activate_order", package_id=None, budget=None, today=datetime.now()
+            )
+
+            result = {
+                "test": "lifecycle_activate_order",
+                "success": activate_response.status == "accepted",
+                "order_id": order_id,
+                "initial_status": response.status,
+                "activation_status": activate_response.status,
+                "activation_detail": activate_response.detail,
+            }
+
+            if activate_response.status == "accepted":
+                print("✅ Order activation successful")
+                print(f"   Detail: {activate_response.detail}")
+            else:
+                print(f"❌ Order activation failed: {activate_response.reason}")
+                result["error"] = activate_response.reason
+
+            return result
+
+        except Exception as e:
+            print(f"❌ Failed to test activate_order: {str(e)}")
+            return {"test": "lifecycle_activate_order", "success": False, "error": str(e)}
+
+    def test_lifecycle_submit_for_approval(self) -> dict[str, Any]:
+        """Test submit_for_approval lifecycle action with real GAM calls."""
+        print("\n📋 Testing Lifecycle: Submit for Approval...")
+
+        adapter = GoogleAdManager(
+            config=self.gam_config,
+            principal=self.principal,
+            dry_run=False,  # REAL GAM CALLS
+            tenant_id=self.test_tenant_id,
+        )
+
+        # Create a guaranteed order
+        package = MediaPackage(
+            package_id="gam_test_lifecycle_standard",
+            name="Lifecycle Approval Test Package",
+            impressions=1000,
+            cpm=2.00,
+            format="display",
+        )
+
+        request = CreateMediaBuyRequest(po_number="LIFECYCLE002", total_budget=20.00, targeting_overlay=Targeting())
+
+        start_time = datetime.now() + timedelta(hours=2)
+        end_time = start_time + timedelta(days=2)
+
+        try:
+            # Create the order
+            response = adapter.create_media_buy(request, [package], start_time, end_time)
+            self.created_orders.append(response.media_buy_id)
+            order_id = response.media_buy_id
+
+            print(f"✅ Order created: {order_id}")
+
+            # Test submit_for_approval action
+            submit_response = adapter.update_media_buy(
+                media_buy_id=order_id, action="submit_for_approval", package_id=None, budget=None, today=datetime.now()
+            )
+
+            result = {
+                "test": "lifecycle_submit_for_approval",
+                "success": submit_response.status == "accepted",
+                "order_id": order_id,
+                "submission_status": submit_response.status,
+                "submission_detail": submit_response.detail,
+            }
+
+            if submit_response.status == "accepted":
+                print("✅ Order submitted for approval")
+                print(f"   Detail: {submit_response.detail}")
+            else:
+                print(f"❌ Order submission failed: {submit_response.reason}")
+                result["error"] = submit_response.reason
+
+            return result
+
+        except Exception as e:
+            print(f"❌ Failed to test submit_for_approval: {str(e)}")
+            return {"test": "lifecycle_submit_for_approval", "success": False, "error": str(e)}
+
+    def test_lifecycle_activation_blocking(self) -> dict[str, Any]:
+        """Test that guaranteed orders block activate_order action."""
+        print("\n🚫 Testing Lifecycle: Activation Blocking...")
+
+        adapter = GoogleAdManager(
+            config=self.gam_config,
+            principal=self.principal,
+            dry_run=False,  # REAL GAM CALLS
+            tenant_id=self.test_tenant_id,
+        )
+
+        # Create a guaranteed order (should block activation)
+        package = MediaPackage(
+            package_id="gam_test_lifecycle_standard_block",
+            name="Lifecycle Blocking Test Package",
+            impressions=500,
+            cpm=3.00,
+            format="display",
+        )
+
+        request = CreateMediaBuyRequest(po_number="LIFECYCLE003", total_budget=15.00, targeting_overlay=Targeting())
+
+        start_time = datetime.now() + timedelta(hours=2)
+        end_time = start_time + timedelta(days=1)
+
+        try:
+            # Create the order
+            response = adapter.create_media_buy(request, [package], start_time, end_time)
+            self.created_orders.append(response.media_buy_id)
+            order_id = response.media_buy_id
+
+            print(f"✅ Guaranteed order created: {order_id}")
+
+            # Test activate_order action (should be blocked)
+            activate_response = adapter.update_media_buy(
+                media_buy_id=order_id, action="activate_order", package_id=None, budget=None, today=datetime.now()
+            )
+
+            # Success means the blocking worked correctly
+            success = activate_response.status == "failed" and "guaranteed line items" in activate_response.reason
+
+            result = {
+                "test": "lifecycle_activation_blocking",
+                "success": success,
+                "order_id": order_id,
+                "blocking_status": activate_response.status,
+                "blocking_reason": activate_response.reason,
+                "expected_behavior": "Should block activation with clear error message",
+            }
+
+            if success:
+                print("✅ Activation correctly blocked")
+                print(f"   Reason: {activate_response.reason}")
+            else:
+                print("❌ Blocking failed - activation should have been prevented")
+                result["error"] = "Guaranteed order activation was not blocked as expected"
+
+            return result
+
+        except Exception as e:
+            print(f"❌ Failed to test activation blocking: {str(e)}")
+            return {"test": "lifecycle_activation_blocking", "success": False, "error": str(e)}
+
+    def test_lifecycle_archive_order(self) -> dict[str, Any]:
+        """Test archive_order lifecycle action with real GAM calls."""
+        print("\n📦 Testing Lifecycle: Archive Order...")
+
+        adapter = GoogleAdManager(
+            config=self.gam_config,
+            principal=self.principal,
+            dry_run=False,  # REAL GAM CALLS
+            tenant_id=self.test_tenant_id,
+        )
+
+        # Create a simple order to archive
+        package = MediaPackage(
+            package_id="gam_test_lifecycle_archive",
+            name="Lifecycle Archive Test Package",
+            impressions=100,
+            cpm=1.00,
+            format="display",
+        )
+
+        request = CreateMediaBuyRequest(po_number="LIFECYCLE004", total_budget=1.00, targeting_overlay=Targeting())
+
+        start_time = datetime.now() + timedelta(hours=1)
+        end_time = start_time + timedelta(hours=2)  # Short duration
+
+        try:
+            # Create the order
+            response = adapter.create_media_buy(request, [package], start_time, end_time)
+            order_id = response.media_buy_id
+            # Don't add to cleanup list since we're testing archival
+
+            print(f"✅ Order created for archival test: {order_id}")
+
+            # First pause the order to get it to a state where archival is allowed
+            pause_response = adapter.update_media_buy(
+                media_buy_id=order_id, action="pause_media_buy", package_id=None, budget=None, today=datetime.now()
+            )
+
+            if pause_response.status == "accepted":
+                print("✅ Order paused")
+
+                # Test archive_order action
+                archive_response = adapter.update_media_buy(
+                    media_buy_id=order_id, action="archive_order", package_id=None, budget=None, today=datetime.now()
+                )
+
+                result = {
+                    "test": "lifecycle_archive_order",
+                    "success": archive_response.status == "accepted",
+                    "order_id": order_id,
+                    "archive_status": archive_response.status,
+                    "archive_detail": archive_response.detail,
+                }
+
+                if archive_response.status == "accepted":
+                    print("✅ Order archived successfully")
+                    print(f"   Detail: {archive_response.detail}")
+                else:
+                    print(f"❌ Order archival failed: {archive_response.reason}")
+                    result["error"] = archive_response.reason
+                    # Add to cleanup since archival failed
+                    self.created_orders.append(order_id)
+
+                return result
+
+            else:
+                print(f"❌ Could not pause order for archival test: {pause_response.reason}")
+                self.created_orders.append(order_id)  # Add to cleanup
+                return {
+                    "test": "lifecycle_archive_order",
+                    "success": False,
+                    "error": f"Pause failed: {pause_response.reason}",
+                }
+
+        except Exception as e:
+            print(f"❌ Failed to test archive_order: {str(e)}")
+            return {"test": "lifecycle_archive_order", "success": False, "error": str(e)}
+
     def cleanup_gam_orders(self):
         """Archive created orders in GAM for cleanup."""
         if not self.created_orders:
@@ -409,6 +762,11 @@ class GAMAutomationTester:
                 self.test_confirmation_required(),
                 self.test_manual_mode(),
                 self.test_guaranteed_ignores_automation(),
+                # New Issue #117 lifecycle tests
+                self.test_lifecycle_activate_order(),
+                self.test_lifecycle_submit_for_approval(),
+                self.test_lifecycle_activation_blocking(),
+                self.test_lifecycle_archive_order(),
             ]
 
             # Cleanup

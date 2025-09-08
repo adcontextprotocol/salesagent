@@ -365,3 +365,87 @@ When reporting issues, include:
 - [ ] Database accessible? Test connection
 - [ ] Logs show errors? `docker-compose logs`
 - [ ] Browser console errors? Check DevTools
+
+## Monitoring and Logs
+
+### Application Logs
+
+```bash
+# View all logs
+docker-compose logs -f
+
+# Specific service
+docker-compose logs -f adcp-server
+docker-compose logs -f admin-ui
+
+# Inside container
+docker exec -it adcp-server tail -f /tmp/mcp_server.log
+```
+
+### Audit Logs
+
+All operations logged to database:
+- Operation type and timestamp
+- Principal and tenant IDs
+- Success/failure status
+- Detailed operation data
+- Security violations tracked
+
+Access via Admin UI Operations Dashboard.
+
+### Health Monitoring
+
+```bash
+# Check service health
+curl http://localhost:8080/health
+curl http://localhost:8001/health
+
+# Database status
+docker exec postgres pg_isready
+
+# Container status
+docker ps
+```
+
+## Operations Troubleshooting
+
+### Common Issues
+
+1. **Login failures**
+   - Check SUPER_ADMIN_EMAILS configuration
+   - Verify OAuth credentials
+   - Check redirect URI matches
+
+2. **Missing data**
+   - Verify tenant_id in session
+   - Check database connections
+   - Review audit logs
+
+3. **Slow performance**
+   - Check database indexes
+   - Monitor container resources
+   - Review query optimization
+
+### Debug Mode
+
+Enable detailed logging:
+
+```bash
+# In docker-compose.override.yml
+environment:
+  - FLASK_DEBUG=1
+  - LOG_LEVEL=DEBUG
+```
+
+### Slack Integration Issues
+
+If notifications aren't working:
+
+1. Verify webhook URL in tenant settings
+2. Check notification types are enabled
+3. Test webhook manually:
+   ```bash
+   curl -X POST "your-webhook-url" \
+     -H "Content-Type: application/json" \
+     -d '{"text": "Test notification"}'
+   ```
