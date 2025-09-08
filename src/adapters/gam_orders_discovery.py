@@ -518,10 +518,10 @@ class GAMOrdersDiscovery:
         """
         logger.info(f"Discovering orders for tenant {self.tenant_id}")
 
-        order_service = self.client.GetService("OrderService", version="v202411")
+        order_service = self.client.GetService("OrderService", version="v202505")
 
         # Build statement to get all orders
-        statement_builder = ad_manager.StatementBuilder(version="v202411")
+        statement_builder = ad_manager.StatementBuilder(version="v202505")
         if limit:
             statement_builder.limit = limit
 
@@ -572,10 +572,10 @@ class GAMOrdersDiscovery:
             f"Discovering line items for tenant {self.tenant_id}" + (f" (order: {order_id})" if order_id else "")
         )
 
-        line_item_service = self.client.GetService("LineItemService", version="v202411")
+        line_item_service = self.client.GetService("LineItemService", version="v202505")
 
         # Build statement to get line items
-        statement_builder = ad_manager.StatementBuilder(version="v202411")
+        statement_builder = ad_manager.StatementBuilder(version="v202505")
         if order_id:
             statement_builder.Where("orderId = :orderId").WithBindVariable("orderId", int(order_id))
         if limit:

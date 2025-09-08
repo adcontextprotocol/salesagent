@@ -803,7 +803,15 @@
                                         {% if principal.platform_mappings %}
                                             {% set mappings = principal.platform_mappings | from_json %}
                                             {% for platform, config in mappings.items() %}
-                                            <small class="badge bg-secondary me-1">{{ platform }}</small>
+                                                {% if platform == 'gam_advertiser_id' %}
+                                                    <small class="badge bg-primary me-1" title="Google Ad Manager Advertiser ID">GAM: {{ config }}</small>
+                                                {% elif platform == 'google_ad_manager' %}
+                                                    <small class="badge bg-primary me-1" title="Google Ad Manager">{{ platform }}</small>
+                                                {% elif platform == 'mock' %}
+                                                    <small class="badge bg-secondary me-1" title="Mock Adapter">{{ platform }}</small>
+                                                {% else %}
+                                                    <small class="badge bg-info me-1" title="{{ platform }}">{{ platform }}: {{ config if config is string else config|first if config is iterable else config }}</small>
+                                                {% endif %}
                                             {% endfor %}
                                         {% else %}
                                         <small class="text-muted">None</small>

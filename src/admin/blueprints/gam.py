@@ -149,7 +149,7 @@ def detect_gam_network(tenant_id):
         client = ad_manager.AdManagerClient(oauth2_client, "AdCP-Sales-Agent")
 
         # Get network service and retrieve network info
-        network_service = client.GetService("NetworkService", version="v202408")
+        network_service = client.GetService("NetworkService", version="v202505")
 
         try:
             # Try getAllNetworks first (doesn't require network_code)
@@ -178,7 +178,7 @@ def detect_gam_network(tenant_id):
                     try:
                         # Set the network code in the client so we can get user info
                         client.network_code = str(network["networkCode"])
-                        user_service = client.GetService("UserService", version="v202408")
+                        user_service = client.GetService("UserService", version="v202505")
                         current_user = user_service.getCurrentUser()
 
                         if current_user:

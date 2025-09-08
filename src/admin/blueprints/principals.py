@@ -203,28 +203,51 @@ def get_gam_advertisers(tenant_id):
             # Check if GAM is configured
             gam_enabled = False
 
+            # Check multiple ways GAM might be configured
             if tenant.ad_server == "google_ad_manager":
                 gam_enabled = True
             elif tenant.adapter_config and tenant.adapter_config.adapter_type == "google_ad_manager":
                 gam_enabled = True
 
+            # Debug logging to help troubleshoot
+            logger.info(
+                f"GAM API detection for tenant {tenant_id}: "
+                f"ad_server={tenant.ad_server}, "
+                f"has_adapter_config={tenant.adapter_config is not None}, "
+                f"adapter_type={tenant.adapter_config.adapter_type if tenant.adapter_config else None}, "
+                f"gam_enabled={gam_enabled}"
+            )
+
             if not gam_enabled:
+                logger.warning(f"GAM not enabled for tenant {tenant_id}")
                 return jsonify({"error": "Google Ad Manager not configured"}), 400
 
             # Initialize GAM adapter with adapter config
             try:
+                # Import Principal model
+                from src.core.schemas import Principal
+
                 # Create a mock principal for GAM initialization
-                mock_principal = {
-                    "principal_id": "system",
-                    "name": "System",
-                    "platform_mappings": {},
-                }
+                # Need dummy advertiser_id for GAM adapter validation, even though get_advertisers() doesn't use it
+                mock_principal = Principal(
+                    tenant_id=tenant_id,
+                    principal_id="system",
+                    name="System",
+                    access_token="mock_token",
+                    platform_mappings={
+                        "google_ad_manager": {
+                            "advertiser_id": "system_temp_advertiser_id",  # Dummy ID for validation only
+                            "advertiser_name": "System (temp)",
+                        }
+                    },
+                )
 
                 # Build GAM config from AdapterConfig
                 gam_config = (
                     {
                         "network_code": tenant.adapter_config.gam_network_code,
                         "refresh_token": tenant.adapter_config.gam_refresh_token,
+                        "trafficker_id": tenant.adapter_config.gam_trafficker_id,
                         "manual_approval_required": tenant.adapter_config.gam_manual_approval_required or False,
                     }
                     if tenant.adapter_config
@@ -232,9 +255,7 @@ def get_gam_advertisers(tenant_id):
                 )
 
                 adapter = GoogleAdManager(
-                    principal=mock_principal,
-                    config=gam_config,
-                    dry_run=False,
+                    config=gam_config, principal=mock_principal, dry_run=False, tenant_id=tenant_id
                 )
 
                 # Get advertisers (companies) from GAM

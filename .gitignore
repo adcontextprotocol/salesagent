@@ -7,6 +7,10 @@ adcp.db
 .env.local
 .env.production
 
+# Test configurations (contain test network IDs - should not be in production)
+.gam-test-config.json
+gam_ad_units.json
+
 # OAuth credentials
 client_secret*.json
 credentials*.json

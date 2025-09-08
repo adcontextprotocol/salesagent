@@ -527,7 +527,7 @@ def test_gam_connection():
         client = ad_manager.AdManagerClient(oauth2_client, "AdCP-Sales-Agent-Setup")
 
         # Get network service
-        network_service = client.GetService("NetworkService", version="v202408")
+        network_service = client.GetService("NetworkService", version="v202505")
 
         # Get all networks user has access to
         try:
@@ -586,7 +586,7 @@ def test_gam_connection():
                 client = ad_manager.AdManagerClient(oauth2_client, "AdCP-Sales-Agent-Setup", network_code=network_code)
 
                 # Get company service for advertisers
-                company_service = client.GetService("CompanyService", version="v202408")
+                company_service = client.GetService("CompanyService", version="v202505")
 
                 # Build a statement to get advertisers
                 from googleads import ad_manager as gam_utils
@@ -619,7 +619,7 @@ def test_gam_connection():
                 result["companies"] = companies
 
                 # Get current user info
-                user_service = client.GetService("UserService", version="v202408")
+                user_service = client.GetService("UserService", version="v202505")
                 current_user = user_service.getCurrentUser()
                 result["current_user"] = {
                     "id": current_user.id,

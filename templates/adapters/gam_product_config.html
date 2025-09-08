@@ -104,6 +104,43 @@
             </div>
         </div>
 
+        <!-- Automation Settings -->
+        <h4 style="margin-top: 2rem; border-bottom: 1px solid #ddd; padding-bottom: 0.5rem;">Automation Settings</h4>
+
+        <div id="automation-settings">
+            <div class="form-group">
+                <label for="non_guaranteed_automation">Non-Guaranteed Order Automation *</label>
+                <select id="non_guaranteed_automation" name="non_guaranteed_automation" required>
+                    <option value="manual" {% if config.non_guaranteed_automation == 'manual' %}selected{% endif %}>Manual - Human handles all activation steps</option>
+                    <option value="confirmation_required" {% if config.non_guaranteed_automation == 'confirmation_required' %}selected{% endif %}>Confirmation Required - Human approval then auto-activation</option>
+                    <option value="automatic" {% if config.non_guaranteed_automation == 'automatic' %}selected{% endif %}>Automatic - Instant activation after creation</option>
+                </select>
+                <small style="color: #666;">
+                    <div id="automation-help-text">
+                        <div id="automation-help-manual" style="display: {% if config.non_guaranteed_automation != 'manual' %}none{% else %}block{% endif %};">
+                            <strong>Manual Mode:</strong> Orders created but never automatically activated. Publisher must manually activate in GAM.
+                        </div>
+                        <div id="automation-help-confirmation" style="display: {% if config.non_guaranteed_automation != 'confirmation_required' %}none{% else %}block{% endif %};">
+                            <strong>Confirmation Mode:</strong> Order created, workflow task generated for approval, then automatically activated after approval.
+                        </div>
+                        <div id="automation-help-automatic" style="display: {% if config.non_guaranteed_automation != 'automatic' %}none{% else %}block{% endif %};">
+                            <strong>Automatic Mode:</strong> Orders immediately activated after creation. Use with caution!
+                        </div>
+                    </div>
+                </small>
+            </div>
+
+            <div class="alert alert-info" style="margin-top: 1rem;">
+                <strong>ℹ️ Important Notes:</strong>
+                <ul style="margin-bottom: 0; padding-left: 20px;">
+                    <li><strong>Guaranteed orders</strong> (Standard, Sponsorship) are ALWAYS manual regardless of this setting</li>
+                    <li><strong>Non-guaranteed orders</strong> (Network, House, Price Priority) use this automation setting</li>
+                    <li>This setting only applies when the line item type above is non-guaranteed</li>
+                    <li>Automatic activation requires proper GAM credentials and permissions</li>
+                </ul>
+            </div>
+        </div>
+
         <!-- Ad Unit/Placement Targeting -->
         <h4 style="margin-top: 2rem; border-bottom: 1px solid #ddd; padding-bottom: 0.5rem;">Ad Unit & Placement Targeting</h4>
 
@@ -677,6 +714,84 @@ document.getElementById('discount_type').addEventListener('change', function() {
     } else {
         discountValueGroup.style.display = 'none';
     }
+});
+
+// Handle automation settings visibility and help text based on line item type
+function updateAutomationDisplay() {
+    const lineItemType = document.getElementById('line_item_type').value;
+    const automationSettings = document.getElementById('automation-settings');
+    const automationSelect = document.getElementById('non_guaranteed_automation');
+
+    // Define guaranteed vs non-guaranteed types
+    const guaranteedTypes = ['STANDARD', 'SPONSORSHIP'];
+    const nonGuaranteedTypes = ['NETWORK', 'HOUSE', 'PRICE_PRIORITY'];
+
+    if (guaranteedTypes.includes(lineItemType)) {
+        // For guaranteed types, show but disable automation settings
+        automationSettings.style.display = 'block';
+        automationSelect.disabled = true;
+        automationSelect.value = 'manual'; // Force manual for guaranteed
+
+        // Update alert to show guaranteed behavior
+        const alert = automationSettings.querySelector('.alert');
+        alert.className = 'alert alert-warning';
+        alert.innerHTML = `
+            <strong>⚠️ Guaranteed Order Type Selected:</strong>
+            <ul style="margin-bottom: 0; padding-left: 20px;">
+                <li><strong>${lineItemType}</strong> orders are always manual activation regardless of automation setting</li>
+                <li>This is a GAM requirement for guaranteed inventory types</li>
+                <li>Publisher must manually review and activate these orders in GAM</li>
+            </ul>
+        `;
+    } else if (nonGuaranteedTypes.includes(lineItemType)) {
+        // For non-guaranteed types, show and enable automation settings
+        automationSettings.style.display = 'block';
+        automationSelect.disabled = false;
+
+        // Restore normal alert
+        const alert = automationSettings.querySelector('.alert');
+        alert.className = 'alert alert-info';
+        alert.innerHTML = `
+            <strong>ℹ️ Non-Guaranteed Order Type Selected:</strong>
+            <ul style="margin-bottom: 0; padding-left: 20px;">
+                <li><strong>${lineItemType}</strong> orders can use automation for faster campaign launch</li>
+                <li>Choose automation mode based on your operational preferences</li>
+                <li>Automatic activation requires proper GAM credentials and permissions</li>
+                <li>Test in development environment before using automatic mode</li>
+            </ul>
+        `;
+    } else {
+        // Unknown type, hide automation settings
+        automationSettings.style.display = 'none';
+    }
+
+    // Update help text
+    updateAutomationHelpText();
+}
+
+// Update automation help text based on selected mode
+function updateAutomationHelpText() {
+    const automationMode = document.getElementById('non_guaranteed_automation').value;
+
+    // Hide all help divs
+    document.getElementById('automation-help-manual').style.display = 'none';
+    document.getElementById('automation-help-confirmation').style.display = 'none';
+    document.getElementById('automation-help-automatic').style.display = 'none';
+
+    // Show relevant help div
+    const helpDiv = document.getElementById('automation-help-' + automationMode);
+    if (helpDiv) {
+        helpDiv.style.display = 'block';
+    }
+}
+
+// Add event listeners for automation settings
+document.getElementById('line_item_type').addEventListener('change', updateAutomationDisplay);
+document.getElementById('non_guaranteed_automation').addEventListener('change', updateAutomationHelpText);
+
+// Initialize automation display on page load
+document.addEventListener('DOMContentLoaded', function() {
+    updateAutomationDisplay();
 });
 </script>
 {% endblock %}
