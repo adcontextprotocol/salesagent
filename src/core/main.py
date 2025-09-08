@@ -59,8 +59,8 @@ from src.core.schemas import (
     AssignCreativeRequest,
     AssignCreativeResponse,
     Budget,  # AdCP v2.4 Budget model
-    CheckAEERequirementsRequest,
-    CheckAEERequirementsResponse,
+    CheckAXERequirementsRequest,
+    CheckAXERequirementsResponse,
     CheckCreativeStatusRequest,
     CheckCreativeStatusResponse,
     CheckMediaBuyStatusRequest,
@@ -189,7 +189,7 @@ def get_principal_from_token(token: str, tenant_id: str | None = None) -> str | 
                             "subdomain": tenant.subdomain,
                             "ad_server": tenant.ad_server,
                             "max_daily_budget": tenant.max_daily_budget,
-                            "enable_aee_signals": tenant.enable_aee_signals,
+                            "enable_axe_signals": tenant.enable_axe_signals,
                             "authorized_emails": tenant.authorized_emails or [],
                             "authorized_domains": tenant.authorized_domains or [],
                             "slack_webhook_url": tenant.slack_webhook_url,
@@ -225,7 +225,7 @@ def get_principal_from_token(token: str, tenant_id: str | None = None) -> str | 
                     "subdomain": tenant.subdomain,
                     "ad_server": tenant.ad_server,
                     "max_daily_budget": tenant.max_daily_budget,
-                    "enable_aee_signals": tenant.enable_aee_signals,
+                    "enable_axe_signals": tenant.enable_axe_signals,
                     "authorized_emails": tenant.authorized_emails or [],
                     "authorized_domains": tenant.authorized_domains or [],
                     "slack_webhook_url": tenant.slack_webhook_url,
@@ -3278,9 +3278,9 @@ def get_targeting_capabilities(
                 for d in caps.overlay_dimensions
             ]
 
-            aee_dims = None
+            axe_dims = None
             if req.include_aee_dimensions:
-                aee_dims = [
+                axe_dims = [
                     TargetingDimensionInfo(
                         key=d.key,
                         display_name=d.display_name,
@@ -3296,7 +3296,7 @@ def get_targeting_capabilities(
                 ChannelTargetingCapabilities(
                     channel=channel_str,
                     overlay_dimensions=overlay_dims,
-                    aee_dimensions=aee_dims,
+                    aee_dimensions=axe_dims,
                 )
             )
         except ValueError:
@@ -3307,27 +3307,27 @@ def get_targeting_capabilities(
 
 
 @mcp.tool
-def check_aee_requirements(req: CheckAEERequirementsRequest, context: Context) -> CheckAEERequirementsResponse:
-    """Check if required AEE dimensions are supported for a channel."""
-    from src.services.targeting_dimensions import Channel, get_aee_dimensions
+def check_axe_requirements(req: CheckAXERequirementsRequest, context: Context) -> CheckAXERequirementsResponse:
+    """Check if required AXE dimensions are supported for a channel."""
+    from src.services.targeting_dimensions import Channel, get_axe_dimensions
 
     try:
         channel = Channel(req.channel)
     except ValueError:
-        return CheckAEERequirementsResponse(
+        return CheckAXERequirementsResponse(
             supported=False,
             missing_dimensions=req.required_dimensions,
             available_dimensions=[],
         )
 
-    # Get available AEE dimensions
-    aee_dims = get_aee_dimensions(channel)
-    available_keys = [d.key for d in aee_dims]
+    # Get available AXE dimensions
+    axe_dims = get_axe_dimensions(channel)
+    available_keys = [d.key for d in axe_dims]
 
     # Check which are missing
     missing = [dim for dim in req.required_dimensions if dim not in available_keys]
 
-    return CheckAEERequirementsResponse(
+    return CheckAXERequirementsResponse(
         supported=len(missing) == 0,
         missing_dimensions=missing,
         available_dimensions=available_keys,

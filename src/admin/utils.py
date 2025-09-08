@@ -95,7 +95,7 @@ def get_tenant_config_from_db(tenant_id):
             # Build features config from individual columns
             config["features"] = {
                 "max_daily_budget": tenant.max_daily_budget,
-                "enable_aee_signals": tenant.enable_aee_signals,
+                "enable_axe_signals": tenant.enable_axe_signals,
             }
 
             # Build creative engine config from individual columns

@@ -52,7 +52,7 @@ def create_tenant(args):
             subdomain=subdomain,
             ad_server=args.adapter,
             max_daily_budget=max_daily_budget,
-            enable_aee_signals=True,
+            enable_axe_signals=True,
             admin_token=admin_token,
             auto_approve_formats=auto_approve_formats,
             human_review_required=human_review_required,

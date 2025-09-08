@@ -123,7 +123,7 @@ def create_tenant():
 
             # Set feature flags
             new_tenant.max_daily_budget = float(request.form.get("max_daily_budget", "10000"))
-            new_tenant.enable_aee_signals = "enable_aee_signals" in request.form
+            new_tenant.enable_axe_signals = "enable_axe_signals" in request.form
             new_tenant.human_review_required = "human_review_required" in request.form
 
             # Set authorization settings

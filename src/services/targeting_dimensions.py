@@ -3,9 +3,12 @@ Channel-specific targeting dimensions for AdCP.
 
 Defines which targeting dimensions are available for:
 1. Targeting overlays (buyer-specified targeting)
-2. AEE signals (publisher-provided context)
+2. AXE signals (orchestrator-provided, limited to: include, exclude, creative macros)
 
 Per channel (audio, web, mobile app, CTV, DOOH).
+
+Note: AXE signals are specifically limited to three types and can use custom
+key names in the ad server. AXE is not used beyond include/exclude/macros.
 """
 
 from enum import Enum
@@ -41,7 +44,9 @@ class TargetingCapabilities(BaseModel):
     overlay_dimensions: list[TargetingDimension] = Field(
         description="Dimensions available for buyer targeting overlays"
     )
-    aee_dimensions: list[TargetingDimension] = Field(description="Dimensions provided to AEE for decisioning")
+    axe_dimensions: list[TargetingDimension] = Field(
+        description="Dimensions for AXE signals (include/exclude/macros only)"
+    )
 
 
 # Common dimensions across all channels
@@ -83,8 +88,8 @@ COMMON_OVERLAY_DIMENSIONS = [
     ),
 ]
 
-# Additional AEE dimensions (beyond overlay dimensions)
-COMMON_AEE_DIMENSIONS = [
+# Additional AXE dimensions (beyond overlay dimensions)
+COMMON_AXE_DIMENSIONS = [
     TargetingDimension(
         key="postal_code", display_name="Postal Code", description="User's postal/ZIP code", data_type="string"
     ),
@@ -129,7 +134,7 @@ AUDIO_SPECIFIC_OVERLAY = [
     ),
 ]
 
-AUDIO_SPECIFIC_AEE = [
+AUDIO_SPECIFIC_AXE = [
     TargetingDimension(
         key="podcast_episode_id",
         display_name="Podcast Episode ID",
@@ -173,7 +178,7 @@ CTV_SPECIFIC_OVERLAY = [
     ),
 ]
 
-CTV_SPECIFIC_AEE = [
+CTV_SPECIFIC_AXE = [
     TargetingDimension(
         key="show_name", display_name="Show Name", description="Name of the TV show or movie", data_type="string"
     ),
@@ -209,7 +214,7 @@ WEB_SPECIFIC_OVERLAY = [
     ),
 ]
 
-WEB_SPECIFIC_AEE = [
+WEB_SPECIFIC_AXE = [
     TargetingDimension(
         key="page_url", display_name="Page URL", description="Current page URL", data_type="string", required=True
     ),
@@ -242,7 +247,7 @@ MOBILE_APP_SPECIFIC_OVERLAY = [
     ),
 ]
 
-MOBILE_APP_SPECIFIC_AEE = [
+MOBILE_APP_SPECIFIC_AXE = [
     TargetingDimension(
         key="app_bundle_id",
         display_name="App Bundle ID",
@@ -280,7 +285,7 @@ DOOH_SPECIFIC_OVERLAY = [
     ),
 ]
 
-DOOH_SPECIFIC_AEE = [
+DOOH_SPECIFIC_AXE = [
     TargetingDimension(
         key="venue_id", display_name="Venue ID", description="Unique venue identifier", data_type="string"
     ),
@@ -303,30 +308,30 @@ CHANNEL_CAPABILITIES: dict[Channel, TargetingCapabilities] = {
     Channel.AUDIO: TargetingCapabilities(
         channel=Channel.AUDIO,
         overlay_dimensions=COMMON_OVERLAY_DIMENSIONS + AUDIO_SPECIFIC_OVERLAY,
-        aee_dimensions=COMMON_OVERLAY_DIMENSIONS + AUDIO_SPECIFIC_OVERLAY + COMMON_AEE_DIMENSIONS + AUDIO_SPECIFIC_AEE,
+        axe_dimensions=COMMON_OVERLAY_DIMENSIONS + AUDIO_SPECIFIC_OVERLAY + COMMON_AXE_DIMENSIONS + AUDIO_SPECIFIC_AXE,
     ),
     Channel.WEB: TargetingCapabilities(
         channel=Channel.WEB,
         overlay_dimensions=COMMON_OVERLAY_DIMENSIONS + WEB_SPECIFIC_OVERLAY,
-        aee_dimensions=COMMON_OVERLAY_DIMENSIONS + WEB_SPECIFIC_OVERLAY + COMMON_AEE_DIMENSIONS + WEB_SPECIFIC_AEE,
+        axe_dimensions=COMMON_OVERLAY_DIMENSIONS + WEB_SPECIFIC_OVERLAY + COMMON_AXE_DIMENSIONS + WEB_SPECIFIC_AXE,
     ),
     Channel.MOBILE_APP: TargetingCapabilities(
         channel=Channel.MOBILE_APP,
         overlay_dimensions=COMMON_OVERLAY_DIMENSIONS + MOBILE_APP_SPECIFIC_OVERLAY,
-        aee_dimensions=COMMON_OVERLAY_DIMENSIONS
+        axe_dimensions=COMMON_OVERLAY_DIMENSIONS
         + MOBILE_APP_SPECIFIC_OVERLAY
-        + COMMON_AEE_DIMENSIONS
-        + MOBILE_APP_SPECIFIC_AEE,
+        + COMMON_AXE_DIMENSIONS
+        + MOBILE_APP_SPECIFIC_AXE,
     ),
     Channel.CTV: TargetingCapabilities(
         channel=Channel.CTV,
         overlay_dimensions=COMMON_OVERLAY_DIMENSIONS + CTV_SPECIFIC_OVERLAY,
-        aee_dimensions=COMMON_OVERLAY_DIMENSIONS + CTV_SPECIFIC_OVERLAY + COMMON_AEE_DIMENSIONS + CTV_SPECIFIC_AEE,
+        axe_dimensions=COMMON_OVERLAY_DIMENSIONS + CTV_SPECIFIC_OVERLAY + COMMON_AXE_DIMENSIONS + CTV_SPECIFIC_AXE,
     ),
     Channel.DOOH: TargetingCapabilities(
         channel=Channel.DOOH,
         overlay_dimensions=COMMON_OVERLAY_DIMENSIONS + DOOH_SPECIFIC_OVERLAY,
-        aee_dimensions=COMMON_OVERLAY_DIMENSIONS + DOOH_SPECIFIC_OVERLAY + COMMON_AEE_DIMENSIONS + DOOH_SPECIFIC_AEE,
+        axe_dimensions=COMMON_OVERLAY_DIMENSIONS + DOOH_SPECIFIC_OVERLAY + COMMON_AXE_DIMENSIONS + DOOH_SPECIFIC_AXE,
     ),
 }
 
@@ -341,9 +346,9 @@ def get_overlay_dimensions(channel: Channel) -> list[TargetingDimension]:
     return CHANNEL_CAPABILITIES[channel].overlay_dimensions
 
 
-def get_aee_dimensions(channel: Channel) -> list[TargetingDimension]:
-    """Get AEE signal dimensions for a channel."""
-    return CHANNEL_CAPABILITIES[channel].aee_dimensions
+def get_axe_dimensions(channel: Channel) -> list[TargetingDimension]:
+    """Get AXE signal dimensions for a channel (include/exclude/macros only)."""
+    return CHANNEL_CAPABILITIES[channel].axe_dimensions
 
 
 def get_supported_channels() -> list[Channel]:
@@ -354,5 +359,5 @@ def get_supported_channels() -> list[Channel]:
 def is_dimension_supported(channel: Channel, dimension_key: str, for_overlay: bool = True) -> bool:
     """Check if a dimension is supported for a channel."""
     caps = CHANNEL_CAPABILITIES[channel]
-    dimensions = caps.overlay_dimensions if for_overlay else caps.aee_dimensions
+    dimensions = caps.overlay_dimensions if for_overlay else caps.axe_dimensions
     return any(d.key == dimension_key for d in dimensions)

@@ -64,7 +64,7 @@ Each publisher has JSON configuration:
   },
   "features": {
     "max_daily_budget": 10000,
-    "enable_aee_signals": true
+    "enable_axe_signals": true
   }
 }
 ```

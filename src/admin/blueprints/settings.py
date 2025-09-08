@@ -127,10 +127,10 @@ def update_general(tenant_id):
                 except ValueError:
                     tenant.max_daily_budget = 10000
 
-            if "enable_aee_signals" in request.form:
-                tenant.enable_aee_signals = request.form.get("enable_aee_signals") == "on"
+            if "enable_axe_signals" in request.form:
+                tenant.enable_axe_signals = request.form.get("enable_axe_signals") == "on"
             else:
-                tenant.enable_aee_signals = False
+                tenant.enable_axe_signals = False
 
             if "human_review_required" in request.form:
                 tenant.human_review_required = request.form.get("human_review_required") == "on"

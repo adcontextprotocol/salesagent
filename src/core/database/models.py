@@ -42,7 +42,7 @@ class Tenant(Base, JSONValidatorMixin):
     # New columns from migration
     ad_server = Column(String(50))
     max_daily_budget = Column(Integer, nullable=False, default=10000)
-    enable_aee_signals = Column(Boolean, nullable=False, default=True)
+    enable_axe_signals = Column(Boolean, nullable=False, default=True)
     authorized_emails = Column(JSON)  # JSON array
     authorized_domains = Column(JSON)  # JSON array
     slack_webhook_url = Column(String(500))

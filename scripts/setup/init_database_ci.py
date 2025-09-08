@@ -16,6 +16,7 @@ def init_db_ci():
 
         from database_session import get_db_session
         from migrate import run_migrations
+
         from src.core.database.models import Principal, Tenant
 
         print("Applying database migrations for CI...")
@@ -42,7 +43,7 @@ def init_db_ci():
                 billing_plan="test",
                 ad_server="mock",
                 max_daily_budget=10000,
-                enable_aee_signals=True,
+                enable_axe_signals=True,
                 auto_approve_formats=["display_300x250", "display_728x90"],
                 human_review_required=False,
             )

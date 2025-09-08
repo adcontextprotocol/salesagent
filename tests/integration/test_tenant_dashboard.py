@@ -45,7 +45,7 @@ class TestTenantDashboard:
                 is_active=True,
                 # Use new schema fields
                 max_daily_budget=10000.0,
-                enable_aee_signals=True,
+                enable_axe_signals=True,
                 human_review_required=False,
                 auto_approve_formats=["display_300x250"],
             )
@@ -149,7 +149,7 @@ class TestTenantDashboard:
                 is_active=True,
                 # New schema fields
                 max_daily_budget=15000.0,
-                enable_aee_signals=True,
+                enable_axe_signals=True,
                 human_review_required=True,
                 auto_approve_formats=["display_300x250", "video_16x9"],
             )
@@ -162,7 +162,7 @@ class TestTenantDashboard:
             # Build config like the application does
             features_config = {
                 "max_daily_budget": tenant_obj.max_daily_budget,
-                "enable_aee_signals": tenant_obj.enable_aee_signals,
+                "enable_axe_signals": tenant_obj.enable_axe_signals,
             }
 
             creative_config = {
@@ -172,7 +172,7 @@ class TestTenantDashboard:
 
             # Verify config can be built without AttributeError
             assert features_config["max_daily_budget"] == 15000.0
-            assert features_config["enable_aee_signals"] is True
+            assert features_config["enable_axe_signals"] is True
             assert creative_config["human_review_required"] is True
             assert "display_300x250" in creative_config["auto_approve_formats"]
 

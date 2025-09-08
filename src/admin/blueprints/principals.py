@@ -2,6 +2,8 @@
 
 import json
 import logging
+import secrets
+import uuid
 from datetime import UTC, datetime
 
 from flask import Blueprint, flash, jsonify, redirect, render_template, request, url_for
@@ -63,6 +65,92 @@ def list_principals(tenant_id):
         logger.error(f"Error listing principals: {e}", exc_info=True)
         flash("Error loading advertisers", "error")
         return redirect(url_for("core.index"))
+
+
+@principals_bp.route("/principals/create", methods=["GET", "POST"])
+@require_tenant_access()
+def create_principal(tenant_id):
+    """Create a new principal (advertiser) for a tenant."""
+    if request.method == "GET":
+        # Get tenant info for GAM configuration
+        with get_db_session() as db_session:
+            tenant = db_session.query(Tenant).filter_by(tenant_id=tenant_id).first()
+            if not tenant:
+                flash("Tenant not found", "error")
+                return redirect(url_for("core.index"))
+
+            # Check if GAM is configured
+            has_gam = False
+
+            if tenant.ad_server == "google_ad_manager":
+                has_gam = True
+            elif tenant.adapter_config and tenant.adapter_config.adapter_type == "google_ad_manager":
+                has_gam = True
+
+            return render_template(
+                "create_principal.html",
+                tenant_id=tenant_id,
+                tenant_name=tenant.name,
+                has_gam=has_gam,
+            )
+
+    # POST - Create the principal
+    try:
+        principal_name = request.form.get("name", "").strip()
+        if not principal_name:
+            flash("Principal name is required", "error")
+            return redirect(request.url)
+
+        # Generate unique ID and token
+        principal_id = f"prin_{uuid.uuid4().hex[:8]}"
+        access_token = f"tok_{secrets.token_urlsafe(32)}"
+
+        # Build platform mappings
+        platform_mappings = {}
+
+        # GAM advertiser mapping
+        gam_advertiser_id = request.form.get("gam_advertiser_id", "").strip()
+        if gam_advertiser_id:
+            platform_mappings["google_ad_manager"] = {
+                "advertiser_id": gam_advertiser_id,
+                "enabled": True,
+            }
+
+        # Mock adapter mapping (for testing)
+        if request.form.get("enable_mock"):
+            platform_mappings["mock"] = {
+                "advertiser_id": f"mock_{principal_id}",
+                "enabled": True,
+            }
+
+        with get_db_session() as db_session:
+            # Check if principal name already exists
+            existing = db_session.query(Principal).filter_by(tenant_id=tenant_id, name=principal_name).first()
+            if existing:
+                flash(f"An advertiser named '{principal_name}' already exists", "error")
+                return redirect(request.url)
+
+            # Create the principal
+            principal = Principal(
+                tenant_id=tenant_id,
+                principal_id=principal_id,
+                name=principal_name,
+                access_token=access_token,
+                platform_mappings=json.dumps(platform_mappings),
+                created_at=datetime.now(UTC),
+                updated_at=datetime.now(UTC),
+            )
+
+            db_session.add(principal)
+            db_session.commit()
+
+            flash(f"Advertiser '{principal_name}' created successfully", "success")
+            return redirect(url_for("tenants.dashboard", tenant_id=tenant_id))
+
+    except Exception as e:
+        logger.error(f"Error creating principal: {e}", exc_info=True)
+        flash("Error creating advertiser", "error")
+        return redirect(request.url)
 
 
 @principals_bp.route("/principal/<principal_id>/update_mappings", methods=["POST"])

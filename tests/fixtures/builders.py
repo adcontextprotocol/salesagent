@@ -362,7 +362,7 @@ async def create_test_tenant_with_principal(**kwargs) -> dict:
             billing_plan=tenant["billing_plan"],
             ad_server=tenant.get("ad_server", "mock"),
             max_daily_budget=10000,
-            enable_aee_signals=True,
+            enable_axe_signals=True,
             authorized_emails=["test@example.com"],
             authorized_domains=["example.com"],
             auto_approve_formats=["display_300x250", "display_728x90"],
