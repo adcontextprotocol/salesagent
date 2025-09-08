@@ -81,7 +81,7 @@ def create_principal(tenant_id):
 
             # Check if GAM is configured
             has_gam = False
-            
+
             if tenant.ad_server == "google_ad_manager":
                 has_gam = True
             elif tenant.adapter_config and tenant.adapter_config.adapter_type == "google_ad_manager":
@@ -202,7 +202,7 @@ def get_gam_advertisers(tenant_id):
 
             # Check if GAM is configured
             gam_enabled = False
-            
+
             if tenant.ad_server == "google_ad_manager":
                 gam_enabled = True
             elif tenant.adapter_config and tenant.adapter_config.adapter_type == "google_ad_manager":
@@ -221,11 +221,15 @@ def get_gam_advertisers(tenant_id):
                 }
 
                 # Build GAM config from AdapterConfig
-                gam_config = {
-                    "network_code": tenant.adapter_config.gam_network_code,
-                    "refresh_token": tenant.adapter_config.gam_refresh_token,
-                    "manual_approval_required": tenant.adapter_config.gam_manual_approval_required or False,
-                } if tenant.adapter_config else {}
+                gam_config = (
+                    {
+                        "network_code": tenant.adapter_config.gam_network_code,
+                        "refresh_token": tenant.adapter_config.gam_refresh_token,
+                        "manual_approval_required": tenant.adapter_config.gam_manual_approval_required or False,
+                    }
+                    if tenant.adapter_config
+                    else {}
+                )
 
                 adapter = GoogleAdManager(
                     principal=mock_principal,
