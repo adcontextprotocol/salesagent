@@ -680,7 +680,7 @@ class FrequencyCap(BaseModel):
     """Simple frequency capping configuration.
 
     Provides basic impression suppression at the media buy or package level.
-    More sophisticated frequency management is handled by the AEE layer.
+    More sophisticated frequency management is handled by the AXE layer.
     """
 
     suppress_minutes: int = Field(..., gt=0, description="Suppress impressions for this many minutes after serving")
@@ -694,7 +694,7 @@ class TargetingCapability(BaseModel):
     access: Literal["overlay", "managed_only", "both"] = "overlay"
     description: str | None = None
     allowed_values: list[str] | None = None  # For restricted value sets
-    aee_signal: bool | None = False  # Whether this is an AEE signal dimension
+    axe_signal: bool | None = False  # Whether this is an AXE signal dimension
 
 
 class Targeting(BaseModel):
@@ -705,7 +705,7 @@ class Targeting(BaseModel):
     Uses any_of/none_of pattern for consistent include/exclude across all dimensions.
 
     Note: Some targeting dimensions are managed-only and cannot be set via overlay.
-    These are typically used for AEE signal integration.
+    These are typically used for AXE signal integration.
     """
 
     # Geographic targeting - aligned with OpenRTB (overlay access)
@@ -762,8 +762,8 @@ class Targeting(BaseModel):
     # Platform-specific custom targeting
     custom: dict[str, Any] | None = None  # Platform-specific targeting options
 
-    # Key-value targeting (managed-only for AEE signals)
-    # These are not exposed in overlay - only set by orchestrator/AEE
+    # Key-value targeting (managed-only for AXE signals)
+    # These are not exposed in overlay - only set by orchestrator/AXE
     key_value_pairs: dict[str, str] | None = None  # e.g., {"aee_segment": "high_value", "aee_score": "0.85"}
 
     # Internal fields (not in AdCP spec)
@@ -1421,9 +1421,9 @@ class CreateMediaBuyRequest(BaseModel):
     pacing: Literal["even", "asap", "daily_budget"] = "even"  # Legacy field
     daily_budget: float | None = None  # Legacy field
     creatives: list[Creative] | None = None
-    # AEE signal requirements
-    required_aee_signals: list[str] | None = None  # Required targeting signals
-    enable_creative_macro: bool | None = False  # Enable AEE to provide creative_macro signal
+    # AXE signal requirements
+    required_axe_signals: list[str] | None = None  # Required targeting signals
+    enable_creative_macro: bool | None = False  # Enable AXE to provide creative_macro signal
     strategy_id: str | None = Field(
         None,
         description="Optional strategy ID for linking operations and enabling simulation/testing modes",
@@ -1937,22 +1937,22 @@ class GetTargetingCapabilitiesResponse(BaseModel):
     capabilities: list[ChannelTargetingCapabilities]
 
 
-class CheckAEERequirementsRequest(BaseModel):
-    """Check if required AEE dimensions are supported."""
+class CheckAXERequirementsRequest(BaseModel):
+    """Check if required AXE dimensions are supported."""
 
     channel: str
     required_dimensions: list[str]
 
 
-class CheckAEERequirementsResponse(BaseModel):
-    """Response for AEE requirements check."""
+class CheckAXERequirementsResponse(BaseModel):
+    """Response for AXE requirements check."""
 
     supported: bool
     missing_dimensions: list[str]
     available_dimensions: list[str]
 
 
-# Creative macro is now a simple string passed via AEE aee_signals
+# Creative macro is now a simple string passed via AXE axe_signals
 
 
 # --- Signal Discovery ---

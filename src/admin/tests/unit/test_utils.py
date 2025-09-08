@@ -42,7 +42,7 @@ class TestConfigUtilities:
         mock_tenant.slack_webhook_url = "https://slack.webhook"
         mock_tenant.adapter_config = '{"google_ad_manager": {"enabled": true}}'
         mock_tenant.max_daily_budget = 10000
-        mock_tenant.enable_aee_signals = True
+        mock_tenant.enable_axe_signals = True
         mock_tenant.auto_approve_formats = ["display_300x250"]
         mock_tenant.human_review_required = False
         mock_tenant.policy_settings = '{"strict": false}'
@@ -56,7 +56,7 @@ class TestConfigUtilities:
         assert config["slack_webhook_url"] == "https://slack.webhook"
         assert config["adapters"]["google_ad_manager"]["enabled"]
         assert config["features"]["max_daily_budget"] == 10000
-        assert config["features"]["enable_aee_signals"] is True
+        assert config["features"]["enable_axe_signals"] is True
         assert config["creative_engine"]["auto_approve_formats"] == ["display_300x250"]
         assert config["creative_engine"]["human_review_required"] is False
         assert not config["policy_settings"]["strict"]

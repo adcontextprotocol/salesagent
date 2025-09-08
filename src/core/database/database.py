@@ -40,7 +40,7 @@ def init_db(exit_on_error=False):
                 billing_plan="standard",
                 ad_server="mock",
                 max_daily_budget=10000,
-                enable_aee_signals=True,
+                enable_axe_signals=True,
                 auto_approve_formats=json.dumps(
                     [
                         "display_300x250",
