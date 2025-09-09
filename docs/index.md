@@ -17,7 +17,7 @@ Welcome to the AdCP Sales Agent documentation. This guide will help you find the
 ## For Operators
 
 - **[Deployment Guide](deployment.md)** - Docker, Fly.io, and production deployment
-- **[Operations Guide](OPERATIONS.md)** - Admin UI, monitoring, tenant management
+- **[Setup Guide](SETUP.md)** - Admin UI, tenant management, configuration
 - **[Troubleshooting](TROUBLESHOOTING.md)** - Common issues and solutions
 
 ## System Overview
@@ -66,7 +66,7 @@ docs/
 ├── api.md             # API reference (MCP and REST)
 ├── testing.md         # Testing guide
 ├── deployment.md      # Production deployment
-├── OPERATIONS.md      # Admin UI and operations
+├── SETUP.md           # Admin UI and tenant setup
 ├── ARCHITECTURE.md    # System design and architecture
 ├── TROUBLESHOOTING.md # Common problems and solutions
 ├── a2a-*.md          # A2A protocol documentation

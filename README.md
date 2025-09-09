@@ -41,9 +41,9 @@ This starts:
 - **[Development Guide](docs/DEVELOPMENT.md)** - Local development and contributing
 - **[Testing Guide](docs/testing.md)** - Running and writing tests
 - **[Deployment Guide](docs/deployment.md)** - Production deployment options
-- **[Operations Guide](docs/OPERATIONS.md)** - Admin UI and monitoring
+- **[Setup Guide](docs/SETUP.md)** - Admin UI and tenant setup
+- **[Troubleshooting Guide](docs/TROUBLESHOOTING.md)** - Monitoring and debugging
 - **[Architecture](docs/ARCHITECTURE.md)** - System design and database schema
-- **[Troubleshooting](docs/TROUBLESHOOTING.md)** - Common issues and solutions
 
 ## Key Features
 

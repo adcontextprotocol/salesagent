@@ -10,6 +10,10 @@ UPDATE_ACTIONS = {
     "resume_package": "Resume a specific package (flight/line item)",
     "update_package_budget": "Update the budget for a specific package",
     "update_package_impressions": "Update the impression goal for a specific package",
+    "activate_order": "Activate non-guaranteed orders for delivery",
+    "submit_for_approval": "Submit guaranteed orders for manual approval",
+    "approve_order": "Approve orders (admin only)",
+    "archive_order": "Archive completed campaigns",
 }
 
 # All adapters must support these standard actions
