@@ -95,7 +95,11 @@ class TestGAMProductConfiguration:
             db_session.add_all([product_auto, product_conf])
             db_session.commit()
 
-        yield tenant_id, product_auto.product_id, product_conf.product_id
+            # Get IDs before session closes to avoid DetachedInstanceError
+            auto_product_id = product_auto.product_id
+            conf_product_id = product_conf.product_id
+
+        yield tenant_id, auto_product_id, conf_product_id
 
         # Cleanup
         with get_db_session() as db_session:
@@ -157,13 +161,11 @@ class TestGAMPackageTypes:
     def test_principal_configuration(self):
         """Test principal object creation for GAM integration."""
         principal = Principal(
-            tenant_id="test_tenant",
             principal_id="test_advertiser",
             name="Test Advertiser",
-            access_token="test_token",
             platform_mappings={"gam_advertiser_id": "123456"},
         )
 
-        assert principal.tenant_id == "test_tenant"
+        assert principal.principal_id == "test_advertiser"
         assert principal.platform_mappings["gam_advertiser_id"] == "123456"
-        assert principal.get_adapter_id() == "test_advertiser"
+        assert principal.get_adapter_id("gam") == "123456"
