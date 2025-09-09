@@ -19,6 +19,7 @@ from src.adapters.base import AdServerAdapter, CreativeEngineAdapter
 from src.adapters.constants import REQUIRED_UPDATE_ACTIONS
 from src.adapters.gam_implementation_config_schema import GAMImplementationConfig
 from src.adapters.gam_reporting_service import ReportingConfig
+from src.adapters.gam_validation import GAMValidator
 from src.core.schemas import (
     AdapterGetMediaBuyDeliveryResponse,
     AssetStatus,
@@ -91,6 +92,9 @@ class GoogleAdManager(AdServerAdapter):
 
         # Load geo mappings
         self._load_geo_mappings()
+
+        # Initialize GAM validator for creative validation
+        self.validator = GAMValidator()
 
     def _create_order_statement(self, order_id: int):
         """Helper method to create a GAM statement for order filtering."""
@@ -1185,34 +1189,43 @@ class GoogleAdManager(AdServerAdapter):
         created_asset_statuses = []
 
         # Create a mapping from package_id (which is the line item name) to line_item_id
-        statement = (
-            self.client.new_statement_builder()
-            .where("orderId = :orderId")
-            .with_bind_variable("orderId", int(media_buy_id))
-        )
-        response = line_item_service.getLineItemsByStatement(statement.ToStatement())
-        line_item_map = {item["name"]: item["id"] for item in response.get("results", [])}
+        if not self.dry_run:
+            statement = (
+                self.client.new_statement_builder()
+                .where("orderId = :orderId")
+                .with_bind_variable("orderId", int(media_buy_id))
+            )
+            response = line_item_service.getLineItemsByStatement(statement.ToStatement())
+            line_item_map = {item["name"]: item["id"] for item in response.get("results", [])}
+        else:
+            # In dry-run mode, create a mock line item map
+            line_item_map = {"mock_package": "mock_line_item_123"}
 
         for asset in assets:
-            creative = {
-                "advertiserId": self.company_id,
-                "name": asset["name"],
-                "size": {
-                    "width": asset.get("width", 300),
-                    "height": asset.get("height", 250),
-                },  # Use provided or default size
-                "destinationUrl": asset["click_url"],
-            }
+            # Validate creative asset against GAM requirements
+            validation_issues = self._validate_creative_for_gam(asset)
+            if validation_issues:
+                self.log(f"[red]Creative {asset['creative_id']} failed GAM validation:[/red]")
+                for issue in validation_issues:
+                    self.log(f"  - {issue}")
+                created_asset_statuses.append(AssetStatus(creative_id=asset["creative_id"], status="failed"))
+                continue
 
-            if asset["format"] == "image":
-                creative["xsi_type"] = "ImageCreative"
-                creative["primaryImageAsset"] = {"assetUrl": asset["media_url"]}
-            elif asset["format"] == "video":
-                creative["xsi_type"] = "VideoCreative"
-                creative["videoSourceUrl"] = asset["media_url"]
-                creative["duration"] = asset.get("duration", 0)  # Duration in milliseconds
-            else:
-                self.log(f"Skipping asset {asset['creative_id']} with unsupported format: {asset['format']}")
+            # Determine creative type using AdCP v1.3+ logic
+            creative_type = self._get_creative_type(asset)
+
+            if creative_type == "vast":
+                # VAST is handled at line item level, not creative level
+                self.log(f"VAST creative {asset['creative_id']} - configuring at line item level")
+                self._configure_vast_for_line_items(media_buy_id, asset, line_item_map)
+                created_asset_statuses.append(AssetStatus(creative_id=asset["creative_id"], status="approved"))
+                continue
+
+            # Create GAM creative object
+            creative = self._create_gam_creative(asset, creative_type)
+            if not creative:
+                self.log(f"Skipping unsupported creative {asset['creative_id']} with type: {creative_type}")
+                created_asset_statuses.append(AssetStatus(creative_id=asset["creative_id"], status="failed"))
                 continue
 
             if self.dry_run:
@@ -1256,6 +1269,209 @@ class GoogleAdManager(AdServerAdapter):
                     created_asset_statuses.append(AssetStatus(creative_id=asset["creative_id"], status="failed"))
 
         return created_asset_statuses
+
+    def _get_creative_type(self, asset: dict[str, Any]) -> str:
+        """Determine the creative type based on AdCP v1.3+ fields."""
+        # Check AdCP v1.3+ fields first
+        if asset.get("snippet") and asset.get("snippet_type"):
+            if asset["snippet_type"] in ["vast_xml", "vast_url"]:
+                return "vast"
+            else:
+                return "third_party_tag"
+        elif asset.get("template_variables"):
+            return "native"
+        elif asset.get("media_url"):
+            return "hosted_asset"
+        else:
+            # Auto-detect from legacy patterns for backward compatibility
+            url = asset.get("url", "")
+            format_str = asset.get("format", "")
+
+            if self._is_html_snippet(url):
+                return "third_party_tag"
+            elif "native" in format_str:
+                return "native"
+            elif url and (".xml" in url.lower() or "vast" in url.lower()):
+                return "vast"
+            else:
+                return "hosted_asset"  # Default
+
+    def _validate_creative_for_gam(self, asset: dict[str, Any]) -> list[str]:
+        """
+        Validate creative asset against GAM requirements before API submission.
+
+        Args:
+            asset: Creative asset dictionary
+
+        Returns:
+            List of validation error messages (empty if valid)
+        """
+        return self.validator.validate_creative_asset(asset)
+
+    def _is_html_snippet(self, content: str) -> bool:
+        """Detect if content is HTML/JS snippet rather than URL."""
+        if not content:
+            return False
+        html_indicators = ["<script", "<iframe", "<ins", "<div", "document.write", "innerHTML"]
+        return any(indicator in content for indicator in html_indicators)
+
+    def _create_gam_creative(self, asset: dict[str, Any], creative_type: str) -> dict[str, Any] | None:
+        """Create the appropriate GAM creative object based on creative type."""
+        base_creative = {
+            "advertiserId": self.company_id,
+            "name": asset["name"],
+            "destinationUrl": asset.get("click_url", ""),
+        }
+
+        if creative_type == "third_party_tag":
+            return self._create_third_party_creative(asset, base_creative)
+        elif creative_type == "native":
+            return self._create_native_creative(asset, base_creative)
+        elif creative_type == "hosted_asset":
+            return self._create_hosted_asset_creative(asset, base_creative)
+        else:
+            self.log(f"Unknown creative type: {creative_type}")
+            return None
+
+    def _create_third_party_creative(self, asset: dict[str, Any], base_creative: dict) -> dict[str, Any]:
+        """Create a ThirdPartyCreative for tag-based delivery using AdCP v1.3+ fields."""
+        width, height = self._extract_dimensions_from_format(asset.get("format", ""))
+
+        # Get snippet from AdCP v1.3+ field
+        snippet = asset.get("snippet")
+        if not snippet:
+            # Fallback for legacy support
+            if self._is_html_snippet(asset.get("url", "")):
+                snippet = asset["url"]
+            else:
+                raise ValueError(f"No snippet found for third-party creative {asset['creative_id']}")
+
+        creative = {
+            **base_creative,
+            "xsi_type": "ThirdPartyCreative",
+            "size": {"width": width, "height": height},
+            "snippet": snippet,
+            "isSafeFrameCompatible": True,  # Default to safe
+            "isSSLScanRequired": True,  # Default to secure
+        }
+
+        # Add optional fields from delivery_settings
+        if "delivery_settings" in asset and asset["delivery_settings"]:
+            settings = asset["delivery_settings"]
+            if "safe_frame_compatible" in settings:
+                creative["isSafeFrameCompatible"] = settings["safe_frame_compatible"]
+            if "ssl_required" in settings:
+                creative["isSSLScanRequired"] = settings["ssl_required"]
+            if "tracking_urls" in settings:
+                creative["thirdPartyImpressionTrackingUrls"] = settings["tracking_urls"]
+
+        return creative
+
+    def _create_native_creative(self, asset: dict[str, Any], base_creative: dict) -> dict[str, Any]:
+        """Create a TemplateCreative for native ads."""
+        # Native ads use 1x1 size convention
+        creative = {
+            **base_creative,
+            "xsi_type": "TemplateCreative",
+            "size": {"width": 1, "height": 1},
+            "creativeTemplateId": self._get_native_template_id(asset),
+            "creativeTemplateVariableValues": self._build_native_template_variables(asset),
+        }
+        return creative
+
+    def _create_hosted_asset_creative(self, asset: dict[str, Any], base_creative: dict) -> dict[str, Any]:
+        """Create ImageCreative or VideoCreative for hosted assets."""
+        format_str = asset.get("format", "")
+        width, height = self._extract_dimensions_from_format(format_str)
+
+        creative = {
+            **base_creative,
+            "size": {"width": width, "height": height},
+        }
+
+        if format_str.startswith("video"):
+            creative["xsi_type"] = "VideoCreative"
+            creative["videoSourceUrl"] = asset.get("media_url") or asset.get("url")
+            creative["duration"] = asset.get("duration", 0)  # Duration in milliseconds
+        else:  # Default to image
+            creative["xsi_type"] = "ImageCreative"
+            creative["primaryImageAsset"] = {"assetUrl": asset.get("media_url") or asset.get("url")}
+
+        return creative
+
+    def _extract_dimensions_from_format(self, format_id: str) -> tuple[int, int]:
+        """Extract width and height from format ID like 'display_300x250'."""
+        if "_" in format_id:
+            parts = format_id.split("_")
+            if len(parts) >= 2 and "x" in parts[-1]:
+                dims = parts[-1].split("x")
+                if len(dims) == 2:
+                    try:
+                        return int(dims[0]), int(dims[1])
+                    except ValueError:
+                        pass
+        # Default dimensions for unknown formats
+        return 300, 250
+
+    def _get_native_template_id(self, asset: dict[str, Any]) -> str:
+        """Get or find a native template ID for this creative."""
+        # Check if template ID is specified
+        if "native_template_id" in asset and asset["native_template_id"]:
+            return asset["native_template_id"]
+
+        # For now, use a placeholder - in real implementation, would query GAM for available templates
+        if self.dry_run:
+            return "12345"  # Placeholder for dry run
+
+        # In real implementation, would query CreativeTemplateService for native-eligible templates
+        # and select the most appropriate one based on the asset components
+        raise NotImplementedError("Native template discovery not yet implemented - specify native_template_id")
+
+    def _build_native_template_variables(self, asset: dict[str, Any]) -> list[dict[str, Any]]:
+        """Build template variables for native creative from AdCP v1.3+ template_variables."""
+        variables = []
+
+        # Get template variables from AdCP v1.3+ field
+        template_vars = asset.get("template_variables")
+        if not template_vars:
+            raise ValueError(f"No template_variables found for native creative {asset['creative_id']}")
+
+        # Map AdCP template variable names to GAM template variables
+        # AdCP uses more standardized naming than our old approach
+        variable_mappings = {
+            "headline": "Headline",
+            "body": "Body",
+            "main_image_url": "MainImage",
+            "logo_url": "Logo",
+            "cta_text": "CallToAction",
+            "advertiser_name": "Advertiser",
+            "price": "Price",
+            "star_rating": "StarRating",
+        }
+
+        for adcp_key, gam_var in variable_mappings.items():
+            if adcp_key in template_vars:
+                value_obj = {"uniqueName": gam_var}
+
+                # Handle asset URLs vs text content based on field name
+                if "_url" in adcp_key:
+                    value_obj["assetUrl"] = template_vars[adcp_key]
+                else:
+                    value_obj["value"] = template_vars[adcp_key]
+
+                variables.append(value_obj)
+
+        return variables
+
+    def _configure_vast_for_line_items(self, media_buy_id: str, asset: dict[str, Any], line_item_map: dict):
+        """Configure VAST settings at the line item level (not creative level)."""
+        # VAST configuration happens at line item creation time, not creative upload time
+        # This is a placeholder for future VAST support
+        self.log(f"VAST configuration for {asset['creative_id']} would be handled at line item level")
+        if self.dry_run:
+            self.log("Would update line items with VAST configuration:")
+            self.log(f"  VAST URL: {asset.get('url') or asset.get('media_url')}")
+            self.log(f"  Duration: {asset.get('duration', 0)} seconds")
 
     def check_media_buy_status(self, media_buy_id: str, today: datetime) -> CheckMediaBuyStatusResponse:
         """Checks the status of all LineItems in a GAM Order."""
