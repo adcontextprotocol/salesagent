@@ -19,6 +19,7 @@ from src.adapters.base import AdServerAdapter, CreativeEngineAdapter
 from src.adapters.constants import REQUIRED_UPDATE_ACTIONS
 from src.adapters.gam_implementation_config_schema import GAMImplementationConfig
 from src.adapters.gam_reporting_service import ReportingConfig
+from src.adapters.gam_validation import GAMValidator
 from src.core.schemas import (
     AdapterGetMediaBuyDeliveryResponse,
     AssetStatus,
@@ -91,6 +92,9 @@ class GoogleAdManager(AdServerAdapter):
 
         # Load geo mappings
         self._load_geo_mappings()
+
+        # Initialize GAM validator for creative validation
+        self.validator = GAMValidator()
 
     def _create_order_statement(self, order_id: int):
         """Helper method to create a GAM statement for order filtering."""
@@ -1185,15 +1189,28 @@ class GoogleAdManager(AdServerAdapter):
         created_asset_statuses = []
 
         # Create a mapping from package_id (which is the line item name) to line_item_id
-        statement = (
-            self.client.new_statement_builder()
-            .where("orderId = :orderId")
-            .with_bind_variable("orderId", int(media_buy_id))
-        )
-        response = line_item_service.getLineItemsByStatement(statement.ToStatement())
-        line_item_map = {item["name"]: item["id"] for item in response.get("results", [])}
+        if not self.dry_run:
+            statement = (
+                self.client.new_statement_builder()
+                .where("orderId = :orderId")
+                .with_bind_variable("orderId", int(media_buy_id))
+            )
+            response = line_item_service.getLineItemsByStatement(statement.ToStatement())
+            line_item_map = {item["name"]: item["id"] for item in response.get("results", [])}
+        else:
+            # In dry-run mode, create a mock line item map
+            line_item_map = {"mock_package": "mock_line_item_123"}
 
         for asset in assets:
+            # Validate creative asset against GAM requirements
+            validation_issues = self._validate_creative_for_gam(asset)
+            if validation_issues:
+                self.log(f"[red]Creative {asset['creative_id']} failed GAM validation:[/red]")
+                for issue in validation_issues:
+                    self.log(f"  - {issue}")
+                created_asset_statuses.append(AssetStatus(creative_id=asset["creative_id"], status="failed"))
+                continue
+
             # Determine creative type using AdCP v1.3+ logic
             creative_type = self._get_creative_type(asset)
 
@@ -1278,6 +1295,18 @@ class GoogleAdManager(AdServerAdapter):
                 return "vast"
             else:
                 return "hosted_asset"  # Default
+
+    def _validate_creative_for_gam(self, asset: dict[str, Any]) -> list[str]:
+        """
+        Validate creative asset against GAM requirements before API submission.
+
+        Args:
+            asset: Creative asset dictionary
+
+        Returns:
+            List of validation error messages (empty if valid)
+        """
+        return self.validator.validate_creative_asset(asset)
 
     def _is_html_snippet(self, content: str) -> bool:
         """Detect if content is HTML/JS snippet rather than URL."""
