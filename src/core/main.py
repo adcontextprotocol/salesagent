@@ -469,6 +469,83 @@ if SELECTED_ADAPTER not in AVAILABLE_ADAPTERS:
 console.print(f"[bold cyan]🔌 Using adapter: {SELECTED_ADAPTER.upper()}[/bold cyan]")
 
 
+# --- Creative Conversion Helper ---
+def _convert_creative_to_adapter_asset(creative: Creative, package_assignments: list[str]) -> dict[str, Any]:
+    """Convert AdCP v1.3+ Creative object to format expected by ad server adapters."""
+
+    # Base asset object with common fields
+    asset = {
+        "creative_id": creative.creative_id,
+        "name": creative.name,
+        "format": creative.format,
+        "package_assignments": package_assignments,
+    }
+
+    # Determine creative type using AdCP v1.3+ logic
+    creative_type = creative.get_creative_type()
+
+    if creative_type == "third_party_tag":
+        # Third-party tag creative - use AdCP v1.3+ snippet fields
+        snippet = creative.get_snippet_content()
+        if not snippet:
+            raise ValueError(f"No snippet found for third-party creative {creative.creative_id}")
+
+        asset["snippet"] = snippet
+        asset["snippet_type"] = creative.snippet_type or _detect_snippet_type(snippet)
+        asset["url"] = creative.url  # Keep URL for fallback
+
+        # Add delivery settings
+        if creative.delivery_settings:
+            asset["delivery_settings"] = creative.delivery_settings
+
+    elif creative_type == "native":
+        # Native creative - use AdCP v1.3+ template_variables field
+        template_vars = creative.get_template_variables_dict()
+        if not template_vars:
+            raise ValueError(f"No template_variables found for native creative {creative.creative_id}")
+
+        asset["template_variables"] = template_vars
+        asset["url"] = creative.url  # Fallback URL
+
+        # Add delivery settings
+        if creative.delivery_settings:
+            asset["delivery_settings"] = creative.delivery_settings
+
+    elif creative_type == "vast":
+        # VAST reference
+        asset["snippet"] = creative.get_snippet_content() or creative.url
+        asset["snippet_type"] = creative.snippet_type or ("vast_xml" if ".xml" in creative.url else "vast_url")
+
+    else:  # hosted_asset
+        # Traditional hosted asset (image/video)
+        asset["media_url"] = creative.get_primary_content_url()
+        asset["url"] = asset["media_url"]  # For backward compatibility
+
+    # Add common optional fields
+    if creative.click_url:
+        asset["click_url"] = creative.click_url
+    if creative.width:
+        asset["width"] = creative.width
+    if creative.height:
+        asset["height"] = creative.height
+    if creative.duration:
+        asset["duration"] = creative.duration
+
+    return asset
+
+
+def _detect_snippet_type(snippet: str) -> str:
+    """Auto-detect snippet type from content for legacy support."""
+    if snippet.startswith("<?xml") or ".xml" in snippet:
+        return "vast_xml"
+    elif snippet.startswith("http") and "vast" in snippet.lower():
+        return "vast_url"
+    elif snippet.startswith("<script"):
+        return "javascript"
+    else:
+        return "html"  # Default
+
+
 # --- Security Helper ---
 def _get_principal_id_from_context(context: Context) -> str:
     """Extracts the token from the header and returns a principal_id."""
@@ -1208,19 +1285,19 @@ def create_media_buy(req: CreateMediaBuyRequest, context: Context) -> CreateMedi
 
         # Handle creatives if provided
         if req.creatives:
-            # Convert Creative to asset format expected by adapter
+            # Convert Creative objects to format expected by adapter
             assets = []
             for creative in req.creatives:
-                assets.append(
-                    {
-                        "id": creative.creative_id,
-                        "name": f"Creative {creative.creative_id}",
-                        "format": "image",  # Simplified - would need to determine from format_id
-                        "media_url": creative.content_uri,
-                        "click_url": "https://example.com",  # Placeholder
-                        "package_assignments": req.product_ids,
-                    }
-                )
+                try:
+                    asset = _convert_creative_to_adapter_asset(creative, req.product_ids)
+                    assets.append(asset)
+                except Exception as e:
+                    console.print(f"[red]Error converting creative {creative.creative_id}: {e}[/red]")
+                    # Add a failed status for this creative
+                    creative_statuses[creative.creative_id] = CreativeStatus(
+                        creative_id=creative.creative_id, status="rejected", detail=f"Conversion error: {str(e)}"
+                    )
+                    continue
             statuses = adapter.add_creative_assets(response.media_buy_id, assets, datetime.now())
             for status in statuses:
                 creative_statuses[status.creative_id] = CreativeStatus(
@@ -2592,18 +2669,21 @@ def approve_creative(req: ApproveCreativeRequest, context: Context) -> ApproveCr
                 if principal:
                     try:
                         adapter = get_adapter(principal, dry_run=DRY_RUN_MODE)
-                        # Push creative to ad server
-                        assets = [
-                            {
-                                "id": creative.creative_id,
-                                "name": creative.name,
-                                "format": creative.format_id,
-                                "media_url": creative.content_uri,
-                                "click_url": assignment.override_click_url or creative.click_through_url or "",
-                                "package_assignments": [assignment.package_id],
-                            }
-                        ]
-                        adapter.add_creative_assets(assignment.media_buy_id, assets, datetime.now())
+                        # Push creative to ad server using new conversion helper
+                        try:
+                            asset = _convert_creative_to_adapter_asset(creative, [assignment.package_id])
+
+                            # Override click URL if specified in assignment
+                            if assignment.override_click_url:
+                                asset["click_url"] = assignment.override_click_url
+
+                            assets = [asset]
+                            adapter.add_creative_assets(assignment.media_buy_id, assets, datetime.now())
+                        except Exception as conversion_error:
+                            console.print(
+                                f"[red]Error converting creative {creative.creative_id}: {conversion_error}[/red]"
+                            )
+                            raise
                         console.print(
                             f"[green]✓ Pushed creative {creative.creative_id} to {assignment.media_buy_id}[/green]"
                         )

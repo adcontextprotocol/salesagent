@@ -1072,6 +1072,44 @@ class Creative(BaseModel):
     # Multi-asset support (AdCP spec)
     assets: list[dict[str, Any]] | None = Field(None, description="For multi-asset formats like carousels")
 
+    # === AdCP v1.3+ Creative Management Fields ===
+    # Fully compliant with AdCP specification for third-party tags and native creatives
+
+    snippet: str | None = Field(
+        None, description="HTML/JS/VAST snippet for third-party creatives (mutually exclusive with media_url)"
+    )
+
+    snippet_type: Literal["html", "javascript", "vast_xml", "vast_url"] | None = Field(
+        None, description="Type of snippet content (required when snippet is provided)"
+    )
+
+    template_variables: dict[str, Any] | None = Field(
+        None,
+        description="Variables for native ad templates per AdCP spec",
+        example={
+            "headline": "Amazing Product",
+            "body": "This product will change your life",
+            "main_image_url": "https://cdn.example.com/product.jpg",
+            "logo_url": "https://cdn.example.com/logo.png",
+            "cta_text": "Shop Now",
+            "advertiser_name": "Brand Name",
+            "price": "$99.99",
+            "star_rating": "4.5",
+        },
+    )
+
+    # Platform-specific extension (not in core AdCP spec)
+    delivery_settings: dict[str, Any] | None = Field(
+        None,
+        description="Platform-specific delivery configuration (extension)",
+        example={
+            "safe_frame_compatible": True,
+            "ssl_required": True,
+            "orientation_lock": "FREE_ORIENTATION",
+            "tracking_urls": ["https://..."],
+        },
+    )
+
     # Internal fields (not in AdCP spec, but available for internal use)
     principal_id: str  # Internal - not in AdCP spec
     group_id: str | None = None  # Internal - not in AdCP spec
@@ -1130,7 +1168,7 @@ class Creative(BaseModel):
         # Default to excluding internal fields for AdCP compliance
         exclude = kwargs.get("exclude", set())
         if isinstance(exclude, set):
-            # Add internal fields to exclude by default
+            # Add internal fields to exclude by default for AdCP compliance
             exclude.update(
                 {
                     "principal_id",
@@ -1141,6 +1179,11 @@ class Creative(BaseModel):
                     "macro_validation",
                     "asset_mapping",
                     "metadata",
+                    # Extended delivery fields (our implementation-specific extensions)
+                    # These can be included by explicitly requesting them
+                    "content_type",
+                    "content",
+                    "delivery_settings",
                 }
             )
             kwargs["exclude"] = exclude
@@ -1162,6 +1205,83 @@ class Creative(BaseModel):
         # Don't exclude internal fields
         kwargs.pop("exclude", None)  # Remove any exclude parameter
         return super().model_dump(**kwargs)
+
+    # === AdCP v1.3+ Helper Methods ===
+
+    def get_creative_type(self) -> str:
+        """Determine the creative type based on AdCP v1.3+ fields."""
+        if self.snippet and self.snippet_type:
+            if self.snippet_type in ["vast_xml", "vast_url"]:
+                return "vast"
+            else:
+                return "third_party_tag"
+        elif self.template_variables:
+            return "native"
+        elif self.media_url or (self.url and not self._is_html_snippet(self.url)):
+            return "hosted_asset"
+        elif self._is_html_snippet(self.url):
+            # Auto-detect from URL for legacy support
+            return "third_party_tag"
+        else:
+            return "hosted_asset"  # Default
+
+    def _is_html_snippet(self, content: str) -> bool:
+        """Detect if content is HTML/JS snippet rather than URL."""
+        if not content:
+            return False
+
+        # Check for HTML/JS indicators
+        html_indicators = ["<script", "<iframe", "<ins", "<div", "<span", "document.write", "innerHTML"]
+        return any(indicator in content for indicator in html_indicators)
+
+    def get_snippet_content(self) -> str | None:
+        """Get the snippet content for third-party creatives (AdCP v1.3+ field)."""
+        if self.snippet:
+            return self.snippet
+        elif self._is_html_snippet(self.url):
+            return self.url  # Auto-detect from URL
+        return None
+
+    def get_template_variables_dict(self) -> dict[str, Any] | None:
+        """Get native template variables (AdCP v1.3+ field)."""
+        return self.template_variables
+
+    def get_primary_content_url(self) -> str:
+        """Get the primary content URL for hosted assets."""
+        return self.media_url or self.url
+
+    def set_third_party_snippet(self, snippet: str, snippet_type: str, settings: dict = None):
+        """Convenience method to set up a third-party tag creative (AdCP v1.3+)."""
+        self.snippet = snippet
+        self.snippet_type = snippet_type
+        if settings:
+            self.delivery_settings = settings
+
+    def set_native_template_variables(self, template_vars: dict[str, Any], settings: dict = None):
+        """Convenience method to set up a native creative (AdCP v1.3+)."""
+        self.template_variables = template_vars
+        if settings:
+            self.delivery_settings = settings
+
+    @model_validator(mode="after")
+    def validate_creative_fields(self) -> "Creative":
+        """Validate AdCP creative field requirements and mutual exclusivity."""
+        # Check mutual exclusivity: media_url XOR snippet
+        has_media = bool(self.media_url or (self.url and not self._is_html_snippet(self.url)))
+        has_snippet = bool(self.snippet)
+
+        if has_media and has_snippet:
+            raise ValueError("Creative cannot have both media content and snippet - they are mutually exclusive")
+
+        # Validate snippet_type is provided when snippet is present
+        if self.snippet and not self.snippet_type:
+            raise ValueError("snippet_type is required when snippet is provided")
+
+        # Validate snippet_type values
+        if self.snippet_type and not self.snippet:
+            raise ValueError("snippet is required when snippet_type is provided")
+
+        return self
 
 
 class CreativeAdaptation(BaseModel):
