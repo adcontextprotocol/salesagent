@@ -251,13 +251,13 @@ def get_principal_from_context(context: Context | None) -> str | None:
         return None
 
     try:
-        # Get the HTTP request from context
-        request = context.get_http_request()
-        if not request:
+        # Get headers from FastMCP context metadata
+        headers = context.meta.get("headers", {}) if hasattr(context, "meta") else {}
+        if not headers:
             return None
 
-        # Get the x-adcp-auth header (FastMCP v2.11.0+ properly forwards this)
-        auth_token = request.headers.get("x-adcp-auth")
+        # Get the x-adcp-auth header (FastMCP forwards this in context.meta)
+        auth_token = headers.get("x-adcp-auth")
         if not auth_token:
             return None
 
@@ -265,11 +265,11 @@ def get_principal_from_context(context: Context | None) -> str | None:
         requested_tenant_id = None
 
         # 1. Check x-adcp-tenant header (set by middleware for path-based routing)
-        requested_tenant_id = request.headers.get("x-adcp-tenant")
+        requested_tenant_id = headers.get("x-adcp-tenant")
 
         # 2. If not found, check host header for subdomain
         if not requested_tenant_id:
-            host = request.headers.get("host", "")
+            host = headers.get("host", "")
             subdomain = host.split(".")[0] if "." in host else None
             if subdomain and subdomain not in ["localhost", "adcp-sales-agent", "www"]:
                 requested_tenant_id = subdomain
