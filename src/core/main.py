@@ -635,14 +635,21 @@ def log_tool_activity(context: Context, tool_name: str, start_time: float = None
 
 
 @mcp.tool
-async def get_products(req: GetProductsRequest, context: Context) -> GetProductsResponse:
+async def get_products(brief: str, promoted_offering: str = None, context: Context = None) -> GetProductsResponse:
     """Get available products matching the brief.
 
-    This tool now uses automatic context management. The context parameter
-    can be either a FastMCP Context (for backward compatibility) or a ToolContext
-    (for new context management).
+    Args:
+        brief: Brief description of the advertising campaign or requirements
+        promoted_offering: What is being promoted/advertised (required per AdCP spec)
+        context: FastMCP context (automatically provided)
+
+    Returns:
+        GetProductsResponse containing matching products
     """
     from src.core.tool_context import ToolContext
+
+    # Create request object from individual parameters (MCP-compliant)
+    req = GetProductsRequest(brief=brief or "", promoted_offering=promoted_offering)
 
     start_time = time.time()
 
@@ -953,8 +960,24 @@ def list_creative_formats(context: Context) -> ListCreativeFormatsResponse:
 
 
 @mcp.tool
-async def get_signals(req: GetSignalsRequest, context: Context) -> GetSignalsResponse:
-    """Optional endpoint for discovering available signals (audiences, contextual, etc.)"""
+async def get_signals(
+    query: str = None, type: str = None, category: str = None, limit: int = None, context: Context = None
+) -> GetSignalsResponse:
+    """Optional endpoint for discovering available signals (audiences, contextual, etc.)
+
+    Args:
+        query: Optional query string to filter signals by name or description
+        type: Optional signal type filter (e.g., 'audience', 'contextual')
+        category: Optional category filter
+        limit: Optional limit on number of results
+        context: FastMCP context (automatically provided)
+
+    Returns:
+        GetSignalsResponse containing matching signals
+    """
+    # Create request object from individual parameters (MCP-compliant)
+    req = GetSignalsRequest(query=query, type=type, category=category, limit=limit)
+
     _get_principal_id_from_context(context)
 
     # Get tenant information
