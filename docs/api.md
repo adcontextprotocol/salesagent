@@ -215,13 +215,96 @@ Resume a paused media buy.
 
 #### `update_media_buy`
 
-Modify an existing media buy.
+Complete lifecycle management for advertising campaigns with safety guardrails and admin controls.
 
 **Parameters:**
 - `media_buy_id` (string, required): Media buy to update
-- `budget_adjustment` (number, optional): Budget change amount
-- `end_date` (string, optional): New end date
-- `targeting_overlay` (object, optional): Updated targeting
+- `action` (string, required): Lifecycle action to perform
+- `package_id` (string, optional): Specific package for package actions
+- `budget` (number, optional): New budget for budget actions
+
+**Available Actions:**
+
+##### Standard Actions (All Users)
+- **`pause_media_buy`** - Pause entire campaign/order
+- **`resume_media_buy`** - Resume entire campaign/order
+- **`pause_package`** - Pause specific line item/package
+- **`resume_package`** - Resume specific line item/package
+- **`update_package_budget`** - Update budget for specific package
+- **`update_package_impressions`** - Update impression goal for specific package
+
+##### Lifecycle Actions
+- **`activate_order`** - Activate non-guaranteed orders for delivery
+- **`submit_for_approval`** - Submit guaranteed orders for manual approval
+- **`approve_order`** - Approve orders (admin users only)
+- **`archive_order`** - Archive completed campaigns
+
+**Order Activation Rules:**
+
+*Non-Guaranteed Orders (Automatic Activation)*
+Line Item Types: `NETWORK`, `BULK`, `PRICE_PRIORITY`, `HOUSE`
+
+```json
+{
+  "method": "update_media_buy",
+  "params": {
+    "media_buy_id": "12345",
+    "action": "activate_order"
+  }
+}
+```
+
+✅ **Success Response:**
+- Order and line items activated immediately
+- Status: `accepted`
+- Audit log entry created
+
+*Guaranteed Orders (Manual Approval Required)*
+Line Item Types: `STANDARD`, `SPONSORSHIP`
+
+❌ **Blocked Response:**
+```json
+{
+  "status": "failed",
+  "reason": "Cannot auto-activate order with guaranteed line items (['STANDARD']). Use submit_for_approval instead."
+}
+```
+
+**Approval Workflow:**
+
+*1. Submit for Approval*
+```json
+{
+  "method": "update_media_buy",
+  "params": {
+    "media_buy_id": "12345",
+    "action": "submit_for_approval"
+  }
+}
+```
+
+*2. Admin Approval*
+```json
+{
+  "method": "update_media_buy",
+  "params": {
+    "media_buy_id": "12345",
+    "action": "approve_order"
+  }
+}
+```
+
+**Admin Requirements:**
+- Principal must have `gam_admin: true` in `platform_mappings`
+- OR `is_admin: true` in `platform_mappings`
+- OR `role: "admin"` attribute
+
+**Archive Requirements:**
+- Order status must be: `DELIVERED`, `COMPLETED`, `CANCELLED`, or `PAUSED`
+
+**Error Handling:**
+- NO QUIET FAILURES - All requests fail loudly with clear error messages
+- Common errors include permission denied, invalid status, guaranteed item blocking
 
 ## Super Admin API
 

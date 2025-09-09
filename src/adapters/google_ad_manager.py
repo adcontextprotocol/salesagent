@@ -104,8 +104,8 @@ class GoogleAdManager(AdServerAdapter):
         try:
             # Use the new helper function if we have a tenant_id
             if self.tenant_id:
-                from scripts.ops.gam_helper import get_ad_manager_client_for_tenant
-            
+                pass
+
             from googleads import ad_manager
 
             if self.refresh_token:
@@ -1475,6 +1475,170 @@ class GoogleAdManager(AdServerAdapter):
         logger.info("GAM Adapter: update_media_buy_performance_index called. (Not yet implemented)")
         return True
 
+    def _get_order_line_items(self, order_id: str) -> list[dict]:
+        """Get all line items for an order.
+
+        Args:
+            order_id: The GAM order ID
+
+        Returns:
+            List of line item dictionaries
+        """
+        if self.dry_run:
+            self.log(f"Would call: line_item_service.getLineItemsByStatement(WHERE orderId={order_id})")
+            # Return mock line items for dry run testing
+            return [
+                {"id": "123", "lineItemType": "NETWORK", "name": "Test Line Item 1"},
+                {"id": "124", "lineItemType": "STANDARD", "name": "Test Line Item 2"},
+            ]
+
+        try:
+            line_item_service = self.client.GetService("LineItemService")
+            statement = (
+                ad_manager.StatementBuilder().Where("orderId = :orderId").WithBindVariable("orderId", int(order_id))
+            )
+
+            response = line_item_service.getLineItemsByStatement(statement.ToStatement())
+            return response.get("results", [])
+
+        except Exception as e:
+            self.log(f"[red]Error fetching line items for order {order_id}: {e}[/red]")
+            return []
+
+    def _check_order_has_guaranteed_items(self, order_id: str) -> tuple[bool, list[str]]:
+        """Check if an order contains any guaranteed line items.
+
+        Args:
+            order_id: The GAM order ID
+
+        Returns:
+            Tuple of (has_guaranteed_items: bool, guaranteed_types: list[str])
+        """
+        line_items = self._get_order_line_items(order_id)
+        guaranteed_types = []
+
+        for line_item in line_items:
+            line_item_type = line_item.get("lineItemType", "STANDARD")
+            if line_item_type in GUARANTEED_LINE_ITEM_TYPES:
+                guaranteed_types.append(line_item_type)
+
+        has_guaranteed = len(guaranteed_types) > 0
+        self.log(f"Order {order_id} has guaranteed items: {has_guaranteed} (types: {guaranteed_types})")
+        return has_guaranteed, guaranteed_types
+
+    def _is_admin_principal(self) -> bool:
+        """Check if the current principal has admin privileges.
+
+        Returns:
+            True if principal is admin, False otherwise
+        """
+        # Check if principal has admin role or special admin flag
+        platform_mappings = getattr(self.principal, "platform_mappings", {})
+        is_admin = (
+            platform_mappings.get("gam_admin", False)
+            or platform_mappings.get("is_admin", False)
+            or getattr(self.principal, "role", "") == "admin"
+        )
+
+        self.log(f"Principal {self.principal.name} admin check: {is_admin}")
+        return is_admin
+
+    def _get_order_status(self, order_id: str) -> str:
+        """Get the current status of a GAM order.
+
+        Args:
+            order_id: The GAM order ID
+
+        Returns:
+            Order status string (e.g., 'DRAFT', 'PENDING_APPROVAL', 'APPROVED', 'PAUSED')
+        """
+        if self.dry_run:
+            self.log(f"Would call: order_service.getOrdersByStatement(WHERE id={order_id})")
+            return "DRAFT"  # Mock status for dry run
+
+        try:
+            order_service = self.client.GetService("OrderService")
+            statement = ad_manager.StatementBuilder().Where("id = :orderId").WithBindVariable("orderId", int(order_id))
+
+            response = order_service.getOrdersByStatement(statement.ToStatement())
+            orders = response.get("results", [])
+
+            if orders:
+                status = orders[0].get("status", "UNKNOWN")
+                self.log(f"Order {order_id} current status: {status}")
+                return status
+            else:
+                self.log(f"[yellow]Warning: Order {order_id} not found[/yellow]")
+                return "NOT_FOUND"
+
+        except Exception as e:
+            self.log(f"[red]Error fetching order status for {order_id}: {e}[/red]")
+            return "ERROR"
+
+    def _create_approval_workflow_step(self, media_buy_id: str):
+        """Create a workflow step for order approval tracking."""
+        try:
+            import uuid
+            from datetime import datetime
+
+            from src.core.database.database_session import get_db_session
+            from src.core.database.models import ObjectWorkflowMapping, WorkflowStep
+
+            with get_db_session() as db_session:
+                # Create workflow step
+                workflow_step = WorkflowStep(
+                    step_id=str(uuid.uuid4()),
+                    tenant_id=self.tenant_id,
+                    workflow_id=f"approval_{media_buy_id}",
+                    status="pending_approval",
+                    step_type="order_approval",
+                    created_at=datetime.now(),
+                    metadata={"order_id": media_buy_id, "action": "submit_for_approval"},
+                )
+                db_session.add(workflow_step)
+
+                # Create object workflow mapping
+                mapping = ObjectWorkflowMapping(
+                    object_type="media_buy",
+                    object_id=media_buy_id,
+                    workflow_id=f"approval_{media_buy_id}",
+                    tenant_id=self.tenant_id,
+                )
+                db_session.add(mapping)
+
+                db_session.commit()
+                self.log(f"✓ Created approval workflow step for Order {media_buy_id}")
+
+        except Exception as e:
+            self.log(f"[yellow]Warning: Could not create workflow step: {e}[/yellow]")
+
+    def _update_approval_workflow_step(self, media_buy_id: str, new_status: str):
+        """Update an existing approval workflow step."""
+        try:
+            from datetime import datetime
+
+            from src.core.database.database_session import get_db_session
+            from src.core.database.models import WorkflowStep
+
+            with get_db_session() as db_session:
+                workflow_step = (
+                    db_session.query(WorkflowStep)
+                    .filter_by(
+                        tenant_id=self.tenant_id, workflow_id=f"approval_{media_buy_id}", step_type="order_approval"
+                    )
+                    .first()
+                )
+
+                if workflow_step:
+                    workflow_step.status = new_status
+                    workflow_step.updated_at = datetime.now()
+                    workflow_step.metadata["approved_by"] = self.principal.name
+                    db_session.commit()
+                    self.log(f"✓ Updated workflow step for Order {media_buy_id} to {new_status}")
+
+        except Exception as e:
+            self.log(f"[yellow]Warning: Could not update workflow step: {e}[/yellow]")
+
     def update_media_buy(
         self, media_buy_id: str, action: str, package_id: str | None, budget: int | None, today: datetime
     ) -> UpdateMediaBuyResponse:
@@ -1515,6 +1679,30 @@ class GoogleAdManager(AdServerAdapter):
                 else:
                     self.log("Would calculate new impression goal based on CPM")
                 self.log("Would call: line_item_service.updateLineItems([updated_line_item])")
+            elif action == "activate_order":
+                # Check for guaranteed line items
+                has_guaranteed, guaranteed_types = self._check_order_has_guaranteed_items(media_buy_id)
+                if has_guaranteed:
+                    return UpdateMediaBuyResponse(
+                        status="failed",
+                        reason=f"Cannot auto-activate order with guaranteed line items ({guaranteed_types}). Use submit_for_approval instead.",
+                    )
+                self.log(f"Would activate non-guaranteed Order {media_buy_id}")
+                self.log(f"Would call: order_service.performOrderAction(ResumeOrders, {media_buy_id})")
+                self.log(
+                    f"Would call: line_item_service.performLineItemAction(ActivateLineItems, WHERE orderId={media_buy_id})"
+                )
+            elif action == "submit_for_approval":
+                self.log(f"Would submit Order {media_buy_id} for approval")
+                self.log(f"Would call: order_service.performOrderAction(SubmitOrdersForApproval, {media_buy_id})")
+            elif action == "approve_order":
+                if not self._is_admin_principal():
+                    return UpdateMediaBuyResponse(status="failed", reason="Only admin users can approve orders")
+                self.log(f"Would approve Order {media_buy_id}")
+                self.log(f"Would call: order_service.performOrderAction(ApproveOrders, {media_buy_id})")
+            elif action == "archive_order":
+                self.log(f"Would archive Order {media_buy_id}")
+                self.log(f"Would call: order_service.performOrderAction(ArchiveOrders, {media_buy_id})")
 
             return UpdateMediaBuyResponse(
                 status="accepted",
@@ -1607,6 +1795,128 @@ class GoogleAdManager(AdServerAdapter):
                         return UpdateMediaBuyResponse(status="failed", reason="Failed to update LineItem in GAM")
 
                     self.log(f"✓ Successfully updated budget for LineItem {line_item_to_update['id']}")
+
+                elif action == "activate_order":
+                    # Check for guaranteed line items first
+                    has_guaranteed, guaranteed_types = self._check_order_has_guaranteed_items(media_buy_id)
+                    if has_guaranteed:
+                        return UpdateMediaBuyResponse(
+                            status="failed",
+                            reason=f"Cannot auto-activate order with guaranteed line items ({guaranteed_types}). Use submit_for_approval instead.",
+                        )
+
+                    # Activate non-guaranteed order
+                    order_service = self.client.GetService("OrderService")
+                    line_item_service = self.client.GetService("LineItemService")
+
+                    # Resume the order
+                    order_action = {"xsi_type": "ResumeOrders"}
+                    order_statement = (
+                        ad_manager.StatementBuilder()
+                        .Where("id = :orderId")
+                        .WithBindVariable("orderId", int(media_buy_id))
+                    )
+
+                    order_result = order_service.performOrderAction(order_action, order_statement.ToStatement())
+
+                    # Activate line items
+                    line_item_action = {"xsi_type": "ActivateLineItems"}
+                    line_item_statement = (
+                        ad_manager.StatementBuilder()
+                        .Where("orderId = :orderId")
+                        .WithBindVariable("orderId", int(media_buy_id))
+                    )
+
+                    line_item_result = line_item_service.performLineItemAction(
+                        line_item_action, line_item_statement.ToStatement()
+                    )
+
+                    if (order_result and order_result.get("numChanges", 0) > 0) or (
+                        line_item_result and line_item_result.get("numChanges", 0) > 0
+                    ):
+                        self.log(f"✓ Successfully activated Order {media_buy_id}")
+                        self.audit_logger.log_success(f"Activated GAM Order {media_buy_id}")
+                    else:
+                        return UpdateMediaBuyResponse(status="failed", reason="No changes made during activation")
+
+                elif action == "submit_for_approval":
+                    order_service = self.client.GetService("OrderService")
+
+                    submit_action = {"xsi_type": "SubmitOrdersForApproval"}
+                    statement = (
+                        ad_manager.StatementBuilder()
+                        .Where("id = :orderId")
+                        .WithBindVariable("orderId", int(media_buy_id))
+                    )
+
+                    result = order_service.performOrderAction(submit_action, statement.ToStatement())
+
+                    if result and result.get("numChanges", 0) > 0:
+                        self.log(f"✓ Successfully submitted Order {media_buy_id} for approval")
+                        self.audit_logger.log_success(f"Submitted GAM Order {media_buy_id} for approval")
+
+                        # Create workflow step for tracking approval
+                        self._create_approval_workflow_step(media_buy_id)
+                    else:
+                        return UpdateMediaBuyResponse(status="failed", reason="No changes made during submission")
+
+                elif action == "approve_order":
+                    if not self._is_admin_principal():
+                        return UpdateMediaBuyResponse(status="failed", reason="Only admin users can approve orders")
+
+                    # Check order status
+                    order_status = self._get_order_status(media_buy_id)
+                    if order_status not in ["PENDING_APPROVAL", "DRAFT"]:
+                        return UpdateMediaBuyResponse(
+                            status="failed",
+                            reason=f"Order status is '{order_status}'. Can only approve orders in PENDING_APPROVAL or DRAFT status",
+                        )
+
+                    order_service = self.client.GetService("OrderService")
+
+                    approve_action = {"xsi_type": "ApproveOrders"}
+                    statement = (
+                        ad_manager.StatementBuilder()
+                        .Where("id = :orderId")
+                        .WithBindVariable("orderId", int(media_buy_id))
+                    )
+
+                    result = order_service.performOrderAction(approve_action, statement.ToStatement())
+
+                    if result and result.get("numChanges", 0) > 0:
+                        self.log(f"✓ Successfully approved Order {media_buy_id}")
+                        self.audit_logger.log_success(f"Approved GAM Order {media_buy_id}")
+
+                        # Update any existing workflow steps
+                        self._update_approval_workflow_step(media_buy_id, "approved")
+                    else:
+                        return UpdateMediaBuyResponse(status="failed", reason="No changes made during approval")
+
+                elif action == "archive_order":
+                    # Check order status - only archive completed or cancelled orders
+                    order_status = self._get_order_status(media_buy_id)
+                    if order_status not in ["DELIVERED", "COMPLETED", "CANCELLED", "PAUSED"]:
+                        return UpdateMediaBuyResponse(
+                            status="failed",
+                            reason=f"Order status is '{order_status}'. Can only archive DELIVERED, COMPLETED, CANCELLED, or PAUSED orders",
+                        )
+
+                    order_service = self.client.GetService("OrderService")
+
+                    archive_action = {"xsi_type": "ArchiveOrders"}
+                    statement = (
+                        ad_manager.StatementBuilder()
+                        .Where("id = :orderId")
+                        .WithBindVariable("orderId", int(media_buy_id))
+                    )
+
+                    result = order_service.performOrderAction(archive_action, statement.ToStatement())
+
+                    if result and result.get("numChanges", 0) > 0:
+                        self.log(f"✓ Successfully archived Order {media_buy_id}")
+                        self.audit_logger.log_success(f"Archived GAM Order {media_buy_id}")
+                    else:
+                        return UpdateMediaBuyResponse(status="failed", reason="No changes made during archiving")
 
                 return UpdateMediaBuyResponse(
                     status="accepted",

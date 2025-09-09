@@ -571,3 +571,56 @@ To enable maintenance mode:
    }
    error_page 503 /maintenance.html;
    ```
+
+## Backup and Recovery
+
+### PostgreSQL Backup
+
+```bash
+# Full backup
+docker exec postgres pg_dump -U adcp_user adcp > backup.sql
+
+# Compressed backup
+docker exec postgres pg_dump -U adcp_user adcp | gzip > backup.sql.gz
+
+# Restore
+docker exec -i postgres psql -U adcp_user adcp < backup.sql
+```
+
+### SQLite Backup
+
+```bash
+# Simple copy
+cp adcp_local.db backup.db
+
+# With active connections
+sqlite3 adcp_local.db ".backup backup.db"
+```
+
+## Production Considerations
+
+### Security
+
+- Always use HTTPS in production
+- Rotate API tokens regularly
+- Monitor audit logs for anomalies
+- Keep dependencies updated
+- Input validation enforced on all API endpoints
+- ID formats validated to prevent injection attacks
+- Timezone strings validated against pytz database
+- Temporary files cleaned up with try/finally blocks
+- Database queries use parameterized statements only
+
+### Performance
+
+- Use PostgreSQL for production
+- Enable connection pooling
+- Implement caching where appropriate
+- Monitor resource usage
+
+### Scaling
+
+- Database replication for read scaling
+- Load balancer for multiple app instances
+- Consider CDN for static assets
+- Queue system for async tasks
