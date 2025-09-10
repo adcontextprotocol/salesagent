@@ -1077,8 +1077,21 @@ async def get_signals(
 
 
 @mcp.tool
-def create_media_buy(req: CreateMediaBuyRequest, context: Context) -> CreateMediaBuyResponse:
+def create_media_buy(po_number: str, context: Context = None, **kwargs) -> CreateMediaBuyResponse:
+    """Create a media buy with the specified parameters.
+
+    Args:
+        po_number: Purchase order number (required)
+        context: FastMCP context (automatically provided)
+        **kwargs: Additional parameters for CreateMediaBuyRequest (buyer_ref, packages, start_time, etc.)
+
+    Returns:
+        CreateMediaBuyResponse with media buy details
+    """
     start_time = time.time()
+
+    # Create request object from individual parameters (MCP-compliant)
+    req = CreateMediaBuyRequest(po_number=po_number, **kwargs)
 
     # Extract testing context first
     testing_ctx = get_testing_context(context)
@@ -1411,8 +1424,23 @@ def create_media_buy(req: CreateMediaBuyRequest, context: Context) -> CreateMedi
 
 
 @mcp.tool
-def check_media_buy_status(req: CheckMediaBuyStatusRequest, context: Context) -> CheckMediaBuyStatusResponse:
-    """Check the status of a media buy using the context_id or media_buy_id."""
+def check_media_buy_status(
+    media_buy_id: str = None, buyer_ref: str = None, strategy_id: str = None, context: Context = None
+) -> CheckMediaBuyStatusResponse:
+    """Check the status of a media buy using the media_buy_id or buyer_ref.
+
+    Args:
+        media_buy_id: Media buy ID to check (optional)
+        buyer_ref: Buyer reference to check (optional)
+        strategy_id: Optional strategy ID for simulation context
+        context: FastMCP context (automatically provided)
+
+    Returns:
+        CheckMediaBuyStatusResponse with media buy status
+    """
+    # Create request object from individual parameters (MCP-compliant)
+    req = CheckMediaBuyStatusRequest(media_buy_id=media_buy_id, buyer_ref=buyer_ref, strategy_id=strategy_id)
+
     _get_principal_id_from_context(context)
 
     # Get the media_buy_id - either directly provided or from buyer_ref
@@ -1509,7 +1537,26 @@ def check_media_buy_status(req: CheckMediaBuyStatusRequest, context: Context) ->
 
 
 @mcp.tool
-def add_creative_assets(req: AddCreativeAssetsRequest, context: Context) -> AddCreativeAssetsResponse:
+def add_creative_assets(
+    assets: list[dict], media_buy_id: str = None, buyer_ref: str = None, context: Context = None
+) -> AddCreativeAssetsResponse:
+    """Add creative assets to a media buy.
+
+    Args:
+        assets: List of creative asset objects to add
+        media_buy_id: Media buy ID (optional)
+        buyer_ref: Buyer reference (optional)
+        context: FastMCP context (automatically provided)
+
+    Returns:
+        AddCreativeAssetsResponse with results
+    """
+    # Create request object from individual parameters (MCP-compliant)
+    from src.core.schemas import Creative
+
+    creative_objects = [Creative(**asset) if isinstance(asset, dict) else asset for asset in assets]
+    req = AddCreativeAssetsRequest(assets=creative_objects, media_buy_id=media_buy_id, buyer_ref=buyer_ref)
+
     # AdCP v2.4 - Handle both media_buy_id and buyer_ref
     if req.media_buy_id:
         _verify_principal(req.media_buy_id, context)
@@ -1759,8 +1806,20 @@ def legacy_update_media_buy(req: LegacyUpdateMediaBuyRequest, context: Context):
 
 # Unified update tools
 @mcp.tool
-def update_media_buy(req: UpdateMediaBuyRequest, context: Context) -> UpdateMediaBuyResponse:
-    """Update a media buy with campaign-level and/or package-level changes."""
+def update_media_buy(media_buy_id: str, context: Context = None, **kwargs) -> UpdateMediaBuyResponse:
+    """Update a media buy with campaign-level and/or package-level changes.
+
+    Args:
+        media_buy_id: Media buy ID to update (required)
+        context: FastMCP context (automatically provided)
+        **kwargs: Additional update parameters (buyer_ref, packages, start_time, etc.)
+
+    Returns:
+        UpdateMediaBuyResponse with updated media buy details
+    """
+    # Create request object from individual parameters (MCP-compliant)
+    req = UpdateMediaBuyRequest(media_buy_id=media_buy_id, **kwargs)
+
     _verify_principal(req.media_buy_id, context)
     _, principal_id = media_buys[req.media_buy_id]
     tenant = get_current_tenant()
