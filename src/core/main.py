@@ -1079,21 +1079,73 @@ async def get_signals(
 
 
 @mcp.tool
-def create_media_buy(po_number: str, context: Context = None, **kwargs) -> CreateMediaBuyResponse:
+def create_media_buy(
+    po_number: str,
+    buyer_ref: str = None,
+    packages: list = None,
+    start_time: str = None,
+    end_time: str = None,
+    budget: dict = None,
+    product_ids: list = None,
+    start_date: str = None,
+    end_date: str = None,
+    total_budget: float = None,
+    targeting_overlay: dict = None,
+    pacing: str = "even",
+    daily_budget: float = None,
+    creatives: list = None,
+    required_axe_signals: list = None,
+    enable_creative_macro: bool = False,
+    strategy_id: str = None,
+    context: Context = None,
+) -> CreateMediaBuyResponse:
     """Create a media buy with the specified parameters.
 
     Args:
         po_number: Purchase order number (required)
+        buyer_ref: Buyer reference for tracking
+        packages: Array of packages with products and budgets
+        start_time: Campaign start time (ISO 8601)
+        end_time: Campaign end time (ISO 8601)
+        budget: Overall campaign budget
+        product_ids: Legacy: Product IDs (converted to packages)
+        start_date: Legacy: Start date (converted to start_time)
+        end_date: Legacy: End date (converted to end_time)
+        total_budget: Legacy: Total budget (converted to Budget object)
+        targeting_overlay: Targeting overlay configuration
+        pacing: Pacing strategy (even, asap, daily_budget)
+        daily_budget: Daily budget limit
+        creatives: Creative assets for the campaign
+        required_axe_signals: Required targeting signals
+        enable_creative_macro: Enable AXE to provide creative_macro signal
+        strategy_id: Optional strategy ID for linking operations
         context: FastMCP context (automatically provided)
-        **kwargs: Additional parameters for CreateMediaBuyRequest (buyer_ref, packages, start_time, etc.)
 
     Returns:
         CreateMediaBuyResponse with media buy details
     """
-    start_time = time.time()
+    request_start_time = time.time()
 
     # Create request object from individual parameters (MCP-compliant)
-    req = CreateMediaBuyRequest(po_number=po_number, **kwargs)
+    req = CreateMediaBuyRequest(
+        po_number=po_number,
+        buyer_ref=buyer_ref,
+        packages=packages,
+        start_time=start_time,
+        end_time=end_time,
+        budget=budget,
+        product_ids=product_ids,
+        start_date=start_date,
+        end_date=end_date,
+        total_budget=total_budget,
+        targeting_overlay=targeting_overlay,
+        pacing=pacing,
+        daily_budget=daily_budget,
+        creatives=creatives,
+        required_axe_signals=required_axe_signals,
+        enable_creative_macro=enable_creative_macro,
+        strategy_id=strategy_id,
+    )
 
     # Extract testing context first
     testing_ctx = get_testing_context(context)
