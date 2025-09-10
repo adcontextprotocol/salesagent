@@ -100,6 +100,7 @@ from src.core.schemas import (
     Signal,
     SimulationControlRequest,
     SimulationControlResponse,
+    Targeting,
     UpdateMediaBuyRequest,
     UpdateMediaBuyResponse,
     UpdatePackageRequest,
