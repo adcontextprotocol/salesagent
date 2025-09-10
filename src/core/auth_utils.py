@@ -78,23 +78,40 @@ def get_principal_from_context(context: Context | None) -> str | None:
         Principal ID if authenticated, None otherwise
     """
     if not context:
+        console.print("[yellow]DEBUG: No context provided[/yellow]")
         return None
 
     try:
+        # Debug: Print context structure
+        console.print(f"[yellow]DEBUG: Context type: {type(context)}[/yellow]")
+        if hasattr(context, "meta"):
+            console.print(f"[yellow]DEBUG: Context.meta: {context.meta}[/yellow]")
+        if hasattr(context, "headers"):
+            console.print(f"[yellow]DEBUG: Context.headers: {context.headers}[/yellow]")
+
         # Extract token from headers
+        token = None
         if hasattr(context, "meta") and isinstance(context.meta, dict):
             headers = context.meta.get("headers", {})
+            console.print(f"[yellow]DEBUG: Extracted headers from meta: {headers}[/yellow]")
             token = headers.get("x-adcp-auth")
         elif hasattr(context, "headers"):
             token = context.headers.get("x-adcp-auth")
+            console.print(f"[yellow]DEBUG: Extracted token from context.headers: {token}[/yellow]")
         else:
+            console.print("[yellow]DEBUG: No headers found in context[/yellow]")
             return None
 
+        console.print(f"[yellow]DEBUG: Final extracted token: {token}[/yellow]")
+
         if not token:
+            console.print("[yellow]DEBUG: No token found in headers[/yellow]")
             return None
 
         # Validate token and get principal ID
-        return get_principal_from_token(token)
+        principal_id = get_principal_from_token(token)
+        console.print(f"[yellow]DEBUG: Token lookup result: {principal_id}[/yellow]")
+        return principal_id
 
     except Exception as e:
         console.print(f"[red]Error extracting principal from context: {e}[/red]")
