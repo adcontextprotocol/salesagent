@@ -82,16 +82,26 @@ def get_principal_from_context(context: Context | None) -> str | None:
 
     try:
         # Extract token from headers
+        token = None
+        headers_found = {}
+
         if hasattr(context, "meta") and isinstance(context.meta, dict):
-            headers = context.meta.get("headers", {})
-            token = headers.get("x-adcp-auth")
+            headers_found = context.meta.get("headers", {})
+            token = headers_found.get("x-adcp-auth")
+            console.print(f"[blue]Headers from context.meta: {list(headers_found.keys())}[/blue]")
         elif hasattr(context, "headers"):
-            token = context.headers.get("x-adcp-auth")
+            headers_found = context.headers
+            token = headers_found.get("x-adcp-auth")
+            console.print(f"[blue]Headers from context.headers: {list(headers_found.keys())}[/blue]")
         else:
+            console.print("[red]No headers found in context![/red]")
             return None
 
         if not token:
+            console.print(f"[red]No x-adcp-auth token found. Available headers: {list(headers_found.keys())}[/red]")
             return None
+
+        console.print(f"[green]Found token: {token[:20]}...[/green]")
 
         # Validate token and get principal ID
         return get_principal_from_token(token)
