@@ -643,7 +643,7 @@ async def get_products(brief: str, promoted_offering: str = None, context: Conte
 
     Args:
         brief: Brief description of the advertising campaign or requirements
-        promoted_offering: What is being promoted/advertised (required per AdCP spec)
+        promoted_offering: What is being promoted/advertised (optional)
         context: FastMCP context (automatically provided)
 
     Returns:

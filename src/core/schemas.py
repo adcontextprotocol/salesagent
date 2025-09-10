@@ -952,9 +952,9 @@ class UpdatePerformanceIndexResponse(BaseModel):
 # --- Discovery ---
 class GetProductsRequest(BaseModel):
     brief: str
-    promoted_offering: str = Field(
-        ...,
-        description="Description of the advertiser and the product or service being promoted (REQUIRED per AdCP spec)",
+    promoted_offering: str | None = Field(
+        None,
+        description="Description of the advertiser and the product or service being promoted (optional)",
     )
     strategy_id: str | None = Field(
         None,

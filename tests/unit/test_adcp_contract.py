@@ -169,9 +169,9 @@ class TestAdCPContract:
         assert request.brief is not None
         assert request.promoted_offering is not None
 
-        # Should fail without promoted_offering (AdCP requirement)
-        with pytest.raises(ValueError):
-            GetProductsRequest(brief="Just a brief")
+        # Should work without promoted_offering (now optional)
+        request_minimal = GetProductsRequest(brief="Just a brief")
+        assert request_minimal.promoted_offering is None
 
     def test_adcp_create_media_buy_request(self):
         """Test AdCP create_media_buy request structure."""
