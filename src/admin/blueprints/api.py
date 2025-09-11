@@ -438,8 +438,8 @@ def mcp_test_call():
             client = Client(transport=transport)
 
             async with client:
-                # Wrap params in 'req' object as expected by MCP tools
-                tool_params = {"req": params}
+                # Pass params directly as per MCP specification (no req wrapper)
+                tool_params = params
                 result = await client.call_tool(tool_name, tool_params)
 
                 # Extract the structured content from the result

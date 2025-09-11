@@ -400,7 +400,7 @@ class AdCPRequestHandler(RequestHandler):
                     tenant_id,
                     principal_id,
                     result.get("success", False),
-                    {"query": text[:100], "success": result.get("success", False)},
+                    {"query": combined_text[:100], "success": result.get("success", False)},
                     result.get("message") if not result.get("success") else None,
                 )
                 if result.get("success"):
@@ -448,7 +448,7 @@ class AdCPRequestHandler(RequestHandler):
                     tenant_id,
                     principal_id,
                     True,
-                    {"query": text[:100], "response_type": "capabilities"},
+                    {"query": combined_text[:100], "response_type": "capabilities"},
                 )
                 task.artifacts = [
                     Artifact(
