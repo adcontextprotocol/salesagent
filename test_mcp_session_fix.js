@@ -16,7 +16,7 @@ async function testMCPConnection() {
     {
       requestInit: {
         headers: {
-          'x-adcp-auth': 'UhwoigyVKdd6GT8hS04cc51ckGfi8qXpZL6OvS2i2cU'
+          'x-adcp-auth': process.env.TEST_ADCP_TOKEN || 'your-test-token-here'
         }
       }
     }
