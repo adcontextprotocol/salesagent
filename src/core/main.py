@@ -100,6 +100,7 @@ from src.core.schemas import (
     Signal,
     SimulationControlRequest,
     SimulationControlResponse,
+    Targeting,
     UpdateMediaBuyRequest,
     UpdateMediaBuyResponse,
     UpdatePackageRequest,
@@ -120,6 +121,8 @@ from pydantic import BaseModel
 class ApproveAdaptationRequest(BaseModel):
     creative_id: str
     adaptation_id: str
+    approve: bool = True
+    modifications: dict[str, Any] | None = None
 
 
 class ApproveAdaptationResponse(BaseModel):
@@ -251,13 +254,13 @@ def get_principal_from_context(context: Context | None) -> str | None:
         return None
 
     try:
-        # Get the HTTP request from context
-        request = context.get_http_request()
-        if not request:
+        # Get headers from FastMCP context metadata
+        headers = context.meta.get("headers", {}) if hasattr(context, "meta") else {}
+        if not headers:
             return None
 
-        # Get the x-adcp-auth header (FastMCP v2.11.0+ properly forwards this)
-        auth_token = request.headers.get("x-adcp-auth")
+        # Get the x-adcp-auth header (FastMCP forwards this in context.meta)
+        auth_token = headers.get("x-adcp-auth")
         if not auth_token:
             return None
 
@@ -265,11 +268,11 @@ def get_principal_from_context(context: Context | None) -> str | None:
         requested_tenant_id = None
 
         # 1. Check x-adcp-tenant header (set by middleware for path-based routing)
-        requested_tenant_id = request.headers.get("x-adcp-tenant")
+        requested_tenant_id = headers.get("x-adcp-tenant")
 
         # 2. If not found, check host header for subdomain
         if not requested_tenant_id:
-            host = request.headers.get("host", "")
+            host = headers.get("host", "")
             subdomain = host.split(".")[0] if "." in host else None
             if subdomain and subdomain not in ["localhost", "adcp-sales-agent", "www"]:
                 requested_tenant_id = subdomain
@@ -401,7 +404,11 @@ except RuntimeError as e:
     else:
         raise
 
-mcp = FastMCP(name="AdCPSalesAgent")
+mcp = FastMCP(
+    name="AdCPSalesAgent",
+    # Use stateless HTTP mode to avoid session requirements
+    stateless_http=True,
+)
 
 # Initialize creative engine with minimal config (will be tenant-specific later)
 creative_engine_config = {}
@@ -635,14 +642,21 @@ def log_tool_activity(context: Context, tool_name: str, start_time: float = None
 
 
 @mcp.tool
-async def get_products(req: GetProductsRequest, context: Context) -> GetProductsResponse:
+async def get_products(brief: str, promoted_offering: str, context: Context = None) -> GetProductsResponse:
     """Get available products matching the brief.
 
-    This tool now uses automatic context management. The context parameter
-    can be either a FastMCP Context (for backward compatibility) or a ToolContext
-    (for new context management).
+    Args:
+        brief: Brief description of the advertising campaign or requirements
+        promoted_offering: What is being promoted/advertised (required per AdCP spec)
+        context: FastMCP context (automatically provided)
+
+    Returns:
+        GetProductsResponse containing matching products
     """
     from src.core.tool_context import ToolContext
+
+    # Create request object from individual parameters (MCP-compliant)
+    req = GetProductsRequest(brief=brief or "", promoted_offering=promoted_offering)
 
     start_time = time.time()
 
@@ -953,8 +967,24 @@ def list_creative_formats(context: Context) -> ListCreativeFormatsResponse:
 
 
 @mcp.tool
-async def get_signals(req: GetSignalsRequest, context: Context) -> GetSignalsResponse:
-    """Optional endpoint for discovering available signals (audiences, contextual, etc.)"""
+async def get_signals(
+    query: str = None, type: str = None, category: str = None, limit: int = None, context: Context = None
+) -> GetSignalsResponse:
+    """Optional endpoint for discovering available signals (audiences, contextual, etc.)
+
+    Args:
+        query: Optional query string to filter signals by name or description
+        type: Optional signal type filter (e.g., 'audience', 'contextual')
+        category: Optional category filter
+        limit: Optional limit on number of results
+        context: FastMCP context (automatically provided)
+
+    Returns:
+        GetSignalsResponse containing matching signals
+    """
+    # Create request object from individual parameters (MCP-compliant)
+    req = GetSignalsRequest(query=query, type=type, category=category, limit=limit)
+
     _get_principal_id_from_context(context)
 
     # Get tenant information
@@ -1054,8 +1084,73 @@ async def get_signals(req: GetSignalsRequest, context: Context) -> GetSignalsRes
 
 
 @mcp.tool
-def create_media_buy(req: CreateMediaBuyRequest, context: Context) -> CreateMediaBuyResponse:
-    start_time = time.time()
+def create_media_buy(
+    po_number: str,
+    buyer_ref: str = None,
+    packages: list = None,
+    start_time: str = None,
+    end_time: str = None,
+    budget: dict = None,
+    product_ids: list = None,
+    start_date: str = None,
+    end_date: str = None,
+    total_budget: float = None,
+    targeting_overlay: dict = None,
+    pacing: str = "even",
+    daily_budget: float = None,
+    creatives: list = None,
+    required_axe_signals: list = None,
+    enable_creative_macro: bool = False,
+    strategy_id: str = None,
+    context: Context = None,
+) -> CreateMediaBuyResponse:
+    """Create a media buy with the specified parameters.
+
+    Args:
+        po_number: Purchase order number (required)
+        buyer_ref: Buyer reference for tracking
+        packages: Array of packages with products and budgets
+        start_time: Campaign start time (ISO 8601)
+        end_time: Campaign end time (ISO 8601)
+        budget: Overall campaign budget
+        product_ids: Legacy: Product IDs (converted to packages)
+        start_date: Legacy: Start date (converted to start_time)
+        end_date: Legacy: End date (converted to end_time)
+        total_budget: Legacy: Total budget (converted to Budget object)
+        targeting_overlay: Targeting overlay configuration
+        pacing: Pacing strategy (even, asap, daily_budget)
+        daily_budget: Daily budget limit
+        creatives: Creative assets for the campaign
+        required_axe_signals: Required targeting signals
+        enable_creative_macro: Enable AXE to provide creative_macro signal
+        strategy_id: Optional strategy ID for linking operations
+        context: FastMCP context (automatically provided)
+
+    Returns:
+        CreateMediaBuyResponse with media buy details
+    """
+    request_start_time = time.time()
+
+    # Create request object from individual parameters (MCP-compliant)
+    req = CreateMediaBuyRequest(
+        po_number=po_number,
+        buyer_ref=buyer_ref,
+        packages=packages,
+        start_time=start_time,
+        end_time=end_time,
+        budget=budget,
+        product_ids=product_ids,
+        start_date=start_date,
+        end_date=end_date,
+        total_budget=total_budget,
+        targeting_overlay=targeting_overlay,
+        pacing=pacing,
+        daily_budget=daily_budget,
+        creatives=creatives,
+        required_axe_signals=required_axe_signals,
+        enable_creative_macro=enable_creative_macro,
+        strategy_id=strategy_id,
+    )
 
     # Extract testing context first
     testing_ctx = get_testing_context(context)
@@ -1388,8 +1483,23 @@ def create_media_buy(req: CreateMediaBuyRequest, context: Context) -> CreateMedi
 
 
 @mcp.tool
-def check_media_buy_status(req: CheckMediaBuyStatusRequest, context: Context) -> CheckMediaBuyStatusResponse:
-    """Check the status of a media buy using the context_id or media_buy_id."""
+def check_media_buy_status(
+    media_buy_id: str = None, buyer_ref: str = None, strategy_id: str = None, context: Context = None
+) -> CheckMediaBuyStatusResponse:
+    """Check the status of a media buy using the media_buy_id or buyer_ref.
+
+    Args:
+        media_buy_id: Media buy ID to check (optional)
+        buyer_ref: Buyer reference to check (optional)
+        strategy_id: Optional strategy ID for simulation context
+        context: FastMCP context (automatically provided)
+
+    Returns:
+        CheckMediaBuyStatusResponse with media buy status
+    """
+    # Create request object from individual parameters (MCP-compliant)
+    req = CheckMediaBuyStatusRequest(media_buy_id=media_buy_id, buyer_ref=buyer_ref, strategy_id=strategy_id)
+
     _get_principal_id_from_context(context)
 
     # Get the media_buy_id - either directly provided or from buyer_ref
@@ -1486,7 +1596,26 @@ def check_media_buy_status(req: CheckMediaBuyStatusRequest, context: Context) ->
 
 
 @mcp.tool
-def add_creative_assets(req: AddCreativeAssetsRequest, context: Context) -> AddCreativeAssetsResponse:
+def add_creative_assets(
+    assets: list[dict], media_buy_id: str = None, buyer_ref: str = None, context: Context = None
+) -> AddCreativeAssetsResponse:
+    """Add creative assets to a media buy.
+
+    Args:
+        assets: List of creative asset objects to add
+        media_buy_id: Media buy ID (optional)
+        buyer_ref: Buyer reference (optional)
+        context: FastMCP context (automatically provided)
+
+    Returns:
+        AddCreativeAssetsResponse with results
+    """
+    # Create request object from individual parameters (MCP-compliant)
+    from src.core.schemas import Creative
+
+    creative_objects = [Creative(**asset) if isinstance(asset, dict) else asset for asset in assets]
+    req = AddCreativeAssetsRequest(assets=creative_objects, media_buy_id=media_buy_id, buyer_ref=buyer_ref)
+
     # AdCP v2.4 - Handle both media_buy_id and buyer_ref
     if req.media_buy_id:
         _verify_principal(req.media_buy_id, context)
@@ -1608,37 +1737,63 @@ def add_creative_assets(req: AddCreativeAssetsRequest, context: Context) -> AddC
 
 
 @mcp.tool
-def check_creative_status(req: CheckCreativeStatusRequest, context: Context) -> CheckCreativeStatusResponse:
+def check_creative_status(creative_ids: list[str], context: Context = None) -> CheckCreativeStatusResponse:
+    """Check the status of creative assets.
+
+    Args:
+        creative_ids: List of creative IDs to check status for
+        context: FastMCP context (automatically provided)
+
+    Returns:
+        CheckCreativeStatusResponse containing creative status information
+    """
+    # Create request object from individual parameters (MCP-compliant)
+    req = CheckCreativeStatusRequest(creative_ids=creative_ids)
+
     statuses = [creative_statuses.get(cid) for cid in req.creative_ids if cid in creative_statuses]
     return CheckCreativeStatusResponse(statuses=statuses)
 
 
-"""
-TODO: Fix schema - ApproveAdaptationRequest not defined
 @mcp.tool
-def approve_adaptation(req: ApproveAdaptationRequest, context: Context) -> ApproveAdaptationResponse:
+def approve_adaptation(
+    creative_id: str,
+    adaptation_id: str,
+    approve: bool = True,
+    modifications: dict[str, Any] = None,
+    context: Context = None,
+) -> ApproveAdaptationResponse:
+    """Approve or reject a suggested creative adaptation.
+
+    Args:
+        creative_id: ID of the creative to adapt
+        adaptation_id: ID of the specific adaptation to approve/reject
+        approve: Whether to approve (True) or reject (False) the adaptation
+        modifications: Optional modifications to apply to the adaptation
+        context: FastMCP context (automatically provided)
+
+    Returns:
+        ApproveAdaptationResponse with success status and adapted creative details
+    """
+    # Create request object from individual parameters (MCP-compliant)
+    req = ApproveAdaptationRequest(
+        creative_id=creative_id, adaptation_id=adaptation_id, approve=approve, modifications=modifications
+    )
+
     # Approve a suggested creative adaptation.
     principal_id = _get_principal_id_from_context(context)
 
     # Verify creative ownership
     if req.creative_id not in creative_library:
-        return ApproveAdaptationResponse(
-            success=False,
-            message=f"Creative '{req.creative_id}' not found"
-        )
+        return ApproveAdaptationResponse(success=False, message=f"Creative '{req.creative_id}' not found")
 
     creative = creative_library[req.creative_id]
     if creative.principal_id != principal_id:
-        return ApproveAdaptationResponse(
-            success=False,
-            message=f"Principal does not own creative '{req.creative_id}'"
-        )
+        return ApproveAdaptationResponse(success=False, message=f"Principal does not own creative '{req.creative_id}'")
 
     # Check if the creative has this adaptation
     if req.creative_id not in creative_statuses:
         return ApproveAdaptationResponse(
-            success=False,
-            message=f"Creative '{req.creative_id}' has no status information"
+            success=False, message=f"Creative '{req.creative_id}' has no status information"
         )
 
     status = creative_statuses[req.creative_id]
@@ -1650,21 +1805,17 @@ def approve_adaptation(req: ApproveAdaptationRequest, context: Context) -> Appro
 
     if not adaptation:
         return ApproveAdaptationResponse(
-            success=False,
-            message=f"Adaptation '{req.adaptation_id}' not found for creative '{req.creative_id}'"
+            success=False, message=f"Adaptation '{req.adaptation_id}' not found for creative '{req.creative_id}'"
         )
 
     if not req.approve:
-        return ApproveAdaptationResponse(
-            success=True,
-            message=f"Adaptation '{req.adaptation_id}' rejected"
-        )
+        return ApproveAdaptationResponse(success=True, message=f"Adaptation '{req.adaptation_id}' rejected")
 
     # Create the adapted creative
     new_creative_id = f"{req.creative_id}_{adaptation.format_id}_adapted"
     new_name = adaptation.name
-    if req.modifications and 'name' in req.modifications:
-        new_name = req.modifications['name']
+    if req.modifications and "name" in req.modifications:
+        new_name = req.modifications["name"]
 
     new_creative = Creative(
         creative_id=new_creative_id,
@@ -1675,12 +1826,12 @@ def approve_adaptation(req: ApproveAdaptationRequest, context: Context) -> Appro
         name=new_name,
         click_through_url=creative.click_through_url,
         metadata={
-            'adapted_from': req.creative_id,
-            'adaptation_id': req.adaptation_id,
-            'changes': adaptation.changes_summary
+            "adapted_from": req.creative_id,
+            "adaptation_id": req.adaptation_id,
+            "changes": adaptation.changes_summary,
         },
         created_at=datetime.now(),
-        updated_at=datetime.now()
+        updated_at=datetime.now(),
     )
 
     creative_library[new_creative_id] = new_creative
@@ -1690,14 +1841,15 @@ def approve_adaptation(req: ApproveAdaptationRequest, context: Context) -> Appro
         creative_id=new_creative_id,
         status="approved",
         detail="Adapted creative auto-approved",
-        suggested_adaptations=[]
+        suggested_adaptations=[],
     )
     creative_statuses[new_creative_id] = new_status
 
     # Log the adaptation
     from src.core.audit_logger import get_audit_logger
+
     tenant = get_current_tenant()
-    logger = get_audit_logger("AdCP", tenant['tenant_id'])
+    logger = get_audit_logger("AdCP", tenant["tenant_id"])
     logger.log_operation(
         operation="approve_adaptation",
         principal_name=get_principal_object(principal_id).name,
@@ -1707,26 +1859,50 @@ def approve_adaptation(req: ApproveAdaptationRequest, context: Context) -> Appro
         details={
             "original_creative_id": req.creative_id,
             "new_creative_id": new_creative_id,
-            "adaptation_id": req.adaptation_id
-        }
+            "adaptation_id": req.adaptation_id,
+        },
     )
 
     return ApproveAdaptationResponse(
         success=True,
         new_creative=new_creative,
         status=new_status,
-        message=f"Adaptation approved and creative '{new_creative_id}' generated"
+        message=f"Adaptation approved and creative '{new_creative_id}' generated",
     )
-"""
 
 
 @mcp.tool
-def legacy_update_media_buy(req: LegacyUpdateMediaBuyRequest, context: Context):
-    """Legacy tool for backward compatibility."""
+def legacy_update_media_buy(
+    media_buy_id: str,
+    new_budget: float = None,
+    new_targeting_overlay: Targeting = None,
+    creative_assignments: dict[str, list[str]] = None,
+    context: Context = None,
+):
+    """Legacy tool for backward compatibility.
+
+    Args:
+        media_buy_id: ID of the media buy to update
+        new_budget: New budget amount for the media buy
+        new_targeting_overlay: New targeting overlay to apply
+        creative_assignments: Creative assignments mapping
+        context: FastMCP context (automatically provided)
+
+    Returns:
+        Dictionary with operation status
+    """
+    # Create request object from individual parameters (MCP-compliant)
+    req = LegacyUpdateMediaBuyRequest(
+        media_buy_id=media_buy_id,
+        new_budget=new_budget,
+        new_targeting_overlay=new_targeting_overlay,
+        creative_assignments=creative_assignments,
+    )
+
     _verify_principal(req.media_buy_id, context)
     buy_request, _ = media_buys[req.media_buy_id]
-    if req.new_total_budget:
-        buy_request.total_budget = req.new_total_budget
+    if req.new_budget:
+        buy_request.total_budget = req.new_budget
     if req.new_targeting_overlay:
         buy_request.targeting_overlay = req.new_targeting_overlay
     if req.creative_assignments:
@@ -1736,8 +1912,63 @@ def legacy_update_media_buy(req: LegacyUpdateMediaBuyRequest, context: Context):
 
 # Unified update tools
 @mcp.tool
-def update_media_buy(req: UpdateMediaBuyRequest, context: Context) -> UpdateMediaBuyResponse:
-    """Update a media buy with campaign-level and/or package-level changes."""
+def update_media_buy(
+    media_buy_id: str,
+    buyer_ref: str = None,
+    active: bool = None,
+    flight_start_date: str = None,
+    flight_end_date: str = None,
+    budget: float = None,
+    currency: str = None,
+    targeting_overlay: dict = None,
+    start_time: str = None,
+    end_time: str = None,
+    pacing: str = None,
+    daily_budget: float = None,
+    packages: list = None,
+    creatives: list = None,
+    context: Context = None,
+) -> UpdateMediaBuyResponse:
+    """Update a media buy with campaign-level and/or package-level changes.
+
+    Args:
+        media_buy_id: Media buy ID to update (required)
+        buyer_ref: Update buyer reference
+        active: True to activate, False to pause entire campaign
+        flight_start_date: Change start date (if not started)
+        flight_end_date: Extend or shorten campaign
+        budget: Update total budget
+        currency: Update currency (ISO 4217)
+        targeting_overlay: Update global targeting
+        start_time: Update start datetime
+        end_time: Update end datetime
+        pacing: Pacing strategy (even, asap, daily_budget)
+        daily_budget: Daily spend cap across all packages
+        packages: Package-specific updates
+        creatives: Add new creatives
+        context: FastMCP context (automatically provided)
+
+    Returns:
+        UpdateMediaBuyResponse with updated media buy details
+    """
+    # Create request object from individual parameters (MCP-compliant)
+    req = UpdateMediaBuyRequest(
+        media_buy_id=media_buy_id,
+        buyer_ref=buyer_ref,
+        active=active,
+        flight_start_date=flight_start_date,
+        flight_end_date=flight_end_date,
+        budget=budget,
+        currency=currency,
+        targeting_overlay=targeting_overlay,
+        start_time=start_time,
+        end_time=end_time,
+        pacing=pacing,
+        daily_budget=daily_budget,
+        packages=packages,
+        creatives=creatives,
+    )
+
     _verify_principal(req.media_buy_id, context)
     _, principal_id = media_buys[req.media_buy_id]
     tenant = get_current_tenant()
@@ -1941,8 +2172,25 @@ def update_media_buy(req: UpdateMediaBuyRequest, context: Context) -> UpdateMedi
 
 
 @mcp.tool
-def update_package(req: UpdatePackageRequest, context: Context) -> UpdateMediaBuyResponse:
-    """Update one or more packages within a media buy."""
+def update_package(
+    media_buy_id: str, packages: list[dict[str, Any]], today: date = None, context: Context = None
+) -> UpdateMediaBuyResponse:
+    """Update one or more packages within a media buy.
+
+    Args:
+        media_buy_id: ID of the media buy containing packages to update
+        packages: List of package updates with package_id and optional fields (active, budget, impressions, cpm, etc.)
+        today: Date for testing/simulation purposes
+        context: FastMCP context (automatically provided)
+
+    Returns:
+        UpdateMediaBuyResponse with operation status and details
+    """
+    # Create request object from individual parameters (MCP-compliant)
+    # Convert dict packages to PackageUpdate objects
+    package_updates = [PackageUpdate(**pkg) for pkg in packages]
+    req = UpdatePackageRequest(media_buy_id=media_buy_id, packages=package_updates, today=today)
+
     _verify_principal(req.media_buy_id, context)
     _, principal_id = media_buys[req.media_buy_id]
 
@@ -2207,17 +2455,58 @@ def _get_media_buy_delivery_impl(req: GetMediaBuyDeliveryRequest, context: Conte
 
 
 @mcp.tool
-def get_media_buy_delivery(req: GetMediaBuyDeliveryRequest, context: Context) -> GetMediaBuyDeliveryResponse:
-    """Get delivery data for media buys (MCP tool wrapper)."""
+def get_media_buy_delivery(
+    today: date,
+    media_buy_ids: list[str] = None,
+    buyer_refs: list[str] = None,
+    status_filter: str = "active",
+    strategy_id: str = None,
+    context: Context = None,
+) -> GetMediaBuyDeliveryResponse:
+    """Get delivery data for media buys.
+
+    Args:
+        today: Reference date for calculating delivery metrics
+        media_buy_ids: Specific media buy IDs to fetch (optional)
+        buyer_refs: Alternative: specify buyer references instead of media buy IDs (optional)
+        status_filter: Filter for which buys to fetch when IDs/refs not provided ('active', 'all', 'completed')
+        strategy_id: Optional strategy ID for consistent simulation/testing context
+        context: FastMCP context (automatically provided)
+
+    Returns:
+        GetMediaBuyDeliveryResponse with delivery data for the requested media buys
+    """
+    # Create request object from individual parameters (MCP-compliant)
+    req = GetMediaBuyDeliveryRequest(
+        media_buy_ids=media_buy_ids,
+        buyer_refs=buyer_refs,
+        status_filter=status_filter,
+        today=today,
+        strategy_id=strategy_id,
+    )
+
     return _get_media_buy_delivery_impl(req, context)
 
 
 @mcp.tool
-def get_all_media_buy_delivery(req: GetAllMediaBuyDeliveryRequest, context: Context) -> GetAllMediaBuyDeliveryResponse:
+def get_all_media_buy_delivery(
+    today: date, media_buy_ids: list[str] = None, context: Context = None
+) -> GetAllMediaBuyDeliveryResponse:
     """DEPRECATED: Use get_media_buy_delivery with filter parameter instead.
 
     This endpoint is maintained for backward compatibility only.
+
+    Args:
+        today: Reference date for calculating delivery metrics
+        media_buy_ids: Optional list of specific media buy IDs to fetch
+        context: FastMCP context (automatically provided)
+
+    Returns:
+        GetAllMediaBuyDeliveryResponse with delivery data (deprecated format)
     """
+    # Create request object from individual parameters (MCP-compliant)
+    req = GetAllMediaBuyDeliveryRequest(today=today, media_buy_ids=media_buy_ids)
+
     # Convert to unified request format
     unified_request = GetMediaBuyDeliveryRequest(
         media_buy_ids=req.media_buy_ids,
@@ -2239,8 +2528,26 @@ def get_all_media_buy_delivery(req: GetAllMediaBuyDeliveryRequest, context: Cont
 
 
 @mcp.tool
-def get_creatives(req: GetCreativesRequest, context: Context) -> GetCreativesResponse:
+def get_creatives(
+    group_id: str = None,
+    media_buy_id: str = None,
+    status: str = None,
+    tags: list[str] = None,
+    include_assignments: bool = False,
+    context: Context = None,
+) -> GetCreativesResponse:
     """Get creatives from the library with optional filtering.
+
+    Args:
+        group_id: Get creatives in a specific group (optional)
+        media_buy_id: Get creatives assigned to a specific media buy (optional)
+        status: Filter by approval status (optional)
+        tags: Filter by creative group tags (optional)
+        include_assignments: Whether to include assignment details (optional)
+        context: FastMCP context (automatically provided)
+
+    Returns:
+        GetCreativesResponse containing the filtered creatives
 
     Can filter by:
     - group_id: Get creatives in a specific group
@@ -2248,6 +2555,11 @@ def get_creatives(req: GetCreativesRequest, context: Context) -> GetCreativesRes
     - status: Filter by approval status
     - tags: Filter by creative group tags
     """
+    # Create request object from individual parameters (MCP-compliant)
+    req = GetCreativesRequest(
+        group_id=group_id, media_buy_id=media_buy_id, status=status, tags=tags, include_assignments=include_assignments
+    )
+
     principal_id = _get_principal_id_from_context(context)
 
     # Filter creatives by principal first
@@ -2303,8 +2615,23 @@ def get_creatives(req: GetCreativesRequest, context: Context) -> GetCreativesRes
 
 
 @mcp.tool
-def create_creative_group(req: CreateCreativeGroupRequest, context: Context) -> CreateCreativeGroupResponse:
-    """Create a new creative group for organizing creatives."""
+def create_creative_group(
+    name: str, description: str = None, tags: list[str] = None, context: Context = None
+) -> CreateCreativeGroupResponse:
+    """Create a new creative group for organizing creatives.
+
+    Args:
+        name: Name of the creative group
+        description: Optional description of the creative group
+        tags: Optional list of tags for categorization
+        context: FastMCP context (automatically provided)
+
+    Returns:
+        CreateCreativeGroupResponse containing the new creative group details
+    """
+    # Create request object from individual parameters (MCP-compliant)
+    req = CreateCreativeGroupRequest(name=name, description=description, tags=tags or [])
+
     principal_id = _get_principal_id_from_context(context)
 
     group = CreativeGroup(
@@ -2336,8 +2663,39 @@ def create_creative_group(req: CreateCreativeGroupRequest, context: Context) -> 
 
 
 @mcp.tool
-def create_creative(req: CreateCreativeRequest, context: Context) -> CreateCreativeResponse:
-    """Create a creative in the library (not tied to a specific media buy)."""
+def create_creative(
+    format_id: str,
+    content_uri: str,
+    name: str,
+    group_id: str = None,
+    click_through_url: str = None,
+    metadata: dict[str, Any] = None,
+    context: Context = None,
+) -> CreateCreativeResponse:
+    """Create a creative in the library (not tied to a specific media buy).
+
+    Args:
+        format_id: Format ID for the creative
+        content_uri: URI/URL of the creative content
+        name: Name of the creative
+        group_id: Optional group ID to organize the creative
+        click_through_url: Optional click-through URL for the creative
+        metadata: Optional metadata dictionary for the creative
+        context: FastMCP context (automatically provided)
+
+    Returns:
+        CreateCreativeResponse containing the new creative details
+    """
+    # Create request object from individual parameters (MCP-compliant)
+    req = CreateCreativeRequest(
+        group_id=group_id,
+        format_id=format_id,
+        content_uri=content_uri,
+        name=name,
+        click_through_url=click_through_url,
+        metadata=metadata or {},
+    )
+
     principal_id = _get_principal_id_from_context(context)
     principal = get_principal_object(principal_id)
     tenant = get_current_tenant()
@@ -2433,8 +2791,45 @@ def create_creative(req: CreateCreativeRequest, context: Context) -> CreateCreat
 
 
 @mcp.tool
-def assign_creative(req: AssignCreativeRequest, context: Context) -> AssignCreativeResponse:
-    """Assign a creative from the library to a package in a media buy."""
+def assign_creative(
+    media_buy_id: str,
+    package_id: str,
+    creative_id: str,
+    weight: int = 100,
+    percentage_goal: float = None,
+    rotation_type: str = "weighted",
+    override_click_url: str = None,
+    override_start_date: datetime = None,
+    context: Context = None,
+) -> AssignCreativeResponse:
+    """Assign a creative from the library to a package in a media buy.
+
+    Args:
+        media_buy_id: ID of the media buy
+        package_id: ID of the package within the media buy
+        creative_id: ID of the creative to assign
+        weight: Weight for creative rotation (default: 100)
+        percentage_goal: Optional percentage goal for this creative
+        rotation_type: Type of rotation ('weighted', 'sequential', 'even', default: 'weighted')
+        override_click_url: Optional override click URL
+        override_start_date: Optional override start date
+        context: FastMCP context (automatically provided)
+
+    Returns:
+        AssignCreativeResponse containing assignment details
+    """
+    # Create request object from individual parameters (MCP-compliant)
+    req = AssignCreativeRequest(
+        media_buy_id=media_buy_id,
+        package_id=package_id,
+        creative_id=creative_id,
+        weight=weight,
+        percentage_goal=percentage_goal,
+        rotation_type=rotation_type,
+        override_click_url=override_click_url,
+        override_start_date=override_start_date,
+    )
+
     _verify_principal(req.media_buy_id, context)
     principal_id = _get_principal_id_from_context(context)
     tenant = get_current_tenant()
@@ -2549,11 +2944,24 @@ def _require_admin(context: Context) -> None:
 
 
 @mcp.tool
-def get_pending_creatives(req: GetPendingCreativesRequest, context: Context) -> GetPendingCreativesResponse:
+def get_pending_creatives(
+    principal_id: str = None, limit: int = 100, context: Context = None
+) -> GetPendingCreativesResponse:
     """Admin-only: Get all pending creatives across all principals.
+
+    Args:
+        principal_id: Filter by specific principal ID (optional)
+        limit: Maximum number of pending creatives to return (default: 100)
+        context: FastMCP context (automatically provided)
+
+    Returns:
+        GetPendingCreativesResponse containing pending creatives for admin review
 
     This allows admins to review and approve/reject creatives.
     """
+    # Create request object from individual parameters (MCP-compliant)
+    req = GetPendingCreativesRequest(principal_id=principal_id, limit=limit)
+
     _require_admin(context)
 
     pending_creatives = []
@@ -2611,11 +3019,25 @@ def get_pending_creatives(req: GetPendingCreativesRequest, context: Context) -> 
 
 
 @mcp.tool
-def approve_creative(req: ApproveCreativeRequest, context: Context) -> ApproveCreativeResponse:
+def approve_creative(
+    creative_id: str, action: str, reason: str = None, context: Context = None
+) -> ApproveCreativeResponse:
     """Admin-only: Approve or reject a creative.
+
+    Args:
+        creative_id: ID of the creative to approve or reject
+        action: Action to take ('approve' or 'reject')
+        reason: Optional reason for the action
+        context: FastMCP context (automatically provided)
+
+    Returns:
+        ApproveCreativeResponse with the new creative status
 
     This updates the creative status and notifies the principal.
     """
+    # Create request object from individual parameters (MCP-compliant)
+    req = ApproveCreativeRequest(creative_id=creative_id, action=action, reason=reason)
+
     _require_admin(context)
 
     if req.creative_id not in creative_library:
@@ -2694,7 +3116,26 @@ def approve_creative(req: ApproveCreativeRequest, context: Context) -> ApproveCr
 
 
 @mcp.tool
-def update_performance_index(req: UpdatePerformanceIndexRequest, context: Context) -> UpdatePerformanceIndexResponse:
+def update_performance_index(
+    media_buy_id: str, performance_data: list[dict[str, Any]], context: Context = None
+) -> UpdatePerformanceIndexResponse:
+    """Update performance index data for a media buy.
+
+    Args:
+        media_buy_id: ID of the media buy to update
+        performance_data: List of performance data objects
+        context: FastMCP context (automatically provided)
+
+    Returns:
+        UpdatePerformanceIndexResponse with operation status
+    """
+    # Create request object from individual parameters (MCP-compliant)
+    # Convert dict performance_data to ProductPerformance objects
+    from src.core.schemas import ProductPerformance
+
+    performance_objects = [ProductPerformance(**perf) for perf in performance_data]
+    req = UpdatePerformanceIndexRequest(media_buy_id=media_buy_id, performance_data=performance_objects)
+
     _verify_principal(req.media_buy_id, context)
     buy_request, principal_id = media_buys[req.media_buy_id]
 
@@ -3387,8 +3828,22 @@ def get_targeting_capabilities(
 
 
 @mcp.tool
-def check_axe_requirements(req: CheckAXERequirementsRequest, context: Context) -> CheckAXERequirementsResponse:
-    """Check if required AXE dimensions are supported for a channel."""
+def check_axe_requirements(
+    channel: str, required_dimensions: list[str], context: Context = None
+) -> CheckAXERequirementsResponse:
+    """Check if required AXE dimensions are supported for a channel.
+
+    Args:
+        channel: Channel name to check AXE dimensions for
+        required_dimensions: List of required AXE dimension names
+        context: FastMCP context (automatically provided)
+
+    Returns:
+        CheckAXERequirementsResponse with support status and dimension availability
+    """
+    # Create request object from individual parameters (MCP-compliant)
+    req = CheckAXERequirementsRequest(channel=channel, required_dimensions=required_dimensions)
+
     from src.services.targeting_dimensions import Channel, get_axe_dimensions
 
     try:
@@ -3516,8 +3971,19 @@ def get_strategy_manager(context: Context | None) -> StrategyManager:
 
 
 @mcp.tool
-def testing_control(req: TestingControlRequest, context: Context) -> TestingControlResponse:
+def testing_control(
+    action: str, session_id: str = None, parameters: dict = None, context: Context = None
+) -> TestingControlResponse:
     """Control and manage testing features.
+
+    Args:
+        action: Action to perform ('create_session', 'cleanup_session', 'list_sessions', 'get_capabilities', 'inspect_context')
+        session_id: Optional session ID for session-specific operations
+        parameters: Optional parameters for the action
+        context: FastMCP context (automatically provided)
+
+    Returns:
+        TestingControlResponse with operation result
 
     Supports actions:
     - create_session: Create new isolated test session
@@ -3526,6 +3992,9 @@ def testing_control(req: TestingControlRequest, context: Context) -> TestingCont
     - get_capabilities: Get testing capabilities
     - inspect_context: Inspect current testing context
     """
+    # Create request object from individual parameters (MCP-compliant)
+    req = TestingControlRequest(session_id=session_id, action=action, parameters=parameters)
+
     return handle_testing_control(req, context)
 
 
