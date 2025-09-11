@@ -404,7 +404,11 @@ except RuntimeError as e:
     else:
         raise
 
-mcp = FastMCP(name="AdCPSalesAgent")
+mcp = FastMCP(
+    name="AdCPSalesAgent",
+    # Use stateless HTTP mode to avoid session requirements
+    stateless_http=True,
+)
 
 # Initialize creative engine with minimal config (will be tenant-specific later)
 creative_engine_config = {}
