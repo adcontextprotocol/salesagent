@@ -1360,6 +1360,62 @@ SubmitCreativesRequest = AddCreativeAssetsRequest
 SubmitCreativesResponse = AddCreativeAssetsResponse
 
 
+class SyncCreativesRequest(BaseModel):
+    """Request to sync creative assets to centralized library (AdCP spec compliant)."""
+
+    media_buy_id: str | None = Field(None, description="Publisher's ID of the media buy")
+    buyer_ref: str | None = Field(None, description="Buyer's reference for the media buy")
+    creatives: list[Creative] = Field(..., description="Array of creative assets to sync")
+    assign_to_packages: list[str] | None = Field(None, description="Package IDs to assign creatives to")
+    upsert: bool = Field(True, description="Whether to update existing creatives or create new ones")
+
+    @model_validator(mode="before")
+    def validate_media_buy_reference(cls, values):
+        """Ensure at least one of media_buy_id or buyer_ref is provided."""
+        if not values.get("media_buy_id") and not values.get("buyer_ref"):
+            raise ValueError("Either media_buy_id or buyer_ref must be provided")
+        return values
+
+
+class SyncCreativesResponse(BaseModel):
+    """Response from syncing creative assets (AdCP spec compliant)."""
+
+    synced_creatives: list[Creative] = Field(..., description="Successfully synced creatives")
+    failed_creatives: list[dict[str, Any]] = Field(
+        default_factory=list, description="Failed creatives with error details"
+    )
+    assignments: list[CreativeAssignment] = Field(default_factory=list, description="Creative assignments to packages")
+    message: str | None = Field(None, description="Human-readable status message")
+
+
+class ListCreativesRequest(BaseModel):
+    """Request to list and search creative library (AdCP spec compliant)."""
+
+    media_buy_id: str | None = Field(None, description="Filter by media buy ID")
+    buyer_ref: str | None = Field(None, description="Filter by buyer reference")
+    status: str | None = Field(None, description="Filter by creative status (pending, approved, rejected)")
+    format: str | None = Field(None, description="Filter by creative format")
+    tags: list[str] | None = Field(None, description="Filter by tags")
+    created_after: datetime | None = Field(None, description="Filter by creation date")
+    created_before: datetime | None = Field(None, description="Filter by creation date")
+    search: str | None = Field(None, description="Search in creative names and descriptions")
+    page: int = Field(1, ge=1, description="Page number for pagination")
+    limit: int = Field(50, ge=1, le=1000, description="Number of results per page")
+    sort_by: str | None = Field("created_date", description="Sort field (created_date, name, status)")
+    sort_order: Literal["asc", "desc"] = Field("desc", description="Sort order")
+
+
+class ListCreativesResponse(BaseModel):
+    """Response from listing creative assets (AdCP spec compliant)."""
+
+    creatives: list[Creative] = Field(..., description="Array of creative assets")
+    total_count: int = Field(..., description="Total number of creatives matching filters")
+    page: int = Field(..., description="Current page number")
+    limit: int = Field(..., description="Results per page")
+    has_more: bool = Field(..., description="Whether more pages are available")
+    message: str | None = Field(None, description="Human-readable status message")
+
+
 class CheckCreativeStatusRequest(BaseModel):
     creative_ids: list[str]
 

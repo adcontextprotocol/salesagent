@@ -8,6 +8,7 @@ import logging
 import os
 import sys
 import threading
+import uuid
 from collections.abc import AsyncGenerator
 from typing import Any
 
@@ -57,9 +58,6 @@ from src.core.audit_logger import get_audit_logger
 from src.core.auth_utils import get_principal_from_token
 from src.core.config_loader import get_current_tenant
 from src.core.main import (
-    add_creative_assets as core_add_creative_assets_tool,
-)
-from src.core.main import (
     create_media_buy as core_create_media_buy_tool,
 )
 from src.core.main import (
@@ -68,10 +66,14 @@ from src.core.main import (
 from src.core.main import (
     get_signals as core_get_signals_tool,
 )
+from src.core.main import (
+    list_creatives as core_list_creatives_tool,
+)
+from src.core.main import (
+    sync_creatives as core_sync_creatives_tool,
+)
 from src.core.schemas import (
-    AddCreativeAssetsRequest,
     CreateMediaBuyRequest,
-    GetProductsRequest,
     GetSignalsRequest,
 )
 from src.core.testing_hooks import TestingContext
@@ -626,14 +628,17 @@ class AdCPRequestHandler(RequestHandler):
 
         # Map skill names to handlers
         skill_handlers = {
-            # Core AdCP Media Buy Skills (6 total)
+            # Core AdCP Media Buy Skills
             "get_products": self._handle_get_products_skill,
             "create_media_buy": self._handle_create_media_buy_skill,
-            "add_creative_assets": self._handle_add_creative_assets_skill,
+            # AdCP Spec Creative Management (centralized library approach)
+            "sync_creatives": self._handle_sync_creatives_skill,
+            "list_creatives": self._handle_list_creatives_skill,
+            # Creative Management & Approval
             "approve_creative": self._handle_approve_creative_skill,
             "get_media_buy_status": self._handle_get_media_buy_status_skill,
             "optimize_media_buy": self._handle_optimize_media_buy_skill,
-            # Core AdCP Signals Skills (2 total)
+            # Core AdCP Signals Skills
             "get_signals": self._handle_get_signals_skill,
             "search_signals": self._handle_search_signals_skill,
             # Legacy skill names (for backward compatibility)
@@ -684,10 +689,10 @@ class AdCPRequestHandler(RequestHandler):
             if not promoted_offering and brief:
                 promoted_offering = f"Business seeking to advertise: {brief}"
 
-            request = GetProductsRequest(brief=brief, promoted_offering=promoted_offering)
-
-            # Call core function directly
-            response = await core_get_products_tool.fn(request, tool_context)
+            # Call core function directly with individual parameters, not request object
+            response = await core_get_products_tool(
+                brief=brief, promoted_offering=promoted_offering, context=tool_context
+            )
 
             # Convert to A2A response format
             return {
@@ -734,8 +739,17 @@ class AdCPRequestHandler(RequestHandler):
                 optimization_goal=parameters.get("optimization_goal", "impressions"),
             )
 
-            # Call core function directly
-            response = core_create_media_buy_tool.fn(request, tool_context)
+            # Call core function directly - map request parameters to function parameters
+            response = core_create_media_buy_tool(
+                po_number=f"A2A-{uuid.uuid4().hex[:8]}",  # Generate PO number
+                product_ids=request.product_ids,
+                total_budget=request.total_budget,
+                start_date=request.flight_start_date,
+                end_date=request.flight_end_date,
+                targeting_overlay=request.custom_targeting,
+                buyer_ref=f"A2A-{tool_context.principal_id}",
+                context=tool_context,
+            )
 
             # Convert response to A2A format
             return {
@@ -750,6 +764,88 @@ class AdCPRequestHandler(RequestHandler):
         except Exception as e:
             logger.error(f"Error in create_media_buy skill: {e}")
             raise ServerError(InternalError(message=f"Failed to create media buy: {str(e)}"))
+
+    async def _handle_sync_creatives_skill(self, parameters: dict, auth_token: str) -> dict:
+        """Handle explicit sync_creatives skill invocation (AdCP spec endpoint)."""
+        try:
+            # Create ToolContext from A2A auth info
+            tool_context = self._create_tool_context_from_a2a(
+                auth_token=auth_token,
+                tool_name="sync_creatives",
+            )
+
+            # Map A2A parameters - creatives is required
+            if "creatives" not in parameters:
+                return {
+                    "success": False,
+                    "message": "Missing required parameter: 'creatives'",
+                    "required_parameters": ["creatives"],
+                    "received_parameters": list(parameters.keys()),
+                }
+
+            # Call core function with individual parameters (fixing original validation bug)
+            response = core_sync_creatives_tool(
+                creatives=parameters["creatives"],
+                media_buy_id=parameters.get("media_buy_id"),
+                buyer_ref=parameters.get("buyer_ref"),
+                assign_to_packages=parameters.get("assign_to_packages", []),
+                upsert=parameters.get("upsert", True),
+                context=tool_context,
+            )
+
+            # Convert response to A2A format
+            return {
+                "success": True,
+                "synced_creatives": [creative.model_dump() for creative in response.synced_creatives],
+                "failed_creatives": response.failed_creatives,
+                "assignments": [assignment.model_dump() for assignment in response.assignments],
+                "message": response.message or "Creatives synced successfully",
+            }
+
+        except Exception as e:
+            logger.error(f"Error in sync_creatives skill: {e}")
+            raise ServerError(InternalError(message=f"Failed to sync creatives: {str(e)}"))
+
+    async def _handle_list_creatives_skill(self, parameters: dict, auth_token: str) -> dict:
+        """Handle explicit list_creatives skill invocation (AdCP spec endpoint)."""
+        try:
+            # Create ToolContext from A2A auth info
+            tool_context = self._create_tool_context_from_a2a(
+                auth_token=auth_token,
+                tool_name="list_creatives",
+            )
+
+            # Call core function with optional parameters (fixing original validation bug)
+            response = core_list_creatives_tool(
+                media_buy_id=parameters.get("media_buy_id"),
+                buyer_ref=parameters.get("buyer_ref"),
+                status=parameters.get("status"),
+                format=parameters.get("format"),
+                tags=parameters.get("tags", []),
+                created_after=parameters.get("created_after"),
+                created_before=parameters.get("created_before"),
+                search=parameters.get("search"),
+                page=parameters.get("page", 1),
+                limit=parameters.get("limit", 50),
+                sort_by=parameters.get("sort_by", "created_date"),
+                sort_order=parameters.get("sort_order", "desc"),
+                context=tool_context,
+            )
+
+            # Convert response to A2A format
+            return {
+                "success": True,
+                "creatives": [creative.model_dump() for creative in response.creatives],
+                "total_count": response.total_count,
+                "page": response.page,
+                "limit": response.limit,
+                "has_more": response.has_more,
+                "message": response.message or "Creatives retrieved successfully",
+            }
+
+        except Exception as e:
+            logger.error(f"Error in list_creatives skill: {e}")
+            raise ServerError(InternalError(message=f"Failed to list creatives: {str(e)}"))
 
     async def _handle_add_creative_assets_skill(self, parameters: dict, auth_token: str) -> dict:
         """Handle explicit add_creative_assets skill invocation."""
@@ -786,8 +882,13 @@ class AdCPRequestHandler(RequestHandler):
                 creative_group_name=parameters.get("creative_group_name"),
             )
 
-            # Call core function directly
-            response = core_add_creative_assets_tool.fn(request, tool_context)
+            # Call core function directly with individual parameters
+            response = core_add_creative_assets_tool(
+                assets=request.assets,
+                media_buy_id=request.media_buy_id,
+                buyer_ref=request.buyer_ref,
+                context=tool_context,
+            )
 
             # Convert response to A2A format
             return {
@@ -800,6 +901,126 @@ class AdCPRequestHandler(RequestHandler):
         except Exception as e:
             logger.error(f"Error in add_creative_assets skill: {e}")
             raise ServerError(InternalError(message=f"Failed to add creative assets: {str(e)}"))
+
+    async def _handle_create_creative_skill(self, parameters: dict, auth_token: str) -> dict:
+        """Handle explicit create_creative skill invocation."""
+        try:
+            # Create ToolContext from A2A auth info
+            tool_context = self._create_tool_context_from_a2a(
+                auth_token=auth_token,
+                tool_name="create_creative",
+            )
+
+            # Map A2A parameters - format_id, content_uri, and name are required
+            required_params = ["format_id", "content_uri", "name"]
+            missing_params = [param for param in required_params if param not in parameters]
+
+            if missing_params:
+                return {
+                    "success": False,
+                    "message": f"Missing required parameters: {missing_params}",
+                    "required_parameters": required_params,
+                    "received_parameters": list(parameters.keys()),
+                }
+
+            # Call core function with individual parameters
+            response = core_create_creative_tool(
+                format_id=parameters["format_id"],
+                content_uri=parameters["content_uri"],
+                name=parameters["name"],
+                group_id=parameters.get("group_id"),
+                click_through_url=parameters.get("click_through_url"),
+                metadata=parameters.get("metadata", {}),
+                context=tool_context,
+            )
+
+            # Convert response to A2A format
+            return {
+                "success": True,
+                "creative_id": response.creative_id,
+                "message": response.message or "Creative created successfully in library",
+                "status": response.status if hasattr(response, "status") else "created",
+            }
+
+        except Exception as e:
+            logger.error(f"Error in create_creative skill: {e}")
+            raise ServerError(InternalError(message=f"Failed to create creative: {str(e)}"))
+
+    async def _handle_get_creatives_skill(self, parameters: dict, auth_token: str) -> dict:
+        """Handle explicit get_creatives skill invocation."""
+        try:
+            # Create ToolContext from A2A auth info
+            tool_context = self._create_tool_context_from_a2a(
+                auth_token=auth_token,
+                tool_name="get_creatives",
+            )
+
+            # Call core function with optional parameters
+            response = core_get_creatives_tool(
+                group_id=parameters.get("group_id"),
+                media_buy_id=parameters.get("media_buy_id"),
+                status=parameters.get("status"),
+                tags=parameters.get("tags", []),
+                include_assignments=parameters.get("include_assignments", False),
+                context=tool_context,
+            )
+
+            # Convert response to A2A format
+            return {
+                "success": True,
+                "creatives": [creative.model_dump() for creative in response.creatives],
+                "message": response.message or f"Found {len(response.creatives)} creatives",
+                "total_count": len(response.creatives),
+            }
+
+        except Exception as e:
+            logger.error(f"Error in get_creatives skill: {e}")
+            raise ServerError(InternalError(message=f"Failed to get creatives: {str(e)}"))
+
+    async def _handle_assign_creative_skill(self, parameters: dict, auth_token: str) -> dict:
+        """Handle explicit assign_creative skill invocation."""
+        try:
+            # Create ToolContext from A2A auth info
+            tool_context = self._create_tool_context_from_a2a(
+                auth_token=auth_token,
+                tool_name="assign_creative",
+            )
+
+            # Map A2A parameters - media_buy_id, package_id, and creative_id are required
+            required_params = ["media_buy_id", "package_id", "creative_id"]
+            missing_params = [param for param in required_params if param not in parameters]
+
+            if missing_params:
+                return {
+                    "success": False,
+                    "message": f"Missing required parameters: {missing_params}",
+                    "required_parameters": required_params,
+                    "received_parameters": list(parameters.keys()),
+                }
+
+            # Call core function with individual parameters
+            response = core_assign_creative_tool(
+                media_buy_id=parameters["media_buy_id"],
+                package_id=parameters["package_id"],
+                creative_id=parameters["creative_id"],
+                weight=parameters.get("weight", 100),
+                percentage_goal=parameters.get("percentage_goal"),
+                rotation_type=parameters.get("rotation_type", "weighted"),
+                override_click_url=parameters.get("override_click_url"),
+                context=tool_context,
+            )
+
+            # Convert response to A2A format
+            return {
+                "success": True,
+                "assignment_id": response.assignment_id,
+                "message": response.message or "Creative assigned successfully to media buy package",
+                "status": response.status if hasattr(response, "status") else "assigned",
+            }
+
+        except Exception as e:
+            logger.error(f"Error in assign_creative skill: {e}")
+            raise ServerError(InternalError(message=f"Failed to assign creative: {str(e)}"))
 
     async def _handle_approve_creative_skill(self, parameters: dict, auth_token: str) -> dict:
         """Handle explicit approve_creative skill invocation."""
@@ -883,14 +1104,13 @@ class AdCPRequestHandler(RequestHandler):
                 tool_name="get_products",
             )
 
-            # Create request object - need a promoted_offering for AdCP compliance
             # Extract promoted offering from the query or use a reasonable default
             promoted_offering = self._extract_promoted_offering_from_query(query)
 
-            request = GetProductsRequest(brief=query, promoted_offering=promoted_offering)
-
             # Call core function directly using the underlying function
-            response = await core_get_products_tool.fn(request, tool_context)
+            response = await core_get_products_tool(
+                brief=query, promoted_offering=promoted_offering, context=tool_context
+            )
 
             # Convert to A2A response format
             return {
@@ -1086,12 +1306,20 @@ def create_agent_card() -> AgentCard:
                 description="Create advertising campaigns with products, targeting, and budget",
                 tags=["campaign", "media", "buy", "adcp"],
             ),
+            # AdCP Spec Creative Management (centralized library approach)
             AgentSkill(
-                id="add_creative_assets",
-                name="add_creative_assets",
-                description="Upload and associate creative assets with media buys",
-                tags=["creative", "assets", "upload", "adcp"],
+                id="sync_creatives",
+                name="sync_creatives",
+                description="Upload and manage creative assets to centralized library (AdCP spec)",
+                tags=["creative", "sync", "library", "adcp", "spec"],
             ),
+            AgentSkill(
+                id="list_creatives",
+                name="list_creatives",
+                description="Search and query creative library with advanced filtering (AdCP spec)",
+                tags=["creative", "library", "search", "adcp", "spec"],
+            ),
+            # Creative Management & Approval
             AgentSkill(
                 id="approve_creative",
                 name="approve_creative",

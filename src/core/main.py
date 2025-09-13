@@ -50,10 +50,6 @@ from src.core.database.models import Product as ModelProduct
 
 # Schema models (explicit imports to avoid collisions)
 from src.core.schemas import (
-    AddCreativeAssetsRequest,
-    AddCreativeAssetsResponse,
-    # ApproveAdaptationRequest,  # Not defined in schemas yet
-    # ApproveAdaptationResponse,  # Not defined in schemas yet
     ApproveCreativeRequest,
     ApproveCreativeResponse,
     AssignCreativeRequest,
@@ -967,6 +963,412 @@ def list_creative_formats(context: Context) -> ListCreativeFormatsResponse:
 
 
 @mcp.tool
+def sync_creatives(
+    creatives: list[dict],
+    media_buy_id: str = None,
+    buyer_ref: str = None,
+    assign_to_packages: list[str] = None,
+    upsert: bool = True,
+    context: Context = None,
+) -> SyncCreativesResponse:
+    """Sync creative assets to centralized library (AdCP spec endpoint).
+
+    Primary creative management endpoint that handles:
+    - Bulk creative upload/update with upsert semantics
+    - Creative assignment to media buy packages
+    - Support for both hosted assets (media_url) and third-party tags (snippet)
+
+    Args:
+        creatives: Array of creative assets to sync
+        media_buy_id: Publisher's ID of the media buy (optional)
+        buyer_ref: Buyer's reference for the media buy (optional)
+        assign_to_packages: Package IDs to assign creatives to (optional)
+        upsert: Whether to update existing creatives or create new ones
+        context: FastMCP context (automatically provided)
+
+    Returns:
+        SyncCreativesResponse with synced creatives and assignments
+    """
+    from src.core.schemas import Creative, SyncCreativesRequest
+
+    # Create request object from individual parameters (MCP-compliant)
+    creative_objects = [Creative(**creative) if isinstance(creative, dict) else creative for creative in creatives]
+    req = SyncCreativesRequest(
+        creatives=creative_objects,
+        media_buy_id=media_buy_id,
+        buyer_ref=buyer_ref,
+        assign_to_packages=assign_to_packages or [],
+        upsert=upsert,
+    )
+
+    start_time = time.time()
+
+    # Authentication
+    principal_id = _get_principal_id_from_context(context)
+
+    # Get tenant information
+    tenant = get_current_tenant()
+    if not tenant:
+        raise ToolError("No tenant context available")
+
+    # Track synced and failed creatives
+    synced_creatives = []
+    failed_creatives = []
+    assignments = []
+
+    with get_db_session() as session:
+        # Resolve media buy
+        media_buy = None
+        if req.media_buy_id:
+            from src.core.database.models import MediaBuy
+
+            media_buy = (
+                session.query(MediaBuy).filter_by(tenant_id=tenant["tenant_id"], media_buy_id=req.media_buy_id).first()
+            )
+        elif req.buyer_ref:
+            from src.core.database.models import MediaBuy
+
+            media_buy = (
+                session.query(MediaBuy).filter_by(tenant_id=tenant["tenant_id"], buyer_ref=req.buyer_ref).first()
+            )
+
+        if not media_buy and (req.media_buy_id or req.buyer_ref):
+            raise ToolError(f"Media buy not found: {req.media_buy_id or req.buyer_ref}")
+
+        # Process each creative
+        for creative in req.creatives:
+            try:
+                # Check if creative already exists (for upsert)
+                existing_creative = None
+                if req.upsert and creative.creative_id:
+                    from src.core.database.models import Creative as DBCreative
+
+                    existing_creative = (
+                        session.query(DBCreative)
+                        .filter_by(tenant_id=tenant["tenant_id"], creative_id=creative.creative_id)
+                        .first()
+                    )
+
+                if existing_creative and req.upsert:
+                    # Update existing creative
+                    existing_creative.name = creative.name
+                    existing_creative.format_id = creative.format
+                    existing_creative.url = creative.url
+                    existing_creative.click_url = creative.click_url
+                    existing_creative.width = creative.width
+                    existing_creative.height = creative.height
+                    existing_creative.duration = creative.duration
+                    existing_creative.updated_at = datetime.now(UTC)
+
+                    # Update AdCP v1.3+ fields
+                    if creative.snippet:
+                        existing_creative.snippet = creative.snippet
+                        existing_creative.snippet_type = creative.snippet_type
+
+                    if creative.template_variables:
+                        existing_creative.template_variables = creative.template_variables
+
+                    synced_creatives.append(creative)
+
+                else:
+                    # Create new creative
+                    from src.core.database.models import Creative as DBCreative
+
+                    db_creative = DBCreative(
+                        tenant_id=tenant["tenant_id"],
+                        creative_id=creative.creative_id or str(uuid.uuid4()),
+                        name=creative.name,
+                        format_id=creative.format,
+                        url=creative.url,
+                        click_url=creative.click_url,
+                        width=creative.width,
+                        height=creative.height,
+                        duration=creative.duration,
+                        principal_id=principal_id,
+                        status="pending",
+                        created_at=datetime.now(UTC),
+                        snippet=creative.snippet,
+                        snippet_type=creative.snippet_type,
+                        template_variables=creative.template_variables,
+                    )
+
+                    session.add(db_creative)
+                    session.flush()  # Get the ID
+
+                    # Update creative_id if it was generated
+                    if not creative.creative_id:
+                        creative.creative_id = db_creative.creative_id
+
+                    synced_creatives.append(creative)
+
+                # Handle package assignments
+                if req.assign_to_packages and media_buy:
+                    for package_id in req.assign_to_packages:
+                        from src.core.database.models import CreativeAssignment as DBAssignment
+                        from src.core.schemas import CreativeAssignment
+
+                        assignment = DBAssignment(
+                            tenant_id=tenant["tenant_id"],
+                            assignment_id=str(uuid.uuid4()),
+                            media_buy_id=media_buy.media_buy_id,
+                            package_id=package_id,
+                            creative_id=creative.creative_id,
+                            weight=100,
+                            created_at=datetime.now(UTC),
+                        )
+
+                        session.add(assignment)
+                        assignments.append(
+                            CreativeAssignment(
+                                assignment_id=assignment.assignment_id,
+                                media_buy_id=assignment.media_buy_id,
+                                package_id=assignment.package_id,
+                                creative_id=assignment.creative_id,
+                                weight=assignment.weight,
+                            )
+                        )
+
+            except Exception as e:
+                failed_creatives.append({"creative_id": creative.creative_id, "name": creative.name, "error": str(e)})
+
+        session.commit()
+
+    # Audit logging
+    audit_logger = get_audit_logger("AdCP", tenant["tenant_id"])
+    audit_logger.log_operation(
+        operation="sync_creatives",
+        principal_name=principal_id,
+        principal_id=principal_id,
+        adapter_id="N/A",
+        success=len(failed_creatives) == 0,
+        details={
+            "synced_count": len(synced_creatives),
+            "failed_count": len(failed_creatives),
+            "assignment_count": len(assignments),
+            "upsert_mode": req.upsert,
+        },
+    )
+
+    # Log activity
+    log_tool_activity(context, "sync_creatives", start_time)
+
+    message = f"Synced {len(synced_creatives)} creatives"
+    if failed_creatives:
+        message += f", {len(failed_creatives)} failed"
+    if assignments:
+        message += f", {len(assignments)} assignments created"
+
+    return SyncCreativesResponse(
+        synced_creatives=synced_creatives, failed_creatives=failed_creatives, assignments=assignments, message=message
+    )
+
+
+@mcp.tool
+def list_creatives(
+    media_buy_id: str = None,
+    buyer_ref: str = None,
+    status: str = None,
+    format: str = None,
+    tags: list[str] = None,
+    created_after: str = None,
+    created_before: str = None,
+    search: str = None,
+    page: int = 1,
+    limit: int = 50,
+    sort_by: str = "created_date",
+    sort_order: str = "desc",
+    context: Context = None,
+) -> ListCreativesResponse:
+    """List and search creative library (AdCP spec endpoint).
+
+    Advanced filtering and search endpoint for the centralized creative library.
+    Supports pagination, sorting, and multiple filter criteria.
+
+    Args:
+        media_buy_id: Filter by media buy ID (optional)
+        buyer_ref: Filter by buyer reference (optional)
+        status: Filter by creative status (pending, approved, rejected) (optional)
+        format: Filter by creative format (optional)
+        tags: Filter by tags (optional)
+        created_after: Filter by creation date (ISO string) (optional)
+        created_before: Filter by creation date (ISO string) (optional)
+        search: Search in creative names and descriptions (optional)
+        page: Page number for pagination (default: 1)
+        limit: Number of results per page (default: 50, max: 1000)
+        sort_by: Sort field (created_date, name, status) (default: created_date)
+        sort_order: Sort order (asc, desc) (default: desc)
+        context: FastMCP context (automatically provided)
+
+    Returns:
+        ListCreativesResponse with filtered creative assets and pagination info
+    """
+    from src.core.schemas import Creative, ListCreativesRequest
+
+    # Parse datetime strings if provided
+    created_after_dt = None
+    created_before_dt = None
+    if created_after:
+        try:
+            created_after_dt = datetime.fromisoformat(created_after.replace("Z", "+00:00"))
+        except ValueError:
+            raise ToolError(f"Invalid created_after date format: {created_after}")
+    if created_before:
+        try:
+            created_before_dt = datetime.fromisoformat(created_before.replace("Z", "+00:00"))
+        except ValueError:
+            raise ToolError(f"Invalid created_before date format: {created_before}")
+
+    # Create request object from individual parameters (MCP-compliant)
+    req = ListCreativesRequest(
+        media_buy_id=media_buy_id,
+        buyer_ref=buyer_ref,
+        status=status,
+        format=format,
+        tags=tags or [],
+        created_after=created_after_dt,
+        created_before=created_before_dt,
+        search=search,
+        page=page,
+        limit=min(limit, 1000),  # Enforce max limit
+        sort_by=sort_by,
+        sort_order=sort_order,
+    )
+
+    start_time = time.time()
+
+    # Authentication
+    principal_id = _get_principal_id_from_context(context)
+
+    # Get tenant information
+    tenant = get_current_tenant()
+    if not tenant:
+        raise ToolError("No tenant context available")
+
+    creatives = []
+    total_count = 0
+
+    with get_db_session() as session:
+        from src.core.database.models import Creative as DBCreative
+        from src.core.database.models import CreativeAssignment as DBAssignment
+        from src.core.database.models import MediaBuy
+
+        # Build query
+        query = session.query(DBCreative).filter_by(tenant_id=tenant["tenant_id"])
+
+        # Apply filters
+        if req.media_buy_id:
+            # Filter by media buy assignments
+            query = query.join(DBAssignment, DBCreative.creative_id == DBAssignment.creative_id).filter(
+                DBAssignment.media_buy_id == req.media_buy_id
+            )
+
+        if req.buyer_ref:
+            # Filter by buyer_ref through media buy
+            query = (
+                query.join(DBAssignment, DBCreative.creative_id == DBAssignment.creative_id)
+                .join(MediaBuy, DBAssignment.media_buy_id == MediaBuy.media_buy_id)
+                .filter(MediaBuy.buyer_ref == req.buyer_ref)
+            )
+
+        if req.status:
+            query = query.filter(DBCreative.status == req.status)
+
+        if req.format:
+            query = query.filter(DBCreative.format_id == req.format)
+
+        if req.tags:
+            # Simple tag filtering - in production, might use JSON operators
+            for tag in req.tags:
+                query = query.filter(DBCreative.name.contains(tag))  # Simplified
+
+        if req.created_after:
+            query = query.filter(DBCreative.created_at >= req.created_after)
+
+        if req.created_before:
+            query = query.filter(DBCreative.created_at <= req.created_before)
+
+        if req.search:
+            # Search in name and description
+            search_term = f"%{req.search}%"
+            query = query.filter(DBCreative.name.ilike(search_term))
+
+        # Get total count before pagination
+        total_count = query.count()
+
+        # Apply sorting
+        if req.sort_by == "name":
+            sort_column = DBCreative.name
+        elif req.sort_by == "status":
+            sort_column = DBCreative.status
+        else:  # Default to created_date
+            sort_column = DBCreative.created_at
+
+        if req.sort_order == "asc":
+            query = query.order_by(sort_column.asc())
+        else:
+            query = query.order_by(sort_column.desc())
+
+        # Apply pagination
+        offset = (req.page - 1) * req.limit
+        db_creatives = query.offset(offset).limit(req.limit).all()
+
+        # Convert to schema objects
+        for db_creative in db_creatives:
+            creative = Creative(
+                creative_id=db_creative.creative_id,
+                name=db_creative.name,
+                format=db_creative.format_id,
+                url=db_creative.url,
+                click_url=db_creative.click_url,
+                width=db_creative.width,
+                height=db_creative.height,
+                duration=db_creative.duration,
+                principal_id=db_creative.principal_id,
+                created_at=db_creative.created_at,
+                snippet=db_creative.snippet,
+                snippet_type=db_creative.snippet_type,
+                template_variables=db_creative.template_variables,
+                status=db_creative.status,
+            )
+            creatives.append(creative)
+
+    # Calculate pagination info
+    has_more = (req.page * req.limit) < total_count
+
+    # Audit logging
+    audit_logger = get_audit_logger("AdCP", tenant["tenant_id"])
+    audit_logger.log_operation(
+        operation="list_creatives",
+        principal_name=principal_id,
+        principal_id=principal_id,
+        adapter_id="N/A",
+        success=True,
+        details={
+            "result_count": len(creatives),
+            "total_count": total_count,
+            "page": req.page,
+            "filters_applied": {
+                "media_buy_id": req.media_buy_id,
+                "status": req.status,
+                "format": req.format,
+                "search": req.search,
+            },
+        },
+    )
+
+    # Log activity
+    log_tool_activity(context, "list_creatives", start_time)
+
+    message = f"Found {len(creatives)} creatives"
+    if total_count > len(creatives):
+        message += f" (page {req.page} of {total_count} total)"
+
+    return ListCreativesResponse(
+        creatives=creatives, total_count=total_count, page=req.page, limit=req.limit, has_more=has_more, message=message
+    )
+
+
+@mcp.tool
 async def get_signals(
     query: str = None, type: str = None, category: str = None, limit: int = None, context: Context = None
 ) -> GetSignalsResponse:
@@ -1593,147 +1995,6 @@ def check_media_buy_status(
             budget_remaining=None,
             creative_count=0,
         )
-
-
-@mcp.tool
-def add_creative_assets(
-    assets: list[dict], media_buy_id: str = None, buyer_ref: str = None, context: Context = None
-) -> AddCreativeAssetsResponse:
-    """Add creative assets to a media buy.
-
-    Args:
-        assets: List of creative asset objects to add
-        media_buy_id: Media buy ID (optional)
-        buyer_ref: Buyer reference (optional)
-        context: FastMCP context (automatically provided)
-
-    Returns:
-        AddCreativeAssetsResponse with results
-    """
-    # Create request object from individual parameters (MCP-compliant)
-    from src.core.schemas import Creative
-
-    creative_objects = [Creative(**asset) if isinstance(asset, dict) else asset for asset in assets]
-    req = AddCreativeAssetsRequest(assets=creative_objects, media_buy_id=media_buy_id, buyer_ref=buyer_ref)
-
-    # AdCP v2.4 - Handle both media_buy_id and buyer_ref
-    if req.media_buy_id:
-        _verify_principal(req.media_buy_id, context)
-    # Note: buyer_ref verification would need database lookup - implement as needed
-
-    principal_id = _get_principal_id_from_context(context)
-    tenant = get_current_tenant()
-
-    # Create or get persistent context
-    ctx_manager = get_context_manager()
-    ctx_id = context.headers.get("x-context-id") if hasattr(context, "headers") else None
-    persistent_ctx = ctx_manager.get_or_create_context(
-        tenant_id=tenant["tenant_id"],
-        principal_id=principal_id,
-        context_id=ctx_id,
-        is_async=True,
-    )
-
-    # Create workflow step for this tool call
-    step = ctx_manager.create_workflow_step(
-        context_id=persistent_ctx.context_id,
-        step_type="tool_call",
-        owner="principal",
-        status="in_progress",
-        tool_name="add_creative_assets",
-        request_data=req.model_dump(mode="json"),  # Convert dates to strings
-    )
-
-    # Initialize creative engine with tenant config
-    # Build creative engine config from tenant fields
-    creative_engine_config = {
-        "auto_approve_formats": tenant.get("auto_approve_formats", []),
-        "human_review_required": tenant.get("human_review_required", True),
-    }
-    creative_engine = MockCreativeEngine(creative_engine_config)
-
-    # Process assets through the creative engine (AdCP v2.4 uses 'assets' field)
-    statuses = creative_engine.process_creatives(req.assets)
-    pending_count = 0
-    approved_count = 0
-
-    for status in statuses:
-        creative_statuses[status.creative_id] = status
-
-        if status.status == "approved":
-            approved_count += 1
-        elif status.status == "pending_review":
-            pending_count += 1
-
-        # Send Slack notification for pending creatives
-        if status.status == "pending_review":
-            try:
-                principal_id = _get_principal_id_from_context(context)
-                principal = get_principal_object(principal_id)
-                creative = next(
-                    (c for c in req.creatives if c.creative_id == status.creative_id),
-                    None,
-                )
-
-                # Build notifier config from tenant fields
-                notifier_config = {
-                    "features": {
-                        "slack_webhook_url": tenant.get("slack_webhook_url"),
-                        "slack_audit_webhook_url": tenant.get("slack_audit_webhook_url"),
-                    }
-                }
-                slack_notifier = get_slack_notifier(notifier_config)
-                slack_notifier.notify_creative_pending(
-                    creative_id=status.creative_id,
-                    principal_name=principal.name if principal else principal_id,
-                    format_type=creative.format.format_id if creative else "unknown",
-                    media_buy_id=req.media_buy_id,
-                )
-            except Exception as e:
-                console.print(f"[yellow]Failed to send Slack notification: {e}[/yellow]")
-
-    # Update context based on results
-    if pending_count > 0:
-        # Create approval workflow steps for pending creatives
-        for status in statuses:
-            if status.status == "pending_review":
-                ctx_manager.create_workflow_step(
-                    context_id=persistent_ctx.context_id,
-                    step_type="approval",
-                    owner="publisher",
-                    status="requires_approval",
-                    tool_name="approve_creative",
-                    request_data={
-                        "creative_id": status.creative_id,
-                        "media_buy_id": req.media_buy_id,  # May be None in AdCP v2.4
-                        "buyer_ref": req.buyer_ref,  # May be None in AdCP v2.4
-                    },
-                )
-
-        ctx_manager.mark_human_needed(
-            persistent_ctx.context_id,
-            f"{pending_count} creative(s) require human review",
-            clarification_details=f"Please review and approve {pending_count} pending creative(s)",
-        )
-        message = f"Submitted {len(req.assets)} assets: {approved_count} approved, {pending_count} pending review"
-    else:
-        message = f"All {len(req.assets)} assets were approved automatically"
-
-    # Update workflow step with success
-    ctx_manager.update_workflow_step(
-        step.step_id,
-        status="completed",
-        response_data={
-            "approved_count": approved_count,
-            "pending_count": pending_count,
-            "creative_ids": [s.creative_id for s in statuses],
-        },
-    )
-
-    # Create AdCP v2.4 compliant response (no context_id or message fields)
-    response = AddCreativeAssetsResponse(statuses=statuses)
-
-    return response
 
 
 @mcp.tool
