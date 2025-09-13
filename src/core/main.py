@@ -1035,102 +1035,105 @@ def sync_creatives(
         if not media_buy and (req.media_buy_id or req.buyer_ref):
             raise ToolError(f"Media buy not found: {req.media_buy_id or req.buyer_ref}")
 
-        # Process each creative
+        # Process each creative with proper transaction isolation
         for creative in req.creatives:
             try:
-                # Check if creative already exists (for upsert)
-                existing_creative = None
-                if req.upsert and creative.creative_id:
-                    from src.core.database.models import Creative as DBCreative
+                # Use savepoint for individual creative transaction isolation
+                with session.begin_nested():
+                    # Check if creative already exists (for upsert)
+                    existing_creative = None
+                    if req.upsert and creative.creative_id:
+                        from src.core.database.models import Creative as DBCreative
 
-                    existing_creative = (
-                        session.query(DBCreative)
-                        .filter_by(tenant_id=tenant["tenant_id"], creative_id=creative.creative_id)
-                        .first()
-                    )
+                        existing_creative = (
+                            session.query(DBCreative)
+                            .filter_by(tenant_id=tenant["tenant_id"], creative_id=creative.creative_id)
+                            .first()
+                        )
 
-                if existing_creative and req.upsert:
-                    # Update existing creative
-                    existing_creative.name = creative.name
-                    existing_creative.format_id = creative.format
-                    existing_creative.url = creative.url
-                    existing_creative.click_url = creative.click_url
-                    existing_creative.width = creative.width
-                    existing_creative.height = creative.height
-                    existing_creative.duration = creative.duration
-                    existing_creative.updated_at = datetime.now(UTC)
+                    if existing_creative and req.upsert:
+                        # Update existing creative
+                        existing_creative.name = creative.name
+                        existing_creative.format_id = creative.format
+                        existing_creative.url = creative.url
+                        existing_creative.click_url = creative.click_url
+                        existing_creative.width = creative.width
+                        existing_creative.height = creative.height
+                        existing_creative.duration = creative.duration
+                        existing_creative.updated_at = datetime.now(UTC)
 
-                    # Update AdCP v1.3+ fields
-                    if creative.snippet:
-                        existing_creative.snippet = creative.snippet
-                        existing_creative.snippet_type = creative.snippet_type
+                        # Update AdCP v1.3+ fields
+                        if creative.snippet:
+                            existing_creative.snippet = creative.snippet
+                            existing_creative.snippet_type = creative.snippet_type
 
-                    if creative.template_variables:
-                        existing_creative.template_variables = creative.template_variables
+                        if creative.template_variables:
+                            existing_creative.template_variables = creative.template_variables
 
-                    synced_creatives.append(creative)
+                    else:
+                        # Create new creative
+                        from src.core.database.models import Creative as DBCreative
 
-                else:
-                    # Create new creative
-                    from src.core.database.models import Creative as DBCreative
-
-                    db_creative = DBCreative(
-                        tenant_id=tenant["tenant_id"],
-                        creative_id=creative.creative_id or str(uuid.uuid4()),
-                        name=creative.name,
-                        format_id=creative.format,
-                        url=creative.url,
-                        click_url=creative.click_url,
-                        width=creative.width,
-                        height=creative.height,
-                        duration=creative.duration,
-                        principal_id=principal_id,
-                        status="pending",
-                        created_at=datetime.now(UTC),
-                        snippet=creative.snippet,
-                        snippet_type=creative.snippet_type,
-                        template_variables=creative.template_variables,
-                    )
-
-                    session.add(db_creative)
-                    session.flush()  # Get the ID
-
-                    # Update creative_id if it was generated
-                    if not creative.creative_id:
-                        creative.creative_id = db_creative.creative_id
-
-                    synced_creatives.append(creative)
-
-                # Handle package assignments
-                if req.assign_to_packages and media_buy:
-                    for package_id in req.assign_to_packages:
-                        from src.core.database.models import CreativeAssignment as DBAssignment
-                        from src.core.schemas import CreativeAssignment
-
-                        assignment = DBAssignment(
+                        db_creative = DBCreative(
                             tenant_id=tenant["tenant_id"],
-                            assignment_id=str(uuid.uuid4()),
-                            media_buy_id=media_buy.media_buy_id,
-                            package_id=package_id,
-                            creative_id=creative.creative_id,
-                            weight=100,
+                            creative_id=creative.creative_id or str(uuid.uuid4()),
+                            name=creative.name,
+                            format_id=creative.format,
+                            url=creative.url,
+                            click_url=creative.click_url,
+                            width=creative.width,
+                            height=creative.height,
+                            duration=creative.duration,
+                            principal_id=principal_id,
+                            status="pending",
                             created_at=datetime.now(UTC),
+                            snippet=creative.snippet,
+                            snippet_type=creative.snippet_type,
+                            template_variables=creative.template_variables,
                         )
 
-                        session.add(assignment)
-                        assignments.append(
-                            CreativeAssignment(
-                                assignment_id=assignment.assignment_id,
-                                media_buy_id=assignment.media_buy_id,
-                                package_id=assignment.package_id,
-                                creative_id=assignment.creative_id,
-                                weight=assignment.weight,
+                        session.add(db_creative)
+                        session.flush()  # Get the ID
+
+                        # Update creative_id if it was generated
+                        if not creative.creative_id:
+                            creative.creative_id = db_creative.creative_id
+
+                    # Handle package assignments
+                    if req.assign_to_packages and media_buy:
+                        for package_id in req.assign_to_packages:
+                            from src.core.database.models import CreativeAssignment as DBAssignment
+                            from src.core.schemas import CreativeAssignment
+
+                            assignment = DBAssignment(
+                                tenant_id=tenant["tenant_id"],
+                                assignment_id=str(uuid.uuid4()),
+                                media_buy_id=media_buy.media_buy_id,
+                                package_id=package_id,
+                                creative_id=creative.creative_id,
+                                weight=100,
+                                created_at=datetime.now(UTC),
                             )
-                        )
+
+                            session.add(assignment)
+                            assignments.append(
+                                CreativeAssignment(
+                                    assignment_id=assignment.assignment_id,
+                                    media_buy_id=assignment.media_buy_id,
+                                    package_id=assignment.package_id,
+                                    creative_id=assignment.creative_id,
+                                    weight=assignment.weight,
+                                )
+                            )
+
+                    # If we reach here, creative processing succeeded
+                    synced_creatives.append(creative)
 
             except Exception as e:
+                # Savepoint automatically rolls back this creative only
                 failed_creatives.append({"creative_id": creative.creative_id, "name": creative.name, "error": str(e)})
 
+        # Commit all successful creative operations
         session.commit()
 
     # Audit logging
