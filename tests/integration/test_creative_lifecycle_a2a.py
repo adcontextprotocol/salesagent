@@ -9,7 +9,8 @@ from datetime import UTC, datetime, timedelta
 from unittest.mock import MagicMock, patch
 
 import pytest
-from a2a.types import InternalError, ServerError
+from a2a.types import InternalError
+from a2a.utils.errors import ServerError
 
 from src.a2a_server.adcp_a2a_server import AdCPRequestHandler
 from src.core.database.database_session import get_db_session
