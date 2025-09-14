@@ -41,7 +41,7 @@ class TestCreativeLifecycleMCP:
                 is_active=True,
                 ad_server="mock",
                 max_daily_budget=10000,
-                enable_aee_signals=True,
+                enable_axe_signals=True,
                 authorized_emails=[],
                 authorized_domains=[],
                 auto_approve_formats=["display_300x250", "display_728x90"],
