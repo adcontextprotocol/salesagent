@@ -44,7 +44,6 @@ class A2ATestMockHelper:
         return context_patch, sync_patch, list_patch, mock_context
 
 
-@pytest.mark.skip_ci
 class TestCreativeLifecycleA2A:
     """Integration tests for creative lifecycle A2A skill handlers."""
 
@@ -74,7 +73,7 @@ class TestCreativeLifecycleA2A:
                 principal_id="a2a_test_advertiser",
                 name="A2A Test Advertiser",
                 access_token="a2a-test-token-456",
-                platform_mappings={"gam_advertiser_id": "123456789"},
+                platform_mappings={"mock": {"id": "a2a_test_advertiser"}},
             )
             session.add(principal)
 
@@ -146,22 +145,27 @@ class TestCreativeLifecycleA2A:
             from src.core.schemas import Creative, CreativeAssignment, SyncCreativesResponse
 
             # Test 1: Successful sync with assignments
+            now = datetime.now(UTC)
             synced_creatives = [
                 Creative(
                     creative_id="test_creative_1",
                     name="Test Display Ad",
-                    format="display_300x250",
-                    url="https://example.com/display.jpg",
+                    format_id="display_300x250",
+                    content_uri="https://example.com/display.jpg",
                     principal_id=self.test_principal_id,
                     status="approved",
+                    created_at=now,
+                    updated_at=now,
                 ),
                 Creative(
                     creative_id="test_creative_2",
                     name="Test Video Ad",
-                    format="video_pre_roll",
-                    url="https://example.com/video.mp4",
+                    format_id="video_pre_roll",
+                    content_uri="https://example.com/video.mp4",
                     principal_id=self.test_principal_id,
                     status="pending",
+                    created_at=now,
+                    updated_at=now,
                 ),
             ]
 
@@ -282,28 +286,35 @@ class TestCreativeLifecycleA2A:
             from src.core.schemas import Creative, ListCreativesResponse
 
             # Test 1: Successful list with all parameters
+            now = datetime.now(UTC)
             sample_creatives = [
                 Creative(
                     creative_id="list_creative_1",
                     name="Holiday Sale Banner",
-                    format="display_300x250",
-                    url="https://example.com/holiday1.jpg",
+                    format_id="display_300x250",
+                    content_uri="https://example.com/holiday1.jpg",
                     principal_id=self.test_principal_id,
                     status="approved",
+                    created_at=now,
+                    updated_at=now,
                 ),
                 Creative(
                     creative_id="list_creative_2",
                     name="Holiday Video Promo",
-                    format="video_pre_roll",
-                    url="https://example.com/holiday2.mp4",
+                    format_id="video_pre_roll",
+                    content_uri="https://example.com/holiday2.mp4",
                     principal_id=self.test_principal_id,
                     status="approved",
+                    created_at=now,
+                    updated_at=now,
                 ),
             ]
 
             mock_list.return_value = ListCreativesResponse(
                 creatives=sample_creatives,
                 total_count=47,
+                page=2,
+                limit=25,
                 has_more=True,
                 message="Found 2 of 47 creatives",
             )
@@ -358,7 +369,7 @@ class TestCreativeLifecycleA2A:
 
             # Test 4: Empty results
             mock_list.return_value = ListCreativesResponse(
-                creatives=[], total_count=0, has_more=False, message="No creatives found"
+                creatives=[], total_count=0, page=1, limit=50, has_more=False, message="No creatives found"
             )
 
             empty_result = await a2a_handler._handle_list_creatives_skill(
