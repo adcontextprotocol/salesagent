@@ -869,13 +869,10 @@ class Product(BaseModel):
         return super().model_dump(**kwargs)
 
     def model_dump_adcp_compliant(self, **kwargs):
-        """Return model dump with Format objects for AdCP schema compliance."""
+        """Return model dump for AdCP schema compliance (formats as IDs per spec)."""
         data = self.model_dump(**kwargs)
-
-        # Convert format IDs to Format objects for AdCP schema compliance
-        if "formats" in data:
-            data["formats"] = [fmt.model_dump() for fmt in convert_format_ids_to_formats(data["formats"])]
-
+        # formats should remain as format IDs (strings) per AdCP spec
+        # No conversion needed - the Product schema already defines formats: list[str]
         return data
 
     def dict(self, **kwargs):
@@ -982,34 +979,14 @@ class GetProductsResponse(BaseModel):
     errors: list[Error] | None = None  # Optional error reporting
 
     def model_dump(self, **kwargs):
-        """Override to ensure products exclude implementation_config and convert formats for AdCP compliance."""
+        """Override to ensure products exclude implementation_config for AdCP compliance."""
         data = super().model_dump(**kwargs)
-        # Ensure each product excludes implementation_config and converts formats to Format objects
+        # Ensure each product excludes implementation_config
         if "products" in data:
             for product in data["products"]:
                 if "implementation_config" in product:
                     del product["implementation_config"]
-                # Convert format IDs to Format objects for AdCP schema compliance
-                if "formats" in product and isinstance(product["formats"], list):
-                    format_objects = []
-                    for format_id in product["formats"]:
-                        if isinstance(format_id, str):
-                            format_obj = get_format_by_id(format_id)
-                            if format_obj:
-                                format_objects.append(format_obj.model_dump())
-                            else:
-                                # Create minimal Format object for unknown format IDs
-                                format_objects.append(
-                                    {
-                                        "format_id": format_id,
-                                        "name": format_id.replace("_", " ").title(),
-                                        "type": "display",
-                                    }
-                                )
-                        else:
-                            # Already a format object
-                            format_objects.append(format_id)
-                    product["formats"] = format_objects
+                # formats should remain as format IDs (strings) per AdCP spec
         return data
 
 

@@ -19,9 +19,9 @@
     },
     "formats": {
       "type": "array",
-      "description": "Array of supported creative formats",
+      "description": "Array of supported creative format IDs (strings) - use list_creative_formats to get full format details",
       "items": {
-        "$ref": "/schemas/v1/core/format.json"
+        "type": "string"
       }
     },
     "delivery_type": {
