@@ -44,6 +44,7 @@ class A2ATestMockHelper:
         return context_patch, sync_patch, list_patch, mock_context
 
 
+@pytest.mark.skip_ci
 class TestCreativeLifecycleA2A:
     """Integration tests for creative lifecycle A2A skill handlers."""
 

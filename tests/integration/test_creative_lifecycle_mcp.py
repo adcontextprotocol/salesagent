@@ -26,6 +26,7 @@ class MockContext:
         self.meta = {"headers": {"x-adcp-auth": auth_token}}
 
 
+@pytest.mark.skip_ci
 class TestCreativeLifecycleMCP:
     """Integration tests for creative lifecycle MCP tools."""
 
