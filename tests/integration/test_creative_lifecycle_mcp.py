@@ -46,7 +46,6 @@ class TestCreativeLifecycleMCP:
                 authorized_domains=[],
                 auto_approve_formats=["display_300x250", "display_728x90"],
                 human_review_required=False,
-                created_at=datetime.now(UTC),
             )
             session.add(tenant)
 
@@ -57,7 +56,6 @@ class TestCreativeLifecycleMCP:
                 name="Test Advertiser",
                 access_token="test-token-123",
                 platform_mappings={},
-                created_at=datetime.now(UTC),
             )
             session.add(principal)
 
@@ -66,13 +64,14 @@ class TestCreativeLifecycleMCP:
                 tenant_id="creative_test",
                 media_buy_id="test_media_buy_1",
                 principal_id="test_advertiser",
+                order_name="Test Order",
+                advertiser_name="Test Advertiser",
                 status="active",
-                budget={"total": 5000, "daily": 500},
-                flight_start=datetime.now(UTC),
-                flight_end=datetime.now(UTC) + timedelta(days=30),
-                created_at=datetime.now(UTC),
+                budget=5000.0,
+                start_date=datetime.now(UTC).date(),
+                end_date=(datetime.now(UTC) + timedelta(days=30)).date(),
                 buyer_ref="buyer_ref_123",
-                targeting={},
+                raw_request={"test": True},
             )
             session.add(media_buy)
 
@@ -180,7 +179,6 @@ class TestCreativeLifecycleMCP:
                 width=300,
                 height=250,
                 status="pending",
-                created_at=datetime.now(UTC),
             )
             session.add(existing_creative)
             session.commit()
@@ -321,7 +319,6 @@ class TestCreativeLifecycleMCP:
                     status="approved" if i % 2 == 0 else "pending",
                     width=300,
                     height=250,
-                    created_at=datetime.now(UTC) - timedelta(days=i),
                 )
                 for i in range(5)
             ]
@@ -358,7 +355,6 @@ class TestCreativeLifecycleMCP:
                     name=f"Approved Creative {i}",
                     format_id="display_300x250",
                     status="approved",
-                    created_at=datetime.now(UTC),
                 )
                 for i in range(3)
             ] + [
@@ -369,7 +365,6 @@ class TestCreativeLifecycleMCP:
                     name=f"Pending Creative {i}",
                     format_id="display_728x90",
                     status="pending",
-                    created_at=datetime.now(UTC),
                 )
                 for i in range(2)
             ]
@@ -403,7 +398,6 @@ class TestCreativeLifecycleMCP:
                     name=f"Banner {i}",
                     format_id="display_300x250",
                     status="approved",
-                    created_at=datetime.now(UTC),
                 )
                 for i in range(2)
             ] + [
@@ -415,7 +409,6 @@ class TestCreativeLifecycleMCP:
                     format_id="video_pre_roll",
                     status="approved",
                     duration=15.0,
-                    created_at=datetime.now(UTC),
                 )
                 for i in range(3)
             ]
@@ -496,7 +489,6 @@ class TestCreativeLifecycleMCP:
                     name="Holiday Banner Ad",
                     format_id="display_300x250",
                     status="approved",
-                    created_at=datetime.now(UTC),
                 ),
                 DBCreative(
                     tenant_id=self.test_tenant_id,
@@ -505,7 +497,6 @@ class TestCreativeLifecycleMCP:
                     name="Holiday Video Ad",
                     format_id="video_pre_roll",
                     status="approved",
-                    created_at=datetime.now(UTC),
                 ),
                 DBCreative(
                     tenant_id=self.test_tenant_id,
@@ -514,7 +505,6 @@ class TestCreativeLifecycleMCP:
                     name="Summer Sale Banner",
                     format_id="display_728x90",
                     status="approved",
-                    created_at=datetime.now(UTC),
                 ),
             ]
             session.add_all(creatives)
@@ -547,7 +537,6 @@ class TestCreativeLifecycleMCP:
                     name=f"Creative {i:02d}",
                     format_id="display_300x250",
                     status="approved",
-                    created_at=datetime.now(UTC) - timedelta(seconds=i * 10),
                 )
                 for i in range(25)  # Create 25 creatives
             ]
@@ -592,7 +581,6 @@ class TestCreativeLifecycleMCP:
                 name="Assigned Creative 1",
                 format_id="display_300x250",
                 status="approved",
-                created_at=datetime.now(UTC),
             )
             creative_2 = DBCreative(
                 tenant_id=self.test_tenant_id,
@@ -601,7 +589,6 @@ class TestCreativeLifecycleMCP:
                 name="Unassigned Creative",
                 format_id="display_300x250",
                 status="approved",
-                created_at=datetime.now(UTC),
             )
             session.add_all([creative_1, creative_2])
 
@@ -613,7 +600,6 @@ class TestCreativeLifecycleMCP:
                 media_buy_id=self.test_media_buy_id,
                 package_id="test_package",
                 weight=100,
-                created_at=datetime.now(UTC),
             )
             session.add(assignment)
             session.commit()

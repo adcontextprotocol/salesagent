@@ -65,7 +65,6 @@ class TestCreativeLifecycleA2A:
                 authorized_domains=[],
                 auto_approve_formats=["display_300x250", "video_pre_roll"],
                 human_review_required=False,
-                created_at=datetime.now(UTC),
             )
             session.add(tenant)
 
@@ -76,7 +75,6 @@ class TestCreativeLifecycleA2A:
                 name="A2A Test Advertiser",
                 access_token="a2a-test-token-456",
                 platform_mappings={"gam_advertiser_id": "123456789"},
-                created_at=datetime.now(UTC),
             )
             session.add(principal)
 
@@ -85,13 +83,14 @@ class TestCreativeLifecycleA2A:
                 tenant_id="a2a_creative_test",
                 media_buy_id="a2a_test_media_buy",
                 principal_id="a2a_test_advertiser",
+                order_name="A2A Test Order",
+                advertiser_name="A2A Test Advertiser",
                 status="active",
-                budget={"total": 8000, "daily": 400},
-                flight_start=datetime.now(UTC),
-                flight_end=datetime.now(UTC) + timedelta(days=21),
-                created_at=datetime.now(UTC),
+                budget=8000.0,
+                start_date=datetime.now(UTC).date(),
+                end_date=(datetime.now(UTC) + timedelta(days=21)).date(),
                 buyer_ref="a2a_buyer_ref_456",
-                targeting={},
+                raw_request={"test": True},
             )
             session.add(media_buy)
 
