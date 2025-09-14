@@ -252,7 +252,7 @@ class CreativeAssignment(Base):
     tenant = relationship("Tenant")
 
     __table_args__ = (
-        ForeignKeyConstraint(["tenant_id", "creative_id"], ["creatives.tenant_id", "creatives.creative_id"]),
+        ForeignKeyConstraint(["creative_id"], ["creatives.creative_id"]),
         ForeignKeyConstraint(["tenant_id", "media_buy_id"], ["media_buys.tenant_id", "media_buys.media_buy_id"]),
         Index("idx_creative_assignments_tenant", "tenant_id"),
         Index("idx_creative_assignments_creative", "creative_id"),

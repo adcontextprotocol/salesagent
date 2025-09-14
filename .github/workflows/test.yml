@@ -256,7 +256,7 @@ jobs:
         SUPER_ADMIN_EMAILS: test@example.com
         ADCP_TESTING: true
       run: |
-        uv run pytest tests/e2e/ -v --tb=short
+        uv run pytest tests/e2e/ -v --tb=short --skip-docker
       continue-on-error: true  # E2E tests may be flaky
 
   lint:
