@@ -12,7 +12,6 @@ import pytest
 from a2a.types import InternalError
 from a2a.utils.errors import ServerError
 
-from src.a2a_server.adcp_a2a_server import AdCPRequestHandler
 from src.core.database.database_session import get_db_session
 from src.core.database.models import MediaBuy, Principal, Tenant
 
@@ -106,6 +105,8 @@ class TestCreativeLifecycleA2A:
     @pytest.fixture
     def a2a_handler(self):
         """Create A2A request handler for testing."""
+        from src.a2a_server.adcp_a2a_server import AdCPRequestHandler
+
         return AdCPRequestHandler()
 
     async def test_sync_creatives_comprehensive(self, a2a_handler):
