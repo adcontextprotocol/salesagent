@@ -14,8 +14,6 @@ import pytest
 from src.core.database.database_session import get_db_session
 from src.core.database.models import Creative as DBCreative
 from src.core.database.models import CreativeAssignment, MediaBuy, Principal, Tenant
-from src.core.main import list_creatives as core_list_creatives_tool
-from src.core.main import sync_creatives as core_sync_creatives_tool
 from src.core.schemas import ListCreativesResponse, SyncCreativesResponse
 
 
@@ -26,9 +24,19 @@ class MockContext:
         self.meta = {"headers": {"x-adcp-auth": auth_token}}
 
 
-@pytest.mark.skip_ci
 class TestCreativeLifecycleMCP:
     """Integration tests for creative lifecycle MCP tools."""
+
+    def _import_mcp_tools(self):
+        """Import MCP tools to avoid module-level database initialization."""
+        from src.core.main import list_creatives as core_list_creatives_tool
+        from src.core.main import sync_creatives as core_sync_creatives_tool
+
+        # Extract the actual functions from FunctionTool objects if needed
+        sync_fn = core_sync_creatives_tool.fn if hasattr(core_sync_creatives_tool, "fn") else core_sync_creatives_tool
+        list_fn = core_list_creatives_tool.fn if hasattr(core_list_creatives_tool, "fn") else core_list_creatives_tool
+
+        return sync_fn, list_fn
 
     @pytest.fixture(autouse=True)
     def setup_test_data(self, integration_db):
@@ -56,7 +64,7 @@ class TestCreativeLifecycleMCP:
                 principal_id="test_advertiser",
                 name="Test Advertiser",
                 access_token="test-token-123",
-                platform_mappings={},
+                platform_mappings={"mock": {"id": "test_advertiser"}},
             )
             session.add(principal)
 
@@ -125,6 +133,8 @@ class TestCreativeLifecycleMCP:
 
     def test_sync_creatives_create_new_creatives(self, mock_context, sample_creatives):
         """Test sync_creatives creates new creatives successfully."""
+        core_sync_creatives_tool, _ = self._import_mcp_tools()
+
         with (
             patch("src.core.main._get_principal_id_from_context", return_value=self.test_principal_id),
             patch("src.core.main.get_current_tenant", return_value={"tenant_id": self.test_tenant_id}),
@@ -168,6 +178,7 @@ class TestCreativeLifecycleMCP:
 
     def test_sync_creatives_upsert_existing_creative(self, mock_context):
         """Test sync_creatives updates existing creative when upsert=True."""
+        core_sync_creatives_tool, _ = self._import_mcp_tools()
         # First, create an existing creative
         with get_db_session() as session:
             existing_creative = DBCreative(
@@ -223,6 +234,7 @@ class TestCreativeLifecycleMCP:
 
     def test_sync_creatives_with_package_assignments(self, mock_context, sample_creatives):
         """Test sync_creatives assigns creatives to packages."""
+        core_sync_creatives_tool, _ = self._import_mcp_tools()
         with (
             patch("src.core.main._get_principal_id_from_context", return_value=self.test_principal_id),
             patch("src.core.main.get_current_tenant", return_value={"tenant_id": self.test_tenant_id}),
@@ -254,6 +266,7 @@ class TestCreativeLifecycleMCP:
 
     def test_sync_creatives_with_buyer_ref(self, mock_context, sample_creatives):
         """Test sync_creatives works with buyer_ref instead of media_buy_id."""
+        core_sync_creatives_tool, _ = self._import_mcp_tools()
         with (
             patch("src.core.main._get_principal_id_from_context", return_value=self.test_principal_id),
             patch("src.core.main.get_current_tenant", return_value={"tenant_id": self.test_tenant_id}),
@@ -272,6 +285,7 @@ class TestCreativeLifecycleMCP:
 
     def test_sync_creatives_validation_failures(self, mock_context):
         """Test sync_creatives handles validation failures gracefully."""
+        core_sync_creatives_tool, _ = self._import_mcp_tools()
         invalid_creatives = [
             {
                 "creative_id": "valid_creative",
@@ -307,6 +321,8 @@ class TestCreativeLifecycleMCP:
 
     def test_list_creatives_no_filters(self, mock_context):
         """Test list_creatives returns all creatives when no filters applied."""
+        _, core_list_creatives_tool = self._import_mcp_tools()
+        _, core_list_creatives_tool = self._import_mcp_tools()
         # Create test creatives in database
         with get_db_session() as session:
             creatives = [
@@ -346,6 +362,7 @@ class TestCreativeLifecycleMCP:
 
     def test_list_creatives_with_status_filter(self, mock_context):
         """Test list_creatives filters by status correctly."""
+        _, core_list_creatives_tool = self._import_mcp_tools()
         # Create creatives with different statuses
         with get_db_session() as session:
             creatives = [
@@ -389,6 +406,7 @@ class TestCreativeLifecycleMCP:
 
     def test_list_creatives_with_format_filter(self, mock_context):
         """Test list_creatives filters by format correctly."""
+        _, core_list_creatives_tool = self._import_mcp_tools()
         # Create creatives with different formats
         with get_db_session() as session:
             creatives = [
@@ -433,6 +451,7 @@ class TestCreativeLifecycleMCP:
 
     def test_list_creatives_with_date_filters(self, mock_context):
         """Test list_creatives filters by creation date range."""
+        _, core_list_creatives_tool = self._import_mcp_tools()
         now = datetime.now(UTC)
 
         # Create creatives with different creation dates
@@ -480,6 +499,7 @@ class TestCreativeLifecycleMCP:
 
     def test_list_creatives_with_search(self, mock_context):
         """Test list_creatives search functionality."""
+        _, core_list_creatives_tool = self._import_mcp_tools()
         # Create creatives with searchable names
         with get_db_session() as session:
             creatives = [
@@ -528,6 +548,7 @@ class TestCreativeLifecycleMCP:
 
     def test_list_creatives_pagination_and_sorting(self, mock_context):
         """Test list_creatives pagination and sorting options."""
+        _, core_list_creatives_tool = self._import_mcp_tools()
         # Create multiple creatives for pagination testing
         with get_db_session() as session:
             creatives = [
@@ -572,6 +593,7 @@ class TestCreativeLifecycleMCP:
 
     def test_list_creatives_with_media_buy_assignments(self, mock_context):
         """Test list_creatives filters by media buy assignments."""
+        _, core_list_creatives_tool = self._import_mcp_tools()
         # Create creatives and assignments
         with get_db_session() as session:
             # Create creatives
@@ -622,6 +644,7 @@ class TestCreativeLifecycleMCP:
 
     def test_sync_creatives_authentication_required(self, sample_creatives):
         """Test sync_creatives requires proper authentication."""
+        core_sync_creatives_tool, _ = self._import_mcp_tools()
         mock_context = MockContext("invalid-token")
 
         with patch("src.core.main._get_principal_id_from_context", side_effect=Exception("Invalid auth token")):
@@ -633,6 +656,7 @@ class TestCreativeLifecycleMCP:
 
     def test_list_creatives_authentication_required(self, mock_context):
         """Test list_creatives requires proper authentication."""
+        _, core_list_creatives_tool = self._import_mcp_tools()
         mock_context = MockContext("invalid-token")
 
         with patch("src.core.main._get_principal_id_from_context", side_effect=Exception("Invalid auth token")):
@@ -644,6 +668,7 @@ class TestCreativeLifecycleMCP:
 
     def test_sync_creatives_missing_tenant(self, mock_context, sample_creatives):
         """Test sync_creatives handles missing tenant gracefully."""
+        core_sync_creatives_tool, _ = self._import_mcp_tools()
         with (
             patch("src.core.main._get_principal_id_from_context", return_value=self.test_principal_id),
             patch("src.core.main.get_current_tenant", return_value=None),
@@ -656,6 +681,7 @@ class TestCreativeLifecycleMCP:
 
     def test_list_creatives_empty_results(self, mock_context):
         """Test list_creatives handles empty results gracefully."""
+        _, core_list_creatives_tool = self._import_mcp_tools()
         with (
             patch("src.core.main._get_principal_id_from_context", return_value=self.test_principal_id),
             patch("src.core.main.get_current_tenant", return_value={"tenant_id": self.test_tenant_id}),
