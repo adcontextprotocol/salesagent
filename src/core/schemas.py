@@ -647,6 +647,31 @@ FORMAT_REGISTRY: dict[str, Format] = {
             ),
         ],
     ),
+    # HTML5 Interactive Format (for testing and interactive content)
+    "html5_interactive": Format(
+        format_id="html5_interactive",
+        name="HTML5 Interactive Banner",
+        type="display",
+        is_standard=False,
+        iab_specification="HTML5",
+        requirements={"width": 300, "height": 250, "file_types": ["html5", "zip"], "interactive": True},
+        assets_required=[
+            AssetRequirement(
+                asset_type="html",
+                quantity=1,
+                requirements={
+                    "name": "Interactive HTML5 Creative",
+                    "description": "Interactive HTML5 creative with assets",
+                    "acceptable_formats": ["html", "html5", "zip"],
+                    "max_file_size_mb": 5,
+                    "width": 300,
+                    "height": 250,
+                    "interactive": True,
+                    "required": True,
+                },
+            ),
+        ],
+    ),
 }
 
 

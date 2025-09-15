@@ -19,7 +19,7 @@ class TestMockServerTestingBackend:
     @pytest.mark.asyncio
     async def test_testing_capabilities_endpoint(self, live_server, test_auth_token):
         """Test the testing_control endpoint for capabilities."""
-        headers = {"x-adcp-auth": await test_auth_token}
+        headers = {"x-adcp-auth": test_auth_token}
         transport = StreamableHttpTransport(url=f"{live_server['mcp']}/mcp/", headers=headers)
 
         async with Client(transport=transport) as client:
@@ -61,7 +61,7 @@ class TestMockServerTestingBackend:
 
         for mock_time, description, _expected_progress in test_times:
             headers = {
-                "x-adcp-auth": await test_auth_token,
+                "x-adcp-auth": test_auth_token,
                 "X-Dry-Run": "true",
                 "X-Test-Session-ID": session_id,
                 "X-Mock-Time": mock_time,
@@ -124,7 +124,7 @@ class TestMockServerTestingBackend:
             "campaign-paused",
         ]
 
-        base_headers = {"x-adcp-auth": await test_auth_token, "X-Dry-Run": "true", "X-Test-Session-ID": session_id}
+        base_headers = {"x-adcp-auth": test_auth_token, "X-Dry-Run": "true", "X-Test-Session-ID": session_id}
 
         # First create a campaign
         transport = StreamableHttpTransport(url=f"{live_server['mcp']}/mcp/", headers=base_headers)
@@ -178,7 +178,7 @@ class TestMockServerTestingBackend:
 
         error_scenarios = ["budget_exceeded", "low_delivery", "platform_error"]
 
-        base_headers = {"x-adcp-auth": await test_auth_token, "X-Dry-Run": "true", "X-Test-Session-ID": session_id}
+        base_headers = {"x-adcp-auth": test_auth_token, "X-Dry-Run": "true", "X-Test-Session-ID": session_id}
 
         # Create test campaign first
         transport = StreamableHttpTransport(url=f"{live_server['mcp']}/mcp/", headers=base_headers)
@@ -242,7 +242,7 @@ class TestMockServerTestingBackend:
     @pytest.mark.asyncio
     async def test_session_management_api(self, live_server, test_auth_token):
         """Test comprehensive session management."""
-        headers = {"x-adcp-auth": await test_auth_token}
+        headers = {"x-adcp-auth": test_auth_token}
         transport = StreamableHttpTransport(url=f"{live_server['mcp']}/mcp/", headers=headers)
 
         async with Client(transport=transport) as client:
@@ -290,7 +290,7 @@ class TestMockServerTestingBackend:
         session_id = f"isolation_test_{uuid.uuid4().hex[:8]}"
 
         headers = {
-            "x-adcp-auth": await test_auth_token,
+            "x-adcp-auth": test_auth_token,
             "X-Dry-Run": "true",
             "X-Test-Session-ID": session_id,
             "X-Mock-Time": "2025-10-15T12:00:00Z",
@@ -367,7 +367,7 @@ class TestMockServerTestingBackend:
 
         for i, mock_time in enumerate(time_points):
             headers = {
-                "x-adcp-auth": await test_auth_token,
+                "x-adcp-auth": test_auth_token,
                 "X-Dry-Run": "true",
                 "X-Test-Session-ID": session_id,
                 "X-Mock-Time": mock_time,
@@ -438,7 +438,7 @@ class TestMockServerTestingBackend:
     async def test_debug_mode_information(self, live_server, test_auth_token):
         """Test that debug mode provides comprehensive testing information."""
         headers = {
-            "x-adcp-auth": await test_auth_token,
+            "x-adcp-auth": test_auth_token,
             "X-Dry-Run": "true",
             "X-Test-Session-ID": f"debug_test_{uuid.uuid4().hex[:8]}",
             "X-Debug-Mode": "true",

@@ -1181,6 +1181,7 @@ class GoogleAdManager(AdServerAdapter):
         created_asset_statuses = []
 
         # Create a mapping from package_id (which is the line item name) to line_item_id
+        # Also collect creative placeholders from all line items
         if not self.dry_run:
             statement = (
                 self.client.new_statement_builder()
@@ -1188,14 +1189,34 @@ class GoogleAdManager(AdServerAdapter):
                 .with_bind_variable("orderId", int(media_buy_id))
             )
             response = line_item_service.getLineItemsByStatement(statement.ToStatement())
-            line_item_map = {item["name"]: item["id"] for item in response.get("results", [])}
+            line_items = response.get("results", [])
+            line_item_map = {item["name"]: item["id"] for item in line_items}
+
+            # Collect all creative placeholders from line items for size validation
+            creative_placeholders = {}
+            for line_item in line_items:
+                package_name = line_item["name"]
+                placeholders = line_item.get("creativePlaceholders", [])
+                creative_placeholders[package_name] = placeholders
+
         else:
-            # In dry-run mode, create a mock line item map
+            # In dry-run mode, create a mock line item map and placeholders
             line_item_map = {"mock_package": "mock_line_item_123"}
+            creative_placeholders = {
+                "mock_package": [
+                    {"size": {"width": 300, "height": 250}, "creativeSizeType": "PIXEL"},
+                    {"size": {"width": 728, "height": 90}, "creativeSizeType": "PIXEL"},
+                ]
+            }
 
         for asset in assets:
             # Validate creative asset against GAM requirements
             validation_issues = self._validate_creative_for_gam(asset)
+
+            # Add creative size validation against placeholders
+            size_validation_issues = self._validate_creative_size_against_placeholders(asset, creative_placeholders)
+            validation_issues.extend(size_validation_issues)
+
             if validation_issues:
                 self.log(f"[red]Creative {asset['creative_id']} failed GAM validation:[/red]")
                 for issue in validation_issues:
@@ -1213,10 +1234,21 @@ class GoogleAdManager(AdServerAdapter):
                 created_asset_statuses.append(AssetStatus(creative_id=asset["creative_id"], status="approved"))
                 continue
 
+            # Get placeholders for this asset's package assignments
+            asset_placeholders = []
+            for pkg_id in asset.get("package_assignments", []):
+                if pkg_id in creative_placeholders:
+                    asset_placeholders.extend(creative_placeholders[pkg_id])
+
             # Create GAM creative object
-            creative = self._create_gam_creative(asset, creative_type)
-            if not creative:
-                self.log(f"Skipping unsupported creative {asset['creative_id']} with type: {creative_type}")
+            try:
+                creative = self._create_gam_creative(asset, creative_type, asset_placeholders)
+                if not creative:
+                    self.log(f"Skipping unsupported creative {asset['creative_id']} with type: {creative_type}")
+                    created_asset_statuses.append(AssetStatus(creative_id=asset["creative_id"], status="failed"))
+                    continue
+            except ValueError as e:
+                self.log(f"[red]Creative {asset['creative_id']} failed dimension validation: {e}[/red]")
                 created_asset_statuses.append(AssetStatus(creative_id=asset["creative_id"], status="failed"))
                 continue
 
@@ -1316,6 +1348,188 @@ class GoogleAdManager(AdServerAdapter):
         """
         return self.validator.validate_creative_asset(asset)
 
+    def _validate_creative_size_against_placeholders(
+        self, asset: dict[str, Any], creative_placeholders: dict[str, list]
+    ) -> list[str]:
+        """
+        Validate that creative format and asset requirements match available LineItem placeholders.
+
+        Args:
+            asset: Creative asset dictionary containing format and package assignments
+            creative_placeholders: Dict mapping package names to their placeholder lists
+
+        Returns:
+            List of validation error messages (empty if valid)
+        """
+        validation_errors = []
+
+        # First validate that the asset conforms to its format requirements
+        format_errors = self._validate_asset_against_format_requirements(asset)
+        validation_errors.extend(format_errors)
+
+        # Get creative FORMAT dimensions (not asset dimensions) for placeholder validation
+        # For backward compatibility, if format field is missing, try to use asset dimensions
+        format_id = asset.get("format", "")
+        format_width, format_height = None, None
+
+        if format_id:
+            # If format is specified, use strict format-based validation
+            try:
+                format_width, format_height = self._get_format_dimensions(format_id)
+            except ValueError as e:
+                validation_errors.append(str(e))
+                return validation_errors
+        else:
+            # For backward compatibility: if no format specified, use asset dimensions if available
+            if asset.get("width") and asset.get("height"):
+                format_width, format_height = asset["width"], asset["height"]
+                self.log(
+                    f"⚠️  Using asset dimensions for placeholder validation (format field missing): {format_width}x{format_height}"
+                )
+            else:
+                # No format and no dimensions - this is a validation error
+                validation_errors.append(
+                    f"Creative {asset.get('creative_id')} missing both format specification and width/height dimensions"
+                )
+                return validation_errors
+
+        # Get placeholders for this asset's package assignments
+        package_assignments = asset.get("package_assignments", [])
+
+        # If no package assignments, skip placeholder validation entirely
+        # This maintains backward compatibility with tests and simple scenarios
+        if not package_assignments:
+            return validation_errors
+
+        # Check if any assigned package has a matching placeholder for the FORMAT size
+        found_match = False
+        available_sizes = set()
+
+        for pkg_id in package_assignments:
+            if pkg_id in creative_placeholders:
+                placeholders = creative_placeholders[pkg_id]
+                for placeholder in placeholders:
+                    size = placeholder.get("size", {})
+                    placeholder_width = size.get("width")
+                    placeholder_height = size.get("height")
+
+                    if placeholder_width and placeholder_height:
+                        available_sizes.add(f"{placeholder_width}x{placeholder_height}")
+
+                        if placeholder_width == format_width and placeholder_height == format_height:
+                            found_match = True
+                            break
+
+                if found_match:
+                    break
+
+        if not found_match and available_sizes:
+            validation_errors.append(
+                f"Creative format {format_id} ({format_width}x{format_height}) does not match any LineItem placeholder. "
+                f"Available sizes: {', '.join(sorted(available_sizes))}. "
+                f"Creative will be rejected by GAM - please use matching format dimensions."
+            )
+
+        return validation_errors
+
+    def _validate_asset_against_format_requirements(self, asset: dict[str, Any]) -> list[str]:
+        """
+        Validate that asset dimensions and properties conform to format asset requirements.
+
+        Args:
+            asset: Creative asset dictionary
+
+        Returns:
+            List of validation error messages (empty if valid)
+        """
+        validation_errors = []
+        format_id = asset.get("format", "")
+
+        if not format_id:
+            return validation_errors  # Format validation handled elsewhere
+
+        # Get format definition from registry
+        try:
+            from src.core.schemas import FORMAT_REGISTRY
+
+            if format_id not in FORMAT_REGISTRY:
+                return validation_errors  # Unknown format handled elsewhere
+
+            format_def = FORMAT_REGISTRY[format_id]
+            if not format_def.assets_required:
+                return validation_errors  # No asset requirements to validate
+
+        except Exception as e:
+            self.log(f"⚠️ Error accessing format registry for asset validation: {e}")
+            return validation_errors
+
+        # Validate asset against format asset requirements
+        asset_width = asset.get("width")
+        asset_height = asset.get("height")
+        asset_type = self._determine_asset_type(asset)
+
+        # Find matching asset requirement
+        matching_requirement = None
+        for req in format_def.assets_required:
+            if req.asset_type == asset_type or req.asset_type == "image":  # Default to image for display assets
+                matching_requirement = req
+                break
+
+        if not matching_requirement:
+            # No specific requirement found - this might be okay for some formats
+            return validation_errors
+
+        req_dict = matching_requirement.requirements or {}
+
+        # Validate dimensions if specified in requirements
+        if asset_width and asset_height:
+            # Check exact dimensions
+            if "width" in req_dict and "height" in req_dict:
+                required_width = req_dict["width"]
+                required_height = req_dict["height"]
+                if isinstance(required_width, int) and isinstance(required_height, int):
+                    if asset_width != required_width or asset_height != required_height:
+                        validation_errors.append(
+                            f"Asset dimensions {asset_width}x{asset_height} do not match "
+                            f"format requirement {required_width}x{required_height} for {asset_type} in {format_id}"
+                        )
+
+            # Check minimum dimensions
+            if "min_width" in req_dict and asset_width < req_dict["min_width"]:
+                validation_errors.append(
+                    f"Asset width {asset_width} below minimum {req_dict['min_width']} for {asset_type} in {format_id}"
+                )
+            if "min_height" in req_dict and asset_height < req_dict["min_height"]:
+                validation_errors.append(
+                    f"Asset height {asset_height} below minimum {req_dict['min_height']} for {asset_type} in {format_id}"
+                )
+
+            # Check maximum dimensions (if specified)
+            if "max_width" in req_dict and asset_width > req_dict["max_width"]:
+                validation_errors.append(
+                    f"Asset width {asset_width} exceeds maximum {req_dict['max_width']} for {asset_type} in {format_id}"
+                )
+            if "max_height" in req_dict and asset_height > req_dict["max_height"]:
+                validation_errors.append(
+                    f"Asset height {asset_height} exceeds maximum {req_dict['max_height']} for {asset_type} in {format_id}"
+                )
+
+        return validation_errors
+
+    def _determine_asset_type(self, asset: dict[str, Any]) -> str:
+        """Determine the asset type based on asset properties."""
+        # Check if it's a video asset
+        if asset.get("duration") or "video" in asset.get("format", "").lower():
+            return "video"
+
+        # Check if it's HTML/rich media
+        url = asset.get("url", "")
+        if any(tag in asset.get("tag", "") for tag in ["<html", "<div", "<script"]) or url.endswith((".html", ".js")):
+            return "html"
+
+        # Default to image for display creatives
+        return "image"
+
     def _is_html_snippet(self, content: str) -> bool:
         """Detect if content is HTML/JS snippet rather than URL."""
         if not content:
@@ -1323,7 +1537,9 @@ class GoogleAdManager(AdServerAdapter):
         html_indicators = ["<script", "<iframe", "<ins", "<div", "document.write", "innerHTML"]
         return any(indicator in content for indicator in html_indicators)
 
-    def _create_gam_creative(self, asset: dict[str, Any], creative_type: str) -> dict[str, Any] | None:
+    def _create_gam_creative(
+        self, asset: dict[str, Any], creative_type: str, placeholders: list[dict] = None
+    ) -> dict[str, Any] | None:
         """Create the appropriate GAM creative object based on creative type."""
         base_creative = {
             "advertiserId": self.company_id,
@@ -1332,20 +1548,22 @@ class GoogleAdManager(AdServerAdapter):
         }
 
         if creative_type == "third_party_tag":
-            return self._create_third_party_creative(asset, base_creative)
+            return self._create_third_party_creative(asset, base_creative, placeholders)
         elif creative_type == "native":
-            return self._create_native_creative(asset, base_creative)
+            return self._create_native_creative(asset, base_creative, placeholders)
         elif creative_type == "html5":
-            return self._create_html5_creative(asset, base_creative)
+            return self._create_html5_creative(asset, base_creative, placeholders)
         elif creative_type == "hosted_asset":
-            return self._create_hosted_asset_creative(asset, base_creative)
+            return self._create_hosted_asset_creative(asset, base_creative, placeholders)
         else:
             self.log(f"Unknown creative type: {creative_type}")
             return None
 
-    def _create_third_party_creative(self, asset: dict[str, Any], base_creative: dict) -> dict[str, Any]:
+    def _create_third_party_creative(
+        self, asset: dict[str, Any], base_creative: dict, placeholders: list[dict] = None
+    ) -> dict[str, Any]:
         """Create a ThirdPartyCreative for tag-based delivery using AdCP v1.3+ fields."""
-        width, height = self._extract_dimensions_from_format(asset.get("format", ""))
+        width, height = self._get_creative_dimensions(asset, placeholders)
 
         # Get snippet from AdCP v1.3+ field
         snippet = asset.get("snippet")
@@ -1378,7 +1596,9 @@ class GoogleAdManager(AdServerAdapter):
 
         return creative
 
-    def _create_native_creative(self, asset: dict[str, Any], base_creative: dict) -> dict[str, Any]:
+    def _create_native_creative(
+        self, asset: dict[str, Any], base_creative: dict, placeholders: list[dict] = None
+    ) -> dict[str, Any]:
         """Create a TemplateCreative for native ads."""
         # Native ads use 1x1 size convention
         creative = {
@@ -1394,9 +1614,11 @@ class GoogleAdManager(AdServerAdapter):
 
         return creative
 
-    def _create_html5_creative(self, asset: dict[str, Any], base_creative: dict) -> dict[str, Any]:
+    def _create_html5_creative(
+        self, asset: dict[str, Any], base_creative: dict, placeholders: list[dict] = None
+    ) -> dict[str, Any]:
         """Create an Html5Creative for rich media HTML5 ads."""
-        width, height = self._extract_dimensions_from_format(asset.get("format", ""))
+        width, height = self._get_creative_dimensions(asset, placeholders)
 
         creative = {
             **base_creative,
@@ -1451,10 +1673,12 @@ class GoogleAdManager(AdServerAdapter):
             # In real implementation, you might fetch and validate the HTML content
             return f"<!-- HTML5 Creative URL: {media_url} -->"
 
-    def _create_hosted_asset_creative(self, asset: dict[str, Any], base_creative: dict) -> dict[str, Any]:
+    def _create_hosted_asset_creative(
+        self, asset: dict[str, Any], base_creative: dict, placeholders: list[dict] = None
+    ) -> dict[str, Any]:
         """Create ImageCreative or VideoCreative for hosted assets."""
         format_str = asset.get("format", "")
-        width, height = self._extract_dimensions_from_format(format_str)
+        width, height = self._get_creative_dimensions(asset, placeholders)
 
         creative = {
             **base_creative,
@@ -1486,6 +1710,166 @@ class GoogleAdManager(AdServerAdapter):
         self._add_tracking_urls_to_creative(creative, asset)
 
         return creative
+
+    def _get_creative_dimensions(self, asset: dict[str, Any], placeholders: list[dict] = None) -> tuple[int, int]:
+        """Get creative FORMAT dimensions for GAM creative creation and placeholder validation.
+
+        Note: This returns FORMAT dimensions, not asset dimensions. The format defines the
+        overall creative size that GAM will use, while individual assets within the format
+        may have different dimensions as specified in the format's asset requirements.
+
+        Args:
+            asset: Creative asset dictionary containing format information
+            placeholders: List of creative placeholders from LineItem(s)
+
+        Returns:
+            Tuple of (width, height) format dimensions for GAM creative
+
+        Raises:
+            ValueError: If creative format dimensions cannot be determined or don't match placeholders
+        """
+        # Use FORMAT dimensions for GAM creative size, with asset dimensions as fallback
+        format_id = asset.get("format", "")
+        format_width, format_height = None, None
+
+        if format_id:
+            # If format is specified, use format-based dimensions
+            try:
+                format_width, format_height = self._get_format_dimensions(format_id)
+                self.log(
+                    f"Using format dimensions for GAM creative: {format_width}x{format_height} (format: {format_id})"
+                )
+            except ValueError as e:
+                raise ValueError(f"Creative {asset.get('creative_id', 'unknown')}: {str(e)}")
+        else:
+            # For backward compatibility: if no format specified, use asset dimensions
+            if asset.get("width") and asset.get("height"):
+                format_width, format_height = asset["width"], asset["height"]
+                self.log(f"📐 Using asset dimensions for GAM creative: {format_width}x{format_height}")
+            else:
+                raise ValueError(
+                    f"Creative {asset.get('creative_id', 'unknown')}: No format specified and no width/height dimensions available"
+                )
+
+        # Validate asset dimensions against format requirements separately
+        asset_errors = self._validate_asset_against_format_requirements(asset)
+        if asset_errors:
+            self.log(
+                f"⚠️ Asset validation warnings for {asset.get('creative_id', 'unknown')}: {'; '.join(asset_errors)}"
+            )
+            # Note: We log warnings but don't fail here - some asset validation might be advisory
+
+        # If we have placeholders, validate format size matches them
+        if placeholders:
+            # Find a matching placeholder for the FORMAT size
+            for placeholder in placeholders:
+                size = placeholder.get("size", {})
+                placeholder_width = size.get("width")
+                placeholder_height = size.get("height")
+
+                if placeholder_width == format_width and placeholder_height == format_height:
+                    self.log(f"✓ Matched format size {format_width}x{format_height} to LineItem placeholder")
+                    return format_width, format_height
+
+            # If no exact match, FAIL - format size must match placeholder
+            available_sizes = [f"{p['size']['width']}x{p['size']['height']}" for p in placeholders if "size" in p]
+            error_msg = (
+                f"Creative format {format_id} ({format_width}x{format_height}) does not match any LineItem placeholder. "
+                f"Available sizes: {', '.join(available_sizes)}. "
+                f"Creative will be rejected by GAM - format must match placeholder dimensions."
+            )
+            self.log(f"❌ {error_msg}")
+            raise ValueError(error_msg)
+
+        # No placeholders provided - use format dimensions
+        self.log(f"📐 Using format dimensions for GAM creative: {format_width}x{format_height}")
+        return format_width, format_height
+
+    def _get_format_dimensions(self, format_id: str) -> tuple[int, int]:
+        """Get dimensions from format registry or database.
+
+        Args:
+            format_id: Format identifier (e.g., "display_300x250")
+
+        Returns:
+            Tuple of (width, height) dimensions
+
+        Raises:
+            ValueError: If format dimensions cannot be determined from registry or database
+        """
+        if not format_id:
+            raise ValueError(
+                "Format ID is required - cannot determine creative dimensions without format specification"
+            )
+
+        # First try format registry (hardcoded formats in schemas.py)
+        try:
+            from src.core.schemas import FORMAT_REGISTRY
+
+            if format_id in FORMAT_REGISTRY:
+                format_obj = FORMAT_REGISTRY[format_id]
+                requirements = format_obj.requirements or {}
+
+                # Handle different requirement structures
+                if "width" in requirements and "height" in requirements:
+                    width = requirements["width"]
+                    height = requirements["height"]
+
+                    # Ensure they're integers (some formats use strings like "100%")
+                    if isinstance(width, int) and isinstance(height, int):
+                        self.log(f"📋 Found dimensions in format registry for {format_id}: {width}x{height}")
+                        return width, height
+
+        except Exception as e:
+            self.log(f"⚠️ Error accessing format registry: {e}")
+
+        # Second try database lookup (only if not in dry-run mode to avoid mocking issues)
+        if not self.dry_run:
+            try:
+                from src.core.database.database_session import get_db_session
+                from src.core.database.models import CreativeFormat
+
+                with get_db_session() as session:
+                    # First try tenant-specific format, then standard/foundational
+                    format_record = (
+                        session.query(CreativeFormat)
+                        .filter(
+                            CreativeFormat.format_id == format_id, CreativeFormat.tenant_id.in_([self.tenant_id, None])
+                        )
+                        .order_by(
+                            # Prefer tenant-specific, then standard, then foundational
+                            CreativeFormat.tenant_id.desc().nullslast(),
+                            CreativeFormat.is_standard.desc(),
+                            CreativeFormat.is_foundational.desc(),
+                        )
+                        .first()
+                    )
+
+                    if format_record and format_record.width and format_record.height:
+                        self.log(
+                            f"💾 Found dimensions in database for {format_id}: {format_record.width}x{format_record.height}"
+                        )
+                        return format_record.width, format_record.height
+
+            except Exception as e:
+                self.log(f"⚠️ Error accessing database for format lookup: {e}")
+
+        # Last resort: try to extract dimensions from format name (e.g., "display_300x250")
+        # This handles test formats and formats following standard naming conventions
+        import re
+
+        dimension_match = re.search(r"(\d+)x(\d+)", format_id)
+        if dimension_match:
+            width, height = int(dimension_match.group(1)), int(dimension_match.group(2))
+            self.log(f"🔍 Extracted dimensions from format name '{format_id}': {width}x{height}")
+            return width, height
+
+        # No fallbacks - fail if we can't get proper dimensions
+        raise ValueError(
+            f"Cannot determine dimensions for format '{format_id}'. "
+            f"Format not found in registry or database. "
+            f"Please use explicit width/height fields or ensure format is properly defined."
+        )
 
     def _add_tracking_urls_to_creative(self, creative: dict[str, Any], asset: dict[str, Any]) -> None:
         """
@@ -1640,20 +2024,6 @@ class GoogleAdManager(AdServerAdapter):
             "video/avi": "avi",
         }
         return content_type_map.get(content_type, "jpg")
-
-    def _extract_dimensions_from_format(self, format_id: str) -> tuple[int, int]:
-        """Extract width and height from format ID like 'display_300x250'."""
-        if "_" in format_id:
-            parts = format_id.split("_")
-            if len(parts) >= 2 and "x" in parts[-1]:
-                dims = parts[-1].split("x")
-                if len(dims) == 2:
-                    try:
-                        return int(dims[0]), int(dims[1])
-                    except ValueError:
-                        pass
-        # Default dimensions for unknown formats
-        return 300, 250
 
     def _get_native_template_id(self, asset: dict[str, Any]) -> str:
         """Get or find a native template ID for this creative."""

@@ -5,6 +5,8 @@ This test suite validates the GAM-specific creative validation logic
 including size limits, content policies, and technical requirements.
 """
 
+import pytest
+
 from src.adapters.gam_validation import GAMValidator, validate_gam_creative
 
 
@@ -275,6 +277,311 @@ class TestGAMValidator:
         assert "height 2000px exceeds" in issue_text
         assert "File size 300,000 bytes exceeds" in issue_text
         assert "must use HTTPS" in issue_text
+
+
+class TestGAMCreativeSizeMatching:
+    """Test suite for GAM creative size matching to LineItem placeholders."""
+
+    def setup_method(self):
+        """Set up test fixtures."""
+        # Import here to avoid circular imports during test discovery
+        from src.adapters.google_ad_manager import GoogleAdManager
+        from src.core.schemas import Principal
+
+        principal = Principal(
+            principal_id="test_principal",
+            name="Test Principal",
+            access_token="test_token",
+            platform_mappings={"google_ad_manager": {"company_id": "12345"}},
+        )
+
+        config = {"network_code": "12345", "service_account_key_file": "test.json"}
+
+        self.adapter = GoogleAdManager(config=config, principal=principal, dry_run=True)
+
+    def test_get_creative_dimensions_exact_match(self):
+        """Test exact size match against placeholders."""
+        placeholders = [
+            {"size": {"width": 300, "height": 250}, "creativeSizeType": "PIXEL"},
+            {"size": {"width": 728, "height": 90}, "creativeSizeType": "PIXEL"},
+        ]
+
+        asset = {"format": "display_300x250", "creative_id": "test_creative"}
+        width, height = self.adapter._get_creative_dimensions(asset, placeholders)
+
+        assert width == 300
+        assert height == 250
+
+    def test_get_creative_dimensions_size_mismatch_fails(self):
+        """Test that size mismatch with placeholders fails (no fallback to first)."""
+        placeholders = [
+            {"size": {"width": 300, "height": 250}, "creativeSizeType": "PIXEL"},
+            {"size": {"width": 728, "height": 90}, "creativeSizeType": "PIXEL"},
+        ]
+
+        asset = {
+            "format": "display_970x250",
+            "creative_id": "test_creative",
+        }  # Valid format but doesn't match placeholders
+
+        with pytest.raises(ValueError) as exc_info:
+            self.adapter._get_creative_dimensions(asset, placeholders)
+
+        assert "does not match any LineItem placeholder" in str(exc_info.value)
+        assert "Creative will be rejected by GAM" in str(exc_info.value)
+
+    def test_get_creative_dimensions_always_uses_format(self):
+        """Test that GAM creative dimensions always use format, not asset dimensions."""
+        asset = {
+            "format": "display_300x250",  # Format dimensions take precedence
+            "width": 728,  # Asset dimensions (ignored for GAM creative size)
+            "height": 90,
+            "creative_id": "test_creative",
+        }
+        width, height = self.adapter._get_creative_dimensions(asset, None)
+
+        # Should use FORMAT dimensions (300x250), not asset dimensions (728x90)
+        assert width == 300
+        assert height == 250
+
+    def test_get_creative_dimensions_format_registry(self):
+        """Test format registry lookup."""
+        asset = {"format": "display_728x90", "creative_id": "test_creative"}
+        width, height = self.adapter._get_creative_dimensions(asset, None)
+
+        # Should use format registry (schemas.py)
+        assert width == 728
+        assert height == 90
+
+    def test_get_creative_dimensions_unknown_format_with_dimensions_extracts(self):
+        """Test that unknown format with dimensions in name extracts successfully."""
+        asset = {"format": "custom_320x50", "creative_id": "test_creative"}
+
+        width, height = self.adapter._get_creative_dimensions(asset, None)
+
+        assert width == 320
+        assert height == 50
+
+    def test_get_format_dimensions_registry_lookup(self):
+        """Test direct format dimensions lookup from registry."""
+        width, height = self.adapter._get_format_dimensions("display_300x250")
+        assert width == 300
+        assert height == 250
+
+    def test_get_format_dimensions_unknown_format_with_dimensions_extracts(self):
+        """Test that unknown format with dimensions in name extracts successfully."""
+        width, height = self.adapter._get_format_dimensions("unknown_600x400")
+
+        assert width == 600
+        assert height == 400
+
+    def test_get_format_dimensions_truly_invalid_format_fails(self):
+        """Test that format without extractable dimensions still fails."""
+        with pytest.raises(ValueError) as exc_info:
+            self.adapter._get_format_dimensions("completely_invalid_format")
+
+        assert "Cannot determine dimensions for format 'completely_invalid_format'" in str(exc_info.value)
+
+    def test_get_format_dimensions_empty_format_fails(self):
+        """Test that empty format fails with clear error."""
+        with pytest.raises(ValueError) as exc_info:
+            self.adapter._get_format_dimensions("")
+
+        assert "Format ID is required" in str(exc_info.value)
+
+    def test_validate_creative_size_valid_match(self):
+        """Test validation passes for matching size."""
+        creative_placeholders = {
+            "package_1": [
+                {"size": {"width": 300, "height": 250}, "creativeSizeType": "PIXEL"},
+                {"size": {"width": 728, "height": 90}, "creativeSizeType": "PIXEL"},
+            ]
+        }
+
+        asset = {"format": "display_300x250", "creative_id": "valid_creative", "package_assignments": ["package_1"]}
+
+        errors = self.adapter._validate_creative_size_against_placeholders(asset, creative_placeholders)
+        assert len(errors) == 0
+
+    def test_validate_creative_size_unknown_format_fails(self):
+        """Test validation fails for unknown format."""
+        creative_placeholders = {"package_1": [{"size": {"width": 300, "height": 250}, "creativeSizeType": "PIXEL"}]}
+
+        asset = {
+            "format": "unknown_format_123",
+            "creative_id": "unknown_creative",
+            "package_assignments": ["package_1"],
+        }
+
+        errors = self.adapter._validate_creative_size_against_placeholders(asset, creative_placeholders)
+        assert len(errors) == 1
+        assert "Cannot determine dimensions for format 'unknown_format_123'" in errors[0]
+
+    def test_validate_creative_size_invalid_size(self):
+        """Test validation fails for non-matching size."""
+        creative_placeholders = {
+            "package_1": [
+                {"size": {"width": 300, "height": 250}, "creativeSizeType": "PIXEL"},
+                {"size": {"width": 728, "height": 90}, "creativeSizeType": "PIXEL"},
+            ]
+        }
+
+        asset = {
+            "format": "display_970x250",  # Valid format but doesn't match placeholders
+            "creative_id": "invalid_creative",
+            "package_assignments": ["package_1"],
+        }
+
+        errors = self.adapter._validate_creative_size_against_placeholders(asset, creative_placeholders)
+        assert len(errors) == 1
+        assert "Creative format display_970x250 (970x250) does not match any LineItem placeholder" in errors[0]
+        assert "300x250, 728x90" in errors[0]
+        assert "Creative will be rejected by GAM" in errors[0]
+
+    def test_validate_creative_size_no_package_assignments(self):
+        """Test validation passes when no package assignments (backward compatibility)."""
+        creative_placeholders = {"package_1": []}
+
+        asset = {"format": "display_300x250", "creative_id": "no_packages", "package_assignments": []}
+
+        errors = self.adapter._validate_creative_size_against_placeholders(asset, creative_placeholders)
+        # Should pass with no errors - backward compatibility
+        assert len(errors) == 0
+
+    def test_validate_creative_size_multiple_packages_find_match(self):
+        """Test finding match across multiple packages."""
+        creative_placeholders = {
+            "package_1": [{"size": {"width": 300, "height": 250}, "creativeSizeType": "PIXEL"}],
+            "package_2": [{"size": {"width": 728, "height": 90}, "creativeSizeType": "PIXEL"}],
+        }
+
+        asset = {
+            "format": "display_728x90",
+            "creative_id": "multi_package",
+            "package_assignments": ["package_1", "package_2"],
+        }
+
+        errors = self.adapter._validate_creative_size_against_placeholders(asset, creative_placeholders)
+        assert len(errors) == 0
+
+    def test_validate_creative_size_missing_format_uses_asset_dimensions(self):
+        """Test validation uses asset dimensions when format is missing (backward compatibility)."""
+        creative_placeholders = {"package_1": [{"size": {"width": 728, "height": 90}, "creativeSizeType": "PIXEL"}]}
+
+        asset = {
+            "width": 728,  # Asset dimensions provided
+            "height": 90,
+            "creative_id": "explicit_dims",
+            "package_assignments": ["package_1"],
+            # Missing format field - should use asset dimensions as fallback
+        }
+
+        errors = self.adapter._validate_creative_size_against_placeholders(asset, creative_placeholders)
+        # Should pass using asset dimensions as fallback
+        assert len(errors) == 0
+
+    def test_validate_creative_size_missing_format_and_dimensions_fails(self):
+        """Test validation fails when both format and asset dimensions are missing."""
+        creative_placeholders = {"package_1": [{"size": {"width": 728, "height": 90}, "creativeSizeType": "PIXEL"}]}
+
+        asset = {
+            "creative_id": "no_dims",
+            "package_assignments": ["package_1"],
+            # Missing both format field and width/height dimensions
+        }
+
+        errors = self.adapter._validate_creative_size_against_placeholders(asset, creative_placeholders)
+        # Should fail when no format or dimensions available
+        assert len(errors) == 1
+        assert "missing both format specification and width/height dimensions" in errors[0]
+
+    def test_validate_asset_against_format_requirements_native_valid(self):
+        """Test asset validation for native format with valid dimensions."""
+        asset = {
+            "format": "native_article",
+            "creative_id": "native_001",
+            "width": 400,  # Above minimum 300
+            "height": 250,  # Above minimum 200
+            "url": "https://example.com/image.jpg",
+        }
+
+        errors = self.adapter._validate_asset_against_format_requirements(asset)
+        assert len(errors) == 0
+
+    def test_validate_asset_against_format_requirements_native_too_small(self):
+        """Test asset validation for native format with too small dimensions."""
+        asset = {
+            "format": "native_article",
+            "creative_id": "native_002",
+            "width": 250,  # Below minimum 300
+            "height": 150,  # Below minimum 200
+            "url": "https://example.com/image.jpg",
+        }
+
+        errors = self.adapter._validate_asset_against_format_requirements(asset)
+        assert len(errors) == 2
+        assert "width 250 below minimum 300" in errors[0]
+        assert "height 150 below minimum 200" in errors[1]
+
+    def test_validate_asset_against_format_requirements_exact_match(self):
+        """Test asset validation for format requiring exact dimensions."""
+        asset = {
+            "format": "native_feed",
+            "creative_id": "feed_001",
+            "width": 1200,  # Exact match required
+            "height": 628,  # Exact match required
+            "url": "https://example.com/feed-image.jpg",
+        }
+
+        errors = self.adapter._validate_asset_against_format_requirements(asset)
+        assert len(errors) == 0
+
+    def test_validate_asset_against_format_requirements_wrong_exact(self):
+        """Test asset validation for format with wrong exact dimensions."""
+        asset = {
+            "format": "native_feed",
+            "creative_id": "feed_002",
+            "width": 1000,  # Wrong (should be 1200)
+            "height": 600,  # Wrong (should be 628)
+            "url": "https://example.com/feed-image.jpg",
+        }
+
+        errors = self.adapter._validate_asset_against_format_requirements(asset)
+        assert len(errors) == 1
+        assert "1000x600 do not match format requirement 1200x628" in errors[0]
+
+    def test_determine_asset_type_video(self):
+        """Test asset type detection for video."""
+        asset = {"duration": 30, "url": "https://example.com/video.mp4"}
+        asset_type = self.adapter._determine_asset_type(asset)
+        assert asset_type == "video"
+
+    def test_determine_asset_type_html(self):
+        """Test asset type detection for HTML."""
+        asset = {"tag": "<html><div>Rich content</div></html>", "url": "https://example.com/creative.html"}
+        asset_type = self.adapter._determine_asset_type(asset)
+        assert asset_type == "html"
+
+    def test_determine_asset_type_image_default(self):
+        """Test asset type detection defaults to image."""
+        asset = {"url": "https://example.com/image.jpg"}
+        asset_type = self.adapter._determine_asset_type(asset)
+        assert asset_type == "image"
+
+    def test_get_creative_dimensions_uses_format_not_asset(self):
+        """Test that creative dimensions uses format size, not asset size."""
+        asset = {
+            "format": "display_300x250",  # Format is 300x250
+            "creative_id": "display_001",
+            "width": 280,  # Asset is smaller
+            "height": 230,
+            "url": "https://example.com/banner.jpg",
+        }
+
+        width, height = self.adapter._get_creative_dimensions(asset, None)
+        # Should use FORMAT dimensions (300x250), not asset dimensions (280x230)
+        assert width == 300
+        assert height == 250
 
 
 class TestConvenienceFunction:
