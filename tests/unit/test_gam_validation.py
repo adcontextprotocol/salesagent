@@ -353,14 +353,14 @@ class TestGAMCreativeSizeMatching:
         assert width == 728
         assert height == 90
 
-    def test_get_creative_dimensions_unknown_format_fails(self):
-        """Test that unknown format fails (no fallback parsing)."""
+    def test_get_creative_dimensions_unknown_format_with_dimensions_extracts(self):
+        """Test that unknown format with dimensions in name extracts successfully."""
         asset = {"format": "custom_320x50", "creative_id": "test_creative"}
 
-        with pytest.raises(ValueError) as exc_info:
-            self.adapter._get_creative_dimensions(asset, None)
+        width, height = self.adapter._get_creative_dimensions(asset, None)
 
-        assert "Cannot determine dimensions for format 'custom_320x50'" in str(exc_info.value)
+        assert width == 320
+        assert height == 50
 
     def test_get_format_dimensions_registry_lookup(self):
         """Test direct format dimensions lookup from registry."""
@@ -368,13 +368,19 @@ class TestGAMCreativeSizeMatching:
         assert width == 300
         assert height == 250
 
-    def test_get_format_dimensions_unknown_format_fails(self):
-        """Test that unknown format fails with clear error."""
-        with pytest.raises(ValueError) as exc_info:
-            self.adapter._get_format_dimensions("unknown_600x400")
+    def test_get_format_dimensions_unknown_format_with_dimensions_extracts(self):
+        """Test that unknown format with dimensions in name extracts successfully."""
+        width, height = self.adapter._get_format_dimensions("unknown_600x400")
 
-        assert "Cannot determine dimensions for format 'unknown_600x400'" in str(exc_info.value)
-        assert "Format not found in registry or database" in str(exc_info.value)
+        assert width == 600
+        assert height == 400
+
+    def test_get_format_dimensions_truly_invalid_format_fails(self):
+        """Test that format without extractable dimensions still fails."""
+        with pytest.raises(ValueError) as exc_info:
+            self.adapter._get_format_dimensions("completely_invalid_format")
+
+        assert "Cannot determine dimensions for format 'completely_invalid_format'" in str(exc_info.value)
 
     def test_get_format_dimensions_empty_format_fails(self):
         """Test that empty format fails with clear error."""
@@ -433,14 +439,14 @@ class TestGAMCreativeSizeMatching:
         assert "Creative will be rejected by GAM" in errors[0]
 
     def test_validate_creative_size_no_package_assignments(self):
-        """Test validation fails when no package assignments."""
+        """Test validation passes when no package assignments (backward compatibility)."""
         creative_placeholders = {"package_1": []}
 
         asset = {"format": "display_300x250", "creative_id": "no_packages", "package_assignments": []}
 
         errors = self.adapter._validate_creative_size_against_placeholders(asset, creative_placeholders)
-        assert len(errors) == 1
-        assert "has no package assignments" in errors[0]
+        # Should pass with no errors - backward compatibility
+        assert len(errors) == 0
 
     def test_validate_creative_size_multiple_packages_find_match(self):
         """Test finding match across multiple packages."""
@@ -458,8 +464,8 @@ class TestGAMCreativeSizeMatching:
         errors = self.adapter._validate_creative_size_against_placeholders(asset, creative_placeholders)
         assert len(errors) == 0
 
-    def test_validate_creative_size_requires_format(self):
-        """Test validation requires format specification."""
+    def test_validate_creative_size_missing_format_uses_asset_dimensions(self):
+        """Test validation uses asset dimensions when format is missing (backward compatibility)."""
         creative_placeholders = {"package_1": [{"size": {"width": 728, "height": 90}, "creativeSizeType": "PIXEL"}]}
 
         asset = {
@@ -467,12 +473,27 @@ class TestGAMCreativeSizeMatching:
             "height": 90,
             "creative_id": "explicit_dims",
             "package_assignments": ["package_1"],
-            # Missing format field - this should fail
+            # Missing format field - should use asset dimensions as fallback
         }
 
         errors = self.adapter._validate_creative_size_against_placeholders(asset, creative_placeholders)
+        # Should pass using asset dimensions as fallback
+        assert len(errors) == 0
+
+    def test_validate_creative_size_missing_format_and_dimensions_fails(self):
+        """Test validation fails when both format and asset dimensions are missing."""
+        creative_placeholders = {"package_1": [{"size": {"width": 728, "height": 90}, "creativeSizeType": "PIXEL"}]}
+
+        asset = {
+            "creative_id": "no_dims",
+            "package_assignments": ["package_1"],
+            # Missing both format field and width/height dimensions
+        }
+
+        errors = self.adapter._validate_creative_size_against_placeholders(asset, creative_placeholders)
+        # Should fail when no format or dimensions available
         assert len(errors) == 1
-        assert "missing format specification" in errors[0]
+        assert "missing both format specification and width/height dimensions" in errors[0]
 
     def test_validate_asset_against_format_requirements_native_valid(self):
         """Test asset validation for native format with valid dimensions."""
