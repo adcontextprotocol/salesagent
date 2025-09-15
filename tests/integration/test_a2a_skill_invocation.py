@@ -42,7 +42,8 @@ class A2AAdCPValidator:
     SKILL_TO_SCHEMA_MAP = {
         "get_products": "get-products",
         "create_media_buy": "create-media-buy",
-        "add_creative_assets": "add-creative-assets",
+        "sync_creatives": "sync-creatives",  # New AdCP spec endpoint
+        "list_creatives": "list-creatives",  # New AdCP spec endpoint
         "approve_creative": "approve-creative",  # When schema becomes available
         "get_signals": "get-signals",
         "search_signals": "search-signals",  # When schema becomes available
@@ -536,7 +537,8 @@ class TestA2ASkillInvocation:
                 assert skill_name in [
                     "get_products",
                     "create_media_buy",
-                    "add_creative_assets",
+                    "sync_creatives",
+                    "list_creatives",
                     "approve_creative",
                     "get_media_buy_status",
                     "optimize_media_buy",
@@ -544,6 +546,7 @@ class TestA2ASkillInvocation:
                     "search_signals",
                     "get_pricing",
                     "get_targeting",
+                    "list_creative_formats",  # Keep existing creative format endpoint
                 ], f"Skill {skill_name} not in expected skill list"
             except Exception as e:
                 pytest.fail(f"Skill {skill_name} should be handled but caused error: {e}")

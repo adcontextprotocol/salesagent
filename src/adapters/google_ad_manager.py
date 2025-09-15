@@ -1750,9 +1750,10 @@ class GoogleAdManager(AdServerAdapter):
         """
         # Check if principal has admin role or special admin flag
         platform_mappings = getattr(self.principal, "platform_mappings", {})
+        gam_mappings = platform_mappings.get("google_ad_manager", {})
         is_admin = (
-            platform_mappings.get("gam_admin", False)
-            or platform_mappings.get("is_admin", False)
+            gam_mappings.get("gam_admin", False)
+            or gam_mappings.get("is_admin", False)
             or getattr(self.principal, "role", "") == "admin"
         )
 

@@ -247,6 +247,39 @@ jobs:
       run: |
         uv run python scripts/setup/init_database.py
 
+    - name: Start AdCP server in background
+      env:
+        DATABASE_URL: postgresql://adcp_user:test_password@localhost:5432/adcp_test
+        GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY || 'test_key_for_mocking' }}
+        GOOGLE_CLIENT_ID: test_client_id
+        GOOGLE_CLIENT_SECRET: test_client_secret
+        SUPER_ADMIN_EMAILS: test@example.com
+        ADCP_TESTING: true
+        ADCP_SALES_PORT: 8080
+        A2A_PORT: 8091
+      run: |
+        # Start MCP server in background
+        uv run python scripts/run_server.py &
+        MCP_PID=$!
+        echo "MCP_PID=$MCP_PID" >> $GITHUB_ENV
+
+        # Start A2A server in background
+        uv run python src/a2a_server/adcp_a2a_server.py &
+        A2A_PID=$!
+        echo "A2A_PID=$A2A_PID" >> $GITHUB_ENV
+
+        # Wait for servers to start
+        echo "Waiting for servers to start..."
+        for i in {1..30}; do
+          if curl -s http://localhost:8080/health >/dev/null 2>&1 && \
+             curl -s http://localhost:8091/.well-known/agent.json >/dev/null 2>&1; then
+            echo "✓ Servers are ready"
+            break
+          fi
+          echo "Waiting for servers... ($i/30)"
+          sleep 2
+        done
+
     - name: Run E2E tests
       env:
         DATABASE_URL: postgresql://adcp_user:test_password@localhost:5432/adcp_test
@@ -255,10 +288,21 @@ jobs:
         GOOGLE_CLIENT_SECRET: test_client_secret
         SUPER_ADMIN_EMAILS: test@example.com
         ADCP_TESTING: true
+        ADCP_SALES_PORT: 8080
+        A2A_PORT: 8091
       run: |
-        uv run pytest tests/e2e/ -v --tb=short
+        uv run pytest tests/e2e/ -v --tb=short --skip-docker
       continue-on-error: true  # E2E tests may be flaky
 
+    - name: Stop background servers
+      if: always()
+      run: |
+        if [ ! -z "$MCP_PID" ]; then
+          kill $MCP_PID 2>/dev/null || true
+        fi
+        if [ ! -z "$A2A_PID" ]; then
+          kill $A2A_PID 2>/dev/null || true
+        fi
   lint:
     name: Lint & Type Check
     runs-on: ubuntu-latest

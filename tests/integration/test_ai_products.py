@@ -216,8 +216,7 @@ class TestProductAPIs:
     @pytest.fixture
     def auth_client(self, integration_db):
         """Create authenticated test client using test mode."""
-        from src.admin.app import create_app
-        
+
         app, _ = create_app()
         app.config["TESTING"] = True
         app.config["SECRET_KEY"] = "test_secret"
@@ -227,8 +226,8 @@ class TestProductAPIs:
         app.config["SESSION_COOKIE_SECURE"] = False  # Allow HTTP in tests
 
         client = app.test_client()
-        
-        # Use test_user for ADCP_AUTH_TEST_MODE 
+
+        # Use test_user for ADCP_AUTH_TEST_MODE
         with client.session_transaction() as sess:
             sess["test_user"] = "test@example.com"  # String format as expected by auth logic
             sess["user"] = "test@example.com"  # Also set user for consistency
@@ -236,16 +235,17 @@ class TestProductAPIs:
             sess["test_user_role"] = "super_admin"
             print(f"Set session keys: {list(sess.keys())}")
             print(f"test_user: {sess.get('test_user')}")
-            
+
         return client
 
     def test_product_suggestions_api(self, auth_client, integration_db):
         """Test product suggestions API endpoint."""
         # Debug auth test mode
         import os
+
         print(f"ADCP_AUTH_TEST_MODE: {os.environ.get('ADCP_AUTH_TEST_MODE')}")
         print(f"ADCP_TESTING: {os.environ.get('ADCP_TESTING')}")
-        
+
         # Create a real tenant in the database with unique ID
         import uuid
         from datetime import UTC, datetime

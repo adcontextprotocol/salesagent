@@ -26,11 +26,15 @@ from src.core.schemas import (
     Format,
     GetProductsRequest,
     GetProductsResponse,
+    ListCreativesRequest,
+    ListCreativesResponse,
     Measurement,
     Package,
     Signal,
     SignalDeployment,
     SignalPricing,
+    SyncCreativesRequest,
+    SyncCreativesResponse,
     Targeting,
 )
 from src.core.schemas import (
@@ -853,6 +857,232 @@ class TestAdCPContract:
         assert (
             len(adcp_response) >= 4
         ), f"CreativeAssignment response should have at least 4 core fields, got {len(adcp_response)}"
+
+    def test_sync_creatives_request_adcp_compliance(self):
+        """Test that SyncCreativesRequest model complies with AdCP sync-creatives schema."""
+        # Create Creative objects with all required fields (using media content, not snippet)
+        creative = Creative(
+            creative_id="creative_123",
+            name="Test Creative",
+            format_id="display_300x250",  # Uses format_id alias for format field
+            content_uri="https://example.com/creative.jpg",  # Uses content_uri alias for url field
+            principal_id="principal_456",
+            # Note: Don't use snippet here as it's mutually exclusive with media_url/content_uri
+            click_through_url="https://example.com/click",  # Uses click_through_url alias
+            tags=["sports", "premium"],
+            created_at=datetime.now(),
+            updated_at=datetime.now(),
+        )
+
+        request = SyncCreativesRequest(
+            creatives=[creative],
+            media_buy_id="mb_456",
+            buyer_ref="buyer_789",
+            assign_to_packages=["pkg_1", "pkg_2"],
+            upsert=True,
+        )
+
+        # Test model_dump (SyncCreativesRequest doesn't have internal fields)
+        adcp_response = request.model_dump()
+
+        # Verify required AdCP fields are present
+        adcp_required_fields = ["creatives"]
+        for field in adcp_required_fields:
+            assert field in adcp_response, f"Required AdCP field '{field}' missing from response"
+            assert adcp_response[field] is not None, f"Required AdCP field '{field}' is None"
+
+        # Verify AdCP optional fields are present
+        adcp_optional_fields = ["media_buy_id", "buyer_ref", "assign_to_packages", "upsert"]
+        for field in adcp_optional_fields:
+            assert field in adcp_response, f"AdCP optional field '{field}' missing from response"
+
+        # Verify creatives array structure
+        assert isinstance(adcp_response["creatives"], list), "Creatives must be an array"
+        assert len(adcp_response["creatives"]) > 0, "Creatives array must not be empty"
+
+        # Test creative object structure
+        creative_obj = adcp_response["creatives"][0]
+        creative_required_fields = ["creative_id", "name", "format", "url"]  # AdCP spec field names
+        for field in creative_required_fields:
+            assert field in creative_obj, f"Creative required field '{field}' missing"
+            assert creative_obj[field] is not None, f"Creative required field '{field}' is None"
+
+        # Verify field count (flexible due to optional fields)
+        assert len(adcp_response) >= 1, f"SyncCreativesRequest should have at least 1 field, got {len(adcp_response)}"
+
+    def test_sync_creatives_response_adcp_compliance(self):
+        """Test that SyncCreativesResponse model complies with AdCP sync-creatives response schema."""
+        synced_creative1 = Creative(
+            creative_id="creative_123",
+            name="Synced Creative 1",
+            format_id="display_300x250",
+            content_uri="https://example.com/creative1.jpg",
+            principal_id="principal_1",
+            status="approved",
+            created_at=datetime.now(),
+            updated_at=datetime.now(),
+        )
+
+        synced_creative2 = Creative(
+            creative_id="creative_456",
+            name="Synced Creative 2",
+            format_id="video_720p",
+            content_uri="https://example.com/creative2.mp4",
+            principal_id="principal_1",
+            status="pending_review",
+            created_at=datetime.now(),
+            updated_at=datetime.now(),
+        )
+
+        response = SyncCreativesResponse(
+            success=True,
+            message="Successfully synced 2 creatives",
+            synced_creatives=[synced_creative1, synced_creative2],
+            failed_creatives=[{"creative_id": "creative_789", "name": "Failed Creative", "error": "Invalid format"}],
+        )
+
+        # Test model_dump
+        adcp_response = response.model_dump()
+
+        # Verify required AdCP fields are present
+        adcp_required_fields = ["synced_creatives"]
+        for field in adcp_required_fields:
+            assert field in adcp_response, f"Required AdCP field '{field}' missing from response"
+            assert adcp_response[field] is not None, f"Required AdCP field '{field}' is None"
+
+        # Verify AdCP optional fields are present
+        adcp_optional_fields = ["failed_creatives", "assignments", "message"]
+        for field in adcp_optional_fields:
+            assert field in adcp_response, f"AdCP optional field '{field}' missing from response"
+
+        # Verify response structure requirements
+        assert isinstance(adcp_response["synced_creatives"], list), "Synced creatives must be array"
+        assert isinstance(adcp_response["failed_creatives"], list), "Failed creatives must be array"
+        assert isinstance(adcp_response["assignments"], list), "Assignments must be array"
+
+        # Verify field count (flexible due to optional fields)
+        assert len(adcp_response) >= 1, f"SyncCreativesResponse should have at least 1 field, got {len(adcp_response)}"
+
+    def test_list_creatives_request_adcp_compliance(self):
+        """Test that ListCreativesRequest model complies with AdCP list-creatives schema."""
+        request = ListCreativesRequest(
+            media_buy_id="mb_123",
+            buyer_ref="buyer_456",
+            status="approved",
+            format="display_300x250",  # Uses format, not format_id
+            tags=["sports", "premium"],
+            created_after=datetime.now() - timedelta(days=30),
+            created_before=datetime.now(),
+            limit=50,
+            # Note: ListCreativesRequest uses page, not offset
+            page=1,
+            sort_by="created_date",  # Uses created_date, not created_at
+            sort_order="desc",
+        )
+
+        # Test model_dump (ListCreativesRequest doesn't have internal fields)
+        adcp_response = request.model_dump()
+
+        # Verify all fields are optional in AdCP list-creatives request
+        adcp_optional_fields = [
+            "media_buy_id",
+            "buyer_ref",
+            "status",
+            "format",  # Uses format, not format_id
+            "tags",
+            "created_after",
+            "created_before",
+            "search",
+            "page",  # Uses page, not offset
+            "limit",
+            "sort_by",
+            "sort_order",
+        ]
+        for field in adcp_optional_fields:
+            assert field in adcp_response, f"AdCP optional field '{field}' missing from response"
+
+        # Verify AdCP-specific requirements
+        if adcp_response.get("status"):
+            valid_statuses = ["pending_review", "approved", "rejected", "adaptation_required"]
+            assert adcp_response["status"] in valid_statuses, f"Invalid status: {adcp_response['status']}"
+
+        if adcp_response.get("limit") is not None:
+            assert adcp_response["limit"] > 0, "Limit must be positive"
+
+        if adcp_response.get("page") is not None:
+            assert adcp_response["page"] >= 1, "Page must be >= 1"
+
+        if adcp_response.get("sort_order"):
+            assert adcp_response["sort_order"] in ["asc", "desc"], "Sort order must be asc or desc"
+
+        # Verify field count (flexible - all fields optional)
+        assert len(adcp_response) >= 0, "ListCreativesRequest can have 0 or more fields"
+
+    def test_list_creatives_response_adcp_compliance(self):
+        """Test that ListCreativesResponse model complies with AdCP list-creatives response schema."""
+        creative1 = Creative(
+            creative_id="creative_123",
+            name="Test Creative 1",
+            format_id="display_300x250",
+            content_uri="https://example.com/creative1.jpg",
+            principal_id="principal_1",
+            status="approved",
+            tags=["sports"],
+            created_at=datetime.now(),
+            updated_at=datetime.now(),
+        )
+
+        creative2 = Creative(
+            creative_id="creative_456",
+            name="Test Creative 2",
+            format_id="video_720p",
+            content_uri="https://example.com/creative2.mp4",
+            principal_id="principal_1",
+            status="pending_review",
+            # Note: Not using snippet as it's mutually exclusive with content_uri
+            tags=["premium"],
+            created_at=datetime.now(),
+            updated_at=datetime.now(),
+        )
+
+        response = ListCreativesResponse(
+            creatives=[creative1, creative2],
+            total_count=2,
+            page=1,  # Required field
+            limit=50,  # Required field
+            has_more=False,
+            message="Found 2 creatives",  # Optional field
+        )
+
+        # Test model_dump
+        adcp_response = response.model_dump()
+
+        # Verify required AdCP fields are present
+        adcp_required_fields = ["creatives", "total_count", "page", "limit", "has_more"]
+        for field in adcp_required_fields:
+            assert field in adcp_response, f"Required AdCP field '{field}' missing from response"
+            assert adcp_response[field] is not None, f"Required AdCP field '{field}' is None"
+
+        # Verify AdCP optional fields are present
+        adcp_optional_fields = ["message"]
+        for field in adcp_optional_fields:
+            assert field in adcp_response, f"AdCP optional field '{field}' missing from response"
+
+        # Verify response structure requirements
+        assert isinstance(adcp_response["creatives"], list), "Creatives must be array"
+        assert isinstance(adcp_response["total_count"], int), "Total count must be integer"
+        assert adcp_response["total_count"] >= 0, "Total count must be non-negative"
+
+        # Test creative object structure in response
+        if len(adcp_response["creatives"]) > 0:
+            creative = adcp_response["creatives"][0]
+            creative_required_fields = ["creative_id", "name", "format", "status"]
+            for field in creative_required_fields:
+                assert field in creative, f"Creative required field '{field}' missing"
+                assert creative[field] is not None, f"Creative required field '{field}' is None"
+
+        # Verify field count
+        assert len(adcp_response) == 6, f"ListCreativesResponse should have exactly 6 fields, got {len(adcp_response)}"
 
 
 if __name__ == "__main__":

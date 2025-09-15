@@ -187,6 +187,80 @@ class User(Base):
     )
 
 
+class Creative(Base):
+    """Creative database model matching the creatives table schema."""
+
+    __tablename__ = "creatives"
+
+    creative_id = Column(String(100), primary_key=True)
+    tenant_id = Column(String(50), ForeignKey("tenants.tenant_id", ondelete="CASCADE"), nullable=False)
+    principal_id = Column(String(100), nullable=False)
+    name = Column(String(255), nullable=False)
+    format_id = Column(String(100), nullable=False)  # Maps to format field in schema
+    status = Column(String(50), nullable=False, default="pending")
+
+    # Creative content URLs (AdCP spec fields)
+    url = Column(Text, nullable=True)  # media_url / content_uri
+    click_url = Column(Text, nullable=True)  # click_through_url
+
+    # Dimensions (extracted from data JSON or separate columns)
+    width = Column(Integer, nullable=True)
+    height = Column(Integer, nullable=True)
+    duration = Column(Float, nullable=True)
+
+    # AdCP v1.3+ fields for third-party creatives
+    snippet = Column(Text, nullable=True)
+    snippet_type = Column(String(50), nullable=True)
+    template_variables = Column(JSON, nullable=True)
+
+    # Legacy data field (for backward compatibility)
+    data = Column(JSON, nullable=False, default=dict)
+
+    # Relationships and metadata
+    group_id = Column(String(100), nullable=True)
+    created_at = Column(DateTime, nullable=True, server_default=func.current_timestamp())
+    updated_at = Column(DateTime, nullable=True)
+    approved_at = Column(DateTime, nullable=True)
+    approved_by = Column(String(255), nullable=True)
+
+    # Relationships
+    tenant = relationship("Tenant", backref="creatives")
+
+    __table_args__ = (
+        ForeignKeyConstraint(["tenant_id"], ["tenants.tenant_id"], ondelete="CASCADE"),
+        ForeignKeyConstraint(["tenant_id", "principal_id"], ["principals.tenant_id", "principals.principal_id"]),
+        Index("idx_creatives_tenant", "tenant_id"),
+        Index("idx_creatives_principal", "tenant_id", "principal_id"),
+        Index("idx_creatives_status", "status"),
+    )
+
+
+class CreativeAssignment(Base):
+    """Creative assignments to media buy packages."""
+
+    __tablename__ = "creative_assignments"
+
+    assignment_id = Column(String(100), primary_key=True)
+    tenant_id = Column(String(50), ForeignKey("tenants.tenant_id", ondelete="CASCADE"), nullable=False)
+    creative_id = Column(String(100), nullable=False)
+    media_buy_id = Column(String(100), nullable=False)
+    package_id = Column(String(100), nullable=False)
+    weight = Column(Integer, nullable=False, default=100)
+    created_at = Column(DateTime, nullable=False, server_default=func.now())
+
+    # Relationships
+    tenant = relationship("Tenant")
+
+    __table_args__ = (
+        ForeignKeyConstraint(["creative_id"], ["creatives.creative_id"]),
+        ForeignKeyConstraint(["media_buy_id"], ["media_buys.media_buy_id"]),
+        Index("idx_creative_assignments_tenant", "tenant_id"),
+        Index("idx_creative_assignments_creative", "creative_id"),
+        Index("idx_creative_assignments_media_buy", "media_buy_id"),
+        UniqueConstraint("tenant_id", "creative_id", "media_buy_id", "package_id", name="uq_creative_assignment"),
+    )
+
+
 class MediaBuy(Base):
     __tablename__ = "media_buys"
 

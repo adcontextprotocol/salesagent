@@ -163,9 +163,9 @@ class TestGAMPackageTypes:
         principal = Principal(
             principal_id="test_advertiser",
             name="Test Advertiser",
-            platform_mappings={"gam_advertiser_id": "123456"},
+            platform_mappings={"google_ad_manager": {"advertiser_id": "123456"}},
         )
 
         assert principal.principal_id == "test_advertiser"
-        assert principal.platform_mappings["gam_advertiser_id"] == "123456"
+        assert principal.platform_mappings["google_ad_manager"]["advertiser_id"] == "123456"
         assert principal.get_adapter_id("gam") == "123456"
