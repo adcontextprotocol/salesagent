@@ -1505,23 +1505,16 @@ def list_creatives(
 
 
 @mcp.tool
-async def get_signals(
-    query: str = None, type: str = None, category: str = None, limit: int = None, context: Context = None
-) -> GetSignalsResponse:
+async def get_signals(req: GetSignalsRequest, context: Context = None) -> GetSignalsResponse:
     """Optional endpoint for discovering available signals (audiences, contextual, etc.)
 
     Args:
-        query: Optional query string to filter signals by name or description
-        type: Optional signal type filter (e.g., 'audience', 'contextual')
-        category: Optional category filter
-        limit: Optional limit on number of results
+        req: Request containing query parameters for signal discovery
         context: FastMCP context (automatically provided)
 
     Returns:
         GetSignalsResponse containing matching signals
     """
-    # Create request object from individual parameters (MCP-compliant)
-    req = GetSignalsRequest(query=query, type=type, category=category, limit=limit)
 
     _get_principal_id_from_context(context)
 

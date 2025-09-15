@@ -89,7 +89,9 @@ class CreativeLifecycleTestSuite:
         """Create a test media buy for creative assignments."""
         try:
             # Get available products first
-            products_result = await self.mcp_client.tools.get_products(brief="display and video ads")
+            products_result = await self.mcp_client.tools.get_products(
+                brief="display and video ads", promoted_offering="creative testing"
+            )
             products_data = products_result.content if hasattr(products_result, "content") else products_result
 
             if not products_data.get("products"):

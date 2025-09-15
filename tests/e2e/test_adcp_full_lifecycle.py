@@ -1009,10 +1009,12 @@ class TestAdCPFullLifecycle:
         for endpoint in required_endpoints:
             try:
                 if endpoint == "get_products":
-                    await test_client.call_mcp_tool(endpoint, {"brief": "test"})
+                    await test_client.call_mcp_tool(endpoint, {"brief": "test", "promoted_offering": "test"})
                 elif endpoint == "create_media_buy":
                     # Test with minimal valid request
-                    products = await test_client.call_mcp_tool("get_products", {"brief": "test"})
+                    products = await test_client.call_mcp_tool(
+                        "get_products", {"brief": "test", "promoted_offering": "test"}
+                    )
                     if products["products"]:
                         await test_client.call_mcp_tool(
                             endpoint,

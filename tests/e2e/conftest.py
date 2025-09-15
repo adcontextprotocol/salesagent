@@ -143,7 +143,7 @@ def live_server(docker_services_e2e):
 
 
 @pytest.fixture
-async def test_auth_token(live_server):
+def test_auth_token(live_server):
     """Create or get a test principal with auth token."""
     # Try to create a test principal via Docker exec
     # This ensures we have a valid token for testing
@@ -231,7 +231,7 @@ async def e2e_client(live_server, test_auth_token):
     # Create MCP client with test session ID
     test_session_id = str(uuid.uuid4())
     headers = {
-        "x-adcp-auth": await test_auth_token,
+        "x-adcp-auth": test_auth_token,
         "X-Test-Session-ID": test_session_id,
         "X-Dry-Run": "true",  # Always use dry-run for tests
     }
@@ -261,7 +261,7 @@ async def a2a_client(live_server, test_auth_token):
         client.base_url = live_server["a2a"]
         client.headers.update(
             {
-                "Authorization": f"Bearer {await test_auth_token}",
+                "Authorization": f"Bearer {test_auth_token}",
                 "X-Test-Session-ID": str(uuid.uuid4()),
                 "X-Dry-Run": "true",
             }

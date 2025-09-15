@@ -26,7 +26,7 @@ class TestAdCPTestingHooks:
     @pytest.mark.asyncio
     async def test_dry_run_header(self, live_server, test_auth_token):
         """Test X-Dry-Run header prevents real platform changes."""
-        headers = {"x-adcp-auth": await test_auth_token, "X-Dry-Run": "true", "X-Test-Session-ID": str(uuid.uuid4())}
+        headers = {"x-adcp-auth": test_auth_token, "X-Dry-Run": "true", "X-Test-Session-ID": str(uuid.uuid4())}
 
         transport = StreamableHttpTransport(url=f"{live_server['mcp']}/mcp/", headers=headers)
 
@@ -61,7 +61,7 @@ class TestAdCPTestingHooks:
         mock_time = datetime(2025, 10, 15, 14, 0, 0)
 
         headers = {
-            "x-adcp-auth": await test_auth_token,
+            "x-adcp-auth": test_auth_token,
             "X-Mock-Time": mock_time.isoformat() + "Z",
             "X-Test-Session-ID": str(uuid.uuid4()),
             "X-Dry-Run": "true",
@@ -104,7 +104,7 @@ class TestAdCPTestingHooks:
     async def test_jump_to_event_header(self, live_server, test_auth_token):
         """Test X-Jump-To-Event header for lifecycle progression."""
         headers_base = {
-            "x-adcp-auth": await test_auth_token,
+            "x-adcp-auth": test_auth_token,
             "X-Test-Session-ID": str(uuid.uuid4()),
             "X-Dry-Run": "true",
         }
@@ -164,9 +164,9 @@ class TestAdCPTestingHooks:
         session2_id = str(uuid.uuid4())
 
         # Create two separate test sessions
-        headers1 = {"x-adcp-auth": await test_auth_token, "X-Test-Session-ID": session1_id, "X-Dry-Run": "true"}
+        headers1 = {"x-adcp-auth": test_auth_token, "X-Test-Session-ID": session1_id, "X-Dry-Run": "true"}
 
-        headers2 = {"x-adcp-auth": await test_auth_token, "X-Test-Session-ID": session2_id, "X-Dry-Run": "true"}
+        headers2 = {"x-adcp-auth": test_auth_token, "X-Test-Session-ID": session2_id, "X-Dry-Run": "true"}
 
         transport1 = StreamableHttpTransport(url=f"{live_server['mcp']}/mcp/", headers=headers1)
 
@@ -222,7 +222,7 @@ class TestAdCPTestingHooks:
     async def test_simulated_spend_tracking(self, live_server, test_auth_token):
         """Test X-Simulated-Spend header tracks spend without real money."""
         headers = {
-            "x-adcp-auth": await test_auth_token,
+            "x-adcp-auth": test_auth_token,
             "X-Test-Session-ID": str(uuid.uuid4()),
             "X-Dry-Run": "true",
             "X-Simulated-Spend": "true",
@@ -279,7 +279,7 @@ class TestAdCPTestingHooks:
 
         # Start with all hooks
         headers = {
-            "x-adcp-auth": await test_auth_token,
+            "x-adcp-auth": test_auth_token,
             "X-Test-Session-ID": test_session,
             "X-Dry-Run": "true",
             "X-Mock-Time": mock_start.isoformat() + "Z",
