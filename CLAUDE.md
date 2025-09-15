@@ -517,6 +517,10 @@ GEMINI_API_KEY=your-gemini-api-key-here
 GOOGLE_CLIENT_ID=your-client-id.apps.googleusercontent.com
 GOOGLE_CLIENT_SECRET=your-client-secret
 
+# GAM OAuth Configuration (required for Google Ad Manager functionality)
+GAM_OAUTH_CLIENT_ID=your-gam-client-id.apps.googleusercontent.com
+GAM_OAUTH_CLIENT_SECRET=your-gam-client-secret
+
 # Admin Configuration
 SUPER_ADMIN_EMAILS=user1@example.com,user2@example.com
 SUPER_ADMIN_DOMAINS=example.com
@@ -525,6 +529,14 @@ SUPER_ADMIN_DOMAINS=example.com
 ADCP_SALES_PORT=8080
 ADMIN_UI_PORT=8001
 ```
+
+### Important Configuration Notes
+
+1. **GAM OAuth**: GAM OAuth credentials are configured via environment variables only (no longer stored in database)
+2. **Slack Webhooks**: Configure per-tenant in Admin UI, NOT via environment variables
+3. **Database**: Docker Compose manages PostgreSQL automatically
+4. **OAuth**: Mount your `client_secret*.json` file (see docker-compose.yml)
+5. **Ports**: 8080 (MCP), 8001 (Admin UI), 5432 (PostgreSQL)
 
 ### Database Schema
 
@@ -1037,6 +1049,8 @@ fly ssh console --app adcp-sales-agent
 
 # Set/update secrets in production
 fly secrets set GEMINI_API_KEY="your-key" --app adcp-sales-agent
+fly secrets set GAM_OAUTH_CLIENT_ID="your-gam-client-id.apps.googleusercontent.com" --app adcp-sales-agent
+fly secrets set GAM_OAUTH_CLIENT_SECRET="your-gam-client-secret" --app adcp-sales-agent
 
 # IMPORTANT: Production database is separate from local!
 # Production URL: https://adcp-sales-agent.fly.dev

@@ -141,27 +141,19 @@ class GoogleAdManager(AdServerAdapter):
             raise
 
     def _get_oauth_credentials(self):
-        """Get OAuth credentials using refresh token and superadmin config."""
+        """Get OAuth credentials using refresh token and Pydantic configuration."""
         from googleads import oauth2
 
-        from src.core.database.database_session import get_db_session
-        from src.core.database.models import SuperadminConfig
+        try:
+            from src.core.config import get_gam_oauth_config
 
-        # Get OAuth client credentials from superadmin config
-        with get_db_session() as db_session:
-            client_id_config = db_session.query(SuperadminConfig).filter_by(config_key="gam_oauth_client_id").first()
+            # Get validated configuration
+            gam_config = get_gam_oauth_config()
+            client_id = gam_config.client_id
+            client_secret = gam_config.client_secret
 
-            client_secret_config = (
-                db_session.query(SuperadminConfig).filter_by(config_key="gam_oauth_client_secret").first()
-            )
-
-            if not client_id_config or not client_id_config.config_value:
-                raise ValueError("GAM OAuth Client ID not configured in superadmin settings")
-            if not client_secret_config or not client_secret_config.config_value:
-                raise ValueError("GAM OAuth Client Secret not configured in superadmin settings")
-
-            client_id = client_id_config.config_value
-            client_secret = client_secret_config.config_value
+        except Exception as e:
+            raise ValueError(f"GAM OAuth configuration error: {str(e)}") from e
 
         # Create GoogleAds OAuth2 client
         oauth2_client = oauth2.GoogleRefreshTokenClient(

@@ -11,7 +11,7 @@ from sqlalchemy import func, text
 
 from src.admin.utils import require_auth
 from src.core.database.database_session import get_db_session
-from src.core.database.models import MediaBuy, Principal, Product, SuperadminConfig
+from src.core.database.models import MediaBuy, Principal, Product
 
 logger = logging.getLogger(__name__)
 
@@ -83,34 +83,37 @@ def revenue_chart_api(tenant_id):
 def oauth_status():
     """Check if OAuth credentials are properly configured for GAM."""
     try:
-        # Check for GAM OAuth credentials in superadmin_config table (as per original implementation)
-        with get_db_session() as db_session:
-            client_id_row = (
-                db_session.query(SuperadminConfig.config_value).filter_by(config_key="gam_oauth_client_id").first()
+        # Check for GAM OAuth credentials using validated configuration
+        try:
+            from src.core.config import get_gam_oauth_config
+            from src.core.logging_config import oauth_structured_logger
+
+            gam_config = get_gam_oauth_config()
+            client_id = gam_config.client_id
+            client_secret = gam_config.client_secret
+
+            # Log configuration check
+            oauth_structured_logger.log_gam_oauth_config_load(
+                success=True, client_id_prefix=client_id[:20] + "..." if len(client_id) > 20 else client_id
             )
 
-            client_secret_row = (
-                db_session.query(SuperadminConfig.config_value).filter_by(config_key="gam_oauth_client_secret").first()
-            )
-
-        if client_id_row and client_id_row[0] and client_secret_row and client_secret_row[0]:
-            # Credentials exist in database
-            client_id = client_id_row[0]
+            # Credentials exist and are validated
             return jsonify(
                 {
                     "configured": True,
-                    "client_id_prefix": client_id[:20] if len(client_id) > 20 else client_id,
+                    "client_id_prefix": client_id[:20] + "..." if len(client_id) > 20 else client_id,
                     "has_secret": True,
-                    "source": "database",
+                    "source": "validated_environment",
                 }
             )
-        else:
-            # No credentials found in database
+        except Exception as config_error:
+            # Configuration validation failed
+            oauth_structured_logger.log_gam_oauth_config_load(success=False, error=str(config_error))
             return jsonify(
                 {
                     "configured": False,
-                    "error": "GAM OAuth credentials not configured in superadmin settings.",
-                    "help": "Super admins can configure GAM OAuth credentials in the superadmin settings page.",
+                    "error": f"GAM OAuth configuration error: {str(config_error)}",
+                    "help": "Check GAM_OAUTH_CLIENT_ID and GAM_OAUTH_CLIENT_SECRET environment variables.",
                 }
             )
 
@@ -484,24 +487,19 @@ def test_gam_connection():
         if not refresh_token:
             return jsonify({"error": "Refresh token is required"}), 400
 
-        # Get OAuth credentials from superadmin config
-        with get_db_session() as db_session:
-            configs = (
-                db_session.query(SuperadminConfig)
-                .filter(SuperadminConfig.config_key.in_(["gam_oauth_client_id", "gam_oauth_client_secret"]))
-                .all()
-            )
+        # Get OAuth credentials from environment variables
+        import os
 
-            oauth_config = {}
-            for config in configs:
-                if config.config_key == "gam_oauth_client_id":
-                    oauth_config["client_id"] = config.config_value
-                elif config.config_key == "gam_oauth_client_secret":
-                    oauth_config["client_secret"] = config.config_value
+        client_id = os.environ.get("GAM_OAUTH_CLIENT_ID")
+        client_secret = os.environ.get("GAM_OAUTH_CLIENT_SECRET")
 
-        if not oauth_config.get("client_id") or not oauth_config.get("client_secret"):
+        if not client_id or not client_secret:
             return (
-                jsonify({"error": "GAM OAuth credentials not configured in Settings"}),
+                jsonify(
+                    {
+                        "error": "GAM OAuth credentials not configured. Please set GAM_OAUTH_CLIENT_ID and GAM_OAUTH_CLIENT_SECRET environment variables."
+                    }
+                ),
                 400,
             )
 
@@ -510,8 +508,8 @@ def test_gam_connection():
 
         # Create GoogleAds OAuth2 client with refresh token
         oauth2_client = oauth2.GoogleRefreshTokenClient(
-            client_id=oauth_config["client_id"],
-            client_secret=oauth_config["client_secret"],
+            client_id=client_id,
+            client_secret=client_secret,
             refresh_token=refresh_token,
         )
 

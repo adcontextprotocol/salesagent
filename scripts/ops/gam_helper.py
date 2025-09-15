@@ -2,10 +2,10 @@
 
 import logging
 
-from googleads import ad_manager, oauth2
+from googleads import ad_manager
 
 from src.core.database.database_session import get_db_session
-from src.core.database.models import AdapterConfig, SuperadminConfig, Tenant
+from src.core.database.models import AdapterConfig, Tenant
 
 logger = logging.getLogger(__name__)
 
@@ -59,28 +59,33 @@ def get_ad_manager_client_for_tenant(tenant_id: str) -> ad_manager.AdManagerClie
         if not gam_refresh_token:
             raise ValueError(f"GAM refresh token not configured for tenant {tenant_id}")
 
-        # Get OAuth client credentials from superadmin config
-        client_id_config = db_session.query(SuperadminConfig).filter_by(config_key="gam_oauth_client_id").first()
+        # Get OAuth client credentials from validated configuration
+        try:
+            from src.core.config import get_gam_oauth_config
+            from src.core.logging_config import oauth_structured_logger
+            from src.core.oauth_retry import create_oauth_client_with_retry
 
-        client_secret_config = (
-            db_session.query(SuperadminConfig).filter_by(config_key="gam_oauth_client_secret").first()
-        )
+            gam_config = get_gam_oauth_config()
+            client_id = gam_config.client_id
+            client_secret = gam_config.client_secret
 
-        if not client_id_config or not client_id_config.config_value:
-            raise ValueError("GAM OAuth Client ID not configured in superadmin settings")
-        if not client_secret_config or not client_secret_config.config_value:
-            raise ValueError("GAM OAuth Client Secret not configured in superadmin settings")
+            # Log configuration load
+            oauth_structured_logger.log_gam_oauth_config_load(
+                success=True, client_id_prefix=client_id[:20] + "..." if len(client_id) > 20 else client_id
+            )
 
-        client_id = client_id_config.config_value
-        client_secret = client_secret_config.config_value
+        except Exception as e:
+            oauth_structured_logger.log_gam_oauth_config_load(success=False, error=str(e))
+            raise ValueError(f"GAM OAuth configuration error: {str(e)}") from e
 
     try:
-        # Create GoogleAds OAuth2 client
-        oauth2_client = oauth2.GoogleRefreshTokenClient(
+        # Create GoogleAds OAuth2 client with retry logic
+        oauth2_client = create_oauth_client_with_retry(
             client_id=client_id, client_secret=client_secret, refresh_token=gam_refresh_token
         )
 
-        # The client will automatically refresh the token when needed
+        # Log successful client creation
+        oauth_structured_logger.log_gam_client_creation(success=True)
         logger.info(f"Created OAuth2 client for tenant {tenant_id}")
 
         # Create and return the Ad Manager client
