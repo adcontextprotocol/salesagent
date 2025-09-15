@@ -413,3 +413,272 @@ class TestEdgeCases:
         # Negative dimensions should pass (unusual but not explicitly invalid)
         issues = self.validator.validate_creative_size(-100, -50)
         assert issues == []
+
+
+class TestMediaDataValidation:
+    """Test binary asset upload validation with media_data field."""
+
+    def setup_method(self):
+        """Set up test fixtures."""
+        self.validator = GAMValidator()
+
+    def test_validate_media_data_valid_bytes(self):
+        """Test validation of valid binary media data."""
+
+        # Create mock image data
+        mock_image_data = b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x10\x00\x00\x00\x10"
+
+        asset = {"media_data": mock_image_data, "filename": "test.png", "format": "display_300x250"}
+        issues = self.validator.validate_media_data(asset)
+        assert issues == []
+
+    def test_validate_media_data_valid_base64(self):
+        """Test validation of valid base64 encoded media data."""
+        import base64
+
+        # Create mock image data and encode it
+        mock_image_data = b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x10\x00\x00\x00\x10"
+        base64_data = base64.b64encode(mock_image_data).decode("utf-8")
+
+        asset = {"media_data": base64_data, "filename": "test.png", "format": "display_300x250"}
+        issues = self.validator.validate_media_data(asset)
+        assert issues == []
+
+    def test_validate_media_data_invalid_base64(self):
+        """Test validation of invalid base64 data."""
+        asset = {"media_data": "invalid-base64-data!@#$", "filename": "test.png", "format": "display_300x250"}
+        issues = self.validator.validate_media_data(asset)
+        assert len(issues) == 1
+        assert "must be valid base64" in issues[0]
+
+    def test_validate_media_data_empty_data(self):
+        """Test validation of empty media data."""
+        # Empty bytes
+        asset = {"media_data": b"", "filename": "test.png", "format": "display_300x250"}
+        issues = self.validator.validate_media_data(asset)
+        assert len(issues) == 1
+        assert "cannot be empty" in issues[0]
+
+        # Empty base64 string
+        asset = {"media_data": "", "filename": "test.png", "format": "display_300x250"}
+        issues = self.validator.validate_media_data(asset)
+        assert len(issues) == 1
+        assert "cannot be empty" in issues[0]
+
+    def test_validate_media_data_wrong_file_extension(self):
+        """Test validation of wrong file extension for creative type."""
+
+        mock_image_data = b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x10\x00\x00\x00\x10"
+
+        # Try to upload video file for display creative
+        asset = {
+            "media_data": mock_image_data,
+            "filename": "test.mp4",  # Video extension for display creative
+            "format": "display_300x250",
+        }
+        issues = self.validator.validate_media_data(asset)
+        assert len(issues) == 1
+        assert "File extension .mp4 not allowed for display creatives" in issues[0]
+
+    def test_validate_media_data_invalid_type(self):
+        """Test validation of invalid media_data type."""
+        asset = {
+            "media_data": 123,  # Invalid type (should be bytes or string)
+            "filename": "test.png",
+            "format": "display_300x250",
+        }
+        issues = self.validator.validate_media_data(asset)
+        assert len(issues) == 1
+        assert "must be bytes or base64-encoded string" in issues[0]
+
+    def test_validate_media_data_missing_is_valid(self):
+        """Test that missing media_data is valid (optional field)."""
+        asset = {"url": "https://example.com/image.png", "format": "display_300x250"}  # URL instead of media_data
+        issues = self.validator.validate_media_data(asset)
+        assert issues == []
+
+    def test_validate_creative_asset_with_media_data_calculates_file_size(self):
+        """Test that file size is calculated from media_data for validation."""
+
+        # Create large mock data that exceeds display limit (150KB)
+        large_data = b"x" * 200000  # 200KB
+
+        asset = {
+            "media_data": large_data,
+            "filename": "large.png",
+            "format": "display_300x250",
+            "width": 300,
+            "height": 250,
+        }
+
+        # Should fail size validation
+        issues = self.validator.validate_creative_asset(asset)
+        assert any("File size" in issue and "exceeds GAM display limit" in issue for issue in issues)
+
+    def test_validate_creative_asset_with_base64_calculates_file_size(self):
+        """Test that file size is calculated from base64 media_data."""
+        import base64
+
+        # Create large mock data that exceeds display limit
+        large_data = b"x" * 200000  # 200KB
+        base64_data = base64.b64encode(large_data).decode("utf-8")
+
+        asset = {
+            "media_data": base64_data,
+            "filename": "large.png",
+            "format": "display_300x250",
+            "width": 300,
+            "height": 250,
+        }
+
+        # Should fail size validation (base64 decoded size should be checked)
+        issues = self.validator.validate_creative_asset(asset)
+        assert any("File size" in issue and "exceeds GAM display limit" in issue for issue in issues)
+
+
+class TestImpressionTrackingSupport:
+    """Test impression tracking URL support for all creative types."""
+
+    def setup_method(self):
+        """Set up test fixtures."""
+        from unittest.mock import Mock
+
+        from src.core.schemas import Principal
+
+        # Create a mock GAM adapter for testing tracking functionality
+        self.mock_adapter = Mock()
+        self.mock_adapter.dry_run = True
+        self.mock_adapter.log = Mock()
+
+        # Import the actual methods to test
+        from src.adapters.google_ad_manager import GoogleAdManager
+
+        self.adapter_class = GoogleAdManager
+
+        # Create a mock principal
+        mock_principal = Mock(spec=Principal)
+        mock_principal.principal_id = "test_principal"
+        mock_principal.platform_mappings = {"google_ad_manager": {"advertiser_id": "123"}}
+
+        # Create a real instance for method testing (we'll override what we need)
+        self.adapter = self.adapter_class(config={"network_code": "123456"}, principal=mock_principal, dry_run=True)
+
+        # Mock the client to avoid actual API initialization
+        self.adapter.client = Mock()
+
+    def test_add_tracking_urls_third_party_creative(self):
+        """Test tracking URL addition for third-party creatives."""
+        creative = {"xsi_type": "ThirdPartyCreative"}
+        asset = {"delivery_settings": {"tracking_urls": ["https://tracker1.com/pixel", "https://tracker2.com/pixel"]}}
+
+        self.adapter._add_tracking_urls_to_creative(creative, asset)
+
+        assert "thirdPartyImpressionTrackingUrls" in creative
+        assert creative["thirdPartyImpressionTrackingUrls"] == asset["delivery_settings"]["tracking_urls"]
+
+    def test_add_tracking_urls_image_creative(self):
+        """Test tracking URL addition for image creatives."""
+        creative = {"xsi_type": "ImageCreative"}
+        asset = {"tracking_urls": ["https://analytics.com/impression"]}
+
+        self.adapter._add_tracking_urls_to_creative(creative, asset)
+
+        assert "thirdPartyImpressionUrls" in creative
+        assert creative["thirdPartyImpressionUrls"] == asset["tracking_urls"]
+
+    def test_add_tracking_urls_video_creative(self):
+        """Test tracking URL addition for video creatives."""
+        creative = {"xsi_type": "VideoCreative"}
+        asset = {"delivery_settings": {"tracking_urls": ["https://video-tracker.com/impression"]}}
+
+        self.adapter._add_tracking_urls_to_creative(creative, asset)
+
+        assert "thirdPartyImpressionUrls" in creative
+        assert creative["thirdPartyImpressionUrls"] == asset["delivery_settings"]["tracking_urls"]
+
+    def test_add_tracking_urls_native_creative(self):
+        """Test tracking URL handling for native creatives."""
+        creative = {"xsi_type": "TemplateCreative"}
+        asset = {"tracking_urls": ["https://native-tracker.com/impression"]}
+
+        # Native creatives don't directly support tracking URLs in the same way
+        # but the method should log a note about using template variables
+        self.adapter._add_tracking_urls_to_creative(creative, asset)
+
+        # Native creatives shouldn't get direct tracking URL fields
+        assert "thirdPartyImpressionUrls" not in creative
+        assert "thirdPartyImpressionTrackingUrls" not in creative
+
+        # The method should handle native creatives gracefully (note: logs are captured in test output)
+
+    def test_add_tracking_urls_multiple_sources(self):
+        """Test combining tracking URLs from multiple sources."""
+        creative = {"xsi_type": "ImageCreative"}
+        asset = {
+            "delivery_settings": {"tracking_urls": ["https://tracker1.com/pixel"]},
+            "tracking_urls": ["https://tracker2.com/pixel", "https://tracker3.com/pixel"],
+        }
+
+        self.adapter._add_tracking_urls_to_creative(creative, asset)
+
+        # Should combine URLs from both sources
+        assert len(creative["thirdPartyImpressionUrls"]) == 3
+        assert "https://tracker1.com/pixel" in creative["thirdPartyImpressionUrls"]
+        assert "https://tracker2.com/pixel" in creative["thirdPartyImpressionUrls"]
+        assert "https://tracker3.com/pixel" in creative["thirdPartyImpressionUrls"]
+
+    def test_add_tracking_urls_no_urls_provided(self):
+        """Test that no tracking URLs are added when none provided."""
+        creative = {"xsi_type": "ImageCreative"}
+        asset = {}
+
+        self.adapter._add_tracking_urls_to_creative(creative, asset)
+
+        # Should not add any tracking URL fields
+        assert "thirdPartyImpressionUrls" not in creative
+        assert "thirdPartyImpressionTrackingUrls" not in creative
+
+    def test_add_tracking_urls_unknown_creative_type(self):
+        """Test handling of unknown creative types."""
+        creative = {"xsi_type": "UnknownCreativeType"}
+        asset = {"tracking_urls": ["https://tracker.com/pixel"]}
+
+        self.adapter._add_tracking_urls_to_creative(creative, asset)
+
+        # Should not add any tracking URL fields
+        assert "thirdPartyImpressionUrls" not in creative
+        assert "thirdPartyImpressionTrackingUrls" not in creative
+
+        # The method should handle unknown types gracefully (note: warning logged in test output)
+
+    def test_binary_upload_with_tracking_integration(self):
+        """Test that binary upload creatives get tracking URLs."""
+        import base64
+
+        mock_image_data = b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x10\x00\x00\x00\x10"
+        base64_data = base64.b64encode(mock_image_data).decode("utf-8")
+
+        asset = {
+            "creative_id": "test_with_tracking",
+            "media_data": base64_data,
+            "filename": "test.png",
+            "format": "display_300x250",
+            "tracking_urls": ["https://analytics.com/impression"],
+            "name": "Test Creative with Tracking",
+            "click_url": "https://example.com/landing",
+        }
+
+        # Test that _create_hosted_asset_creative includes tracking
+        base_creative = {"advertiserId": "123", "name": asset["name"], "destinationUrl": asset["click_url"]}
+
+        # Mock the upload method to avoid actual API calls
+        from unittest.mock import Mock
+
+        self.adapter._upload_binary_asset = Mock(return_value={"assetId": "mock_asset_123456", "fileName": "test.png"})
+
+        creative = self.adapter._create_hosted_asset_creative(asset, base_creative)
+
+        # Should be ImageCreative with tracking URLs
+        assert creative["xsi_type"] == "ImageCreative"
+        assert "thirdPartyImpressionUrls" in creative
+        assert creative["thirdPartyImpressionUrls"] == asset["tracking_urls"]
