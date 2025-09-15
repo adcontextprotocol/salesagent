@@ -303,7 +303,6 @@ jobs:
         if [ ! -z "$A2A_PID" ]; then
           kill $A2A_PID 2>/dev/null || true
         fi
-
   lint:
     name: Lint & Type Check
     runs-on: ubuntu-latest
