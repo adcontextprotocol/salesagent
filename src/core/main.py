@@ -39,6 +39,7 @@ from scripts.setup.init_database import init_db
 # Other imports
 from src.core.config_loader import (
     get_current_tenant,
+    get_tenant_by_virtual_host,
     load_config,
     set_current_tenant,
 )
@@ -50,6 +51,8 @@ from src.core.database.models import Product as ModelProduct
 
 # Schema models (explicit imports to avoid collisions)
 from src.core.schemas import (
+    AddCreativeAssetsRequest,
+    AddCreativeAssetsResponse,
     ApproveCreativeRequest,
     ApproveCreativeResponse,
     AssignCreativeRequest,
@@ -264,11 +267,22 @@ def get_principal_from_context(context: Context | None) -> str | None:
 
         # Check if a specific tenant was requested via header or subdomain
         requested_tenant_id = None
+        tenant_context = None
 
-        # 1. Check x-adcp-tenant header (set by middleware for path-based routing)
-        requested_tenant_id = headers.get("x-adcp-tenant")
+        # 1. Check Apx-Incoming-Host header (for Approximated.app virtual hosts)
+        apx_host = headers.get("apx-incoming-host")
+        if apx_host:
+            tenant_context = get_tenant_by_virtual_host(apx_host)
+            if tenant_context:
+                requested_tenant_id = tenant_context["tenant_id"]
+                # Set tenant context immediately for virtual host routing
+                set_current_tenant(tenant_context)
 
-        # 2. If not found, check host header for subdomain
+        # 2. Check x-adcp-tenant header (set by middleware for path-based routing)
+        if not requested_tenant_id:
+            requested_tenant_id = headers.get("x-adcp-tenant")
+
+        # 3. If not found, check host header for subdomain
         if not requested_tenant_id:
             host = headers.get("host", "")
             subdomain = host.split(".")[0] if "." in host else None
@@ -280,7 +294,7 @@ def get_principal_from_context(context: Context | None) -> str | None:
         # Otherwise, look up by token alone and set tenant context
         return get_principal_from_token(auth_token, requested_tenant_id)
     except Exception as e:
-        print(f"Auth error: {e}")
+        logger.warning(f"Authentication error: {e}")
         return None
 
 
@@ -456,7 +470,7 @@ context_mgr = ContextManager()
 
 # --- Adapter Configuration ---
 # Get adapter from config, fallback to mock
-SELECTED_ADAPTER = config.get("ad_server", {}).get("adapter", "mock").lower()
+SELECTED_ADAPTER = ((config.get("ad_server", {}).get("adapter") or "mock") if config else "mock").lower()
 AVAILABLE_ADAPTERS = ["mock", "gam", "kevel", "triton", "triton_digital"]
 
 # --- In-Memory State (already initialized above, just adding context_map) ---
@@ -2117,6 +2131,147 @@ def check_media_buy_status(
             budget_remaining=None,
             creative_count=0,
         )
+
+
+@mcp.tool
+def add_creative_assets(
+    assets: list[dict], media_buy_id: str = None, buyer_ref: str = None, context: Context = None
+) -> AddCreativeAssetsResponse:
+    """Add creative assets to a media buy.
+
+    Args:
+        assets: List of creative asset objects to add
+        media_buy_id: Media buy ID (optional)
+        buyer_ref: Buyer reference (optional)
+        context: FastMCP context (automatically provided)
+
+    Returns:
+        AddCreativeAssetsResponse with results
+    """
+    # Create request object from individual parameters (MCP-compliant)
+    from src.core.schemas import Creative
+
+    creative_objects = [Creative(**asset) if isinstance(asset, dict) else asset for asset in assets]
+    req = AddCreativeAssetsRequest(assets=creative_objects, media_buy_id=media_buy_id, buyer_ref=buyer_ref)
+
+    # AdCP v2.4 - Handle both media_buy_id and buyer_ref
+    if req.media_buy_id:
+        _verify_principal(req.media_buy_id, context)
+    # Note: buyer_ref verification would need database lookup - implement as needed
+
+    principal_id = _get_principal_id_from_context(context)
+    tenant = get_current_tenant()
+
+    # Create or get persistent context
+    ctx_manager = get_context_manager()
+    ctx_id = context.headers.get("x-context-id") if hasattr(context, "headers") else None
+    persistent_ctx = ctx_manager.get_or_create_context(
+        tenant_id=tenant["tenant_id"],
+        principal_id=principal_id,
+        context_id=ctx_id,
+        is_async=True,
+    )
+
+    # Create workflow step for this tool call
+    step = ctx_manager.create_workflow_step(
+        context_id=persistent_ctx.context_id,
+        step_type="tool_call",
+        owner="principal",
+        status="in_progress",
+        tool_name="add_creative_assets",
+        request_data=req.model_dump(mode="json"),  # Convert dates to strings
+    )
+
+    # Initialize creative engine with tenant config
+    # Build creative engine config from tenant fields
+    creative_engine_config = {
+        "auto_approve_formats": tenant.get("auto_approve_formats", []),
+        "human_review_required": tenant.get("human_review_required", True),
+    }
+    creative_engine = MockCreativeEngine(creative_engine_config)
+
+    # Process assets through the creative engine (AdCP v2.4 uses 'assets' field)
+    statuses = creative_engine.process_creatives(req.assets)
+    pending_count = 0
+    approved_count = 0
+
+    for status in statuses:
+        creative_statuses[status.creative_id] = status
+
+        if status.status == "approved":
+            approved_count += 1
+        elif status.status == "pending_review":
+            pending_count += 1
+
+        # Send Slack notification for pending creatives
+        if status.status == "pending_review":
+            try:
+                principal_id = _get_principal_id_from_context(context)
+                principal = get_principal_object(principal_id)
+                creative = next(
+                    (c for c in req.creatives if c.creative_id == status.creative_id),
+                    None,
+                )
+
+                # Build notifier config from tenant fields
+                notifier_config = {
+                    "features": {
+                        "slack_webhook_url": tenant.get("slack_webhook_url"),
+                        "slack_audit_webhook_url": tenant.get("slack_audit_webhook_url"),
+                    }
+                }
+                slack_notifier = get_slack_notifier(notifier_config)
+                slack_notifier.notify_creative_pending(
+                    creative_id=status.creative_id,
+                    principal_name=principal.name if principal else principal_id,
+                    format_type=creative.format.format_id if creative else "unknown",
+                    media_buy_id=req.media_buy_id,
+                )
+            except Exception as e:
+                console.print(f"[yellow]Failed to send Slack notification: {e}[/yellow]")
+
+    # Update context based on results
+    if pending_count > 0:
+        # Create approval workflow steps for pending creatives
+        for status in statuses:
+            if status.status == "pending_review":
+                ctx_manager.create_workflow_step(
+                    context_id=persistent_ctx.context_id,
+                    step_type="approval",
+                    owner="publisher",
+                    status="requires_approval",
+                    tool_name="approve_creative",
+                    request_data={
+                        "creative_id": status.creative_id,
+                        "media_buy_id": req.media_buy_id,  # May be None in AdCP v2.4
+                        "buyer_ref": req.buyer_ref,  # May be None in AdCP v2.4
+                    },
+                )
+
+        ctx_manager.mark_human_needed(
+            persistent_ctx.context_id,
+            f"{pending_count} creative(s) require human review",
+            clarification_details=f"Please review and approve {pending_count} pending creative(s)",
+        )
+        message = f"Submitted {len(req.assets)} assets: {approved_count} approved, {pending_count} pending review"
+    else:
+        message = f"All {len(req.assets)} assets were approved automatically"
+
+    # Update workflow step with success
+    ctx_manager.update_workflow_step(
+        step.step_id,
+        status="completed",
+        response_data={
+            "approved_count": approved_count,
+            "pending_count": pending_count,
+            "creative_ids": [s.creative_id for s in statuses],
+        },
+    )
+
+    # Create AdCP v2.4 compliant response (no context_id or message fields)
+    response = AddCreativeAssetsResponse(statuses=statuses)
+
+    return response
 
 
 @mcp.tool
@@ -4390,7 +4545,7 @@ async def health(request: Request):
 # Add admin UI routes when running unified
 if os.environ.get("ADCP_UNIFIED_MODE"):
     from fastapi.middleware.wsgi import WSGIMiddleware
-    from fastapi.responses import RedirectResponse
+    from fastapi.responses import HTMLResponse, RedirectResponse
 
     from src.admin.app import create_app
 
@@ -4402,7 +4557,58 @@ if os.environ.get("ADCP_UNIFIED_MODE"):
 
     @mcp.custom_route("/", methods=["GET"])
     async def root(request: Request):
-        """Redirect root to admin."""
+        """Handle root route - show landing page for virtual hosts, redirect to admin for others."""
+        # Check for Apx-Incoming-Host header (Approximated.app virtual host)
+        headers = dict(request.headers)
+        apx_host = headers.get("apx-incoming-host")
+
+        if apx_host:
+            # Look up tenant by virtual host
+            tenant = get_tenant_by_virtual_host(apx_host)
+            if tenant:
+                # Show landing page for virtual host
+                html_content = f"""
+                <!DOCTYPE html>
+                <html>
+                <head>
+                    <title>{tenant['name']} - Ad Sales Portal</title>
+                    <meta charset="utf-8">
+                    <meta name="viewport" content="width=device-width, initial-scale=1">
+                    <style>
+                        body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; margin: 0; padding: 0; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); min-height: 100vh; display: flex; align-items: center; justify-content: center; }}
+                        .container {{ background: white; border-radius: 8px; padding: 2rem; max-width: 600px; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1); text-align: center; }}
+                        h1 {{ color: #333; margin-bottom: 0.5rem; }}
+                        .subtitle {{ color: #666; margin-bottom: 2rem; }}
+                        .api-info {{ background: #f8f9fa; border-radius: 4px; padding: 1.5rem; margin: 2rem 0; text-align: left; }}
+                        .endpoint {{ font-family: monospace; background: #e9ecef; padding: 0.25rem 0.5rem; border-radius: 3px; }}
+                        .button {{ display: inline-block; background: #007bff; color: white; padding: 0.75rem 1.5rem; border-radius: 4px; text-decoration: none; margin: 0.5rem; }}
+                        .button:hover {{ background: #0056b3; }}
+                        .host {{ color: #28a745; font-weight: bold; }}
+                    </style>
+                </head>
+                <body>
+                    <div class="container">
+                        <h1>{tenant['name']}</h1>
+                        <p class="subtitle">Advertising Context Protocol (AdCP) Sales Agent</p>
+
+                        <div class="api-info">
+                            <h3>API Access</h3>
+                            <p><strong>MCP Endpoint:</strong> <span class="endpoint">https://{apx_host}/mcp</span></p>
+                            <p><strong>A2A Endpoint:</strong> <span class="endpoint">https://{apx_host}/a2a</span></p>
+                            <p class="host">Virtual Host: {apx_host}</p>
+                        </div>
+
+                        <div>
+                            <a href="/admin/" class="button">Admin Dashboard</a>
+                            <a href="https://adcontextprotocol.org/docs/" class="button" target="_blank">AdCP Documentation</a>
+                        </div>
+                    </div>
+                </body>
+                </html>
+                """
+                return HTMLResponse(content=html_content)
+
+        # Default behavior: redirect to admin
         return RedirectResponse(url="/admin/")
 
     @mcp.custom_route(

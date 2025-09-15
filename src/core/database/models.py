@@ -33,6 +33,7 @@ class Tenant(Base, JSONValidatorMixin):
     tenant_id = Column(String(50), primary_key=True)
     name = Column(String(200), nullable=False)
     subdomain = Column(String(100), unique=True, nullable=False)
+    virtual_host = Column(Text, nullable=True)  # For Approximated.app virtual hosts
     created_at = Column(DateTime, nullable=False, server_default=func.now())
     updated_at = Column(DateTime, nullable=False, server_default=func.now(), onupdate=func.now())
     is_active = Column(Boolean, default=True)
@@ -69,7 +70,10 @@ class Tenant(Base, JSONValidatorMixin):
         cascade="all, delete-orphan",
     )
 
-    __table_args__ = (Index("idx_subdomain", "subdomain"),)
+    __table_args__ = (
+        Index("idx_subdomain", "subdomain"),
+        Index("ix_tenants_virtual_host", "virtual_host", unique=True),
+    )
 
     # JSON validators are inherited from JSONValidatorMixin
     # No need for duplicate validators here
