@@ -584,11 +584,8 @@ class TestGAMInventoryManagerEdgeCases:
         """Test _get_discovery when client manager fails."""
         self.mock_client_manager.get_client.side_effect = Exception("Client error")
 
-        with patch("src.adapters.gam.managers.inventory.GAMInventoryDiscovery") as mock_discovery_class:
-            mock_discovery_class.side_effect = Exception("Discovery creation failed")
-
-            with pytest.raises(Exception, match="Discovery creation failed"):
-                self.inventory_manager._get_discovery()
+        with pytest.raises(Exception, match="Client error"):
+            self.inventory_manager._get_discovery()
 
     def test_discover_methods_with_discovery_errors(self):
         """Test discovery methods when underlying discovery raises errors."""

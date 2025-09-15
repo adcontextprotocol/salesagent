@@ -136,14 +136,12 @@ class GAMTargetingManager:
         # Geographic targeting
         geo_targeting = {}
 
-        # Build targeted locations
+        # Build targeted locations - only for supported geo features
         if any(
             [
                 targeting_overlay.geo_country_any_of,
                 targeting_overlay.geo_region_any_of,
                 targeting_overlay.geo_metro_any_of,
-                targeting_overlay.geo_city_any_of,
-                targeting_overlay.geo_zip_any_of,
             ]
         ):
             geo_targeting["targetedLocations"] = []
@@ -173,20 +171,18 @@ class GAMTargetingManager:
                     else:
                         logger.warning(f"Metro code '{metro}' not in GAM mapping")
 
-            # City and postal require real GAM API lookup - for now we log a warning
-            if targeting_overlay.geo_city_any_of:
-                logger.warning("City targeting requires GAM geo service lookup (not implemented)")
-            if targeting_overlay.geo_zip_any_of:
-                logger.warning("Postal code targeting requires GAM geo service lookup (not implemented)")
+        # City and postal require real GAM API lookup - for now we log a warning
+        if targeting_overlay.geo_city_any_of:
+            logger.warning("City targeting requires GAM geo service lookup (not implemented)")
+        if targeting_overlay.geo_zip_any_of:
+            logger.warning("Postal code targeting requires GAM geo service lookup (not implemented)")
 
-        # Build excluded locations
+        # Build excluded locations - only for supported geo features
         if any(
             [
                 targeting_overlay.geo_country_none_of,
                 targeting_overlay.geo_region_none_of,
                 targeting_overlay.geo_metro_none_of,
-                targeting_overlay.geo_city_none_of,
-                targeting_overlay.geo_zip_none_of,
             ]
         ):
             geo_targeting["excludedLocations"] = []
@@ -210,11 +206,11 @@ class GAMTargetingManager:
                     if metro in self.geo_metro_map:
                         geo_targeting["excludedLocations"].append({"id": self.geo_metro_map[metro]})
 
-            # City and postal exclusions
-            if targeting_overlay.geo_city_none_of:
-                logger.warning("City exclusion requires GAM geo service lookup (not implemented)")
-            if targeting_overlay.geo_zip_none_of:
-                logger.warning("Postal code exclusion requires GAM geo service lookup (not implemented)")
+        # City and postal exclusions
+        if targeting_overlay.geo_city_none_of:
+            logger.warning("City exclusion requires GAM geo service lookup (not implemented)")
+        if targeting_overlay.geo_zip_none_of:
+            logger.warning("Postal code exclusion requires GAM geo service lookup (not implemented)")
 
         if geo_targeting:
             gam_targeting["geoTargeting"] = geo_targeting

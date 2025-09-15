@@ -749,7 +749,10 @@ class TestGAMCreativesManagerAssetWorkflow:
             patch.object(self.creatives_manager, "_validate_creative_for_gam") as mock_validate,
         ):
 
-            mock_get_info.return_value = ({"package_1": "line_item_123"}, {})
+            mock_get_info.return_value = (
+                {"package_1": "line_item_123"},
+                {"package_1": [{"size": {"width": 300, "height": 250}}]},
+            )
             mock_validate.return_value = []
 
             result = self.creatives_manager.add_creative_assets("order_123", assets, today)
