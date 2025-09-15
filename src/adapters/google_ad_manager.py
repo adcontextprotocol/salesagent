@@ -1312,8 +1312,18 @@ class GoogleAdManager(AdServerAdapter):
                 return "third_party_tag"
         elif asset.get("template_variables"):
             return "native"
-        elif asset.get("media_url"):
-            return "hosted_asset"
+        elif asset.get("media_url") or asset.get("media_data"):
+            # Check if HTML5 based on file extension or format
+            media_url = asset.get("media_url", "")
+            format_str = asset.get("format", "")
+            if (
+                media_url.lower().endswith((".html", ".htm", ".html5", ".zip"))
+                or "html5" in format_str.lower()
+                or "rich_media" in format_str.lower()
+            ):
+                return "html5"
+            else:
+                return "hosted_asset"
         else:
             # Auto-detect from legacy patterns for backward compatibility
             url = asset.get("url", "")
@@ -1325,6 +1335,12 @@ class GoogleAdManager(AdServerAdapter):
                 return "native"
             elif url and (".xml" in url.lower() or "vast" in url.lower()):
                 return "vast"
+            elif (
+                url.lower().endswith((".html", ".htm", ".html5", ".zip"))
+                or "html5" in format_str.lower()
+                or "rich_media" in format_str.lower()
+            ):
+                return "html5"
             else:
                 return "hosted_asset"  # Default
 
@@ -1527,6 +1543,8 @@ class GoogleAdManager(AdServerAdapter):
             return self._create_third_party_creative(asset, base_creative, placeholders)
         elif creative_type == "native":
             return self._create_native_creative(asset, base_creative, placeholders)
+        elif creative_type == "html5":
+            return self._create_html5_creative(asset, base_creative, placeholders)
         elif creative_type == "hosted_asset":
             return self._create_hosted_asset_creative(asset, base_creative, placeholders)
         else:
@@ -1564,8 +1582,9 @@ class GoogleAdManager(AdServerAdapter):
                 creative["isSafeFrameCompatible"] = settings["safe_frame_compatible"]
             if "ssl_required" in settings:
                 creative["isSSLScanRequired"] = settings["ssl_required"]
-            if "tracking_urls" in settings:
-                creative["thirdPartyImpressionTrackingUrls"] = settings["tracking_urls"]
+
+        # Add impression tracking URLs using unified method
+        self._add_tracking_urls_to_creative(creative, asset)
 
         return creative
 
@@ -1581,7 +1600,70 @@ class GoogleAdManager(AdServerAdapter):
             "creativeTemplateId": self._get_native_template_id(asset),
             "creativeTemplateVariableValues": self._build_native_template_variables(asset),
         }
+
+        # Add impression tracking URLs using unified method
+        self._add_tracking_urls_to_creative(creative, asset)
+
         return creative
+
+    def _create_html5_creative(
+        self, asset: dict[str, Any], base_creative: dict, placeholders: list[dict] = None
+    ) -> dict[str, Any]:
+        """Create an Html5Creative for rich media HTML5 ads."""
+        width, height = self._get_creative_dimensions(asset, placeholders)
+
+        creative = {
+            **base_creative,
+            "xsi_type": "Html5Creative",
+            "size": {"width": width, "height": height},
+            "htmlAsset": {
+                "htmlSource": self._get_html5_source(asset),
+                "size": {"width": width, "height": height},
+            },
+            "overrideSize": False,  # Use the creative size for display
+            "isInterstitial": False,  # Default to non-interstitial
+        }
+
+        # Add backup image if provided (AdCP v1.3+ feature)
+        if "backup_image_url" in asset:
+            creative["backupImageAsset"] = {
+                "assetUrl": asset["backup_image_url"],
+                "size": {"width": width, "height": height},
+            }
+
+        # Configure interstitial setting if specified
+        if "delivery_settings" in asset and asset["delivery_settings"]:
+            settings = asset["delivery_settings"]
+            if "interstitial" in settings:
+                creative["isInterstitial"] = settings["interstitial"]
+            if "override_size" in settings:
+                creative["overrideSize"] = settings["override_size"]
+
+        # Add impression tracking URLs using unified method
+        self._add_tracking_urls_to_creative(creative, asset)
+
+        return creative
+
+    def _get_html5_source(self, asset: dict[str, Any]) -> str:
+        """Get HTML5 source content from asset."""
+        media_url = asset.get("media_url", "")
+
+        # For HTML5 creatives, we need to handle different scenarios:
+        # 1. Direct HTML content in media_url (if it's a data URL or inline HTML)
+        # 2. ZIP file URL containing HTML5 creative assets
+        # 3. Direct HTML file URL
+
+        if media_url.startswith("data:text/html"):
+            # Extract HTML content from data URL
+            return media_url.split(",", 1)[1] if "," in media_url else ""
+        elif media_url.lower().endswith(".zip"):
+            # For ZIP files, GAM expects the URL to be referenced
+            # The actual HTML content will be extracted by GAM
+            return f"<!-- HTML5 Creative ZIP: {media_url} -->"
+        else:
+            # For direct HTML files or URLs, reference the URL
+            # In real implementation, you might fetch and validate the HTML content
+            return f"<!-- HTML5 Creative URL: {media_url} -->"
 
     def _create_hosted_asset_creative(
         self, asset: dict[str, Any], base_creative: dict, placeholders: list[dict] = None
@@ -1595,13 +1677,29 @@ class GoogleAdManager(AdServerAdapter):
             "size": {"width": width, "height": height},
         }
 
-        if format_str.startswith("video"):
-            creative["xsi_type"] = "VideoCreative"
-            creative["videoSourceUrl"] = asset.get("media_url") or asset.get("url")
-            creative["duration"] = asset.get("duration", 0)  # Duration in milliseconds
-        else:  # Default to image
-            creative["xsi_type"] = "ImageCreative"
-            creative["primaryImageAsset"] = {"assetUrl": asset.get("media_url") or asset.get("url")}
+        # Check if we have binary data to upload
+        if asset.get("media_data"):
+            # Upload binary asset to GAM and get asset ID
+            uploaded_asset = self._upload_binary_asset(asset)
+            if format_str.startswith("video"):
+                creative["xsi_type"] = "VideoCreative"
+                creative["videoAsset"] = uploaded_asset
+                creative["duration"] = asset.get("duration", 0)  # Duration in milliseconds
+            else:  # Default to image
+                creative["xsi_type"] = "ImageCreative"
+                creative["primaryImageAsset"] = uploaded_asset
+        else:
+            # Fallback to URL-based assets (legacy behavior)
+            if format_str.startswith("video"):
+                creative["xsi_type"] = "VideoCreative"
+                creative["videoSourceUrl"] = asset.get("media_url") or asset.get("url")
+                creative["duration"] = asset.get("duration", 0)  # Duration in milliseconds
+            else:  # Default to image
+                creative["xsi_type"] = "ImageCreative"
+                creative["primaryImageAsset"] = {"assetUrl": asset.get("media_url") or asset.get("url")}
+
+        # Add impression tracking URLs for hosted assets (both image and video)
+        self._add_tracking_urls_to_creative(creative, asset)
 
         return creative
 
@@ -1740,19 +1838,159 @@ class GoogleAdManager(AdServerAdapter):
             f"Please use explicit width/height fields or ensure format is properly defined."
         )
 
-    def _extract_dimensions_from_format(self, format_id: str) -> tuple[int, int]:
-        """Extract width and height from format ID like 'display_300x250'."""
-        if "_" in format_id:
-            parts = format_id.split("_")
-            if len(parts) >= 2 and "x" in parts[-1]:
-                dims = parts[-1].split("x")
-                if len(dims) == 2:
-                    try:
-                        return int(dims[0]), int(dims[1])
-                    except ValueError:
-                        pass
-        # Default dimensions for unknown formats
-        return 300, 250
+    def _add_tracking_urls_to_creative(self, creative: dict[str, Any], asset: dict[str, Any]) -> None:
+        """
+        Add impression tracking URLs to GAM creative object.
+
+        Supports tracking for all creative types:
+        - ThirdPartyCreative: thirdPartyImpressionTrackingUrls
+        - ImageCreative/VideoCreative: thirdPartyImpressionUrls
+        - TemplateCreative (native): handled via template variables
+
+        Args:
+            creative: GAM creative object to modify
+            asset: Creative asset dictionary with tracking configuration
+        """
+        # Get tracking URLs from delivery_settings
+        tracking_urls = []
+
+        if "delivery_settings" in asset and asset["delivery_settings"]:
+            settings = asset["delivery_settings"]
+            if "tracking_urls" in settings:
+                tracking_urls = settings["tracking_urls"]
+
+        # Also check for direct tracking_urls field (AdCP v1.3+ support)
+        if "tracking_urls" in asset:
+            tracking_urls.extend(asset["tracking_urls"])
+
+        # Add tracking URLs based on creative type
+        if tracking_urls:
+            creative_type = creative.get("xsi_type", "")
+
+            if creative_type == "ThirdPartyCreative":
+                # Third-party creatives use thirdPartyImpressionTrackingUrls
+                creative["thirdPartyImpressionTrackingUrls"] = tracking_urls
+                self.log(f"Added {len(tracking_urls)} third-party tracking URLs")
+
+            elif creative_type in ["ImageCreative", "VideoCreative"]:
+                # Hosted asset creatives use thirdPartyImpressionUrls
+                creative["thirdPartyImpressionUrls"] = tracking_urls
+                self.log(f"Added {len(tracking_urls)} impression tracking URLs to {creative_type}")
+
+            elif creative_type == "TemplateCreative":
+                # Native creatives: tracking should be handled via template variables
+                self.log(
+                    f"Note: {len(tracking_urls)} tracking URLs provided for native creative - should be handled via template variables"
+                )
+
+            else:
+                self.log(f"Warning: Cannot add tracking URLs to unknown creative type: {creative_type}")
+
+    def _upload_binary_asset(self, asset: dict[str, Any]) -> dict[str, Any]:
+        """
+        Upload binary asset data to GAM using CreativeAssetService.
+
+        Args:
+            asset: Creative asset dictionary containing media_data
+
+        Returns:
+            GAM CreativeAsset object with assetId
+
+        Raises:
+            Exception: If upload fails or media_data is invalid
+        """
+        if self.dry_run:
+            self.log(f"Would upload binary asset for creative {asset['creative_id']}")
+            return {
+                "assetId": "mock_asset_123456",
+                "fileName": asset.get("filename", f"{asset['creative_id']}.jpg"),
+                "fileSize": len(asset.get("media_data", b"")),
+            }
+
+        media_data = asset.get("media_data")
+        if not media_data:
+            raise ValueError(f"No media_data found for asset {asset['creative_id']}")
+
+        # Decode base64 if needed
+        if isinstance(media_data, str):
+            import base64
+
+            try:
+                media_data = base64.b64decode(media_data)
+            except Exception as e:
+                raise ValueError(f"Failed to decode base64 media_data for asset {asset['creative_id']}: {e}")
+
+        if not isinstance(media_data, bytes):
+            raise ValueError(f"media_data must be bytes or base64 string for asset {asset['creative_id']}")
+
+        # Get CreativeAssetService
+        creative_asset_service = self.client.GetService("CreativeAssetService")
+
+        # Determine content type from format or filename
+        content_type = self._get_content_type(asset)
+        filename = asset.get("filename") or f"{asset['creative_id']}.{self._get_file_extension(content_type)}"
+
+        # Create CreativeAsset object
+        creative_asset = {
+            "assetByteArray": media_data,
+            "fileName": filename,
+        }
+
+        try:
+            self.log(f"Uploading {len(media_data)} bytes for creative {asset['creative_id']} as {filename}")
+
+            # Upload the asset
+            uploaded_assets = creative_asset_service.createAssets([creative_asset])
+
+            if not uploaded_assets or len(uploaded_assets) == 0:
+                raise Exception(f"Failed to upload asset for creative {asset['creative_id']}: No assets returned")
+
+            uploaded_asset = uploaded_assets[0]
+            self.log(f"✓ Uploaded asset with ID: {uploaded_asset['assetId']}")
+
+            return uploaded_asset
+
+        except Exception as e:
+            self.log(f"[red]Error uploading binary asset for creative {asset['creative_id']}: {e}[/red]")
+            raise
+
+    def _get_content_type(self, asset: dict[str, Any]) -> str:
+        """Determine content type from asset format or filename."""
+        format_str = asset.get("format", "").lower()
+        filename = asset.get("filename", "").lower()
+
+        # Check format first
+        if format_str.startswith("video"):
+            if "mp4" in format_str or filename.endswith(".mp4"):
+                return "video/mp4"
+            elif "mov" in format_str or filename.endswith(".mov"):
+                return "video/quicktime"
+            elif "avi" in format_str or filename.endswith(".avi"):
+                return "video/avi"
+            else:
+                return "video/mp4"  # Default video format
+        else:
+            # Image formats
+            if filename.endswith(".png") or "png" in format_str:
+                return "image/png"
+            elif filename.endswith(".gif") or "gif" in format_str:
+                return "image/gif"
+            elif filename.endswith(".jpg") or filename.endswith(".jpeg") or "jpg" in format_str or "jpeg" in format_str:
+                return "image/jpeg"
+            else:
+                return "image/jpeg"  # Default image format
+
+    def _get_file_extension(self, content_type: str) -> str:
+        """Get file extension from content type."""
+        content_type_map = {
+            "image/jpeg": "jpg",
+            "image/png": "png",
+            "image/gif": "gif",
+            "video/mp4": "mp4",
+            "video/quicktime": "mov",
+            "video/avi": "avi",
+        }
+        return content_type_map.get(content_type, "jpg")
 
     def _get_native_template_id(self, asset: dict[str, Any]) -> str:
         """Get or find a native template ID for this creative."""
