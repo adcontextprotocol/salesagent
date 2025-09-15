@@ -1,6 +1,5 @@
 """Test form validation utilities."""
 
-
 from src.core.validation import validate_form_data
 
 

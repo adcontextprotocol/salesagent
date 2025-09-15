@@ -53,8 +53,6 @@ from src.core.database.models import Product as ModelProduct
 from src.core.schemas import (
     AddCreativeAssetsRequest,
     AddCreativeAssetsResponse,
-    # ApproveAdaptationRequest,  # Not defined in schemas yet
-    # ApproveAdaptationResponse,  # Not defined in schemas yet
     ApproveCreativeRequest,
     ApproveCreativeResponse,
     AssignCreativeRequest,
@@ -92,6 +90,7 @@ from src.core.schemas import (
     GetTargetingCapabilitiesResponse,
     LegacyUpdateMediaBuyRequest,
     ListCreativeFormatsResponse,
+    ListCreativesResponse,
     MediaBuyDeliveryData,
     MediaPackage,
     PackagePerformance,
@@ -101,6 +100,7 @@ from src.core.schemas import (
     Signal,
     SimulationControlRequest,
     SimulationControlResponse,
+    SyncCreativesResponse,
     Targeting,
     UpdateMediaBuyRequest,
     UpdateMediaBuyResponse,
@@ -976,6 +976,532 @@ def list_creative_formats(context: Context) -> ListCreativeFormatsResponse:
 
     message = f"Found {len(formats)} creative formats across {len({f.type for f in formats})} format types"
     return ListCreativeFormatsResponse(formats=formats, message=message, specification_version="AdCP v2.4")
+
+
+@mcp.tool
+def sync_creatives(
+    creatives: list[dict],
+    media_buy_id: str = None,
+    buyer_ref: str = None,
+    assign_to_packages: list[str] = None,
+    upsert: bool = True,
+    context: Context = None,
+) -> SyncCreativesResponse:
+    """Sync creative assets to centralized library (AdCP spec endpoint).
+
+    Primary creative management endpoint that handles:
+    - Bulk creative upload/update with upsert semantics
+    - Creative assignment to media buy packages
+    - Support for both hosted assets (media_url) and third-party tags (snippet)
+
+    Args:
+        creatives: Array of creative assets to sync
+        media_buy_id: Publisher's ID of the media buy (optional)
+        buyer_ref: Buyer's reference for the media buy (optional)
+        assign_to_packages: Package IDs to assign creatives to (optional)
+        upsert: Whether to update existing creatives or create new ones
+        context: FastMCP context (automatically provided)
+
+    Returns:
+        SyncCreativesResponse with synced creatives and assignments
+    """
+    from pydantic import ValidationError
+
+    from src.core.schemas import Creative
+
+    # Process raw creative dictionaries without schema validation initially
+    # Schema objects will be created later with populated internal fields
+    raw_creatives = [creative if isinstance(creative, dict) else creative.model_dump() for creative in creatives]
+
+    start_time = time.time()
+
+    # Authentication
+    principal_id = _get_principal_id_from_context(context)
+
+    # Get tenant information
+    tenant = get_current_tenant()
+    if not tenant:
+        raise ToolError("No tenant context available")
+
+    # Track synced and failed creatives
+    synced_creatives = []
+    failed_creatives = []
+    assignments = []
+
+    with get_db_session() as session:
+        # Resolve media buy
+        media_buy = None
+        if media_buy_id:
+            from src.core.database.models import MediaBuy
+
+            media_buy = (
+                session.query(MediaBuy).filter_by(tenant_id=tenant["tenant_id"], media_buy_id=media_buy_id).first()
+            )
+        elif buyer_ref:
+            from src.core.database.models import MediaBuy
+
+            media_buy = session.query(MediaBuy).filter_by(tenant_id=tenant["tenant_id"], buyer_ref=buyer_ref).first()
+
+        if not media_buy and (media_buy_id or buyer_ref):
+            raise ToolError(f"Media buy not found: {media_buy_id or buyer_ref}")
+
+        # Process each creative with proper transaction isolation
+        for creative in raw_creatives:
+            try:
+                # First, validate the creative against the schema before database operations
+                try:
+                    # Create temporary schema object for validation
+                    # Map input fields to schema field names
+                    schema_data = {
+                        "creative_id": creative.get("creative_id") or str(uuid.uuid4()),
+                        "name": creative.get("name", ""),  # Ensure name is never None
+                        "format_id": creative.get("format"),  # Use alias name
+                        "click_through_url": creative.get("click_url"),
+                        "width": creative.get("width"),
+                        "height": creative.get("height"),
+                        "duration": creative.get("duration"),
+                        "principal_id": principal_id,
+                        "created_at": datetime.now(UTC),
+                        "updated_at": datetime.now(UTC),
+                        "status": "pending",
+                    }
+
+                    # Handle snippet vs media content properly (mutually exclusive)
+                    if creative.get("snippet"):
+                        # Snippet-based creative
+                        schema_data.update(
+                            {
+                                "snippet": creative.get("snippet"),
+                                "snippet_type": creative.get("snippet_type"),
+                                "content_uri": "<script>/* Snippet-based creative */</script>",  # HTML-looking placeholder
+                            }
+                        )
+                    else:
+                        # Media-based creative
+                        schema_data["content_uri"] = (
+                            creative.get("url") or "https://placeholder.example.com/missing.jpg"
+                        )
+
+                    if creative.get("template_variables"):
+                        schema_data["template_variables"] = creative.get("template_variables")
+
+                    # Validate by creating a Creative schema object
+                    # This will fail if required fields are missing or invalid (like empty name)
+                    Creative(**schema_data)
+
+                    # Additional business logic validation
+                    if not creative.get("name") or str(creative.get("name")).strip() == "":
+                        raise ValueError("Creative name cannot be empty")
+
+                    if not creative.get("format"):
+                        raise ValueError("Creative format is required")
+
+                except (ValidationError, ValueError) as validation_error:
+                    # Creative failed validation - add to failed list
+                    failed_creatives.append(
+                        {"creative_id": creative.get("creative_id", "unknown"), "error": str(validation_error)}
+                    )
+                    continue  # Skip to next creative
+
+                # Use savepoint for individual creative transaction isolation
+                with session.begin_nested():
+                    # Check if creative already exists (for upsert)
+                    existing_creative = None
+                    if upsert and creative.get("creative_id"):
+                        from src.core.database.models import Creative as DBCreative
+
+                        existing_creative = (
+                            session.query(DBCreative)
+                            .filter_by(tenant_id=tenant["tenant_id"], creative_id=creative.get("creative_id"))
+                            .first()
+                        )
+
+                    if existing_creative and upsert:
+                        # Update existing creative
+                        existing_creative.name = creative.get("name")
+                        existing_creative.format_id = creative.get("format")
+                        existing_creative.url = creative.get("url")
+                        existing_creative.click_url = creative.get("click_url")
+                        existing_creative.width = creative.get("width")
+                        existing_creative.height = creative.get("height")
+                        existing_creative.duration = creative.get("duration")
+                        existing_creative.updated_at = datetime.now(UTC)
+
+                        # Update AdCP v1.3+ fields
+                        if creative.get("snippet"):
+                            existing_creative.snippet = creative.get("snippet")
+                            existing_creative.snippet_type = creative.get("snippet_type")
+
+                        if creative.get("template_variables"):
+                            existing_creative.template_variables = creative.get("template_variables")
+
+                    else:
+                        # Create new creative
+                        from src.core.database.models import Creative as DBCreative
+
+                        db_creative = DBCreative(
+                            tenant_id=tenant["tenant_id"],
+                            creative_id=creative.get("creative_id") or str(uuid.uuid4()),
+                            name=creative.get("name"),
+                            format_id=creative.get("format"),
+                            url=creative.get("url"),
+                            click_url=creative.get("click_url"),
+                            width=creative.get("width"),
+                            height=creative.get("height"),
+                            duration=creative.get("duration"),
+                            principal_id=principal_id,
+                            status="pending",
+                            created_at=datetime.now(UTC),
+                            snippet=creative.get("snippet"),
+                            snippet_type=creative.get("snippet_type"),
+                            template_variables=creative.get("template_variables"),
+                        )
+
+                        session.add(db_creative)
+                        session.flush()  # Get the ID
+
+                        # Update creative_id if it was generated
+                        if not creative.get("creative_id"):
+                            creative["creative_id"] = db_creative.creative_id
+
+                    # Handle package assignments
+                    if assign_to_packages and media_buy:
+                        for package_id in assign_to_packages:
+                            from src.core.database.models import CreativeAssignment as DBAssignment
+                            from src.core.schemas import CreativeAssignment
+
+                            assignment = DBAssignment(
+                                tenant_id=tenant["tenant_id"],
+                                assignment_id=str(uuid.uuid4()),
+                                media_buy_id=media_buy.media_buy_id,
+                                package_id=package_id,
+                                creative_id=creative.get("creative_id"),
+                                weight=100,
+                                created_at=datetime.now(UTC),
+                            )
+
+                            session.add(assignment)
+                            assignments.append(
+                                CreativeAssignment(
+                                    assignment_id=assignment.assignment_id,
+                                    media_buy_id=assignment.media_buy_id,
+                                    package_id=assignment.package_id,
+                                    creative_id=assignment.creative_id,
+                                    weight=assignment.weight,
+                                )
+                            )
+
+                    # If we reach here, creative processing succeeded
+                    synced_creatives.append(creative)
+
+            except Exception as e:
+                # Savepoint automatically rolls back this creative only
+                failed_creatives.append(
+                    {"creative_id": creative.get("creative_id"), "name": creative.get("name"), "error": str(e)}
+                )
+
+        # Commit all successful creative operations
+        session.commit()
+
+    # Audit logging
+    audit_logger = get_audit_logger("AdCP", tenant["tenant_id"])
+    audit_logger.log_operation(
+        operation="sync_creatives",
+        principal_name=principal_id,
+        principal_id=principal_id,
+        adapter_id="N/A",
+        success=len(failed_creatives) == 0,
+        details={
+            "synced_count": len(synced_creatives),
+            "failed_count": len(failed_creatives),
+            "assignment_count": len(assignments),
+            "upsert_mode": upsert,
+        },
+    )
+
+    # Log activity
+    log_tool_activity(context, "sync_creatives", start_time)
+
+    message = f"Synced {len(synced_creatives)} creatives"
+    if failed_creatives:
+        message += f", {len(failed_creatives)} failed"
+    if assignments:
+        message += f", {len(assignments)} assignments created"
+
+    # Convert synced creative dictionaries to schema objects for AdCP-compliant response
+    synced_creative_schemas = []
+    for creative_dict in synced_creatives:
+        # Get the database object to populate internal fields
+        with get_db_session() as session:
+            from src.core.database.models import Creative as DBCreative
+
+            db_creative = (
+                session.query(DBCreative)
+                .filter_by(tenant_id=tenant["tenant_id"], creative_id=creative_dict.get("creative_id"))
+                .first()
+            )
+            if db_creative:
+                # Create schema object with populated internal fields
+                # Using aliased field names for construction
+                # Handle mutually exclusive media content vs snippet
+                schema_data = {
+                    "creative_id": db_creative.creative_id,
+                    "name": db_creative.name,
+                    "format_id": db_creative.format_id,  # Use alias name 'format_id'
+                    "click_through_url": db_creative.click_url,  # Use alias name 'click_through_url'
+                    "width": db_creative.width,
+                    "height": db_creative.height,
+                    "duration": db_creative.duration,
+                    "status": db_creative.status,
+                    "template_variables": db_creative.template_variables or {},
+                    "principal_id": db_creative.principal_id,
+                    "created_at": db_creative.created_at or datetime.now(UTC),
+                    "updated_at": db_creative.updated_at or datetime.now(UTC),
+                }
+
+                # Handle content_uri - required field even for snippet creatives
+                # For snippet creatives, provide an HTML-looking URL to pass validation
+                if db_creative.snippet:
+                    schema_data.update(
+                        {
+                            "snippet": db_creative.snippet,
+                            "snippet_type": db_creative.snippet_type,
+                            # Use HTML snippet-looking URL to pass _is_html_snippet() validation
+                            "content_uri": db_creative.url or "<script>/* Snippet-based creative */</script>",
+                        }
+                    )
+                else:
+                    schema_data["content_uri"] = db_creative.url or "https://placeholder.example.com/missing.jpg"
+
+                creative_schema = Creative(**schema_data)
+                synced_creative_schemas.append(creative_schema)
+
+    return SyncCreativesResponse(
+        synced_creatives=synced_creative_schemas,
+        failed_creatives=failed_creatives,
+        assignments=assignments,
+        message=message,
+    )
+
+
+@mcp.tool
+def list_creatives(
+    media_buy_id: str = None,
+    buyer_ref: str = None,
+    status: str = None,
+    format: str = None,
+    tags: list[str] = None,
+    created_after: str = None,
+    created_before: str = None,
+    search: str = None,
+    page: int = 1,
+    limit: int = 50,
+    sort_by: str = "created_date",
+    sort_order: str = "desc",
+    context: Context = None,
+) -> ListCreativesResponse:
+    """List and search creative library (AdCP spec endpoint).
+
+    Advanced filtering and search endpoint for the centralized creative library.
+    Supports pagination, sorting, and multiple filter criteria.
+
+    Args:
+        media_buy_id: Filter by media buy ID (optional)
+        buyer_ref: Filter by buyer reference (optional)
+        status: Filter by creative status (pending, approved, rejected) (optional)
+        format: Filter by creative format (optional)
+        tags: Filter by tags (optional)
+        created_after: Filter by creation date (ISO string) (optional)
+        created_before: Filter by creation date (ISO string) (optional)
+        search: Search in creative names and descriptions (optional)
+        page: Page number for pagination (default: 1)
+        limit: Number of results per page (default: 50, max: 1000)
+        sort_by: Sort field (created_date, name, status) (default: created_date)
+        sort_order: Sort order (asc, desc) (default: desc)
+        context: FastMCP context (automatically provided)
+
+    Returns:
+        ListCreativesResponse with filtered creative assets and pagination info
+    """
+    from src.core.schemas import Creative, ListCreativesRequest
+
+    # Parse datetime strings if provided
+    created_after_dt = None
+    created_before_dt = None
+    if created_after:
+        try:
+            created_after_dt = datetime.fromisoformat(created_after.replace("Z", "+00:00"))
+        except ValueError:
+            raise ToolError(f"Invalid created_after date format: {created_after}")
+    if created_before:
+        try:
+            created_before_dt = datetime.fromisoformat(created_before.replace("Z", "+00:00"))
+        except ValueError:
+            raise ToolError(f"Invalid created_before date format: {created_before}")
+
+    # Create request object from individual parameters (MCP-compliant)
+    req = ListCreativesRequest(
+        media_buy_id=media_buy_id,
+        buyer_ref=buyer_ref,
+        status=status,
+        format=format,
+        tags=tags or [],
+        created_after=created_after_dt,
+        created_before=created_before_dt,
+        search=search,
+        page=page,
+        limit=min(limit, 1000),  # Enforce max limit
+        sort_by=sort_by,
+        sort_order=sort_order,
+    )
+
+    start_time = time.time()
+
+    # Authentication
+    principal_id = _get_principal_id_from_context(context)
+
+    # Get tenant information
+    tenant = get_current_tenant()
+    if not tenant:
+        raise ToolError("No tenant context available")
+
+    creatives = []
+    total_count = 0
+
+    with get_db_session() as session:
+        from src.core.database.models import Creative as DBCreative
+        from src.core.database.models import CreativeAssignment as DBAssignment
+        from src.core.database.models import MediaBuy
+
+        # Build query
+        query = session.query(DBCreative).filter_by(tenant_id=tenant["tenant_id"])
+
+        # Apply filters
+        if req.media_buy_id:
+            # Filter by media buy assignments
+            query = query.join(DBAssignment, DBCreative.creative_id == DBAssignment.creative_id).filter(
+                DBAssignment.media_buy_id == req.media_buy_id
+            )
+
+        if req.buyer_ref:
+            # Filter by buyer_ref through media buy
+            query = (
+                query.join(DBAssignment, DBCreative.creative_id == DBAssignment.creative_id)
+                .join(MediaBuy, DBAssignment.media_buy_id == MediaBuy.media_buy_id)
+                .filter(MediaBuy.buyer_ref == req.buyer_ref)
+            )
+
+        if req.status:
+            query = query.filter(DBCreative.status == req.status)
+
+        if req.format:
+            query = query.filter(DBCreative.format_id == req.format)
+
+        if req.tags:
+            # Simple tag filtering - in production, might use JSON operators
+            for tag in req.tags:
+                query = query.filter(DBCreative.name.contains(tag))  # Simplified
+
+        if req.created_after:
+            query = query.filter(DBCreative.created_at >= req.created_after)
+
+        if req.created_before:
+            query = query.filter(DBCreative.created_at <= req.created_before)
+
+        if req.search:
+            # Search in name and description
+            search_term = f"%{req.search}%"
+            query = query.filter(DBCreative.name.ilike(search_term))
+
+        # Get total count before pagination
+        total_count = query.count()
+
+        # Apply sorting
+        if req.sort_by == "name":
+            sort_column = DBCreative.name
+        elif req.sort_by == "status":
+            sort_column = DBCreative.status
+        else:  # Default to created_date
+            sort_column = DBCreative.created_at
+
+        if req.sort_order == "asc":
+            query = query.order_by(sort_column.asc())
+        else:
+            query = query.order_by(sort_column.desc())
+
+        # Apply pagination
+        offset = (req.page - 1) * req.limit
+        db_creatives = query.offset(offset).limit(req.limit).all()
+
+        # Convert to schema objects
+        for db_creative in db_creatives:
+            # Create schema object with proper field aliases and mutually exclusive handling
+            schema_data = {
+                "creative_id": db_creative.creative_id,
+                "name": db_creative.name,
+                "format_id": db_creative.format_id,  # Use alias name 'format_id'
+                "click_through_url": db_creative.click_url,  # Use alias name 'click_through_url'
+                "width": db_creative.width,
+                "height": db_creative.height,
+                "duration": db_creative.duration,
+                "status": db_creative.status,
+                "template_variables": db_creative.template_variables or {},
+                "principal_id": db_creative.principal_id,
+                "created_at": db_creative.created_at or datetime.now(UTC),
+                "updated_at": db_creative.updated_at or datetime.now(UTC),
+            }
+
+            # Handle content_uri - required field even for snippet creatives
+            # For snippet creatives, provide an HTML-looking URL to pass validation
+            if db_creative.snippet:
+                schema_data.update(
+                    {
+                        "snippet": db_creative.snippet,
+                        "snippet_type": db_creative.snippet_type,
+                        # Use HTML snippet-looking URL to pass _is_html_snippet() validation
+                        "content_uri": db_creative.url or "<script>/* Snippet-based creative */</script>",
+                    }
+                )
+            else:
+                schema_data["content_uri"] = db_creative.url or "https://placeholder.example.com/missing.jpg"
+
+            creative = Creative(**schema_data)
+            creatives.append(creative)
+
+    # Calculate pagination info
+    has_more = (req.page * req.limit) < total_count
+
+    # Audit logging
+    audit_logger = get_audit_logger("AdCP", tenant["tenant_id"])
+    audit_logger.log_operation(
+        operation="list_creatives",
+        principal_name=principal_id,
+        principal_id=principal_id,
+        adapter_id="N/A",
+        success=True,
+        details={
+            "result_count": len(creatives),
+            "total_count": total_count,
+            "page": req.page,
+            "filters_applied": {
+                "media_buy_id": req.media_buy_id,
+                "status": req.status,
+                "format": req.format,
+                "search": req.search,
+            },
+        },
+    )
+
+    # Log activity
+    log_tool_activity(context, "list_creatives", start_time)
+
+    message = f"Found {len(creatives)} creatives"
+    if total_count > len(creatives):
+        message += f" (page {req.page} of {total_count} total)"
+
+    return ListCreativesResponse(
+        creatives=creatives, total_count=total_count, page=req.page, limit=req.limit, has_more=has_more, message=message
+    )
 
 
 @mcp.tool

@@ -38,7 +38,7 @@ class TestMigrationSafety:
             if result.returncode != 0:
                 if "No module named" in result.stderr or "alembic" in result.stderr.lower():
                     pytest.skip("Migration dependencies not available in CI")
-                assert False, f"Migration failed: {result.stderr}"
+                raise AssertionError(f"Migration failed: {result.stderr}")
 
             # Verify tables were created
             engine = create_engine(f"sqlite:///{db_path}")
@@ -119,7 +119,7 @@ class TestMigrationSafety:
             if result.returncode != 0:
                 if "No module named" in result.stderr or "alembic" in result.stderr.lower():
                     pytest.skip("Migration dependencies not available in CI")
-                assert False, f"Migration failed: {result.stderr}"
+                raise AssertionError(f"Migration failed: {result.stderr}")
 
             # Insert test data
             engine = create_engine(f"sqlite:///{db_path}")
@@ -147,7 +147,7 @@ class TestMigrationSafety:
             if result.returncode != 0:
                 if "No module named" in result.stderr or "alembic" in result.stderr.lower():
                     pytest.skip("Migration dependencies not available in CI")
-                assert False, f"Migration failed: {result.stderr}"
+                raise AssertionError(f"Migration failed: {result.stderr}")
 
             # Verify data still exists
             with engine.connect() as conn:
@@ -248,7 +248,7 @@ class TestDatabaseCompatibility:
             if result.returncode != 0:
                 if "No module named" in result.stderr or "alembic" in result.stderr.lower():
                     pytest.skip("Migration dependencies not available in CI")
-                assert False, f"SQLite migration failed: {result.stderr}"
+                raise AssertionError(f"SQLite migration failed: {result.stderr}")
 
             # Test SQLite-specific features
             engine = create_engine(f"sqlite:///{db_path}")
@@ -275,7 +275,7 @@ class TestDatabaseCompatibility:
                 os.unlink(db_path)
 
     @pytest.mark.smoke
-    @pytest.mark.skip_ci  
+    @pytest.mark.skip_ci
     def test_boolean_field_compatibility(self, test_database):
         """Test that boolean fields work correctly."""
         with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as tmp:

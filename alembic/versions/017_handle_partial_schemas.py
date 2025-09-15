@@ -8,10 +8,11 @@ This migration handles cases where tables might have been partially created
 by init_db() or previous failed migrations, making the migration process
 more robust and idempotent.
 """
-from alembic import op
+
 import sqlalchemy as sa
 from sqlalchemy import inspect
 
+from alembic import op
 
 # revision identifiers, used by Alembic
 revision = "017_handle_partial_schemas"
@@ -67,20 +68,11 @@ def safe_create_index(index_name, table_name, columns):
     return False
 
 
-def safe_create_foreign_key(
-    constraint_name, source_table, ref_table, source_cols, ref_cols, **kwargs
-):
+def safe_create_foreign_key(constraint_name, source_table, ref_table, source_cols, ref_cols, **kwargs):
     """Create a foreign key only if both tables exist."""
     if table_exists(source_table) and table_exists(ref_table):
         try:
-            op.create_foreign_key(
-                constraint_name,
-                source_table,
-                ref_table,
-                source_cols,
-                ref_cols,
-                **kwargs
-            )
+            op.create_foreign_key(constraint_name, source_table, ref_table, source_cols, ref_cols, **kwargs)
             return True
         except Exception:
             # Foreign key might already exist
@@ -102,29 +94,19 @@ def upgrade():
         # Add indexes that might be missing
         safe_create_index("idx_contexts_tenant", "contexts", ["tenant_id"])
         safe_create_index("idx_contexts_principal", "contexts", ["principal_id"])
-        safe_create_index(
-            "idx_contexts_last_activity", "contexts", ["last_activity_at"]
-        )
+        safe_create_index("idx_contexts_last_activity", "contexts", ["last_activity_at"])
 
     # Ensure indexes exist on workflow_steps table (if table exists)
     if table_exists("workflow_steps"):
         # Add indexes that might be missing
-        safe_create_index(
-            "idx_workflow_steps_context", "workflow_steps", ["context_id"]
-        )
+        safe_create_index("idx_workflow_steps_context", "workflow_steps", ["context_id"])
         safe_create_index("idx_workflow_steps_status", "workflow_steps", ["status"])
         safe_create_index("idx_workflow_steps_owner", "workflow_steps", ["owner"])
-        safe_create_index(
-            "idx_workflow_steps_assigned", "workflow_steps", ["assigned_to"]
-        )
-        safe_create_index(
-            "idx_workflow_steps_created", "workflow_steps", ["created_at"]
-        )
+        safe_create_index("idx_workflow_steps_assigned", "workflow_steps", ["assigned_to"])
+        safe_create_index("idx_workflow_steps_created", "workflow_steps", ["created_at"])
 
     # Add columns to existing tables if they don't exist
-    safe_add_column(
-        "media_buys", sa.Column("context_id", sa.String(100), nullable=True)
-    )
+    safe_add_column("media_buys", sa.Column("context_id", sa.String(100), nullable=True))
     safe_create_foreign_key(
         "fk_media_buys_context",
         "media_buys",
@@ -154,9 +136,7 @@ def upgrade():
     safe_add_column("tasks", sa.Column("message", sa.Text, nullable=True))
     safe_add_column(
         "tasks",
-        sa.Column(
-            "clarification_needed", sa.Boolean, nullable=False, server_default="0"
-        ),
+        sa.Column("clarification_needed", sa.Boolean, nullable=False, server_default="0"),
     )
     safe_add_column("tasks", sa.Column("clarification_details", sa.Text, nullable=True))
 

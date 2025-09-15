@@ -70,8 +70,6 @@ services:
       FLASK_SECRET_KEY: ${FLASK_SECRET_KEY:-dev-secret-key-change-in-production}
       # Gemini API key (required for AI features)
       GEMINI_API_KEY: ${GEMINI_API_KEY}
-      # Approximated.app API key (for virtual host DNS setup)
-      # APPROXIMATED_API_KEY removed - virtual host now uses simple manual input
       # Super admin authorization (set these via .env file)
       SUPER_ADMIN_EMAILS: ${SUPER_ADMIN_EMAILS}
       SUPER_ADMIN_DOMAINS: ${SUPER_ADMIN_DOMAINS}

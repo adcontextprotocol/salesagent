@@ -57,8 +57,6 @@ if [ -n "$SUPER_ADMIN_DOMAINS" ]; then
     echo "✓ SUPER_ADMIN_DOMAINS configured: $SUPER_ADMIN_DOMAINS"
 fi
 
-# APPROXIMATED_API_KEY check removed - virtual host now uses simple manual input
-
 if [ $MISSING_VARS -gt 0 ]; then
     echo ""
     echo "⚠️  Warning: $MISSING_VARS required environment variable(s) missing!"
@@ -70,9 +68,6 @@ if [ $MISSING_VARS -gt 0 ]; then
     [ -z "$GEMINI_API_KEY" ] && echo "export GEMINI_API_KEY='your-gemini-api-key'"
     [ -z "$GOOGLE_CLIENT_ID" ] && [ ! -f "$BASE_DIR/client_secret"*.json ] && echo "export GOOGLE_CLIENT_ID='your-client-id.apps.googleusercontent.com'"
     [ -z "$GOOGLE_CLIENT_SECRET" ] && [ ! -f "$BASE_DIR/client_secret"*.json ] && echo "export GOOGLE_CLIENT_SECRET='your-client-secret'"
-    echo ""
-    echo "# Optional - for virtual host DNS widget integration:"
-    # echo "export APPROXIMATED_API_KEY='your-approximated-api-key'"  # No longer needed
     echo ""
     echo "The workspace will be created but may not function properly."
     read -p "Continue anyway? (y/N) " -n 1 -r
@@ -175,7 +170,6 @@ COMPOSE_DOCKER_CLI_BUILD=1
 
 # API Keys (from environment)
 GEMINI_API_KEY=${GEMINI_API_KEY:-}
-# APPROXIMATED_API_KEY removed - virtual host now uses simple manual input
 
 # OAuth Configuration (from environment)
 GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID:-}
@@ -404,9 +398,7 @@ echo "✓ Workspace environment activated"
 
 echo ""
 echo "Setup complete! Next steps:"
-echo "1. Review .env file and ensure required API keys are set:"
-echo "   - GEMINI_API_KEY (required for creative generation)"
-echo "   # APPROXIMATED_API_KEY no longer needed (virtual host uses simple manual input)"
+echo "1. Review .env file and ensure GEMINI_API_KEY is set"
 echo "2. Build and start services:"
 echo "   docker compose build"
 echo "   docker compose up -d"

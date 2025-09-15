@@ -9,8 +9,10 @@ Workflow_steps table tracks individual steps/tasks as a work queue.
 Conversation_history in contexts is for clarifications and refinements.
 
 """
-from alembic import op
+
 import sqlalchemy as sa
+
+from alembic import op
 
 # revision identifiers, used by Alembic.
 revision = "014_add_context_persistence"
@@ -31,9 +33,7 @@ def upgrade():
         sa.Column(
             "conversation_history", sa.JSON, nullable=False, server_default="[]"
         ),  # Clarifications and refinements only
-        sa.Column(
-            "created_at", sa.DateTime, nullable=False, server_default=sa.func.now()
-        ),
+        sa.Column("created_at", sa.DateTime, nullable=False, server_default=sa.func.now()),
         sa.Column(
             "last_activity_at",
             sa.DateTime,
@@ -41,9 +41,7 @@ def upgrade():
             server_default=sa.func.now(),
         ),
         # Foreign key constraints
-        sa.ForeignKeyConstraint(
-            ["tenant_id"], ["tenants.tenant_id"], ondelete="CASCADE"
-        ),
+        sa.ForeignKeyConstraint(["tenant_id"], ["tenants.tenant_id"], ondelete="CASCADE"),
         sa.ForeignKeyConstraint(
             ["tenant_id", "principal_id"],
             ["principals.tenant_id", "principals.principal_id"],
@@ -61,35 +59,21 @@ def upgrade():
         "workflow_steps",
         sa.Column("step_id", sa.String(100), primary_key=True),
         sa.Column("context_id", sa.String(100), nullable=False),
-        sa.Column(
-            "step_type", sa.String(50), nullable=False
-        ),  # tool_call, approval, notification, etc.
-        sa.Column(
-            "tool_name", sa.String(100), nullable=True
-        ),  # MCP tool name if applicable
+        sa.Column("step_type", sa.String(50), nullable=False),  # tool_call, approval, notification, etc.
+        sa.Column("tool_name", sa.String(100), nullable=True),  # MCP tool name if applicable
         sa.Column("request_data", sa.JSON, nullable=True),  # Original request JSON
         sa.Column("response_data", sa.JSON, nullable=True),  # Response/result JSON
         sa.Column(
             "status", sa.String(20), nullable=False, server_default="pending"
         ),  # pending, in_progress, completed, failed, requires_approval
-        sa.Column(
-            "owner", sa.String(20), nullable=False
-        ),  # principal, publisher, system
-        sa.Column(
-            "assigned_to", sa.String(255), nullable=True
-        ),  # Specific user/system if assigned
-        sa.Column(
-            "created_at", sa.DateTime, nullable=False, server_default=sa.func.now()
-        ),
+        sa.Column("owner", sa.String(20), nullable=False),  # principal, publisher, system
+        sa.Column("assigned_to", sa.String(255), nullable=True),  # Specific user/system if assigned
+        sa.Column("created_at", sa.DateTime, nullable=False, server_default=sa.func.now()),
         sa.Column("started_at", sa.DateTime, nullable=True),
         sa.Column("completed_at", sa.DateTime, nullable=True),
         sa.Column("error_message", sa.Text, nullable=True),
-        sa.Column(
-            "transaction_details", sa.JSON, nullable=True
-        ),  # Actual API calls made to GAM, etc.
-        sa.ForeignKeyConstraint(
-            ["context_id"], ["contexts.context_id"], ondelete="CASCADE"
-        ),
+        sa.Column("transaction_details", sa.JSON, nullable=True),  # Actual API calls made to GAM, etc.
+        sa.ForeignKeyConstraint(["context_id"], ["contexts.context_id"], ondelete="CASCADE"),
     )
 
     op.create_index("idx_workflow_steps_context", "workflow_steps", ["context_id"])
@@ -138,9 +122,7 @@ def upgrade():
     op.add_column("tasks", sa.Column("message", sa.Text, nullable=True))
     op.add_column(
         "tasks",
-        sa.Column(
-            "clarification_needed", sa.Boolean, nullable=False, server_default="0"
-        ),
+        sa.Column("clarification_needed", sa.Boolean, nullable=False, server_default="0"),
     )
     op.add_column("tasks", sa.Column("clarification_details", sa.Text, nullable=True))
 

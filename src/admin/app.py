@@ -12,8 +12,6 @@ from werkzeug.middleware.proxy_fix import ProxyFix as WerkzeugProxyFix
 from src.admin.blueprints.activity_stream import activity_stream_bp
 from src.admin.blueprints.adapters import adapters_bp
 from src.admin.blueprints.api import api_bp
-
-# Approximated blueprint removed - virtual host now uses simple manual input
 from src.admin.blueprints.auth import auth_bp, init_oauth
 from src.admin.blueprints.core import core_bp
 from src.admin.blueprints.creatives import creatives_bp
@@ -194,7 +192,6 @@ def create_app(config=None):
     app.register_blueprint(creatives_bp, url_prefix="/tenant/<tenant_id>/creative-formats")
     app.register_blueprint(policy_bp, url_prefix="/tenant/<tenant_id>/policy")
     app.register_blueprint(settings_bp, url_prefix="/tenant/<tenant_id>/settings")
-    # Approximated blueprint removed - virtual host now uses simple manual input
     app.register_blueprint(adapters_bp, url_prefix="/tenant/<tenant_id>")
     app.register_blueprint(inventory_bp)  # Has its own internal routing
     app.register_blueprint(api_bp, url_prefix="/api")

@@ -260,6 +260,17 @@ def auth_token(request):
 @pytest.fixture
 async def compliance_client(a2a_url, auth_token):
     """A2A compliance client fixture."""
+    import httpx
+
+    # Check if A2A server is available by testing the agent card endpoint
+    try:
+        async with httpx.AsyncClient(timeout=2.0) as test_client:
+            response = await test_client.get(f"{a2a_url.replace('/a2a', '')}/.well-known/agent.json")
+            if response.status_code != 200:
+                pytest.skip(f"A2A server not available at {a2a_url} (status: {response.status_code})")
+    except (httpx.ConnectError, httpx.TimeoutException, Exception) as e:
+        pytest.skip(f"A2A server not available at {a2a_url}: {e}")
+
     async with A2AAdCPComplianceClient(
         a2a_url=a2a_url, auth_token=auth_token, validate_schemas=True, offline_mode=True
     ) as client:
