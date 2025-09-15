@@ -709,11 +709,16 @@ class TestGAMCreativesManagerAssetWorkflow:
         with (
             patch.object(self.creatives_manager, "_get_line_item_info") as mock_get_info,
             patch.object(self.creatives_manager, "_validate_creative_for_gam") as mock_validate,
+            patch.object(self.creatives_manager, "_validate_creative_size_against_placeholders") as mock_size_validate,
             patch.object(self.creatives_manager, "_configure_vast_for_line_items") as mock_configure_vast,
         ):
 
-            mock_get_info.return_value = ({"package_1": "line_item_123"}, {})
+            mock_get_info.return_value = (
+                {"package_1": "line_item_123"},
+                {"line_item_123": [{"width": 300, "height": 250}]},
+            )
             mock_validate.return_value = []
+            mock_size_validate.return_value = []
 
             result = self.creatives_manager.add_creative_assets("order_123", assets, today)
 
@@ -825,9 +830,7 @@ class TestGAMCreativesManagerAssetWorkflow:
         ]
         mock_line_item_service.getLineItemsByStatement.return_value = {"results": line_items}
 
-        line_item_map, creative_placeholders = self.creatives_manager._get_line_item_info(
-            "order_123", mock_line_item_service
-        )
+        line_item_map, creative_placeholders = self.creatives_manager._get_line_item_info("123", mock_line_item_service)
 
         assert line_item_map == {"package_1": "line_item_123"}
         assert "package_1" in creative_placeholders
@@ -835,7 +838,7 @@ class TestGAMCreativesManagerAssetWorkflow:
 
     def test_get_line_item_info_dry_run(self):
         """Test line item info retrieval in dry-run mode."""
-        line_item_map, creative_placeholders = self.creatives_manager._get_line_item_info("order_123", None)
+        line_item_map, creative_placeholders = self.creatives_manager._get_line_item_info("123", None)
 
         # Should return mock data
         assert line_item_map == {"mock_package": "mock_line_item_123"}

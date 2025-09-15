@@ -75,7 +75,7 @@ class TestGAMSyncManager:
         with (
             patch.object(self.sync_manager, "_get_recent_sync") as mock_get_recent,
             patch.object(self.sync_manager, "_create_sync_job") as mock_create_job,
-            patch("src.adapters.gam.managers.sync.GAMInventoryService") as mock_inventory_service_class,
+            patch("src.services.gam_inventory_service.GAMInventoryService") as mock_inventory_service_class,
         ):
 
             mock_get_recent.return_value = None  # No recent sync
@@ -139,7 +139,7 @@ class TestGAMSyncManager:
         with (
             patch.object(self.sync_manager, "_get_recent_sync") as mock_get_recent,
             patch.object(self.sync_manager, "_create_sync_job") as mock_create_job,
-            patch("src.adapters.gam.managers.sync.GAMInventoryService"),
+            patch("src.services.gam_inventory_service.GAMInventoryService"),
         ):
 
             mock_get_recent.return_value = recent_sync_data
@@ -591,7 +591,7 @@ class TestGAMSyncManagerEdgeCases:
         with (
             patch.object(self.sync_manager, "_get_recent_sync") as mock_get_recent,
             patch.object(self.sync_manager, "_create_sync_job") as mock_create_job,
-            patch("src.adapters.gam.managers.sync.GAMInventoryService"),
+            patch("src.services.gam_inventory_service.GAMInventoryService"),
             patch("src.adapters.gam.managers.sync.json.dumps") as mock_json_dumps,
         ):
 

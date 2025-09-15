@@ -261,7 +261,13 @@ class TestGAMClientManager:
     def test_test_connection_delegates_to_health_checker(self):
         """Test that test_connection properly delegates to health checker."""
         mock_health_checker = Mock()
-        mock_result = HealthCheckResult("auth", True, "Connection successful")
+        mock_result = HealthCheckResult(
+            status=HealthStatus.HEALTHY,
+            check_name="auth",
+            message="Connection successful",
+            details={},
+            duration_ms=100.0,
+        )
         mock_health_checker.check_authentication.return_value = mock_result
 
         client_manager = GAMClientManager(self.config, self.network_code)
@@ -275,7 +281,13 @@ class TestGAMClientManager:
     def test_test_permissions_delegates_to_health_checker(self):
         """Test that test_permissions properly delegates to health checker."""
         mock_health_checker = Mock()
-        mock_result = HealthCheckResult("permissions", True, "Permissions valid")
+        mock_result = HealthCheckResult(
+            status=HealthStatus.HEALTHY,
+            check_name="permissions",
+            message="Permissions valid",
+            details={},
+            duration_ms=150.0,
+        )
         mock_health_checker.check_permissions.return_value = mock_result
 
         client_manager = GAMClientManager(self.config, self.network_code)
@@ -426,11 +438,9 @@ class TestGAMClientManagerEdgeCases:
 
     def test_empty_config(self):
         """Test initialization with empty config."""
-        # Empty config should still work for client manager (auth manager will validate)
-        client_manager = GAMClientManager({}, "12345678")
-
-        assert client_manager.config == {}
-        assert client_manager.network_code == "12345678"
+        # Empty config should raise error since auth manager requires credentials
+        with pytest.raises(ValueError, match="GAM config requires either"):
+            GAMClientManager({}, "12345678")
 
     def test_config_modification_after_init(self):
         """Test that modifying config after initialization doesn't affect behavior."""
