@@ -6,11 +6,6 @@ Create Date: 2025-01-06
 
 """
 
-from alembic import op
-import sqlalchemy as sa
-from datetime import datetime
-
-
 # revision identifiers, used by Alembic.
 revision = "011_add_superadmin_api_key"
 down_revision = "010_add_sync_tracking"

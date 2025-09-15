@@ -6,9 +6,9 @@ Create Date: 2025-08-03
 
 """
 
-from alembic import op
 import sqlalchemy as sa
 
+from alembic import op
 
 # revision identifiers, used by Alembic.
 revision = "003_add_policy_compliance_fields"

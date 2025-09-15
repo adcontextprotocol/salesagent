@@ -6,10 +6,11 @@ Create Date: 2025-02-04
 
 """
 
-from alembic import op
-import sqlalchemy as sa
 import json
 
+import sqlalchemy as sa
+
+from alembic import op
 
 # revision identifiers, used by Alembic.
 revision = "005_move_config_to_columns"

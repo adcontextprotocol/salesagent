@@ -9,10 +9,10 @@ by init_db() or previous failed migrations, making the migration process
 more robust and idempotent.
 """
 
-from alembic import op
 import sqlalchemy as sa
 from sqlalchemy import inspect
 
+from alembic import op
 
 # revision identifiers, used by Alembic
 revision = "017_handle_partial_schemas"

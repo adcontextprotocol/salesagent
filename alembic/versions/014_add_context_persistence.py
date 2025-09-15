@@ -10,8 +10,9 @@ Conversation_history in contexts is for clarifications and refinements.
 
 """
 
-from alembic import op
 import sqlalchemy as sa
+
+from alembic import op
 
 # revision identifiers, used by Alembic.
 revision = "014_add_context_persistence"

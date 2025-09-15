@@ -9,10 +9,9 @@ to ensure data integrity. SQLite will skip these as it doesn't support
 CHECK constraints on JSON columns.
 """
 
-from alembic import op
-import sqlalchemy as sa
 from sqlalchemy.sql import text
 
+from alembic import op
 
 # revision identifiers, used by Alembic.
 revision = "016_add_json_validation"

@@ -75,7 +75,6 @@ extend-exclude = '''
   | buck-out
   | build
   | dist
-  | alembic/versions
 )/
 '''
 
@@ -93,7 +92,6 @@ exclude = [
     "buck-out",
     "build",
     "dist",
-    "alembic/versions",
 ]
 
 [tool.ruff.lint]
