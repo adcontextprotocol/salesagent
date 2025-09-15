@@ -361,6 +361,8 @@
             grid-template-columns: 1fr;
         }
     }
+
+    /* Virtual Host now uses simple text input - complex widget styling removed */
 </style>
 
 <!-- Header -->
@@ -452,6 +454,24 @@
                             <input type="text" id="subdomain" name="subdomain" value="{{ tenant.subdomain }}" readonly>
                             <small>Cannot be changed after creation</small>
                         </div>
+
+                        <div class="form-group">
+                            <label for="virtual_host">Virtual Host (Optional)</label>
+                            <input type="text" id="virtual_host" name="virtual_host" value="{{ tenant.virtual_host or '' }}" placeholder="e.g. ad-sales.yourcompany.com">
+                            <small>
+                                <p><strong>To use a custom domain:</strong></p>
+                                <ol style="margin: 0.5rem 0; padding-left: 1.5rem; font-size: 0.9em;">
+                                    <li>Enter your custom domain above (e.g., ad-sales.yourcompany.com)</li>
+                                    <li>Create a CNAME record pointing your domain to: <code>adcp-sales-agent.fly.dev</code></li>
+                                    <li>Save your settings below</li>
+                                    <li>Wait for DNS propagation (5-30 minutes)</li>
+                                </ol>
+                                <p style="margin-top: 0.5rem; color: #666; font-size: 0.85em;">
+                                    💡 Your custom domain will route to this tenant's MCP server and admin interface.
+                                </p>
+                            </small>
+                        </div>
+
                     </div>
                 </div>
 
@@ -1649,5 +1669,10 @@ document.addEventListener('DOMContentLoaded', function() {
 console.log('Backend says active_adapter is:', '{{ active_adapter }}');
 console.log('Backend says tenant.ad_server is:', '{{ tenant.ad_server }}');
 console.log('Current URL params:', window.location.search);
+
+// Virtual host is now managed via simple text input
+// No widget integration needed
+
+// JavaScript widget functions removed - virtual host now uses simple manual input
 </script>
 {% endblock %}

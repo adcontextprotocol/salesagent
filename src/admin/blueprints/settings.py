@@ -120,6 +120,32 @@ def update_general(tenant_id):
             # Update tenant with form data
             tenant.name = tenant_name
 
+            # Update virtual_host if provided
+            if "virtual_host" in request.form:
+                virtual_host = request.form.get("virtual_host", "").strip()
+                if virtual_host:
+                    # Basic validation for virtual host format
+                    # Check for invalid patterns first
+                    if ".." in virtual_host or virtual_host.startswith(".") or virtual_host.endswith("."):
+                        flash("Virtual host cannot contain consecutive dots or start/end with dots", "error")
+                        return redirect(url_for("tenants.tenant_settings", tenant_id=tenant_id, section="general"))
+
+                    # Then check allowed characters
+                    if not virtual_host.replace("-", "").replace(".", "").replace("_", "").isalnum():
+                        flash(
+                            "Virtual host must contain only alphanumeric characters, dots, hyphens, and underscores",
+                            "error",
+                        )
+                        return redirect(url_for("tenants.tenant_settings", tenant_id=tenant_id, section="general"))
+
+                    # Check if virtual host is already in use by another tenant
+                    existing_tenant = db_session.query(Tenant).filter_by(virtual_host=virtual_host).first()
+                    if existing_tenant and existing_tenant.tenant_id != tenant_id:
+                        flash("This virtual host is already in use by another tenant", "error")
+                        return redirect(url_for("tenants.tenant_settings", tenant_id=tenant_id, section="general"))
+
+                tenant.virtual_host = virtual_host or None
+
             # Update other fields if they exist
             if "max_daily_budget" in request.form:
                 try:

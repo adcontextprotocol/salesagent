@@ -39,6 +39,7 @@ from scripts.setup.init_database import init_db
 # Other imports
 from src.core.config_loader import (
     get_current_tenant,
+    get_tenant_by_virtual_host,
     load_config,
     set_current_tenant,
 )
@@ -266,11 +267,22 @@ def get_principal_from_context(context: Context | None) -> str | None:
 
         # Check if a specific tenant was requested via header or subdomain
         requested_tenant_id = None
+        tenant_context = None
 
-        # 1. Check x-adcp-tenant header (set by middleware for path-based routing)
-        requested_tenant_id = headers.get("x-adcp-tenant")
+        # 1. Check Apx-Incoming-Host header (for Approximated.app virtual hosts)
+        apx_host = headers.get("apx-incoming-host")
+        if apx_host:
+            tenant_context = get_tenant_by_virtual_host(apx_host)
+            if tenant_context:
+                requested_tenant_id = tenant_context["tenant_id"]
+                # Set tenant context immediately for virtual host routing
+                set_current_tenant(tenant_context)
 
-        # 2. If not found, check host header for subdomain
+        # 2. Check x-adcp-tenant header (set by middleware for path-based routing)
+        if not requested_tenant_id:
+            requested_tenant_id = headers.get("x-adcp-tenant")
+
+        # 3. If not found, check host header for subdomain
         if not requested_tenant_id:
             host = headers.get("host", "")
             subdomain = host.split(".")[0] if "." in host else None
@@ -4007,7 +4019,7 @@ async def health(request: Request):
 # Add admin UI routes when running unified
 if os.environ.get("ADCP_UNIFIED_MODE"):
     from fastapi.middleware.wsgi import WSGIMiddleware
-    from fastapi.responses import RedirectResponse
+    from fastapi.responses import HTMLResponse, RedirectResponse
 
     from src.admin.app import create_app
 
@@ -4019,7 +4031,58 @@ if os.environ.get("ADCP_UNIFIED_MODE"):
 
     @mcp.custom_route("/", methods=["GET"])
     async def root(request: Request):
-        """Redirect root to admin."""
+        """Handle root route - show landing page for virtual hosts, redirect to admin for others."""
+        # Check for Apx-Incoming-Host header (Approximated.app virtual host)
+        headers = dict(request.headers)
+        apx_host = headers.get("apx-incoming-host")
+
+        if apx_host:
+            # Look up tenant by virtual host
+            tenant = get_tenant_by_virtual_host(apx_host)
+            if tenant:
+                # Show landing page for virtual host
+                html_content = f"""
+                <!DOCTYPE html>
+                <html>
+                <head>
+                    <title>{tenant['name']} - Ad Sales Portal</title>
+                    <meta charset="utf-8">
+                    <meta name="viewport" content="width=device-width, initial-scale=1">
+                    <style>
+                        body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; margin: 0; padding: 0; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); min-height: 100vh; display: flex; align-items: center; justify-content: center; }}
+                        .container {{ background: white; border-radius: 8px; padding: 2rem; max-width: 600px; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1); text-align: center; }}
+                        h1 {{ color: #333; margin-bottom: 0.5rem; }}
+                        .subtitle {{ color: #666; margin-bottom: 2rem; }}
+                        .api-info {{ background: #f8f9fa; border-radius: 4px; padding: 1.5rem; margin: 2rem 0; text-align: left; }}
+                        .endpoint {{ font-family: monospace; background: #e9ecef; padding: 0.25rem 0.5rem; border-radius: 3px; }}
+                        .button {{ display: inline-block; background: #007bff; color: white; padding: 0.75rem 1.5rem; border-radius: 4px; text-decoration: none; margin: 0.5rem; }}
+                        .button:hover {{ background: #0056b3; }}
+                        .host {{ color: #28a745; font-weight: bold; }}
+                    </style>
+                </head>
+                <body>
+                    <div class="container">
+                        <h1>{tenant['name']}</h1>
+                        <p class="subtitle">Advertising Context Protocol (AdCP) Sales Agent</p>
+
+                        <div class="api-info">
+                            <h3>API Access</h3>
+                            <p><strong>MCP Endpoint:</strong> <span class="endpoint">https://{apx_host}/mcp</span></p>
+                            <p><strong>A2A Endpoint:</strong> <span class="endpoint">https://{apx_host}/a2a</span></p>
+                            <p class="host">Virtual Host: {apx_host}</p>
+                        </div>
+
+                        <div>
+                            <a href="/admin/" class="button">Admin Dashboard</a>
+                            <a href="https://adcontextprotocol.org/docs/" class="button" target="_blank">AdCP Documentation</a>
+                        </div>
+                    </div>
+                </body>
+                </html>
+                """
+                return HTMLResponse(content=html_content)
+
+        # Default behavior: redirect to admin
         return RedirectResponse(url="/admin/")
 
     @mcp.custom_route(
