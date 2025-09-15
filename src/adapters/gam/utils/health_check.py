@@ -17,11 +17,8 @@ from typing import Any
 import google.oauth2.service_account
 from googleads import ad_manager
 
-from src.adapters.gam_error_handling import (
-    GAMAuthenticationError,
-    GAMConfigurationError,
-)
-from src.adapters.gam_logging import logger
+from .error_handler import GAMAuthenticationError, GAMConfigurationError
+from .logging import logger
 
 
 class HealthStatus(Enum):

@@ -18,7 +18,9 @@ from src.adapters.base import AdServerAdapter
 from src.adapters.gam.client import GAMClientManager
 from src.adapters.gam.managers import (
     GAMCreativesManager,
+    GAMInventoryManager,
     GAMOrdersManager,
+    GAMSyncManager,
     GAMTargetingManager,
 )
 from src.core.audit_logger import AuditLogger
@@ -43,27 +45,27 @@ class GoogleAdManager(AdServerAdapter):
     def __init__(
         self,
         config: dict[str, Any],
+        principal,
         network_code: str,
         advertiser_id: str,
         trafficker_id: str,
         dry_run: bool = False,
         audit_logger: AuditLogger = None,
         tenant_id: str = None,
-        principal=None,
     ):
         """Initialize Google Ad Manager adapter with modular managers.
 
         Args:
             config: Configuration dictionary
+            principal: Principal object for authentication
             network_code: GAM network code
             advertiser_id: GAM advertiser ID
             trafficker_id: GAM trafficker ID
             dry_run: Whether to run in dry-run mode
             audit_logger: Audit logging instance
             tenant_id: Tenant identifier
-            principal: Principal object for authentication
         """
-        super().__init__(config, dry_run, audit_logger, tenant_id)
+        super().__init__(config, principal, dry_run, None, tenant_id)
 
         self.network_code = network_code
         self.advertiser_id = advertiser_id
@@ -96,9 +98,13 @@ class GoogleAdManager(AdServerAdapter):
         self.targeting_manager = GAMTargetingManager()
         self.orders_manager = GAMOrdersManager(self.client_manager, self.advertiser_id, self.trafficker_id, dry_run)
         self.creatives_manager = GAMCreativesManager(self.client_manager, self.advertiser_id, dry_run)
+        self.inventory_manager = GAMInventoryManager(self.client_manager, tenant_id, dry_run)
+        self.sync_manager = GAMSyncManager(
+            self.client_manager, self.inventory_manager, self.orders_manager, tenant_id, dry_run
+        )
 
         # Initialize legacy validator for backward compatibility
-        from src.adapters.gam_validation import GAMValidator
+        from .gam.utils.validation import GAMValidator
 
         self.validator = GAMValidator()
 
@@ -206,6 +212,12 @@ class GoogleAdManager(AdServerAdapter):
             media_buy_id=request.media_buy_id, status="updated", message="Media buy update would be implemented"
         )
 
+    def update_media_buy_performance_index(self, media_buy_id: str, package_performance: list) -> bool:
+        """Update the performance index for packages in a media buy."""
+        # This would be implemented with appropriate manager delegation
+        self.log(f"Update performance index for media buy {media_buy_id} with {len(package_performance)} packages")
+        return True
+
     def get_config_ui_endpoint(self) -> str | None:
         """Return the endpoint for GAM-specific configuration UI."""
         return "/adapters/gam/config"
@@ -238,3 +250,65 @@ class GoogleAdManager(AdServerAdapter):
     def _create_order_statement(self, order_id: int):
         """Helper method to create a GAM statement for order filtering."""
         return self.orders_manager.create_order_statement(order_id)
+
+    # Inventory management methods - delegated to inventory manager
+    def discover_ad_units(self, parent_id=None, max_depth=10):
+        """Discover ad units in the GAM network (delegated to inventory manager)."""
+        return self.inventory_manager.discover_ad_units(parent_id, max_depth)
+
+    def discover_placements(self):
+        """Discover all placements in the GAM network (delegated to inventory manager)."""
+        return self.inventory_manager.discover_placements()
+
+    def discover_custom_targeting(self):
+        """Discover all custom targeting keys and values (delegated to inventory manager)."""
+        return self.inventory_manager.discover_custom_targeting()
+
+    def discover_audience_segments(self):
+        """Discover audience segments (delegated to inventory manager)."""
+        return self.inventory_manager.discover_audience_segments()
+
+    def sync_all_inventory(self):
+        """Perform full inventory sync (delegated to inventory manager)."""
+        return self.inventory_manager.sync_all_inventory()
+
+    def build_ad_unit_tree(self):
+        """Build hierarchical ad unit tree (delegated to inventory manager)."""
+        return self.inventory_manager.build_ad_unit_tree()
+
+    def get_targetable_ad_units(self, include_inactive=False, min_sizes=None):
+        """Get targetable ad units (delegated to inventory manager)."""
+        return self.inventory_manager.get_targetable_ad_units(include_inactive, min_sizes)
+
+    def suggest_ad_units_for_product(self, creative_sizes, keywords=None):
+        """Suggest ad units for product (delegated to inventory manager)."""
+        return self.inventory_manager.suggest_ad_units_for_product(creative_sizes, keywords)
+
+    def validate_inventory_access(self, ad_unit_ids):
+        """Validate inventory access (delegated to inventory manager)."""
+        return self.inventory_manager.validate_inventory_access(ad_unit_ids)
+
+    # Sync management methods - delegated to sync manager
+    def sync_inventory(self, db_session, force=False):
+        """Synchronize inventory data from GAM (delegated to sync manager)."""
+        return self.sync_manager.sync_inventory(db_session, force)
+
+    def sync_orders(self, db_session, force=False):
+        """Synchronize orders data from GAM (delegated to sync manager)."""
+        return self.sync_manager.sync_orders(db_session, force)
+
+    def sync_full(self, db_session, force=False):
+        """Perform full synchronization (delegated to sync manager)."""
+        return self.sync_manager.sync_full(db_session, force)
+
+    def get_sync_status(self, db_session, sync_id):
+        """Get sync status (delegated to sync manager)."""
+        return self.sync_manager.get_sync_status(db_session, sync_id)
+
+    def get_sync_history(self, db_session, limit=10, offset=0, status_filter=None):
+        """Get sync history (delegated to sync manager)."""
+        return self.sync_manager.get_sync_history(db_session, limit, offset, status_filter)
+
+    def needs_sync(self, db_session, sync_type, max_age_hours=24):
+        """Check if sync is needed (delegated to sync manager)."""
+        return self.sync_manager.needs_sync(db_session, sync_type, max_age_hours)

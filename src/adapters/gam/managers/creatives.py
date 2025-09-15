@@ -12,8 +12,9 @@ from datetime import datetime
 from typing import Any
 from urllib.parse import urlparse
 
-from src.adapters.gam_validation import GAMValidator
 from src.core.schemas import AssetStatus
+
+from ..utils.validation import GAMValidator
 
 logger = logging.getLogger(__name__)
 

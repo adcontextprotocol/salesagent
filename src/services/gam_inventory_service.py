@@ -15,6 +15,8 @@ from typing import Any
 from sqlalchemy import String, and_, create_engine, func, or_
 from sqlalchemy.orm import Session, scoped_session, sessionmaker
 
+from src.adapters.gam.client import GAMClientManager
+from src.adapters.gam.managers.inventory import GAMInventoryManager
 from src.adapters.gam_inventory_discovery import (
     GAMInventoryDiscovery,
 )
@@ -49,13 +51,17 @@ class GAMInventoryService:
         """
         logger.info(f"Starting inventory sync for tenant {tenant_id}")
 
-        # Create discovery instance
-        discovery = GAMInventoryDiscovery(gam_client, tenant_id)
+        # Create client manager from existing client
+        client_manager = GAMClientManager.from_existing_client(gam_client)
 
-        # Perform discovery
-        sync_summary = discovery.sync_all()
+        # Create inventory manager
+        inventory_manager = GAMInventoryManager(client_manager, tenant_id, dry_run=False)
 
-        # Save to database
+        # Perform discovery using the manager
+        sync_summary = inventory_manager.sync_all_inventory()
+
+        # Get the discovery instance to save to database
+        discovery = inventory_manager._get_discovery()
         self._save_inventory_to_db(tenant_id, discovery)
 
         # Sync timestamp is already stored in gam_inventory.last_synced

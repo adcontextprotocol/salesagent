@@ -17,9 +17,9 @@ from googleads import ad_manager
 
 from src.adapters.base import AdServerAdapter, CreativeEngineAdapter
 from src.adapters.constants import REQUIRED_UPDATE_ACTIONS
+from src.adapters.gam.utils.validation import GAMValidator
 from src.adapters.gam_implementation_config_schema import GAMImplementationConfig
 from src.adapters.gam_reporting_service import ReportingConfig
-from src.adapters.gam_validation import GAMValidator
 from src.core.schemas import (
     AdapterGetMediaBuyDeliveryResponse,
     AssetStatus,

@@ -15,9 +15,9 @@ from functools import wraps
 
 from flask import Blueprint, jsonify, request
 
+from src.adapters.google_ad_manager import GoogleAdManager
 from src.core.database.database_session import get_db_session
 from src.core.database.models import AdapterConfig, SuperadminConfig, SyncJob, Tenant
-from src.services.gam_inventory_service import GAMInventoryService
 from src.services.gam_inventory_service import db_session as gam_db_session
 
 logger = logging.getLogger(__name__)
@@ -134,14 +134,9 @@ def trigger_sync(tenant_id: str):
         db_session.add(sync_job)
         db_session.commit()
 
-        # Trigger sync in background (for now, we'll do it synchronously)
+        # Trigger sync using GAM adapter with sync manager
         try:
-            # Update status to running
-            sync_job.status = "running"
-            db_session.commit()
-
-            # Initialize GAM client
-            from src.adapters.google_ad_manager import GoogleAdManager
+            # Initialize GAM adapter with sync manager
             from src.core.schemas import Principal
 
             # Create dummy principal for sync
@@ -162,28 +157,42 @@ def trigger_sync(tenant_id: str):
                 "manual_approval_required": adapter_config.gam_manual_approval_required,
             }
 
-            adapter = GoogleAdManager(gam_config, principal, tenant_id=tenant_id)
+            # Create GAM adapter with new modular architecture
+            adapter = GoogleAdManager(
+                config=gam_config,
+                principal=principal,
+                network_code=adapter_config.gam_network_code,
+                advertiser_id=adapter_config.gam_company_id or "system",
+                trafficker_id=adapter_config.gam_trafficker_id or "system",
+                dry_run=False,
+                audit_logger=None,
+                tenant_id=tenant_id,
+            )
 
-            # Perform sync
-            service = GAMInventoryService(db_session)
-            summary = service.sync_tenant_inventory(tenant_id, adapter.client)
+            # Use the sync manager to perform the sync
+            if sync_type == "full":
+                result = adapter.sync_full(db_session, force=force)
+            elif sync_type == "inventory":
+                result = adapter.sync_inventory(db_session, force=force)
+            elif sync_type == "targeting":
+                # Targeting sync can be mapped to inventory sync for now
+                result = adapter.sync_inventory(db_session, force=force)
+            else:
+                raise ValueError(f"Unsupported sync type: {sync_type}")
 
-            # Update sync job with results
-            sync_job.status = "completed"
-            sync_job.completed_at = datetime.now(UTC)
-            sync_job.summary = json.dumps(summary)
-            db_session.commit()
-
-            return jsonify({"sync_id": sync_id, "status": "completed", "summary": summary}), 200
+            return jsonify(result), 200
 
         except Exception as e:
             logger.error(f"Sync failed for tenant {tenant_id}: {e}", exc_info=True)
 
-            # Update sync job with error
-            sync_job.status = "failed"
-            sync_job.completed_at = datetime.now(UTC)
-            sync_job.error_message = str(e)
-            db_session.commit()
+            # Update sync job with error (if it was created)
+            try:
+                sync_job.status = "failed"
+                sync_job.completed_at = datetime.now(UTC)
+                sync_job.error_message = str(e)
+                db_session.commit()
+            except:
+                pass  # Ignore secondary errors in error handling
 
             return jsonify({"sync_id": sync_id, "status": "failed", "error": str(e)}), 500
 
