@@ -239,10 +239,10 @@ def admin_session():
     """Provide admin session data."""
     return {
         "user": {"email": "admin@example.com", "name": "Admin User", "role": "super_admin"},
-        "authenticated": True, 
-        "role": "super_admin", 
-        "email": "admin@example.com", 
-        "name": "Admin User"
+        "authenticated": True,
+        "role": "super_admin",
+        "email": "admin@example.com",
+        "name": "Admin User",
     }
 
 
@@ -250,11 +250,7 @@ def admin_session():
 def tenant_admin_session(sample_tenant):
     """Provide tenant admin session data."""
     return {
-        "user": {
-            "email": "tenant.admin@example.com", 
-            "name": "Tenant Admin", 
-            "role": "tenant_admin"
-        },
+        "user": {"email": "tenant.admin@example.com", "name": "Tenant Admin", "role": "tenant_admin"},
         "authenticated": True,
         "role": "tenant_admin",
         "tenant_id": sample_tenant["tenant_id"],

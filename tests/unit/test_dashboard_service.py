@@ -1,14 +1,13 @@
 """Tests for DashboardService using single data source pattern."""
 
-# ruff: noqa: excessive-mocking
+# ruff: noqa: PLR0913
 
-from datetime import UTC, datetime
 from unittest.mock import Mock, patch
 
 import pytest
 
 from src.admin.services.dashboard_service import DashboardService
-from src.core.database.models import MediaBuy, Principal, Tenant
+from src.core.database.models import Tenant
 
 
 class TestDashboardService:

@@ -5,7 +5,6 @@ This test suite validates the GAM-specific creative validation logic
 including size limits, content policies, and technical requirements.
 """
 
-
 from src.adapters.gam_validation import GAMValidator, validate_gam_creative
 
 
