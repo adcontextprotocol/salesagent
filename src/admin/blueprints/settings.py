@@ -15,7 +15,7 @@ from flask import Blueprint, flash, jsonify, redirect, render_template, request,
 
 from src.admin.utils import require_auth, require_tenant_access
 from src.core.database.database_session import get_db_session
-from src.core.database.models import SuperadminConfig, Tenant
+from src.core.database.models import Tenant
 
 logger = logging.getLogger(__name__)
 
@@ -29,29 +29,27 @@ settings_bp = Blueprint("settings", __name__)
 @require_auth(admin_only=True)
 def superadmin_settings():
     """Superadmin settings page."""
-    with get_db_session() as db_session:
-        # Get all superadmin config values
-        configs = db_session.query(SuperadminConfig).all()
-        config_dict = {config.config_key: config.config_value for config in configs}
+    # GAM OAuth credentials are now configured via environment variables
+    gam_client_id = os.environ.get("GAM_OAUTH_CLIENT_ID", "")
+    gam_client_secret = os.environ.get("GAM_OAUTH_CLIENT_SECRET", "")
 
-        # Get environment values as fallbacks
-        gam_client_id = config_dict.get("gam_oauth_client_id", os.environ.get("GAM_OAUTH_CLIENT_ID", ""))
-        gam_client_secret = config_dict.get("gam_oauth_client_secret", "")  # Don't show from env for security
+    # Check if credentials are configured
+    gam_configured = bool(gam_client_id and gam_client_secret)
 
-    # Format config_items as expected by template
+    # Show status of environment configuration
     config_items = {
-        "gam_oauth_client_id": {"value": gam_client_id, "description": "OAuth 2.0 Client ID from Google Cloud Console"},
-        "gam_oauth_client_secret": {
-            "value": gam_client_secret,
-            "description": "OAuth 2.0 Client Secret (stored securely)",
+        "gam_oauth_status": {
+            "configured": gam_configured,
+            "client_id_prefix": gam_client_id[:20] + "..." if len(gam_client_id) > 20 else gam_client_id,
+            "description": "GAM OAuth credentials configured via environment variables",
         },
     }
 
     return render_template(
         "settings.html",
         config_items=config_items,
-        gam_client_id=gam_client_id,
-        gam_client_secret=gam_client_secret,
+        gam_configured=gam_configured,
+        gam_client_id_prefix=gam_client_id[:20] + "..." if len(gam_client_id) > 20 else gam_client_id,
     )
 
 
@@ -59,39 +57,9 @@ def superadmin_settings():
 @require_auth(admin_only=True)
 def update_admin_settings():
     """Update superadmin settings."""
-    with get_db_session() as db_session:
-        try:
-            # Update GAM OAuth credentials
-            gam_client_id = request.form.get("gam_oauth_client_id", "").strip()
-            gam_client_secret = request.form.get("gam_oauth_client_secret", "").strip()
-
-            # Update or create config entries
-            for key, value in [
-                ("gam_oauth_client_id", gam_client_id),
-                ("gam_oauth_client_secret", gam_client_secret),
-            ]:
-                if value:  # Only update if value provided
-                    config = db_session.query(SuperadminConfig).filter_by(config_key=key).first()
-                    if config:
-                        config.config_value = value
-                        config.updated_at = datetime.now(UTC)
-                    else:
-                        config = SuperadminConfig(
-                            config_key=key,
-                            config_value=value,
-                            created_at=datetime.now(UTC),
-                            updated_at=datetime.now(UTC),
-                        )
-                        db_session.add(config)
-
-            db_session.commit()
-            flash("Settings updated successfully", "success")
-
-        except Exception as e:
-            db_session.rollback()
-            logger.error(f"Error updating settings: {e}", exc_info=True)
-            flash(f"Error updating settings: {str(e)}", "error")
-
+    # GAM OAuth credentials are now managed via environment variables only
+    # This endpoint is kept for future superadmin configuration needs
+    flash("GAM OAuth credentials are now configured via environment variables. No settings to update here.", "info")
     return redirect(url_for("superadmin_settings.superadmin_settings"))
 
 
