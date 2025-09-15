@@ -10,7 +10,7 @@ from src.adapters.gam_inventory_discovery import GAMInventoryDiscovery
 from src.adapters.gam_reporting_service import GAMReportingService
 from src.admin.utils import require_tenant_access
 from src.core.database.database_session import get_db_session
-from src.core.database.models import GAMLineItem, GAMOrder, SuperadminConfig, Tenant
+from src.core.database.models import GAMLineItem, GAMOrder, Tenant
 
 logger = logging.getLogger(__name__)
 
@@ -93,41 +93,24 @@ def detect_gam_network(tenant_id):
         # Create a temporary GAM client with just the refresh token
         from googleads import ad_manager, oauth2
 
-        # Get OAuth credentials from superadmin_config table
-        with get_db_session() as db_session:
-            # Get GAM OAuth client credentials from superadmin config
-            client_id_row = (
-                db_session.query(SuperadminConfig.config_value).filter_by(config_key="gam_oauth_client_id").first()
+        # Get OAuth credentials from validated configuration
+        try:
+            from src.core.config import get_gam_oauth_config
+
+            gam_config = get_gam_oauth_config()
+            client_id = gam_config.client_id
+            client_secret = gam_config.client_secret
+
+        except Exception as e:
+            return (
+                jsonify(
+                    {
+                        "success": False,
+                        "error": f"GAM OAuth configuration error: {str(e)}",
+                    }
+                ),
+                500,
             )
-
-            client_secret_row = (
-                db_session.query(SuperadminConfig.config_value).filter_by(config_key="gam_oauth_client_secret").first()
-            )
-
-            if not client_id_row or not client_id_row[0]:
-                return (
-                    jsonify(
-                        {
-                            "success": False,
-                            "error": "GAM OAuth Client ID not configured. Please configure it in superadmin settings.",
-                        }
-                    ),
-                    500,
-                )
-
-            if not client_secret_row or not client_secret_row[0]:
-                return (
-                    jsonify(
-                        {
-                            "success": False,
-                            "error": "GAM OAuth Client Secret not configured. Please configure it in superadmin settings.",
-                        }
-                    ),
-                    500,
-                )
-
-            client_id = client_id_row[0]
-            client_secret = client_secret_row[0]
 
         # Create OAuth2 client with refresh token
         oauth2_client = oauth2.GoogleRefreshTokenClient(

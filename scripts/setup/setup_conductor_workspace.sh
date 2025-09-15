@@ -52,6 +52,14 @@ else
     MISSING_VARS=$((MISSING_VARS + 1))
 fi
 
+# Check GAM OAuth (optional but required for GAM functionality)
+if [ -n "$GAM_OAUTH_CLIENT_ID" ] && [ -n "$GAM_OAUTH_CLIENT_SECRET" ]; then
+    echo "✓ GAM OAuth configured via environment variables"
+else
+    echo "⚠️  GAM OAuth is NOT configured (OPTIONAL - only needed for Google Ad Manager functionality)"
+    echo "  Set GAM_OAUTH_CLIENT_ID and GAM_OAUTH_CLIENT_SECRET environment variables"
+fi
+
 # Check SUPER_ADMIN_DOMAINS (optional)
 if [ -n "$SUPER_ADMIN_DOMAINS" ]; then
     echo "✓ SUPER_ADMIN_DOMAINS configured: $SUPER_ADMIN_DOMAINS"
@@ -68,6 +76,8 @@ if [ $MISSING_VARS -gt 0 ]; then
     [ -z "$GEMINI_API_KEY" ] && echo "export GEMINI_API_KEY='your-gemini-api-key'"
     [ -z "$GOOGLE_CLIENT_ID" ] && [ ! -f "$BASE_DIR/client_secret"*.json ] && echo "export GOOGLE_CLIENT_ID='your-client-id.apps.googleusercontent.com'"
     [ -z "$GOOGLE_CLIENT_SECRET" ] && [ ! -f "$BASE_DIR/client_secret"*.json ] && echo "export GOOGLE_CLIENT_SECRET='your-client-secret'"
+    [ -z "$GAM_OAUTH_CLIENT_ID" ] && echo "export GAM_OAUTH_CLIENT_ID='your-gam-client-id.apps.googleusercontent.com'"
+    [ -z "$GAM_OAUTH_CLIENT_SECRET" ] && echo "export GAM_OAUTH_CLIENT_SECRET='your-gam-client-secret'"
     echo ""
     echo "The workspace will be created but may not function properly."
     read -p "Continue anyway? (y/N) " -n 1 -r
@@ -176,6 +186,10 @@ GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID:-}
 GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET:-}
 SUPER_ADMIN_EMAILS=${SUPER_ADMIN_EMAILS:-}
 SUPER_ADMIN_DOMAINS=${SUPER_ADMIN_DOMAINS:-}
+
+# GAM OAuth Configuration (from environment)
+GAM_OAUTH_CLIENT_ID=${GAM_OAUTH_CLIENT_ID:-}
+GAM_OAUTH_CLIENT_SECRET=${GAM_OAUTH_CLIENT_SECRET:-}
 EOF
 
 echo "✓ Created .env file with environment variables"

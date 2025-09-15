@@ -32,6 +32,18 @@ services:
       # Gemini API key (required for AI features)
       GEMINI_API_KEY: ${GEMINI_API_KEY}
 
+      # Super admin authorization (required for startup validation)
+      SUPER_ADMIN_EMAILS: ${SUPER_ADMIN_EMAILS}
+      SUPER_ADMIN_DOMAINS: ${SUPER_ADMIN_DOMAINS}
+
+      # Optional: Google OAuth credentials via environment
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+
+      # GAM OAuth credentials (required for Google Ad Manager functionality)
+      GAM_OAUTH_CLIENT_ID: ${GAM_OAUTH_CLIENT_ID:-}
+      GAM_OAUTH_CLIENT_SECRET: ${GAM_OAUTH_CLIENT_SECRET:-}
+
       # Skip nginx for standalone service
       SKIP_NGINX: "true"
 
@@ -77,6 +89,9 @@ services:
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
       GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
       GOOGLE_OAUTH_CREDENTIALS_FILE: ${GOOGLE_OAUTH_CREDENTIALS_FILE:-}
+      # GAM OAuth credentials (required for Google Ad Manager functionality)
+      GAM_OAUTH_CLIENT_ID: ${GAM_OAUTH_CLIENT_ID:-}
+      GAM_OAUTH_CLIENT_SECRET: ${GAM_OAUTH_CLIENT_SECRET:-}
       # Test mode
       ADCP_AUTH_TEST_MODE: ${ADCP_AUTH_TEST_MODE:-false}
 
@@ -92,7 +107,7 @@ services:
         condition: service_healthy
 
     ports:
-      - "${ADMIN_UI_PORT:-8001}:${ADMIN_UI_PORT:-8001}"
+      - "${ADMIN_UI_PORT:-8001}:8001"
 
     volumes:
       # Mount OAuth credentials file
@@ -100,7 +115,7 @@ services:
       - ./audit_logs:/app/audit_logs
 
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:${ADMIN_UI_PORT:-8001}/health"]
+      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
       interval: 30s
       timeout: 10s
       retries: 3

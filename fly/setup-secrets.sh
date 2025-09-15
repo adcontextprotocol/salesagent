@@ -10,6 +10,10 @@ fly secrets set GOOGLE_CLIENT_SECRET="${GOOGLE_CLIENT_SECRET}"
 fly secrets set SUPER_ADMIN_EMAILS="${SUPER_ADMIN_EMAILS}"
 fly secrets set SUPER_ADMIN_DOMAINS="${SUPER_ADMIN_DOMAINS}"
 
+# GAM OAuth secrets (required for Google Ad Manager functionality)
+fly secrets set GAM_OAUTH_CLIENT_ID="${GAM_OAUTH_CLIENT_ID}"
+fly secrets set GAM_OAUTH_CLIENT_SECRET="${GAM_OAUTH_CLIENT_SECRET}"
+
 # Database URL (will be set after PostgreSQL is created)
 # fly secrets set DATABASE_URL="postgresql://..."
 
