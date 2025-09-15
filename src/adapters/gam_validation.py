@@ -98,6 +98,55 @@ class GAMValidator:
 
         return issues
 
+    def validate_media_data(self, asset: dict[str, Any]) -> list[str]:
+        """
+        Validate media_data field for binary asset upload.
+
+        Args:
+            asset: Creative asset dictionary
+
+        Returns:
+            List of validation error messages (empty if valid)
+        """
+        issues = []
+
+        media_data = asset.get("media_data")
+        if media_data is None:
+            return issues  # media_data is optional
+
+        # Validate data type
+        if isinstance(media_data, str):
+            # Should be valid base64
+            import base64
+
+            try:
+                decoded = base64.b64decode(media_data, validate=True)
+                if len(decoded) == 0:
+                    issues.append("media_data cannot be empty when provided")
+            except Exception:
+                issues.append("media_data must be valid base64 when provided as string")
+        elif isinstance(media_data, bytes):
+            if len(media_data) == 0:
+                issues.append("media_data cannot be empty when provided")
+        else:
+            issues.append("media_data must be bytes or base64-encoded string")
+
+        # Validate file format based on creative type and filename
+        if media_data and not issues:
+            creative_type = self._get_creative_type_from_asset(asset)
+            filename = asset.get("filename", "").lower()
+
+            if creative_type in self.ALLOWED_EXTENSIONS:
+                allowed_exts = self.ALLOWED_EXTENSIONS[creative_type]
+                if filename:
+                    file_ext = "." + filename.split(".")[-1] if "." in filename else ""
+                    if file_ext and file_ext not in allowed_exts:
+                        issues.append(
+                            f"File extension {file_ext} not allowed for {creative_type} creatives. Allowed: {', '.join(allowed_exts)}"
+                        )
+
+        return issues
+
     def validate_content_policy(self, asset: dict[str, Any]) -> list[str]:
         """
         Validate creative content against GAM content policies.
@@ -197,10 +246,23 @@ class GAMValidator:
         # Size validation
         width = asset.get("width")
         height = asset.get("height")
-        file_size = asset.get("file_size")  # Would need to be provided or fetched
+        file_size = asset.get("file_size")
+
+        # Calculate file size from media_data if available
+        if not file_size and asset.get("media_data"):
+            media_data = asset["media_data"]
+            if isinstance(media_data, str):
+                # Base64 encoded - estimate size (base64 is ~33% larger than binary)
+                file_size = int(len(media_data) * 0.75)
+            elif isinstance(media_data, bytes):
+                file_size = len(media_data)
+
         creative_type = self._get_creative_type_from_asset(asset)
 
         all_issues.extend(self.validate_creative_size(width, height, file_size, creative_type))
+
+        # Media data validation
+        all_issues.extend(self.validate_media_data(asset))
 
         # Content policy validation
         all_issues.extend(self.validate_content_policy(asset))
