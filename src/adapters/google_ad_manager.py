@@ -6,6 +6,12 @@ The main adapter class acts as an orchestrator, delegating specific operations
 to specialized manager classes.
 """
 
+# Export constants for backward compatibility
+__all__ = [
+    "GUARANTEED_LINE_ITEM_TYPES",
+    "NON_GUARANTEED_LINE_ITEM_TYPES",
+]
+
 import logging
 from datetime import datetime
 from typing import Any
@@ -22,6 +28,12 @@ from src.adapters.gam.managers import (
     GAMOrdersManager,
     GAMSyncManager,
     GAMTargetingManager,
+)
+
+# Re-export constants for backward compatibility
+from src.adapters.gam.managers.orders import (
+    GUARANTEED_LINE_ITEM_TYPES,
+    NON_GUARANTEED_LINE_ITEM_TYPES,
 )
 from src.core.audit_logger import AuditLogger
 from src.core.schemas import (

@@ -13,6 +13,10 @@ from googleads import ad_manager
 
 logger = logging.getLogger(__name__)
 
+# Line item type constants for GAM automation
+GUARANTEED_LINE_ITEM_TYPES = {"STANDARD", "SPONSORSHIP"}
+NON_GUARANTEED_LINE_ITEM_TYPES = {"NETWORK", "BULK", "PRICE_PRIORITY", "HOUSE"}
+
 
 class GAMOrdersManager:
     """Manages Google Ad Manager order operations."""
@@ -204,8 +208,6 @@ class GAMOrdersManager:
         Returns:
             Tuple of (has_guaranteed_items, list_of_guaranteed_types)
         """
-        GUARANTEED_LINE_ITEM_TYPES = {"STANDARD", "SPONSORSHIP"}
-
         line_items = self.get_order_line_items(order_id)
         guaranteed_types = []
 

@@ -9,7 +9,6 @@ import pytest
 
 from src.adapters.gam.utils.validation import GAMValidator, validate_gam_creative
 
-
 class TestGAMValidator:
     """Test suite for GAMValidator class."""
 
@@ -278,7 +277,6 @@ class TestGAMValidator:
         assert "File size 300,000 bytes exceeds" in issue_text
         assert "must use HTTPS" in issue_text
 
-
 class TestGAMCreativeSizeMatching:
     """Test suite for GAM creative size matching to LineItem placeholders."""
 
@@ -319,14 +317,6 @@ class TestGAMCreativeSizeMatching:
         assert width == 300
         assert height == 250
 
-    @pytest.mark.skip(reason="Validation now handled separately in _validate_creative_size_against_placeholders")
-    def test_get_creative_dimensions_size_mismatch_fails(self):
-        """Test that size mismatch with placeholders fails (no fallback to first)."""
-        # Note: After refactoring, dimension extraction and validation are separate concerns.
-        # _get_creative_dimensions now returns dimensions without validation.
-        # Validation happens in _validate_creative_size_against_placeholders method.
-        pass
-
     def test_get_creative_dimensions_always_uses_format(self):
         """Test that GAM creative dimensions always use format, not asset dimensions."""
         asset = {
@@ -358,30 +348,6 @@ class TestGAMCreativeSizeMatching:
 
         assert width == 320
         assert height == 50
-
-    @pytest.mark.skip(reason="_get_format_dimensions method removed in refactoring")
-    def test_get_format_dimensions_registry_lookup(self):
-        """Test direct format dimensions lookup from registry."""
-        # Note: This functionality is now internal to creatives manager
-        pass
-
-    @pytest.mark.skip(reason="_get_format_dimensions method removed in refactoring")
-    def test_get_format_dimensions_unknown_format_with_dimensions_extracts(self):
-        """Test that unknown format with dimensions in name extracts successfully."""
-        # Note: This functionality is now internal to creatives manager
-        pass
-
-    @pytest.mark.skip(reason="_get_format_dimensions method removed in refactoring")
-    def test_get_format_dimensions_truly_invalid_format_fails(self):
-        """Test that format without extractable dimensions still fails."""
-        # Note: This functionality is now internal to creatives manager
-        pass
-
-    @pytest.mark.skip(reason="_get_format_dimensions method removed in refactoring")
-    def test_get_format_dimensions_empty_format_fails(self):
-        """Test that empty format fails with clear error."""
-        # Note: This functionality is now internal to creatives manager
-        pass
 
     def test_validate_creative_size_valid_match(self):
         """Test validation passes for matching size."""
@@ -596,7 +562,6 @@ class TestGAMCreativeSizeMatching:
         assert width == 280
         assert height == 230
 
-
 class TestConvenienceFunction:
     """Test the convenience function for GAM validation."""
 
@@ -620,7 +585,6 @@ class TestConvenienceFunction:
         assert len(issues) >= 2
         assert any("HTTPS" in issue for issue in issues)
         assert any("width" in issue for issue in issues)
-
 
 class TestSnippetValidation:
     """Test snippet content validation specifically."""
@@ -667,7 +631,6 @@ class TestSnippetValidation:
         snippet = "<script src='data:text/javascript,alert(1)'></script>"
         issues = self.validator._validate_snippet_content(snippet)
         assert any("Data URLs with script content" in issue for issue in issues)
-
 
 class TestFileExtensionValidation:
     """Test file extension validation."""
@@ -721,7 +684,6 @@ class TestFileExtensionValidation:
         # Note: Current implementation may not catch this due to auto-detection logic
         # This test documents the expected behavior if we enhance validation
 
-
 class TestEdgeCases:
     """Test edge cases and boundary conditions."""
 
@@ -763,7 +725,6 @@ class TestEdgeCases:
         # Negative dimensions should pass (unusual but not explicitly invalid)
         issues = self.validator.validate_creative_size(-100, -50)
         assert issues == []
-
 
 class TestMediaDataValidation:
     """Test binary asset upload validation with media_data field."""
@@ -884,7 +845,6 @@ class TestMediaDataValidation:
         # Should fail size validation (base64 decoded size should be checked)
         issues = self.validator.validate_creative_asset(asset)
         assert any("File size" in issue and "exceeds GAM display limit" in issue for issue in issues)
-
 
 class TestImpressionTrackingSupport:
     """Test impression tracking URL support for all creative types."""

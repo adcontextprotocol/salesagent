@@ -404,9 +404,10 @@ if not os.environ.get("PYTEST_CURRENT_TEST"):
 # Try to load config, but use defaults if no tenant context available
 try:
     config = load_config()
-except RuntimeError as e:
-    if "No tenant in context" in str(e):
-        # Use minimal config for test environments
+except (RuntimeError, Exception) as e:
+    # Use minimal config for test environments or when DB is unavailable
+    # This handles both "No tenant in context" and database connection errors
+    if "No tenant in context" in str(e) or "connection" in str(e).lower() or "operational" in str(e).lower():
         config = {
             "creative_engine": {},
             "dry_run": False,
