@@ -294,7 +294,7 @@ def get_principal_from_context(context: Context | None) -> str | None:
         # Otherwise, look up by token alone and set tenant context
         return get_principal_from_token(auth_token, requested_tenant_id)
     except Exception as e:
-        print(f"Auth error: {e}")
+        logger.warning(f"Authentication error: {e}")
         return None
 
 
