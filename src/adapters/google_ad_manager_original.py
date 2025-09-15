@@ -3,26 +3,20 @@ import gzip
 import io
 import json
 import logging
+import os
 import random
 import time
 from datetime import datetime, timedelta
 from typing import Any
 from urllib.parse import urlparse
 
+import google.oauth2.service_account
 import requests
 from flask import Flask, flash, redirect, render_template, request, url_for
 from googleads import ad_manager
 
 from src.adapters.base import AdServerAdapter, CreativeEngineAdapter
 from src.adapters.constants import REQUIRED_UPDATE_ACTIONS
-
-# Import modular components
-from src.adapters.gam.client import GAMClientManager
-from src.adapters.gam.managers import (
-    GAMCreativesManager,
-    GAMOrdersManager,
-    GAMTargetingManager,
-)
 from src.adapters.gam_implementation_config_schema import GAMImplementationConfig
 from src.adapters.gam_reporting_service import ReportingConfig
 from src.adapters.gam_validation import GAMValidator
@@ -90,22 +84,16 @@ class GoogleAdManager(AdServerAdapter):
             if not self.key_file and not self.refresh_token:
                 raise ValueError("GAM config requires either 'service_account_key_file' or 'refresh_token'")
 
-        # Initialize modular components
         if not self.dry_run:
-            self.client_manager = GAMClientManager(self.config, self.network_code)
-            # Legacy client property for backward compatibility
-            self.client = self.client_manager.get_client()
+            self.client = self._init_client()
         else:
-            self.client_manager = None
             self.client = None
             self.log("[yellow]Running in dry-run mode - GAM client not initialized[/yellow]")
 
-        # Initialize manager components
-        self.targeting_manager = GAMTargetingManager()
-        self.orders_manager = GAMOrdersManager(self.client_manager, self.advertiser_id, self.trafficker_id, dry_run)
-        self.creatives_manager = GAMCreativesManager(self.client_manager, self.advertiser_id, dry_run)
+        # Load geo mappings
+        self._load_geo_mappings()
 
-        # Initialize GAM validator for creative validation (for backward compatibility)
+        # Initialize GAM validator for creative validation
         self.validator = GAMValidator()
 
     def _create_order_statement(self, order_id: int):
@@ -115,51 +103,291 @@ class GoogleAdManager(AdServerAdapter):
         statement_builder.WithBindVariable("orderId", order_id)
         return statement_builder.ToStatement()
 
-    # Legacy methods for backward compatibility - delegated to managers
     def _init_client(self):
-        """Initializes the Ad Manager client (legacy - now handled by client manager)."""
-        if self.client_manager:
-            return self.client_manager.get_client()
-        return None
+        """Initializes the Ad Manager client."""
+        try:
+            # Use the new helper function if we have a tenant_id
+            if self.tenant_id:
+                pass
+
+            from googleads import ad_manager
+
+            if self.refresh_token:
+                # Use OAuth with refresh token
+                oauth2_client = self._get_oauth_credentials()
+
+                # Create AdManager client
+                ad_manager_client = ad_manager.AdManagerClient(
+                    oauth2_client, "AdCP Sales Agent", network_code=self.network_code
+                )
+                return ad_manager_client
+
+            elif self.key_file:
+                # Use service account (legacy)
+                credentials = google.oauth2.service_account.Credentials.from_service_account_file(
+                    self.key_file, scopes=["https://www.googleapis.com/auth/dfp"]
+                )
+
+                # Create AdManager client
+                ad_manager_client = ad_manager.AdManagerClient(
+                    credentials, "AdCP Sales Agent", network_code=self.network_code
+                )
+                return ad_manager_client
+            else:
+                raise ValueError("GAM config requires either 'service_account_key_file' or 'refresh_token'")
+
+        except Exception as e:
+            logger.error(f"Error initializing GAM client: {e}")
+            raise
 
     def _get_oauth_credentials(self):
-        """Get OAuth credentials (legacy - now handled by auth manager)."""
-        if self.client_manager:
-            return self.client_manager.auth_manager.get_credentials()
+        """Get OAuth credentials using refresh token and Pydantic configuration."""
+        from googleads import oauth2
+
+        try:
+            from src.core.config import get_gam_oauth_config
+
+            # Get validated configuration
+            gam_config = get_gam_oauth_config()
+            client_id = gam_config.client_id
+            client_secret = gam_config.client_secret
+
+        except Exception as e:
+            raise ValueError(f"GAM OAuth configuration error: {str(e)}") from e
+
+        # Create GoogleAds OAuth2 client
+        oauth2_client = oauth2.GoogleRefreshTokenClient(
+            client_id=client_id, client_secret=client_secret, refresh_token=self.refresh_token
+        )
+
+        return oauth2_client
+
+    # Supported device types and their GAM numeric device category IDs
+    # These are GAM's standard device category IDs that work across networks
+    DEVICE_TYPE_MAP = {
+        "mobile": 30000,  # Mobile devices
+        "desktop": 30001,  # Desktop computers
+        "tablet": 30002,  # Tablet devices
+        "ctv": 30003,  # Connected TV / Streaming devices
+        "dooh": 30004,  # Digital out-of-home / Set-top box
+    }
+
+    def _load_geo_mappings(self):
+        """Load geo mappings from JSON file."""
+        try:
+            mapping_file = os.path.join(os.path.dirname(__file__), "gam_geo_mappings.json")
+            with open(mapping_file) as f:
+                geo_data = json.load(f)
+
+            self.GEO_COUNTRY_MAP = geo_data.get("countries", {})
+            self.GEO_REGION_MAP = geo_data.get("regions", {})
+            self.GEO_METRO_MAP = geo_data.get("metros", {}).get("US", {})  # Currently only US metros
+
+            self.log(
+                f"Loaded GAM geo mappings: {len(self.GEO_COUNTRY_MAP)} countries, "
+                f"{sum(len(v) for v in self.GEO_REGION_MAP.values())} regions, "
+                f"{len(self.GEO_METRO_MAP)} metros"
+            )
+        except Exception as e:
+            self.log(f"[yellow]Warning: Could not load geo mappings file: {e}[/yellow]")
+            self.log("[yellow]Using empty geo mappings - geo targeting will not work properly[/yellow]")
+            self.GEO_COUNTRY_MAP = {}
+            self.GEO_REGION_MAP = {}
+            self.GEO_METRO_MAP = {}
+
+    def _lookup_region_id(self, region_code):
+        """Look up region ID across all countries."""
+        # First check if we have country context (not implemented yet)
+        # For now, search across all countries
+        for _country, regions in self.GEO_REGION_MAP.items():
+            if region_code in regions:
+                return regions[region_code]
         return None
 
-    # Device type mappings now managed by GAMTargetingManager
-    # (moved to targeting manager for better organization)
+    # Supported media types
+    SUPPORTED_MEDIA_TYPES = {"video", "display", "native"}
 
-    # Legacy targeting methods - delegated to targeting manager
     def _validate_targeting(self, targeting_overlay):
-        """Validate targeting and return unsupported features (delegated to targeting manager)."""
-        return self.targeting_manager.validate_targeting(targeting_overlay)
+        """Validate targeting and return unsupported features."""
+        unsupported = []
+
+        if not targeting_overlay:
+            return unsupported
+
+        # Check device types
+        if targeting_overlay.device_type_any_of:
+            for device in targeting_overlay.device_type_any_of:
+                if device not in self.DEVICE_TYPE_MAP:
+                    unsupported.append(f"Device type '{device}' not supported")
+
+        # Check media types
+        if targeting_overlay.media_type_any_of:
+            for media in targeting_overlay.media_type_any_of:
+                if media not in self.SUPPORTED_MEDIA_TYPES:
+                    unsupported.append(f"Media type '{media}' not supported")
+
+        # Audio-specific targeting not supported
+        if targeting_overlay.media_type_any_of and "audio" in targeting_overlay.media_type_any_of:
+            unsupported.append("Audio media type not supported by Google Ad Manager")
+
+        # City and postal targeting require GAM API lookups (not implemented)
+        if targeting_overlay.geo_city_any_of or targeting_overlay.geo_city_none_of:
+            unsupported.append("City targeting requires GAM geo service integration (not implemented)")
+        if targeting_overlay.geo_zip_any_of or targeting_overlay.geo_zip_none_of:
+            unsupported.append("Postal code targeting requires GAM geo service integration (not implemented)")
+
+        # GAM supports all other standard targeting dimensions
+
+        return unsupported
 
     def _build_targeting(self, targeting_overlay):
-        """Build GAM targeting criteria from AdCP targeting (delegated to targeting manager)."""
-        return self.targeting_manager.build_targeting(targeting_overlay)
+        """Build GAM targeting criteria from AdCP targeting."""
+        if not targeting_overlay:
+            return {}
 
-    # Legacy properties for backward compatibility
-    @property
-    def GEO_COUNTRY_MAP(self):
-        return self.targeting_manager.geo_country_map
+        gam_targeting = {}
 
-    @property
-    def GEO_REGION_MAP(self):
-        return self.targeting_manager.geo_region_map
+        # Geographic targeting
+        geo_targeting = {}
 
-    @property
-    def GEO_METRO_MAP(self):
-        return self.targeting_manager.geo_metro_map
+        # Build targeted locations
+        if any(
+            [
+                targeting_overlay.geo_country_any_of,
+                targeting_overlay.geo_region_any_of,
+                targeting_overlay.geo_metro_any_of,
+                targeting_overlay.geo_city_any_of,
+                targeting_overlay.geo_zip_any_of,
+            ]
+        ):
+            geo_targeting["targetedLocations"] = []
 
-    @property
-    def DEVICE_TYPE_MAP(self):
-        return self.targeting_manager.DEVICE_TYPE_MAP
+            # Map countries
+            if targeting_overlay.geo_country_any_of:
+                for country in targeting_overlay.geo_country_any_of:
+                    if country in self.GEO_COUNTRY_MAP:
+                        geo_targeting["targetedLocations"].append({"id": self.GEO_COUNTRY_MAP[country]})
+                    else:
+                        self.log(f"[yellow]Warning: Country code '{country}' not in GAM mapping[/yellow]")
 
-    @property
-    def SUPPORTED_MEDIA_TYPES(self):
-        return self.targeting_manager.SUPPORTED_MEDIA_TYPES
+            # Map regions
+            if targeting_overlay.geo_region_any_of:
+                for region in targeting_overlay.geo_region_any_of:
+                    region_id = self._lookup_region_id(region)
+                    if region_id:
+                        geo_targeting["targetedLocations"].append({"id": region_id})
+                    else:
+                        self.log(f"[yellow]Warning: Region code '{region}' not in GAM mapping[/yellow]")
+
+            # Map metros (DMAs)
+            if targeting_overlay.geo_metro_any_of:
+                for metro in targeting_overlay.geo_metro_any_of:
+                    if metro in self.GEO_METRO_MAP:
+                        geo_targeting["targetedLocations"].append({"id": self.GEO_METRO_MAP[metro]})
+                    else:
+                        self.log(f"[yellow]Warning: Metro code '{metro}' not in GAM mapping[/yellow]")
+
+            # City and postal require real GAM API lookup - for now we log a warning
+            if targeting_overlay.geo_city_any_of:
+                self.log("[yellow]Warning: City targeting requires GAM geo service lookup (not implemented)[/yellow]")
+            if targeting_overlay.geo_zip_any_of:
+                self.log(
+                    "[yellow]Warning: Postal code targeting requires GAM geo service lookup (not implemented)[/yellow]"
+                )
+
+        # Build excluded locations
+        if any(
+            [
+                targeting_overlay.geo_country_none_of,
+                targeting_overlay.geo_region_none_of,
+                targeting_overlay.geo_metro_none_of,
+                targeting_overlay.geo_city_none_of,
+                targeting_overlay.geo_zip_none_of,
+            ]
+        ):
+            geo_targeting["excludedLocations"] = []
+
+            # Map excluded countries
+            if targeting_overlay.geo_country_none_of:
+                for country in targeting_overlay.geo_country_none_of:
+                    if country in self.GEO_COUNTRY_MAP:
+                        geo_targeting["excludedLocations"].append({"id": self.GEO_COUNTRY_MAP[country]})
+
+            # Map excluded regions
+            if targeting_overlay.geo_region_none_of:
+                for region in targeting_overlay.geo_region_none_of:
+                    region_id = self._lookup_region_id(region)
+                    if region_id:
+                        geo_targeting["excludedLocations"].append({"id": region_id})
+
+            # Map excluded metros
+            if targeting_overlay.geo_metro_none_of:
+                for metro in targeting_overlay.geo_metro_none_of:
+                    if metro in self.GEO_METRO_MAP:
+                        geo_targeting["excludedLocations"].append({"id": self.GEO_METRO_MAP[metro]})
+
+            # City and postal exclusions
+            if targeting_overlay.geo_city_none_of:
+                self.log("[yellow]Warning: City exclusion requires GAM geo service lookup (not implemented)[/yellow]")
+            if targeting_overlay.geo_zip_none_of:
+                self.log(
+                    "[yellow]Warning: Postal code exclusion requires GAM geo service lookup (not implemented)[/yellow]"
+                )
+
+        if geo_targeting:
+            gam_targeting["geoTargeting"] = geo_targeting
+
+        # Technology/Device targeting - NOT SUPPORTED, MUST FAIL LOUDLY
+        if targeting_overlay.device_type_any_of:
+            raise ValueError(
+                f"Device targeting requested but not supported. "
+                f"Cannot fulfill buyer contract for device types: {targeting_overlay.device_type_any_of}."
+            )
+
+        if targeting_overlay.os_any_of:
+            raise ValueError(
+                f"OS targeting requested but not supported. "
+                f"Cannot fulfill buyer contract for OS types: {targeting_overlay.os_any_of}."
+            )
+
+        if targeting_overlay.browser_any_of:
+            raise ValueError(
+                f"Browser targeting requested but not supported. "
+                f"Cannot fulfill buyer contract for browsers: {targeting_overlay.browser_any_of}."
+            )
+
+        # Content targeting - NOT SUPPORTED, MUST FAIL LOUDLY
+        if targeting_overlay.content_cat_any_of:
+            raise ValueError(
+                f"Content category targeting requested but not supported. "
+                f"Cannot fulfill buyer contract for categories: {targeting_overlay.content_cat_any_of}."
+            )
+
+        if targeting_overlay.keywords_any_of:
+            raise ValueError(
+                f"Keyword targeting requested but not supported. "
+                f"Cannot fulfill buyer contract for keywords: {targeting_overlay.keywords_any_of}."
+            )
+
+        # Custom key-value targeting
+        custom_targeting = {}
+
+        # Platform-specific custom targeting
+        if targeting_overlay.custom and "gam" in targeting_overlay.custom:
+            custom_targeting.update(targeting_overlay.custom["gam"].get("key_values", {}))
+
+        # AEE signal integration via key-value pairs (managed-only)
+        if targeting_overlay.key_value_pairs:
+            self.log("[bold cyan]Adding AEE signals to GAM key-value targeting[/bold cyan]")
+            for key, value in targeting_overlay.key_value_pairs.items():
+                custom_targeting[key] = value
+                self.log(f"  {key}: {value}")
+
+        if custom_targeting:
+            gam_targeting["customTargeting"] = custom_targeting
+
+        self.log(f"Applying GAM targeting: {list(gam_targeting.keys())}")
+        return gam_targeting
 
     def create_media_buy(
         self, request: CreateMediaBuyRequest, packages: list[MediaPackage], start_time: datetime, end_time: datetime
@@ -847,7 +1075,7 @@ class GoogleAdManager(AdServerAdapter):
             # Don't fail the workflow creation if notification fails
 
     def archive_order(self, order_id: str) -> bool:
-        """Archive a GAM order for cleanup purposes (delegated to orders manager).
+        """Archive a GAM order for cleanup purposes.
 
         Args:
             order_id: The GAM order ID to archive
@@ -855,7 +1083,7 @@ class GoogleAdManager(AdServerAdapter):
         Returns:
             bool: True if archival succeeded, False otherwise
         """
-        return self.orders_manager.archive_order(order_id)
+        self.log(f"[bold yellow]Archiving GAM Order {order_id} for cleanup[/bold yellow]")
 
         if self.dry_run:
             self.log(f"Would call: order_service.performOrderAction(ArchiveOrders, {order_id})")
@@ -893,18 +1121,55 @@ class GoogleAdManager(AdServerAdapter):
             return False
 
     def get_advertisers(self) -> list[dict[str, Any]]:
-        """Get list of advertisers (companies) from GAM for advertiser selection (delegated to orders manager).
+        """Get list of advertisers (companies) from GAM for advertiser selection.
 
         Returns:
             List of advertisers with id, name, and type for dropdown selection
         """
-        return self.orders_manager.get_advertisers()
+        self.log("[bold]GoogleAdManager.get_advertisers[/bold] - Loading GAM advertisers")
+
+        if self.dry_run:
+            self.log("Would call: company_service.getCompaniesByStatement(WHERE type='ADVERTISER')")
+            # Return mock data for dry-run
+            return [
+                {"id": "123456789", "name": "Test Advertiser 1", "type": "ADVERTISER"},
+                {"id": "987654321", "name": "Test Advertiser 2", "type": "ADVERTISER"},
+                {"id": "456789123", "name": "Test Advertiser 3", "type": "ADVERTISER"},
+            ]
+
+        try:
+            from googleads import ad_manager
+
+            company_service = self.client.GetService("CompanyService")
+
+            # Create statement to get only advertisers
+            statement_builder = ad_manager.StatementBuilder()
+            statement_builder.Where("type = :type")
+            statement_builder.WithBindVariable("type", "ADVERTISER")
+            statement_builder.OrderBy("name", ascending=True)
+            statement = statement_builder.ToStatement()
+
+            # Get companies from GAM
+            response = company_service.getCompaniesByStatement(statement)
+
+            advertisers = []
+            if response and "results" in response:
+                for company in response["results"]:
+                    advertisers.append({"id": str(company["id"]), "name": company["name"], "type": company["type"]})
+
+            self.log(f"✓ Retrieved {len(advertisers)} advertisers from GAM")
+            return advertisers
+
+        except Exception as e:
+            error_msg = f"Failed to retrieve GAM advertisers: {str(e)}"
+            self.log(f"[red]Error: {error_msg}[/red]")
+            self.audit_logger.log_warning(error_msg)
+            raise Exception(error_msg)
 
     def add_creative_assets(
         self, media_buy_id: str, assets: list[dict[str, Any]], today: datetime
     ) -> list[AssetStatus]:
-        """Creates new Creatives in GAM and associates them with LineItems (delegated to creatives manager)."""
-        return self.creatives_manager.add_creative_assets(media_buy_id, assets, today)
+        """Creates a new Creative in GAM and associates it with LineItems."""
         self.log(f"[bold]GoogleAdManager.add_creative_assets[/bold] for order '{media_buy_id}'")
         self.log(f"Adding {len(assets)} creative assets")
 
