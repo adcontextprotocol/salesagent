@@ -139,6 +139,29 @@ def test_[model]_adcp_compliance(self):
 - Adapters can provide custom configuration UIs via Flask routes
 - Adapter-specific validation and field definitions
 
+#### Google Ad Manager (GAM) Modular Architecture
+The GAM adapter has been refactored into a clean modular architecture:
+
+**Main Orchestrator (`google_ad_manager.py`)**:
+- 250-line clean orchestrator class (reduced from 2800+ lines)
+- Delegates operations to specialized manager classes
+- Maintains full backward compatibility
+- Focus on initialization and method orchestration
+
+**Modular Components (`src/adapters/gam/`)**:
+- `auth.py`: **GAMAuthManager** - OAuth and service account authentication
+- `client.py`: **GAMClientManager** - API client lifecycle and service access
+- `managers/targeting.py`: **GAMTargetingManager** - AdCP→GAM targeting translation
+- `managers/orders.py`: **GAMOrdersManager** - Order creation and lifecycle management
+- `managers/creatives.py`: **GAMCreativesManager** - Creative upload and association
+
+**Architectural Benefits**:
+- **Single Responsibility**: Each manager handles one functional area
+- **Independent Testing**: Managers can be unit tested in isolation
+- **Maintainable**: Bug fixes and features isolated to specific areas
+- **Clean Interfaces**: Clear APIs between components
+- **Shared Resources**: Client and auth management shared across operations
+
 ### 3. FastMCP Integration
 - Uses FastMCP for the server framework
 - HTTP transport with header-based authentication (`x-adcp-auth`)
@@ -177,7 +200,11 @@ def test_[model]_adcp_compliance(self):
 ### `adapters/` - Ad Server Integrations
 - `base.py`: Abstract base class defining the interface
 - `mock_ad_server.py`: Mock implementation with realistic simulation
-- `google_ad_manager.py`: GAM integration with detailed API logging
+- `google_ad_manager.py`: Clean GAM orchestrator (250 lines) delegating to modular components
+- `gam/`: Modular GAM implementation with specialized managers
+  - `auth.py`: Authentication and credential management
+  - `client.py`: API client initialization and lifecycle
+  - `managers/`: Business logic managers for targeting, orders, and creatives
 - Each adapter accepts a `Principal` object for cleaner architecture
 
 ### `src/a2a_server/adcp_a2a_server.py` - A2A Server
@@ -191,7 +218,17 @@ def test_[model]_adcp_compliance(self):
 
 ## Recent Major Changes
 
-### AdCP Testing Specification Implementation (Latest - Aug 2025)
+### Google Ad Manager Adapter Refactoring (Latest - Sep 2025)
+- **Complete Modular Refactoring**: Broke down monolithic 2800+ line GAM adapter into focused manager classes
+- **90% Code Reduction**: Main orchestrator reduced to 250 lines with clear delegation patterns
+- **Modular Architecture**: Separated authentication, client management, targeting, orders, and creatives into distinct managers
+- **Backward Compatibility**: All public methods and properties preserved for existing code
+- **Clean Interfaces**: Each manager has single responsibility and focused API
+- **Testing Benefits**: Managers can be unit tested independently with mock clients
+- **Development Efficiency**: New GAM features can be added to appropriate managers without touching orchestrator
+- **Maintenance Improvements**: Bug fixes and enhancements isolated to specific functional areas
+
+### AdCP Testing Specification Implementation (Aug 2025)
 - **Full Testing Backend**: Complete implementation of AdCP Testing Specification (https://adcontextprotocol.org/docs/media-buy/testing/)
 - **Testing Hooks System**: All 9 request headers (X-Dry-Run, X-Mock-Time, X-Jump-To-Event, etc.) with session isolation
 - **Response Headers**: Required AdCP response headers (X-Next-Event, X-Next-Event-Time, X-Simulated-Spend)
