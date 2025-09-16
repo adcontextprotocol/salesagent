@@ -110,7 +110,7 @@ class GoogleAdManager(AdServerAdapter):
         # Initialize manager components
         self.targeting_manager = GAMTargetingManager()
         self.orders_manager = GAMOrdersManager(self.client_manager, self.advertiser_id, self.trafficker_id, dry_run)
-        self.creatives_manager = GAMCreativesManager(self.client_manager, self.advertiser_id, dry_run)
+        self.creatives_manager = GAMCreativesManager(self.client_manager, self.advertiser_id, dry_run, self.log, self)
         self.inventory_manager = GAMInventoryManager(self.client_manager, tenant_id, dry_run)
         self.sync_manager = GAMSyncManager(
             self.client_manager, self.inventory_manager, self.orders_manager, tenant_id, dry_run
@@ -159,6 +159,10 @@ class GoogleAdManager(AdServerAdapter):
     def _get_creative_type(self, asset):
         """Determine creative type from asset (delegated to creatives manager)."""
         return self.creatives_manager._get_creative_type(asset)
+
+    def _create_gam_creative(self, asset, creative_type, asset_placeholders):
+        """Create a GAM creative (delegated to creatives manager)."""
+        return self.creatives_manager._create_gam_creative(asset, creative_type, asset_placeholders)
 
     def _check_order_has_guaranteed_items(self, order_id):
         """Check if order has guaranteed line items (delegated to orders manager)."""
@@ -376,30 +380,13 @@ class GoogleAdManager(AdServerAdapter):
 
     def _validate_creative_for_gam(self, asset: dict) -> list:
         """Validate creative asset for GAM (backward compatibility)."""
-        from src.adapters.gam.utils.validation import validate_gam_creative
-        return validate_gam_creative(asset)
+        return self.creatives_manager._validate_creative_for_gam(asset)
 
     def _get_creative_type(self, asset: dict) -> str:
         """Determine creative type from asset (backward compatibility)."""
-        return self.creatives_manager._determine_asset_type(asset)
+        return self.creatives_manager._get_creative_type(asset)
 
     def _check_order_has_guaranteed_items(self, order_id: str) -> tuple:
         """Check if order has guaranteed line items (backward compatibility)."""
         return self.orders_manager.check_order_has_guaranteed_items(order_id)
 
-    def update_media_buy(self, media_buy_id=None, action=None, package_id=None, budget=None, today=None, **kwargs):
-        """Update media buy with backward compatible signature."""
-        # Extract from kwargs if passed as keyword arguments
-        if "media_buy_id" in kwargs:
-            media_buy_id = kwargs["media_buy_id"]
-        if "action" in kwargs:
-            action = kwargs["action"]
-        if "package_id" in kwargs:
-            package_id = kwargs["package_id"]
-        if "budget" in kwargs:
-            budget = kwargs["budget"]
-        if "today" in kwargs:
-            today = kwargs["today"]
-            
-        # Call the parent implementation
-        return super().update_media_buy(media_buy_id, action, package_id, budget, today)

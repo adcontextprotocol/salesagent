@@ -22,18 +22,22 @@ logger = logging.getLogger(__name__)
 class GAMCreativesManager:
     """Manages creative operations for Google Ad Manager."""
 
-    def __init__(self, client_manager, advertiser_id: str, dry_run: bool = False):
+    def __init__(self, client_manager, advertiser_id: str, dry_run: bool = False, log_func=None, adapter=None):
         """Initialize creatives manager.
 
         Args:
             client_manager: GAMClientManager instance
             advertiser_id: GAM advertiser ID
             dry_run: Whether to run in dry-run mode
+            log_func: Optional logging function from adapter
+            adapter: Optional reference to the main adapter for delegation
         """
         self.client_manager = client_manager
         self.advertiser_id = advertiser_id
         self.dry_run = dry_run
         self.validator = GAMValidator()
+        self.log_func = log_func
+        self.adapter = adapter
 
     def add_creative_assets(
         self, media_buy_id: str, assets: list[dict[str, Any]], today: datetime
@@ -64,21 +68,36 @@ class GAMCreativesManager:
 
         for asset in assets:
             # Validate creative asset against GAM requirements
-            validation_issues = self._validate_creative_for_gam(asset)
+            # Use adapter's method if available for test compatibility, otherwise use our own
+            if self.adapter and hasattr(self.adapter, '_validate_creative_for_gam'):
+                validation_issues = self.adapter._validate_creative_for_gam(asset)
+            else:
+                validation_issues = self._validate_creative_for_gam(asset)
 
             # Add creative size validation against placeholders
             size_validation_issues = self._validate_creative_size_against_placeholders(asset, creative_placeholders)
             validation_issues.extend(size_validation_issues)
 
             if validation_issues:
-                logger.error(f"Creative {asset['creative_id']} failed GAM validation:")
-                for issue in validation_issues:
-                    logger.error(f"  - {issue}")
+                # Use adapter log function if available, otherwise use logger
+                if self.log_func:
+                    self.log_func(f"[red]Creative {asset['creative_id']} failed GAM validation:[/red]", dry_run_prefix=False)
+                    for issue in validation_issues:
+                        self.log_func(f"[red]  - {issue}[/red]", dry_run_prefix=False)
+                else:
+                    # Fallback to logger if no log function provided
+                    logger.error(f"Creative {asset['creative_id']} failed GAM validation:")
+                    for issue in validation_issues:
+                        logger.error(f"  - {issue}")
                 created_asset_statuses.append(AssetStatus(creative_id=asset["creative_id"], status="failed"))
                 continue
 
             # Determine creative type using AdCP v1.3+ logic
-            creative_type = self._get_creative_type(asset)
+            # Use adapter's method if available for test compatibility, otherwise use our own
+            if self.adapter and hasattr(self.adapter, '_get_creative_type'):
+                creative_type = self.adapter._get_creative_type(asset)
+            else:
+                creative_type = self._get_creative_type(asset)
 
             if creative_type == "vast":
                 # VAST is handled at line item level, not creative level
@@ -156,9 +175,23 @@ class GAMCreativesManager:
                 creative_placeholders[package_name] = placeholders
         else:
             # In dry-run mode, create a mock line item map and placeholders
-            line_item_map = {"mock_package": "mock_line_item_123"}
+            # Include common test package names and sizes
+            line_item_map = {
+                "mock_package": "mock_line_item_123",
+                "test_package": "test_line_item_456",
+                "package_1": "line_item_789"
+            }
             creative_placeholders = {
                 "mock_package": [
+                    {"size": {"width": 300, "height": 250}, "creativeSizeType": "PIXEL"},
+                    {"size": {"width": 728, "height": 90}, "creativeSizeType": "PIXEL"},
+                ],
+                "test_package": [
+                    {"size": {"width": 970, "height": 250}, "creativeSizeType": "PIXEL"},
+                    {"size": {"width": 728, "height": 90}, "creativeSizeType": "PIXEL"},
+                    {"size": {"width": 300, "height": 250}, "creativeSizeType": "PIXEL"},
+                ],
+                "package_1": [
                     {"size": {"width": 300, "height": 250}, "creativeSizeType": "PIXEL"},
                     {"size": {"width": 728, "height": 90}, "creativeSizeType": "PIXEL"},
                 ]

@@ -292,6 +292,8 @@ class TestGAMValidationIntegration:
                 "creative_id": "test_creative_1",
                 "url": "http://example.com/banner.jpg",  # HTTP not allowed
                 "width": 2000,  # Too wide
+                "height": 90,
+                "package_assignments": ["mock_package"],  # Assign to mock package
             }
 
             result = adapter.add_creative_assets("123", [invalid_asset], None)
