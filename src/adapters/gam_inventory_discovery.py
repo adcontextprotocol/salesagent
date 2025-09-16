@@ -21,8 +21,8 @@ from typing import Any
 from googleads import ad_manager
 from zeep.helpers import serialize_object
 
-from src.adapters.gam_error_handling import with_retry
-from src.adapters.gam_logging import logger
+from src.adapters.gam.utils.error_handler import with_retry
+from src.adapters.gam.utils.logging import logger
 
 
 class AdUnitStatus(Enum):

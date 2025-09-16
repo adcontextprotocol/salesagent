@@ -16,8 +16,8 @@ from typing import Any
 from googleads import ad_manager
 from zeep.helpers import serialize_object
 
-from src.adapters.gam_error_handling import with_retry
-from src.adapters.gam_logging import GAMOperation, log_gam_operation, logger
+from src.adapters.gam.utils.error_handler import with_retry
+from src.adapters.gam.utils.logging import GAMOperation, log_gam_operation, logger
 
 
 def safe_parse_gam_datetime(dt_obj, field_name="datetime", logger_name="gam_orders_discovery"):
