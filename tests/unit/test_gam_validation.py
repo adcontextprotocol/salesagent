@@ -469,65 +469,6 @@ class TestGAMCreativeSizeMatching:
         assert len(errors) == 1
         assert "300x250 does not match any LineItem placeholders" in errors[0]
 
-    @pytest.mark.skip(reason="_validate_asset_against_format_requirements removed in refactoring")
-    def test_validate_asset_against_format_requirements_native_valid(self):
-        """Test asset validation for native format with valid dimensions."""
-        asset = {
-            "format": "native_article",
-            "creative_id": "native_001",
-            "width": 400,  # Above minimum 300
-            "height": 250,  # Above minimum 200
-            "url": "https://example.com/image.jpg",
-        }
-
-        errors = self.adapter._validate_asset_against_format_requirements(asset)
-        assert len(errors) == 0
-
-    @pytest.mark.skip(reason="_validate_asset_against_format_requirements removed in refactoring")
-    def test_validate_asset_against_format_requirements_native_too_small(self):
-        """Test asset validation for native format with too small dimensions."""
-        asset = {
-            "format": "native_article",
-            "creative_id": "native_002",
-            "width": 250,  # Below minimum 300
-            "height": 150,  # Below minimum 200
-            "url": "https://example.com/image.jpg",
-        }
-
-        errors = self.adapter._validate_asset_against_format_requirements(asset)
-        assert len(errors) == 2
-        assert "width 250 below minimum 300" in errors[0]
-        assert "height 150 below minimum 200" in errors[1]
-
-    @pytest.mark.skip(reason="_validate_asset_against_format_requirements removed in refactoring")
-    def test_validate_asset_against_format_requirements_exact_match(self):
-        """Test asset validation for format requiring exact dimensions."""
-        asset = {
-            "format": "native_feed",
-            "creative_id": "feed_001",
-            "width": 1200,  # Exact match required
-            "height": 628,  # Exact match required
-            "url": "https://example.com/feed-image.jpg",
-        }
-
-        errors = self.adapter._validate_asset_against_format_requirements(asset)
-        assert len(errors) == 0
-
-    @pytest.mark.skip(reason="_validate_asset_against_format_requirements removed in refactoring")
-    def test_validate_asset_against_format_requirements_wrong_exact(self):
-        """Test asset validation for format with wrong exact dimensions."""
-        asset = {
-            "format": "native_feed",
-            "creative_id": "feed_002",
-            "width": 1000,  # Wrong (should be 1200)
-            "height": 600,  # Wrong (should be 628)
-            "url": "https://example.com/feed-image.jpg",
-        }
-
-        errors = self.adapter._validate_asset_against_format_requirements(asset)
-        assert len(errors) == 1
-        assert "1000x600 do not match format requirement 1200x628" in errors[0]
-
     def test_determine_asset_type_video(self):
         """Test asset type detection for video."""
         asset = {"duration": 30, "url": "https://example.com/video.mp4"}
@@ -883,39 +824,6 @@ class TestImpressionTrackingSupport:
         # Mock the client to avoid actual API initialization
         self.adapter.client = Mock()
 
-    @pytest.mark.skip(reason="Tracking URL implementation changed in refactoring")
-    def test_add_tracking_urls_third_party_creative(self):
-        """Test tracking URL addition for third-party creatives."""
-        creative = {"xsi_type": "ThirdPartyCreative"}
-        asset = {"delivery_settings": {"tracking_urls": ["https://tracker1.com/pixel", "https://tracker2.com/pixel"]}}
-
-        self.adapter.creatives_manager._add_tracking_urls_to_creative(creative, asset)
-
-        assert "thirdPartyImpressionTrackingUrls" in creative
-        assert creative["thirdPartyImpressionTrackingUrls"] == asset["delivery_settings"]["tracking_urls"]
-
-    @pytest.mark.skip(reason="Tracking URL implementation changed in refactoring")
-    def test_add_tracking_urls_image_creative(self):
-        """Test tracking URL addition for image creatives."""
-        creative = {"xsi_type": "ImageCreative"}
-        asset = {"tracking_urls": ["https://analytics.com/impression"]}
-
-        self.adapter.creatives_manager._add_tracking_urls_to_creative(creative, asset)
-
-        assert "thirdPartyImpressionUrls" in creative
-        assert creative["thirdPartyImpressionUrls"] == asset["tracking_urls"]
-
-    @pytest.mark.skip(reason="Tracking URL implementation changed in refactoring")
-    def test_add_tracking_urls_video_creative(self):
-        """Test tracking URL addition for video creatives."""
-        creative = {"xsi_type": "VideoCreative"}
-        asset = {"delivery_settings": {"tracking_urls": ["https://video-tracker.com/impression"]}}
-
-        self.adapter.creatives_manager._add_tracking_urls_to_creative(creative, asset)
-
-        assert "thirdPartyImpressionUrls" in creative
-        assert creative["thirdPartyImpressionUrls"] == asset["delivery_settings"]["tracking_urls"]
-
     def test_add_tracking_urls_native_creative(self):
         """Test tracking URL handling for native creatives."""
         creative = {"xsi_type": "TemplateCreative"}
@@ -930,23 +838,6 @@ class TestImpressionTrackingSupport:
         assert "thirdPartyImpressionTrackingUrls" not in creative
 
         # The method should handle native creatives gracefully (note: logs are captured in test output)
-
-    @pytest.mark.skip(reason="Tracking URL implementation changed in refactoring")
-    def test_add_tracking_urls_multiple_sources(self):
-        """Test combining tracking URLs from multiple sources."""
-        creative = {"xsi_type": "ImageCreative"}
-        asset = {
-            "delivery_settings": {"tracking_urls": ["https://tracker1.com/pixel"]},
-            "tracking_urls": ["https://tracker2.com/pixel", "https://tracker3.com/pixel"],
-        }
-
-        self.adapter.creatives_manager._add_tracking_urls_to_creative(creative, asset)
-
-        # Should combine URLs from both sources
-        assert len(creative["thirdPartyImpressionUrls"]) == 3
-        assert "https://tracker1.com/pixel" in creative["thirdPartyImpressionUrls"]
-        assert "https://tracker2.com/pixel" in creative["thirdPartyImpressionUrls"]
-        assert "https://tracker3.com/pixel" in creative["thirdPartyImpressionUrls"]
 
     def test_add_tracking_urls_no_urls_provided(self):
         """Test that no tracking URLs are added when none provided."""
@@ -972,35 +863,3 @@ class TestImpressionTrackingSupport:
 
         # The method should handle unknown types gracefully (note: warning logged in test output)
 
-    @pytest.mark.skip(reason="Binary upload implementation changed in refactoring")
-    def test_binary_upload_with_tracking_integration(self):
-        """Test that binary upload creatives get tracking URLs."""
-        import base64
-
-        mock_image_data = b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x10\x00\x00\x00\x10"
-        base64_data = base64.b64encode(mock_image_data).decode("utf-8")
-
-        asset = {
-            "creative_id": "test_with_tracking",
-            "media_data": base64_data,
-            "filename": "test.png",
-            "format": "display_300x250",
-            "tracking_urls": ["https://analytics.com/impression"],
-            "name": "Test Creative with Tracking",
-            "click_url": "https://example.com/landing",
-        }
-
-        # Test that _create_hosted_asset_creative includes tracking
-        base_creative = {"advertiserId": "123", "name": asset["name"], "destinationUrl": asset["click_url"]}
-
-        # Mock the upload method to avoid actual API calls
-        from unittest.mock import Mock
-
-        self.adapter._upload_binary_asset = Mock(return_value={"assetId": "mock_asset_123456", "fileName": "test.png"})
-
-        creative = self.adapter._create_hosted_asset_creative(asset, base_creative)
-
-        # Should be ImageCreative with tracking URLs
-        assert creative["xsi_type"] == "ImageCreative"
-        assert "thirdPartyImpressionUrls" in creative
-        assert creative["thirdPartyImpressionUrls"] == asset["tracking_urls"]

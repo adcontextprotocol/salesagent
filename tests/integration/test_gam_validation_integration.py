@@ -35,7 +35,14 @@ class TestGAMValidationIntegration:
     def test_gam_adapter_initializes_validator(self):
         """Test that GAM adapter initializes the validator on construction."""
         with patch.object(GoogleAdManager, "_init_client"):
-            adapter = GoogleAdManager(config=self.config, principal=self.principal, dry_run=True)
+            adapter = GoogleAdManager(
+                config=self.config,
+                principal=self.principal,
+                network_code=self.config["network_code"],
+                advertiser_id=self.principal.platform_mappings["google_ad_manager"]["advertiser_id"],
+                trafficker_id=self.config["trafficker_id"],
+                dry_run=True
+            )
 
             # Validator should be initialized
             assert hasattr(adapter, "validator")
@@ -44,7 +51,14 @@ class TestGAMValidationIntegration:
     def test_add_creative_assets_validates_before_processing(self):
         """Test that creative assets are validated before GAM API calls."""
         with patch.object(GoogleAdManager, "_init_client"):
-            adapter = GoogleAdManager(config=self.config, principal=self.principal, dry_run=True)
+            adapter = GoogleAdManager(
+                config=self.config,
+                principal=self.principal,
+                network_code=self.config["network_code"],
+                advertiser_id=self.principal.platform_mappings["google_ad_manager"]["advertiser_id"],
+                trafficker_id=self.config["trafficker_id"],
+                dry_run=True
+            )
 
         # Mock the validation method to return validation errors
         with patch.object(adapter, "_validate_creative_for_gam") as mock_validate:
@@ -72,7 +86,14 @@ class TestGAMValidationIntegration:
     def test_add_creative_assets_proceeds_with_valid_assets(self):
         """Test that valid assets proceed to GAM processing."""
         with patch.object(GoogleAdManager, "_init_client"):
-            adapter = GoogleAdManager(config=self.config, principal=self.principal, dry_run=True)
+            adapter = GoogleAdManager(
+                config=self.config,
+                principal=self.principal,
+                network_code=self.config["network_code"],
+                advertiser_id=self.principal.platform_mappings["google_ad_manager"]["advertiser_id"],
+                trafficker_id=self.config["trafficker_id"],
+                dry_run=True
+            )
 
         # Mock the validation method to return no errors
         with patch.object(adapter, "_validate_creative_for_gam") as mock_validate:
@@ -110,7 +131,14 @@ class TestGAMValidationIntegration:
     def test_validate_creative_for_gam_method(self):
         """Test the _validate_creative_for_gam method directly."""
         with patch.object(GoogleAdManager, "_init_client"):
-            adapter = GoogleAdManager(config=self.config, principal=self.principal, dry_run=True)
+            adapter = GoogleAdManager(
+                config=self.config,
+                principal=self.principal,
+                network_code=self.config["network_code"],
+                advertiser_id=self.principal.platform_mappings["google_ad_manager"]["advertiser_id"],
+                trafficker_id=self.config["trafficker_id"],
+                dry_run=True
+            )
 
         # Test with invalid asset
         invalid_asset = {
@@ -142,7 +170,14 @@ class TestGAMValidationIntegration:
     def test_html5_creative_type_detection_and_creation(self):
         """Test that HTML5 creatives are detected and handled correctly."""
         with patch.object(GoogleAdManager, "_init_client"):
-            adapter = GoogleAdManager(config=self.config, principal=self.principal, dry_run=True)
+            adapter = GoogleAdManager(
+                config=self.config,
+                principal=self.principal,
+                network_code=self.config["network_code"],
+                advertiser_id=self.principal.platform_mappings["google_ad_manager"]["advertiser_id"],
+                trafficker_id=self.config["trafficker_id"],
+                dry_run=True
+            )
 
         # Test HTML5 creative detection by file extension
         html5_asset = {
@@ -171,7 +206,14 @@ class TestGAMValidationIntegration:
     def test_html5_creative_with_zip_file(self):
         """Test HTML5 creative with ZIP file containing assets."""
         with patch.object(GoogleAdManager, "_init_client"):
-            adapter = GoogleAdManager(config=self.config, principal=self.principal, dry_run=True)
+            adapter = GoogleAdManager(
+                config=self.config,
+                principal=self.principal,
+                network_code=self.config["network_code"],
+                advertiser_id=self.principal.platform_mappings["google_ad_manager"]["advertiser_id"],
+                trafficker_id=self.config["trafficker_id"],
+                dry_run=True
+            )
 
         zip_asset = {
             "creative_id": "html5_zip_1",
@@ -200,7 +242,14 @@ class TestGAMValidationIntegration:
     def test_validation_handles_different_creative_types(self):
         """Test validation works for different creative types."""
         with patch.object(GoogleAdManager, "_init_client"):
-            adapter = GoogleAdManager(config=self.config, principal=self.principal, dry_run=True)
+            adapter = GoogleAdManager(
+                config=self.config,
+                principal=self.principal,
+                network_code=self.config["network_code"],
+                advertiser_id=self.principal.platform_mappings["google_ad_manager"]["advertiser_id"],
+                trafficker_id=self.config["trafficker_id"],
+                dry_run=True
+            )
 
         # Test third-party tag validation
         third_party_asset = {
@@ -227,7 +276,14 @@ class TestGAMValidationIntegration:
     def test_validation_logging_on_failure(self):
         """Test that validation failures are properly logged."""
         with patch.object(GoogleAdManager, "_init_client"):
-            adapter = GoogleAdManager(config=self.config, principal=self.principal, dry_run=True)
+            adapter = GoogleAdManager(
+                config=self.config,
+                principal=self.principal,
+                network_code=self.config["network_code"],
+                advertiser_id=self.principal.platform_mappings["google_ad_manager"]["advertiser_id"],
+                trafficker_id=self.config["trafficker_id"],
+                dry_run=True
+            )
 
         # Mock the log method to capture log messages
         with patch.object(adapter, "log") as mock_log:
@@ -271,7 +327,14 @@ class TestGAMValidationPerformance:
     def test_validation_performance_with_many_assets(self):
         """Test validation performance with many assets."""
         with patch.object(GoogleAdManager, "_init_client"):
-            adapter = GoogleAdManager(config=self.config, principal=self.principal, dry_run=True)
+            adapter = GoogleAdManager(
+                config=self.config,
+                principal=self.principal,
+                network_code=self.config["network_code"],
+                advertiser_id=self.principal.platform_mappings["google_ad_manager"]["advertiser_id"],
+                trafficker_id=self.config["trafficker_id"],
+                dry_run=True
+            )
 
         # Create many assets for validation
         assets = []
@@ -308,7 +371,14 @@ class TestGAMValidationPerformance:
     def test_validation_early_exit_on_failure(self):
         """Test that validation provides early feedback on failures."""
         with patch.object(GoogleAdManager, "_init_client"):
-            adapter = GoogleAdManager(config=self.config, principal=self.principal, dry_run=True)
+            adapter = GoogleAdManager(
+                config=self.config,
+                principal=self.principal,
+                network_code=self.config["network_code"],
+                advertiser_id=self.principal.platform_mappings["google_ad_manager"]["advertiser_id"],
+                trafficker_id=self.config["trafficker_id"],
+                dry_run=True
+            )
 
         # Mix of valid and invalid assets
         assets = [

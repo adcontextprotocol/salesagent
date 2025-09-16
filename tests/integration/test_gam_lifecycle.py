@@ -61,24 +61,54 @@ class TestGAMOrderLifecycleIntegration:
         """Test admin principal detection using real business logic."""
         with patch("src.adapters.google_ad_manager.GoogleAdManager._init_client"):
             # Test regular user - not admin
-            regular_adapter = GoogleAdManager(gam_config, test_principals["regular"], dry_run=True, tenant_id="test")
+            regular_adapter = GoogleAdManager(
+                config=gam_config,
+                principal=test_principals["regular"],
+                network_code=gam_config["network_code"],
+                advertiser_id=test_principals["regular"].platform_mappings["google_ad_manager"]["advertiser_id"],
+                trafficker_id=gam_config["trafficker_id"],
+                dry_run=True,
+                tenant_id="test"
+            )
             assert regular_adapter._is_admin_principal() is False
 
             # Test gam_admin flag - should be admin
             gam_admin_adapter = GoogleAdManager(
-                gam_config, test_principals["gam_admin"], dry_run=True, tenant_id="test"
+                config=gam_config,
+                principal=test_principals["gam_admin"],
+                network_code=gam_config["network_code"],
+                advertiser_id=test_principals["gam_admin"].platform_mappings["google_ad_manager"]["advertiser_id"],
+                trafficker_id=gam_config["trafficker_id"],
+                dry_run=True,
+                tenant_id="test"
             )
             assert gam_admin_adapter._is_admin_principal() is True
 
             # Test is_admin flag - should be admin
-            is_admin_adapter = GoogleAdManager(gam_config, test_principals["is_admin"], dry_run=True, tenant_id="test")
+            is_admin_adapter = GoogleAdManager(
+                config=gam_config,
+                principal=test_principals["is_admin"],
+                network_code=gam_config["network_code"],
+                advertiser_id=test_principals["is_admin"].platform_mappings["google_ad_manager"]["advertiser_id"],
+                trafficker_id=gam_config["trafficker_id"],
+                dry_run=True,
+                tenant_id="test"
+            )
             assert is_admin_adapter._is_admin_principal() is True
 
     def test_lifecycle_workflow_validation(self, test_principals, gam_config):
         """Test lifecycle action workflows with business validation."""
         with patch("src.adapters.google_ad_manager.GoogleAdManager._init_client"):
             # Test regular user with different actions
-            regular_adapter = GoogleAdManager(gam_config, test_principals["regular"], dry_run=True, tenant_id="test")
+            regular_adapter = GoogleAdManager(
+                config=gam_config,
+                principal=test_principals["regular"],
+                network_code=gam_config["network_code"],
+                advertiser_id=test_principals["regular"].platform_mappings["google_ad_manager"]["advertiser_id"],
+                trafficker_id=gam_config["trafficker_id"],
+                dry_run=True,
+                tenant_id="test"
+            )
 
             # Actions that should work for regular users
             allowed_actions = ["submit_for_approval", "archive_order"]
@@ -97,7 +127,15 @@ class TestGAMOrderLifecycleIntegration:
             assert "Only admin users can approve orders" in response.reason
 
             # Admin user should be able to approve
-            admin_adapter = GoogleAdManager(gam_config, test_principals["gam_admin"], dry_run=True, tenant_id="test")
+            admin_adapter = GoogleAdManager(
+                config=gam_config,
+                principal=test_principals["gam_admin"],
+                network_code=gam_config["network_code"],
+                advertiser_id=test_principals["gam_admin"].platform_mappings["google_ad_manager"]["advertiser_id"],
+                trafficker_id=gam_config["trafficker_id"],
+                dry_run=True,
+                tenant_id="test"
+            )
             response = admin_adapter.update_media_buy(
                 media_buy_id="12345", action="approve_order", package_id=None, budget=None, today=datetime.now()
             )
@@ -134,7 +172,15 @@ class TestGAMOrderLifecycleIntegration:
     def test_activation_validation_with_guaranteed_items(self, test_principals, gam_config):
         """Test activation validation blocking guaranteed line items."""
         with patch("src.adapters.google_ad_manager.GoogleAdManager._init_client"):
-            adapter = GoogleAdManager(gam_config, test_principals["regular"], dry_run=True, tenant_id="test")
+            adapter = GoogleAdManager(
+                config=gam_config,
+                principal=test_principals["regular"],
+                network_code=gam_config["network_code"],
+                advertiser_id=test_principals["regular"].platform_mappings["google_ad_manager"]["advertiser_id"],
+                trafficker_id=gam_config["trafficker_id"],
+                dry_run=True,
+                tenant_id="test"
+            )
 
             # Test activation with non-guaranteed items (should succeed)
             with patch.object(adapter, "_check_order_has_guaranteed_items", return_value=(False, [])):
