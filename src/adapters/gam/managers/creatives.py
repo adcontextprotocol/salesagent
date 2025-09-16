@@ -175,26 +175,12 @@ class GAMCreativesManager:
                 creative_placeholders[package_name] = placeholders
         else:
             # In dry-run mode, create a mock line item map and placeholders
-            # Include common test package names and sizes
-            line_item_map = {
-                "mock_package": "mock_line_item_123",
-                "test_package": "test_line_item_456",
-                "package_1": "line_item_789"
-            }
+            line_item_map = {"mock_package": "mock_line_item_123"}
             creative_placeholders = {
                 "mock_package": [
                     {"size": {"width": 300, "height": 250}, "creativeSizeType": "PIXEL"},
                     {"size": {"width": 728, "height": 90}, "creativeSizeType": "PIXEL"},
                 ],
-                "test_package": [
-                    {"size": {"width": 970, "height": 250}, "creativeSizeType": "PIXEL"},
-                    {"size": {"width": 728, "height": 90}, "creativeSizeType": "PIXEL"},
-                    {"size": {"width": 300, "height": 250}, "creativeSizeType": "PIXEL"},
-                ],
-                "package_1": [
-                    {"size": {"width": 300, "height": 250}, "creativeSizeType": "PIXEL"},
-                    {"size": {"width": 728, "height": 90}, "creativeSizeType": "PIXEL"},
-                ]
             }
 
         return line_item_map, creative_placeholders
