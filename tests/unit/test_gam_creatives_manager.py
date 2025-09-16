@@ -843,6 +843,10 @@ class TestGAMCreativesManagerAssetWorkflow:
         """Test line item info retrieval in dry-run mode."""
         line_item_map, creative_placeholders = self.creatives_manager._get_line_item_info("123", None)
 
-        # Should return mock data
-        assert line_item_map == {"mock_package": "mock_line_item_123"}
+        # Should return mock data with common test package names
+        assert "mock_package" in line_item_map
+        assert line_item_map["mock_package"] == "mock_line_item_123"
         assert "mock_package" in creative_placeholders
+        # Additional test packages are also provided
+        assert "package_1" in line_item_map
+        assert "test_package" in line_item_map

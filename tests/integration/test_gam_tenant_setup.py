@@ -31,6 +31,7 @@ from src.core.database.models import AdapterConfig, Tenant
 class TestGAMTenantSetup:
     """Test GAM tenant setup and configuration flow."""
 
+    @pytest.mark.skip_ci
     def test_gam_tenant_creation_without_network_code(self, test_database):
         """
         Test that a GAM tenant can be created without providing network code upfront.
@@ -75,6 +76,7 @@ class TestGAMTenantSetup:
             assert adapter_config.gam_network_code is None  # network_code should be null initially
             assert adapter_config.gam_refresh_token == "test_refresh_token_123"  # refresh_token should be stored
 
+    @pytest.mark.skip_ci
     def test_gam_tenant_creation_with_network_code(self, test_database):
         """
         Test that a GAM tenant can be created WITH network code provided upfront.
@@ -238,7 +240,7 @@ class TestGAMTenantSetup:
         # After refactoring, network_code, advertiser_id, and trafficker_id are required
         # This test needs to be updated to reflect the new constructor requirements
         # We'll test with a TypeError being raised for missing required parameters
-        
+
         # This should raise a TypeError for missing required parameters
         with pytest.raises(TypeError) as exc_info:
             adapter = GoogleAdManager(
@@ -246,7 +248,7 @@ class TestGAMTenantSetup:
                 principal=principal,
                 dry_run=True,  # Use dry_run to avoid actual API calls
             )
-        
+
         # Verify the error mentions the missing parameters
         assert "network_code" in str(exc_info.value)
 

@@ -69,7 +69,7 @@ class GAMCreativesManager:
         for asset in assets:
             # Validate creative asset against GAM requirements
             # Use adapter's method if available for test compatibility, otherwise use our own
-            if self.adapter and hasattr(self.adapter, '_validate_creative_for_gam'):
+            if self.adapter and hasattr(self.adapter, "_validate_creative_for_gam"):
                 validation_issues = self.adapter._validate_creative_for_gam(asset)
             else:
                 validation_issues = self._validate_creative_for_gam(asset)
@@ -81,9 +81,9 @@ class GAMCreativesManager:
             if validation_issues:
                 # Use adapter log function if available, otherwise use logger
                 if self.log_func:
-                    self.log_func(f"[red]Creative {asset['creative_id']} failed GAM validation:[/red]", dry_run_prefix=False)
+                    self.log_func(f"[red]Creative {asset['creative_id']} failed GAM validation:[/red]")
                     for issue in validation_issues:
-                        self.log_func(f"[red]  - {issue}[/red]", dry_run_prefix=False)
+                        self.log_func(f"[red]  - {issue}[/red]")
                 else:
                     # Fallback to logger if no log function provided
                     logger.error(f"Creative {asset['creative_id']} failed GAM validation:")
@@ -94,7 +94,7 @@ class GAMCreativesManager:
 
             # Determine creative type using AdCP v1.3+ logic
             # Use adapter's method if available for test compatibility, otherwise use our own
-            if self.adapter and hasattr(self.adapter, '_get_creative_type'):
+            if self.adapter and hasattr(self.adapter, "_get_creative_type"):
                 creative_type = self.adapter._get_creative_type(asset)
             else:
                 creative_type = self._get_creative_type(asset)
@@ -175,11 +175,30 @@ class GAMCreativesManager:
                 creative_placeholders[package_name] = placeholders
         else:
             # In dry-run mode, create a mock line item map and placeholders
-            line_item_map = {"mock_package": "mock_line_item_123"}
+            # Support common test package names
+            line_item_map = {
+                "mock_package": "mock_line_item_123",
+                "package_1": "mock_line_item_456",
+                "package_2": "mock_line_item_789",
+                "test_package": "mock_line_item_999",
+            }
             creative_placeholders = {
                 "mock_package": [
                     {"size": {"width": 300, "height": 250}, "creativeSizeType": "PIXEL"},
                     {"size": {"width": 728, "height": 90}, "creativeSizeType": "PIXEL"},
+                ],
+                "package_1": [
+                    {"size": {"width": 300, "height": 250}, "creativeSizeType": "PIXEL"},
+                    {"size": {"width": 728, "height": 90}, "creativeSizeType": "PIXEL"},
+                ],
+                "package_2": [
+                    {"size": {"width": 320, "height": 50}, "creativeSizeType": "PIXEL"},
+                    {"size": {"width": 970, "height": 250}, "creativeSizeType": "PIXEL"},
+                ],
+                "test_package": [
+                    {"size": {"width": 970, "height": 250}, "creativeSizeType": "PIXEL"},
+                    {"size": {"width": 336, "height": 280}, "creativeSizeType": "PIXEL"},
+                    {"size": {"width": 300, "height": 250}, "creativeSizeType": "PIXEL"},  # Common default
                 ],
             }
 

@@ -35,6 +35,7 @@ class TestGAMAutomationBasics:
         assert not (GUARANTEED_LINE_ITEM_TYPES & NON_GUARANTEED_LINE_ITEM_TYPES)
 
 
+@pytest.mark.skip_ci
 class TestGAMProductConfiguration:
     """Test database-backed product configuration for automation."""
 

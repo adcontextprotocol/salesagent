@@ -43,7 +43,6 @@ from src.core.schemas import (
     CreateMediaBuyResponse,
     GetMediaBuyDeliveryResponse,
     MediaPackage,
-    UpdateMediaBuyRequest,
     UpdateMediaBuyResponse,
 )
 
@@ -146,11 +145,11 @@ class GoogleAdManager(AdServerAdapter):
     # Legacy admin/business logic methods for backward compatibility
     def _is_admin_principal(self) -> bool:
         """Check if the current principal has admin privileges."""
-        if not hasattr(self.principal, 'platform_mappings'):
+        if not hasattr(self.principal, "platform_mappings"):
             return False
-        
-        gam_mappings = self.principal.platform_mappings.get('google_ad_manager', {})
-        return bool(gam_mappings.get('gam_admin', False) or gam_mappings.get('is_admin', False))
+
+        gam_mappings = self.principal.platform_mappings.get("google_ad_manager", {})
+        return bool(gam_mappings.get("gam_admin", False) or gam_mappings.get("is_admin", False))
 
     def _validate_creative_for_gam(self, asset):
         """Validate creative asset for GAM requirements (delegated to creatives manager)."""
@@ -249,22 +248,34 @@ class GoogleAdManager(AdServerAdapter):
         """Update a media buy in GAM."""
         # Admin-only actions
         admin_only_actions = ["approve_order"]
-        
+
         # Check if action requires admin privileges
         if action in admin_only_actions and not self._is_admin_principal():
             return UpdateMediaBuyResponse(
                 media_buy_id=media_buy_id,
                 status="failed",
                 reason="Only admin users can approve orders",
-                message="Action denied: insufficient privileges"
+                message="Action denied: insufficient privileges",
             )
-        
+
+        # Check for activate_order action with guaranteed items
+        if action == "activate_order":
+            # Check if order has guaranteed line items
+            has_guaranteed, item_types = self._check_order_has_guaranteed_items(media_buy_id)
+            if has_guaranteed:
+                return UpdateMediaBuyResponse(
+                    media_buy_id=media_buy_id,
+                    status="failed",
+                    reason=f"Cannot auto-activate order with guaranteed line items: {', '.join(item_types)}",
+                    message="Manual approval required for guaranteed inventory",
+                )
+
         # For allowed actions, return success with action details
         return UpdateMediaBuyResponse(
             media_buy_id=media_buy_id,
             status="accepted",
             detail=f"Action '{action}' processed successfully",
-            message=f"Media buy {media_buy_id} updated with action: {action}"
+            message=f"Media buy {media_buy_id} updated with action: {action}",
         )
 
     def update_media_buy_performance_index(self, media_buy_id: str, package_performance: list) -> bool:
@@ -389,4 +400,3 @@ class GoogleAdManager(AdServerAdapter):
     def _check_order_has_guaranteed_items(self, order_id: str) -> tuple:
         """Check if order has guaranteed line items (backward compatibility)."""
         return self.orders_manager.check_order_has_guaranteed_items(order_id)
-
