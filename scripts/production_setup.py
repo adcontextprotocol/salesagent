@@ -74,10 +74,14 @@ def setup_missing_scribd_products():
 
         print("🔧 Setting up Scribd products...")
 
-        # Import the setup script
-        from scripts.setup_scribd_products import setup_scribd_products
+        # Try to import the setup script (may not exist)
+        try:
+            from scripts.setup_scribd_products import setup_scribd_products
 
-        setup_scribd_products()
+            setup_scribd_products()
+        except ImportError:
+            print("⚠️  setup_scribd_products.py not found - skipping product setup")
+            print("   Products can be created manually via Admin UI")
 
         return True
 
