@@ -4597,6 +4597,22 @@ if os.environ.get("ADCP_UNIFIED_MODE"):
                 contact_email = landing_config.get("contact_email", "")
                 booking_url = landing_config.get("booking_url", "")
 
+                # Create tenant slug for MCP config
+                tenant_slug = tenant["name"].lower().replace(" ", "-")
+
+                # Prepare MCP config JSON (avoid complex f-string nesting)
+                mcp_config = f"""{{
+  "mcpServers": {{
+    "{tenant_slug}-ads": {{
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-fetch"],
+      "env": {{
+        "FETCH_API_URL": "https://{apx_host}/mcp"
+      }}
+    }}
+  }}
+}}"""
+
                 # Show enhanced landing page for virtual host
                 html_content = f"""
                 <!DOCTYPE html>
@@ -4787,17 +4803,7 @@ if os.environ.get("ADCP_UNIFIED_MODE"):
                                 <div class="agent-card">
                                     <h3 class="agent-title">Claude Desktop Setup</h3>
                                     <p>Add this to your MCP settings:</p>
-                                    <div class="code-block">{{
-  "mcpServers": {{
-    "{tenant['name'].lower().replace(' ', '-')}-ads": {{
-      "command": "npx",
-      "args": ["-y", "@modelcontextprotocol/server-fetch"],
-      "env": {{
-        "FETCH_API_URL": "https://{apx_host}/mcp"
-      }}
-    }}
-  }}
-}}</div>
+                                    <div class="code-block">{mcp_config}</div>
                                 </div>
 
                                 <div class="agent-card">
