@@ -4582,7 +4582,8 @@ if os.environ.get("ADCP_UNIFIED_MODE"):
             tenant = get_tenant_by_virtual_host(apx_host)
             if tenant:
                 # Get landing configuration with defaults
-                landing_config = tenant.get("landing_config", {{}}) or {{}}
+                default_config = {}
+                landing_config = tenant.get("landing_config", default_config) or default_config
 
                 # Default values
                 hero_message = landing_config.get(

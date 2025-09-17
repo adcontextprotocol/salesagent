@@ -47,6 +47,9 @@ services:
       # Skip nginx for standalone service
       SKIP_NGINX: "true"
 
+      # Enable unified mode for landing page routes
+      ADCP_UNIFIED_MODE: "true"
+
       # Optional: Dry run mode
       # ADCP_DRY_RUN: true
 
