@@ -20,7 +20,7 @@
         <thead>
             <tr>
                 <th>Name</th>
-                <th>Subdomain / Path</th>
+                <th>Tenant Access</th>
                 <th>Status</th>
                 <th>Ad Server</th>
                 <th>Last Sync</th>
@@ -33,11 +33,19 @@
             <tr>
                 <td><strong>{{ tenant.name }}</strong></td>
                 <td>
-                    <code>{{ tenant.subdomain }}</code>
-                    {% if tenant.subdomain == 'localhost' %}
-                    <br><small style="color: #666;">http://localhost:8080</small>
+                    {% if tenant.virtual_host %}
+                    <code>{{ tenant.virtual_host }}</code>
+                    <br><small style="color: #666;">https://{{ tenant.virtual_host }}</small>
+                    <br><small style="color: #999;">(Virtual Host)</small>
                     {% else %}
-                    <br><small style="color: #666;">http://{{ tenant.subdomain }}.localhost:8080</small>
+                    <code>{{ tenant.subdomain }}</code>
+                    {% if is_production %}
+                        <br><small style="color: #666;">https://{{ tenant.subdomain }}.sales-agent.scope3.com/mcp/</small>
+                        <br><small style="color: #999;">(Tenant Subdomain)</small>
+                    {% else %}
+                        <br><small style="color: #666;">http://localhost:{{ mcp_port }}/mcp/</small>
+                        <br><small style="color: #999;">(use x-adcp-tenant: {{ tenant.subdomain }})</small>
+                    {% endif %}
                     {% endif %}
                 </td>
                 <td>
@@ -153,6 +161,6 @@
 
     <h3 style="margin-top: 1.5rem;">Example API Request</h3>
     <pre>curl -H "x-adcp-auth: YOUR_ADMIN_TOKEN" \
-     http://localhost:8080/principals/summary</pre>
+     {% if is_production %}https://default.sales-agent.scope3.com{% else %}http://localhost:{{ mcp_port }}{% endif %}/principals/summary</pre>
 </div>
 {% endblock %}

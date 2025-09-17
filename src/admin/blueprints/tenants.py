@@ -8,6 +8,7 @@
 
 import json
 import logging
+import os
 import secrets
 import uuid
 from datetime import UTC, datetime
@@ -166,6 +167,10 @@ def tenant_settings(tenant_id, section=None):
                     "application_name": getattr(adapter_config_obj, "gam_application_name", "") or "",
                 }
 
+            # Get environment info for URL generation
+            is_production = os.environ.get("PRODUCTION") == "true"
+            mcp_port = int(os.environ.get("ADCP_SALES_PORT", 8080)) if not is_production else None
+
             return render_template(
                 "tenant_settings.html",
                 tenant=tenant,
@@ -178,6 +183,8 @@ def tenant_settings(tenant_id, section=None):
                 principals=principals,
                 advertiser_count=advertiser_count,
                 active_advertisers=active_advertisers,
+                mcp_port=mcp_port,
+                is_production=is_production,
             )
 
     except Exception as e:
