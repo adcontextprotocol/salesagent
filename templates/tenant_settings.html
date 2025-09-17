@@ -282,6 +282,36 @@
         position: relative;
     }
 
+    /* Landing page form styles */
+    .partner-links {
+        border: 1px solid #e5e7eb;
+        border-radius: 8px;
+        padding: 1rem;
+        background: #f9fafb;
+    }
+
+    .partner-link-item {
+        padding: 0.75rem;
+        border-bottom: 1px solid #e5e7eb;
+        font-size: 0.875rem;
+    }
+
+    .partner-link-item:last-child {
+        border-bottom: none;
+    }
+
+    .partner-link-item strong {
+        color: #111827;
+        font-weight: 600;
+    }
+
+    .partner-link-item small {
+        display: block;
+        color: #6b7280;
+        font-size: 0.75rem;
+        margin-top: 0.25rem;
+    }
+
     .copy-button {
         position: absolute;
         top: 0.5rem;
@@ -411,6 +441,11 @@
         <a class="settings-nav-item" data-section="integrations">
             <span class="settings-nav-icon">🔗</span>
             <span>Integrations</span>
+        </a>
+
+        <a class="settings-nav-item" data-section="landing">
+            <span class="settings-nav-icon">🚀</span>
+            <span>Landing Page</span>
         </a>
 
         <a class="settings-nav-item" data-section="api">
@@ -994,6 +1029,110 @@
                     </div>
                 </form>
             </div>
+        </div>
+
+        <!-- Landing Page Settings -->
+        <div id="landing" class="settings-section">
+            <div class="settings-header">
+                <h2>Landing Page Configuration</h2>
+                <p>Customize your public landing page for agent integration</p>
+            </div>
+
+            <div class="form-section">
+                <h3>Preview</h3>
+                <div class="alert alert-info">
+                    <p><strong>Your landing page is live at:</strong></p>
+                    <a href="https://{{ tenant.subdomain }}.sales-agent.scope3.com" target="_blank">
+                        https://{{ tenant.subdomain }}.sales-agent.scope3.com
+                    </a>
+                </div>
+            </div>
+
+            <form method="POST" action="/tenant/{{ tenant.tenant_id }}/settings/landing">
+                <div class="form-section">
+                    <h3>Branding</h3>
+                    <div class="form-grid">
+                        <div class="form-group">
+                            <label for="logo_url">Logo URL</label>
+                            <input type="url" id="logo_url" name="logo_url"
+                                   value="{{ (tenant.landing_config or {}).get('logo_url', '') }}"
+                                   placeholder="https://yourcompany.com/logo.png">
+                            <small>URL to your company logo (recommended: 200x60px or similar)</small>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="primary_color">Primary Color</label>
+                            <input type="color" id="primary_color" name="primary_color"
+                                   value="{{ (tenant.landing_config or {}).get('primary_color', '#2563eb') }}">
+                            <small>Main brand color for buttons and highlights</small>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="secondary_color">Secondary Color</label>
+                            <input type="color" id="secondary_color" name="secondary_color"
+                                   value="{{ (tenant.landing_config or {}).get('secondary_color', '#10b981') }}">
+                            <small>Accent color for secondary elements</small>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="form-section">
+                    <h3>Messaging</h3>
+                    <div class="form-group">
+                        <label for="hero_message">Hero Message</label>
+                        <input type="text" id="hero_message" name="hero_message"
+                               value="{{ (tenant.landing_config or {}).get('hero_message', 'Discover ' + tenant.name + ''s advertising inventory through AI agents') }}"
+                               maxlength="120">
+                        <small>Main headline on your landing page (120 characters max)</small>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="description">Description</label>
+                        <textarea id="description" name="description" rows="3" maxlength="250">{{ (tenant.landing_config or {}).get('description', 'Browse our products, then connect your buying agent to start campaigns instantly') }}</textarea>
+                        <small>Supporting text under the headline (250 characters max)</small>
+                    </div>
+                </div>
+
+                <div class="form-section">
+                    <h3>Contact Information</h3>
+                    <div class="form-grid">
+                        <div class="form-group">
+                            <label for="contact_email">Sales Contact Email</label>
+                            <input type="email" id="contact_email" name="contact_email"
+                                   value="{{ (tenant.landing_config or {}).get('contact_email', '') }}"
+                                   placeholder="sales@yourcompany.com">
+                            <small>Email for "Contact Sales" button (optional)</small>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="booking_url">Demo Booking URL</label>
+                            <input type="url" id="booking_url" name="booking_url"
+                                   value="{{ (tenant.landing_config or {}).get('booking_url', '') }}"
+                                   placeholder="https://calendly.com/yourteam/demo">
+                            <small>URL for "Book a Demo" button (optional)</small>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="form-section">
+                    <h3>Partner Links</h3>
+                    <div class="form-group">
+                        <label>Buying Platform Partners</label>
+                        <div class="partner-links">
+                            <div class="partner-link-item">
+                                <strong>Scope3</strong> - AI-powered media buying platform
+                                <small>https://scope3.com/signup</small>
+                            </div>
+                        </div>
+                        <small>Additional buying platforms can be configured via raw JSON in Advanced settings</small>
+                    </div>
+                </div>
+
+                <div class="form-section">
+                    <button type="submit" class="btn btn-primary">Save Landing Page Settings</button>
+                    <a href="https://{{ tenant.subdomain }}.sales-agent.scope3.com" target="_blank" class="btn btn-secondary" style="margin-left: 1rem;">Preview Landing Page</a>
+                </div>
+            </form>
         </div>
 
         <!-- API Settings -->

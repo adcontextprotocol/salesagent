@@ -121,6 +121,20 @@ def create_tenant(args):
 
     access_info = "\n".join(access_summary) if access_summary else "ℹ️  No domain-based access configured"
 
+    # Set up landing page configuration for the new tenant
+    try:
+        from src.utils.landing_page_generator import setup_tenant_landing_page
+
+        setup_tenant_landing_page(
+            tenant_id=tenant_id,
+            tenant_name=args.name,
+            # Could add more parameters here if provided via CLI args
+        )
+        print("✅ Landing page configured automatically")
+    except Exception as e:
+        print(f"⚠️  Warning: Could not set up landing page: {e}")
+        print("   You can configure it manually through the Admin UI")
+
     print(
         f"""
 ✅ Tenant (Publisher) created successfully!
@@ -135,12 +149,16 @@ Subdomain: {subdomain}
 🌐 Admin UI: http://localhost:8001
    {f"Login as {admin_email} to manage this publisher" if admin_email else "Login with your Google account to manage this publisher"}
 
+🚀 Landing Page: https://{subdomain}.sales-agent.scope3.com
+   (Public page for agent integration and product exploration)
+
 📝 Next Steps:
 1. {'Access the Admin UI with your admin account' if admin_email else 'Access the Admin UI to complete setup'}
 2. Configure your ad server integration (if not done)
 3. Add more authorized domains/emails in the Users & Access section
 4. Create principals for each advertiser who will buy inventory
 5. Share API tokens with advertisers to access the MCP API
+6. Customize your landing page through Admin UI → Landing Page Settings
 
 💡 Remember: Principals represent advertisers, not the publisher.
    Each advertiser gets their own principal with unique API access.

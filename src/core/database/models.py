@@ -54,6 +54,7 @@ class Tenant(Base, JSONValidatorMixin):
     human_review_required = Column(Boolean, nullable=False, default=True)
     policy_settings = Column(JSON)  # JSON object
     signals_agent_config = Column(JSON)  # JSON object for upstream signals discovery agent configuration
+    landing_config = Column(JSON)  # JSON object for landing page customization
 
     # Relationships
     products = relationship("Product", back_populates="tenant", cascade="all, delete-orphan")
@@ -135,6 +136,7 @@ class Product(Base, JSONValidatorMixin):
     expires_at = Column(DateTime)
     countries = Column(JSON)  # JSONB in PostgreSQL
     implementation_config = Column(JSON)  # JSONB in PostgreSQL
+    requires_authentication = Column(Boolean, nullable=False, default=False)  # Public vs auth-only visibility
 
     # Relationships
     tenant = relationship("Tenant", back_populates="products")

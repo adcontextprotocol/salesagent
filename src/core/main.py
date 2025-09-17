@@ -4581,43 +4581,326 @@ if os.environ.get("ADCP_UNIFIED_MODE"):
             # Look up tenant by virtual host
             tenant = get_tenant_by_virtual_host(apx_host)
             if tenant:
-                # Show landing page for virtual host
+                # Get landing configuration with defaults
+                landing_config = tenant.get("landing_config", {{}}) or {{}}
+
+                # Default values
+                hero_message = landing_config.get(
+                    "hero_message", "Discover {tenant['name']}'s advertising inventory through AI agents"
+                )
+                description = landing_config.get(
+                    "description", "Browse our products, then connect your buying agent to start campaigns instantly"
+                )
+                primary_color = landing_config.get("primary_color", "#2563eb")
+                secondary_color = landing_config.get("secondary_color", "#10b981")
+                logo_url = landing_config.get("logo_url", "")
+                contact_email = landing_config.get("contact_email", "")
+                booking_url = landing_config.get("booking_url", "")
+
+                # Show enhanced landing page for virtual host
                 html_content = f"""
                 <!DOCTYPE html>
-                <html>
+                <html lang="en">
                 <head>
-                    <title>{tenant['name']} - Ad Sales Portal</title>
+                    <title>{tenant['name']} - AI-Powered Ad Sales</title>
                     <meta charset="utf-8">
                     <meta name="viewport" content="width=device-width, initial-scale=1">
                     <style>
-                        body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; margin: 0; padding: 0; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); min-height: 100vh; display: flex; align-items: center; justify-content: center; }}
-                        .container {{ background: white; border-radius: 8px; padding: 2rem; max-width: 600px; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1); text-align: center; }}
-                        h1 {{ color: #333; margin-bottom: 0.5rem; }}
-                        .subtitle {{ color: #666; margin-bottom: 2rem; }}
-                        .api-info {{ background: #f8f9fa; border-radius: 4px; padding: 1.5rem; margin: 2rem 0; text-align: left; }}
-                        .endpoint {{ font-family: monospace; background: #e9ecef; padding: 0.25rem 0.5rem; border-radius: 3px; }}
-                        .button {{ display: inline-block; background: #007bff; color: white; padding: 0.75rem 1.5rem; border-radius: 4px; text-decoration: none; margin: 0.5rem; }}
-                        .button:hover {{ background: #0056b3; }}
-                        .host {{ color: #28a745; font-weight: bold; }}
+                        * {{ margin: 0; padding: 0; box-sizing: border-box; }}
+                        body {{
+                            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+                            line-height: 1.6;
+                            color: #333;
+                            background: linear-gradient(135deg, {primary_color}15 0%, {secondary_color}15 100%);
+                            min-height: 100vh;
+                        }}
+                        .container {{ max-width: 1000px; margin: 0 auto; padding: 2rem; }}
+
+                        /* Header */
+                        .header {{ text-align: center; margin-bottom: 3rem; }}
+                        .logo {{ max-height: 60px; margin-bottom: 1rem; }}
+                        .hero-title {{ font-size: 2.5rem; font-weight: 700; color: {primary_color}; margin-bottom: 1rem; }}
+                        .hero-description {{ font-size: 1.2rem; color: #666; max-width: 600px; margin: 0 auto; }}
+
+                        /* Demo Section */
+                        .demo-section {{
+                            background: white;
+                            border-radius: 12px;
+                            padding: 2rem;
+                            margin: 2rem 0;
+                            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+                        }}
+                        .demo-title {{ font-size: 1.5rem; font-weight: 600; margin-bottom: 1rem; color: #333; }}
+                        .demo-input {{
+                            width: 100%;
+                            padding: 1rem;
+                            border: 2px solid #e5e7eb;
+                            border-radius: 8px;
+                            font-size: 1rem;
+                            margin-bottom: 1rem;
+                            min-height: 80px;
+                            resize: vertical;
+                        }}
+                        .demo-input:focus {{ border-color: {primary_color}; outline: none; }}
+
+                        .examples {{ margin: 1rem 0; }}
+                        .examples-title {{ font-size: 0.9rem; font-weight: 500; color: #666; margin-bottom: 0.5rem; }}
+                        .example-buttons {{ display: flex; flex-wrap: wrap; gap: 0.5rem; }}
+                        .example-btn {{
+                            background: #f3f4f6;
+                            border: 1px solid #d1d5db;
+                            padding: 0.5rem 1rem;
+                            border-radius: 20px;
+                            cursor: pointer;
+                            font-size: 0.9rem;
+                            transition: all 0.2s;
+                        }}
+                        .example-btn:hover {{ background: {primary_color}; color: white; }}
+
+                        .search-btn {{
+                            background: {primary_color};
+                            color: white;
+                            border: none;
+                            padding: 0.75rem 1.5rem;
+                            border-radius: 8px;
+                            font-size: 1rem;
+                            cursor: pointer;
+                            font-weight: 500;
+                            width: 100%;
+                            transition: background 0.2s;
+                        }}
+                        .search-btn:hover {{ background: {primary_color}cc; }}
+                        .search-btn:disabled {{ background: #9ca3af; cursor: not-allowed; }}
+
+                        /* Results */
+                        .results {{ margin-top: 1.5rem; }}
+                        .product-card {{
+                            background: #f9fafb;
+                            border: 1px solid #e5e7eb;
+                            border-radius: 8px;
+                            padding: 1rem;
+                            margin-bottom: 1rem;
+                        }}
+                        .product-name {{ font-weight: 600; color: {primary_color}; margin-bottom: 0.5rem; }}
+                        .product-description {{ color: #666; margin-bottom: 0.5rem; }}
+                        .product-details {{ font-size: 0.9rem; color: #666; }}
+
+                        /* Agent Setup */
+                        .agent-section {{
+                            background: white;
+                            border-radius: 12px;
+                            padding: 2rem;
+                            margin: 2rem 0;
+                            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+                        }}
+                        .agent-grid {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 1.5rem; }}
+                        .agent-card {{ border: 1px solid #e5e7eb; border-radius: 8px; padding: 1.5rem; }}
+                        .agent-title {{ font-weight: 600; color: {primary_color}; margin-bottom: 1rem; }}
+                        .code-block {{
+                            background: #1f2937;
+                            color: #f9fafb;
+                            padding: 1rem;
+                            border-radius: 8px;
+                            font-family: 'Monaco', 'Menlo', monospace;
+                            font-size: 0.85rem;
+                            overflow-x: auto;
+                            margin: 1rem 0;
+                        }}
+
+                        /* CTA Section */
+                        .cta-section {{ text-align: center; margin: 3rem 0; }}
+                        .cta-buttons {{ display: flex; justify-content: center; gap: 1rem; flex-wrap: wrap; }}
+                        .btn-primary {{
+                            background: {primary_color};
+                            color: white;
+                            padding: 1rem 2rem;
+                            border-radius: 8px;
+                            text-decoration: none;
+                            font-weight: 600;
+                            transition: all 0.2s;
+                        }}
+                        .btn-primary:hover {{ background: {primary_color}cc; transform: translateY(-1px); }}
+                        .btn-secondary {{
+                            background: white;
+                            color: {primary_color};
+                            border: 2px solid {primary_color};
+                            padding: 1rem 2rem;
+                            border-radius: 8px;
+                            text-decoration: none;
+                            font-weight: 600;
+                            transition: all 0.2s;
+                        }}
+                        .btn-secondary:hover {{ background: {primary_color}; color: white; }}
+
+                        /* Footer */
+                        .footer {{ text-align: center; padding: 2rem 0; color: #666; }}
+                        .admin-link {{ color: #666; text-decoration: none; font-size: 0.9rem; }}
+                        .admin-link:hover {{ color: {primary_color}; }}
+
+                        /* Responsive */
+                        @media (max-width: 768px) {{
+                            .container {{ padding: 1rem; }}
+                            .hero-title {{ font-size: 2rem; }}
+                            .agent-grid {{ grid-template-columns: 1fr; }}
+                            .cta-buttons {{ flex-direction: column; }}
+                        }}
                     </style>
                 </head>
                 <body>
                     <div class="container">
-                        <h1>{tenant['name']}</h1>
-                        <p class="subtitle">Advertising Context Protocol (AdCP) Sales Agent</p>
+                        <!-- Header -->
+                        <header class="header">
+                            {f'<img src="{logo_url}" alt="{tenant["name"]}" class="logo">' if logo_url else ''}
+                            <h1 class="hero-title">{hero_message}</h1>
+                            <p class="hero-description">{description}</p>
+                        </header>
 
-                        <div class="api-info">
-                            <h3>API Access</h3>
-                            <p><strong>MCP Endpoint:</strong> <span class="endpoint">https://{apx_host}/mcp</span></p>
-                            <p><strong>A2A Endpoint:</strong> <span class="endpoint">https://{apx_host}/a2a</span></p>
-                            <p class="host">Virtual Host: {apx_host}</p>
-                        </div>
+                        <!-- Interactive Demo -->
+                        <section class="demo-section">
+                            <h2 class="demo-title">🤖 Try Our AI Sales Agent</h2>
+                            <textarea
+                                id="briefInput"
+                                class="demo-input"
+                                placeholder="Describe what you're advertising and who you want to reach..."
+                                rows="3"
+                            ></textarea>
 
-                        <div>
-                            <a href="/admin/" class="button">Admin Dashboard</a>
-                            <a href="https://adcontextprotocol.org/docs/" class="button" target="_blank">AdCP Documentation</a>
-                        </div>
+                            <div class="examples">
+                                <p class="examples-title">Or try one of these examples:</p>
+                                <div class="example-buttons">
+                                    <button class="example-btn" onclick="fillExample('Video ads for a new streaming series targeting 18-34')">Streaming Series 📺</button>
+                                    <button class="example-btn" onclick="fillExample('Display ads for B2B software targeting decision makers')">B2B Software 💼</button>
+                                    <button class="example-btn" onclick="fillExample('Audio ads for a consumer app targeting commuters')">Consumer App 📱</button>
+                                    <button class="example-btn" onclick="fillExample('Native ads for an e-commerce brand targeting parents')">E-commerce Brand 🛒</button>
+                                </div>
+                            </div>
+
+                            <button class="search-btn" onclick="searchProducts()">Find Matching Products</button>
+
+                            <div id="results" class="results"></div>
+                        </section>
+
+                        <!-- Agent Setup -->
+                        <section class="agent-section">
+                            <h2 class="demo-title">🔗 Connect Your AI Agent</h2>
+                            <div class="agent-grid">
+                                <div class="agent-card">
+                                    <h3 class="agent-title">Claude Desktop Setup</h3>
+                                    <p>Add this to your MCP settings:</p>
+                                    <div class="code-block">{{
+  "mcpServers": {{
+    "{tenant['name'].lower().replace(' ', '-')}-ads": {{
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-fetch"],
+      "env": {{
+        "FETCH_API_URL": "https://{apx_host}/mcp"
+      }}
+    }}
+  }}
+}}</div>
+                                </div>
+
+                                <div class="agent-card">
+                                    <h3 class="agent-title">ChatGPT Integration</h3>
+                                    <p>Use these API endpoints directly:</p>
+                                    <div class="code-block">MCP: https://{apx_host}/mcp
+A2A: https://{apx_host}/a2a
+Discovery: https://{apx_host}/.well-known/agent.json</div>
+                                </div>
+                            </div>
+                        </section>
+
+                        <!-- Call to Action -->
+                        <section class="cta-section">
+                            <h2 style="margin-bottom: 1rem;">Ready to get started?</h2>
+                            <div class="cta-buttons">
+                                <a href="https://scope3.com/signup" class="btn-primary">🛒 Get a Buying Agent</a>
+                                <a href="https://adcontextprotocol.org/docs/" class="btn-secondary" target="_blank">📚 View AdCP Spec</a>
+                                {f'<a href="mailto:{contact_email}" class="btn-secondary">✉️ Contact Sales</a>' if contact_email else ''}
+                                {f'<a href="{booking_url}" class="btn-secondary" target="_blank">📅 Book a Demo</a>' if booking_url else ''}
+                            </div>
+                        </section>
+
+                        <!-- Footer -->
+                        <footer class="footer">
+                            <a href="/admin/" class="admin-link">Team Admin Dashboard →</a>
+                        </footer>
                     </div>
+
+                    <script>
+                        function fillExample(text) {{
+                            document.getElementById('briefInput').value = text;
+                        }}
+
+                        async function searchProducts() {{
+                            const brief = document.getElementById('briefInput').value.trim();
+                            const results = document.getElementById('results');
+                            const btn = document.querySelector('.search-btn');
+
+                            if (!brief) {{
+                                alert('Please enter a brief or select an example');
+                                return;
+                            }}
+
+                            btn.disabled = true;
+                            btn.textContent = 'Searching...';
+                            results.innerHTML = '';
+
+                            try {{
+                                const response = await fetch(`/public/products?brief=${{encodeURIComponent(brief)}}`, {{
+                                    headers: {{
+                                        'apx-incoming-host': '{apx_host}'
+                                    }}
+                                }});
+
+                                const data = await response.json();
+
+                                if (data.products && data.products.length > 0) {{
+                                    results.innerHTML = `
+                                        <h3 style="color: {primary_color}; margin-bottom: 1rem;">🎯 ${{data.message}}</h3>
+                                        ${{data.products.map(product => `
+                                            <div class="product-card">
+                                                <div class="product-name">${{product.name}}</div>
+                                                <div class="product-description">${{product.description || 'Premium advertising inventory'}}</div>
+                                                <div class="product-details">
+                                                    • Formats: ${{(product.formats || []).map(f => f.name || f).join(', ') || 'Multiple formats available'}}
+                                                    <br>• Delivery: ${{product.delivery_type || 'Flexible delivery options'}}
+                                                    <br>• Countries: ${{(product.countries || ['Global']).join(', ')}}
+                                                </div>
+                                            </div>
+                                        `).join('')}}
+                                        <p style="text-align: center; margin-top: 1.5rem; color: #666;">
+                                            Ready to create campaigns with these products? Connect your AI agent above! 🚀
+                                        </p>
+                                    `;
+                                }} else {{
+                                    results.innerHTML = `
+                                        <div style="text-align: center; color: #666; padding: 2rem;">
+                                            <p>No products found matching "${{brief}}"</p>
+                                            <p>Try a different brief or contact our team for custom solutions.</p>
+                                        </div>
+                                    `;
+                                }}
+                            }} catch (error) {{
+                                results.innerHTML = `
+                                    <div style="text-align: center; color: #dc2626; padding: 2rem;">
+                                        <p>Sorry, there was an error searching our products.</p>
+                                        <p>Please try again or contact our team.</p>
+                                    </div>
+                                `;
+                            }} finally {{
+                                btn.disabled = false;
+                                btn.textContent = 'Find Matching Products';
+                            }}
+                        }}
+
+                        // Allow Enter key to search
+                        document.getElementById('briefInput').addEventListener('keypress', function(e) {{
+                            if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {{
+                                searchProducts();
+                            }}
+                        }});
+                    </script>
                 </body>
                 </html>
                 """
@@ -4660,3 +4943,80 @@ if os.environ.get("ADCP_UNIFIED_MODE"):
     async def tenant_root(request: Request, tenant_id: str):
         """Redirect to tenant admin."""
         return RedirectResponse(url=f"/tenant/{tenant_id}/admin/")
+
+    @mcp.custom_route("/public/products", methods=["GET"])
+    async def public_products(request: Request):
+        """Get public products matching a brief (no authentication required)."""
+        from fastapi.responses import JSONResponse
+
+        from src.core.database.models import Product as ModelProduct
+        from src.core.schemas import Product
+
+        # Get query parameters
+        brief = request.query_params.get("brief", "")
+
+        # Get tenant from virtual host
+        headers = dict(request.headers)
+        apx_host = headers.get("apx-incoming-host")
+
+        if not apx_host:
+            return JSONResponse(status_code=400, content={"error": "Virtual host required"})
+
+        tenant = get_tenant_by_virtual_host(apx_host)
+        if not tenant:
+            return JSONResponse(status_code=404, content={"error": "Tenant not found"})
+
+        try:
+            with get_db_session() as session:
+                # Get public products (no authentication required)
+                products_query = session.query(ModelProduct).filter(
+                    ModelProduct.tenant_id == tenant["tenant_id"], ~ModelProduct.requires_authentication
+                )
+
+                db_products = products_query.all()
+
+                # Convert to schema objects for proper serialization
+                products = []
+                for db_product in db_products:
+                    # Create Product schema without prices (public view)
+                    product_data = {
+                        "product_id": db_product.product_id,
+                        "name": db_product.name,
+                        "description": db_product.description,
+                        "formats": db_product.formats or [],
+                        "targeting_template": db_product.targeting_template or {},
+                        "delivery_type": db_product.delivery_type,
+                        "countries": db_product.countries or [],
+                        "measurement": db_product.measurement,
+                        "creative_policy": db_product.creative_policy,
+                        # Exclude pricing fields for public view
+                        "is_fixed_price": False,  # Don't expose pricing model
+                        "cpm": None,  # No prices for public
+                        "min_spend": None,  # No pricing for public
+                    }
+
+                    product = Product(**product_data)
+                    products.append(product.model_dump())
+
+                # Simple AI matching - filter products based on brief keywords
+                if brief:
+                    brief_lower = brief.lower()
+                    matched_products = []
+                    for product in products:
+                        product_text = f"{product['name']} {product['description'] or ''}".lower()
+                        # Simple keyword matching - can be enhanced with actual AI later
+                        if any(word in product_text for word in brief_lower.split()):
+                            matched_products.append(product)
+                    products = matched_products
+
+                return JSONResponse(
+                    content={
+                        "products": products,
+                        "message": f"Found {len(products)} products" + (f" matching '{brief}'" if brief else ""),
+                        "total_count": len(products),
+                    }
+                )
+
+        except Exception as e:
+            logger.error(f"Error fetching public products: {e}")
+            return JSONResponse(status_code=500, content={"error": "Internal server error"})

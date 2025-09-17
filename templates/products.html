@@ -46,6 +46,7 @@
                 <th>Formats</th>
                 <th>Countries</th>
                 <th>Type</th>
+                <th>Visibility</th>
                 <th>CPM</th>
                 <th>Actions</th>
             </tr>
@@ -79,6 +80,22 @@
                     {% else %}
                     <span class="badge badge-secondary">Non-guaranteed</span>
                     {% endif %}
+                </td>
+                <td>
+                    <div class="visibility-toggle">
+                        {% if hasattr(product, 'requires_authentication') and product.requires_authentication %}
+                        <span class="badge badge-warning" title="Requires authentication to view">🔒 Auth Only</span>
+                        {% else %}
+                        <span class="badge badge-success" title="Publicly visible on landing page">🌐 Public</span>
+                        {% endif %}
+                        <button class="btn btn-xs toggle-visibility-btn"
+                                data-product-id="{{ product.product_id }}"
+                                data-tenant-id="{{ tenant_id }}"
+                                data-current-auth="{{ 'true' if (hasattr(product, 'requires_authentication') and product.requires_authentication) else 'false' }}"
+                                onclick="toggleVisibility(this)">
+                            Toggle
+                        </button>
+                    </div>
                 </td>
                 <td>
                     {% if product.is_fixed_price %}
@@ -169,5 +186,70 @@
     background: #f5f5f5;
     color: #666;
 }
+
+.badge-success {
+    background: #d4edda;
+    color: #155724;
+}
+
+.badge-warning {
+    background: #fff3cd;
+    color: #856404;
+}
+
+.visibility-toggle {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.toggle-visibility-btn {
+    font-size: 0.7rem;
+    padding: 0.2rem 0.4rem;
+}
+
+.btn-xs {
+    font-size: 0.7rem;
+    padding: 0.2rem 0.4rem;
+    border-radius: 3px;
+}
 </style>
+
+<script>
+async function toggleVisibility(button) {
+    const productId = button.dataset.productId;
+    const tenantId = button.dataset.tenantId;
+    const currentAuth = button.dataset.currentAuth === 'true';
+
+    // Disable button during request
+    button.disabled = true;
+    button.textContent = 'Updating...';
+
+    try {
+        const response = await fetch(`/tenant/${tenantId}/products/${productId}/toggle-visibility`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                requires_authentication: !currentAuth
+            })
+        });
+
+        if (response.ok) {
+            // Reload the page to show updated status
+            window.location.reload();
+        } else {
+            const error = await response.text();
+            alert('Error updating visibility: ' + error);
+        }
+    } catch (error) {
+        alert('Error updating visibility: ' + error.message);
+    } finally {
+        button.disabled = false;
+        button.textContent = 'Toggle';
+    }
+}
+</script>
+
 {% endblock %}

@@ -162,6 +162,7 @@ def get_tenant_by_virtual_host(virtual_host: str) -> dict[str, Any] | None:
                     "slack_audit_webhook_url": tenant.slack_audit_webhook_url,
                     "hitl_webhook_url": tenant.hitl_webhook_url,
                     "policy_settings": safe_json_loads(tenant.policy_settings, None),
+                    "landing_config": safe_json_loads(tenant.landing_config, {}),
                 }
             return None
     except Exception as e:

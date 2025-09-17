@@ -550,3 +550,81 @@ def test_domain_access(tenant_id):
         flash("Error testing email access", "error")
 
     return redirect(url_for("tenants.tenant_settings", tenant_id=tenant_id, section="access"))
+
+
+# Landing Page Management Routes
+@settings_bp.route("/landing", methods=["POST"])
+@require_tenant_access()
+def update_landing(tenant_id):
+    """Update landing page configuration."""
+    try:
+        # Get form data
+        landing_config = {
+            "logo_url": request.form.get("logo_url", "").strip(),
+            "primary_color": request.form.get("primary_color", "#2563eb").strip(),
+            "secondary_color": request.form.get("secondary_color", "#10b981").strip(),
+            "hero_message": request.form.get("hero_message", "").strip(),
+            "description": request.form.get("description", "").strip(),
+            "contact_email": request.form.get("contact_email", "").strip(),
+            "booking_url": request.form.get("booking_url", "").strip(),
+        }
+
+        # Remove empty values
+        landing_config = {k: v for k, v in landing_config.items() if v}
+
+        # Validate required fields
+        if not landing_config.get("hero_message"):
+            flash("Hero message is required", "error")
+            return redirect(url_for("tenants.tenant_settings", tenant_id=tenant_id, section="landing"))
+
+        # Validate color formats
+        for color_field in ["primary_color", "secondary_color"]:
+            if color_field in landing_config:
+                color = landing_config[color_field]
+                if not color.startswith("#") or len(color) != 7:
+                    flash(f"Invalid {color_field.replace('_', ' ')} format. Use #RRGGBB format.", "error")
+                    return redirect(url_for("tenants.tenant_settings", tenant_id=tenant_id, section="landing"))
+
+        # Validate URLs if provided
+        for url_field in ["logo_url", "booking_url"]:
+            if url_field in landing_config:
+                url = landing_config[url_field]
+                if not (url.startswith("http://") or url.startswith("https://")):
+                    flash(f"Invalid {url_field.replace('_', ' ')}. Must start with http:// or https://", "error")
+                    return redirect(url_for("tenants.tenant_settings", tenant_id=tenant_id, section="landing"))
+
+        # Validate email if provided
+        if "contact_email" in landing_config:
+            email = landing_config["contact_email"]
+            if "@" not in email or "." not in email.split("@")[1]:
+                flash("Invalid contact email format", "error")
+                return redirect(url_for("tenants.tenant_settings", tenant_id=tenant_id, section="landing"))
+
+        # Add default partner links if not exists
+        if "partner_links" not in landing_config:
+            landing_config["partner_links"] = [
+                {
+                    "name": "Scope3",
+                    "url": "https://scope3.com/signup",
+                    "description": "AI-powered media buying platform",
+                }
+            ]
+
+        with get_db_session() as db_session:
+            tenant = db_session.query(Tenant).filter_by(tenant_id=tenant_id).first()
+            if not tenant:
+                flash("Tenant not found", "error")
+                return redirect(url_for("core.index"))
+
+            # Update landing configuration
+            tenant.landing_config = landing_config
+            db_session.commit()
+
+            flash("Landing page settings updated successfully", "success")
+            logger.info(f"Updated landing page configuration for tenant {tenant_id}")
+
+    except Exception as e:
+        logger.error(f"Error updating landing page settings: {e}", exc_info=True)
+        flash(f"Error updating landing page settings: {str(e)}", "error")
+
+    return redirect(url_for("tenants.tenant_settings", tenant_id=tenant_id, section="landing"))

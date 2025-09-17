@@ -56,6 +56,7 @@ def list_products(tenant_id):
                         else json.loads(product.countries) if product.countries else []
                     ),
                     "created_at": product.created_at if hasattr(product, "created_at") else None,
+                    "requires_authentication": getattr(product, "requires_authentication", False),
                 }
                 products_list.append(product_dict)
 
@@ -663,3 +664,43 @@ def create_bulk(tenant_id):
     except Exception as e:
         logger.error(f"Error creating bulk products: {e}", exc_info=True)
         return jsonify({"error": "Failed to create products"}), 500
+
+
+@products_bp.route("/<product_id>/toggle-visibility", methods=["POST"])
+@require_tenant_access()
+def toggle_product_visibility(tenant_id, product_id):
+    """Toggle product visibility (public vs authentication required)."""
+    try:
+        # Get JSON data from request
+        data = request.get_json()
+        if not data:
+            return jsonify({"error": "Invalid request data"}), 400
+
+        requires_authentication = data.get("requires_authentication", False)
+
+        with get_db_session() as db_session:
+            # Find the product
+            product = db_session.query(Product).filter_by(tenant_id=tenant_id, product_id=product_id).first()
+
+            if not product:
+                return jsonify({"error": "Product not found"}), 404
+
+            # Update visibility setting
+            product.requires_authentication = requires_authentication
+            db_session.commit()
+
+            visibility_status = "authentication required" if requires_authentication else "public"
+            logger.info(f"Updated product {product_id} visibility to {visibility_status} for tenant {tenant_id}")
+
+            return jsonify(
+                {
+                    "success": True,
+                    "product_id": product_id,
+                    "requires_authentication": requires_authentication,
+                    "message": f"Product visibility updated to {visibility_status}",
+                }
+            )
+
+    except Exception as e:
+        logger.error(f"Error toggling product visibility: {e}", exc_info=True)
+        return jsonify({"error": "Failed to update product visibility"}), 500
