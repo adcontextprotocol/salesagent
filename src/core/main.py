@@ -4577,9 +4577,15 @@ if os.environ.get("ADCP_UNIFIED_MODE"):
         headers = dict(request.headers)
         apx_host = headers.get("apx-incoming-host")
 
-        if apx_host:
+        # Also check the actual hostname for direct access
+        hostname = request.headers.get("host", "")
+
+        # Use apx_host if available, otherwise use hostname
+        target_host = apx_host or hostname
+
+        if target_host:
             # Look up tenant by virtual host
-            tenant = get_tenant_by_virtual_host(apx_host)
+            tenant = get_tenant_by_virtual_host(target_host)
             if tenant:
                 # Get landing configuration with defaults
                 default_config = {}
@@ -4608,7 +4614,7 @@ if os.environ.get("ADCP_UNIFIED_MODE"):
       "command": "npx",
       "args": ["-y", "@modelcontextprotocol/server-fetch"],
       "env": {{
-        "FETCH_API_URL": "https://{apx_host}/mcp"
+        "FETCH_API_URL": "https://{target_host}/mcp"
       }}
     }}
   }}
@@ -4962,14 +4968,18 @@ Discovery: https://{apx_host}/.well-known/agent.json</div>
         # Get query parameters
         brief = request.query_params.get("brief", "")
 
-        # Get tenant from virtual host
+        # Get tenant from virtual host or hostname
         headers = dict(request.headers)
         apx_host = headers.get("apx-incoming-host")
+        hostname = request.headers.get("host", "")
 
-        if not apx_host:
-            return JSONResponse(status_code=400, content={"error": "Virtual host required"})
+        # Use apx_host if available, otherwise use hostname
+        target_host = apx_host or hostname
 
-        tenant = get_tenant_by_virtual_host(apx_host)
+        if not target_host:
+            return JSONResponse(status_code=400, content={"error": "Host required"})
+
+        tenant = get_tenant_by_virtual_host(target_host)
         if not tenant:
             return JSONResponse(status_code=404, content={"error": "Tenant not found"})
 
