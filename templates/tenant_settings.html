@@ -1690,7 +1690,7 @@ function testSignalsConnection() {
     button.textContent = 'Testing...';
     button.disabled = true;
 
-    fetch('{{ script_name }}/tenant/{{ tenant.tenant_id }}/test_signals', {
+    fetch('{{ script_name }}/tenant/{{ tenant.tenant_id }}/settings/test_signals', {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
