@@ -1007,7 +1007,7 @@
                 <h3>MCP Server Endpoint</h3>
                 <div class="config-code">
                     <button class="copy-button" onclick="copyToClipboard(this)">Copy</button>
-                    <pre style="margin: 0;">{% if tenant.subdomain == 'localhost' %}http://localhost:8080/mcp/{% else %}http://{{ tenant.subdomain }}.localhost:8080/mcp/{% endif %}</pre>
+                    <pre style="margin: 0;">{% if tenant.virtual_host %}https://{{ tenant.virtual_host }}/mcp/{% elif is_production %}https://{{ tenant.subdomain }}.sales-agent.scope3.com/mcp/{% else %}http://localhost:{{ mcp_port }}/mcp/{% endif %}</pre>
                 </div>
             </div>
 
@@ -1018,9 +1018,12 @@
                     <pre style="margin: 0;">from fastmcp.client import Client
 from fastmcp.client.transports import StreamableHttpTransport
 
-headers = {"x-adcp-auth": "YOUR_ACCESS_TOKEN"}
+headers = {
+    "x-adcp-auth": "YOUR_ACCESS_TOKEN",
+    "x-adcp-tenant": "{{ tenant.subdomain }}"
+}
 transport = StreamableHttpTransport(
-    url="{% if tenant.subdomain == 'localhost' %}http://localhost:8080/mcp/{% else %}http://{{ tenant.subdomain }}.localhost:8080/mcp/{% endif %}",
+    url="{% if tenant.virtual_host %}https://{{ tenant.virtual_host }}/mcp/{% elif is_production %}https://{{ tenant.subdomain }}.sales-agent.scope3.com/mcp/{% else %}http://localhost:{{ mcp_port }}/mcp/{% endif %}",
     headers=headers
 )
 client = Client(transport=transport)
@@ -1553,7 +1556,7 @@ function copyA2AConfig(principalId, principalName, accessToken) {
     const a2aConfig = {
         "id": principalId,
         "name": principalName,
-        "agent_uri": "https://adcp-sales-agent.fly.dev",
+        "agent_uri": "{% if is_production %}https://{{ tenant.subdomain }}.sales-agent.scope3.com{% else %}http://localhost:{{ mcp_port }}{% endif %}",
         "protocol": "a2a",
         "auth_token_env": accessToken,
         "requiresAuth": true

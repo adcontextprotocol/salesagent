@@ -63,8 +63,30 @@ def init_oauth(app):
 
 @auth_bp.route("/login")
 def login():
-    """Show login page."""
-    return render_template("login.html", test_mode=os.environ.get("ADCP_AUTH_TEST_MODE", "").lower() == "true")
+    """Show login page with tenant context detection."""
+    # Extract tenant from Host header for tenant-specific subdomains
+    host = request.headers.get("Host", "")
+    tenant_context = None
+    tenant_name = None
+
+    if ".sales-agent.scope3.com" in host and not host.startswith("admin."):
+        # Extract tenant subdomain (e.g., "scribd" from "scribd.sales-agent.scope3.com")
+        tenant_subdomain = host.split(".")[0]
+
+        # Look up tenant by subdomain
+        with get_db_session() as db_session:
+            tenant = db_session.query(Tenant).filter_by(subdomain=tenant_subdomain).first()
+            if tenant:
+                tenant_context = tenant.tenant_id
+                tenant_name = tenant.name
+                logger.info(f"Detected tenant context from Host header: {tenant_subdomain} -> {tenant_context}")
+
+    return render_template(
+        "login.html",
+        test_mode=os.environ.get("ADCP_AUTH_TEST_MODE", "").lower() == "true",
+        tenant_context=tenant_context,
+        tenant_name=tenant_name,
+    )
 
 
 @auth_bp.route("/tenant/<tenant_id>/login")
@@ -86,16 +108,39 @@ def tenant_login(tenant_id):
 
 @auth_bp.route("/auth/google")
 def google_auth():
-    """Initiate Google OAuth flow for super admin."""
+    """Initiate Google OAuth flow with tenant context detection."""
     oauth = current_app.oauth if hasattr(current_app, "oauth") else None
     if not oauth:
         flash("OAuth not configured", "error")
         return redirect(url_for("auth.login"))
 
-    redirect_uri = url_for("auth.google_callback", _external=True)
-    # Force HTTPS in production
-    if os.environ.get("PRODUCTION") == "true" and redirect_uri.startswith("http://"):
-        redirect_uri = redirect_uri.replace("http://", "https://", 1)
+    # Capture tenant context from Host header or form data
+    host = request.headers.get("Host", "")
+    tenant_context = request.args.get("tenant_context")  # From login form
+
+    if not tenant_context and ".sales-agent.scope3.com" in host and not host.startswith("admin."):
+        # Extract tenant subdomain from Host header
+        tenant_subdomain = host.split(".")[0]
+        with get_db_session() as db_session:
+            tenant = db_session.query(Tenant).filter_by(subdomain=tenant_subdomain).first()
+            if tenant:
+                tenant_context = tenant.tenant_id
+                logger.info(f"Detected tenant context from Host header: {tenant_subdomain} -> {tenant_context}")
+
+    # Always use base domain for OAuth callback to support dynamic tenants
+    if os.environ.get("PRODUCTION") == "true" or ".sales-agent.scope3.com" in request.headers.get("Host", ""):
+        # For production, use the base domain as redirect URI
+        redirect_uri = "https://sales-agent.scope3.com/admin/auth/google/callback"
+    else:
+        # Development fallback
+        redirect_uri = url_for("auth.google_callback", _external=True)
+
+    # Store originating host and tenant context in session for OAuth callback
+    # We can't use custom state parameter due to CSRF validation, so use session instead
+    session["oauth_originating_host"] = host
+    if tenant_context:
+        session["oauth_tenant_context"] = tenant_context
+
     return oauth.google.authorize_redirect(redirect_uri)
 
 
@@ -107,12 +152,21 @@ def tenant_google_auth(tenant_id):
         flash("OAuth not configured", "error")
         return redirect(url_for("auth.tenant_login", tenant_id=tenant_id))
 
-    # Store tenant_id in session for callback
-    session["oauth_tenant_id"] = tenant_id
-    redirect_uri = url_for("auth.google_callback", _external=True)
-    # Force HTTPS in production
-    if os.environ.get("PRODUCTION") == "true" and redirect_uri.startswith("http://"):
-        redirect_uri = redirect_uri.replace("http://", "https://", 1)
+    host = request.headers.get("Host", "")
+
+    # Always use base domain for OAuth callback to support dynamic tenants
+    if os.environ.get("PRODUCTION") == "true" or ".sales-agent.scope3.com" in request.headers.get("Host", ""):
+        # For production, use the base domain as redirect URI
+        redirect_uri = "https://sales-agent.scope3.com/admin/auth/google/callback"
+    else:
+        # Development fallback
+        redirect_uri = url_for("auth.google_callback", _external=True)
+
+    # Store originating host and tenant context in session for OAuth callback
+    # We can't use custom state parameter due to CSRF validation, so use session instead
+    session["oauth_originating_host"] = host
+    session["oauth_tenant_context"] = tenant_id
+
     return oauth.google.authorize_redirect(redirect_uri)
 
 
@@ -150,8 +204,9 @@ def google_callback():
         session["user_name"] = user.get("name", email)
         session["user_picture"] = user.get("picture", "")
 
-        # Check if this is a tenant-specific login
-        tenant_id = session.pop("oauth_tenant_id", None)
+        # Get originating host and tenant context from session
+        originating_host = session.pop("oauth_originating_host", None)
+        tenant_id = session.pop("oauth_tenant_context", None)
         if tenant_id:
             # Verify user has access to this tenant
             with get_db_session() as db_session:
@@ -166,7 +221,12 @@ def google_callback():
                     session["tenant_name"] = tenant.name
                     session["is_super_admin"] = True
                     flash(f"Welcome {user.get('name', email)}! (Super Admin)", "success")
-                    return redirect(url_for("tenants.dashboard", tenant_id=tenant_id))
+
+                    # Redirect to tenant-specific subdomain if accessed via subdomain
+                    if tenant.subdomain and tenant.subdomain != "localhost":
+                        return redirect(f"https://{tenant.subdomain}.sales-agent.scope3.com/admin/")
+                    else:
+                        return redirect(url_for("tenants.dashboard", tenant_id=tenant_id))
 
                 # Check if user has access to this tenant
                 user_record = db_session.query(User).filter_by(email=email, tenant_id=tenant_id, is_active=True).first()
@@ -176,7 +236,12 @@ def google_callback():
                     session["tenant_name"] = tenant.name
                     session["is_tenant_admin"] = user_record.is_admin
                     flash(f"Welcome {user.get('name', email)}!", "success")
-                    return redirect(url_for("tenants.dashboard", tenant_id=tenant_id))
+
+                    # Redirect to tenant-specific subdomain if accessed via subdomain
+                    if tenant.subdomain and tenant.subdomain != "localhost":
+                        return redirect(f"https://{tenant.subdomain}.sales-agent.scope3.com/admin/")
+                    else:
+                        return redirect(url_for("tenants.dashboard", tenant_id=tenant_id))
                 else:
                     flash("You don't have access to this tenant", "error")
                     session.clear()
@@ -185,13 +250,18 @@ def google_callback():
         # Regular login flow - check if super admin
         if is_super_admin(email):
             session["is_super_admin"] = True
-            session["role"] = "super_admin"  # Set role for template checks
+            session["role"] = "super_admin"
             session["authenticated"] = True
             session["email"] = email
-            logger.info(f"OAuth callback: Setting session for super admin {email}")
-            logger.info(f"Session keys after setting: {list(session.keys())}")
             flash(f"Welcome {user.get('name', email)}! (Super Admin)", "success")
-            return redirect(url_for("core.index"))
+
+            # Check where the OAuth flow originated from
+            if originating_host and originating_host.startswith("admin.") and os.environ.get("PRODUCTION") == "true":
+                return redirect("https://admin.sales-agent.scope3.com/admin/")
+            elif os.environ.get("PRODUCTION") == "true":
+                return redirect("https://admin.sales-agent.scope3.com/admin/")
+            else:
+                return redirect(url_for("core.index"))
 
         # Check if user is a tenant admin for any tenant
         with get_db_session() as db_session:

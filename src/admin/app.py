@@ -104,11 +104,13 @@ def create_app(config=None):
         app.config["SESSION_COOKIE_HTTPONLY"] = False  # Allow EventSource to access cookies
         app.config["SESSION_COOKIE_SAMESITE"] = "None"  # Required for EventSource cross-origin requests
         app.config["SESSION_COOKIE_PATH"] = "/admin/"  # Ensure cookies work for all /admin/* paths
+        app.config["SESSION_COOKIE_DOMAIN"] = ".sales-agent.scope3.com"  # Allow cookies across subdomains for OAuth
     else:
         app.config["SESSION_COOKIE_SECURE"] = False  # Allow HTTP in dev
         app.config["SESSION_COOKIE_HTTPONLY"] = True  # Standard setting for dev
         app.config["SESSION_COOKIE_SAMESITE"] = "Lax"  # Works with HTTP in development
         app.config["SESSION_COOKIE_PATH"] = "/"  # Standard root path for dev
+        # No domain restriction in dev (localhost)
 
     # Add custom Jinja2 filters
     def from_json_filter(s):
