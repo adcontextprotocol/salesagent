@@ -228,6 +228,18 @@ The GAM adapter has been refactored into a clean modular architecture:
 - **Development Efficiency**: New GAM features can be added to appropriate managers without touching orchestrator
 - **Maintenance Improvements**: Bug fixes and enhancements isolated to specific functional areas
 
+### Tenant-Specific Subdomain Architecture (Sep 2025)
+- **Production Domain**: Implemented `sales-agent.scope3.com` with tenant-specific subdomains
+- **Authentication Architecture**: Cross-domain OAuth with Google supporting both super admin and tenant logins
+- **Subdomain Pattern**: `https://[tenant].sales-agent.scope3.com` for tenant-specific access
+- **Nginx Configuration**: Comprehensive regex-based routing for tenant detection and path handling
+- **Session Management**: Cross-subdomain session cookies for seamless OAuth flow
+- **Hostname-Based Routing**: Automatic tenant detection from hostname without headers or path parameters
+- **SSL Certificates**: Wildcard certificate `*.sales-agent.scope3.com` for all tenant subdomains
+- **Admin Interface**: Dedicated `admin.sales-agent.scope3.com` for super admin functions
+- **DNS Setup**: A/AAAA records for base domain, CNAME wildcard for tenant subdomains
+- **Production Deployment**: Live on Fly.io with proper certificate and routing configuration
+
 ### AdCP Testing Specification Implementation (Aug 2025)
 - **Full Testing Backend**: Complete implementation of AdCP Testing Specification (https://adcontextprotocol.org/docs/media-buy/testing/)
 - **Testing Hooks System**: All 9 request headers (X-Dry-Run, X-Mock-Time, X-Jump-To-Event, etc.) with session isolation
@@ -1090,7 +1102,26 @@ fly secrets set GAM_OAUTH_CLIENT_ID="your-gam-client-id.apps.googleusercontent.c
 fly secrets set GAM_OAUTH_CLIENT_SECRET="your-gam-client-secret" --app adcp-sales-agent
 
 # IMPORTANT: Production database is separate from local!
-# Production URL: https://adcp-sales-agent.fly.dev
+# Production URLs:
+# - Base/MCP/A2A: https://adcp-sales-agent.fly.dev
+# - Custom Domain: https://sales-agent.scope3.com (tenant subdomains)
+# - Admin: https://admin.sales-agent.scope3.com
+```
+
+### Domain Setup for sales-agent.scope3.com
+```bash
+# DNS Configuration (already configured)
+# A/AAAA records for sales-agent.scope3.com → 66.241.125.123 / 2a09:8280:1::4:3c9b
+# CNAME *.sales-agent.scope3.com → adcp-sales-agent.fly.dev
+
+# SSL Certificates (configured)
+fly certs create "sales-agent.scope3.com" --app adcp-sales-agent
+fly certs create "*.sales-agent.scope3.com" --app adcp-sales-agent
+
+# Verify domain setup
+curl https://sales-agent.scope3.com/health
+curl https://admin.sales-agent.scope3.com/health
+curl https://scribd.sales-agent.scope3.com/health
 ```
 
 ### Deployment Checklist Before Going to Production

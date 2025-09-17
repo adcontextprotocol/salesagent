@@ -10,7 +10,10 @@
     </div>
     {% endif %}
 
-    {% if tenant_id %}
+    {% if tenant_context %}
+        <h2>{{ tenant_name or tenant_context }}</h2>
+        <p style="color: #666; margin-bottom: 2rem;">Sign in to access your tenant</p>
+    {% elif tenant_id %}
         <h2>{{ tenant_name or tenant_id }}</h2>
         <p style="color: #666; margin-bottom: 2rem;">Sign in to access your account</p>
     {% else %}
@@ -31,7 +34,9 @@
     {% endwith %}
 
     <div style="margin: 2rem 0;">
-        {% if tenant_id %}
+        {% if tenant_context %}
+        <a href="{{ url_for('auth.google_auth', tenant_context=tenant_context) }}" class="btn" style="display: inline-flex; align-items: center; padding: 0.75rem 1.5rem; font-size: 16px;">
+        {% elif tenant_id %}
         <a href="{{ url_for('auth.tenant_google_auth', tenant_id=tenant_id) }}" class="btn" style="display: inline-flex; align-items: center; padding: 0.75rem 1.5rem; font-size: 16px;">
         {% else %}
         <a href="{{ url_for('auth.google_auth') }}" class="btn" style="display: inline-flex; align-items: center; padding: 0.75rem 1.5rem; font-size: 16px;">
@@ -51,7 +56,9 @@
     <div style="margin: 2rem 0; padding: 2rem 0; border-top: 1px solid #ddd;">
         <h3 style="margin-bottom: 1rem;">Test Mode Login</h3>
         <form method="POST" action="{{ url_for('auth.test_auth') }}" style="text-align: left;">
-            {% if tenant_id %}
+            {% if tenant_context %}
+            <input type="hidden" name="tenant_id" value="{{ tenant_context }}">
+            {% elif tenant_id %}
             <input type="hidden" name="tenant_id" value="{{ tenant_id }}">
             {% endif %}
 

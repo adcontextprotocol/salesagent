@@ -33,7 +33,7 @@ def init_db(exit_on_error=False):
             new_tenant = Tenant(
                 tenant_id="default",
                 name="Default Publisher",
-                subdomain="localhost",  # Works with localhost:8080
+                subdomain="default",  # Proper subdomain routing
                 created_at=datetime.now(),
                 updated_at=datetime.now(),
                 is_active=True,
@@ -188,7 +188,7 @@ def init_db(exit_on_error=False):
 ║  A default tenant has been created for quick start:              ║
 ║                                                                  ║
 ║  🏢 Tenant: Default Publisher                                    ║
-║  🌐 URL: http://localhost:8080                                   ║
+║  🌐 URL: http://default.localhost:8080                           ║
 ║                                                                  ║
 ║  🔑 Admin Token (x-adcp-auth header):                            ║
 ║     {admin_token}  ║
@@ -201,7 +201,7 @@ def init_db(exit_on_error=False):
 ║     python scripts/setup/setup_tenant.py "Publisher Name"        ║
 ║                                                                  ║
 ║  📚 To use with a different tenant:                              ║
-║     http://[subdomain].localhost:8080                            ║
+║     http://[subdomain].localhost:PORT                            ║
 ║                                                                  ║
 ╚══════════════════════════════════════════════════════════════════╝
                 """

@@ -20,10 +20,27 @@ logger = logging.getLogger(__name__)
 core_bp = Blueprint("core", __name__)
 
 
+def get_tenant_from_hostname():
+    """Extract tenant from hostname for tenant-specific subdomains."""
+    host = request.headers.get("Host", "")
+    if ".sales-agent.scope3.com" in host and not host.startswith("admin."):
+        tenant_subdomain = host.split(".")[0]
+        with get_db_session() as db_session:
+            tenant = db_session.query(Tenant).filter_by(subdomain=tenant_subdomain).first()
+            return tenant
+    return None
+
+
 @core_bp.route("/")
 @require_auth()
 def index():
     """Main index page - redirects based on user role."""
+    # Check if we're on a tenant-specific subdomain
+    tenant = get_tenant_from_hostname()
+    if tenant:
+        # Redirect to tenant dashboard with tenant_id
+        return redirect(url_for("tenants.dashboard", tenant_id=tenant.tenant_id))
+
     # Check if user is super admin
     if session.get("role") == "super_admin":
         # Super admin - show all tenants
@@ -36,11 +53,15 @@ def index():
                         "tenant_id": tenant.tenant_id,
                         "name": tenant.name,
                         "subdomain": tenant.subdomain,
+                        "virtual_host": tenant.virtual_host,
                         "is_active": tenant.is_active,
                         "created_at": tenant.created_at,
                     }
                 )
-        return render_template("index.html", tenants=tenant_list)
+        # Get environment info for URL generation
+        is_production = os.environ.get("PRODUCTION") == "true"
+        mcp_port = int(os.environ.get("ADCP_SALES_PORT", 8080)) if not is_production else None
+        return render_template("index.html", tenants=tenant_list, mcp_port=mcp_port, is_production=is_production)
 
     elif session.get("role") in ["tenant_admin", "tenant_user"]:
         # Tenant admin/user - redirect to their tenant dashboard
