@@ -164,6 +164,18 @@ class TestMCPCriticalEndpoints:
         result = response.json()
         # Should succeed without authentication error
         assert "result" in result or ("error" in result and "authentication" not in result["error"]["message"].lower())
+        
+        # If successful, verify pricing data is filtered for anonymous users
+        if "result" in result and "content" in result["result"]:
+            products_data = result["result"]["content"]
+            if "products" in products_data:
+                for product in products_data["products"]:
+                    # Pricing fields should be null for anonymous users
+                    assert product.get("cpm") is None
+                    assert product.get("min_spend") is None
+            # Should contain pricing message
+            if "message" in products_data:
+                assert "authorized buying agent for pricing" in products_data["message"]
 
         # Test list_creative_formats without auth
         response = httpx.post(

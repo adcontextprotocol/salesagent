@@ -880,10 +880,23 @@ async def get_products(brief: str, promoted_offering: str, context: Context = No
     # Reconstruct products from modified data
     modified_products = [Product(**p) for p in response_data["products"]]
 
+    # Filter pricing data for anonymous users
+    pricing_message = None
+    if principal_id is None:  # Anonymous user
+        # Remove pricing data from products for anonymous users
+        for product in modified_products:
+            product.cpm = None
+            product.min_spend = None
+        pricing_message = "Please connect through an authorized buying agent for pricing data"
+
     # Log activity
     log_tool_activity(context, "get_products", start_time)
 
-    return GetProductsResponse(products=modified_products, message=f"Found {len(modified_products)} matching products")
+    # Create response with pricing message if anonymous
+    base_message = f"Found {len(modified_products)} matching products"
+    final_message = f"{base_message}. {pricing_message}" if pricing_message else base_message
+
+    return GetProductsResponse(products=modified_products, message=final_message)
 
 
 @mcp.tool

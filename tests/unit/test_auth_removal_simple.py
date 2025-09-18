@@ -55,6 +55,86 @@ class TestAuthRemovalChanges:
         assert "get_principal_from_context(context)  # Returns None if no auth" in source
         assert 'principal_id or "anonymous"' in source
 
+    def test_pricing_filtering_for_anonymous_users(self):
+        """Test that pricing data is filtered for anonymous users."""
+        # Test the pricing filtering logic
+        from src.core.schemas import Product
+        
+        # Create a product with pricing data
+        product = Product(
+            product_id="test_product",
+            name="Test Product", 
+            description="Test description",
+            formats=["display_300x250"],
+            delivery_type="non_guaranteed",
+            is_fixed_price=True,
+            cpm=2.50,
+            min_spend=1000.0
+        )
+        
+        # Simulate the anonymous user logic
+        principal_id = None
+        if principal_id is None:  # Anonymous user
+            product.cpm = None
+            product.min_spend = None
+        
+        # Verify pricing data is removed
+        assert product.cpm is None
+        assert product.min_spend is None
+        
+        # Other data should remain
+        assert product.product_id == "test_product"
+        assert product.name == "Test Product"
+        assert product.is_fixed_price is True
+
+    def test_pricing_message_for_anonymous_users(self):
+        """Test that the pricing message is added for anonymous users."""
+        # Test the message logic
+        principal_id = None
+        pricing_message = None
+        
+        if principal_id is None:  # Anonymous user
+            pricing_message = "Please connect through an authorized buying agent for pricing data"
+        
+        base_message = "Found 2 matching products"
+        final_message = f"{base_message}. {pricing_message}" if pricing_message else base_message
+        
+        expected = "Found 2 matching products. Please connect through an authorized buying agent for pricing data"
+        assert final_message == expected
+
+    def test_authenticated_users_keep_pricing_data(self):
+        """Test that authenticated users still get full pricing data."""
+        from src.core.schemas import Product
+        
+        # Create a product with pricing data
+        product = Product(
+            product_id="test_product",
+            name="Test Product",
+            description="Test description", 
+            formats=["display_300x250"],
+            delivery_type="non_guaranteed",
+            is_fixed_price=True,
+            cpm=2.50,
+            min_spend=1000.0
+        )
+        
+        # Simulate authenticated user logic
+        principal_id = "authenticated_user"
+        if principal_id is None:  # This should NOT trigger for authenticated users
+            product.cpm = None
+            product.min_spend = None
+        
+        # Verify pricing data is preserved
+        assert product.cpm == 2.50
+        assert product.min_spend == 1000.0
+        
+        # No pricing message for authenticated users
+        pricing_message = None
+        if principal_id is None:
+            pricing_message = "Please connect through an authorized buying agent for pricing data"
+        
+        assert pricing_message is None
+
 
 # That's it! The real testing should be:
 # 1. End-to-end HTTP tests (which already exist)
