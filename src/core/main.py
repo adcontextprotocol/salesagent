@@ -5136,20 +5136,17 @@ Discovery: https://{apx_host}/.well-known/agent.json</div>
                 return JSONResponse(status_code=400, content={"error": "Brief required"})
 
             # Call the existing get_products function internally (no MCP client needed!)
-            from src.core.schemas import GetProductsRequest
-
             # Create a mock context for internal call
             class MockContext:
                 def __init__(self, headers):
                     self.meta = {"headers": headers}
 
             mock_context = MockContext(headers)
-            request_obj = GetProductsRequest(
-                brief=brief, promoted_offering="Interactive product exploration on landing page"
-            )
 
-            # Call our own get_products function directly
-            result = await get_products(request_obj, mock_context)
+            # Call our own get_products function directly with individual parameters
+            result = await get_products(
+                brief=brief, promoted_offering="Interactive product exploration on landing page", context=mock_context
+            )
 
             return JSONResponse(content={"products": result.products, "message": result.message})
 
