@@ -1,17 +1,17 @@
 {% extends "base.html" %}
 
-{% block title %}Tenants - AdCP Admin{% endblock %}
+{% block title %}Accounts - Scribd Sales Agent Admin{% endblock %}
 
 {% block content %}
 <div class="card">
     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
-        <h2>Tenants</h2>
+        <h2>Accounts</h2>
         <div>
             {% if session.role == 'super_admin' %}
             <a href="{{ script_name }}/mcp-test" class="btn btn-secondary">MCP Protocol Test</a>
             <a href="{{ script_name }}/settings" class="btn btn-secondary">Settings</a>
             {% endif %}
-            <a href="{{ script_name }}/create_tenant" class="btn">Create New Tenant</a>
+            <a href="{{ script_name }}/create_tenant" class="btn">Create New Account</a>
         </div>
     </div>
 
@@ -121,7 +121,7 @@
 
         <div style="text-align: center; padding: 1rem; background: #f8f9fa; border-radius: 4px;">
             <div style="font-size: 2rem; font-weight: bold; color: #1a73e8;">{{ gam_tenants|length }}</div>
-            <div style="color: #666;">GAM Tenants</div>
+            <div style="color: #666;">GAM Accounts</div>
         </div>
 
         <div style="text-align: center; padding: 1rem; background: #f8f9fa; border-radius: 4px;">

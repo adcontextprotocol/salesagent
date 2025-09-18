@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% block title %}Login - AdCP Admin{% endblock %}
+{% block title %}Login - Scribd Sales Agent Admin{% endblock %}
 
 {% block content %}
 <div class="card" style="max-width: 400px; margin: 4rem auto; text-align: center;">
@@ -12,12 +12,12 @@
 
     {% if tenant_context %}
         <h2>{{ tenant_name or tenant_context }} Sales Agent Admin</h2>
-        <p style="color: #666; margin-bottom: 2rem;">Sign in to access your tenant</p>
+        <p style="color: #666; margin-bottom: 2rem;">Sign in to access your account</p>
     {% elif tenant_id %}
         <h2>{{ tenant_name or tenant_id }} Sales Agent Admin</h2>
         <p style="color: #666; margin-bottom: 2rem;">Sign in to access your account</p>
     {% else %}
-        <h2>AdCP Sales Agent Admin</h2>
+        <h2>Scribd Sales Agent Admin</h2>
         <p style="color: #666; margin-bottom: 2rem;">Super Admin Login</p>
     {% endif %}
 
@@ -67,8 +67,8 @@
                 <select name="email" required style="width: 100%; padding: 0.5rem; border: 1px solid #ddd; border-radius: 4px;">
                     <option value="">Select a test user...</option>
                     <option value="test_super_admin@example.com">Test Super Admin</option>
-                    <option value="test_tenant_admin@example.com">Test Tenant Admin</option>
-                    <option value="test_tenant_user@example.com">Test Tenant User</option>
+                    <option value="test_tenant_admin@example.com">Test Account Admin</option>
+                    <option value="test_tenant_user@example.com">Test Account User</option>
                 </select>
             </div>
 
@@ -79,7 +79,7 @@
 
             {% if not tenant_id %}
             <div style="margin-bottom: 1rem;">
-                <label style="display: block; margin-bottom: 0.5rem;">Tenant ID (for tenant users):</label>
+                <label style="display: block; margin-bottom: 0.5rem;">Account ID (for account users):</label>
                 <input type="text" name="tenant_id" placeholder="e.g., tenant_abc123" style="width: 100%; padding: 0.5rem; border: 1px solid #ddd; border-radius: 4px;">
             </div>
             {% endif %}
@@ -99,15 +99,15 @@
         Contact your administrator if you need access.
         {% else %}
         Access is restricted to super administrators.<br>
-        For tenant access, use your tenant-specific login URL.
+        For account access, use your account-specific login URL.
         {% endif %}
     </p>
 
     {% if not tenant_id and not tenant_context %}
     <div style="margin-top: 3rem; padding-top: 2rem; border-top: 1px solid #eee;">
         <p style="color: #666; font-size: 13px;">
-            <strong>Tenant Access:</strong> Use your tenant-specific URL<br>
-            <code>https://[tenant-subdomain].sales-agent.scope3.com</code>
+            <strong>Account Access:</strong> Use your account-specific URL<br>
+            <code>https://[account-subdomain].sales-agent.scope3.com</code>
         </p>
     </div>
     {% endif %}
