@@ -1,0 +1,2 @@
+event: message
+data: {"jsonrpc":"2.0","id":"test-browser","error":{"code":-32602,"message":"Invalid request parameters","data":""}}

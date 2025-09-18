@@ -170,6 +170,27 @@ def tenant_settings(tenant_id, section=None):
             # Get environment info for URL generation
             is_production = os.environ.get("PRODUCTION") == "true"
             mcp_port = int(os.environ.get("ADCP_SALES_PORT", 8080)) if not is_production else None
+            admin_port = int(os.environ.get("ADMIN_UI_PORT", 8001))
+
+            # Get product statistics for the products section
+            from src.core.database.models import Product
+
+            products = db_session.query(Product).filter_by(tenant_id=tenant_id).all()
+            product_count = len(products)
+            active_products = len([p for p in products if not p.expires_at or p.expires_at > datetime.now(UTC)])
+            draft_products = product_count - active_products
+
+            # Get creative formats for the creatives section
+            from src.core.database.models import CreativeFormat
+
+            creative_formats = (
+                db_session.query(CreativeFormat)
+                .filter((CreativeFormat.tenant_id == tenant_id) | (CreativeFormat.tenant_id.is_(None)))
+                .all()
+            )
+
+            # Set script_name for the template (Flask blueprint prefix)
+            script_name = ""
 
             return render_template(
                 "tenant_settings.html",
@@ -185,6 +206,13 @@ def tenant_settings(tenant_id, section=None):
                 active_advertisers=active_advertisers,
                 mcp_port=mcp_port,
                 is_production=is_production,
+                # Missing template variables
+                product_count=product_count,
+                active_products=active_products,
+                draft_products=draft_products,
+                creative_formats=creative_formats,
+                admin_port=admin_port,
+                script_name=script_name,
             )
 
     except Exception as e:

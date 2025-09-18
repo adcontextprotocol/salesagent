@@ -1,10 +1,8 @@
-HTTP/2 302
-server: Fly/9fea047a (2025-09-12)
-date: Tue, 16 Sep 2025 18:37:57 GMT
-content-type: text/html; charset=utf-8
-content-length: 873
-vary: Cookie
-location: https://accounts.google.com/o/oauth2/v2/auth?response_type=code&client_id=1002878641006-1balq5ha6fq3fq58bsho78gst2da4e6u.apps.googleusercontent.com&redirect_uri=https%3A%2F%2Fsales-agent.scope3.com%2Fadmin%2Fauth%2Fgoogle%2Fcallback&scope=openid+email+profile&state=RiIeXLr1wBzTc9O6DwJyCE6WOtjeNm&nonce=jQWqEotuVF6VzqFLKWPv
-set-cookie: session=.eJx9UW1vgjAQ_i9N5IsKAlIYCVn2osk2M7dl0X0jtZxQVyjQolPjf1_BmOyDWdLmLrm75yXPEcVSEQVxKkTKIf5gT_A1q-3d_eGT3szx4-55_zDBy7nawGuOwiNKiCJtLURBAYVo876sJkI1iyleHKrp7GX5tkUDVEPCaqAqbmqmtzKlShlaliQc5JCkUChTUlGCa1KRWyTJWWGRRmXWWYhFCecrQr81VFPzPwiEUtEUSprnxe5cWKK9dayt04Hc1iBLUUiI1b6EiIoEDMqZJo1ZEtmjkRP4AR7rBg_tFeGVlxG8rtx15QUrmQk_SKVyEjIG3JikLC9kjYSaikK16jWv8ddk1AnsuXc9Z6rfdaN60Fltq9apyxlYNxfDRrcd6V-wpA85Ybxf1mLNOBhdVNH_GRldMNHVWE4DBD8lCm3fC0aePfZ903MxDoLgdPoFM1i05g.aMmuhQ.4Z26627AlUVKXacwP2bLQe0Ffh0; Secure; Path=/admin/; SameSite=None
-via: 2 fly.io, 2 fly.io
-fly-request-id: 01K59X3ECSZPGFBWY24WR65NZ4-ewr
+HTTP/1.1 200 OK
+date: Wed, 17 Sep 2025 23:49:45 GMT
+server: uvicorn
+cache-control: no-cache, no-transform
+connection: keep-alive
+content-type: text/event-stream
+x-accel-buffering: no
+Transfer-Encoding: chunked

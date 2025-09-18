@@ -38,15 +38,21 @@ def main():
     print(f"Starting AdCP Sales Agent on {host}:{port}")
     print(f"Server endpoint: http://{host}:{port}/")
 
-    # Run the server
+    # Run the server with CORS support
     cmd = [
         sys.executable,
         "-c",
         f"""
 import sys
 sys.path.insert(0, '.')
-from src.core.main import mcp
-mcp.run(transport='http', host='{host}', port={port})
+import uvicorn
+from src.core.main import create_http_app_with_cors
+
+# Create HTTP app with CORS middleware
+app = create_http_app_with_cors()
+
+# Run with uvicorn
+uvicorn.run(app, host='{host}', port={port})
 """,
     ]
 

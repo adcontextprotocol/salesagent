@@ -4902,35 +4902,67 @@ Discovery: https://{apx_host}/.well-known/agent.json</div>
                         </footer>
                     </div>
 
-                    <script type="module">
-                        // Import MCP client components from the official SDK
-                        import {{ Client }} from 'https://unpkg.com/@modelcontextprotocol/sdk@latest/dist/esm/client/index.js';
-                        import {{ StreamableHttpTransport }} from 'https://unpkg.com/@modelcontextprotocol/sdk@latest/dist/esm/client/streamableHttp.js';
+                    <!-- Load browser-compatible MCP client -->
+                    <script src="/static/js/mcp-browser-client.js"></script>
 
+                    <script>
                         // Make functions available globally
                         window.fillExample = function(text) {{
                             document.getElementById('briefInput').value = text;
                         }};
 
-                        // Initialize MCP client
+                        // Initialize MCP client with fallback strategy
                         let mcpClient = null;
 
                         async function initializeMcpClient() {{
                             if (mcpClient) return mcpClient;
+
+                            // Wait for MCP client to be ready
+                            if (!window.mcpClientReady) {{
+                                if (window.mcpClientError) {{
+                                    throw new Error(`MCP SDK failed to load: ${{window.mcpClientError}}`);
+                                }}
+
+                                console.log('Waiting for MCP SDK to load...');
+                                await new Promise((resolve, reject) => {{
+                                    const timeout = setTimeout(() => {{
+                                        reject(new Error('MCP SDK load timeout'));
+                                    }}, 10000); // 10 second timeout
+
+                                    const onReady = () => {{
+                                        clearTimeout(timeout);
+                                        resolve();
+                                    }};
+
+                                    const onError = (event) => {{
+                                        clearTimeout(timeout);
+                                        reject(new Error(`MCP SDK load failed: ${{event.detail}}`));
+                                    }};
+
+                                    window.addEventListener('mcpClientReady', onReady, {{ once: true }});
+                                    window.addEventListener('mcpClientError', onError, {{ once: true }});
+                                }});
+                            }}
 
                             const headers = {{
                                 'x-adcp-auth': '{demo_token}',
                                 'apx-incoming-host': '{apx_host}'
                             }};
 
-                            const transport = new StreamableHttpTransport({{
-                                url: '/mcp',
-                                headers: headers
-                            }});
+                            try {{
+                                // Create official MCP client
+                                mcpClient = window.createMCPClient({{
+                                    url: '/mcp',
+                                    headers: headers
+                                }});
 
-                            mcpClient = new Client(transport);
-                            await mcpClient.connect();
-                            return mcpClient;
+                                await mcpClient.connect();
+                                console.log('✅ Official MCP client initialized successfully');
+                                return mcpClient;
+                            }} catch (error) {{
+                                console.error('Failed to initialize MCP client:', error);
+                                throw error;
+                            }}
                         }}
 
                         window.searchProducts = async function() {{
@@ -5097,6 +5129,30 @@ Discovery: https://{apx_host}/.well-known/agent.json</div>
     async def tenant_root(request: Request, tenant_id: str):
         """Redirect to tenant admin."""
         return RedirectResponse(url=f"/tenant/{tenant_id}/admin/")
+
+    @mcp.custom_route("/static/js/{filename}", methods=["GET"])
+    async def serve_static_js(request: Request, filename: str):
+        """Serve static JavaScript files."""
+        import mimetypes
+        from pathlib import Path
+
+        from fastapi.responses import FileResponse
+
+        # Security: only serve .js files and prevent directory traversal
+        if not filename.endswith(".js") or ".." in filename or "/" in filename:
+            return JSONResponse(status_code=403, content={"error": "Access denied"})
+
+        static_dir = Path(__file__).parent.parent / "static" / "js"
+        file_path = static_dir / filename
+
+        # Check if file exists and is within static/js directory
+        if not file_path.exists() or not str(file_path).startswith(str(static_dir)):
+            return JSONResponse(status_code=404, content={"error": "File not found"})
+
+        # Set proper MIME type
+        content_type = mimetypes.guess_type(str(file_path))[0] or "application/javascript"
+
+        return FileResponse(file_path, media_type=content_type)
 
     # Removed duplicate /public/products endpoint - now using MCP endpoint directly with AI provider
 
