@@ -5144,7 +5144,9 @@ Discovery: https://{apx_host}/.well-known/agent.json</div>
                     self.meta = {"headers": headers}
 
             mock_context = MockContext(headers)
-            request_obj = GetProductsRequest(brief=brief)
+            request_obj = GetProductsRequest(
+                brief=brief, promoted_offering="Interactive product exploration on landing page"
+            )
 
             # Call our own get_products function directly
             result = await get_products(request_obj, mock_context)
