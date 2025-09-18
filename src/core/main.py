@@ -4902,13 +4902,10 @@ Discovery: https://{apx_host}/.well-known/agent.json</div>
                         </footer>
                     </div>
 
-                    <!-- Load official MCP client library -->
-                    <script type="module" src="https://unpkg.com/@modelcontextprotocol/client@latest/dist/index.js"></script>
-
                     <script type="module">
-                        // Import MCP client components
-                        import {{ Client }} from 'https://unpkg.com/@modelcontextprotocol/client@latest/dist/index.js';
-                        import {{ StreamableHttpTransport }} from 'https://unpkg.com/@modelcontextprotocol/client@latest/dist/transports/index.js';
+                        // Import MCP client components from the official SDK
+                        import {{ Client }} from 'https://unpkg.com/@modelcontextprotocol/sdk@latest/dist/esm/client/index.js';
+                        import {{ StreamableHttpTransport }} from 'https://unpkg.com/@modelcontextprotocol/sdk@latest/dist/esm/client/streamableHttp.js';
 
                         // Make functions available globally
                         window.fillExample = function(text) {{
