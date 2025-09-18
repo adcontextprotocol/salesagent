@@ -4902,8 +4902,55 @@ Discovery: https://{apx_host}/.well-known/agent.json</div>
                         </footer>
                     </div>
 
-                    <!-- Load browser-compatible MCP client -->
-                    <script src="/static/js/mcp-browser-client.js"></script>
+                    <script type="module">
+                        // Load official MCP SDK directly (inlined to avoid static file serving issues)
+                        (async function() {{
+                            try {{
+                                console.log('Loading official MCP SDK...');
+
+                                // Import official MCP client components
+                                const {{ Client }} = await import('https://unpkg.com/@modelcontextprotocol/sdk@latest/dist/esm/client/index.js');
+                                const {{ StreamableHttpTransport }} = await import('https://unpkg.com/@modelcontextprotocol/sdk@latest/dist/esm/client/streamableHttp.js');
+
+                                console.log('✅ Official MCP SDK loaded successfully');
+
+                                // Expose factory function globally
+                                window.createMCPClient = function(options) {{
+                                    console.log('Creating official MCP client');
+
+                                    const transport = new StreamableHttpTransport({{
+                                        url: options.url,
+                                        headers: options.headers
+                                    }});
+
+                                    return new Client(transport);
+                                }};
+
+                                // Signal that MCP client is ready
+                                window.mcpClientReady = true;
+
+                                // Dispatch event for any waiting code
+                                if (typeof CustomEvent !== 'undefined') {{
+                                    window.dispatchEvent(new CustomEvent('mcpClientReady'));
+                                }}
+
+                            }} catch (error) {{
+                                console.error('❌ Failed to load official MCP SDK:', error);
+
+                                // Provide clear error information
+                                const errorDetails = error.message || error.toString();
+                                console.error('Error details:', errorDetails);
+
+                                // Signal that MCP client failed to load
+                                window.mcpClientError = errorDetails;
+
+                                // Dispatch error event
+                                if (typeof CustomEvent !== 'undefined') {{
+                                    window.dispatchEvent(new CustomEvent('mcpClientError', {{ detail: errorDetails }}));
+                                }}
+                            }}
+                        }})();
+                    </script>
 
                     <script>
                         // Make functions available globally
@@ -5130,27 +5177,46 @@ Discovery: https://{apx_host}/.well-known/agent.json</div>
         """Redirect to tenant admin."""
         return RedirectResponse(url=f"/tenant/{tenant_id}/admin/")
 
-    @mcp.custom_route("/static/js/{filename}", methods=["GET"])
-    async def serve_static_js(request: Request, filename: str):
-        """Serve static JavaScript files."""
+    @mcp.custom_route("/static/{path:path}", methods=["GET"])
+    async def serve_static_files(request: Request):
+        """Serve static files (JS, CSS, etc.)."""
         import mimetypes
         from pathlib import Path
+        from urllib.parse import unquote
 
         from fastapi.responses import FileResponse
 
-        # Security: only serve .js files and prevent directory traversal
-        if not filename.endswith(".js") or ".." in filename or "/" in filename:
+        # Extract path from URL manually since FastMCP parameter extraction is unreliable
+        path_parts = request.url.path.split("/static/", 1)
+        if len(path_parts) != 2:
+            return JSONResponse(status_code=404, content={"error": "Invalid static path"})
+
+        requested_path = unquote(path_parts[1])  # URL decode the path
+
+        # Security: prevent directory traversal and limit to safe extensions
+        safe_extensions = {".js", ".css", ".png", ".jpg", ".jpeg", ".gif", ".svg", ".ico"}
+        if ".." in requested_path or not any(requested_path.endswith(ext) for ext in safe_extensions):
             return JSONResponse(status_code=403, content={"error": "Access denied"})
 
-        static_dir = Path(__file__).parent.parent / "static" / "js"
-        file_path = static_dir / filename
+        # Use correct static directory (root-level static, not src/static)
+        static_dir = Path(__file__).parent.parent.parent / "static"
+        file_path = static_dir / requested_path
 
-        # Check if file exists and is within static/js directory
-        if not file_path.exists() or not str(file_path).startswith(str(static_dir)):
+        # Validate path is within static directory and file exists
+        try:
+            file_path = file_path.resolve()
+            static_dir = static_dir.resolve()
+            if not str(file_path).startswith(str(static_dir)) or not file_path.exists():
+                return JSONResponse(status_code=404, content={"error": "File not found"})
+        except (OSError, ValueError):
             return JSONResponse(status_code=404, content={"error": "File not found"})
 
         # Set proper MIME type
-        content_type = mimetypes.guess_type(str(file_path))[0] or "application/javascript"
+        content_type = mimetypes.guess_type(str(file_path))[0]
+        if requested_path.endswith(".js"):
+            content_type = "application/javascript"
+        elif requested_path.endswith(".css"):
+            content_type = "text/css"
 
         return FileResponse(file_path, media_type=content_type)
 
