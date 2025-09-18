@@ -10,6 +10,8 @@ from fastmcp import FastMCP
 from fastmcp.exceptions import ToolError
 from fastmcp.server.context import Context
 from rich.console import Console
+from starlette.middleware import Middleware
+from starlette.middleware.cors import CORSMiddleware
 
 from src.adapters.google_ad_manager import GoogleAdManager
 from src.adapters.kevel import Kevel
@@ -423,6 +425,18 @@ mcp = FastMCP(
     stateless_http=True,
 )
 
+# Configure CORS middleware to allow browser access to MCP endpoints
+cors_middleware = [
+    Middleware(
+        CORSMiddleware,
+        allow_origins=["*"],  # Allow all origins for development
+        allow_credentials=False,  # Don't allow credentials with wildcard origin
+        allow_methods=["GET", "POST", "OPTIONS", "DELETE"],  # MCP streamable HTTP methods
+        allow_headers=["*"],  # Allow all headers including x-adcp-auth, apx-incoming-host, Mcp-Session-Id
+        expose_headers=["Mcp-Session-Id"],  # Expose session ID for browser clients
+    ),
+]
+
 # Initialize creative engine with minimal config (will be tenant-specific later)
 creative_engine_config = {}
 creative_engine = MockCreativeEngine(creative_engine_config)
@@ -809,7 +823,14 @@ async def get_products(brief: str, promoted_offering: str, context: Context = No
         )
 
     # Determine product catalog configuration based on tenant's signals discovery settings
-    catalog_config = {"provider": "database", "config": {}}  # Default to database provider
+    # Use AI provider with Gemini 2.0 Flash for intelligent product matching
+    catalog_config = {
+        "provider": "ai",
+        "config": {
+            "model": "gemini-2.0-flash-exp",  # Use Gemini 2.0 Flash as requested
+            "max_products": 5,  # Reasonable default for AI matching
+        },
+    }
 
     # Check if signals discovery is configured for this tenant
     if hasattr(tenant, "signals_agent_config") and tenant.get("signals_agent_config"):
@@ -825,13 +846,16 @@ async def get_products(brief: str, promoted_offering: str, context: Context = No
                 logger.error(f"Invalid signals_agent_config JSON for tenant {tenant['tenant_id']}")
                 signals_config = {}
 
-        # If signals discovery is enabled, use hybrid provider
+        # If signals discovery is enabled, use hybrid provider with AI base
         if isinstance(signals_config, dict) and signals_config.get("enabled", False):
-            logger.info(f"Using hybrid provider with signals discovery for tenant {tenant['tenant_id']}")
+            logger.info(f"Using hybrid provider with AI and signals discovery for tenant {tenant['tenant_id']}")
             catalog_config = {
                 "provider": "hybrid",
                 "config": {
-                    "database": {},  # Use database provider defaults
+                    "ai": {
+                        "model": "gemini-2.0-flash-exp",  # Use Gemini 2.0 Flash as base
+                        "max_products": 10,
+                    },
                     "signals_discovery": signals_config,
                     "ranking_strategy": "signals_first",  # Prioritize signals-enhanced products
                     "max_products": 20,
@@ -1938,7 +1962,7 @@ def create_media_buy(
         for i, package in enumerate(req.packages):
             response_packages.append(
                 {
-                    "package_id": f"{response.media_buy_id}_pkg_{i+1}",
+                    "package_id": f"{response.media_buy_id}_pkg_{i + 1}",
                     "buyer_ref": package.buyer_ref,
                     "products": package.products,
                     "status": "active",
@@ -4607,6 +4631,34 @@ if os.environ.get("ADCP_UNIFIED_MODE"):
                 # Create tenant slug for MCP config
                 tenant_slug = tenant["name"].lower().replace(" ", "-")
 
+                # Get demo token for landing page MCP access
+                demo_token = ""
+                try:
+                    with get_db_session() as session:
+                        from src.core.database.models import Principal as ModelPrincipal
+
+                        demo_principal = (
+                            session.query(ModelPrincipal)
+                            .filter_by(tenant_id=tenant["tenant_id"], principal_id="demo_public")
+                            .first()
+                        )
+                        if demo_principal:
+                            demo_token = demo_principal.access_token
+                except Exception as e:
+                    logger.error(f"Error getting demo token: {e}")
+                    demo_token = ""
+
+                # Get customizable examples from landing_config
+                demo_examples = landing_config.get(
+                    "demo_examples",
+                    [
+                        {"text": "Display ads for premium content", "label": "Premium Content 📰"},
+                        {"text": "Native ads for mobile experience", "label": "Mobile Native 📱"},
+                        {"text": "Video ads for entertainment content", "label": "Entertainment 📺"},
+                        {"text": "Banner ads for e-commerce targeting", "label": "E-commerce 🛒"},
+                    ],
+                )
+
                 # Prepare MCP config JSON (avoid complex f-string nesting)
                 mcp_config = f"""{{
   "mcpServers": {{
@@ -4625,7 +4677,7 @@ if os.environ.get("ADCP_UNIFIED_MODE"):
                 <!DOCTYPE html>
                 <html lang="en">
                 <head>
-                    <title>{tenant['name']} - AI-Powered Ad Sales</title>
+                    <title>{tenant["name"]} - AI-Powered Ad Sales</title>
                     <meta charset="utf-8">
                     <meta name="viewport" content="width=device-width, initial-scale=1">
                     <style>
@@ -4767,13 +4819,19 @@ if os.environ.get("ADCP_UNIFIED_MODE"):
                             .agent-grid {{ grid-template-columns: 1fr; }}
                             .cta-buttons {{ flex-direction: column; }}
                         }}
+                        /* Creative Formats */
+                        .formats-grid {{ display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 1rem; margin-top: 1.5rem; }}
+                        .format-card {{ border: 1px solid #e5e7eb; border-radius: 8px; padding: 1rem; background: #fafafa; }}
+                        .format-name {{ font-weight: 600; color: {primary_color}; margin-bottom: 0.5rem; }}
+                        .format-details {{ font-size: 0.9rem; color: #666; }}
+                        .format-type {{ display: inline-block; background: {secondary_color}; color: white; padding: 0.25rem 0.5rem; border-radius: 4px; font-size: 0.75rem; margin-top: 0.5rem; }}
                     </style>
                 </head>
                 <body>
                     <div class="container">
                         <!-- Header -->
                         <header class="header">
-                            {f'<img src="{logo_url}" alt="{tenant["name"]}" class="logo">' if logo_url else ''}
+                            {f'<img src="{logo_url}" alt="{tenant["name"]}" class="logo">' if logo_url else ""}
                             <h1 class="hero-title">{hero_message}</h1>
                             <p class="hero-description">{description}</p>
                         </header>
@@ -4791,10 +4849,7 @@ if os.environ.get("ADCP_UNIFIED_MODE"):
                             <div class="examples">
                                 <p class="examples-title">Or try one of these examples:</p>
                                 <div class="example-buttons">
-                                    <button class="example-btn" onclick="fillExample('Video ads for a new streaming series targeting 18-34')">Streaming Series 📺</button>
-                                    <button class="example-btn" onclick="fillExample('Display ads for B2B software targeting decision makers')">B2B Software 💼</button>
-                                    <button class="example-btn" onclick="fillExample('Audio ads for a consumer app targeting commuters')">Consumer App 📱</button>
-                                    <button class="example-btn" onclick="fillExample('Native ads for an e-commerce brand targeting parents')">E-commerce Brand 🛒</button>
+                                    {"".join([f'<button class="example-btn" onclick="fillExample(&quot;{example["text"]}&quot;)">{example["label"]}</button>' for example in demo_examples])}
                                 </div>
                             </div>
 
@@ -4808,18 +4863,25 @@ if os.environ.get("ADCP_UNIFIED_MODE"):
                             <h2 class="demo-title">🔗 Connect Your AI Agent</h2>
                             <div class="agent-grid">
                                 <div class="agent-card">
-                                    <h3 class="agent-title">Claude Desktop Setup</h3>
-                                    <p>Add this to your MCP settings:</p>
-                                    <div class="code-block">{mcp_config}</div>
+                                    <h3 class="agent-title">MCP Protocol</h3>
+                                    <p>Connect via Model Context Protocol:</p>
+                                    <div class="code-block">MCP Endpoint: https://{apx_host}/mcp</div>
                                 </div>
 
                                 <div class="agent-card">
-                                    <h3 class="agent-title">ChatGPT Integration</h3>
-                                    <p>Use these API endpoints directly:</p>
-                                    <div class="code-block">MCP: https://{apx_host}/mcp
-A2A: https://{apx_host}/a2a
+                                    <h3 class="agent-title">A2A Protocol</h3>
+                                    <p>Connect via Agent-to-Agent Protocol:</p>
+                                    <div class="code-block">A2A Endpoint: https://{apx_host}/a2a
 Discovery: https://{apx_host}/.well-known/agent.json</div>
                                 </div>
+                            </div>
+                        </section>
+
+                        <!-- Creative Formats -->
+                        <section class="agent-section">
+                            <h2 class="demo-title">🎨 Supported Creative Formats</h2>
+                            <div id="creative-formats" class="formats-grid">
+                                <p style="text-align: center; color: #666;">Loading creative formats...</p>
                             </div>
                         </section>
 
@@ -4829,8 +4891,8 @@ Discovery: https://{apx_host}/.well-known/agent.json</div>
                             <div class="cta-buttons">
                                 <a href="https://scope3.com/signup" class="btn-primary">🛒 Get a Buying Agent</a>
                                 <a href="https://adcontextprotocol.org/docs/" class="btn-secondary" target="_blank">📚 View AdCP Spec</a>
-                                {f'<a href="mailto:{contact_email}" class="btn-secondary">✉️ Contact Sales</a>' if contact_email else ''}
-                                {f'<a href="{booking_url}" class="btn-secondary" target="_blank">📅 Book a Demo</a>' if booking_url else ''}
+                                {f'<a href="mailto:{contact_email}" class="btn-secondary">✉️ Contact Sales</a>' if contact_email else ""}
+                                {f'<a href="{booking_url}" class="btn-secondary" target="_blank">📅 Book a Demo</a>' if booking_url else ""}
                             </div>
                         </section>
 
@@ -4840,12 +4902,41 @@ Discovery: https://{apx_host}/.well-known/agent.json</div>
                         </footer>
                     </div>
 
-                    <script>
-                        function fillExample(text) {{
+                    <!-- Load official MCP client library -->
+                    <script type="module" src="https://unpkg.com/@modelcontextprotocol/client@latest/dist/index.js"></script>
+
+                    <script type="module">
+                        // Import MCP client components
+                        import {{ Client }} from 'https://unpkg.com/@modelcontextprotocol/client@latest/dist/index.js';
+                        import {{ StreamableHttpTransport }} from 'https://unpkg.com/@modelcontextprotocol/client@latest/dist/transports/index.js';
+
+                        // Make functions available globally
+                        window.fillExample = function(text) {{
                             document.getElementById('briefInput').value = text;
+                        }};
+
+                        // Initialize MCP client
+                        let mcpClient = null;
+
+                        async function initializeMcpClient() {{
+                            if (mcpClient) return mcpClient;
+
+                            const headers = {{
+                                'x-adcp-auth': '{demo_token}',
+                                'apx-incoming-host': '{apx_host}'
+                            }};
+
+                            const transport = new StreamableHttpTransport({{
+                                url: '/mcp',
+                                headers: headers
+                            }});
+
+                            mcpClient = new Client(transport);
+                            await mcpClient.connect();
+                            return mcpClient;
                         }}
 
-                        async function searchProducts() {{
+                        window.searchProducts = async function() {{
                             const brief = document.getElementById('briefInput').value.trim();
                             const results = document.getElementById('results');
                             const btn = document.querySelector('.search-btn');
@@ -4860,17 +4951,34 @@ Discovery: https://{apx_host}/.well-known/agent.json</div>
                             results.innerHTML = '';
 
                             try {{
-                                const response = await fetch(`/public/products?brief=${{encodeURIComponent(brief)}}`, {{
-                                    headers: {{
-                                        'apx-incoming-host': '{apx_host}'
-                                    }}
+                                // Initialize and use official MCP client
+                                const client = await initializeMcpClient();
+
+                                const result = await client.callTool('get_products', {{
+                                    brief: brief,
+                                    promoted_offering: "Interactive product exploration on landing page"
                                 }});
 
-                                const data = await response.json();
+                                // Extract data from MCP tool result
+                                let data = null;
+                                if (result && result.content && Array.isArray(result.content)) {{
+                                    // Parse the first content item as JSON if it's text
+                                    const firstContent = result.content[0];
+                                    if (firstContent && firstContent.type === 'text') {{
+                                        try {{
+                                            data = JSON.parse(firstContent.text);
+                                        }} catch (parseError) {{
+                                            // If not JSON, treat as plain text response
+                                            data = {{ message: firstContent.text, products: [] }};
+                                        }}
+                                    }}
+                                }} else if (result && typeof result === 'object') {{
+                                    data = result;
+                                }}
 
-                                if (data.products && data.products.length > 0) {{
+                                if (data && data.products && data.products.length > 0) {{
                                     results.innerHTML = `
-                                        <h3 style="color: {primary_color}; margin-bottom: 1rem;">🎯 ${{data.message}}</h3>
+                                        <h3 style="color: {primary_color}; margin-bottom: 1rem;">🎯 ${{data.message || 'Found matching products'}}</h3>
                                         ${{data.products.map(product => `
                                             <div class="product-card">
                                                 <div class="product-name">${{product.name}}</div>
@@ -4895,24 +5003,60 @@ Discovery: https://{apx_host}/.well-known/agent.json</div>
                                     `;
                                 }}
                             }} catch (error) {{
+                                console.error('MCP Client Error:', error);
                                 results.innerHTML = `
                                     <div style="text-align: center; color: #dc2626; padding: 2rem;">
                                         <p>Sorry, there was an error searching our products.</p>
                                         <p>Please try again or contact our team.</p>
+                                        <p style="font-size: 0.9em; margin-top: 1rem;">Error: ${{error.message}}</p>
                                     </div>
                                 `;
                             }} finally {{
                                 btn.disabled = false;
                                 btn.textContent = 'Find Matching Products';
                             }}
-                        }}
+                        }};
 
                         // Allow Enter key to search
-                        document.getElementById('briefInput').addEventListener('keypress', function(e) {{
-                            if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {{
-                                searchProducts();
-                            }}
+                        document.addEventListener('DOMContentLoaded', function() {{
+                            document.getElementById('briefInput').addEventListener('keypress', function(e) {{
+                                if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {{
+                                    searchProducts();
+                                }}
+                            }});
                         }});
+
+                        // Load creative formats
+                        async function loadCreativeFormats() {{
+                            try {{
+                                const response = await fetch('/public/creative-formats');
+                                const data = await response.json();
+                                const formatsContainer = document.getElementById('creative-formats');
+
+                                if (data.formats && data.formats.length > 0) {{
+                                    const formatsHtml = data.formats.map(format => `
+                                        <div class="format-card">
+                                            <div class="format-name">${{format.name}}</div>
+                                            <div class="format-details">
+                                                ${{format.description || ''}}
+                                                ${{format.dimensions ? `<br>Dimensions: ${{format.dimensions}}` : ''}}
+                                                ${{format.duration_seconds ? `<br>Duration: ${{format.duration_seconds}}s` : ''}}
+                                            </div>
+                                            <div class="format-type">${{format.type}}</div>
+                                        </div>
+                                    `).join('');
+                                    formatsContainer.innerHTML = `<div class="formats-grid">${{formatsHtml}}</div>`;
+                                }} else {{
+                                    formatsContainer.innerHTML = '<p style="text-align: center; color: #666;">No creative formats available</p>';
+                                }}
+                            }} catch (error) {{
+                                console.error('Error loading creative formats:', error);
+                                document.getElementById('creative-formats').innerHTML = '<p style="text-align: center; color: #999;">Unable to load creative formats</p>';
+                            }}
+                        }}
+
+                        // Load creative formats on page load
+                        document.addEventListener('DOMContentLoaded', loadCreativeFormats);
                     </script>
                 </body>
                 </html>
@@ -4957,16 +5101,14 @@ Discovery: https://{apx_host}/.well-known/agent.json</div>
         """Redirect to tenant admin."""
         return RedirectResponse(url=f"/tenant/{tenant_id}/admin/")
 
-    @mcp.custom_route("/public/products", methods=["GET"])
-    async def public_products(request: Request):
-        """Get public products matching a brief (no authentication required)."""
+    # Removed duplicate /public/products endpoint - now using MCP endpoint directly with AI provider
+
+    @mcp.custom_route("/public/creative-formats", methods=["GET"])
+    async def public_creative_formats(request: Request):
+        """Get available creative formats (no authentication required)."""
         from fastapi.responses import JSONResponse
 
-        from src.core.database.models import Product as ModelProduct
-        from src.core.schemas import Product
-
-        # Get query parameters
-        brief = request.query_params.get("brief", "")
+        from src.core.database.models import CreativeFormat as ModelCreativeFormat
 
         # Get tenant from virtual host or hostname
         headers = dict(request.headers)
@@ -4975,7 +5117,6 @@ Discovery: https://{apx_host}/.well-known/agent.json</div>
 
         # Use apx_host if available, otherwise use hostname
         target_host = apx_host or hostname
-
         if not target_host:
             return JSONResponse(status_code=400, content={"error": "Host required"})
 
@@ -4985,55 +5126,40 @@ Discovery: https://{apx_host}/.well-known/agent.json</div>
 
         try:
             with get_db_session() as session:
-                # Get public products (no authentication required)
-                products_query = session.query(ModelProduct).filter(
-                    ModelProduct.tenant_id == tenant["tenant_id"], ~ModelProduct.requires_authentication
+                # Get creative formats (tenant-specific + global formats)
+                formats_query = session.query(ModelCreativeFormat).filter(
+                    (ModelCreativeFormat.tenant_id == tenant["tenant_id"]) | (ModelCreativeFormat.tenant_id.is_(None))
                 )
+                db_formats = formats_query.all()
 
-                db_products = products_query.all()
-
-                # Convert to schema objects for proper serialization
-                products = []
-                for db_product in db_products:
-                    # Create Product schema without prices (public view)
-                    product_data = {
-                        "product_id": db_product.product_id,
-                        "name": db_product.name,
-                        "description": db_product.description,
-                        "formats": db_product.formats or [],
-                        "targeting_template": db_product.targeting_template or {},
-                        "delivery_type": db_product.delivery_type,
-                        "countries": db_product.countries or [],
-                        "measurement": db_product.measurement,
-                        "creative_policy": db_product.creative_policy,
-                        # Exclude pricing fields for public view
-                        "is_fixed_price": False,  # Don't expose pricing model
-                        "cpm": None,  # No prices for public
-                        "min_spend": None,  # No pricing for public
+                # Convert to simple format objects for public display
+                formats = []
+                for db_format in db_formats:
+                    format_data = {
+                        "format_id": db_format.format_id,
+                        "name": db_format.name,
+                        "type": db_format.type,
+                        "description": db_format.description,
+                        "dimensions": (
+                            f"{db_format.width}x{db_format.height}" if db_format.width and db_format.height else None
+                        ),
+                        "duration_seconds": db_format.duration_seconds,
                     }
-
-                    product = Product(**product_data)
-                    products.append(product.model_dump())
-
-                # Simple AI matching - filter products based on brief keywords
-                if brief:
-                    brief_lower = brief.lower()
-                    matched_products = []
-                    for product in products:
-                        product_text = f"{product['name']} {product['description'] or ''}".lower()
-                        # Simple keyword matching - can be enhanced with actual AI later
-                        if any(word in product_text for word in brief_lower.split()):
-                            matched_products.append(product)
-                    products = matched_products
+                    formats.append(format_data)
 
                 return JSONResponse(
                     content={
-                        "products": products,
-                        "message": f"Found {len(products)} products" + (f" matching '{brief}'" if brief else ""),
-                        "total_count": len(products),
+                        "formats": formats,
+                        "total_count": len(formats),
+                        "types": list({f["type"] for f in formats}),
                     }
                 )
 
         except Exception as e:
-            logger.error(f"Error fetching public products: {e}")
+            logger.error(f"Error fetching public creative formats: {e}")
             return JSONResponse(status_code=500, content={"error": "Internal server error"})
+
+
+def create_http_app_with_cors():
+    """Create FastMCP HTTP app with CORS middleware for browser compatibility."""
+    return mcp.http_app(middleware=cors_middleware)
