@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <title>{{ page_title }}</title>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="{{ tenant_name }} AdCP Sales Agent - Connect your agent via MCP or A2A for programmatic advertising">
+    <style>
+        /* Modern, professional styling */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 2rem 1rem;
+        }
+
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.15);
+            overflow: hidden;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #2c3e50 0%, #34495e 100%);
+            color: white;
+            padding: 3rem 2rem;
+            text-align: center;
+        }
+
+        .header h1 {
+            font-size: 2.5rem;
+            font-weight: 700;
+            margin-bottom: 0.5rem;
+        }
+
+        .header .subtitle {
+            font-size: 1.2rem;
+            opacity: 0.9;
+            margin-bottom: 1rem;
+        }
+
+        .header .description {
+            font-size: 1rem;
+            opacity: 0.8;
+            max-width: 600px;
+            margin: 0 auto;
+        }
+
+        .content {
+            padding: 2rem;
+        }
+
+        .section {
+            margin-bottom: 3rem;
+        }
+
+        .section:last-child {
+            margin-bottom: 1rem;
+        }
+
+        .section h2 {
+            color: #2c3e50;
+            font-size: 1.5rem;
+            font-weight: 600;
+            margin-bottom: 1rem;
+            padding-bottom: 0.5rem;
+            border-bottom: 2px solid #ecf0f1;
+        }
+
+        .endpoints {
+            background: #f8f9fa;
+            border-radius: 8px;
+            padding: 1.5rem;
+            border: 1px solid #e9ecef;
+        }
+
+        .endpoint-item {
+            display: flex;
+            align-items: center;
+            margin-bottom: 1rem;
+            flex-wrap: wrap;
+            gap: 0.5rem;
+        }
+
+        .endpoint-item:last-child {
+            margin-bottom: 0;
+        }
+
+        .endpoint-label {
+            font-weight: 600;
+            color: #2c3e50;
+            min-width: 60px;
+        }
+
+        .endpoint-url {
+            font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+            background: #e9ecef;
+            padding: 0.5rem 0.75rem;
+            border-radius: 4px;
+            font-size: 0.9rem;
+            border: 1px solid #dee2e6;
+            flex: 1;
+            min-width: 250px;
+            word-break: break-all;
+        }
+
+        .info-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 2rem;
+            margin-top: 2rem;
+        }
+
+        .info-card {
+            background: #f8f9fa;
+            border-radius: 8px;
+            padding: 1.5rem;
+            border: 1px solid #e9ecef;
+            text-align: center;
+        }
+
+        .info-card h3 {
+            color: #2c3e50;
+            font-size: 1.2rem;
+            margin-bottom: 1rem;
+        }
+
+        .info-card p {
+            margin-bottom: 1rem;
+            color: #555;
+        }
+
+        .cta-button {
+            display: inline-block;
+            background: linear-gradient(135deg, #3498db 0%, #2980b9 100%);
+            color: white;
+            padding: 0.75rem 1.5rem;
+            border-radius: 6px;
+            text-decoration: none;
+            font-weight: 600;
+            transition: all 0.3s ease;
+            border: none;
+            cursor: pointer;
+        }
+
+        .cta-button:hover {
+            background: linear-gradient(135deg, #2980b9 0%, #1f5582 100%);
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(52, 152, 219, 0.3);
+        }
+
+        .cta-button.secondary {
+            background: linear-gradient(135deg, #27ae60 0%, #229954 100%);
+        }
+
+        .cta-button.secondary:hover {
+            background: linear-gradient(135deg, #229954 0%, #1e8449 100%);
+            box-shadow: 0 4px 12px rgba(39, 174, 96, 0.3);
+        }
+
+        .agent-card-link {
+            display: inline-block;
+            background: #6c757d;
+            color: white;
+            padding: 0.5rem 1rem;
+            border-radius: 4px;
+            text-decoration: none;
+            font-family: monospace;
+            font-size: 0.9rem;
+            transition: background 0.3s ease;
+        }
+
+        .agent-card-link:hover {
+            background: #5a6268;
+        }
+
+        .virtual-host-info {
+            background: #e8f5e8;
+            border: 1px solid #c3e6c3;
+            border-radius: 6px;
+            padding: 1rem;
+            margin-top: 1rem;
+            font-size: 0.9rem;
+        }
+
+        .virtual-host-info strong {
+            color: #27ae60;
+        }
+
+        .footer {
+            background: #f8f9fa;
+            padding: 1.5rem 2rem;
+            text-align: center;
+            border-top: 1px solid #e9ecef;
+            color: #6c757d;
+            font-size: 0.9rem;
+        }
+
+        .footer a {
+            color: #3498db;
+            text-decoration: none;
+        }
+
+        .footer a:hover {
+            text-decoration: underline;
+        }
+
+        /* Responsive design */
+        @media (max-width: 768px) {
+            body {
+                padding: 1rem 0.5rem;
+            }
+
+            .header {
+                padding: 2rem 1rem;
+            }
+
+            .header h1 {
+                font-size: 2rem;
+            }
+
+            .content {
+                padding: 1.5rem;
+            }
+
+            .endpoint-item {
+                flex-direction: column;
+                align-items: flex-start;
+            }
+
+            .endpoint-url {
+                min-width: 100%;
+            }
+
+            .info-grid {
+                grid-template-columns: 1fr;
+                gap: 1.5rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Header Section -->
+        <div class="header">
+            <h1>{{ tenant_name }} Sales Agent</h1>
+            <div class="subtitle">Advertising Context Protocol (AdCP) Sales Agent</div>
+            <div class="description">
+                {{ tenant_name }} now supports the
+                <a href="{{ adcp_docs_url }}" style="color: #74b9ff; text-decoration: none;" target="_blank">AdCP protocol</a>
+                for agentic buying! Connect your agent via MCP or A2A to browse our inventory and creative formats, execute media buys, and see reporting.
+            </div>
+        </div>
+
+        <!-- Main Content -->
+        <div class="content">
+            <!-- Agent Endpoints Section -->
+            <div class="section">
+                <h2>🤖 Agent Endpoints</h2>
+                <div class="endpoints">
+                    <div class="endpoint-item">
+                        <span class="endpoint-label">MCP:</span>
+                        <code class="endpoint-url">{{ mcp_url }}</code>
+                    </div>
+                    <div class="endpoint-item">
+                        <span class="endpoint-label">A2A:</span>
+                        <code class="endpoint-url">{{ a2a_url }}</code>
+                    </div>
+                </div>
+
+                {% if virtual_host %}
+                <div class="virtual-host-info">
+                    <strong>Virtual Host:</strong> {{ virtual_host }}
+                    {% if is_production %}
+                    <br><small>Production environment detected</small>
+                    {% endif %}
+                </div>
+                {% endif %}
+            </div>
+
+            <!-- Agent Card Section -->
+            <div class="section">
+                <h2>📋 Agent Card</h2>
+                <p>View the complete agent capabilities and skill definitions:</p>
+                <a href="{{ agent_card_url }}" class="agent-card-link" target="_blank">/.well-known/agent.json</a>
+            </div>
+
+            <!-- Action Cards Grid -->
+            <div class="info-grid">
+                <!-- Need a Buying Agent -->
+                <div class="info-card">
+                    <h3>🛒 Need a Buying Agent?</h3>
+                    <p>Get a compatible AdCP buying agent that can connect to this sales agent and execute programmatic campaigns.</p>
+                    <a href="{{ scope3_url }}" class="cta-button" target="_blank">Get Agent from Scope3</a>
+                </div>
+
+                <!-- Admin Dashboard -->
+                <div class="info-card">
+                    <h3>⚙️ Admin Dashboard</h3>
+                    <p>Publishers and advertisers can access the admin dashboard to manage products, campaigns, and settings.</p>
+                    <a href="{{ admin_url }}" class="cta-button secondary">Access Admin Dashboard</a>
+                </div>
+            </div>
+
+            <!-- Resources Section -->
+            <div class="section">
+                <h2>📚 Resources</h2>
+                <p>Learn more about the AdCP protocol and how to integrate with this sales agent:</p>
+                <ul style="margin-top: 1rem; padding-left: 1.5rem;">
+                    <li><a href="{{ adcp_docs_url }}/docs/" target="_blank">AdCP Protocol Documentation</a></li>
+                    <li><a href="{{ adcp_docs_url }}/docs/media-buy/" target="_blank">Media Buy API Reference</a></li>
+                    <li><a href="{{ adcp_docs_url }}/docs/signals/" target="_blank">Signals API Reference</a></li>
+                    <li><a href="{{ agent_card_url }}" target="_blank">Agent Capabilities (JSON)</a></li>
+                </ul>
+            </div>
+        </div>
+
+        <!-- Footer -->
+        <div class="footer">
+            Powered by <a href="{{ adcp_docs_url }}" target="_blank">AdCP Protocol</a>
+            | <a href="{{ scope3_url }}" target="_blank">Scope3</a>
+            {% if tenant_subdomain %}
+            | Tenant: {{ tenant_subdomain }}
+            {% endif %}
+        </div>
+    </div>
+</body>
+</html>
