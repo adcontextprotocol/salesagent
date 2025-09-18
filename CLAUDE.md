@@ -105,8 +105,8 @@ def test_[model]_adcp_compliance(self):
 ### 1. Admin UI Route Architecture (IMPORTANT FOR DEBUGGING)
 **⚠️ CRITICAL**: The admin interface has confusing route handling that can waste debugging time:
 
-- **`src/admin/blueprints/settings.py`**: Handles SUPER ADMIN settings and POST operations for tenant settings
-  - Functions: `admin_settings()` (GET) and `update_admin_settings()` (POST) for superadmin settings
+- **`src/admin/blueprints/settings.py`**: Handles TENANT MANAGEMENT settings and POST operations for tenant settings
+  - Functions: `admin_settings()` (GET) and `update_admin_settings()` (POST) for tenant management settings
   - Also contains POST-only routes for updating tenant settings (`update_adapter()`, `update_general()`, etc.)
 - **`src/admin/blueprints/tenants.py`**: Handles TENANT-SPECIFIC settings GET requests
   - Function: `tenant_settings()` - Renders the main tenant settings page
@@ -832,7 +832,7 @@ async def async_resource(self) -> AsyncGenerator[Resource, None]:
 ### Common Test Patterns
 - Use `get_db_session()` context manager for database access
 - Import `Principal` from `schemas` (not `models`) for business logic
-- Use `SuperadminConfig` in fixtures for admin access
+- Use `TenantManagementConfig` in fixtures for admin access
 - Set `sess["user"]` as a dictionary with email and role
 
 ### AdCP Compliance Testing (MANDATORY)

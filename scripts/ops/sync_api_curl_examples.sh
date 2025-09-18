@@ -6,7 +6,7 @@ API_PORT="${ADMIN_UI_PORT:-8001}"
 BASE_URL="http://localhost:${API_PORT}"
 
 # Get API key from database (requires sqlite3)
-API_KEY=$(sqlite3 adcp_local.db "SELECT value FROM superadmin_config WHERE key='api_key';")
+API_KEY=$(sqlite3 adcp_local.db "SELECT config_value FROM tenant_management_config WHERE config_key='api_key';")
 
 if [ -z "$API_KEY" ]; then
     echo "Error: No API key found. Start the server first."

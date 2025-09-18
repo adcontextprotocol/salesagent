@@ -354,14 +354,18 @@ class AuditLog(Base):
     )
 
 
-class SuperadminConfig(Base):
-    __tablename__ = "superadmin_config"
+class TenantManagementConfig(Base):
+    __tablename__ = "tenant_management_config"
 
     config_key = Column(String(100), primary_key=True)
     config_value = Column(Text)
     description = Column(Text)
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
     updated_by = Column(String(255))
+
+
+# Backwards compatibility alias
+SuperadminConfig = TenantManagementConfig
 
 
 class AdapterConfig(Base):

@@ -110,7 +110,7 @@ class TestAuthUtilities:
         mock_session = MagicMock()
         mock_get_db_session.return_value.__enter__.return_value = mock_session
 
-        # Create mock for SuperadminConfig query that always returns None
+        # Create mock for TenantManagementConfig query that always returns None
         mock_superadmin_query = MagicMock()
         mock_superadmin_query.filter_by.return_value.first.return_value = None
 
@@ -124,7 +124,7 @@ class TestAuthUtilities:
 
         def query_side_effect_admin(model):
             if hasattr(model, "__name__"):
-                if model.__name__ == "SuperadminConfig":
+                if model.__name__ == "TenantManagementConfig":
                     return mock_superadmin_query
                 elif model.__name__ == "User":
                     return mock_user_query_admin
@@ -144,7 +144,7 @@ class TestAuthUtilities:
 
         def query_side_effect_not_admin(model):
             if hasattr(model, "__name__"):
-                if model.__name__ == "SuperadminConfig":
+                if model.__name__ == "TenantManagementConfig":
                     return mock_superadmin_query
                 elif model.__name__ == "User":
                     return mock_user_query_not_admin
@@ -164,7 +164,7 @@ class TestAuthUtilities:
 
         def query_side_effect_inactive(model):
             if hasattr(model, "__name__"):
-                if model.__name__ == "SuperadminConfig":
+                if model.__name__ == "TenantManagementConfig":
                     return mock_superadmin_query
                 elif model.__name__ == "User":
                     return mock_user_query_inactive

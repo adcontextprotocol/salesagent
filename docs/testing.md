@@ -321,13 +321,13 @@ When writing integration tests that need authentication:
 ```python
 @pytest.fixture
 def auth_session(self, client, integration_db):
-    """Create authenticated session with super admin access."""
-    from models import SuperadminConfig
+    """Create authenticated session with tenant management admin access."""
+    from models import TenantManagementConfig
     from database_session import get_db_session
 
-    # Set up super admin in database
+    # Set up tenant management admin in database
     with get_db_session() as session:
-        email_config = SuperadminConfig(
+        email_config = TenantManagementConfig(
             config_key="super_admin_emails",
             config_value="test@example.com"
         )
@@ -345,7 +345,7 @@ def auth_session(self, client, integration_db):
 ```
 
 **Common Issues:**
-- **403 Forbidden**: Missing SuperadminConfig in database
+- **403 Forbidden**: Missing TenantManagementConfig in database
 - **302 Redirect**: Web routes redirect on success (not JSON)
 - **Missing session["user"]**: `require_auth` needs both `authenticated` and `user`
 

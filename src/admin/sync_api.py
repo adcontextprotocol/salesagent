@@ -1,7 +1,7 @@
 """
 Sync API endpoints for background inventory/targeting synchronization.
 
-Provides superadmin API endpoints for:
+Provides tenant management API endpoints for:
 - Triggering sync jobs
 - Checking sync status
 - Getting sync history
@@ -17,7 +17,7 @@ from flask import Blueprint, jsonify, request
 
 from src.adapters.google_ad_manager import GoogleAdManager
 from src.core.database.database_session import get_db_session
-from src.core.database.models import AdapterConfig, SuperadminConfig, SyncJob, Tenant
+from src.core.database.models import AdapterConfig, SyncJob, Tenant, TenantManagementConfig
 from src.services.gam_inventory_service import db_session as gam_db_session
 
 logger = logging.getLogger(__name__)
@@ -29,18 +29,18 @@ sync_api = Blueprint("sync_api", __name__, url_prefix="/api/v1/sync")
 db_session = gam_db_session
 
 
-def get_superadmin_api_key() -> str | None:
-    """Get superadmin API key from database."""
+def get_tenant_management_api_key() -> str | None:
+    """Get tenant management API key from database."""
     with get_db_session() as db_session:
-        config = db_session.query(SuperadminConfig).filter_by(config_key="api_key").first()
+        config = db_session.query(TenantManagementConfig).filter_by(config_key="api_key").first()
 
     if config:
         return config.config_value
     return None
 
 
-def require_superadmin_api_key(f):
-    """Decorator to require superadmin API key authentication."""
+def require_tenant_management_api_key(f):
+    """Decorator to require tenant management API key authentication."""
 
     @wraps(f)
     def decorated_function(*args, **kwargs):
@@ -49,7 +49,7 @@ def require_superadmin_api_key(f):
         if not api_key:
             return jsonify({"error": "API key required"}), 401
 
-        valid_key = get_superadmin_api_key()
+        valid_key = get_tenant_management_api_key()
         if not valid_key or api_key != valid_key:
             return jsonify({"error": "Invalid API key"}), 401
 
@@ -59,7 +59,7 @@ def require_superadmin_api_key(f):
 
 
 @sync_api.route("/trigger/<tenant_id>", methods=["POST"])
-@require_superadmin_api_key
+@require_tenant_management_api_key
 def trigger_sync(tenant_id: str):
     """
     Trigger an inventory sync for a tenant.
@@ -128,7 +128,7 @@ def trigger_sync(tenant_id: str):
             status="pending",
             started_at=datetime.now(UTC),
             triggered_by="api",
-            triggered_by_id="superadmin_api",
+            triggered_by_id="tenant_management_api",
         )
 
         db_session.add(sync_job)
@@ -205,7 +205,7 @@ def trigger_sync(tenant_id: str):
 
 
 @sync_api.route("/status/<sync_id>", methods=["GET"])
-@require_superadmin_api_key
+@require_tenant_management_api_key
 def get_sync_status(sync_id: str):
     """Get status of a specific sync job."""
     try:
@@ -246,7 +246,7 @@ def get_sync_status(sync_id: str):
 
 
 @sync_api.route("/history/<tenant_id>", methods=["GET"])
-@require_superadmin_api_key
+@require_tenant_management_api_key
 def get_sync_history(tenant_id: str):
     """
     Get sync history for a tenant.
@@ -309,7 +309,7 @@ def get_sync_history(tenant_id: str):
 
 
 @sync_api.route("/tenants", methods=["GET"])
-@require_superadmin_api_key
+@require_tenant_management_api_key
 def list_tenants():
     """List all GAM-enabled tenants."""
     try:
@@ -363,7 +363,7 @@ def list_tenants():
 
 
 @sync_api.route("/stats", methods=["GET"])
-@require_superadmin_api_key
+@require_tenant_management_api_key
 def get_sync_stats():
     """Get overall sync statistics across all tenants."""
     try:
@@ -439,7 +439,7 @@ def get_sync_stats():
 
 
 @sync_api.route("/tenant/<tenant_id>/orders/sync", methods=["POST"])
-@require_superadmin_api_key
+@require_tenant_management_api_key
 def sync_tenant_orders(tenant_id):
     """Trigger orders and line items sync for a tenant."""
     db_session.remove()  # Clean start
@@ -467,7 +467,7 @@ def sync_tenant_orders(tenant_id):
             status="running",
             started_at=datetime.now(UTC),
             triggered_by="api",
-            triggered_by_id="superadmin_api",
+            triggered_by_id="tenant_management_api",
         )
 
         db_session.add(sync_job)
@@ -532,7 +532,7 @@ def sync_tenant_orders(tenant_id):
 
 
 @sync_api.route("/tenant/<tenant_id>/orders", methods=["GET"])
-@require_superadmin_api_key
+@require_tenant_management_api_key
 def get_tenant_orders(tenant_id):
     """Get orders for a tenant."""
     try:
@@ -589,7 +589,7 @@ def get_tenant_orders(tenant_id):
 
 
 @sync_api.route("/tenant/<tenant_id>/orders/<order_id>", methods=["GET"])
-@require_superadmin_api_key
+@require_tenant_management_api_key
 def get_order_details(tenant_id, order_id):
     """Get detailed information about an order including line items."""
     try:
@@ -619,7 +619,7 @@ def get_order_details(tenant_id, order_id):
 
 
 @sync_api.route("/tenant/<tenant_id>/line-items", methods=["GET"])
-@require_superadmin_api_key
+@require_tenant_management_api_key
 def get_tenant_line_items(tenant_id):
     """Get line items for a tenant."""
     try:
@@ -650,11 +650,11 @@ def get_tenant_line_items(tenant_id):
         db_session.remove()
 
 
-def initialize_superadmin_api_key() -> str:
-    """Initialize superadmin API key if not exists."""
+def initialize_tenant_management_api_key() -> str:
+    """Initialize tenant management API key if not exists."""
     with get_db_session() as db_session:
         # Check if API key exists
-        config = db_session.query(SuperadminConfig).filter_by(config_key="api_key").first()
+        config = db_session.query(TenantManagementConfig).filter_by(config_key="api_key").first()
 
         if config:
             return config.config_value
@@ -663,15 +663,15 @@ def initialize_superadmin_api_key() -> str:
         api_key = f"sk_{secrets.token_urlsafe(32)}"
 
         # Store in database
-        new_config = SuperadminConfig(
+        new_config = TenantManagementConfig(
             config_key="api_key",
             config_value=api_key,
-            description="Superadmin API key for programmatic access",
+            description="Tenant management API key for programmatic access",
             updated_by="system",
             updated_at=datetime.now(UTC),
         )
         db_session.add(new_config)
         db_session.commit()
 
-        logger.info(f"Generated new superadmin API key: {api_key[:10]}...")
+        logger.info(f"Generated new tenant management API key: {api_key[:10]}...")
         return api_key

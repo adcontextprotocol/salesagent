@@ -7,7 +7,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../.."))
 
 from scripts.ops.migrate import run_migrations
 from src.core.database.database_session import get_db_session
-from src.core.database.models import AdapterConfig, Principal, Product, SuperadminConfig, Tenant
+from src.core.database.models import AdapterConfig, Principal, Product, Tenant, TenantManagementConfig
 
 
 def init_db(exit_on_error=False):
@@ -23,44 +23,46 @@ def init_db(exit_on_error=False):
 
     # Now populate default data if needed
     with get_db_session() as session:
-        # Initialize super admin configuration from environment variables
-        super_admin_emails = os.environ.get("SUPER_ADMIN_EMAILS", "")
-        if super_admin_emails:
+        # Initialize tenant management configuration from environment variables
+        tenant_management_emails = os.environ.get("TENANT_MANAGEMENT_EMAILS", os.environ.get("SUPER_ADMIN_EMAILS", ""))
+        if tenant_management_emails:
             # Check if config exists
-            existing_config = session.query(SuperadminConfig).filter_by(config_key="super_admin_emails").first()
+            existing_config = session.query(TenantManagementConfig).filter_by(config_key="super_admin_emails").first()
             if not existing_config:
                 # Create new config
-                config = SuperadminConfig(
+                config = TenantManagementConfig(
                     config_key="super_admin_emails",
-                    config_value=super_admin_emails,
-                    description="Super admin email addresses",
+                    config_value=tenant_management_emails,
+                    description="Tenant management admin email addresses",
                 )
                 session.add(config)
                 session.commit()
-                print(f"✅ Initialized super admin emails: {super_admin_emails}")
+                print(f"✅ Initialized tenant management emails: {tenant_management_emails}")
             else:
                 # Update existing config if environment variable is set
-                existing_config.config_value = super_admin_emails
+                existing_config.config_value = tenant_management_emails
                 session.commit()
-                print(f"✅ Updated super admin emails: {super_admin_emails}")
+                print(f"✅ Updated tenant management emails: {tenant_management_emails}")
 
-        # Similarly for super admin domains
-        super_admin_domains = os.environ.get("SUPER_ADMIN_DOMAINS", "")
-        if super_admin_domains:
-            existing_config = session.query(SuperadminConfig).filter_by(config_key="super_admin_domains").first()
+        # Similarly for tenant management domains
+        tenant_management_domains = os.environ.get(
+            "TENANT_MANAGEMENT_DOMAINS", os.environ.get("SUPER_ADMIN_DOMAINS", "")
+        )
+        if tenant_management_domains:
+            existing_config = session.query(TenantManagementConfig).filter_by(config_key="super_admin_domains").first()
             if not existing_config:
-                config = SuperadminConfig(
+                config = TenantManagementConfig(
                     config_key="super_admin_domains",
-                    config_value=super_admin_domains,
-                    description="Super admin email domains",
+                    config_value=tenant_management_domains,
+                    description="Tenant management admin email domains",
                 )
                 session.add(config)
                 session.commit()
-                print(f"✅ Initialized super admin domains: {super_admin_domains}")
+                print(f"✅ Initialized tenant management domains: {tenant_management_domains}")
             else:
-                existing_config.config_value = super_admin_domains
+                existing_config.config_value = tenant_management_domains
                 session.commit()
-                print(f"✅ Updated super admin domains: {super_admin_domains}")
+                print(f"✅ Updated tenant management domains: {tenant_management_domains}")
 
         # Check if we need to create a default tenant
         tenant_count = session.query(Tenant).count()

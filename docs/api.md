@@ -306,26 +306,26 @@ Line Item Types: `STANDARD`, `SPONSORSHIP`
 - NO QUIET FAILURES - All requests fail loudly with clear error messages
 - Common errors include permission denied, invalid status, guaranteed item blocking
 
-## Super Admin API
+## Tenant Management API
 
-The Super Admin API provides REST endpoints for system administration and tenant management.
+The Tenant Management API provides REST endpoints for system administration and tenant management.
 
 ### Authentication
 
-All Super Admin API requests require the API key in the header:
+All Tenant Management API requests require the API key in the header:
 
 ```bash
-curl -H "X-Superadmin-API-Key: sk-your-api-key"
+curl -H "X-Tenant-Management-API-Key: sk-your-api-key"
 ```
 
 ### Initial Setup
 
 #### Initialize API Key
 
-**One-time setup** to generate the super admin API key:
+**One-time setup** to generate the tenant management API key:
 
 ```bash
-POST /api/v1/superadmin/init-api-key
+POST /api/v1/tenant-management/init-api-key
 ```
 
 Returns the API key - save it securely as it cannot be retrieved again!
@@ -335,7 +335,7 @@ Returns the API key - save it securely as it cannot be retrieved again!
 #### List Tenants
 
 ```bash
-GET /api/v1/superadmin/tenants
+GET /api/v1/tenant-management/tenants
 ```
 
 **Response:**
@@ -356,7 +356,7 @@ GET /api/v1/superadmin/tenants
 #### Create Tenant
 
 ```bash
-POST /api/v1/superadmin/tenants
+POST /api/v1/tenant-management/tenants
 ```
 
 **Body:**
@@ -383,13 +383,13 @@ POST /api/v1/superadmin/tenants
 #### Get Tenant
 
 ```bash
-GET /api/v1/superadmin/tenants/{tenant_id}
+GET /api/v1/tenant-management/tenants/{tenant_id}
 ```
 
 #### Update Tenant
 
 ```bash
-PUT /api/v1/superadmin/tenants/{tenant_id}
+PUT /api/v1/tenant-management/tenants/{tenant_id}
 ```
 
 **Body:**
@@ -405,7 +405,7 @@ PUT /api/v1/superadmin/tenants/{tenant_id}
 #### Delete Tenant
 
 ```bash
-DELETE /api/v1/superadmin/tenants/{tenant_id}
+DELETE /api/v1/tenant-management/tenants/{tenant_id}
 ```
 
 ### Principal (Advertiser) Management
@@ -413,13 +413,13 @@ DELETE /api/v1/superadmin/tenants/{tenant_id}
 #### List Principals
 
 ```bash
-GET /api/v1/superadmin/tenants/{tenant_id}/principals
+GET /api/v1/tenant-management/tenants/{tenant_id}/principals
 ```
 
 #### Create Principal
 
 ```bash
-POST /api/v1/superadmin/tenants/{tenant_id}/principals
+POST /api/v1/tenant-management/tenants/{tenant_id}/principals
 ```
 
 **Body:**
@@ -438,7 +438,7 @@ POST /api/v1/superadmin/tenants/{tenant_id}/principals
 Trigger inventory synchronization from Google Ad Manager:
 
 ```bash
-POST /api/v1/superadmin/tenants/{tenant_id}/sync-inventory
+POST /api/v1/tenant-management/tenants/{tenant_id}/sync-inventory
 ```
 
 #### Sync GAM Orders
@@ -446,7 +446,7 @@ POST /api/v1/superadmin/tenants/{tenant_id}/sync-inventory
 Synchronize orders and line items from GAM:
 
 ```bash
-POST /api/v1/superadmin/tenants/{tenant_id}/sync-orders
+POST /api/v1/tenant-management/tenants/{tenant_id}/sync-orders
 ```
 
 ### System Management
@@ -454,7 +454,7 @@ POST /api/v1/superadmin/tenants/{tenant_id}/sync-orders
 #### Health Check
 
 ```bash
-GET /api/v1/superadmin/health
+GET /api/v1/tenant-management/health
 ```
 
 **Response:**
@@ -471,7 +471,7 @@ GET /api/v1/superadmin/health
 #### Audit Logs
 
 ```bash
-GET /api/v1/superadmin/audit-logs?tenant_id={tenant_id}&limit=100
+GET /api/v1/tenant-management/audit-logs?tenant_id={tenant_id}&limit=100
 ```
 
 ## Error Handling
@@ -562,14 +562,14 @@ npx inspector http://localhost:8080/mcp/
 uv run python tools/simulations/run_simulation.py
 ```
 
-### Super Admin API Testing
+### Tenant Management API Testing
 
 ```bash
 # Run test script
-python scripts/test_superadmin_api.py
+python scripts/test_tenant_management_api.py
 
 # Unit tests
-uv run pytest tests/integration/test_superadmin_api_integration.py -v
+uv run pytest tests/integration/test_tenant_management_api_integration.py -v
 ```
 
 ## Security Best Practices
