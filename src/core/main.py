@@ -4902,115 +4902,11 @@ Discovery: https://{apx_host}/.well-known/agent.json</div>
                         </footer>
                     </div>
 
-                    <script type="module">
-                        // Load official MCP SDK directly (inlined to avoid static file serving issues)
-                        (async function() {{
-                            try {{
-                                console.log('Loading official MCP SDK...');
-
-                                // Import official MCP client components
-                                const {{ Client }} = await import('https://unpkg.com/@modelcontextprotocol/sdk@latest/dist/esm/client/index.js');
-                                const {{ StreamableHttpTransport }} = await import('https://unpkg.com/@modelcontextprotocol/sdk@latest/dist/esm/client/streamableHttp.js');
-
-                                console.log('✅ Official MCP SDK loaded successfully');
-
-                                // Expose factory function globally
-                                window.createMCPClient = function(options) {{
-                                    console.log('Creating official MCP client');
-
-                                    const transport = new StreamableHttpTransport({{
-                                        url: options.url,
-                                        headers: options.headers
-                                    }});
-
-                                    return new Client(transport);
-                                }};
-
-                                // Signal that MCP client is ready
-                                window.mcpClientReady = true;
-
-                                // Dispatch event for any waiting code
-                                if (typeof CustomEvent !== 'undefined') {{
-                                    window.dispatchEvent(new CustomEvent('mcpClientReady'));
-                                }}
-
-                            }} catch (error) {{
-                                console.error('❌ Failed to load official MCP SDK:', error);
-
-                                // Provide clear error information
-                                const errorDetails = error.message || error.toString();
-                                console.error('Error details:', errorDetails);
-
-                                // Signal that MCP client failed to load
-                                window.mcpClientError = errorDetails;
-
-                                // Dispatch error event
-                                if (typeof CustomEvent !== 'undefined') {{
-                                    window.dispatchEvent(new CustomEvent('mcpClientError', {{ detail: errorDetails }}));
-                                }}
-                            }}
-                        }})();
-                    </script>
-
                     <script>
-                        // Make functions available globally
+                        // Simple JavaScript - no MCP SDK needed!
                         window.fillExample = function(text) {{
                             document.getElementById('briefInput').value = text;
                         }};
-
-                        // Initialize MCP client with fallback strategy
-                        let mcpClient = null;
-
-                        async function initializeMcpClient() {{
-                            if (mcpClient) return mcpClient;
-
-                            // Wait for MCP client to be ready
-                            if (!window.mcpClientReady) {{
-                                if (window.mcpClientError) {{
-                                    throw new Error(`MCP SDK failed to load: ${{window.mcpClientError}}`);
-                                }}
-
-                                console.log('Waiting for MCP SDK to load...');
-                                await new Promise((resolve, reject) => {{
-                                    const timeout = setTimeout(() => {{
-                                        reject(new Error('MCP SDK load timeout'));
-                                    }}, 10000); // 10 second timeout
-
-                                    const onReady = () => {{
-                                        clearTimeout(timeout);
-                                        resolve();
-                                    }};
-
-                                    const onError = (event) => {{
-                                        clearTimeout(timeout);
-                                        reject(new Error(`MCP SDK load failed: ${{event.detail}}`));
-                                    }};
-
-                                    window.addEventListener('mcpClientReady', onReady, {{ once: true }});
-                                    window.addEventListener('mcpClientError', onError, {{ once: true }});
-                                }});
-                            }}
-
-                            const headers = {{
-                                'x-adcp-auth': '{demo_token}',
-                                'apx-incoming-host': '{apx_host}'
-                            }};
-
-                            try {{
-                                // Create official MCP client
-                                mcpClient = window.createMCPClient({{
-                                    url: '/mcp',
-                                    headers: headers
-                                }});
-
-                                await mcpClient.connect();
-                                console.log('✅ Official MCP client initialized successfully');
-                                return mcpClient;
-                            }} catch (error) {{
-                                console.error('Failed to initialize MCP client:', error);
-                                throw error;
-                            }}
-                        }}
 
                         window.searchProducts = async function() {{
                             const brief = document.getElementById('briefInput').value.trim();
@@ -5027,32 +4923,22 @@ Discovery: https://{apx_host}/.well-known/agent.json</div>
                             results.innerHTML = '';
 
                             try {{
-                                // Initialize and use official MCP client
-                                const client = await initializeMcpClient();
-
-                                const result = await client.callTool('get_products', {{
-                                    brief: brief,
-                                    promoted_offering: "Interactive product exploration on landing page"
+                                // Simple REST API call - no MCP client complexity!
+                                const response = await fetch('/api/products', {{
+                                    method: 'POST',
+                                    headers: {{
+                                        'Content-Type': 'application/json'
+                                    }},
+                                    body: JSON.stringify({{ brief: brief }})
                                 }});
 
-                                // Extract data from MCP tool result
-                                let data = null;
-                                if (result && result.content && Array.isArray(result.content)) {{
-                                    // Parse the first content item as JSON if it's text
-                                    const firstContent = result.content[0];
-                                    if (firstContent && firstContent.type === 'text') {{
-                                        try {{
-                                            data = JSON.parse(firstContent.text);
-                                        }} catch (parseError) {{
-                                            // If not JSON, treat as plain text response
-                                            data = {{ message: firstContent.text, products: [] }};
-                                        }}
-                                    }}
-                                }} else if (result && typeof result === 'object') {{
-                                    data = result;
+                                if (!response.ok) {{
+                                    throw new Error(`HTTP ${{response.status}}: ${{response.statusText}}`);
                                 }}
 
-                                if (data && data.products && data.products.length > 0) {{
+                                const data = await response.json();
+
+                                if (data.products && data.products.length > 0) {{
                                     results.innerHTML = `
                                         <h3 style="color: {primary_color}; margin-bottom: 1rem;">🎯 ${{data.message || 'Found matching products'}}</h3>
                                         ${{data.products.map(product => `
@@ -5079,7 +4965,7 @@ Discovery: https://{apx_host}/.well-known/agent.json</div>
                                     `;
                                 }}
                             }} catch (error) {{
-                                console.error('MCP Client Error:', error);
+                                console.error('API Error:', error);
                                 results.innerHTML = `
                                     <div style="text-align: center; color: #dc2626; padding: 2rem;">
                                         <p>Sorry, there was an error searching our products.</p>
@@ -5220,7 +5106,54 @@ Discovery: https://{apx_host}/.well-known/agent.json</div>
 
         return FileResponse(file_path, media_type=content_type)
 
-    # Removed duplicate /public/products endpoint - now using MCP endpoint directly with AI provider
+    @mcp.custom_route("/api/products", methods=["POST"])
+    async def api_products(request: Request):
+        """Simple REST API for product search (no MCP client needed in browser)."""
+        import json
+
+        from fastapi.responses import JSONResponse
+
+        # Get tenant from virtual host
+        headers = dict(request.headers)
+        apx_host = headers.get("apx-incoming-host")
+        hostname = request.headers.get("host", "")
+        target_host = apx_host or hostname
+
+        if not target_host:
+            return JSONResponse(status_code=400, content={"error": "Host required"})
+
+        tenant = get_tenant_by_virtual_host(target_host)
+        if not tenant:
+            return JSONResponse(status_code=404, content={"error": "Tenant not found"})
+
+        try:
+            # Parse request body
+            body = await request.body()
+            data = json.loads(body) if body else {}
+            brief = data.get("brief", "")
+
+            if not brief:
+                return JSONResponse(status_code=400, content={"error": "Brief required"})
+
+            # Call the existing get_products function internally (no MCP client needed!)
+            from src.core.schemas import GetProductsRequest
+
+            # Create a mock context for internal call
+            class MockContext:
+                def __init__(self, headers):
+                    self.meta = {"headers": headers}
+
+            mock_context = MockContext(headers)
+            request_obj = GetProductsRequest(brief=brief)
+
+            # Call our own get_products function directly
+            result = await get_products(request_obj, mock_context)
+
+            return JSONResponse(content={"products": result.products, "message": result.message})
+
+        except Exception as e:
+            logger.error(f"Error in API products search: {e}")
+            return JSONResponse(status_code=500, content={"error": str(e)})
 
     @mcp.custom_route("/public/creative-formats", methods=["GET"])
     async def public_creative_formats(request: Request):
