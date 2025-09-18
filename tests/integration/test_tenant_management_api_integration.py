@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
-"""Integration tests for the Super Admin API - tests with actual database."""
+"""Integration tests for the Tenant Management API - tests with actual database."""
 
 
 import pytest
 from flask import Flask
 
-from src.admin.superadmin_api import superadmin_api
+from src.admin.tenant_management_api import tenant_management_api
 
 pytestmark = pytest.mark.integration
 
@@ -19,7 +19,7 @@ def app(integration_db):
     # integration_db ensures database is properly initialized
     app = Flask(__name__)
     app.config["TESTING"] = True
-    app.register_blueprint(superadmin_api)
+    app.register_blueprint(tenant_management_api)
     return app
 
 

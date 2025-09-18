@@ -8,7 +8,7 @@ from functools import wraps
 from flask import abort, g, jsonify, redirect, session, url_for
 
 from src.core.database.database_session import get_db_session
-from src.core.database.models import SuperadminConfig, Tenant, User
+from src.core.database.models import Tenant, TenantManagementConfig, User
 
 logger = logging.getLogger(__name__)
 
@@ -126,14 +126,16 @@ def is_super_admin(email):
     try:
         with get_db_session() as db_session:
             # Check exact emails
-            emails_config = db_session.query(SuperadminConfig).filter_by(config_key="super_admin_emails").first()
+            emails_config = db_session.query(TenantManagementConfig).filter_by(config_key="super_admin_emails").first()
             if emails_config and emails_config.config_value:
                 emails_list = [e.strip().lower() for e in emails_config.config_value.split(",")]
                 if email.lower() in emails_list:
                     return True
 
             # Check domains
-            domains_config = db_session.query(SuperadminConfig).filter_by(config_key="super_admin_domains").first()
+            domains_config = (
+                db_session.query(TenantManagementConfig).filter_by(config_key="super_admin_domains").first()
+            )
             if domains_config and domains_config.config_value:
                 domains_list = [d.strip().lower() for d in domains_config.config_value.split(",")]
                 email_domain = email.split("@")[1].lower() if "@" in email else ""

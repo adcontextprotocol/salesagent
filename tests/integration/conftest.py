@@ -109,11 +109,11 @@ def authenticated_admin_session(admin_client, integration_db):
     """Create an authenticated session for admin UI testing."""
     # Set up super admin configuration in database
     from src.core.database.database_session import get_db_session
-    from src.core.database.models import SuperadminConfig
+    from src.core.database.models import TenantManagementConfig
 
     with get_db_session() as db_session:
-        # Add super admin email configuration
-        email_config = SuperadminConfig(config_key="super_admin_emails", config_value="test@example.com")
+        # Add tenant management admin email configuration
+        email_config = TenantManagementConfig(config_key="super_admin_emails", config_value="test@example.com")
         db_session.add(email_config)
         db_session.commit()
 

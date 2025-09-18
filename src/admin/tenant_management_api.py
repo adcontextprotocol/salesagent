@@ -1,4 +1,4 @@
-"""Super Admin API for tenant management - Using direct SQL queries."""
+"""Tenant Management API for managing tenants - Using direct SQL queries."""
 
 import json
 import logging
@@ -16,37 +16,37 @@ from src.core.database.models import (
     MediaBuy,
     Principal,
     Product,
-    SuperadminConfig,
     Tenant,
+    TenantManagementConfig,
     User,
 )
 
 logger = logging.getLogger(__name__)
 
 # Create Blueprint
-superadmin_api = Blueprint("superadmin_api", __name__, url_prefix="/api/v1/superadmin")
+tenant_management_api = Blueprint("tenant_management_api", __name__, url_prefix="/api/v1/tenant-management")
 
 
-def require_superadmin_api_key(f):
-    """Decorator to require super admin API key for access."""
+def require_tenant_management_api_key(f):
+    """Decorator to require tenant management API key for access."""
 
     @wraps(f)
     def decorated_function(*args, **kwargs):
-        api_key = request.headers.get("X-Superadmin-API-Key")
+        api_key = request.headers.get("X-Tenant-Management-API-Key")
 
         if not api_key:
             return jsonify({"error": "Missing API key"}), 401
 
         # Get the stored API key from database
         with get_db_session() as db_session:
-            config = db_session.query(SuperadminConfig).filter_by(config_key="superadmin_api_key").first()
+            config = db_session.query(TenantManagementConfig).filter_by(config_key="tenant_management_api_key").first()
 
             if not config or not config.config_value:
-                logger.error("Superadmin API key not configured in database")
+                logger.error("Tenant management API key not configured in database")
                 return jsonify({"error": "API not configured"}), 503
 
             if api_key != config.config_value:
-                logger.warning(f"Invalid superadmin API key attempted: {api_key[:8]}...")
+                logger.warning(f"Invalid tenant management API key attempted: {api_key[:8]}...")
                 return jsonify({"error": "Invalid API key"}), 401
 
             return f(*args, **kwargs)
@@ -54,15 +54,15 @@ def require_superadmin_api_key(f):
     return decorated_function
 
 
-@superadmin_api.route("/health", methods=["GET"])
-@require_superadmin_api_key
+@tenant_management_api.route("/health", methods=["GET"])
+@require_tenant_management_api_key
 def health_check():
-    """Health check endpoint for the super admin API."""
+    """Health check endpoint for the tenant management API."""
     return jsonify({"status": "healthy", "timestamp": datetime.now(UTC).isoformat()})
 
 
-@superadmin_api.route("/tenants", methods=["GET"])
-@require_superadmin_api_key
+@tenant_management_api.route("/tenants", methods=["GET"])
+@require_tenant_management_api_key
 def list_tenants():
     """List all tenants."""
     from sqlalchemy import func
@@ -110,8 +110,8 @@ def list_tenants():
             return jsonify({"error": "Failed to list tenants"}), 500
 
 
-@superadmin_api.route("/tenants", methods=["POST"])
-@require_superadmin_api_key
+@tenant_management_api.route("/tenants", methods=["POST"])
+@require_tenant_management_api_key
 def create_tenant():
     """Create a new tenant."""
 
@@ -254,8 +254,8 @@ def create_tenant():
             return jsonify({"error": "Failed to create tenant"}), 500
 
 
-@superadmin_api.route("/tenants/<tenant_id>", methods=["GET"])
-@require_superadmin_api_key
+@tenant_management_api.route("/tenants/<tenant_id>", methods=["GET"])
+@require_tenant_management_api_key
 def get_tenant(tenant_id):
     """Get details for a specific tenant."""
     with get_db_session() as db_session:
@@ -336,8 +336,8 @@ def get_tenant(tenant_id):
             return jsonify({"error": "Failed to get tenant"}), 500
 
 
-@superadmin_api.route("/tenants/<tenant_id>", methods=["PUT"])
-@require_superadmin_api_key
+@tenant_management_api.route("/tenants/<tenant_id>", methods=["PUT"])
+@require_tenant_management_api_key
 def update_tenant(tenant_id):
     """Update a tenant."""
     with get_db_session() as db_session:
@@ -438,8 +438,8 @@ def update_tenant(tenant_id):
             return jsonify({"error": f"Failed to update tenant: {str(e)}"}), 500
 
 
-@superadmin_api.route("/tenants/<tenant_id>", methods=["DELETE"])
-@require_superadmin_api_key
+@tenant_management_api.route("/tenants/<tenant_id>", methods=["DELETE"])
+@require_tenant_management_api_key
 def delete_tenant(tenant_id):
     """Delete a tenant (soft delete by default)."""
     with get_db_session() as db_session:
@@ -484,14 +484,16 @@ def delete_tenant(tenant_id):
             return jsonify({"error": f"Failed to delete tenant: {str(e)}"}), 500
 
 
-@superadmin_api.route("/init-api-key", methods=["POST"])
+@tenant_management_api.route("/init-api-key", methods=["POST"])
 def initialize_api_key():
-    """Initialize the super admin API key (can only be done once)."""
+    """Initialize the tenant management API key (can only be done once)."""
 
     with get_db_session() as db_session:
         try:
             # Check if API key already exists
-            existing_config = db_session.query(SuperadminConfig).filter_by(config_key="superadmin_api_key").first()
+            existing_config = (
+                db_session.query(TenantManagementConfig).filter_by(config_key="tenant_management_api_key").first()
+            )
 
             if existing_config:
                 return jsonify({"error": "API key already initialized"}), 409
@@ -500,10 +502,10 @@ def initialize_api_key():
             api_key = f"sk-{secrets.token_urlsafe(32)}"
 
             # Store in database
-            new_config = SuperadminConfig(
-                config_key="superadmin_api_key",
+            new_config = TenantManagementConfig(
+                config_key="tenant_management_api_key",
                 config_value=api_key,
-                description="Super admin API key for tenant management",
+                description="Tenant management API key for tenant administration",
                 updated_at=datetime.now(UTC),
                 updated_by="system",
             )
@@ -513,7 +515,7 @@ def initialize_api_key():
             return (
                 jsonify(
                     {
-                        "message": "Super admin API key initialized",
+                        "message": "Tenant management API key initialized",
                         "api_key": api_key,
                         "warning": "Save this key securely. It cannot be retrieved again.",
                     }

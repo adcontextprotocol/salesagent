@@ -22,7 +22,7 @@ from src.admin.blueprints.operations import operations_bp
 from src.admin.blueprints.policy import policy_bp
 from src.admin.blueprints.principals import principals_bp
 from src.admin.blueprints.products import products_bp
-from src.admin.blueprints.settings import settings_bp, superadmin_settings_bp
+from src.admin.blueprints.settings import settings_bp, tenant_management_settings_bp
 
 # from src.admin.blueprints.tasks import tasks_bp  # Disabled - tasks eliminated in favor of workflow system
 from src.admin.blueprints.tenants import tenants_bp
@@ -184,7 +184,7 @@ def create_app(config=None):
     # Register blueprints
     app.register_blueprint(core_bp)  # Core routes (/, /health, /static, /mcp-test)
     app.register_blueprint(auth_bp)  # No url_prefix - auth routes are at root
-    app.register_blueprint(superadmin_settings_bp)  # Superadmin settings at /settings
+    app.register_blueprint(tenant_management_settings_bp)  # Tenant management settings at /settings
     app.register_blueprint(tenants_bp, url_prefix="/tenant")
     app.register_blueprint(products_bp, url_prefix="/tenant/<tenant_id>/products")
     app.register_blueprint(principals_bp, url_prefix="/tenant/<tenant_id>")
@@ -203,11 +203,11 @@ def create_app(config=None):
 
     # Import and register existing blueprints
     try:
-        from src.admin.superadmin_api import superadmin_api
+        from src.admin.tenant_management_api import tenant_management_api
 
-        app.register_blueprint(superadmin_api)
+        app.register_blueprint(tenant_management_api)
     except ImportError:
-        logger.warning("superadmin_api blueprint not found")
+        logger.warning("tenant_management_api blueprint not found")
 
     try:
         from src.admin.sync_api import sync_api

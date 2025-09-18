@@ -1,8 +1,8 @@
 """Settings management blueprint.
 
-⚠️ ROUTING NOTICE: This file handles SUPERADMIN settings only!
+⚠️ ROUTING NOTICE: This file handles TENANT MANAGEMENT settings only!
 - URL: /admin/settings
-- Function: superadmin_settings()
+- Function: tenant_management_settings()
 - The tenant_settings() function in this file is UNUSED - actual tenant settings
   are handled by src/admin/blueprints/tenants.py::settings()
 """
@@ -19,16 +19,16 @@ from src.core.database.models import Tenant
 
 logger = logging.getLogger(__name__)
 
-# Create blueprints - separate for superadmin and tenant settings
-superadmin_settings_bp = Blueprint("superadmin_settings", __name__)
+# Create blueprints - separate for tenant management and tenant settings
+tenant_management_settings_bp = Blueprint("tenant_management_settings", __name__)
 settings_bp = Blueprint("settings", __name__)
 
 
-# Superadmin settings routes
-@superadmin_settings_bp.route("/settings")
+# Tenant management settings routes
+@tenant_management_settings_bp.route("/settings")
 @require_auth(admin_only=True)
-def superadmin_settings():
-    """Superadmin settings page."""
+def tenant_management_settings():
+    """Tenant management settings page."""
     # GAM OAuth credentials are now configured via environment variables
     gam_client_id = os.environ.get("GAM_OAUTH_CLIENT_ID", "")
     gam_client_secret = os.environ.get("GAM_OAUTH_CLIENT_SECRET", "")
@@ -53,7 +53,7 @@ def superadmin_settings():
     )
 
 
-@superadmin_settings_bp.route("/settings/update", methods=["POST"])
+@tenant_management_settings_bp.route("/settings/update", methods=["POST"])
 @require_auth(admin_only=True)
 def update_admin_settings():
     """Update superadmin settings."""
