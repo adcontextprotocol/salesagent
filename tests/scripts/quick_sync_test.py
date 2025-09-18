@@ -15,7 +15,7 @@ import requests
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 # Import the sync API functions directly
-from sync_api import get_superadmin_api_key, initialize_superadmin_api_key
+from sync_api import get_tenant_management_api_key, initialize_tenant_management_api_key
 
 
 def main():
@@ -27,10 +27,10 @@ def main():
 
     # 1. Get API key
     print("\n1. Getting API key...")
-    api_key = get_superadmin_api_key()
+    api_key = get_tenant_management_api_key()
     if not api_key:
         print("   Creating new API key...")
-        api_key = initialize_superadmin_api_key()
+        api_key = initialize_tenant_management_api_key()
     print(f"   API Key: {api_key[:20]}...")
 
     # Set up headers

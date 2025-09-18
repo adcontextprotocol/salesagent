@@ -32,7 +32,7 @@ def client(app):
 @pytest.fixture
 def api_key(client):
     """Initialize and return API key."""
-    response = client.post("/api/v1/superadmin/init-api-key")
+    response = client.post("/api/v1/tenant-management/init-api-key")
     if response.status_code == 201:
         return response.json["api_key"]
     # If already initialized, we need to get it from the database
@@ -76,12 +76,12 @@ def test_tenant(integration_db):
         session.commit()
 
 
-class TestSuperAdminAPIIntegration:
-    """Integration tests for Super Admin API."""
+class TestTenantManagementAPIIntegration:
+    """Integration tests for Tenant Management API."""
 
     def test_init_api_key(self, client):
         """Test API key initialization."""
-        response = client.post("/api/v1/superadmin/init-api-key")
+        response = client.post("/api/v1/tenant-management/init-api-key")
         # May be 201 (created) or 409 (already exists)
         assert response.status_code in [201, 409]
 
@@ -92,7 +92,7 @@ class TestSuperAdminAPIIntegration:
 
     def test_health_check(self, client, api_key):
         """Test health check endpoint."""
-        response = client.get("/api/v1/superadmin/health", headers={"X-Superadmin-API-Key": api_key})
+        response = client.get("/api/v1/tenant-management/health", headers={"X-Tenant-Management-API-Key": api_key})
 
         if response.status_code == 401:
             # API key mismatch in test, skip
@@ -111,7 +111,7 @@ class TestSuperAdminAPIIntegration:
         }
 
         response = client.post(
-            "/api/v1/superadmin/tenants", headers={"X-Superadmin-API-Key": api_key}, json=tenant_data
+            "/api/v1/tenant-management/tenants", headers={"X-Tenant-Management-API-Key": api_key}, json=tenant_data
         )
 
         if response.status_code == 401:
@@ -147,7 +147,7 @@ class TestSuperAdminAPIIntegration:
         }
 
         response = client.post(
-            "/api/v1/superadmin/tenants", headers={"X-Superadmin-API-Key": api_key}, json=tenant_data
+            "/api/v1/tenant-management/tenants", headers={"X-Tenant-Management-API-Key": api_key}, json=tenant_data
         )
 
         if response.status_code == 401:
@@ -162,7 +162,7 @@ class TestSuperAdminAPIIntegration:
 
     def test_list_tenants(self, client, api_key, test_tenant):
         """Test listing all tenants."""
-        response = client.get("/api/v1/superadmin/tenants", headers={"X-Superadmin-API-Key": api_key})
+        response = client.get("/api/v1/tenant-management/tenants", headers={"X-Tenant-Management-API-Key": api_key})
 
         if response.status_code == 401:
             pytest.skip("API key not valid for this test run")
@@ -181,8 +181,8 @@ class TestSuperAdminAPIIntegration:
         """Test getting specific tenant details."""
         # First create a tenant
         create_response = client.post(
-            "/api/v1/superadmin/tenants",
-            headers={"X-Superadmin-API-Key": api_key},
+            "/api/v1/tenant-management/tenants",
+            headers={"X-Tenant-Management-API-Key": api_key},
             json={
                 "name": "Test Detail Publisher",
                 "subdomain": "test-detail",
@@ -197,7 +197,9 @@ class TestSuperAdminAPIIntegration:
         tenant_id = create_response.json["tenant_id"]
 
         # Now get the details
-        response = client.get(f"/api/v1/superadmin/tenants/{tenant_id}", headers={"X-Superadmin-API-Key": api_key})
+        response = client.get(
+            f"/api/v1/tenant-management/tenants/{tenant_id}", headers={"X-Tenant-Management-API-Key": api_key}
+        )
 
         assert response.status_code == 200
         data = response.json
@@ -218,8 +220,8 @@ class TestSuperAdminAPIIntegration:
         """Test updating a tenant."""
         # First create a tenant
         create_response = client.post(
-            "/api/v1/superadmin/tenants",
-            headers={"X-Superadmin-API-Key": api_key},
+            "/api/v1/tenant-management/tenants",
+            headers={"X-Tenant-Management-API-Key": api_key},
             json={
                 "name": "Test Update Publisher",
                 "subdomain": "test-update",
@@ -241,13 +243,17 @@ class TestSuperAdminAPIIntegration:
         }
 
         response = client.put(
-            f"/api/v1/superadmin/tenants/{tenant_id}", headers={"X-Superadmin-API-Key": api_key}, json=update_data
+            f"/api/v1/tenant-management/tenants/{tenant_id}",
+            headers={"X-Tenant-Management-API-Key": api_key},
+            json=update_data,
         )
 
         assert response.status_code == 200
 
         # Verify the update
-        get_response = client.get(f"/api/v1/superadmin/tenants/{tenant_id}", headers={"X-Superadmin-API-Key": api_key})
+        get_response = client.get(
+            f"/api/v1/tenant-management/tenants/{tenant_id}", headers={"X-Tenant-Management-API-Key": api_key}
+        )
 
         updated_data = get_response.json
         assert updated_data["billing_plan"] == "enterprise"
@@ -259,8 +265,8 @@ class TestSuperAdminAPIIntegration:
         """Test soft deleting a tenant."""
         # First create a tenant
         create_response = client.post(
-            "/api/v1/superadmin/tenants",
-            headers={"X-Superadmin-API-Key": api_key},
+            "/api/v1/tenant-management/tenants",
+            headers={"X-Tenant-Management-API-Key": api_key},
             json={"name": "Test Delete Publisher", "subdomain": "test-delete", "ad_server": "mock"},
         )
 
@@ -270,13 +276,17 @@ class TestSuperAdminAPIIntegration:
         tenant_id = create_response.json["tenant_id"]
 
         # Soft delete
-        response = client.delete(f"/api/v1/superadmin/tenants/{tenant_id}", headers={"X-Superadmin-API-Key": api_key})
+        response = client.delete(
+            f"/api/v1/tenant-management/tenants/{tenant_id}", headers={"X-Tenant-Management-API-Key": api_key}
+        )
 
         assert response.status_code == 200
         assert "deactivated" in response.json["message"]
 
         # Verify tenant still exists but is inactive
-        get_response = client.get(f"/api/v1/superadmin/tenants/{tenant_id}", headers={"X-Superadmin-API-Key": api_key})
+        get_response = client.get(
+            f"/api/v1/tenant-management/tenants/{tenant_id}", headers={"X-Tenant-Management-API-Key": api_key}
+        )
 
         assert get_response.status_code == 200
         assert get_response.json["is_active"] is False

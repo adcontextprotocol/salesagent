@@ -566,10 +566,10 @@ uv run python tools/simulations/run_simulation.py
 
 ```bash
 # Run test script
-python scripts/test_superadmin_api.py
+python scripts/test_tenant_management_api.py
 
 # Unit tests
-uv run pytest tests/integration/test_superadmin_api_integration.py -v
+uv run pytest tests/integration/test_tenant_management_api_integration.py -v
 ```
 
 ## Security Best Practices

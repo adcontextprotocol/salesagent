@@ -22,11 +22,11 @@ class AdCPTenantManager:
 
         Args:
             api_base_url: Base URL of the AdCP Sales Agent (e.g., https://adcp.example.com)
-            api_key: Super admin API key
+            api_key: Tenant management API key
         """
         self.api_base_url = api_base_url.rstrip("/")
         self.api_key = api_key
-        self.headers = {"X-Superadmin-API-Key": api_key, "Content-Type": "application/json"}
+        self.headers = {"X-Tenant-Management-API-Key": api_key, "Content-Type": "application/json"}
 
     def create_gam_tenant(
         self,
@@ -81,7 +81,7 @@ class AdCPTenantManager:
 
         # Create tenant via API
         response = requests.post(
-            f"{self.api_base_url}/api/v1/superadmin/tenants", headers=self.headers, json=tenant_data
+            f"{self.api_base_url}/api/v1/tenant-management/tenants", headers=self.headers, json=tenant_data
         )
 
         if response.status_code != 201:
@@ -105,7 +105,9 @@ class AdCPTenantManager:
 
     def get_tenant_status(self, tenant_id: str) -> dict:
         """Check the status of a tenant."""
-        response = requests.get(f"{self.api_base_url}/api/v1/superadmin/tenants/{tenant_id}", headers=self.headers)
+        response = requests.get(
+            f"{self.api_base_url}/api/v1/tenant-management/tenants/{tenant_id}", headers=self.headers
+        )
 
         if response.status_code != 200:
             raise Exception(f"Failed to get tenant: {response.status_code} - {response.text}")
@@ -117,7 +119,7 @@ class AdCPTenantManager:
         update_data = {"adapter_config": {"gam_refresh_token": new_refresh_token}}
 
         response = requests.put(
-            f"{self.api_base_url}/api/v1/superadmin/tenants/{tenant_id}", headers=self.headers, json=update_data
+            f"{self.api_base_url}/api/v1/tenant-management/tenants/{tenant_id}", headers=self.headers, json=update_data
         )
 
         if response.status_code != 200:
@@ -150,7 +152,7 @@ def handle_gam_oauth_callback_minimal(request):
 
     # 2. Create AdCP tenant with minimal info
     tenant_manager = AdCPTenantManager(
-        api_base_url=os.environ["ADCP_SERVER_URL"], api_key=os.environ["ADCP_SUPERADMIN_API_KEY"]
+        api_base_url=os.environ["ADCP_SERVER_URL"], api_key=os.environ["ADCP_TENANT_MANAGEMENT_API_KEY"]
     )
 
     try:
@@ -190,7 +192,7 @@ def handle_gam_oauth_callback_full(request):
 
     # 3. Create AdCP tenant
     tenant_manager = AdCPTenantManager(
-        api_base_url=os.environ["ADCP_SERVER_URL"], api_key=os.environ["ADCP_SUPERADMIN_API_KEY"]
+        api_base_url=os.environ["ADCP_SERVER_URL"], api_key=os.environ["ADCP_TENANT_MANAGEMENT_API_KEY"]
     )
 
     try:
@@ -226,7 +228,7 @@ def refresh_gam_tokens_job():
     Run this periodically (e.g., daily) to keep tokens fresh.
     """
     tenant_manager = AdCPTenantManager(
-        api_base_url=os.environ["ADCP_SERVER_URL"], api_key=os.environ["ADCP_SUPERADMIN_API_KEY"]
+        api_base_url=os.environ["ADCP_SERVER_URL"], api_key=os.environ["ADCP_TENANT_MANAGEMENT_API_KEY"]
     )
 
     # Get all tenants with GAM from your database

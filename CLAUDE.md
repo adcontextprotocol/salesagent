@@ -832,7 +832,7 @@ async def async_resource(self) -> AsyncGenerator[Resource, None]:
 ### Common Test Patterns
 - Use `get_db_session()` context manager for database access
 - Import `Principal` from `schemas` (not `models`) for business logic
-- Use `SuperadminConfig` in fixtures for admin access
+- Use `TenantManagementConfig` in fixtures for admin access
 - Set `sess["user"]` as a dictionary with email and role
 
 ### AdCP Compliance Testing (MANDATORY)
