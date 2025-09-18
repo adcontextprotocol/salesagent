@@ -689,7 +689,8 @@ async def get_products(brief: str, promoted_offering: str, context: Context = No
     else:
         # Legacy path - extract from FastMCP Context
         testing_ctx = get_testing_context(context)
-        principal_id = _get_principal_id_from_context(context)
+        # For discovery endpoints, authentication is optional
+        principal_id = get_principal_from_context(context)  # Returns None if no auth
         tenant = get_current_tenant()
         if not tenant:
             raise ToolError("No tenant context available")
@@ -745,8 +746,8 @@ async def get_products(brief: str, promoted_offering: str, context: Context = No
     audit_logger = get_audit_logger("AdCP", tenant["tenant_id"])
     audit_logger.log_operation(
         operation="policy_check",
-        principal_name=principal_id,
-        principal_id=principal_id,
+        principal_name=principal_id or "anonymous",
+        principal_id=principal_id or "anonymous",
         adapter_id="policy_service",
         success=policy_result.status != PolicyStatus.BLOCKED,
         details={
@@ -894,8 +895,8 @@ def list_creative_formats(context: Context) -> ListCreativeFormatsResponse:
     """
     start_time = time.time()
 
-    # Authentication
-    principal_id = _get_principal_id_from_context(context)
+    # For discovery endpoints, authentication is optional
+    principal_id = get_principal_from_context(context)  # Returns None if no auth
 
     # Get tenant information
     tenant = get_current_tenant()
@@ -960,8 +961,8 @@ def list_creative_formats(context: Context) -> ListCreativeFormatsResponse:
     audit_logger = get_audit_logger("AdCP", tenant["tenant_id"])
     audit_logger.log_operation(
         operation="list_creative_formats",
-        principal_name=principal_id,
-        principal_id=principal_id,
+        principal_name=principal_id or "anonymous",
+        principal_id=principal_id or "anonymous",
         adapter_id="N/A",
         success=True,
         details={
