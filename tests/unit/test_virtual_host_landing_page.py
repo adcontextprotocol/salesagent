@@ -4,6 +4,8 @@ from unittest.mock import Mock, patch
 
 from starlette.requests import Request
 
+from src.landing.landing_page import generate_fallback_landing_page, generate_tenant_landing_page
+
 
 class TestVirtualHostLandingPage:
     """Test virtual host landing page functionality."""
@@ -61,104 +63,109 @@ class TestVirtualHostLandingPage:
         assert should_redirect is True
         mock_get_tenant.assert_not_called()
 
-    def test_landing_page_html_generation(self):
-        """Test HTML content generation for landing page."""
+    def test_landing_page_html_generation_with_new_module(self):
+        """Test HTML content generation using the new landing page module."""
         # Arrange
         tenant = {
             "tenant_id": "html-test",
             "name": "HTML Test Publisher & Co.",  # Test HTML escaping
-            "virtual_host": "html.test.com",
+            "subdomain": "htmltest",
         }
+        virtual_host = "htmltest.sales-agent.scope3.com"
 
-        # Act - simulate HTML generation logic from main.py
-        html_content = f"""
-        <!DOCTYPE html>
-        <html>
-        <head>
-            <title>{tenant['name']} - Ad Sales Portal</title>
-            <meta charset="utf-8">
-            <meta name="viewport" content="width=device-width, initial-scale=1">
-        </head>
-        <body>
-            <div class="container">
-                <h1>{tenant['name']}</h1>
-                <h2>Advertising Context Protocol</h2>
-                <p>This endpoint supports the Advertising Context Protocol (AdCP) for programmatic advertising integration.</p>
-                <div class="endpoints">
-                    <h3>Available Endpoints:</h3>
-                    <ul>
-                        <li><strong>MCP Server:</strong> <code>/mcp</code></li>
-                        <li><strong>A2A Server:</strong> <code>/a2a</code></li>
-                        <li><strong>Agent Discovery:</strong> <code>/.well-known/agent.json</code></li>
-                    </ul>
-                </div>
-            </div>
-        </body>
-        </html>
-        """
+        # Act - use the new landing page module
+        html_content = generate_tenant_landing_page(tenant, virtual_host)
 
-        # Assert
-        assert tenant["name"] in html_content
+        # Assert - check for enhanced content (note: & will be escaped as &amp;)
+        assert "HTML Test Publisher" in html_content  # Check for core name without special chars
         assert "Advertising Context Protocol" in html_content
         assert "/mcp" in html_content
         assert "/a2a" in html_content
         assert "/.well-known/agent.json" in html_content
         assert "<!DOCTYPE html>" in html_content
 
-    def test_landing_page_xss_prevention(self):
-        """Test that tenant names are properly escaped in HTML."""
+        # Check for new features
+        assert "Need a Buying Agent?" in html_content
+        assert "scope3.com" in html_content
+        assert "Admin Dashboard" in html_content
+        assert "adcontextprotocol.org" in html_content
+
+    def test_landing_page_xss_prevention_with_jinja2(self):
+        """Test that tenant names are properly escaped using Jinja2."""
         # Arrange - tenant name with potential XSS
         tenant = {
             "tenant_id": "xss-test",
             "name": "<script>alert('xss')</script>Malicious Publisher",
-            "virtual_host": "xss.test.com",
+            "subdomain": "xsstest",
         }
 
-        # Act - simulate HTML generation (should be escaped in production)
-        # Note: In real implementation, HTML should be properly escaped
-        html_content = f"""
-        <h1>{tenant['name']}</h1>
-        <title>{tenant['name']} - Ad Sales Portal</title>
-        """
+        # Act - use the new landing page module (should auto-escape)
+        html_content = generate_tenant_landing_page(tenant)
 
-        # Assert - for this test, we just verify the content is included
-        # In production, proper HTML escaping should be implemented
-        assert tenant["name"] in html_content
-        # Note: Real implementation should escape < and > characters
+        # Assert - Jinja2 should have escaped the malicious content
+        assert "&lt;script&gt;" in html_content  # Escaped version
+        assert "<script>" not in html_content  # Raw script tags should not be present
+        assert "alert('xss')" not in html_content  # Should be escaped
+        assert "Malicious Publisher" in html_content  # Safe content should remain
 
-    def test_landing_page_styling_inclusion(self):
-        """Test that landing page includes proper styling."""
-        tenant = {"name": "Styled Publisher", "virtual_host": "styled.test.com"}
+    def test_landing_page_url_generation_production(self):
+        """Test URL generation in production environment."""
+        tenant = {"name": "Production Publisher", "subdomain": "prod"}
+        virtual_host = "prod.sales-agent.scope3.com"
 
-        # Act - check for CSS styling elements
-        html_content = f"""
-        <style>
-            body {{
-                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-                line-height: 1.6;
-                color: #333;
-                max-width: 800px;
-                margin: 0 auto;
-                padding: 2rem;
-            }}
-            .container {{
-                text-align: center;
-            }}
-            h1 {{
-                color: #2563eb;
-                margin-bottom: 0.5rem;
-            }}
-        </style>
-        <div class="container">
-            <h1>{tenant['name']}</h1>
-        </div>
-        """
+        with patch.dict("os.environ", {"PRODUCTION": "true"}):
+            html_content = generate_tenant_landing_page(tenant, virtual_host)
 
-        # Assert
-        assert "font-family:" in html_content
-        assert ".container" in html_content
-        assert "color: #2563eb" in html_content
-        assert tenant["name"] in html_content
+        # Should use production URLs
+        assert "https://prod.sales-agent.scope3.com/mcp" in html_content
+        assert "https://prod.sales-agent.scope3.com/a2a" in html_content
+        assert "https://prod.sales-agent.scope3.com/.well-known/agent.json" in html_content
+
+    def test_landing_page_url_generation_development(self):
+        """Test URL generation in development environment."""
+        tenant = {"name": "Dev Publisher", "subdomain": "dev"}
+
+        with patch.dict("os.environ", {"PRODUCTION": "false", "ADCP_SALES_PORT": "8080"}):
+            html_content = generate_tenant_landing_page(tenant)
+
+        # Should use localhost URLs
+        assert "http://localhost:8080/mcp" in html_content
+        assert "http://localhost:8080/a2a" in html_content
+        assert "http://localhost:8080/.well-known/agent.json" in html_content
+
+    def test_landing_page_scope3_integration(self):
+        """Test that landing page includes Scope3 link for buying agents."""
+        tenant = {"name": "Scope3 Test Publisher", "subdomain": "scope3test"}
+
+        html_content = generate_tenant_landing_page(tenant)
+
+        # Check for Scope3 integration
+        assert "Need a Buying Agent?" in html_content
+        assert "scope3.com" in html_content
+        assert "Get Agent from Scope3" in html_content
+
+    def test_landing_page_admin_dashboard_link(self):
+        """Test that landing page includes admin dashboard link."""
+        tenant = {"name": "Admin Test Publisher", "subdomain": "admintest"}
+
+        html_content = generate_tenant_landing_page(tenant)
+
+        # Check for admin dashboard
+        assert "Admin Dashboard" in html_content
+        assert "/admin/" in html_content
+        assert "Access Admin Dashboard" in html_content
+
+    def test_landing_page_adcp_documentation_links(self):
+        """Test that landing page includes proper AdCP documentation links."""
+        tenant = {"name": "Docs Test Publisher", "subdomain": "docstest"}
+
+        html_content = generate_tenant_landing_page(tenant)
+
+        # Check for documentation links
+        assert "adcontextprotocol.org" in html_content
+        assert "AdCP Protocol Documentation" in html_content
+        assert "Media Buy API Reference" in html_content
+        assert "Signals API Reference" in html_content
 
     @patch("src.core.main.get_tenant_by_virtual_host")
     async def test_landing_page_with_nonexistent_tenant(self, mock_get_tenant):
@@ -183,45 +190,62 @@ class TestVirtualHostLandingPage:
         assert should_redirect is True
         mock_get_tenant.assert_called_once_with("nonexistent.test.com")
 
-    def test_landing_page_endpoint_urls(self):
-        """Test that landing page includes correct endpoint URLs."""
-        tenant = {"name": "Endpoint Test Publisher"}
-
-        # Expected endpoints that should be mentioned
-        expected_endpoints = ["/mcp", "/a2a", "/.well-known/agent.json"]
-
-        # Act - simulate endpoint list generation
-        html_content = """
-        <h3>Available Endpoints:</h3>
-        <ul>
-            <li><strong>MCP Server:</strong> <code>/mcp</code></li>
-            <li><strong>A2A Server:</strong> <code>/a2a</code></li>
-            <li><strong>Agent Discovery:</strong> <code>/.well-known/agent.json</code></li>
-        </ul>
-        """
+    def test_fallback_landing_page_generation(self):
+        """Test fallback landing page when tenant lookup fails."""
+        # Act
+        html_content = generate_fallback_landing_page("Test error message")
 
         # Assert
-        for endpoint in expected_endpoints:
-            assert endpoint in html_content
+        assert "<!DOCTYPE html>" in html_content
+        assert "AdCP Sales Agent" in html_content
+        assert "Test error message" in html_content
+        assert "/admin/" in html_content
+        assert "Go to Admin Dashboard" in html_content
 
-    def test_landing_page_meta_tags(self):
-        """Test that landing page includes proper meta tags."""
-        tenant = {"name": "Meta Test Publisher"}
+    def test_landing_page_responsive_design(self):
+        """Test that landing page includes responsive design elements."""
+        tenant = {"name": "Responsive Publisher", "subdomain": "responsive"}
 
-        # Act - simulate meta tag generation
-        html_content = f"""
-        <head>
-            <title>{tenant['name']} - Ad Sales Portal</title>
-            <meta charset="utf-8">
-            <meta name="viewport" content="width=device-width, initial-scale=1">
-        </head>
-        """
+        html_content = generate_tenant_landing_page(tenant)
 
-        # Assert
-        assert '<meta charset="utf-8">' in html_content
-        assert 'name="viewport"' in html_content
-        assert "width=device-width" in html_content
-        assert f"{tenant['name']} - Ad Sales Portal" in html_content
+        # Check for responsive CSS features
+        assert "@media (max-width: 768px)" in html_content
+        assert "width=device-width" in html_content  # Viewport meta tag
+        assert "grid-template-columns" in html_content  # CSS Grid
+        assert "flex" in html_content  # Flexbox
+
+    def test_landing_page_accessibility_features(self):
+        """Test that landing page includes accessibility features."""
+        tenant = {"name": "Accessible Publisher", "subdomain": "accessible"}
+
+        html_content = generate_tenant_landing_page(tenant)
+
+        # Check for accessibility features
+        assert 'lang="en"' in html_content
+        assert 'charset="utf-8"' in html_content
+        assert 'name="description"' in html_content  # Meta description
+
+    def test_landing_page_virtual_host_info_display(self):
+        """Test that virtual host information is displayed when available."""
+        tenant = {"name": "Virtual Host Publisher", "subdomain": "vhost"}
+        virtual_host = "custom.example.com"
+
+        html_content = generate_tenant_landing_page(tenant, virtual_host)
+
+        # Check for virtual host info
+        assert virtual_host in html_content
+        assert "Virtual Host:" in html_content
+
+    def test_landing_page_tenant_subdomain_extraction(self):
+        """Test tenant subdomain extraction from virtual host."""
+        tenant = {"name": "Subdomain Test", "tenant_id": "subdomain-test"}
+        virtual_host = "scribd.sales-agent.scope3.com"
+
+        html_content = generate_tenant_landing_page(tenant, virtual_host)
+
+        # Should extract "scribd" as the subdomain and use it in URLs
+        assert "scribd" in html_content
+        assert "https://scribd.sales-agent.scope3.com" in html_content
 
     @patch("src.core.main.get_tenant_by_virtual_host")
     async def test_landing_page_header_case_insensitive(self, mock_get_tenant):
@@ -251,50 +275,13 @@ class TestVirtualHostLandingPage:
             # Assert
             assert apx_host == "case.test.com"
 
-    def test_landing_page_accessibility_features(self):
-        """Test that landing page includes basic accessibility features."""
-        tenant = {"name": "Accessible Publisher"}
+    def test_landing_page_template_errors_handled(self):
+        """Test that template errors are handled gracefully."""
+        # Test with minimal tenant data
+        tenant = {"name": "Minimal Publisher"}
 
-        # Act - simulate HTML with accessibility features
-        html_content = f"""
-        <!DOCTYPE html>
-        <html lang="en">
-        <head>
-            <title>{tenant['name']} - Ad Sales Portal</title>
-        </head>
-        <body>
-            <main>
-                <h1>{tenant['name']}</h1>
-                <h2>Advertising Context Protocol</h2>
-                <p>This endpoint supports the Advertising Context Protocol (AdCP) for programmatic advertising integration.</p>
-            </main>
-        </body>
-        </html>
-        """
+        # Should not raise exception even with minimal data
+        html_content = generate_tenant_landing_page(tenant)
 
-        # Assert
-        assert 'lang="en"' in html_content
-        assert "<main>" in html_content
-        assert "</main>" in html_content
-        assert "<h1>" in html_content  # Proper heading hierarchy
-
-    def test_landing_page_responsive_design(self):
-        """Test that landing page includes responsive design elements."""
-        # Act - simulate responsive CSS
-        css_content = """
-        body {
-            max-width: 800px;
-            margin: 0 auto;
-            padding: 2rem;
-        }
-        @media (max-width: 600px) {
-            body {
-                padding: 1rem;
-            }
-        }
-        """
-
-        # Assert
-        assert "max-width: 800px" in css_content
-        assert "margin: 0 auto" in css_content
-        assert "@media (max-width: 600px)" in css_content
+        assert "Minimal Publisher" in html_content
+        assert "<!DOCTYPE html>" in html_content
