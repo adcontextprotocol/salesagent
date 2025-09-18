@@ -118,13 +118,21 @@ class TestMCPCriticalEndpoints:
     @pytest.mark.smoke
     @pytest.mark.requires_server
     def test_authentication_required(self):
-        """Test that endpoints require authentication."""
+        """Test that transaction endpoints require authentication."""
         response = httpx.post(
             "http://localhost:8080/mcp/",
             json={
                 "jsonrpc": "2.0",
                 "method": "tools/call",
-                "params": {"name": "get_products", "arguments": {}},
+                "params": {
+                    "name": "create_media_buy",
+                    "arguments": {
+                        "product_ids": ["test"],
+                        "total_budget": 1000.0,
+                        "flight_start_date": "2025-01-01",
+                        "flight_end_date": "2025-01-31",
+                    },
+                },
                 "id": 4,
             },
             timeout=5.0,
@@ -133,6 +141,45 @@ class TestMCPCriticalEndpoints:
         result = response.json()
         assert "error" in result
         assert "authentication" in result["error"]["message"].lower()
+
+    @pytest.mark.smoke
+    @pytest.mark.requires_server
+    def test_discovery_endpoints_work_without_auth(self):
+        """Test that discovery endpoints work without authentication."""
+        # Test get_products without auth
+        response = httpx.post(
+            "http://localhost:8080/mcp/",
+            json={
+                "jsonrpc": "2.0",
+                "method": "tools/call",
+                "params": {
+                    "name": "get_products",
+                    "arguments": {"brief": "test campaign", "promoted_offering": "Nike Air Max 2025 running shoes"},
+                },
+                "id": 5,
+            },
+            timeout=5.0,
+        )
+        assert response.status_code == 200
+        result = response.json()
+        # Should succeed without authentication error
+        assert "result" in result or ("error" in result and "authentication" not in result["error"]["message"].lower())
+
+        # Test list_creative_formats without auth
+        response = httpx.post(
+            "http://localhost:8080/mcp/",
+            json={
+                "jsonrpc": "2.0",
+                "method": "tools/call",
+                "params": {"name": "list_creative_formats", "arguments": {}},
+                "id": 6,
+            },
+            timeout=5.0,
+        )
+        assert response.status_code == 200
+        result = response.json()
+        # Should succeed without authentication error
+        assert "result" in result or ("error" in result and "authentication" not in result["error"]["message"].lower())
 
 
 class TestAdminUICriticalPaths:
