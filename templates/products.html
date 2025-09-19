@@ -188,7 +188,7 @@
 <script>
 function deleteProduct(productId, productName) {
     if (confirm(`Are you sure you want to delete product "${productName}"?\n\nThis action cannot be undone and may affect active campaigns.`)) {
-        fetch(`{{ url_for('products.delete_product', tenant_id=tenant_id, product_id='PRODUCT_ID') }}`.replace('PRODUCT_ID', productId), {
+        fetch(`/tenant/{{ tenant_id }}/products/${productId}/delete`, {
             method: 'DELETE',
             headers: {
                 'Content-Type': 'application/json',
