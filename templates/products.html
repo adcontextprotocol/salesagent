@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% block title %}Products - {{ tenant_name }} - Scribd Sales Agent Admin{% endblock %}
+{% block title %}Products - {{ tenant_name }} - Sales Agent Admin{% endblock %}
 
 {% block content %}
 <!-- Product Design Guide -->
@@ -201,12 +201,15 @@ function deleteProduct(productId, productName) {
                 window.location.reload();
             } else {
                 return response.json().then(err => {
-                    throw new Error(err.error || 'Failed to delete product');
+                    alert(err.error || 'Could not delete product');
+                    return Promise.reject(err);
                 });
             }
         })
         .catch(error => {
-            alert('Error deleting product: ' + error.message);
+            if (error.message) {
+                alert('Failed to delete product: ' + error.message);
+            }
         });
     }
 }
