@@ -52,7 +52,7 @@ primary_region = "iad"
   DB_TYPE = "postgresql"
   # A2A Configuration
   A2A_MOCK_MODE = "false"
-  A2A_SERVER_URL = "https://adcp-sales-agent.fly.dev/a2a"
+  A2A_SERVER_URL = "https://sales-agent.scope3.com/a2a"
 
 [mounts]
   source = "adcp_data"
