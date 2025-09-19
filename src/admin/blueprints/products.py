@@ -576,6 +576,57 @@ def setup_wizard(tenant_id):
         )
 
 
+@products_bp.route("/<product_id>/delete", methods=["DELETE"])
+@require_tenant_access()
+def delete_product(tenant_id, product_id):
+    """Delete a product."""
+    try:
+        with get_db_session() as db_session:
+            # Find the product
+            product = db_session.query(Product).filter_by(tenant_id=tenant_id, product_id=product_id).first()
+
+            if not product:
+                return jsonify({"error": "Product not found"}), 404
+
+            # Store product name for response
+            product_name = product.name
+
+            # Check if product is used in any active media buys
+            # Import here to avoid circular imports
+            from src.core.database.models import MediaBuy
+
+            active_buys = (
+                db_session.query(MediaBuy)
+                .filter_by(tenant_id=tenant_id)
+                .filter(MediaBuy.status.in_(["pending", "active", "paused"]))
+                .all()
+            )
+
+            # Check if any active media buys reference this product
+            for buy in active_buys:
+                if product_id in (buy.config or {}).get("product_ids", []):
+                    return (
+                        jsonify(
+                            {
+                                "error": f"Cannot delete product '{product_name}' - it is used in active media buy '{buy.media_buy_id}'"
+                            }
+                        ),
+                        400,
+                    )
+
+            # Delete the product
+            db_session.delete(product)
+            db_session.commit()
+
+            logger.info(f"Product {product_id} ({product_name}) deleted by tenant {tenant_id}")
+
+            return jsonify({"success": True, "message": f"Product '{product_name}' deleted successfully"})
+
+    except Exception as e:
+        logger.error(f"Error deleting product {product_id}: {e}", exc_info=True)
+        return jsonify({"error": "Failed to delete product"}), 500
+
+
 @products_bp.route("/create-bulk", methods=["POST"])
 @require_tenant_access()
 def create_bulk(tenant_id):

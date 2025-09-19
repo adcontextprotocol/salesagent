@@ -3,6 +3,19 @@
 {% block title %}Products - {{ tenant_name }} - AdCP Admin{% endblock %}
 
 {% block content %}
+<!-- Product Design Guide -->
+<div class="card" style="margin-bottom: 1rem; background: #f8f9fa; border-left: 4px solid #007bff;">
+    <div style="padding: 1rem;">
+        <h3 style="margin: 0 0 0.5rem 0; color: #007bff;">📚 Product Design Guide</h3>
+        <p style="margin: 0 0 0.5rem 0; color: #666;">
+            Learn best practices for designing effective ad products that buyers will love.
+        </p>
+        <a href="https://docs.agentic.scope3.com/mintlify/partners/designing-ad-products" target="_blank" class="btn btn-sm" style="font-size: 0.9rem;">
+            View Product Design Documentation →
+        </a>
+    </div>
+</div>
+
 <div class="card">
     {% if products|length == 0 %}
     <!-- No products - show welcome message and wizard -->
@@ -105,6 +118,7 @@
                         {% if adapter_ui_endpoint %}
                         <a href="{{ adapter_ui_endpoint }}/{{ tenant_id }}/{{ product.product_id }}" class="btn btn-sm">Configure</a>
                         {% endif %}
+                        <button onclick="deleteProduct('{{ product.product_id }}', '{{ product.name }}')" class="btn btn-danger btn-sm" style="background: #dc3545; border-color: #dc3545;">Delete</button>
                     </div>
                 </td>
             </tr>
@@ -170,4 +184,42 @@
     color: #666;
 }
 </style>
+
+<script>
+function deleteProduct(productId, productName) {
+    if (confirm(`Are you sure you want to delete product "${productName}"?\n\nThis action cannot be undone and may affect active campaigns.`)) {
+        fetch(`{{ url_for('products.delete_product', tenant_id=tenant_id, product_id='PRODUCT_ID') }}`.replace('PRODUCT_ID', productId), {
+            method: 'DELETE',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': getCsrfToken()
+            }
+        })
+        .then(response => {
+            if (response.ok) {
+                // Success - reload the page to update the products list
+                window.location.reload();
+            } else {
+                return response.json().then(err => {
+                    throw new Error(err.error || 'Failed to delete product');
+                });
+            }
+        })
+        .catch(error => {
+            alert('Error deleting product: ' + error.message);
+        });
+    }
+}
+
+function getCsrfToken() {
+    // Try to get CSRF token from a meta tag or form
+    const metaToken = document.querySelector('meta[name="csrf-token"]');
+    if (metaToken) return metaToken.getAttribute('content');
+
+    const inputToken = document.querySelector('input[name="csrf_token"]');
+    if (inputToken) return inputToken.value;
+
+    return '';
+}
+</script>
 {% endblock %}
