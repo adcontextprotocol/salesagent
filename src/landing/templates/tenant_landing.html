@@ -4,7 +4,7 @@
     <title>{{ page_title }}</title>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <meta name="description" content="{{ tenant_name }} AdCP Sales Agent - Connect your agent via MCP or A2A for programmatic advertising">
+    <meta name="description" content="{{ tenant_name }} Sales Agent - Connect your agent via MCP or A2A for programmatic advertising">
     <style>
         /* Modern, professional styling */
         * {
@@ -302,7 +302,12 @@
 
         <!-- Footer -->
         <div class="footer">
-            <a href="{{ admin_url }}" style="color: #6c757d; font-size: 0.85em; text-decoration: none;">Internal Admin</a>
+            Powered by <a href="{{ adcp_docs_url }}" target="_blank">AdCP Protocol</a>
+            | <a href="{{ scope3_url }}" target="_blank">Scope3</a>
+            {% if tenant_subdomain %}
+            | Account: {{ tenant_subdomain }}
+            {% endif %}
+            | <a href="{{ admin_url }}" style="color: #6c757d; font-size: 0.85em; text-decoration: none;">Internal Admin</a>
         </div>
     </div>
 </body>

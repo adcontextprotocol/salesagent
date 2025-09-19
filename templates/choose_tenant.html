@@ -1,13 +1,13 @@
 {% extends "base.html" %}
 
-{% block title %}Select Tenant - AdCP Admin{% endblock %}
+{% block title %}Select Account - Scribd Sales Agent Admin{% endblock %}
 
 {% block content %}
 <div class="card" style="max-width: 600px; margin: 4rem auto;">
-    <h2>Select Tenant</h2>
+    <h2>Select Account</h2>
 
     <p style="margin-bottom: 2rem;">
-        Your email address has access to multiple tenants. Please select which one you'd like to manage:
+        Your email address has access to multiple accounts. Please select which one you'd like to manage:
     </p>
 
     <form method="POST" action="{{ url_for('auth.select_tenant') }}">

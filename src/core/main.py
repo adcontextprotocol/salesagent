@@ -398,9 +398,8 @@ def get_adapter(principal: Principal, dry_run: bool = False, testing_context=Non
 
 
 # --- Initialization ---
-# Only initialize DB if not in test mode
-if not os.environ.get("PYTEST_CURRENT_TEST"):
-    init_db()  # Tests will call with exit_on_error=False
+# NOTE: Database initialization moved to startup script to avoid import-time failures
+# The run_all_services.py script handles database initialization before starting the MCP server
 
 # Try to load config, but use defaults if no tenant context available
 try:
@@ -4588,17 +4587,22 @@ if os.environ.get("ADCP_UNIFIED_MODE"):
     @mcp.custom_route("/", methods=["GET"])
     async def root(request: Request):
         """Handle root route - show landing page for virtual hosts, redirect to admin for others."""
-        # Check for Apx-Incoming-Host header (Approximated.app virtual host)
         headers = dict(request.headers)
-        apx_host = headers.get("apx-incoming-host")
 
-        if apx_host:
+        # Check for Apx-Incoming-Host header (Approximated.app virtual host)
+        apx_host = headers.get("apx-incoming-host")
+        # Also check standard Host header for direct virtual hosts
+        host_header = headers.get("host")
+
+        virtual_host = apx_host or host_header
+
+        if virtual_host:
             # Look up tenant by virtual host
-            tenant = get_tenant_by_virtual_host(apx_host)
+            tenant = get_tenant_by_virtual_host(virtual_host)
             if tenant:
                 # Generate enhanced landing page using dedicated module
                 try:
-                    html_content = generate_tenant_landing_page(tenant, apx_host)
+                    html_content = generate_tenant_landing_page(tenant, virtual_host)
                     return HTMLResponse(content=html_content)
                 except Exception as e:
                     logger.error(f"Error generating landing page for tenant {tenant.get('name', 'unknown')}: {e}")
