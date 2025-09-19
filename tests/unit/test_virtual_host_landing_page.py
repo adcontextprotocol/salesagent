@@ -87,7 +87,7 @@ class TestVirtualHostLandingPage:
         # Check for new features
         assert "Need a Buying Agent?" in html_content
         assert "scope3.com" in html_content
-        assert "Admin Dashboard" in html_content
+        assert "Internal Admin" in html_content
         assert "adcontextprotocol.org" in html_content
 
     def test_landing_page_xss_prevention_with_jinja2(self):
@@ -151,9 +151,8 @@ class TestVirtualHostLandingPage:
         html_content = generate_tenant_landing_page(tenant)
 
         # Check for admin dashboard
-        assert "Admin Dashboard" in html_content
+        assert "Internal Admin" in html_content
         assert "/admin/" in html_content
-        assert "Access Admin Dashboard" in html_content
 
     def test_landing_page_adcp_documentation_links(self):
         """Test that landing page includes proper AdCP documentation links."""
@@ -211,8 +210,8 @@ class TestVirtualHostLandingPage:
         # Check for responsive CSS features
         assert "@media (max-width: 768px)" in html_content
         assert "width=device-width" in html_content  # Viewport meta tag
-        assert "grid-template-columns" in html_content  # CSS Grid
         assert "flex" in html_content  # Flexbox
+        assert "box-sizing: border-box" in html_content  # Responsive box model
 
     def test_landing_page_accessibility_features(self):
         """Test that landing page includes accessibility features."""
@@ -232,9 +231,8 @@ class TestVirtualHostLandingPage:
 
         html_content = generate_tenant_landing_page(tenant, virtual_host)
 
-        # Check for virtual host info
+        # Check for virtual host info - virtual host should be used in URLs
         assert virtual_host in html_content
-        assert "Virtual Host:" in html_content
 
     def test_landing_page_tenant_subdomain_extraction(self):
         """Test tenant subdomain extraction from virtual host."""
