@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% block title %}Login - Scribd Sales Agent Admin{% endblock %}
+{% block title %}Login - Sales Agent Admin{% endblock %}
 
 {% block content %}
 <div class="card" style="max-width: 400px; margin: 4rem auto; text-align: center;">
@@ -11,13 +11,13 @@
     {% endif %}
 
     {% if tenant_context %}
-        <h2>{{ tenant_name or tenant_context }} Sales Agent Admin</h2>
-        <p style="color: #666; margin-bottom: 2rem;">Sign in to access your account</p>
+        <h2>{{ tenant_name or tenant_context }} Internal Dashboard</h2>
+        <p style="color: #666; margin-bottom: 2rem;">Internal dashboard for {{ tenant_name or tenant_context }} team</p>
     {% elif tenant_id %}
-        <h2>{{ tenant_name or tenant_id }} Sales Agent Admin</h2>
-        <p style="color: #666; margin-bottom: 2rem;">Sign in to access your account</p>
+        <h2>{{ tenant_name or tenant_id }} Internal Dashboard</h2>
+        <p style="color: #666; margin-bottom: 2rem;">Internal dashboard for {{ tenant_name or tenant_id }} team</p>
     {% else %}
-        <h2>Scribd Sales Agent Admin</h2>
+        <h2>Sales Agent Admin</h2>
         <p style="color: #666; margin-bottom: 2rem;">Super Admin Login</p>
     {% endif %}
 
@@ -95,8 +95,8 @@
 
     <p style="color: #666; font-size: 14px; margin-top: 2rem;">
         {% if tenant_id or tenant_context %}
-        Access is restricted to authorized users.<br>
-        Contact your administrator if you need access.
+        Internal access only - {{ tenant_name or tenant_context or tenant_id }} employees.<br>
+        Contact your team administrator if you need access.
         {% else %}
         Access is restricted to super administrators.<br>
         For account access, use your account-specific login URL.

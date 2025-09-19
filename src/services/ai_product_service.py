@@ -75,6 +75,173 @@ class AIProductConfigurationService:
 
         return config
 
+    async def generate_product_suite_from_inventory(
+        self, inventory: AdServerInventory, creative_formats: list[dict[str, Any]], adapter_type: str = "mock"
+    ) -> list[dict[str, Any]]:
+        """Generate multiple products from comprehensive inventory data."""
+
+        # Analyze inventory to identify different product opportunities
+        product_opportunities = self._identify_product_opportunities(inventory)
+
+        products = []
+        for opportunity in product_opportunities:
+            try:
+                # Create focused description for this opportunity
+                description = ProductDescription(
+                    name=opportunity["suggested_name"],
+                    external_description=opportunity["buyer_description"],
+                    internal_details=opportunity["implementation_notes"],
+                )
+
+                # Create focused inventory subset for this product
+                focused_inventory = AdServerInventory(
+                    placements=[p for p in inventory.placements if p.get("id") in opportunity["placement_ids"]],
+                    ad_units=[u for u in inventory.ad_units if u.get("placement_id") in opportunity["placement_ids"]],
+                    targeting_options=inventory.targeting_options,
+                    creative_specs=creative_formats,
+                )
+
+                # Generate configuration with simplified prompt
+                config = await self._generate_focused_product_configuration(
+                    description, focused_inventory, creative_formats, adapter_type
+                )
+
+                if config:
+                    products.append(config)
+
+            except Exception as e:
+                logger.error(f"Error generating product for opportunity {opportunity['suggested_name']}: {e}")
+                continue
+
+        return products
+
+    def _identify_product_opportunities(self, inventory: AdServerInventory) -> list[dict[str, Any]]:
+        """Identify different product opportunities from inventory."""
+        opportunities = []
+
+        # Group placements by price tier and characteristics
+        premium_placements = []
+        standard_placements = []
+        budget_placements = []
+
+        for placement in inventory.placements:
+            floor_price = placement.get("floor_price", 0)
+            if floor_price >= 1.0:
+                premium_placements.append(placement)
+            elif floor_price >= 0.5:
+                standard_placements.append(placement)
+            else:
+                budget_placements.append(placement)
+
+        # Create opportunities based on groupings
+        if premium_placements:
+            opportunities.append(
+                {
+                    "suggested_name": "Premium High-Impact Package",
+                    "buyer_description": "Premium advertising package featuring our highest-performing placements with guaranteed visibility and premium targeting. Perfect for brand awareness and conversion campaigns.",
+                    "implementation_notes": f"Premium units: {', '.join([p.get('name', p.get('id')) for p in premium_placements[:3]])}. Floors: ${min([p.get('floor_price', 0) for p in premium_placements]):.2f}+",
+                    "placement_ids": [p.get("id") for p in premium_placements],
+                }
+            )
+
+        if standard_placements:
+            opportunities.append(
+                {
+                    "suggested_name": "Performance Display Network",
+                    "buyer_description": "Balanced performance advertising across high-quality placements with competitive pricing and broad reach. Ideal for performance and retargeting campaigns.",
+                    "implementation_notes": f"Standard units: {', '.join([p.get('name', p.get('id')) for p in standard_placements[:3]])}. Competitive pricing with proven performance.",
+                    "placement_ids": [p.get("id") for p in standard_placements],
+                }
+            )
+
+        if budget_placements:
+            opportunities.append(
+                {
+                    "suggested_name": "Value Reach Network",
+                    "buyer_description": "Cost-effective advertising solution for maximum reach and frequency. Perfect for awareness campaigns and testing new audiences.",
+                    "implementation_notes": f"Budget-friendly units: {', '.join([p.get('name', p.get('id')) for p in budget_placements[:3]])}. Volume-based pricing for reach optimization.",
+                    "placement_ids": [p.get("id") for p in budget_placements],
+                }
+            )
+
+        # Look for special placement types
+        video_placements = [
+            p
+            for p in inventory.placements
+            if "video" in p.get("name", "").lower() or "video" in p.get("description", "").lower()
+        ]
+        if video_placements:
+            opportunities.append(
+                {
+                    "suggested_name": "Video Engagement Suite",
+                    "buyer_description": "Premium video advertising with high engagement rates and viewability. Supports multiple video formats and targeting options.",
+                    "implementation_notes": f"Video units: {', '.join([p.get('name', p.get('id')) for p in video_placements])}. VAST compatible with engagement tracking.",
+                    "placement_ids": [p.get("id") for p in video_placements],
+                }
+            )
+
+        rich_media_placements = [
+            p
+            for p in inventory.placements
+            if "rich" in p.get("name", "").lower() or "interactive" in p.get("description", "").lower()
+        ]
+        if rich_media_placements:
+            opportunities.append(
+                {
+                    "suggested_name": "Rich Media Experience",
+                    "buyer_description": "Interactive and rich media advertising with advanced engagement features and premium user experience.",
+                    "implementation_notes": f"Rich media units: {', '.join([p.get('name', p.get('id')) for p in rich_media_placements])}. Interactive formats with behavioral triggers.",
+                    "placement_ids": [p.get("id") for p in rich_media_placements],
+                }
+            )
+
+        return opportunities
+
+    async def _generate_focused_product_configuration(
+        self,
+        description: ProductDescription,
+        inventory: AdServerInventory,
+        creative_formats: list[dict[str, Any]],
+        adapter_type: str,
+    ) -> dict[str, Any]:
+        """Generate configuration with a focused, shorter prompt."""
+
+        # Simplified prompt to avoid timeouts
+        prompt = f"""
+        Create an ad product configuration based on AdCP best practices:
+
+        Product: {description.name}
+        Description: {description.external_description}
+        Technical: {description.internal_details}
+
+        Available Placements:
+        {json.dumps(inventory.placements[:3], indent=1)}
+
+        Available Formats:
+        {json.dumps(creative_formats[:10], indent=1)}
+
+        Targeting: {json.dumps(inventory.targeting_options, indent=1)}
+
+        Return JSON only:
+        {{
+            "product_id": "generated_id",
+            "formats": ["format_id1"],
+            "delivery_type": "guaranteed|non_guaranteed",
+            "cpm": number or null,
+            "price_guidance": {{"min": number, "max": number}} or null,
+            "countries": ["US"] or null,
+            "targeting_template": {{"geo_targets": {{"countries": [...]}}, "device_targets": {{"device_types": [...]}}}}
+        }}
+        """
+
+        try:
+            response = self.model.generate_content(prompt)
+            config = json.loads(response.text)
+            return self._validate_configuration(config, creative_formats)
+        except Exception as e:
+            logger.error(f"Error in focused generation: {e}")
+            return self._get_default_configuration(description, creative_formats)
+
     async def _fetch_ad_server_inventory(self, tenant_id: str, adapter_type: str) -> AdServerInventory:
         """Fetch available inventory from ad server."""
 
@@ -326,7 +493,18 @@ class AIProductConfigurationService:
 
         prompt = f"""
         You are an expert ad operations specialist. Create an optimal product configuration
-        based on the following information:
+        based on the following information and best practices from the AdCP Product Design Guide
+        (https://docs.agentic.scope3.com/mintlify/partners/designing-ad-products).
+
+        Key Product Design Principles to Follow:
+        - Create products that solve specific buyer needs and use cases
+        - Use clear, buyer-friendly names and descriptions
+        - Optimize for both buyer experience and publisher revenue
+        - Align targeting with content and audience expectations
+        - Balance format variety with audience preferences
+        - Consider seasonal trends and market conditions
+        - Ensure competitive and realistic pricing
+        - Design for scale and operational efficiency
 
         Product Description:
         - Name: {description.name}
@@ -350,16 +528,23 @@ class AIProductConfigurationService:
 
         Generate a product configuration following these guidelines:
         1. Use the matched placements from the analysis as placement_targets
-        2. Select creative formats that match the recommended sizes
-        3. Set CPM within the suggested range (use single CPM for guaranteed, range for non-guaranteed)
-        4. Choose targeting that aligns with the product description
+        2. Select creative formats that match the recommended sizes and buyer preferences
+        3. Set competitive CPM within the suggested range (use single CPM for guaranteed, range for non-guaranteed)
+        4. Choose targeting that aligns with the product description and content context
         5. Include implementation details specific to {adapter_type}
+        6. Create buyer-friendly product names that clearly communicate value proposition
+        7. Ensure targeting is relevant to the content and audience type
+        8. Consider viewability and brand safety requirements
 
-        Rules:
-        - For "premium" products: Use guaranteed delivery with higher CPM
-        - For "standard" products: Use non_guaranteed with price guidance
+        Best Practice Rules:
+        - For "premium" products: Use guaranteed delivery with higher CPM, focus on high-value placements
+        - For "standard" products: Use non_guaranteed with competitive price guidance
         - Match format IDs exactly from the available creative formats list
         - Use placement IDs from the matched placements in targeting
+        - Prioritize formats that perform well on the specific content type
+        - Consider mobile vs desktop user behavior for format selection
+        - Include relevant contextual targeting when available
+        - Price competitively while maximizing publisher revenue
 
         Return ONLY a valid JSON object with this structure:
         {{

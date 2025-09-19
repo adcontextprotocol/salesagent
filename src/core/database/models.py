@@ -355,7 +355,7 @@ class AuditLog(Base):
 
 
 class TenantManagementConfig(Base):
-    __tablename__ = "tenant_management_config"
+    __tablename__ = "superadmin_config"
 
     config_key = Column(String(100), primary_key=True)
     config_value = Column(Text)

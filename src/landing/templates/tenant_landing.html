@@ -116,9 +116,8 @@
         }
 
         .info-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-            gap: 2rem;
+            display: flex;
+            justify-content: center;
             margin-top: 2rem;
         }
 
@@ -128,6 +127,8 @@
             padding: 1.5rem;
             border: 1px solid #e9ecef;
             text-align: center;
+            max-width: 400px;
+            width: 100%;
         }
 
         .info-card h3 {
@@ -185,18 +186,6 @@
             background: #5a6268;
         }
 
-        .virtual-host-info {
-            background: #e8f5e8;
-            border: 1px solid #c3e6c3;
-            border-radius: 6px;
-            padding: 1rem;
-            margin-top: 1rem;
-            font-size: 0.9rem;
-        }
-
-        .virtual-host-info strong {
-            color: #27ae60;
-        }
 
         .footer {
             background: #f8f9fa;
@@ -244,8 +233,7 @@
             }
 
             .info-grid {
-                grid-template-columns: 1fr;
-                gap: 1.5rem;
+                margin-top: 1.5rem;
             }
         }
     </style>
@@ -279,14 +267,6 @@
                     </div>
                 </div>
 
-                {% if virtual_host %}
-                <div class="virtual-host-info">
-                    <strong>Virtual Host:</strong> {{ virtual_host }}
-                    {% if is_production %}
-                    <br><small>Production environment detected</small>
-                    {% endif %}
-                </div>
-                {% endif %}
             </div>
 
             <!-- Agent Card Section -->
@@ -305,12 +285,6 @@
                     <a href="{{ scope3_url }}" class="cta-button" target="_blank">Get Agent from Scope3</a>
                 </div>
 
-                <!-- Admin Dashboard -->
-                <div class="info-card">
-                    <h3>⚙️ Admin Dashboard</h3>
-                    <p>Publishers and advertisers can access the admin dashboard to manage products, campaigns, and settings.</p>
-                    <a href="{{ admin_url }}" class="cta-button secondary">Access Admin Dashboard</a>
-                </div>
             </div>
 
             <!-- Resources Section -->
@@ -333,6 +307,7 @@
             {% if tenant_subdomain %}
             | Account: {{ tenant_subdomain }}
             {% endif %}
+            | <a href="{{ admin_url }}" style="color: #6c757d; font-size: 0.85em; text-decoration: none;">Internal Admin</a>
         </div>
     </div>
 </body>
