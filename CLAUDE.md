@@ -21,6 +21,61 @@ This project has **TWO COMPLETELY SEPARATE** deployment environments:
 
 **⚠️ IMPORTANT**: Docker and Fly.io are INDEPENDENT. Starting/stopping Docker does NOT affect production on Fly.io!
 
+## 🚨 GIT WORKFLOW - ABSOLUTELY CRITICAL 🚨
+
+### ❌ NEVER PUSH DIRECTLY TO MAIN ❌
+
+**MANDATORY WORKFLOW - NO EXCEPTIONS:**
+
+1. **Always work on feature branches**:
+   ```bash
+   git checkout -b feature/your-feature-name
+   # Make your changes
+   git add .
+   git commit -m "your commit message"
+   ```
+
+2. **Push feature branch and create Pull Request**:
+   ```bash
+   git push origin feature/your-feature-name
+   # Then create PR via GitHub UI or gh CLI
+   gh pr create --title "Your PR Title" --body "Description"
+   ```
+
+3. **NEVER do this**:
+   ```bash
+   # ❌ FORBIDDEN - DO NOT DO THIS
+   git push origin feature-branch:main
+   git push origin HEAD:main
+   ```
+
+**WHY THIS MATTERS:**
+- **Code Review**: All changes must be reviewed before merging
+- **CI/CD**: PRs trigger automated testing and validation
+- **Production Safety**: Direct pushes bypass safety checks
+- **Team Coordination**: PRs allow discussion and collaboration
+- **Audit Trail**: PRs provide proper change documentation
+
+**CONSEQUENCES OF DIRECT PUSH TO MAIN:**
+- ⚠️ **Bypasses code review** - potential bugs reach production
+- ⚠️ **Breaks CI/CD pipeline** - automated checks are skipped
+- ⚠️ **No rollback strategy** - harder to revert problematic changes
+- ⚠️ **Team disruption** - other developers may face merge conflicts
+
+**IF YOU ACCIDENTALLY PUSH TO MAIN:**
+1. **Immediately notify team** - communicate the mistake
+2. **Check if revert needed** - assess impact of direct push
+3. **Create retroactive PR** - document the changes properly
+4. **Follow proper workflow** - use feature branches going forward
+
+**📋 PROPER WORKFLOW CHECKLIST:**
+- [ ] Create feature branch from main
+- [ ] Make changes and commit to feature branch
+- [ ] Push feature branch to origin
+- [ ] Create Pull Request via GitHub
+- [ ] Wait for code review and approval
+- [ ] Merge via GitHub (never command line)
+
 ## Project Overview
 
 This is a Python-based reference implementation of the Advertising Context Protocol (AdCP) V2.3 sales agent. It demonstrates how publishers expose advertising inventory to AI-driven clients through a standardized MCP (Model Context Protocol) interface.
@@ -1125,13 +1180,20 @@ curl https://scribd.sales-agent.scope3.com/health
 ```
 
 ### Deployment Checklist Before Going to Production
-1. ✅ Test changes locally with `docker-compose up`
-2. ✅ Run tests: `uv run pytest`
-3. ✅ Check migrations work: `uv run python migrate.py`
-4. ✅ Verify no hardcoded secrets or debug code
-5. ✅ Deploy: `fly deploy --app adcp-sales-agent`
-6. ✅ Monitor logs: `fly logs --app adcp-sales-agent`
-7. ✅ Verify health: `fly status --app adcp-sales-agent`
+
+**🚨 CRITICAL**: ALL deployments must go through Pull Request workflow - NEVER push directly to main!
+
+1. ✅ **Create feature branch** and work on changes
+2. ✅ Test changes locally with `docker-compose up`
+3. ✅ Run tests: `uv run pytest`
+4. ✅ Check migrations work: `uv run python migrate.py`
+5. ✅ Verify no hardcoded secrets or debug code
+6. ✅ **Create Pull Request** - MANDATORY for all changes
+7. ✅ **Wait for code review and approval**
+8. ✅ **Merge via GitHub UI** (not command line)
+9. ✅ Deploy: `fly deploy --app adcp-sales-agent`
+10. ✅ Monitor logs: `fly logs --app adcp-sales-agent`
+11. ✅ Verify health: `fly status --app adcp-sales-agent`
 
 ## Troubleshooting
 
