@@ -1483,10 +1483,12 @@ def main():
         else:
             # Fallback for development or unknown tenant
             fly_app = os.getenv("FLY_APP_NAME")
-            if fly_app:
+            if fly_app and fly_app != "adcp-sales-agent":
+                # Development deployment with different app name
                 server_url = f"https://{fly_app}.fly.dev/a2a/"
             else:
-                server_url = "https://adcp-sales-agent.fly.dev/a2a/"
+                # Production fallback - use virtual host domain
+                server_url = "https://sales-agent.scope3.com/a2a/"
 
         # Create a copy of the static agent card with dynamic URL
         dynamic_card = agent_card.model_copy()

@@ -260,9 +260,9 @@ def mcp_test():
 
     # Get server URLs - use production URLs if in production, otherwise localhost
     if os.environ.get("PRODUCTION") == "true":
-        # In production, both servers are accessible at the main domain
-        mcp_server_url = "https://adcp-sales-agent.fly.dev/mcp"  # Remove trailing slash
-        a2a_server_url = "https://adcp-sales-agent.fly.dev/a2a/"
+        # In production, both servers are accessible at the virtual host domain
+        mcp_server_url = "https://sales-agent.scope3.com/mcp"  # Remove trailing slash
+        a2a_server_url = "https://sales-agent.scope3.com/a2a/"
     else:
         # In development, use localhost with the configured ports from environment
         # Default to common development ports if not set
