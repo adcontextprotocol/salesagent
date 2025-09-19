@@ -398,9 +398,8 @@ def get_adapter(principal: Principal, dry_run: bool = False, testing_context=Non
 
 
 # --- Initialization ---
-# Only initialize DB if not in test mode
-if not os.environ.get("PYTEST_CURRENT_TEST"):
-    init_db()  # Tests will call with exit_on_error=False
+# NOTE: Database initialization moved to startup script to avoid import-time failures
+# The run_all_services.py script handles database initialization before starting the MCP server
 
 # Try to load config, but use defaults if no tenant context available
 try:
