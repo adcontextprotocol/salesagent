@@ -42,6 +42,7 @@ from src.core.config_loader import (
     get_current_tenant,
     get_tenant_by_virtual_host,
     load_config,
+    safe_json_loads,
     set_current_tenant,
 )
 from src.core.context_manager import get_context_manager
@@ -4597,8 +4598,40 @@ if os.environ.get("ADCP_UNIFIED_MODE"):
         virtual_host = apx_host or host_header
 
         if virtual_host:
-            # Look up tenant by virtual host
+            # First try to look up tenant by exact virtual host match
             tenant = get_tenant_by_virtual_host(virtual_host)
+
+            # If no exact match, check for sales-agent.scope3.com subdomain routing
+            if not tenant and ".sales-agent.scope3.com" in virtual_host and not virtual_host.startswith("admin."):
+                # Extract subdomain (e.g., "wonderstruck" from "wonderstruck.sales-agent.scope3.com")
+                subdomain = virtual_host.split(".sales-agent.scope3.com")[0]
+
+                # Look up tenant by subdomain
+                try:
+                    with get_db_session() as db_session:
+                        tenant_obj = db_session.query(Tenant).filter_by(subdomain=subdomain, is_active=True).first()
+                        if tenant_obj:
+                            tenant = {
+                                "tenant_id": tenant_obj.tenant_id,
+                                "name": tenant_obj.name,
+                                "subdomain": tenant_obj.subdomain,
+                                "virtual_host": tenant_obj.virtual_host,
+                                "ad_server": tenant_obj.ad_server,
+                                "max_daily_budget": tenant_obj.max_daily_budget,
+                                "enable_axe_signals": tenant_obj.enable_axe_signals,
+                                "authorized_emails": safe_json_loads(tenant_obj.authorized_emails, []),
+                                "authorized_domains": safe_json_loads(tenant_obj.authorized_domains, []),
+                                "slack_webhook_url": tenant_obj.slack_webhook_url,
+                                "admin_token": tenant_obj.admin_token,
+                                "auto_approve_formats": safe_json_loads(tenant_obj.auto_approve_formats, []),
+                                "human_review_required": tenant_obj.human_review_required,
+                                "is_active": tenant_obj.is_active,
+                                "created_at": tenant_obj.created_at,
+                                "updated_at": tenant_obj.updated_at,
+                            }
+                except Exception as e:
+                    logger.error(f"Error looking up tenant by subdomain {subdomain}: {e}")
+
             if tenant:
                 # Generate enhanced landing page using dedicated module
                 try:
