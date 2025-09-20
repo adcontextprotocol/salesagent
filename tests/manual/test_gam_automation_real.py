@@ -263,6 +263,9 @@ class GAMAutomationTester:
         adapter = GoogleAdManager(
             config=self.gam_config,
             principal=self.principal,
+            network_code=self.network_code,
+            advertiser_id=self.advertiser_id,
+            trafficker_id=self.trafficker_id,
             dry_run=False,  # REAL GAM CALLS
             tenant_id=self.test_tenant_id,
         )
@@ -317,7 +320,13 @@ class GAMAutomationTester:
         print("\n⏳ Testing Confirmation Required...")
 
         adapter = GoogleAdManager(
-            config=self.gam_config, principal=self.principal, dry_run=False, tenant_id=self.test_tenant_id
+            config=self.gam_config,
+            principal=self.principal,
+            network_code=self.network_code,
+            advertiser_id=self.advertiser_id,
+            trafficker_id=self.trafficker_id,
+            dry_run=False,
+            tenant_id=self.test_tenant_id,
         )
 
         package = MediaPackage(
@@ -365,7 +374,13 @@ class GAMAutomationTester:
         print("\n✋ Testing Manual Mode...")
 
         adapter = GoogleAdManager(
-            config=self.gam_config, principal=self.principal, dry_run=False, tenant_id=self.test_tenant_id
+            config=self.gam_config,
+            principal=self.principal,
+            network_code=self.network_code,
+            advertiser_id=self.advertiser_id,
+            trafficker_id=self.trafficker_id,
+            dry_run=False,
+            tenant_id=self.test_tenant_id,
         )
 
         package = MediaPackage(
@@ -412,7 +427,13 @@ class GAMAutomationTester:
         print("\n🔒 Testing Guaranteed Orders Ignore Automation...")
 
         adapter = GoogleAdManager(
-            config=self.gam_config, principal=self.principal, dry_run=False, tenant_id=self.test_tenant_id
+            config=self.gam_config,
+            principal=self.principal,
+            network_code=self.network_code,
+            advertiser_id=self.advertiser_id,
+            trafficker_id=self.trafficker_id,
+            dry_run=False,
+            tenant_id=self.test_tenant_id,
         )
 
         package = MediaPackage(
@@ -465,6 +486,9 @@ class GAMAutomationTester:
         adapter = GoogleAdManager(
             config=self.gam_config,
             principal=self.principal,
+            network_code=self.network_code,
+            advertiser_id=self.advertiser_id,
+            trafficker_id=self.trafficker_id,
             dry_run=False,  # REAL GAM CALLS
             tenant_id=self.test_tenant_id,
         )
@@ -526,6 +550,9 @@ class GAMAutomationTester:
         adapter = GoogleAdManager(
             config=self.gam_config,
             principal=self.principal,
+            network_code=self.network_code,
+            advertiser_id=self.advertiser_id,
+            trafficker_id=self.trafficker_id,
             dry_run=False,  # REAL GAM CALLS
             tenant_id=self.test_tenant_id,
         )
@@ -585,6 +612,9 @@ class GAMAutomationTester:
         adapter = GoogleAdManager(
             config=self.gam_config,
             principal=self.principal,
+            network_code=self.network_code,
+            advertiser_id=self.advertiser_id,
+            trafficker_id=self.trafficker_id,
             dry_run=False,  # REAL GAM CALLS
             tenant_id=self.test_tenant_id,
         )
@@ -648,6 +678,9 @@ class GAMAutomationTester:
         adapter = GoogleAdManager(
             config=self.gam_config,
             principal=self.principal,
+            network_code=self.network_code,
+            advertiser_id=self.advertiser_id,
+            trafficker_id=self.trafficker_id,
             dry_run=False,  # REAL GAM CALLS
             tenant_id=self.test_tenant_id,
         )
@@ -728,7 +761,13 @@ class GAMAutomationTester:
         print(f"\n🧹 Cleaning up {len(self.created_orders)} GAM orders...")
 
         adapter = GoogleAdManager(
-            config=self.gam_config, principal=self.principal, dry_run=False, tenant_id=self.test_tenant_id
+            config=self.gam_config,
+            principal=self.principal,
+            network_code=self.network_code,
+            advertiser_id=self.advertiser_id,
+            trafficker_id=self.trafficker_id,
+            dry_run=False,
+            tenant_id=self.test_tenant_id,
         )
 
         for order_id in self.created_orders:

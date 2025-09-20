@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% block title %}Inventory Browser - {{ tenant.name }}{% endblock %}
+{% block title %}Inventory Browser - {{ tenant.name }} Sales Agent{% endblock %}
 
 {% block content %}
 <div class="container-fluid mt-4">
@@ -243,7 +243,7 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 
 function loadInventoryStatus() {
-    fetch(`/api/tenant/${tenantId}/inventory/tree`, {
+    fetch(`{{ script_name }}/api/tenant/${tenantId}/inventory/tree`, {
         credentials: 'same-origin'
     })
         .then(response => response.json())
@@ -299,7 +299,7 @@ function syncInventory() {
     btn.disabled = true;
     btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Syncing...';
 
-    fetch(`/api/tenant/${tenantId}/inventory/sync`, {
+    fetch(`{{ script_name }}/api/tenant/${tenantId}/inventory/sync`, {
         method: 'POST',
         credentials: 'same-origin'
     })
@@ -482,7 +482,7 @@ function searchInventory() {
     if (type) params.append('type', type);
     if (status) params.append('status', status);
 
-    fetch(`/api/tenant/${tenantId}/inventory/search?${params}`, {
+    fetch(`{{ script_name }}/api/tenant/${tenantId}/inventory/search?${params}`, {
         credentials: 'same-origin'
     })
         .then(response => response.json())
@@ -534,7 +534,7 @@ function assignToProduct() {
     if (!selectedInventory) return;
 
     // Load products
-    fetch(`/api/tenant/${tenantId}/products`)
+    fetch(`{{ script_name }}/api/tenant/${tenantId}/products`)
         .then(response => response.json())
         .then(data => {
             const productList = document.getElementById('productList');

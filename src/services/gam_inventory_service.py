@@ -800,10 +800,7 @@ def create_inventory_endpoints(app):
             # Build GAM config from adapter_config columns
             gam_config = {
                 "enabled": True,
-                "network_code": adapter_config.gam_network_code,
                 "refresh_token": adapter_config.gam_refresh_token,
-                "company_id": adapter_config.gam_company_id,
-                "trafficker_id": adapter_config.gam_trafficker_id,
                 "manual_approval_required": adapter_config.gam_manual_approval_required,
             }
 
@@ -817,7 +814,23 @@ def create_inventory_endpoints(app):
                 platform_mappings={"gam_advertiser_id": adapter_config.gam_company_id or "system"},
             )
 
-            adapter = GoogleAdManager(gam_config, principal, tenant_id=tenant_id)
+            # Validate required fields
+            if not adapter_config.gam_network_code:
+                return jsonify({"error": "GAM network code not configured"}), 400
+            if not adapter_config.gam_company_id:
+                return jsonify({"error": "GAM company/advertiser ID not configured"}), 400
+            if not adapter_config.gam_trafficker_id:
+                return jsonify({"error": "GAM trafficker ID not configured"}), 400
+
+            adapter = GoogleAdManager(
+                config=gam_config,
+                principal=principal,
+                network_code=adapter_config.gam_network_code,
+                advertiser_id=adapter_config.gam_company_id,
+                trafficker_id=adapter_config.gam_trafficker_id,
+                tenant_id=tenant_id,
+                dry_run=False,
+            )
 
             # Perform sync
             service = GAMInventoryService(db_session)

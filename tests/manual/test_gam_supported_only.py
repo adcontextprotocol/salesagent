@@ -77,7 +77,15 @@ class SupportedTargetingTester:
 
     def test_geo_targeting(self):
         """Test geographic targeting - SHOULD WORK."""
-        adapter = GoogleAdManager(config=self.gam_config, principal=self.principal, dry_run=False, tenant_id="test")
+        adapter = GoogleAdManager(
+            config=self.gam_config,
+            principal=self.principal,
+            network_code=self.network_code,
+            advertiser_id=self.advertiser_id,
+            trafficker_id=self.trafficker_id,
+            dry_run=False,
+            tenant_id="test",
+        )
 
         package = MediaPackage(
             package_id="geo_test",
@@ -105,7 +113,15 @@ class SupportedTargetingTester:
 
     def test_key_value_targeting(self):
         """Test key-value targeting for AEE/AXE signals - SHOULD WORK."""
-        adapter = GoogleAdManager(config=self.gam_config, principal=self.principal, dry_run=False, tenant_id="test")
+        adapter = GoogleAdManager(
+            config=self.gam_config,
+            principal=self.principal,
+            network_code=self.network_code,
+            advertiser_id=self.advertiser_id,
+            trafficker_id=self.trafficker_id,
+            dry_run=False,
+            tenant_id="test",
+        )
 
         package = MediaPackage(
             package_id="key_value_test",
@@ -153,7 +169,15 @@ class SupportedTargetingTester:
 
     def test_combined_supported(self):
         """Test combining geo and key-value targeting - SHOULD WORK."""
-        adapter = GoogleAdManager(config=self.gam_config, principal=self.principal, dry_run=False, tenant_id="test")
+        adapter = GoogleAdManager(
+            config=self.gam_config,
+            principal=self.principal,
+            network_code=self.network_code,
+            advertiser_id=self.advertiser_id,
+            trafficker_id=self.trafficker_id,
+            dry_run=False,
+            tenant_id="test",
+        )
 
         package = MediaPackage(
             package_id="combined_test",
@@ -201,7 +225,15 @@ class SupportedTargetingTester:
 
     def test_device_failure(self):
         """Test device targeting - MUST FAIL."""
-        adapter = GoogleAdManager(config=self.gam_config, principal=self.principal, dry_run=False, tenant_id="test")
+        adapter = GoogleAdManager(
+            config=self.gam_config,
+            principal=self.principal,
+            network_code=self.network_code,
+            advertiser_id=self.advertiser_id,
+            trafficker_id=self.trafficker_id,
+            dry_run=False,
+            tenant_id="test",
+        )
 
         package = MediaPackage(
             package_id="device_fail",
@@ -230,7 +262,15 @@ class SupportedTargetingTester:
 
     def test_os_failure(self):
         """Test OS targeting - MUST FAIL."""
-        adapter = GoogleAdManager(config=self.gam_config, principal=self.principal, dry_run=False, tenant_id="test")
+        adapter = GoogleAdManager(
+            config=self.gam_config,
+            principal=self.principal,
+            network_code=self.network_code,
+            advertiser_id=self.advertiser_id,
+            trafficker_id=self.trafficker_id,
+            dry_run=False,
+            tenant_id="test",
+        )
 
         package = MediaPackage(
             package_id="os_fail",
@@ -257,7 +297,15 @@ class SupportedTargetingTester:
 
     def test_keyword_failure(self):
         """Test keyword targeting - MUST FAIL."""
-        adapter = GoogleAdManager(config=self.gam_config, principal=self.principal, dry_run=False, tenant_id="test")
+        adapter = GoogleAdManager(
+            config=self.gam_config,
+            principal=self.principal,
+            network_code=self.network_code,
+            advertiser_id=self.advertiser_id,
+            trafficker_id=self.trafficker_id,
+            dry_run=False,
+            tenant_id="test",
+        )
 
         package = MediaPackage(
             package_id="keyword_fail",
