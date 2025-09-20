@@ -125,10 +125,19 @@ async def get_products_raw(brief: str, promoted_offering: str, context: Context 
             "name": db_product.name,
             "description": db_product.description or "",
             "formats": safe_json_loads(db_product.formats, []),
-            "pricing": safe_json_loads(db_product.pricing, {}),
-            "targeting_template": safe_json_loads(db_product.targeting_template, {}),
-            "countries": safe_json_loads(db_product.countries, ["US"]),
-            "created_date": db_product.created_date.isoformat() if db_product.created_date else None,
+            "delivery_type": db_product.delivery_type,
+            "is_fixed_price": db_product.is_fixed_price,
+            "cpm": float(db_product.cpm) if db_product.cpm else None,
+            "min_spend": float(db_product.min_spend) if db_product.min_spend else None,
+            "measurement": safe_json_loads(db_product.measurement, None) if db_product.measurement else None,
+            "creative_policy": (
+                safe_json_loads(db_product.creative_policy, None) if db_product.creative_policy else None
+            ),
+            "is_custom": db_product.is_custom or False,
+            "expires_at": db_product.expires_at,
+            "implementation_config": (
+                safe_json_loads(db_product.implementation_config, None) if db_product.implementation_config else None
+            ),
         }
         products.append(Product(**product_data))
 
