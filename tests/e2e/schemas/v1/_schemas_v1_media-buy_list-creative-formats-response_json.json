@@ -5,15 +5,28 @@
   "description": "Response payload for list_creative_formats task",
   "type": "object",
   "properties": {
+    "adcp_version": {
+      "type": "string",
+      "description": "AdCP schema version used for this response",
+      "pattern": "^\\d+\\.\\d+\\.\\d+$"
+    },
     "formats": {
       "type": "array",
       "description": "Array of available creative formats",
       "items": {
         "$ref": "/schemas/v1/core/format.json"
       }
+    },
+    "errors": {
+      "type": "array",
+      "description": "Task-specific errors and warnings (e.g., format availability issues)",
+      "items": {
+        "$ref": "/schemas/v1/core/error.json"
+      }
     }
   },
   "required": [
+    "adcp_version",
     "formats"
   ],
   "additionalProperties": false

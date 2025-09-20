@@ -1,0 +1,76 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/v1/core/format.json",
+  "title": "Format",
+  "description": "Represents a creative format with its requirements",
+  "type": "object",
+  "properties": {
+    "format_id": {
+      "type": "string",
+      "description": "Unique identifier for the format"
+    },
+    "name": {
+      "type": "string",
+      "description": "Human-readable format name"
+    },
+    "type": {
+      "type": "string",
+      "description": "Media type of this format - determines rendering method and asset requirements",
+      "enum": [
+        "audio",
+        "video",
+        "display",
+        "native",
+        "dooh",
+        "rich_media",
+        "universal"
+      ]
+    },
+    "category": {
+      "type": "string",
+      "description": "Format category",
+      "enum": [
+        "standard",
+        "custom"
+      ]
+    },
+    "is_standard": {
+      "type": "boolean",
+      "description": "Whether this format follows IAB specifications or AdCP standard format definitions (found in /schemas/v1/standard-formats/)"
+    },
+    "requirements": {
+      "type": "object",
+      "description": "Technical specifications for this format (e.g., dimensions, duration, file size limits, codecs)",
+      "additionalProperties": true
+    },
+    "assets_required": {
+      "type": "array",
+      "description": "Array of required assets for this format",
+      "items": {
+        "$ref": "/schemas/v1/core/creative-asset.json"
+      }
+    },
+    "optional_assets": {
+      "type": "array",
+      "description": "Array of optional assets that may be included",
+      "items": {
+        "$ref": "/schemas/v1/core/creative-asset.json"
+      }
+    },
+    "delivery": {
+      "type": "object",
+      "description": "Delivery method specifications (e.g., hosted, VAST, third-party tags)",
+      "additionalProperties": true
+    },
+    "accepts_3p_tags": {
+      "type": "boolean",
+      "description": "Whether this format can accept third-party served creative tags as an alternative to hosted assets"
+    }
+  },
+  "required": [
+    "format_id",
+    "name",
+    "type"
+  ],
+  "additionalProperties": false
+}

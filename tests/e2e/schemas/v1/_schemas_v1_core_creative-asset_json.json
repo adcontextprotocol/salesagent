@@ -1,0 +1,108 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/v1/core/creative-asset.json",
+  "title": "Creative Asset",
+  "description": "Creative asset for upload to library - supports both hosted assets and third-party snippets",
+  "type": "object",
+  "properties": {
+    "creative_id": {
+      "type": "string",
+      "description": "Unique identifier for the creative"
+    },
+    "name": {
+      "type": "string",
+      "description": "Human-readable creative name"
+    },
+    "format": {
+      "type": "string",
+      "description": "Creative format type (e.g., video, audio, display)"
+    },
+    "media_url": {
+      "type": "string",
+      "format": "uri",
+      "description": "URL of the creative file (for hosted assets)"
+    },
+    "snippet": {
+      "type": "string",
+      "description": "Third-party tag, VAST XML, or code snippet (for third-party served assets)"
+    },
+    "snippet_type": {
+      "$ref": "/schemas/v1/enums/snippet-type.json",
+      "description": "Type of snippet content"
+    },
+    "click_url": {
+      "type": "string",
+      "format": "uri",
+      "description": "Landing page URL for the creative"
+    },
+    "duration": {
+      "type": "number",
+      "description": "Duration in milliseconds (for video/audio)",
+      "minimum": 0
+    },
+    "width": {
+      "type": "number",
+      "description": "Width in pixels (for video/display)",
+      "minimum": 0
+    },
+    "height": {
+      "type": "number",
+      "description": "Height in pixels (for video/display)",
+      "minimum": 0
+    },
+    "tags": {
+      "type": "array",
+      "description": "User-defined tags for organization and searchability",
+      "items": {
+        "type": "string"
+      }
+    },
+    "assets": {
+      "type": "array",
+      "description": "Sub-assets for multi-asset formats like carousels",
+      "items": {
+        "$ref": "/schemas/v1/core/sub-asset.json"
+      }
+    }
+  },
+  "required": [
+    "creative_id",
+    "name",
+    "format"
+  ],
+  "oneOf": [
+    {
+      "description": "Hosted asset - requires media_url",
+      "required": [
+        "media_url"
+      ],
+      "not": {
+        "anyOf": [
+          {
+            "required": [
+              "snippet"
+            ]
+          },
+          {
+            "required": [
+              "snippet_type"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "description": "Third-party asset - requires snippet and snippet_type",
+      "required": [
+        "snippet",
+        "snippet_type"
+      ],
+      "not": {
+        "required": [
+          "media_url"
+        ]
+      }
+    }
+  ],
+  "additionalProperties": false
+}

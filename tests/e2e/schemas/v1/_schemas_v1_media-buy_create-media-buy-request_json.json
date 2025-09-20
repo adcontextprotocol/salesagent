@@ -5,6 +5,12 @@
   "description": "Request parameters for creating a media buy",
   "type": "object",
   "properties": {
+    "adcp_version": {
+      "type": "string",
+      "description": "AdCP schema version for this request",
+      "pattern": "^\\d+\\.\\d+\\.\\d+$",
+      "default": "1.5.0"
+    },
     "buyer_ref": {
       "type": "string",
       "description": "Buyer's reference identifier for this media buy"
@@ -26,6 +32,14 @@
               "type": "string"
             }
           },
+          "format_ids": {
+            "type": "array",
+            "description": "Array of format IDs that will be used for this package - must be supported by all products",
+            "items": {
+              "type": "string",
+              "description": "Format ID referencing a format from list_creative_formats"
+            }
+          },
           "budget": {
             "$ref": "/schemas/v1/core/budget.json"
           },
@@ -33,9 +47,21 @@
             "$ref": "/schemas/v1/core/targeting.json"
           }
         },
-        "required": [
-          "buyer_ref",
-          "products"
+        "anyOf": [
+          {
+            "required": [
+              "buyer_ref",
+              "products",
+              "format_ids"
+            ]
+          },
+          {
+            "required": [
+              "buyer_ref",
+              "products",
+              "format_selection"
+            ]
+          }
         ],
         "additionalProperties": false
       }

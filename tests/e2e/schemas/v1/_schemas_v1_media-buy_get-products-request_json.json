@@ -5,6 +5,12 @@
   "description": "Request parameters for discovering available advertising products",
   "type": "object",
   "properties": {
+    "adcp_version": {
+      "type": "string",
+      "description": "AdCP schema version for this request",
+      "pattern": "^\\d+\\.\\d+\\.\\d+$",
+      "default": "1.5.0"
+    },
     "brief": {
       "type": "string",
       "description": "Natural language description of campaign requirements"
@@ -19,13 +25,6 @@
       "properties": {
         "delivery_type": {
           "$ref": "/schemas/v1/enums/delivery-type.json"
-        },
-        "formats": {
-          "type": "array",
-          "description": "Filter by specific formats",
-          "items": {
-            "type": "string"
-          }
         },
         "is_fixed_price": {
           "type": "boolean",
