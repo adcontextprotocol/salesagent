@@ -19,16 +19,21 @@ from src.core.database.models import Product as ProductModel
 from src.core.schemas import (
     Budget,
     CreateMediaBuyRequest,
+    CreateMediaBuyResponse,
     Creative,
     CreativeAssignment,
     CreativePolicy,
     CreativeStatus,
+    Error,
     Format,
+    GetMediaBuyDeliveryResponse,
     GetProductsRequest,
     GetProductsResponse,
+    ListCreativeFormatsResponse,
     ListCreativesRequest,
     ListCreativesResponse,
     Measurement,
+    MediaBuyDeliveryData,
     Package,
     Signal,
     SignalDeployment,
@@ -36,11 +41,10 @@ from src.core.schemas import (
     SyncCreativesRequest,
     SyncCreativesResponse,
     Targeting,
+    UpdateMediaBuyResponse,
 )
 from src.core.schemas import (
     Principal as PrincipalSchema,
-)
-from src.core.schemas import (
     Product as ProductSchema,
 )
 
@@ -1083,6 +1087,290 @@ class TestAdCPContract:
 
         # Verify field count
         assert len(adcp_response) == 6, f"ListCreativesResponse should have exactly 6 fields, got {len(adcp_response)}"
+
+    def test_create_media_buy_response_adcp_compliance(self):
+        """Test that CreateMediaBuyResponse complies with AdCP create-media-buy-response schema."""
+
+        # Create response with all fields (success case)
+        successful_response = CreateMediaBuyResponse(
+            media_buy_id="mb_12345",
+            buyer_ref="br_67890",
+            status="active",
+            detail="Media buy created successfully",
+            message="Campaign is ready to launch",
+            packages=[{"package_id": "pkg_1", "product_id": "prod_1", "budget": 5000.0, "targeting": {}}],
+            creative_deadline=datetime.now() + timedelta(days=7),
+            errors=None,
+        )
+
+        # Test successful response AdCP compliance
+        adcp_response = successful_response.model_dump()
+
+        # Verify required AdCP fields present and non-null
+        required_fields = ["media_buy_id"]
+        for field in required_fields:
+            assert field in adcp_response, f"Required AdCP field '{field}' missing from response"
+            assert adcp_response[field] is not None, f"Required AdCP field '{field}' is None"
+
+        # Verify optional AdCP fields present (can be null)
+        optional_fields = ["buyer_ref", "status", "detail", "message", "packages", "creative_deadline", "errors"]
+        for field in optional_fields:
+            assert field in adcp_response, f"Optional AdCP field '{field}' missing from response"
+
+        # Verify specific field types and constraints
+        assert isinstance(adcp_response["media_buy_id"], str), "media_buy_id must be string"
+        assert len(adcp_response["media_buy_id"]) > 0, "media_buy_id must not be empty"
+
+        if adcp_response["packages"] is not None:
+            assert isinstance(adcp_response["packages"], list), "packages must be array"
+
+        if adcp_response["errors"] is not None:
+            assert isinstance(adcp_response["errors"], list), "errors must be array"
+
+        # Test error response case
+        error_response = CreateMediaBuyResponse(
+            media_buy_id="mb_failed",
+            buyer_ref=None,
+            status="failed",
+            detail="Budget validation failed",
+            message="Insufficient budget for requested targeting",
+            packages=[],
+            creative_deadline=None,
+            errors=[Error(code="budget_insufficient", message="Minimum budget of $1000 required")],
+        )
+
+        error_adcp_response = error_response.model_dump()
+
+        # Verify error response structure
+        assert error_adcp_response["status"] == "failed"
+        assert error_adcp_response["errors"] is not None
+        assert len(error_adcp_response["errors"]) > 0
+        assert isinstance(error_adcp_response["errors"][0], dict)
+        assert "code" in error_adcp_response["errors"][0]
+        assert "message" in error_adcp_response["errors"][0]
+
+        # Verify field count (8 fields total)
+        assert len(adcp_response) == 8, f"CreateMediaBuyResponse should have exactly 8 fields, got {len(adcp_response)}"
+
+    def test_get_products_response_adcp_compliance(self):
+        """Test that GetProductsResponse complies with AdCP get-products-response schema."""
+
+        # Create Product using the actual Product model (not ProductSchema)
+        from src.core.schemas import Product as ProductModel
+
+        product = ProductModel(
+            product_id="prod_1",
+            name="Premium Display",
+            description="High-quality display advertising",
+            formats=["display_300x250", "display_728x90"],
+            delivery_type="guaranteed",
+            is_fixed_price=True,
+            cpm=12.50,
+            min_spend=1000.00,
+            measurement=None,
+            creative_policy=None,
+            is_custom=False,
+        )
+
+        # Create response with products
+        response = GetProductsResponse(
+            products=[product],
+            message="Found 1 matching product",
+            errors=[],
+        )
+
+        # Test AdCP-compliant response
+        adcp_response = response.model_dump()
+
+        # Verify required AdCP fields present and non-null
+        required_fields = ["products"]
+        for field in required_fields:
+            assert field in adcp_response, f"Required AdCP field '{field}' missing from response"
+            assert adcp_response[field] is not None, f"Required AdCP field '{field}' is None"
+
+        # Verify optional AdCP fields present (can be null)
+        optional_fields = ["message", "errors"]
+        for field in optional_fields:
+            assert field in adcp_response, f"Optional AdCP field '{field}' missing from response"
+
+        # Verify specific field types and constraints
+        assert isinstance(adcp_response["products"], list), "products must be array"
+        assert len(adcp_response["products"]) > 0, "products array should not be empty"
+
+        # Verify product structure - Product.model_dump() should convert formats -> format_ids
+        product_data = adcp_response["products"][0]
+        assert "product_id" in product_data, "product must have product_id"
+        assert "format_ids" in product_data, "product must have format_ids (not formats)"
+        assert "formats" not in product_data, "product should not have formats field (use format_ids)"
+
+        # Test empty response case
+        empty_response = GetProductsResponse(products=[], message="No products match your criteria", errors=[])
+
+        empty_adcp_response = empty_response.model_dump()
+        assert empty_adcp_response["products"] == [], "Empty products list should be empty array"
+        assert (
+            len(empty_adcp_response) == 3
+        ), f"GetProductsResponse should have exactly 3 fields, got {len(empty_adcp_response)}"
+
+    def test_list_creative_formats_response_adcp_compliance(self):
+        """Test that ListCreativeFormatsResponse complies with AdCP list-creative-formats-response schema."""
+
+        # Create response with formats using actual Format schema
+        response = ListCreativeFormatsResponse(
+            formats=[
+                Format(
+                    format_id="display_300x250",
+                    name="Medium Rectangle",
+                    type="display",
+                    is_standard=True,
+                    iab_specification="IAB Display",
+                    requirements={"width": 300, "height": 250, "file_types": ["jpg", "png", "gif"]},
+                    assets_required=None,
+                )
+            ],
+            message="Found 1 creative format",
+            errors=[],
+        )
+
+        # Test AdCP-compliant response
+        adcp_response = response.model_dump()
+
+        # Verify required AdCP fields present and non-null
+        required_fields = ["formats"]
+        for field in required_fields:
+            assert field in adcp_response, f"Required AdCP field '{field}' missing from response"
+            assert adcp_response[field] is not None, f"Required AdCP field '{field}' is None"
+
+        # Verify optional AdCP fields present (can be null)
+        optional_fields = ["message", "errors"]
+        for field in optional_fields:
+            assert field in adcp_response, f"Optional AdCP field '{field}' missing from response"
+
+        # Verify specific field types and constraints
+        assert isinstance(adcp_response["formats"], list), "formats must be array"
+
+        # Verify format structure (using actual Format schema fields)
+        if len(adcp_response["formats"]) > 0:
+            format_obj = adcp_response["formats"][0]
+            assert "format_id" in format_obj, "format must have format_id"
+            assert "name" in format_obj, "format must have name"
+            assert "type" in format_obj, "format must have type"
+            # Note: width/height are in requirements dict, not direct fields
+
+        # Verify field count (at least 3 fields - some optional fields might be excluded)
+        assert (
+            len(adcp_response) >= 3
+        ), f"ListCreativeFormatsResponse should have at least 3 fields, got {len(adcp_response)}"
+
+    def test_update_media_buy_response_adcp_compliance(self):
+        """Test that UpdateMediaBuyResponse complies with AdCP update-media-buy-response schema."""
+
+        # Create successful update response
+        response = UpdateMediaBuyResponse(
+            status="accepted",
+            implementation_date=datetime.now() + timedelta(hours=1),
+            detail="Budget update scheduled for implementation",
+            reason=None,
+        )
+
+        # Test AdCP-compliant response
+        adcp_response = response.model_dump()
+
+        # Verify required AdCP fields present and non-null
+        required_fields = ["status"]
+        for field in required_fields:
+            assert field in adcp_response, f"Required AdCP field '{field}' missing from response"
+            assert adcp_response[field] is not None, f"Required AdCP field '{field}' is None"
+
+        # Verify optional AdCP fields present (can be null)
+        optional_fields = ["implementation_date", "detail", "reason"]
+        for field in optional_fields:
+            assert field in adcp_response, f"Optional AdCP field '{field}' missing from response"
+
+        # Verify specific field types and constraints
+        assert isinstance(adcp_response["status"], str), "status must be string"
+        assert adcp_response["status"] in ["accepted", "rejected", "pending"], "status must be valid value"
+
+        # Test error response case
+        error_response = UpdateMediaBuyResponse(
+            status="rejected",
+            implementation_date=None,
+            detail="Invalid budget amount",
+            reason="Budget must be positive",
+        )
+
+        error_adcp_response = error_response.model_dump()
+        assert error_adcp_response["status"] == "rejected"
+        assert error_adcp_response["reason"] == "Budget must be positive"
+
+        # Verify field count (4 fields total - only non-None fields included)
+        assert len(adcp_response) <= 4, f"UpdateMediaBuyResponse should have at most 4 fields, got {len(adcp_response)}"
+
+    def test_get_media_buy_delivery_response_adcp_compliance(self):
+        """Test that GetMediaBuyDeliveryResponse complies with AdCP get-media-buy-delivery-response schema."""
+
+        # Create delivery data with correct structure using MediaBuyDeliveryData
+        delivery_data = MediaBuyDeliveryData(
+            media_buy_id="mb_12345",
+            buyer_ref="br_67890",
+            status="active",
+            spend=Budget(total=2500.50, currency="USD"),
+            impressions=125000,
+            pacing="even",
+            days_elapsed=15,
+            total_days=30,
+        )
+
+        # Create delivery response with metrics
+        response = GetMediaBuyDeliveryResponse(
+            deliveries=[delivery_data],
+            total_spend=2500.50,
+            total_impressions=125000,
+            active_count=1,
+            summary_date=datetime.now().date(),
+        )
+
+        # Test AdCP-compliant response
+        adcp_response = response.model_dump()
+
+        # Verify required AdCP fields present and non-null
+        required_fields = ["deliveries", "total_spend", "total_impressions", "active_count", "summary_date"]
+        for field in required_fields:
+            assert field in adcp_response, f"Required AdCP field '{field}' missing from response"
+            assert adcp_response[field] is not None, f"Required AdCP field '{field}' is None"
+
+        # Verify specific field types and constraints
+        assert isinstance(adcp_response["deliveries"], list), "deliveries must be array"
+
+        # Verify delivery structure (MediaBuyDeliveryData fields)
+        if len(adcp_response["deliveries"]) > 0:
+            delivery = adcp_response["deliveries"][0]
+            assert "media_buy_id" in delivery, "delivery must have media_buy_id"
+            assert "buyer_ref" in delivery, "delivery must have buyer_ref"
+            assert "status" in delivery, "delivery must have status"
+            assert "spend" in delivery, "delivery must have spend (Budget object)"
+            assert "impressions" in delivery, "delivery must have impressions"
+            assert "pacing" in delivery, "delivery must have pacing"
+            assert "days_elapsed" in delivery, "delivery must have days_elapsed"
+            assert "total_days" in delivery, "delivery must have total_days"
+
+            # Verify Budget structure within spend
+            spend = delivery["spend"]
+            assert "total" in spend, "spend must have total"
+            assert "currency" in spend, "spend must have currency"
+
+        # Test empty response case
+        empty_response = GetMediaBuyDeliveryResponse(
+            deliveries=[], total_spend=0.0, total_impressions=0, active_count=0, summary_date=datetime.now().date()
+        )
+
+        empty_adcp_response = empty_response.model_dump()
+        assert empty_adcp_response["deliveries"] == [], "Empty deliveries list should be empty array"
+
+        # Verify field count (5 fields total)
+        assert (
+            len(adcp_response) == 5
+        ), f"GetMediaBuyDeliveryResponse should have exactly 5 fields, got {len(adcp_response)}"
 
 
 if __name__ == "__main__":

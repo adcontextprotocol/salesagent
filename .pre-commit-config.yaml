@@ -58,6 +58,14 @@ repos:
         pass_filenames: false
         always_run: true
 
+      # Check AdCP schema sync (critical for buyer compatibility)
+      - id: adcp-schema-sync
+        name: Verify AdCP schema sync
+        entry: uv run python scripts/check_schema_sync.py --ci
+        language: system
+        pass_filenames: false
+        always_run: true
+
       # Prevent A2A regression issues (URL format, function calls)
       - id: a2a-regression-check
         name: A2A regression prevention
