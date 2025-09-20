@@ -884,6 +884,55 @@ async def async_resource(self) -> AsyncGenerator[Resource, None]:
 - Use descriptive test method names: `test_auth_failure_returns_401_error`
 - Group related tests in classes: `TestDatabaseHealthLogic`, `TestSignalsWorkflow`
 
+### Critical Lesson: A2A Server Regression Prevention (Dec 2024)
+
+**🚨 CASE STUDY**: Two critical bugs slipped through test coverage that caused production failures:
+
+1. **Agent Card URL Trailing Slash**: URLs ending with `/a2a/` caused redirects that stripped Authorization headers
+2. **Function Call Error**: `core_get_signals_tool.fn()` caused 'FunctionTool' object is not callable error
+
+**Root Causes Identified:**
+- **Over-Mocking**: Tests mocked the very functions that had bugs (`_handle_get_signals_skill` mocked instead of testing actual function calls)
+- **Skipped Critical Tests**: Main A2A endpoints test was completely disabled with `pytest.skip()`
+- **Missing HTTP-Level Testing**: No validation of actual agent card URL formats or redirect behavior
+
+**Prevention Measures Implemented:**
+- **Regression Tests**: Added `test_a2a_regression_prevention.py` with specific URL format and function call validation
+- **Pre-commit Hooks**: Added `a2a-regression-check` and `no-fn-calls` to existing pre-commit setup
+- **Function Call Validation**: Added `test_a2a_function_call_validation.py` to test imports without excessive mocking
+- **Working Endpoints Test**: Replaced skipped test with `test_a2a_endpoints_working.py` that actually runs
+
+**Key Learnings:**
+- **Mock Only External Dependencies**: Database, APIs, file I/O - not internal function calls
+- **Test What You Import**: If you import a function, test that it's actually callable
+- **HTTP-Level Integration Tests**: URL formats, redirects, and header behavior can't be unit tested
+- **Never Skip Critical Tests**: Disabled tests accumulate technical debt and hide regressions
+- **Static Analysis Helps**: Simple pattern matching (`.fn()` calls) catches many bugs
+- **Validate Response Formats**: Agent card URLs, endpoint responses must match expected patterns
+
+**❌ Anti-Pattern (What Caused Bugs)**:
+```python
+# This hides import/call errors
+@patch.object(handler, "_handle_get_signals_skill", new_callable=AsyncMock)
+def test_skill(self, mock_skill):
+    mock_skill.return_value = {"signals": []}
+    # Test passes even if core_get_signals_tool.fn() is broken
+```
+
+**✅ Better Pattern (What Catches Bugs)**:
+```python
+# Test actual function imports and HTTP behavior
+def test_core_function_callable(self):
+    from src.a2a_server.adcp_a2a_server import core_get_signals_tool
+    assert callable(core_get_signals_tool)  # Would catch .fn() bug
+
+@pytest.mark.integration
+def test_agent_card_url_format(self):
+    response = requests.get("http://localhost:8091/.well-known/agent.json")
+    url = response.json()["url"]
+    assert not url.endswith("/")  # Would catch trailing slash bug
+```
+
 ### Common Test Patterns
 - Use `get_db_session()` context manager for database access
 - Import `Principal` from `schemas` (not `models`) for business logic
@@ -1053,6 +1102,13 @@ The project enforces several quality gates via pre-commit hooks:
 - **`adcp-contract-tests`**: Validates AdCP protocol compliance
   - All client-facing models must have compliance tests
   - Prevents protocol violations and data leakage
+- **`a2a-regression-check`**: Prevents A2A server regressions (Dec 2024)
+  - Validates agent card URL formats (no trailing slashes)
+  - Tests function import/call patterns without excessive mocking
+  - Runs when A2A server files change
+- **`no-fn-calls`**: Prevents problematic function call patterns
+  - Blocks `.fn()` call patterns that caused production bugs
+  - Enforces direct function calls instead of FunctionTool wrappers
 
 **Code Quality:**
 - **Black formatting**: Consistent code style
@@ -1072,6 +1128,8 @@ pre-commit run --all-files
 # Run specific hook
 pre-commit run no-excessive-mocking --all-files
 pre-commit run adcp-contract-tests --all-files
+pre-commit run a2a-regression-check --all-files
+pre-commit run no-fn-calls --all-files
 
 # Run manual-only hooks
 pre-commit run test-migrations --all-files

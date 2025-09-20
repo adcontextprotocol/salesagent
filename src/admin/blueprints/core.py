@@ -262,14 +262,14 @@ def mcp_test():
     if os.environ.get("PRODUCTION") == "true":
         # In production, both servers are accessible at the virtual host domain
         mcp_server_url = "https://sales-agent.scope3.com/mcp"  # Remove trailing slash
-        a2a_server_url = "https://sales-agent.scope3.com/a2a/"
+        a2a_server_url = "https://sales-agent.scope3.com/a2a"
     else:
         # In development, use localhost with the configured ports from environment
         # Default to common development ports if not set
         mcp_port = int(os.environ.get("ADCP_SALES_PORT", 8080))
         a2a_port = int(os.environ.get("A2A_PORT", 8091))
         mcp_server_url = f"http://localhost:{mcp_port}/mcp"  # Remove trailing slash
-        a2a_server_url = f"http://localhost:{a2a_port}/a2a/"
+        a2a_server_url = f"http://localhost:{a2a_port}/a2a"
 
     return render_template(
         "mcp_test.html",

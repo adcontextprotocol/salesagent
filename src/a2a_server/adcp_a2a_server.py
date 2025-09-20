@@ -1047,7 +1047,7 @@ class AdCPRequestHandler(RequestHandler):
             )
 
             # Call core function directly
-            response = await core_get_signals_tool.fn(request, tool_context)
+            response = await core_get_signals_tool(request, tool_context)
 
             # Convert response to A2A format
             return {
@@ -1274,7 +1274,7 @@ def create_agent_card() -> AgentCard:
     """
     # Use new production domain for agent card
     # Note: This will be overridden dynamically in the endpoint handlers
-    server_url = "https://sales-agent.scope3.com/a2a/"
+    server_url = "https://sales-agent.scope3.com/a2a"
 
     from a2a.types import AgentSkill
 
@@ -1479,16 +1479,16 @@ def main():
 
         if tenant:
             # Use tenant-specific subdomain (production pattern)
-            server_url = f"https://{tenant}.sales-agent.scope3.com/a2a/"
+            server_url = f"https://{tenant}.sales-agent.scope3.com/a2a"
         else:
             # Fallback for development or unknown tenant
             fly_app = os.getenv("FLY_APP_NAME")
             if fly_app and fly_app != "adcp-sales-agent":
                 # Development deployment with different app name
-                server_url = f"https://{fly_app}.fly.dev/a2a/"
+                server_url = f"https://{fly_app}.fly.dev/a2a"
             else:
                 # Production fallback - use virtual host domain
-                server_url = "https://sales-agent.scope3.com/a2a/"
+                server_url = "https://sales-agent.scope3.com/a2a"
 
         # Create a copy of the static agent card with dynamic URL
         dynamic_card = agent_card.model_copy()
