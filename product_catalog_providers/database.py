@@ -50,6 +50,7 @@ class DatabaseProductCatalog(ProductCatalogProvider):
                     "delivery_type": product_obj.delivery_type,
                     "is_fixed_price": product_obj.is_fixed_price,
                     "cpm": product_obj.cpm,
+                    "min_spend": product_obj.min_spend,
                     "price_guidance": product_obj.price_guidance,
                     "is_custom": product_obj.is_custom,
                     "countries": product_obj.countries,

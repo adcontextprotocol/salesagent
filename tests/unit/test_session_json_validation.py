@@ -18,6 +18,7 @@ from src.core.json_validators import (
     ensure_json_array,
     ensure_json_object,
 )
+from tests.utils.database_helpers import create_tenant_with_timestamps
 
 
 # Test fixtures
@@ -50,19 +51,16 @@ class TestSessionManagement:
 
     def test_context_manager_pattern(self, test_db):
         """Test the get_db_session context manager."""
-        # Create a tenant using context manager
-        now = datetime.now(UTC)
+        # Create a tenant using context manager and helper
         with get_db_session() as session:
-            tenant = Tenant(
+            tenant = create_tenant_with_timestamps(
                 tenant_id="test_tenant",
                 name="Test Tenant",
                 subdomain="test",
                 authorized_emails=["admin@test.com"],
                 authorized_domains=["test.com"],
                 auto_approve_formats=["display_300x250"],
-                policy_settings={"enabled": True},
-                created_at=now,
-                updated_at=now,
+                policy_settings={"enabled": True}
             )
             session.add(tenant)
             session.commit()

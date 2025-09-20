@@ -12,6 +12,7 @@ from fastmcp.client.transports import StreamableHttpTransport
 
 from src.core.database.database_session import get_db_session
 from src.core.database.models import Principal, Product, Tenant
+from tests.utils.database_helpers import create_tenant_with_timestamps, get_utc_now
 
 
 def safe_get_content(result):
@@ -35,8 +36,7 @@ class TestMCPEndpointsComprehensive:
 
         with get_db_session() as session:
             # Create test tenant
-            now = datetime.now(UTC)
-            tenant = Tenant(
+            tenant = create_tenant_with_timestamps(
                 tenant_id="test_mcp",
                 name="Test MCP Tenant",
                 subdomain="test-mcp",
@@ -49,8 +49,6 @@ class TestMCPEndpointsComprehensive:
                 auto_approve_formats=["display_300x250"],
                 human_review_required=False,
                 admin_token="test_admin_token",
-                created_at=now,
-                updated_at=now,
             )
             session.add(tenant)
 
@@ -61,7 +59,7 @@ class TestMCPEndpointsComprehensive:
                 name="Test Principal",
                 access_token="test_mcp_token_12345",
                 platform_mappings={"mock": {"id": "test_advertiser"}},
-                created_at=now,
+                created_at=get_utc_now(),
             )
             session.add(principal)
 

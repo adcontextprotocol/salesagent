@@ -15,6 +15,7 @@ from src.core.database.database_session import get_db_session
 from src.core.database.models import Creative as DBCreative
 from src.core.database.models import CreativeAssignment, MediaBuy, Principal, Tenant
 from src.core.schemas import ListCreativesResponse, SyncCreativesResponse
+from tests.utils.database_helpers import create_tenant_with_timestamps, get_utc_now
 
 
 class MockContext:
@@ -43,7 +44,7 @@ class TestCreativeLifecycleMCP:
         """Create test tenant, principal, and media buy for creative tests."""
         with get_db_session() as session:
             # Create test tenant
-            tenant = Tenant(
+            tenant = create_tenant_with_timestamps(
                 tenant_id="creative_test",
                 name="Creative Test Tenant",
                 subdomain="creative-test",
@@ -77,8 +78,8 @@ class TestCreativeLifecycleMCP:
                 advertiser_name="Test Advertiser",
                 status="active",
                 budget=5000.0,
-                start_date=datetime.now(UTC).date(),
-                end_date=(datetime.now(UTC) + timedelta(days=30)).date(),
+                start_date=get_utc_now().date(),
+                end_date=(get_utc_now() + timedelta(days=30)).date(),
                 buyer_ref="buyer_ref_123",
                 raw_request={"test": True},
             )

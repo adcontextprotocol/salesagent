@@ -18,6 +18,7 @@ from src.services.default_products import (
     get_default_products,
     get_industry_specific_products,
 )
+from tests.utils.database_helpers import create_tenant_with_timestamps
 
 pytestmark = pytest.mark.integration
 
@@ -248,23 +249,19 @@ class TestProductAPIs:
 
         # Create a real tenant in the database with unique ID
         import uuid
-        from datetime import UTC, datetime
 
         from src.core.database.database_session import get_db_session
-        from src.core.database.models import Tenant
 
         tenant_id = f"test_tenant_{uuid.uuid4().hex[:8]}"
 
         with get_db_session() as session:
-            tenant = Tenant(
+            tenant = create_tenant_with_timestamps(
                 tenant_id=tenant_id,
                 name="Test Tenant",
                 subdomain=f"test_{uuid.uuid4().hex[:8]}",  # Unique subdomain
                 is_active=True,
                 ad_server="mock",
                 authorized_emails=["test@example.com"],
-                created_at=datetime.now(UTC),
-                updated_at=datetime.now(UTC),
             )
             session.add(tenant)
             session.commit()
@@ -297,23 +294,19 @@ class TestProductAPIs:
         """Test CSV bulk upload."""
         # Create tenant first with unique ID
         import uuid
-        from datetime import UTC, datetime
 
         from src.core.database.database_session import get_db_session
-        from src.core.database.models import Tenant
 
         tenant_id = f"test_tenant_{uuid.uuid4().hex[:8]}"
 
         with get_db_session() as session:
-            tenant = Tenant(
+            tenant = create_tenant_with_timestamps(
                 tenant_id=tenant_id,
                 name="Test Tenant",
                 subdomain=f"test_{uuid.uuid4().hex[:8]}",  # Unique subdomain
                 is_active=True,
                 ad_server="mock",
                 authorized_emails=["test@example.com"],
-                created_at=datetime.now(UTC),
-                updated_at=datetime.now(UTC),
             )
             session.add(tenant)
             session.commit()
@@ -349,23 +342,19 @@ Test Product,test_prod,"[{""format_id"":""display_300x250"",""name"":""Medium Re
         """Test quick create API."""
         # Create tenant first with unique ID
         import uuid
-        from datetime import UTC, datetime
 
         from src.core.database.database_session import get_db_session
-        from src.core.database.models import Tenant
 
         tenant_id = f"test_tenant_{uuid.uuid4().hex[:8]}"
 
         with get_db_session() as session:
-            tenant = Tenant(
+            tenant = create_tenant_with_timestamps(
                 tenant_id=tenant_id,
                 name="Test Tenant",
                 subdomain=f"test_{uuid.uuid4().hex[:8]}",  # Unique subdomain
                 is_active=True,
                 ad_server="mock",
                 authorized_emails=["test@example.com"],
-                created_at=datetime.now(UTC),
-                updated_at=datetime.now(UTC),
             )
             session.add(tenant)
             session.commit()

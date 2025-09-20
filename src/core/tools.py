@@ -146,10 +146,16 @@ async def get_products_raw(brief: str, promoted_offering: str, context: Context 
         brief_lower = brief.lower()
         filtered_products = []
         for product in products:
+            # Convert format IDs to Format objects for proper type checking
+            from src.core.schemas import convert_format_ids_to_formats
+
+            format_objects = convert_format_ids_to_formats(product.formats)
+
             if (
                 brief_lower in product.name.lower()
                 or brief_lower in product.description.lower()
-                or any(brief_lower in fmt.get("type", "").lower() for fmt in product.formats)
+                or any(brief_lower in fmt.type.lower() for fmt in format_objects)
+                or any(brief_lower in fmt_id.lower() for fmt_id in product.formats)
             ):
                 filtered_products.append(product)
 

@@ -7,6 +7,7 @@ from src.admin.app import create_app
 app, _ = create_app()
 from src.core.database.database_session import get_db_session
 from src.core.database.models import Product, Tenant
+from tests.utils.database_helpers import create_tenant_with_timestamps
 
 
 @pytest.fixture
@@ -40,12 +41,9 @@ def test_tenant(integration_db):
             session.rollback()  # Ignore errors if tables don't exist yet
 
         # Create test tenant
-        from datetime import UTC, datetime
-
         from src.core.database.models import CreativeFormat
 
-        now = datetime.now(UTC)
-        tenant = Tenant(
+        tenant = create_tenant_with_timestamps(
             tenant_id="test_product_tenant",
             name="Test Product Tenant",
             subdomain="test-product",
@@ -56,8 +54,6 @@ def test_tenant(integration_db):
             human_review_required=False,
             billing_plan="basic",
             is_active=True,
-            created_at=now,
-            updated_at=now,
         )
         session.add(tenant)
 

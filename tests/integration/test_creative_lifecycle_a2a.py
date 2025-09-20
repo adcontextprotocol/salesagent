@@ -14,6 +14,7 @@ from a2a.utils.errors import ServerError
 
 from src.core.database.database_session import get_db_session
 from src.core.database.models import MediaBuy, Principal, Tenant
+from tests.utils.database_helpers import create_tenant_with_timestamps
 
 
 class A2ATestMockHelper:
@@ -52,7 +53,7 @@ class TestCreativeLifecycleA2A:
         """Create test tenant, principal, and media buy for A2A tests."""
         with get_db_session() as session:
             # Create test tenant
-            tenant = Tenant(
+            tenant = create_tenant_with_timestamps(
                 tenant_id="a2a_creative_test",
                 name="A2A Creative Test Tenant",
                 subdomain="a2a-creative-test",
@@ -145,7 +146,8 @@ class TestCreativeLifecycleA2A:
             from src.core.schemas import Creative, CreativeAssignment, SyncCreativesResponse
 
             # Test 1: Successful sync with assignments
-            now = datetime.now(UTC)
+            from tests.utils.database_helpers import get_utc_now
+            now = get_utc_now()
             synced_creatives = [
                 Creative(
                     creative_id="test_creative_1",
@@ -286,7 +288,8 @@ class TestCreativeLifecycleA2A:
             from src.core.schemas import Creative, ListCreativesResponse
 
             # Test 1: Successful list with all parameters
-            now = datetime.now(UTC)
+            from tests.utils.database_helpers import get_utc_now
+            now = get_utc_now()
             sample_creatives = [
                 Creative(
                     creative_id="list_creative_1",
