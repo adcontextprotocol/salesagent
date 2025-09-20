@@ -17,11 +17,30 @@
       "type": "string",
       "description": "Detailed description of the product and its inventory"
     },
-    "formats": {
+    "properties": {
       "type": "array",
-      "description": "Array of supported creative format IDs (strings) - use list_creative_formats to get full format details",
+      "description": "Array of advertising properties covered by this product for adagents.json validation",
       "items": {
-        "type": "string"
+        "$ref": "/schemas/v1/core/property.json"
+      },
+      "minItems": 1
+    },
+    "property_tags": {
+      "type": "array",
+      "description": "Tags identifying groups of properties covered by this product (use list_authorized_properties to get full property details)",
+      "items": {
+        "type": "string",
+        "pattern": "^[a-z0-9_]+$",
+        "description": "Lowercase tag with underscores (e.g., 'local_radio', 'premium_content')"
+      },
+      "minItems": 1
+    },
+    "format_ids": {
+      "type": "array",
+      "description": "Array of supported creative format IDs - use list_creative_formats to get full format details",
+      "items": {
+        "type": "string",
+        "description": "Format ID referencing a format from list_creative_formats"
       }
     },
     "delivery_type": {
@@ -61,11 +80,23 @@
       "description": "Expiration timestamp for custom products"
     }
   },
+  "oneOf": [
+    {
+      "required": [
+        "properties"
+      ]
+    },
+    {
+      "required": [
+        "property_tags"
+      ]
+    }
+  ],
   "required": [
     "product_id",
     "name",
     "description",
-    "formats",
+    "format_ids",
     "delivery_type",
     "is_fixed_price"
   ],

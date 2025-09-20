@@ -869,7 +869,7 @@ class Product(BaseModel):
     product_id: str
     name: str
     description: str
-    formats: list[str]  # Format IDs per updated AdCP spec
+    formats: list[str]  # Internal field name for backward compatibility
     delivery_type: Literal["guaranteed", "non_guaranteed"]
     is_fixed_price: bool
     cpm: float | None = None
@@ -886,26 +886,43 @@ class Product(BaseModel):
         description="Ad server-specific configuration for implementing this product (placements, line item settings, etc.)",
     )
 
+    @property
+    def format_ids(self) -> list[str]:
+        """AdCP spec compliant property name for formats."""
+        return self.formats
+
     def model_dump(self, **kwargs):
-        """Override model_dump to always exclude implementation_config."""
+        """Return AdCP-compliant model dump with proper field names, excluding internal fields and null values."""
+        # Exclude internal/non-spec fields
         kwargs["exclude"] = kwargs.get("exclude", set())
         if isinstance(kwargs["exclude"], set):
-            kwargs["exclude"].add("implementation_config")
+            kwargs["exclude"].update({"implementation_config", "expires_at"})
+
+        data = super().model_dump(**kwargs)
+
+        # Convert formats to format_ids per AdCP spec
+        if "formats" in data:
+            data["format_ids"] = data.pop("formats")
+
+        # Remove null fields per AdCP spec (measurement, creative_policy should be omitted if null)
+        adcp_data = {}
+        for key, value in data.items():
+            if value is not None:
+                adcp_data[key] = value
+
+        return adcp_data
+
+    def model_dump_internal(self, **kwargs):
+        """Return internal model dump including all fields for database operations."""
         return super().model_dump(**kwargs)
 
     def model_dump_adcp_compliant(self, **kwargs):
-        """Return model dump for AdCP schema compliance (formats as IDs per spec)."""
-        data = self.model_dump(**kwargs)
-        # formats should remain as format IDs (strings) per AdCP spec
-        # No conversion needed - the Product schema already defines formats: list[str]
-        return data
+        """Return model dump for AdCP schema compliance."""
+        return self.model_dump(**kwargs)
 
     def dict(self, **kwargs):
-        """Override dict to always exclude implementation_config (for backward compat)."""
-        kwargs["exclude"] = kwargs.get("exclude", set())
-        if isinstance(kwargs["exclude"], set):
-            kwargs["exclude"].add("implementation_config")
-        return super().dict(**kwargs)
+        """Override dict to maintain backward compatibility."""
+        return self.model_dump(**kwargs)
 
 
 # --- Core Schemas ---
@@ -1004,14 +1021,22 @@ class GetProductsResponse(BaseModel):
     errors: list[Error] | None = None  # Optional error reporting
 
     def model_dump(self, **kwargs):
-        """Override to ensure products exclude implementation_config for AdCP compliance."""
-        data = super().model_dump(**kwargs)
-        # Ensure each product excludes implementation_config
-        if "products" in data:
-            for product in data["products"]:
-                if "implementation_config" in product:
-                    del product["implementation_config"]
-                # formats should remain as format IDs (strings) per AdCP spec
+        """Override to ensure products use AdCP-compliant serialization."""
+        # Get basic structure
+        data = {}
+
+        # Serialize products using their custom model_dump method
+        if self.products:
+            data["products"] = [product.model_dump(**kwargs) for product in self.products]
+        else:
+            data["products"] = []
+
+        # Add other fields, excluding None values for AdCP compliance
+        if self.message is not None:
+            data["message"] = self.message
+        if self.errors is not None:
+            data["errors"] = self.errors
+
         return data
 
 

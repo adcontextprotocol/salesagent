@@ -11,9 +11,50 @@ env:
   UV_VERSION: '0.4.18'
 
 jobs:
+  schema-sync:
+    name: AdCP Schema Sync Check
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+
+    - name: Install uv
+      run: |
+        curl -LsSf https://astral.sh/uv/${{ env.UV_VERSION }}/install.sh | sh
+        echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+
+    - name: Cache uv dependencies
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.cache/uv
+          .venv
+        key: ${{ runner.os }}-uv-${{ hashFiles('**/uv.lock') }}
+        restore-keys: |
+          ${{ runner.os }}-uv-
+
+    - name: Install dependencies
+      run: |
+        uv sync --extra dev
+
+    - name: Check AdCP schema sync
+      env:
+        PYTEST_CURRENT_TEST: true
+        ADCP_TESTING: true
+      run: |
+        echo "🔍 Checking AdCP schema sync..."
+        uv run python scripts/check_schema_sync.py --ci
+        echo "✅ Schema sync check passed"
+
   smoke-tests:
     name: Smoke Tests (Critical Paths)
     runs-on: ubuntu-latest
+    needs: [schema-sync]
 
     steps:
     - uses: actions/checkout@v4
@@ -69,7 +110,7 @@ jobs:
   unit-tests:
     name: Unit Tests
     runs-on: ubuntu-latest
-    needs: [smoke-tests]
+    needs: [schema-sync, smoke-tests]
 
     steps:
     - uses: actions/checkout@v4

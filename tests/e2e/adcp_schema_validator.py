@@ -60,7 +60,7 @@ class AdCPSchemaValidator:
     """
 
     BASE_SCHEMA_URL = "https://adcontextprotocol.org/schemas/v1"
-    INDEX_URL = "https://adcontextprotocol.org/assets/files/index-310a70f7d8ccc4ff85729dfeb2be68f7.json"
+    INDEX_URL = "https://adcontextprotocol.org/schemas/v1/index.json"
 
     def __init__(self, cache_dir: Path | None = None, offline_mode: bool = False, adcp_version: str = "v1"):
         """

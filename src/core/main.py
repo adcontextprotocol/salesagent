@@ -17,11 +17,6 @@ from src.adapters.mock_ad_server import MockAdServer as MockAdServerAdapter
 from src.adapters.mock_creative_engine import MockCreativeEngine
 from src.adapters.triton_digital import TritonDigital
 from src.core.audit_logger import get_audit_logger
-from src.core.testing_api import (
-    TestingControlRequest,
-    TestingControlResponse,
-    handle_testing_control,
-)
 from src.core.testing_hooks import (
     DeliverySimulator,
     TimeSimulator,
@@ -47,50 +42,24 @@ from src.core.config_loader import (
 )
 from src.core.context_manager import get_context_manager
 from src.core.database.database_session import get_db_session
-from src.core.database.models import AdapterConfig, MediaBuy, ObjectWorkflowMapping, Tenant, WorkflowStep
+from src.core.database.models import AdapterConfig, MediaBuy, Tenant
 from src.core.database.models import Principal as ModelPrincipal
 from src.core.database.models import Product as ModelProduct
 
 # Schema models (explicit imports to avoid collisions)
 from src.core.schemas import (
-    AddCreativeAssetsRequest,
-    AddCreativeAssetsResponse,
-    ApproveCreativeRequest,
-    ApproveCreativeResponse,
-    AssignCreativeRequest,
-    AssignCreativeResponse,
-    Budget,  # AdCP v2.4 Budget model
-    CheckAXERequirementsRequest,
-    CheckAXERequirementsResponse,
-    CheckCreativeStatusRequest,
-    CheckCreativeStatusResponse,
-    CheckMediaBuyStatusRequest,
-    CheckMediaBuyStatusResponse,
-    CreateCreativeGroupRequest,
-    CreateCreativeGroupResponse,
-    CreateCreativeRequest,
-    CreateCreativeResponse,
     CreateMediaBuyRequest,
     CreateMediaBuyResponse,
     Creative,
     CreativeAssignment,
     CreativeGroup,
     CreativeStatus,
-    GetAllMediaBuyDeliveryRequest,
-    GetAllMediaBuyDeliveryResponse,
-    GetCreativesRequest,
-    GetCreativesResponse,
     GetMediaBuyDeliveryRequest,
     GetMediaBuyDeliveryResponse,
-    GetPendingCreativesRequest,
-    GetPendingCreativesResponse,
     GetProductsRequest,
     GetProductsResponse,
     GetSignalsRequest,
     GetSignalsResponse,
-    GetTargetingCapabilitiesRequest,
-    GetTargetingCapabilitiesResponse,
-    LegacyUpdateMediaBuyRequest,
     ListCreativeFormatsResponse,
     ListCreativesResponse,
     MediaBuyDeliveryData,
@@ -100,13 +69,9 @@ from src.core.schemas import (
     Product,
     ReportingPeriod,
     Signal,
-    SimulationControlRequest,
-    SimulationControlResponse,
     SyncCreativesResponse,
-    Targeting,
     UpdateMediaBuyRequest,
     UpdateMediaBuyResponse,
-    UpdatePackageRequest,
     UpdatePerformanceIndexRequest,
     UpdatePerformanceIndexResponse,
 )
@@ -2029,16 +1994,6 @@ def create_media_buy(
         )
 
 
-
-
-
-
-
-
-
-
-
-
 # Unified update tools
 @mcp.tool
 def update_media_buy(
@@ -2300,8 +2255,6 @@ def update_media_buy(
     )
 
 
-
-
 def _get_media_buy_delivery_impl(req: GetMediaBuyDeliveryRequest, context: Context) -> GetMediaBuyDeliveryResponse:
     """Get delivery data for one or more media buys.
 
@@ -2539,16 +2492,6 @@ def get_media_buy_delivery(
     return _get_media_buy_delivery_impl(req, context)
 
 
-
-
-
-
-
-
-
-
-
-
 # --- Admin Tools ---
 
 
@@ -2557,10 +2500,6 @@ def _require_admin(context: Context) -> None:
     principal_id = get_principal_from_context(context)
     if principal_id != "admin":
         raise PermissionError("This operation requires admin privileges")
-
-
-
-
 
 
 @mcp.tool
@@ -3212,10 +3151,6 @@ def get_product_catalog() -> list[Product]:
     return loaded_products
 
 
-
-
-
-
 # Creative macro support is now simplified to a single creative_macro string
 # that AEE can provide as a third type of provided_signal.
 # Ad servers like GAM can inject this string into creatives.
@@ -3229,9 +3164,7 @@ from fastapi import Request
 from fastapi.responses import JSONResponse
 
 # --- Strategy and Simulation Control ---
-from src.core.strategy import SimulationError, StrategyError, StrategyManager
-
-
+from src.core.strategy import StrategyManager
 
 
 def get_strategy_manager(context: Context | None) -> StrategyManager:
@@ -3243,8 +3176,6 @@ def get_strategy_manager(context: Context | None) -> StrategyManager:
         raise ToolError("No tenant configuration found")
 
     return StrategyManager(tenant_id=tenant_config.get("tenant_id"), principal_id=principal_id)
-
-
 
 
 @mcp.custom_route("/health", methods=["GET"])

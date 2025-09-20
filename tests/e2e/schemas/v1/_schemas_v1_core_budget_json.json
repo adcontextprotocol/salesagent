@@ -20,14 +20,6 @@
         "GBP"
       ]
     },
-    "daily_cap": {
-      "type": [
-        "number",
-        "null"
-      ],
-      "description": "Daily budget cap (null for no limit)",
-      "minimum": 0
-    },
     "pacing": {
       "$ref": "/schemas/v1/enums/pacing.json"
     }
