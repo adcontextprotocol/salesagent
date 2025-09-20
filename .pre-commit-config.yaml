@@ -58,6 +58,22 @@ repos:
         pass_filenames: false
         always_run: true
 
+      # Prevent A2A regression issues (URL format, function calls)
+      - id: a2a-regression-check
+        name: A2A regression prevention
+        entry: python3 scripts/validate_a2a_fixes.py
+        language: system
+        files: ^src/a2a_server/
+        pass_filenames: false
+
+      # Prevent problematic function call patterns
+      - id: no-fn-calls
+        name: No .fn() call patterns
+        entry: sh -c 'if grep -r "\.fn(" src/ --include="*.py" | grep -v test; then echo "❌ Found .fn() calls - use direct function calls"; exit 1; fi'
+        language: system
+        files: ^src/
+        pass_filenames: false
+
       # Test MCP endpoints (requires server running)
       - id: mcp-endpoint-tests
         name: Test MCP endpoints
