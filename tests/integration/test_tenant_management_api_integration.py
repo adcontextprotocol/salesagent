@@ -6,6 +6,7 @@ import pytest
 from flask import Flask
 
 from src.admin.tenant_management_api import tenant_management_api
+from src.core.database.models import Tenant
 
 pytestmark = pytest.mark.integration
 
