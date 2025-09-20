@@ -89,22 +89,37 @@ class AIProductCatalog(ProductCatalogProvider):
 
             products = []
             for product_model in product_models:
-                # Convert model to Product schema
+                # Convert model to Product schema (only include AdCP-compliant fields)
                 product_data = {
                     "product_id": product_model.product_id,
                     "name": product_model.name,
-                    "description": product_model.description,
+                    "description": product_model.description or f"Advertising product: {product_model.name}",
                     "formats": product_model.formats,
-                    "targeting_template": product_model.targeting_template,
                     "delivery_type": product_model.delivery_type,
                     "is_fixed_price": product_model.is_fixed_price,
                     "cpm": float(product_model.cpm) if product_model.cpm else None,
-                    "price_guidance": product_model.price_guidance,
-                    "is_custom": product_model.is_custom,
-                    "expires_at": product_model.expires_at,
-                    "countries": product_model.countries,
-                    "implementation_config": product_model.implementation_config,
+                    "min_spend": float(product_model.min_spend) if product_model.min_spend else None,
+                    "is_custom": product_model.is_custom if product_model.is_custom is not None else False,
                 }
+
+                # Handle JSONB fields - PostgreSQL returns them as Python objects, SQLite as strings
+                if isinstance(product_data["formats"], str):
+                    import json
+
+                    try:
+                        product_data["formats"] = json.loads(product_data["formats"])
+                    except json.JSONDecodeError:
+                        product_data["formats"] = []
+
+                # Extract format IDs if formats are objects
+                if product_data["formats"]:
+                    format_ids = []
+                    for fmt in product_data["formats"]:
+                        if isinstance(fmt, dict) and "format_id" in fmt:
+                            format_ids.append(fmt["format_id"])
+                        elif isinstance(fmt, str):
+                            format_ids.append(fmt)
+                    product_data["formats"] = format_ids
 
                 # Create Product instance
                 product = Product(**product_data)
@@ -132,8 +147,8 @@ class AIProductCatalog(ProductCatalogProvider):
                 "delivery_type": product.delivery_type,
                 "is_fixed_price": product.is_fixed_price,
                 "cpm": product.cpm,
-                "price_guidance": product.price_guidance,
-                "countries": product.countries,
+                "min_spend": product.min_spend,
+                "is_custom": product.is_custom,
             }
             products_data.append(product_info)
 
