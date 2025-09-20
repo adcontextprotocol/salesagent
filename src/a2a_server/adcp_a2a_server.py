@@ -51,33 +51,33 @@ sys.path = original_path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
-# Import core functions for direct calls
+# Import core functions for direct calls (raw functions without FastMCP decorators)
 from datetime import UTC, datetime
 
 from src.core.audit_logger import get_audit_logger
 from src.core.auth_utils import get_principal_from_token
 from src.core.config_loader import get_current_tenant
-from src.core.main import (
-    create_media_buy as core_create_media_buy_tool,
-)
-from src.core.main import (
-    get_products as core_get_products_tool,
-)
-from src.core.main import (
-    get_signals as core_get_signals_tool,
-)
-from src.core.main import (
-    list_creatives as core_list_creatives_tool,
-)
-from src.core.main import (
-    sync_creatives as core_sync_creatives_tool,
-)
 from src.core.schemas import (
     CreateMediaBuyRequest,
     GetSignalsRequest,
 )
 from src.core.testing_hooks import TestingContext
 from src.core.tool_context import ToolContext
+from src.core.tools import (
+    create_media_buy_raw as core_create_media_buy_tool,
+)
+from src.core.tools import (
+    get_products_raw as core_get_products_tool,
+)
+from src.core.tools import (
+    get_signals_raw as core_get_signals_tool,
+)
+from src.core.tools import (
+    list_creatives_raw as core_list_creatives_tool,
+)
+from src.core.tools import (
+    sync_creatives_raw as core_sync_creatives_tool,
+)
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
@@ -1276,20 +1276,17 @@ def create_agent_card() -> AgentCard:
     # Note: This will be overridden dynamically in the endpoint handlers
     server_url = "https://sales-agent.scope3.com/a2a"
 
-    from a2a.types import AgentSkill
+    from a2a.types import AgentCapabilities, AgentSkill
 
-    return AgentCard(
+    # Create the agent card with minimal required fields
+    agent_card = AgentCard(
         name="AdCP Sales Agent",
         description="AI agent for programmatic advertising campaigns via AdCP protocol",
         version="1.0.0",
-        protocol_version="1.0",
-        capabilities={
-            "google_a2a_compatible": True,
-            "parts_array_format": True,
-            "supports_json_rpc": True,
-        },
-        default_input_modes=["message"],
-        default_output_modes=["message"],
+        protocolVersion="1.0",
+        capabilities=AgentCapabilities(),
+        defaultInputModes=["message"],
+        defaultOutputModes=["message"],
         skills=[
             # Core AdCP Media Buy Skills (6 total)
             AgentSkill(
@@ -1364,9 +1361,10 @@ def create_agent_card() -> AgentCard:
             ),
         ],
         url=server_url,
-        authentication="bearer-token",
         documentation_url="https://github.com/your-org/adcp-sales-agent",
     )
+
+    return agent_card
 
 
 def main():

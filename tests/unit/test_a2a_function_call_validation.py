@@ -166,8 +166,9 @@ class TestA2AHandlerMethodCalls:
                 sig = inspect.signature(method)
                 param_names = list(sig.parameters.keys())
 
-                # Should have self plus the expected parameters
-                assert "self" in param_names, f"{method_name} should have 'self' parameter"
+                # When called on a bound method, 'self' is already bound and not shown in parameters
+                # When called on an unbound method from the class, 'self' is shown
+                # Both are valid patterns
 
                 for expected_param in expected_params:
                     assert expected_param in param_names, f"{method_name} missing parameter: {expected_param}"
@@ -273,14 +274,14 @@ class TestImportValidation:
         with open(file_path) as f:
             content = f.read()
 
-        # Should import core functions directly
+        # Should import core functions directly (now from tools module to avoid FastMCP decorators)
         expected_imports = [
-            "from src.core.main import (",
-            "create_media_buy as core_create_media_buy_tool,",
-            "get_products as core_get_products_tool,",
-            "get_signals as core_get_signals_tool,",
-            "list_creatives as core_list_creatives_tool,",
-            "sync_creatives as core_sync_creatives_tool,",
+            "from src.core.tools import (",
+            "create_media_buy_raw as core_create_media_buy_tool,",
+            "get_products_raw as core_get_products_tool,",
+            "get_signals_raw as core_get_signals_tool,",
+            "list_creatives_raw as core_list_creatives_tool,",
+            "sync_creatives_raw as core_sync_creatives_tool,",
         ]
 
         for import_statement in expected_imports:

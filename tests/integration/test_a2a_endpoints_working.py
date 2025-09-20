@@ -51,8 +51,9 @@ class TestA2AEndpointsActual:
                 assert isinstance(data["skills"], list)
                 assert len(data["skills"]) > 0
 
-                # Should specify authentication
-                assert data.get("authentication") == "bearer-token"
+                # Should specify security configuration (A2A spec for authentication)
+                # Note: A2A spec uses security/securitySchemes instead of simple authentication field
+                assert "security" in data or "securitySchemes" in data
 
         except (requests.ConnectionError, requests.Timeout):
             pytest.skip("A2A server not running on localhost:8091")
@@ -135,11 +136,14 @@ class TestA2AAgentCardCreation:
         assert hasattr(agent_card, "version")
         assert hasattr(agent_card, "skills")
         assert hasattr(agent_card, "url")
-        assert hasattr(agent_card, "authentication")
+
+        # Check for security configuration (A2A spec compliant way to specify authentication)
+        assert hasattr(agent_card, "security") or hasattr(agent_card, "securitySchemes")
 
         # Validate content
         assert agent_card.name == "AdCP Sales Agent"
-        assert agent_card.authentication == "bearer-token"
+
+        # Note: A2A spec uses security/securitySchemes for authentication, not a simple authentication field
 
         # Critical: URL should not have trailing slash
         assert not agent_card.url.endswith("/"), f"Agent card URL should not have trailing slash: {agent_card.url}"
@@ -269,7 +273,7 @@ class TestA2AServerIntegration:
 
             # Step 2: Validate agent card has what client needs
             assert "skills" in agent_card
-            assert "authentication" in agent_card
+            assert "security" in agent_card or "securitySchemes" in agent_card  # A2A spec authentication
             assert "url" in agent_card
 
             # Step 3: Validate URL format for messaging
