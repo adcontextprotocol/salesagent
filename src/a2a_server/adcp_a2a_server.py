@@ -1475,6 +1475,22 @@ def main():
         # Get tenant from request headers (passed by nginx)
         tenant = request.headers.get("x-adcp-tenant")
 
+        # If no tenant header, try to extract from Host header
+        if not tenant:
+            host = request.headers.get("Host", "")
+            # Check for sales-agent.scope3.com subdomain pattern
+            if ".sales-agent.scope3.com" in host and not host.startswith("admin."):
+                # Extract tenant from subdomain (e.g., "tenant" from "tenant.sales-agent.scope3.com")
+                tenant = host.split(".sales-agent.scope3.com")[0]
+            # Check for other tenant-specific domains (like test-agent.adcontextprotocol.org)
+            elif host and not host.startswith("sales-agent.scope3.com") and not host.startswith("localhost"):
+                # For domains like test-agent.adcontextprotocol.org, extract the first part as tenant
+                if "." in host:
+                    potential_tenant = host.split(".")[0]
+                    # Only use if it looks like a tenant name (not www, api, etc.)
+                    if potential_tenant not in ["www", "api", "admin"]:
+                        tenant = potential_tenant
+
         if tenant:
             # Use tenant-specific subdomain (production pattern)
             server_url = f"https://{tenant}.sales-agent.scope3.com/a2a"
