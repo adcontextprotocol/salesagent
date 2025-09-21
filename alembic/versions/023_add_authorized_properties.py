@@ -13,7 +13,7 @@ from alembic import op
 
 # revision identifiers, used by Alembic.
 revision = "023_add_authorized_properties"
-down_revision = "6e19576203a0"
+down_revision = "7e66d36b68a4"
 branch_labels = None
 depends_on = None
 
