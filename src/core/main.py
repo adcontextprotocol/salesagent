@@ -1099,42 +1099,66 @@ def sync_creatives(
                     if existing_creative and upsert:
                         # Update existing creative
                         existing_creative.name = creative.get("name")
-                        existing_creative.format_id = creative.get("format")
-                        existing_creative.url = creative.get("url")
-                        existing_creative.click_url = creative.get("click_url")
-                        existing_creative.width = creative.get("width")
-                        existing_creative.height = creative.get("height")
-                        existing_creative.duration = creative.get("duration")
+                        existing_creative.format = creative.get("format")
                         existing_creative.updated_at = datetime.now(UTC)
 
-                        # Update AdCP v1.3+ fields
+                        # Store creative properties in data field
+                        data = existing_creative.data or {}
+                        data.update(
+                            {
+                                "url": creative.get("url"),
+                                "click_url": creative.get("click_url"),
+                                "width": creative.get("width"),
+                                "height": creative.get("height"),
+                                "duration": creative.get("duration"),
+                            }
+                        )
+
+                        # Update AdCP v1.3+ fields in data
                         if creative.get("snippet"):
-                            existing_creative.snippet = creative.get("snippet")
-                            existing_creative.snippet_type = creative.get("snippet_type")
+                            data["snippet"] = creative.get("snippet")
+                            data["snippet_type"] = creative.get("snippet_type")
 
                         if creative.get("template_variables"):
-                            existing_creative.template_variables = creative.get("template_variables")
+                            data["template_variables"] = creative.get("template_variables")
+
+                        existing_creative.data = data
+
+                        # Mark JSONB field as modified for SQLAlchemy
+                        from sqlalchemy.orm import attributes
+
+                        attributes.flag_modified(existing_creative, "data")
 
                     else:
                         # Create new creative
                         from src.core.database.models import Creative as DBCreative
 
+                        # Prepare data field with all creative properties
+                        data = {
+                            "url": creative.get("url"),
+                            "click_url": creative.get("click_url"),
+                            "width": creative.get("width"),
+                            "height": creative.get("height"),
+                            "duration": creative.get("duration"),
+                        }
+
+                        # Add AdCP v1.3+ fields to data
+                        if creative.get("snippet"):
+                            data["snippet"] = creative.get("snippet")
+                            data["snippet_type"] = creative.get("snippet_type")
+
+                        if creative.get("template_variables"):
+                            data["template_variables"] = creative.get("template_variables")
+
                         db_creative = DBCreative(
                             tenant_id=tenant["tenant_id"],
                             creative_id=creative.get("creative_id") or str(uuid.uuid4()),
                             name=creative.get("name"),
-                            format_id=creative.get("format"),
-                            url=creative.get("url"),
-                            click_url=creative.get("click_url"),
-                            width=creative.get("width"),
-                            height=creative.get("height"),
-                            duration=creative.get("duration"),
+                            format=creative.get("format"),
                             principal_id=principal_id,
                             status="pending",
                             created_at=datetime.now(UTC),
-                            snippet=creative.get("snippet"),
-                            snippet_type=creative.get("snippet_type"),
-                            template_variables=creative.get("template_variables"),
+                            data=data,
                         )
 
                         session.add(db_creative)
@@ -1227,13 +1251,13 @@ def sync_creatives(
                 schema_data = {
                     "creative_id": db_creative.creative_id,
                     "name": db_creative.name,
-                    "format_id": db_creative.format_id,  # Use alias name 'format_id'
-                    "click_through_url": db_creative.click_url,  # Use alias name 'click_through_url'
-                    "width": db_creative.width,
-                    "height": db_creative.height,
-                    "duration": db_creative.duration,
+                    "format_id": db_creative.format,  # Use correct field name
+                    "click_through_url": db_creative.data.get("click_url"),  # From data field
+                    "width": db_creative.data.get("width"),
+                    "height": db_creative.data.get("height"),
+                    "duration": db_creative.data.get("duration"),
                     "status": db_creative.status,
-                    "template_variables": db_creative.template_variables or {},
+                    "template_variables": db_creative.data.get("template_variables") or {},
                     "principal_id": db_creative.principal_id,
                     "created_at": db_creative.created_at or datetime.now(UTC),
                     "updated_at": db_creative.updated_at or datetime.now(UTC),
@@ -1241,17 +1265,20 @@ def sync_creatives(
 
                 # Handle content_uri - required field even for snippet creatives
                 # For snippet creatives, provide an HTML-looking URL to pass validation
-                if db_creative.snippet:
+                if db_creative.data.get("snippet"):
                     schema_data.update(
                         {
-                            "snippet": db_creative.snippet,
-                            "snippet_type": db_creative.snippet_type,
+                            "snippet": db_creative.data.get("snippet"),
+                            "snippet_type": db_creative.data.get("snippet_type"),
                             # Use HTML snippet-looking URL to pass _is_html_snippet() validation
-                            "content_uri": db_creative.url or "<script>/* Snippet-based creative */</script>",
+                            "content_uri": db_creative.data.get("url")
+                            or "<script>/* Snippet-based creative */</script>",
                         }
                     )
                 else:
-                    schema_data["content_uri"] = db_creative.url or "https://placeholder.example.com/missing.jpg"
+                    schema_data["content_uri"] = (
+                        db_creative.data.get("url") or "https://placeholder.example.com/missing.jpg"
+                    )
 
                 creative_schema = Creative(**schema_data)
                 synced_creative_schemas.append(creative_schema)
@@ -1375,7 +1402,7 @@ def list_creatives(
             query = query.filter(DBCreative.status == req.status)
 
         if req.format:
-            query = query.filter(DBCreative.format_id == req.format)
+            query = query.filter(DBCreative.format == req.format)
 
         if req.tags:
             # Simple tag filtering - in production, might use JSON operators
@@ -1415,17 +1442,17 @@ def list_creatives(
 
         # Convert to schema objects
         for db_creative in db_creatives:
-            # Create schema object with proper field aliases and mutually exclusive handling
+            # Create schema object with correct field names and data field access
             schema_data = {
                 "creative_id": db_creative.creative_id,
                 "name": db_creative.name,
-                "format_id": db_creative.format_id,  # Use alias name 'format_id'
-                "click_through_url": db_creative.click_url,  # Use alias name 'click_through_url'
-                "width": db_creative.width,
-                "height": db_creative.height,
-                "duration": db_creative.duration,
+                "format_id": db_creative.format,  # Use correct field name
+                "click_through_url": db_creative.data.get("click_url") if db_creative.data else None,  # From data field
+                "width": db_creative.data.get("width") if db_creative.data else None,
+                "height": db_creative.data.get("height") if db_creative.data else None,
+                "duration": db_creative.data.get("duration") if db_creative.data else None,
                 "status": db_creative.status,
-                "template_variables": db_creative.template_variables or {},
+                "template_variables": db_creative.data.get("template_variables", {}) if db_creative.data else {},
                 "principal_id": db_creative.principal_id,
                 "created_at": db_creative.created_at or datetime.now(UTC),
                 "updated_at": db_creative.updated_at or datetime.now(UTC),
@@ -1433,17 +1460,26 @@ def list_creatives(
 
             # Handle content_uri - required field even for snippet creatives
             # For snippet creatives, provide an HTML-looking URL to pass validation
-            if db_creative.snippet:
+            snippet = db_creative.data.get("snippet") if db_creative.data else None
+            if snippet:
                 schema_data.update(
                     {
-                        "snippet": db_creative.snippet,
-                        "snippet_type": db_creative.snippet_type,
+                        "snippet": snippet,
+                        "snippet_type": db_creative.data.get("snippet_type") if db_creative.data else None,
                         # Use HTML snippet-looking URL to pass _is_html_snippet() validation
-                        "content_uri": db_creative.url or "<script>/* Snippet-based creative */</script>",
+                        "content_uri": (
+                            db_creative.data.get("url") or "<script>/* Snippet-based creative */</script>"
+                            if db_creative.data
+                            else "<script>/* Snippet-based creative */</script>"
+                        ),
                     }
                 )
             else:
-                schema_data["content_uri"] = db_creative.url or "https://placeholder.example.com/missing.jpg"
+                schema_data["content_uri"] = (
+                    db_creative.data.get("url") or "https://placeholder.example.com/missing.jpg"
+                    if db_creative.data
+                    else "https://placeholder.example.com/missing.jpg"
+                )
 
             creative = Creative(**schema_data)
             creatives.append(creative)
