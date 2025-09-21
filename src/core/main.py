@@ -844,7 +844,7 @@ async def get_products(brief: str, promoted_offering: str, context: Context = No
             logger.info(f"Product {product.product_id} excluded: {reason}")
 
     # Apply testing hooks to response
-    response_data = {"products": [p.model_dump() for p in eligible_products]}
+    response_data = {"products": [p.model_dump_internal() for p in eligible_products]}
     response_data = apply_testing_hooks(response_data, testing_ctx, "get_products")
 
     # Reconstruct products from modified data
@@ -2153,7 +2153,7 @@ def create_media_buy(
         # Apply testing hooks to response with campaign information
         campaign_info = {"start_date": req.start_time, "end_date": req.end_time, "total_budget": total_budget}
 
-        response_data = adcp_response.model_dump()
+        response_data = adcp_response.model_dump_internal()
         response_data = apply_testing_hooks(response_data, testing_ctx, "create_media_buy", campaign_info)
 
         # Reconstruct response from modified data
@@ -2624,7 +2624,7 @@ def _get_media_buy_delivery_impl(req: GetMediaBuyDeliveryRequest, context: Conte
         }
 
     response_data = {
-        "deliveries": [d.model_dump() for d in deliveries],
+        "deliveries": [d.model_dump_internal() for d in deliveries],
         "total_spend": total_spend,
         "total_impressions": total_impressions,
         "active_count": active_count,

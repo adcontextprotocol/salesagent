@@ -122,9 +122,22 @@ class TestMockServerResponseHeaders:
 
     def test_response_headers_without_campaign_info(self):
         """Test response headers when no campaign info is available."""
+        from src.core.schemas import Product
+
         testing_ctx = TestingContext(dry_run=True, test_session_id="test_no_campaign")
 
-        response_data = {"products": [{"id": "test", "name": "Test Product"}]}
+        # Use real Product object instead of mock dictionary
+        test_product = Product(
+            product_id="test",
+            name="Test Product",
+            description="Real product object for testing",
+            formats=["display_300x250"],  # Internal field name
+            delivery_type="non_guaranteed",
+            is_fixed_price=False,
+            is_custom=False,
+        )
+
+        response_data = {"products": [test_product.model_dump_internal()]}
 
         result = apply_testing_hooks(response_data, testing_ctx, "get_products")
 
@@ -137,6 +150,17 @@ class TestMockServerResponseHeaders:
         # Should not have event-related headers without campaign info
         assert "X-Next-Event" not in headers
         assert "X-Next-Event-Time" not in headers
+
+        # CRITICAL: Test roundtrip conversion - this would catch the "formats field required" bug
+        modified_products = [Product(**p) for p in result["products"]]
+
+        # Verify the roundtrip worked correctly
+        assert len(modified_products) == 1
+        reconstructed_product = modified_products[0]
+        assert reconstructed_product.product_id == "test"
+        assert reconstructed_product.name == "Test Product"
+        assert reconstructed_product.formats == ["display_300x250"]  # Internal field preserved
+        assert reconstructed_product.format_ids == ["display_300x250"]  # AdCP property works
 
     def test_response_headers_in_debug_mode(self):
         """Test that debug mode includes response header information."""
