@@ -1415,11 +1415,19 @@ docker-compose down
 ```
 
 ### PRODUCTION Fly.io Deployment
+
+**🚨 CRITICAL: Fly.io Auto-Deploys from Main Branch**
+
+Fly.io is configured to **automatically deploy** whenever changes are pushed to the `main` branch. This means:
+- ✅ **Merge PR to main** → Fly.io automatically builds and deploys
+- ✅ **Manual deployment** only needed for urgent fixes or when auto-deploy fails
+- ⚠️ **Never push directly to main** - always use Pull Request workflow
+
 ```bash
 # Check current production status
 fly status --app adcp-sales-agent
 
-# Deploy changes to production
+# Manual deploy (only when needed - auto-deploy from main usually handles this)
 fly deploy --app adcp-sales-agent
 
 # View production logs
@@ -1460,6 +1468,8 @@ curl https://scribd.sales-agent.scope3.com/health
 
 **🚨 CRITICAL**: ALL deployments must go through Pull Request workflow - NEVER push directly to main!
 
+**🚨 AUTOMATIC DEPLOYMENT**: Fly.io auto-deploys from main branch - merging PR triggers production deployment!
+
 1. ✅ **Create feature branch** and work on changes
 2. ✅ Test changes locally with `docker-compose up`
 3. ✅ Run tests: `uv run pytest`
@@ -1467,10 +1477,10 @@ curl https://scribd.sales-agent.scope3.com/health
 5. ✅ Verify no hardcoded secrets or debug code
 6. ✅ **Create Pull Request** - MANDATORY for all changes
 7. ✅ **Wait for code review and approval**
-8. ✅ **Merge via GitHub UI** (not command line)
-9. ✅ Deploy: `fly deploy --app adcp-sales-agent`
-10. ✅ Monitor logs: `fly logs --app adcp-sales-agent`
-11. ✅ Verify health: `fly status --app adcp-sales-agent`
+8. ✅ **Merge via GitHub UI** (not command line) - **THIS TRIGGERS AUTO-DEPLOYMENT TO PRODUCTION**
+9. ✅ Monitor auto-deployment: `fly logs --app adcp-sales-agent`
+10. ✅ Verify health: `fly status --app adcp-sales-agent`
+11. ✅ Manual deploy only if auto-deploy fails: `fly deploy --app adcp-sales-agent`
 
 ## Troubleshooting
 
