@@ -537,6 +537,9 @@ class TestA2ASkillInvocation:
                 assert skill_name in [
                     "get_products",
                     "create_media_buy",
+                    "update_media_buy",  # Added for media buy management
+                    "get_media_buy_delivery",  # Added for delivery metrics
+                    "update_performance_index",  # Added for performance optimization
                     "sync_creatives",
                     "list_creatives",
                     "approve_creative",
@@ -547,6 +550,7 @@ class TestA2ASkillInvocation:
                     "get_pricing",
                     "get_targeting",
                     "list_creative_formats",  # Keep existing creative format endpoint
+                    "list_authorized_properties",  # Added for AdCP compliance
                 ], f"Skill {skill_name} not in expected skill list"
             except Exception as e:
                 pytest.fail(f"Skill {skill_name} should be handled but caused error: {e}")
