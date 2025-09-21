@@ -133,6 +133,14 @@ def run_nginx():
     os.makedirs("/var/log/nginx", exist_ok=True)
     os.makedirs("/var/run", exist_ok=True)
 
+    # Test nginx configuration first
+    test_proc = subprocess.run(["nginx", "-t"], capture_output=True, text=True)
+    if test_proc.returncode != 0:
+        print(f"❌ Nginx configuration test failed: {test_proc.stderr}")
+        return
+    else:
+        print("✅ Nginx configuration test passed")
+
     # Start nginx
     proc = subprocess.Popen(
         ["nginx", "-g", "daemon off;"],
@@ -183,8 +191,9 @@ def main():
     skip_nginx = os.environ.get("SKIP_NGINX", "false").lower() == "true"
 
     if not skip_nginx:
-        # Give services time to start before nginx
-        time.sleep(5)
+        # Give services more time to start before nginx
+        print("⏳ Waiting for backend services to be ready before starting nginx...")
+        time.sleep(10)
 
         # Nginx reverse proxy thread
         nginx_thread = threading.Thread(target=run_nginx, daemon=True)
