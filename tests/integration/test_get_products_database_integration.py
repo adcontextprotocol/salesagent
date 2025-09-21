@@ -371,7 +371,7 @@ class TestDatabasePerformanceOptimization:
                     targeting_template={"geo": ["US"], "device": ["desktop", "mobile"]},
                     delivery_type="non_guaranteed",
                     is_fixed_price=False,
-                    cpm=Decimal("5.00") + Decimal(str(i * 0.1)),
+                    cpm=Decimal("5.0") + (Decimal(str(i)) * Decimal("0.1")),
                     min_spend=Decimal("1000.00"),
                     is_custom=False,
                 )
@@ -396,7 +396,9 @@ class TestDatabasePerformanceOptimization:
         for i, product in enumerate(products):
             assert isinstance(product, ProductSchema)
             assert product.product_id == f"perf_test_{i:03d}"
-            assert product.cpm == 5.0 + (i * 0.1)
+            # Use consistent decimal arithmetic to avoid floating point precision issues
+            expected_cpm = float(Decimal("5.0") + (Decimal(str(i)) * Decimal("0.1")))
+            assert product.cpm == expected_cpm
 
         # Performance regression test
         print(f"✅ Converted {len(products)} products in {conversion_time:.3f}s")
@@ -633,8 +635,8 @@ class TestParallelTestExecution:
             session.query(ProductModel).filter_by(tenant_id=tenant_id).delete()
             session.query(Tenant).filter_by(tenant_id=tenant_id).delete()
 
-            # Create isolated tenant for this test
-            tenant = Tenant(
+            # Create isolated tenant for this test with proper timestamps
+            tenant = create_tenant_with_timestamps(
                 tenant_id=tenant_id,
                 name=f"Parallel Test Tenant {test_id}",
                 subdomain=f"parallel-{test_id}",
