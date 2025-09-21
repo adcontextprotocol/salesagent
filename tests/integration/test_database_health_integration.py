@@ -14,6 +14,7 @@ import os
 import tempfile
 
 import pytest
+from sqlalchemy import text
 
 from src.core.database.database_session import get_db_session
 from src.core.database.health_check import check_database_health, print_health_report
@@ -95,7 +96,7 @@ class TestDatabaseHealthIntegration:
 
         # Drop the products table
         with engine.connect() as connection:
-            connection.execute("DROP TABLE IF EXISTS products")
+            connection.execute(text("DROP TABLE IF EXISTS products CASCADE"))
             connection.commit()
 
         # Run health check
@@ -112,7 +113,7 @@ class TestDatabaseHealthIntegration:
         from src.core.database.database_session import engine
 
         with engine.connect() as connection:
-            connection.execute("CREATE TABLE deprecated_old_table (id INTEGER PRIMARY KEY, data TEXT)")
+            connection.execute(text("CREATE TABLE deprecated_old_table (id INTEGER PRIMARY KEY, data TEXT)"))
             connection.commit()
 
         # Run health check

@@ -321,9 +321,19 @@ class TestDatabasePerformanceOptimization:
             savepoint = session.begin_nested()
 
             try:
-                # Clean up any existing test data
-                session.query(ProductModel).filter_by(tenant_id=tenant_id).delete()
-                session.query(Tenant).filter_by(tenant_id=tenant_id).delete()
+                # Clean up any existing test data (tables may not exist)
+                try:
+                    session.query(ProductModel).filter_by(tenant_id=tenant_id).delete()
+                except Exception:
+                    # Table might not exist, rollback and continue
+                    session.rollback()
+                    savepoint = session.begin_nested()  # Start a new savepoint
+                try:
+                    session.query(Tenant).filter_by(tenant_id=tenant_id).delete()
+                except Exception:
+                    # Table might not exist, rollback and continue
+                    session.rollback()
+                    savepoint = session.begin_nested()  # Start a new savepoint
 
                 # Create test tenant with proper timestamps
                 tenant = create_tenant_with_timestamps(
@@ -336,7 +346,12 @@ class TestDatabasePerformanceOptimization:
 
             finally:
                 # Rollback to savepoint for fast cleanup
-                savepoint.rollback()
+                try:
+                    if savepoint.is_active:
+                        savepoint.rollback()
+                except Exception:
+                    # Savepoint may have been closed by nested sessions, that's OK
+                    pass
 
     @pytest.mark.asyncio
     async def test_large_dataset_conversion_performance(self, optimized_test_setup):
