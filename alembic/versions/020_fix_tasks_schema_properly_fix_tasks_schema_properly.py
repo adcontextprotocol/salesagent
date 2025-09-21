@@ -9,7 +9,7 @@ Create Date: 2025-08-31 16:58:53.407080
 from collections.abc import Sequence
 
 import sqlalchemy as sa
-from sqlalchemy.engine import reflection
+from sqlalchemy import inspect
 
 from alembic import op
 
@@ -29,7 +29,7 @@ def upgrade() -> None:
     """
     # Get database connection
     connection = op.get_bind()
-    inspector = reflection.Inspector.from_engine(connection)
+    inspector = inspect(connection)
     existing_tables = inspector.get_table_names()
 
     # Ensure workflow_steps table exists (may be missing in production)

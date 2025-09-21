@@ -50,23 +50,35 @@ class TestDatabaseHealthIntegration:
         assert isinstance(health["schema_issues"], list)
         assert isinstance(health["recommendations"], list)
 
-    def test_health_check_with_missing_tables(self, clean_db):
+    def test_health_check_with_missing_tables(self):
         """Test health check detects missing tables correctly."""
-        # Drop a critical table to simulate missing tables
-        from src.core.database.database_session import engine
+        # Use a mock to simulate missing tables without actually dropping them
+        from unittest.mock import patch
 
-        # Drop the products table
-        with engine.connect() as connection:
-            connection.execute(text("DROP TABLE IF EXISTS products CASCADE"))
-            connection.commit()
+        mock_tables = [
+            "tenants",
+            "audit_logs",
+            # Missing: products, workflow_steps, etc.
+        ]
 
-        # Run health check
-        health = check_database_health()
+        with patch("src.core.database.health_check.inspect") as mock_inspect:
+            mock_inspector = mock_inspect.return_value
+            mock_inspector.get_table_names.return_value = mock_tables
 
-        # Should detect missing table
-        assert "products" in health["missing_tables"], "Should detect missing products table"
-        assert health["status"] in ["unhealthy", "warning"], "Should report unhealthy status"
-        assert len(health["schema_issues"]) > 0, "Should report schema issues"
+            # Mock database session and connection
+            with patch("src.core.database.health_check.get_db_session") as mock_get_db:
+                mock_session = mock_get_db.return_value.__enter__.return_value
+                # Mock the migration status query
+                mock_session.execute.return_value.scalar.return_value = "020_fix_tasks_schema_properly"
+
+                # Run health check
+                health = check_database_health()
+
+                # Should detect missing table
+                assert "products" in health["missing_tables"], "Should detect missing products table"
+                assert "workflow_steps" in health["missing_tables"], "Should detect missing workflow_steps table"
+                assert health["status"] == "unhealthy", "Should report unhealthy status"
+                assert len(health["schema_issues"]) > 0, "Should report schema issues"
 
     def test_health_check_with_extra_tables(self, clean_db):
         """Test health check detects extra/deprecated tables."""
@@ -74,7 +86,9 @@ class TestDatabaseHealthIntegration:
         from src.core.database.database_session import engine
 
         with engine.connect() as connection:
-            connection.execute(text("CREATE TABLE deprecated_old_table (id INTEGER PRIMARY KEY, data TEXT)"))
+            connection.execute(
+                text("CREATE TABLE IF NOT EXISTS deprecated_old_table (id INTEGER PRIMARY KEY, data TEXT)")
+            )
             connection.commit()
 
         # Run health check
@@ -165,13 +179,18 @@ class TestDatabaseHealthIntegration:
         import time
 
         # Add some test data to make it more realistic
+        from datetime import UTC, datetime
+
         with get_db_session() as session:
+            now = datetime.now(UTC)
             for i in range(10):
                 tenant = Tenant(
                     tenant_id=f"perf_test_tenant_{i}",
                     name=f"Performance Test Tenant {i}",
                     subdomain=f"perf-test-{i}",
                     billing_plan="test",
+                    created_at=now,
+                    updated_at=now,
                 )
                 session.add(tenant)
             session.commit()

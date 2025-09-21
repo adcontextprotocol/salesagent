@@ -23,7 +23,7 @@ class TestDatabaseHealthIntegration:
         assert "status" in health
         assert "missing_tables" in health
         assert "schema_issues" in health
-        assert health["status"] in ["healthy", "unhealthy", "error"]
+        assert health["status"] in ["healthy", "unhealthy", "warning", "error"]
 
     @pytest.mark.requires_db
     def test_real_table_existence_checks(self):
