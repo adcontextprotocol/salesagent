@@ -214,9 +214,12 @@ def _construct_agent_url(tenant_id: str, request) -> str:
 
     from src.core.config_loader import get_current_tenant
 
+    logger.info(f"🏗️ Constructing agent URL for tenant: {tenant_id}")
+
     # Check if we have an explicit override for testing
     override_url = os.environ.get("ADCP_AGENT_URL")
     if override_url:
+        logger.info(f"🔧 Using ADCP_AGENT_URL override: {override_url}")
         return override_url
 
     # Get tenant information from the existing resolution system
@@ -225,22 +228,33 @@ def _construct_agent_url(tenant_id: str, request) -> str:
         subdomain = tenant.get("subdomain", tenant_id)
         virtual_host = tenant.get("virtual_host")
 
+        logger.info(f"🏢 Tenant info - subdomain: '{subdomain}', virtual_host: '{virtual_host}'")
+
         # In production, use the existing virtual host system
         if os.environ.get("PRODUCTION") == "true":
             if virtual_host:
-                return f"https://{virtual_host}"
+                url = f"https://{virtual_host}"
+                logger.info(f"🌐 Production: using virtual_host -> {url}")
+                return url
             else:
                 # Fallback to subdomain pattern
-                return f"https://{subdomain}.sales-agent.scope3.com"
+                url = f"https://{subdomain}.sales-agent.scope3.com"
+                logger.info(f"🌐 Production: using subdomain pattern -> {url}")
+                return url
 
         # For development, use MCP server port
         mcp_port = os.environ.get("ADCP_SALES_PORT", "8080")
-        return f"http://localhost:{mcp_port}"
+        url = f"http://localhost:{mcp_port}"
+        logger.info(f"🛠️ Development: using localhost -> {url}")
+        return url
 
-    except Exception:
+    except Exception as e:
         # Fallback if tenant context unavailable
+        logger.warning(f"⚠️ Failed to get tenant context: {e}")
         mcp_port = os.environ.get("ADCP_SALES_PORT", "8080")
-        return f"http://localhost:{mcp_port}"
+        url = f"http://localhost:{mcp_port}"
+        logger.info(f"🆘 Fallback: using localhost -> {url}")
+        return url
 
 
 @authorized_properties_bp.route("/<tenant_id>/authorized-properties")
@@ -538,18 +552,30 @@ def verify_all_properties(tenant_id):
 def verify_property_auto(tenant_id, property_id):
     """Automatically verify a property against its adagents.json file."""
     try:
+        logger.info(f"🚀 Verify property request - tenant: {tenant_id}, property: {property_id}")
+
         # In production, always construct agent URL from tenant context
         # Dev overrides only allowed in development
         is_production = os.environ.get("PRODUCTION") == "true"
+        logger.info(f"🏭 Environment: {'PRODUCTION' if is_production else 'DEVELOPMENT'}")
 
         if is_production:
             # Production: ignore any dev overrides, always use tenant context
+            logger.info("🔒 Production mode: ignoring any dev URL overrides")
             agent_url = _construct_agent_url(tenant_id, request)
+            logger.info(f"🏢 Constructed agent URL from tenant context: {agent_url}")
         else:
             # Development: allow dev overrides from form
-            agent_url = request.form.get("dev_agent_url", "").strip() or request.form.get("agent_url", "").strip()
+            dev_url = request.form.get("dev_agent_url", "").strip()
+            explicit_url = request.form.get("agent_url", "").strip()
+            logger.info(f"🛠️ Development mode - dev_url: '{dev_url}', explicit_url: '{explicit_url}'")
+
+            agent_url = dev_url or explicit_url
             if not agent_url:
                 agent_url = _construct_agent_url(tenant_id, request)
+                logger.info(f"🏗️ No override provided, constructed from tenant: {agent_url}")
+            else:
+                logger.info(f"🔧 Using override URL: {agent_url}")
 
         verification_service = get_property_verification_service()
         is_verified, error_message = verification_service.verify_property(tenant_id, property_id, agent_url)

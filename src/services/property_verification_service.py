@@ -40,6 +40,8 @@ class PropertyVerificationService:
             Tuple of (is_verified, error_message)
         """
         try:
+            logger.info(f"🔍 Starting verification - tenant: {tenant_id}, property: {property_id}, agent: {agent_url}")
+
             with get_db_session() as session:
                 property_obj = (
                     session.query(AuthorizedProperty)
@@ -51,15 +53,20 @@ class PropertyVerificationService:
                 )
 
                 if not property_obj:
+                    logger.error(f"❌ Property not found: {property_id} in tenant {tenant_id}")
                     return False, "Property not found"
+
+                logger.info(f"✅ Found property: {property_obj.name} on domain {property_obj.publisher_domain}")
 
                 # Fetch adagents.json from publisher domain
                 adagents_url = f"https://{property_obj.publisher_domain}/.well-known/adagents.json"
+                logger.info(f"🌐 Fetching adagents.json from: {adagents_url}")
 
                 try:
                     response = self.session.get(adagents_url, timeout=self.REQUEST_TIMEOUT)
                     response.raise_for_status()
                     adagents_data = response.json()
+                    logger.info(f"✅ Successfully fetched adagents.json (status: {response.status_code})")
                 except RequestException as e:
                     error_msg = f"Failed to fetch adagents.json: {str(e)}"
                     self._update_verification_status(session, property_obj, "failed", error_msg)
@@ -70,25 +77,39 @@ class PropertyVerificationService:
                     return False, error_msg
 
                 # Validate adagents.json structure
+                logger.info("📋 Validating adagents.json structure...")
                 if not isinstance(adagents_data, dict) or "authorized_agents" not in adagents_data:
                     error_msg = "Invalid adagents.json format: missing 'authorized_agents' field"
+                    logger.error(f"❌ {error_msg}")
+                    logger.info(
+                        f"📊 adagents.json keys: {list(adagents_data.keys()) if isinstance(adagents_data, dict) else 'not a dict'}"
+                    )
                     self._update_verification_status(session, property_obj, "failed", error_msg)
                     return False, error_msg
 
                 agents = adagents_data.get("authorized_agents", [])
                 if not isinstance(agents, list):
                     error_msg = "Invalid adagents.json format: 'authorized_agents' must be an array"
+                    logger.error(f"❌ {error_msg}")
                     self._update_verification_status(session, property_obj, "failed", error_msg)
                     return False, error_msg
 
+                logger.info(f"👥 Found {len(agents)} authorized agents in adagents.json")
+                for i, agent in enumerate(agents):
+                    agent_url_in_file = agent.get("url", "NO_URL")
+                    logger.info(f"  Agent {i}: {agent_url_in_file}")
+
                 # Check if our agent is authorized
+                logger.info(f"🔍 Checking if agent {agent_url} is authorized...")
                 is_authorized = self._check_agent_authorization(agents, agent_url, property_obj)
 
                 if is_authorized:
+                    logger.info("✅ Agent verification successful!")
                     self._update_verification_status(session, property_obj, "verified", None)
                     return True, None
                 else:
                     error_msg = f"Agent {agent_url} not found in authorized agents list"
+                    logger.error(f"❌ {error_msg}")
                     self._update_verification_status(session, property_obj, "failed", error_msg)
                     return False, error_msg
 
