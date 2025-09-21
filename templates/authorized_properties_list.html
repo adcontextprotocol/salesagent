@@ -31,7 +31,7 @@
                         </button>
                     </form>
                     {% endif %}
-                    {% if not config.get('PRODUCTION') %}
+                    {% if not is_production %}
                     <div class="btn-group" role="group">
                         <input type="text" id="dev-agent-url" class="form-control" placeholder="Agent URL for verification (dev only)"
                                value="https://wonderstruck.sales-agent.scope3.com" style="width: 300px;">
@@ -202,6 +202,7 @@
 {% endblock %}
 
 {% block scripts %}
+{% if not is_production %}
 <script>
     let devAgentUrl = localStorage.getItem('devAgentUrl') || '';
 
@@ -275,4 +276,5 @@
         }
     });
 </script>
+{% endif %}
 {% endblock %}

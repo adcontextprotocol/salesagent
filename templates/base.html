@@ -116,9 +116,9 @@
         <div class="container">
             <h1>
                 {% if session.tenant_name and session.role != 'super_admin' %}
-                    {{ session.tenant_name }} Sales Agent
+                    {{ session.tenant_name }} Sales Agent Dashboard
                 {% elif tenant and tenant.name %}
-                    {{ tenant.name }} Sales Agent
+                    {{ tenant.name }} Sales Agent Dashboard
                 {% else %}
                     Sales Agent Admin
                 {% endif %}

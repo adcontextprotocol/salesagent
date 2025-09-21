@@ -2,9 +2,10 @@
 
 import json
 import logging
+import os
 import uuid
 from datetime import datetime
-from typing import Tuple, Dict, List, Any
+from typing import Any
 
 from flask import Blueprint, flash, redirect, render_template, request, session, url_for
 
@@ -12,11 +13,10 @@ from src.admin.utils import require_tenant_access
 from src.core.database.database_session import get_db_session
 from src.core.database.models import AuthorizedProperty, PropertyTag, Tenant
 from src.core.schemas import (
-    PROPERTY_TYPES,
-    PROPERTY_REQUIRED_FIELDS,
     PROPERTY_ERROR_MESSAGES,
+    PROPERTY_REQUIRED_FIELDS,
+    PROPERTY_TYPES,
     SUPPORTED_UPLOAD_FILE_TYPES,
-    PROPERTY_VALIDATION_RULES
 )
 from src.services.property_verification_service import get_property_verification_service
 
@@ -25,9 +25,9 @@ logger = logging.getLogger(__name__)
 authorized_properties_bp = Blueprint("authorized_properties", __name__)
 
 
-def _validate_property_form(request) -> Tuple[bool, str, Tuple[str, str, str, List[Dict[str, str]], List[str]]]:
+def _validate_property_form(request) -> tuple[bool, str, tuple[str, str, str, list[dict[str, str]], list[str]]]:
     """Validate property form data and return parsed values.
-    
+
     Returns:
         Tuple of (is_valid, error_message, (property_type, name, publisher_domain, identifiers, tags))
     """
@@ -42,10 +42,13 @@ def _validate_property_form(request) -> Tuple[bool, str, Tuple[str, str, str, Li
 
     # Validate property_type
     if property_type not in PROPERTY_TYPES:
-        return False, PROPERTY_ERROR_MESSAGES["invalid_property_type"].format(
-            property_type=property_type, 
-            valid_types=", ".join(PROPERTY_TYPES)
-        ), None
+        return (
+            False,
+            PROPERTY_ERROR_MESSAGES["invalid_property_type"].format(
+                property_type=property_type, valid_types=", ".join(PROPERTY_TYPES)
+            ),
+            None,
+        )
 
     # Parse identifiers from form
     identifiers = []
@@ -77,9 +80,9 @@ def _validate_property_form(request) -> Tuple[bool, str, Tuple[str, str, str, Li
     return True, "", (property_type, name, publisher_domain, identifiers, tags)
 
 
-def _parse_properties_file(file) -> Tuple[List[Dict[str, Any]], str]:
+def _parse_properties_file(file) -> tuple[list[dict[str, Any]], str]:
     """Parse properties from uploaded file.
-    
+
     Returns:
         Tuple of (properties_data, error_message)
     """
@@ -108,9 +111,9 @@ def _parse_properties_file(file) -> Tuple[List[Dict[str, Any]], str]:
         return [], f"Error reading file: {str(e)}"
 
 
-def _save_properties_batch(properties_data: List[Dict[str, Any]], tenant_id: str) -> Tuple[int, int, List[str]]:
+def _save_properties_batch(properties_data: list[dict[str, Any]], tenant_id: str) -> tuple[int, int, list[str]]:
     """Save a batch of properties to the database.
-    
+
     Returns:
         Tuple of (success_count, error_count, errors)
     """
@@ -192,16 +195,16 @@ def _save_properties_batch(properties_data: List[Dict[str, Any]], tenant_id: str
     return success_count, error_count, errors
 
 
-def _parse_and_save_properties_file(file, tenant_id: str) -> Tuple[int, int, List[str]]:
+def _parse_and_save_properties_file(file, tenant_id: str) -> tuple[int, int, list[str]]:
     """Parse properties file and save to database.
-    
+
     Returns:
         Tuple of (success_count, error_count, errors)
     """
     properties_data, parse_error = _parse_properties_file(file)
     if parse_error:
         return 0, 1, [parse_error]
-    
+
     return _save_properties_batch(properties_data, tenant_id)
 
 
@@ -282,6 +285,9 @@ def list_authorized_properties(tenant_id):
             logger.info(f"Property counts: {property_counts}")
             logger.info("Rendering template...")
 
+            # Get environment info for dev/production detection
+            is_production = os.environ.get("PRODUCTION") == "true"
+
             return render_template(
                 "authorized_properties_list.html",
                 tenant=tenant,
@@ -289,6 +295,7 @@ def list_authorized_properties(tenant_id):
                 property_counts=property_counts,
                 session=session,
                 user=session.get("user"),
+                is_production=is_production,
             )
 
     except Exception as e:
@@ -486,10 +493,18 @@ def create_property_tag(tenant_id):
 def verify_all_properties(tenant_id):
     """Verify all pending properties against their adagents.json files."""
     try:
-        # Get agent URL from form (dev override or explicit) or construct from tenant context
-        agent_url = request.form.get("dev_agent_url", "").strip() or request.form.get("agent_url", "").strip()
-        if not agent_url:
+        # In production, always construct agent URL from tenant context
+        # Dev overrides only allowed in development
+        is_production = os.environ.get("PRODUCTION") == "true"
+
+        if is_production:
+            # Production: ignore any dev overrides, always use tenant context
             agent_url = _construct_agent_url(tenant_id, request)
+        else:
+            # Development: allow dev overrides from form
+            agent_url = request.form.get("dev_agent_url", "").strip() or request.form.get("agent_url", "").strip()
+            if not agent_url:
+                agent_url = _construct_agent_url(tenant_id, request)
 
         verification_service = get_property_verification_service()
         results = verification_service.verify_all_properties(tenant_id, agent_url)
@@ -523,10 +538,18 @@ def verify_all_properties(tenant_id):
 def verify_property_auto(tenant_id, property_id):
     """Automatically verify a property against its adagents.json file."""
     try:
-        # Get agent URL from form (dev override or explicit) or construct from tenant context
-        agent_url = request.form.get("dev_agent_url", "").strip() or request.form.get("agent_url", "").strip()
-        if not agent_url:
+        # In production, always construct agent URL from tenant context
+        # Dev overrides only allowed in development
+        is_production = os.environ.get("PRODUCTION") == "true"
+
+        if is_production:
+            # Production: ignore any dev overrides, always use tenant context
             agent_url = _construct_agent_url(tenant_id, request)
+        else:
+            # Development: allow dev overrides from form
+            agent_url = request.form.get("dev_agent_url", "").strip() or request.form.get("agent_url", "").strip()
+            if not agent_url:
+                agent_url = _construct_agent_url(tenant_id, request)
 
         verification_service = get_property_verification_service()
         is_verified, error_message = verification_service.verify_property(tenant_id, property_id, agent_url)
@@ -580,7 +603,7 @@ def create_property(tenant_id):
         if not is_valid:
             flash(error_message, "error")
             return redirect(request.url)
-        
+
         property_type, name, publisher_domain, identifiers, tags = parsed_data
 
         # Generate unique property_id
@@ -664,7 +687,7 @@ def edit_property(tenant_id, property_id):
         if not is_valid:
             flash(error_message, "error")
             return redirect(request.url)
-        
+
         property_type, name, publisher_domain, identifiers, tags = parsed_data
 
         with get_db_session() as db_session:
