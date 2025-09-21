@@ -73,23 +73,15 @@ def login():
     # Approximated sends Apx-Incoming-Host with the original requested domain
     approximated_host = request.headers.get("Apx-Incoming-Host")
     if approximated_host:
-        # Handle adcontextprotocol.org domains routed through Approximated
-        if ".adcontextprotocol.org" in approximated_host and not approximated_host.startswith("admin."):
-            # Extract tenant from subdomain (e.g., test-agent.adcontextprotocol.org -> test-agent)
-            tenant_subdomain = approximated_host.split(".")[0]
-            with get_db_session() as db_session:
-                # Look for tenant by subdomain or virtual_host
-                tenant = (
-                    db_session.query(Tenant)
-                    .filter((Tenant.subdomain == tenant_subdomain) | (Tenant.virtual_host == approximated_host))
-                    .first()
+        # Approximated provides the original requested domain - look up tenant by virtual_host
+        with get_db_session() as db_session:
+            tenant = db_session.query(Tenant).filter_by(virtual_host=approximated_host).first()
+            if tenant:
+                tenant_context = tenant.tenant_id
+                tenant_name = tenant.name
+                logger.info(
+                    f"Detected tenant context from Approximated headers: {approximated_host} -> {tenant_context}"
                 )
-                if tenant:
-                    tenant_context = tenant.tenant_id
-                    tenant_name = tenant.name
-                    logger.info(
-                        f"Detected tenant context from Approximated headers: {approximated_host} -> {tenant_context}"
-                    )
 
     # Fallback to direct domain routing (sales-agent.scope3.com)
     if not tenant_context:
@@ -97,11 +89,6 @@ def login():
         if ".sales-agent.scope3.com" in host and not host.startswith("admin."):
             # Extract tenant subdomain (e.g., "scribd" from "scribd.sales-agent.scope3.com")
             tenant_subdomain = host.split(".")[0]
-        elif ".adcontextprotocol.org" in host:
-            # Extract agent name (e.g., "test-agent" from "test-agent.adcontextprotocol.org")
-            agent_name = host.split(".")[0]
-            # Map agent names to tenant subdomains (for now, use the agent name as subdomain)
-            tenant_subdomain = agent_name
 
         if tenant_subdomain:
             # Look up tenant by subdomain
@@ -152,19 +139,10 @@ def google_auth():
     # Check for Approximated routing headers first
     if not tenant_context:
         approximated_host = request.headers.get("Apx-Incoming-Host")
-        if (
-            approximated_host
-            and ".adcontextprotocol.org" in approximated_host
-            and not approximated_host.startswith("admin.")
-        ):
-            # Extract tenant from subdomain via Approximated routing
-            tenant_subdomain = approximated_host.split(".")[0]
+        if approximated_host and not approximated_host.startswith("admin."):
+            # Approximated handles all external routing - look up tenant by virtual_host
             with get_db_session() as db_session:
-                tenant = (
-                    db_session.query(Tenant)
-                    .filter((Tenant.subdomain == tenant_subdomain) | (Tenant.virtual_host == approximated_host))
-                    .first()
-                )
+                tenant = db_session.query(Tenant).filter_by(virtual_host=approximated_host).first()
                 if tenant:
                     tenant_context = tenant.tenant_id
                     logger.info(
@@ -181,9 +159,10 @@ def google_auth():
                 tenant_context = tenant.tenant_id
                 logger.info(f"Detected tenant context from Host header: {tenant_subdomain} -> {tenant_context}")
 
-    # Always use base domain for OAuth callback to support dynamic tenants
-    if os.environ.get("PRODUCTION") == "true" or ".sales-agent.scope3.com" in request.headers.get("Host", ""):
-        # For production, use the base domain as redirect URI
+    # Always use the registered OAuth redirect URI for Google
+    # The originating domain is preserved in session and handled after OAuth callback
+    if os.environ.get("PRODUCTION") == "true":
+        # For production, always use the registered redirect URI
         redirect_uri = "https://sales-agent.scope3.com/admin/auth/google/callback"
     else:
         # Development fallback
@@ -192,6 +171,13 @@ def google_auth():
     # Store originating host and tenant context in session for OAuth callback
     # We can't use custom state parameter due to CSRF validation, so use session instead
     session["oauth_originating_host"] = host
+
+    # Also store the external domain if routed through Approximated
+    approximated_host = request.headers.get("Apx-Incoming-Host")
+    if approximated_host:
+        session["oauth_external_domain"] = approximated_host
+        logger.info(f"Stored external domain for OAuth redirect: {approximated_host}")
+
     if tenant_context:
         session["oauth_tenant_context"] = tenant_context
 
@@ -208,9 +194,10 @@ def tenant_google_auth(tenant_id):
 
     host = request.headers.get("Host", "")
 
-    # Always use base domain for OAuth callback to support dynamic tenants
-    if os.environ.get("PRODUCTION") == "true" or ".sales-agent.scope3.com" in request.headers.get("Host", ""):
-        # For production, use the base domain as redirect URI
+    # Always use the registered OAuth redirect URI for Google
+    # The originating domain is preserved in session and handled after OAuth callback
+    if os.environ.get("PRODUCTION") == "true":
+        # For production, always use the registered redirect URI
         redirect_uri = "https://sales-agent.scope3.com/admin/auth/google/callback"
     else:
         # Development fallback
@@ -219,6 +206,13 @@ def tenant_google_auth(tenant_id):
     # Store originating host and tenant context in session for OAuth callback
     # We can't use custom state parameter due to CSRF validation, so use session instead
     session["oauth_originating_host"] = host
+
+    # Also store the external domain if routed through Approximated
+    approximated_host = request.headers.get("Apx-Incoming-Host")
+    if approximated_host:
+        session["oauth_external_domain"] = approximated_host
+        logger.info(f"Stored external domain for OAuth redirect: {approximated_host}")
+
     session["oauth_tenant_context"] = tenant_id
 
     return oauth.google.authorize_redirect(redirect_uri)
@@ -260,7 +254,15 @@ def google_callback():
 
         # Get originating host and tenant context from session
         originating_host = session.pop("oauth_originating_host", None)
+        external_domain = session.pop("oauth_external_domain", None)
         tenant_id = session.pop("oauth_tenant_context", None)
+
+        # Debug logging for OAuth redirect
+        logger.info(f"OAuth callback debug - originating_host: {originating_host}")
+        logger.info(f"OAuth callback debug - external_domain: {external_domain}")
+        logger.info(f"OAuth callback debug - tenant_id: {tenant_id}")
+        logger.info(f"OAuth callback debug - PRODUCTION env: {os.environ.get('PRODUCTION')}")
+        logger.info(f"OAuth callback debug - user email: {email}")
         if tenant_id:
             # Verify user has access to this tenant
             with get_db_session() as db_session:
@@ -315,8 +317,16 @@ def google_callback():
             flash(f"Welcome {user.get('name', email)}! (Super Admin)", "success")
 
             # Check where the OAuth flow originated from
-            if originating_host and originating_host.startswith("admin.") and os.environ.get("PRODUCTION") == "true":
+            if external_domain and os.environ.get("PRODUCTION") == "true":
+                # OAuth was initiated from external domain routed through Approximated
+                redirect_url = f"https://{external_domain}/admin/"
+                logger.info(f"Redirecting super admin back to external domain: {external_domain} -> {redirect_url}")
+                return redirect(redirect_url)
+            elif originating_host and originating_host.startswith("admin.") and os.environ.get("PRODUCTION") == "true":
                 return redirect("https://admin.sales-agent.scope3.com/admin/")
+            elif originating_host and os.environ.get("PRODUCTION") == "true":
+                # Preserve tenant-specific domains for super admins
+                return redirect(f"https://{originating_host}/admin/")
             elif os.environ.get("PRODUCTION") == "true":
                 return redirect("https://admin.sales-agent.scope3.com/admin/")
             else:
@@ -348,8 +358,12 @@ def google_callback():
             session["is_tenant_admin"] = user_record.role == "admin"
             flash(f"Welcome {user.get('name', email)}! ({access_type.title()} Access)", "success")
 
+            # Redirect to external domain if OAuth was initiated from external domain
+            if external_domain and os.environ.get("PRODUCTION") == "true":
+                logger.info(f"Redirecting tenant user back to external domain: {external_domain}")
+                return redirect(f"https://{external_domain}/admin/")
             # Redirect to tenant-specific subdomain if accessed via subdomain
-            if tenant.subdomain and tenant.subdomain != "localhost" and os.environ.get("PRODUCTION") == "true":
+            elif tenant.subdomain and tenant.subdomain != "localhost" and os.environ.get("PRODUCTION") == "true":
                 return redirect(f"https://{tenant.subdomain}.sales-agent.scope3.com/admin/")
             else:
                 return redirect(url_for("tenants.dashboard", tenant_id=tenant.tenant_id))
