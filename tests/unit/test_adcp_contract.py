@@ -29,12 +29,17 @@ from src.core.schemas import (
     GetMediaBuyDeliveryResponse,
     GetProductsRequest,
     GetProductsResponse,
+    ListAuthorizedPropertiesRequest,
+    ListAuthorizedPropertiesResponse,
     ListCreativeFormatsResponse,
     ListCreativesRequest,
     ListCreativesResponse,
     Measurement,
     MediaBuyDeliveryData,
     Package,
+    Property,
+    PropertyIdentifier,
+    PropertyTagMetadata,
     Signal,
     SignalDeployment,
     SignalPricing,
@@ -45,6 +50,8 @@ from src.core.schemas import (
 )
 from src.core.schemas import (
     Principal as PrincipalSchema,
+)
+from src.core.schemas import (
     Product as ProductSchema,
 )
 
@@ -1371,6 +1378,164 @@ class TestAdCPContract:
         assert (
             len(adcp_response) == 5
         ), f"GetMediaBuyDeliveryResponse should have exactly 5 fields, got {len(adcp_response)}"
+
+    def test_property_identifier_adcp_compliance(self):
+        """Test that PropertyIdentifier complies with AdCP property identifier schema."""
+        # Create identifier with all required fields
+        identifier = PropertyIdentifier(type="domain", value="example.com")
+
+        # Test AdCP-compliant response
+        adcp_response = identifier.model_dump()
+
+        # Verify required AdCP fields present and non-null
+        required_fields = ["type", "value"]
+        for field in required_fields:
+            assert field in adcp_response
+            assert adcp_response[field] is not None
+
+        # Verify field count expectations
+        assert len(adcp_response) == 2
+
+    def test_property_adcp_compliance(self):
+        """Test that Property complies with AdCP property schema."""
+        # Create property with all required + optional fields
+        property_obj = Property(
+            property_type="website",
+            name="Example News Site",
+            identifiers=[PropertyIdentifier(type="domain", value="example.com")],
+            tags=["news", "premium_content"],
+            publisher_domain="example.com",
+        )
+
+        # Test AdCP-compliant response
+        adcp_response = property_obj.model_dump()
+
+        # Verify required AdCP fields present and non-null
+        required_fields = ["property_type", "name", "identifiers", "publisher_domain"]
+        for field in required_fields:
+            assert field in adcp_response
+            assert adcp_response[field] is not None
+
+        # Verify optional AdCP fields present (can be null)
+        optional_fields = ["tags"]
+        for field in optional_fields:
+            assert field in adcp_response
+
+        # Verify property type is valid enum value
+        valid_types = ["website", "mobile_app", "ctv_app", "dooh", "podcast", "radio", "streaming_audio"]
+        assert adcp_response["property_type"] in valid_types
+
+        # Verify identifiers is non-empty array
+        assert isinstance(adcp_response["identifiers"], list)
+        assert len(adcp_response["identifiers"]) > 0
+
+        # Verify tags is array when present
+        assert isinstance(adcp_response["tags"], list)
+
+        # Verify field count expectations
+        assert len(adcp_response) == 5
+
+    def test_property_tag_metadata_adcp_compliance(self):
+        """Test that PropertyTagMetadata complies with AdCP tag metadata schema."""
+        # Create tag metadata with all required fields
+        tag_metadata = PropertyTagMetadata(
+            name="Premium Content", description="High-quality editorial content from trusted publishers"
+        )
+
+        # Test AdCP-compliant response
+        adcp_response = tag_metadata.model_dump()
+
+        # Verify required AdCP fields present and non-null
+        required_fields = ["name", "description"]
+        for field in required_fields:
+            assert field in adcp_response
+            assert adcp_response[field] is not None
+
+        # Verify field count expectations
+        assert len(adcp_response) == 2
+
+    def test_list_authorized_properties_request_adcp_compliance(self):
+        """Test that ListAuthorizedPropertiesRequest complies with AdCP list-authorized-properties-request schema."""
+        # Create request with all required + optional fields
+        request = ListAuthorizedPropertiesRequest(adcp_version="1.0.0", tags=["premium_content", "news"])
+
+        # Test AdCP-compliant response
+        adcp_response = request.model_dump()
+
+        # Verify required AdCP fields present and non-null
+        required_fields = ["adcp_version"]
+        for field in required_fields:
+            assert field in adcp_response
+            assert adcp_response[field] is not None
+
+        # Verify optional AdCP fields present (can be null)
+        optional_fields = ["tags"]
+        for field in optional_fields:
+            assert field in adcp_response
+
+        # Verify adcp_version format
+        import re
+
+        version_pattern = r"^\d+\.\d+\.\d+$"
+        assert re.match(version_pattern, adcp_response["adcp_version"])
+
+        # Verify tags is array when present
+        if adcp_response["tags"] is not None:
+            assert isinstance(adcp_response["tags"], list)
+
+        # Verify field count expectations
+        assert len(adcp_response) == 2
+
+    def test_list_authorized_properties_response_adcp_compliance(self):
+        """Test that ListAuthorizedPropertiesResponse complies with AdCP list-authorized-properties-response schema."""
+        # Create response with all required + optional fields
+        property_obj = Property(
+            property_type="website",
+            name="Example Site",
+            identifiers=[PropertyIdentifier(type="domain", value="example.com")],
+            tags=["premium_content"],
+            publisher_domain="example.com",
+        )
+
+        tag_metadata = PropertyTagMetadata(name="Premium Content", description="High-quality content properties")
+
+        response = ListAuthorizedPropertiesResponse(
+            adcp_version="1.0.0", properties=[property_obj], tags={"premium_content": tag_metadata}, errors=[]
+        )
+
+        # Test AdCP-compliant response
+        adcp_response = response.model_dump()
+
+        # Verify required AdCP fields present and non-null
+        required_fields = ["adcp_version", "properties"]
+        for field in required_fields:
+            assert field in adcp_response
+            assert adcp_response[field] is not None
+
+        # Verify optional AdCP fields present (can be null)
+        optional_fields = ["tags", "errors"]
+        for field in optional_fields:
+            assert field in adcp_response
+
+        # Verify adcp_version format
+        import re
+
+        version_pattern = r"^\d+\.\d+\.\d+$"
+        assert re.match(version_pattern, adcp_response["adcp_version"])
+
+        # Verify properties is array
+        assert isinstance(adcp_response["properties"], list)
+
+        # Verify tags is object when present
+        if adcp_response["tags"] is not None:
+            assert isinstance(adcp_response["tags"], dict)
+
+        # Verify errors is array when present
+        if adcp_response["errors"] is not None:
+            assert isinstance(adcp_response["errors"], list)
+
+        # Verify field count expectations
+        assert len(adcp_response) == 4
 
 
 if __name__ == "__main__":

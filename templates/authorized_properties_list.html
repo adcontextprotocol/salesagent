@@ -1,0 +1,278 @@
+{% extends "base.html" %}
+
+{% block title %}Authorized Properties - {{ tenant.name }}{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-md-12">
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <div>
+                    <h2>Authorized Properties</h2>
+                    <p class="text-muted">Properties that this sales agent is authorized to represent</p>
+                </div>
+                <div>
+                    <a href="{{ url_for('authorized_properties.create_property', tenant_id=tenant.tenant_id) }}"
+                       class="btn btn-success">
+                        <i class="fas fa-plus"></i> Create Property
+                    </a>
+                    <a href="{{ url_for('authorized_properties.upload_authorized_properties', tenant_id=tenant.tenant_id) }}"
+                       class="btn btn-primary">
+                        <i class="fas fa-upload"></i> Upload Properties
+                    </a>
+                    <a href="{{ url_for('authorized_properties.list_property_tags', tenant_id=tenant.tenant_id) }}"
+                       class="btn btn-outline-secondary">
+                        <i class="fas fa-tags"></i> Manage Tags
+                    </a>
+                    {% if property_counts.pending > 0 %}
+                    <form method="POST" action="{{ url_for('authorized_properties.verify_all_properties', tenant_id=tenant.tenant_id) }}" class="d-inline">
+                        <button type="submit" class="btn btn-info" title="Verify all pending properties against adagents.json">
+                            <i class="fas fa-check-double"></i> Verify All Pending
+                        </button>
+                    </form>
+                    {% endif %}
+                    {% if not config.get('PRODUCTION') %}
+                    <div class="btn-group" role="group">
+                        <input type="text" id="dev-agent-url" class="form-control" placeholder="Agent URL for verification (dev only)"
+                               value="https://wonderstruck.sales-agent.scope3.com" style="width: 300px;">
+                        <button type="button" class="btn btn-secondary" onclick="setDevAgentUrl()" title="Set agent URL for development verification">
+                            <i class="fas fa-cog"></i> Set Dev URL
+                        </button>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+
+            <!-- Property Statistics -->
+            <div class="row mb-4">
+                <div class="col-md-3">
+                    <div class="card">
+                        <div class="card-body text-center">
+                            <h3 class="text-primary">{{ property_counts.total }}</h3>
+                            <p class="card-text">Total Properties</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="card">
+                        <div class="card-body text-center">
+                            <h3 class="text-success">{{ property_counts.verified }}</h3>
+                            <p class="card-text">Verified</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="card">
+                        <div class="card-body text-center">
+                            <h3 class="text-warning">{{ property_counts.pending }}</h3>
+                            <p class="card-text">Pending</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="card">
+                        <div class="card-body text-center">
+                            <h3 class="text-danger">{{ property_counts.failed }}</h3>
+                            <p class="card-text">Failed</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Properties Table -->
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0">Properties List</h5>
+                </div>
+                <div class="card-body">
+                    {% if properties %}
+                        <div class="table-responsive">
+                            <table class="table table-hover">
+                                <thead>
+                                    <tr>
+                                        <th>Name</th>
+                                        <th>Type</th>
+                                        <th>Identifiers</th>
+                                        <th>Tags</th>
+                                        <th>Publisher Domain</th>
+                                        <th>Status</th>
+                                        <th>Created</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for property in properties %}
+                                    <tr>
+                                        <td>
+                                            <strong>{{ property.name }}</strong>
+                                        </td>
+                                        <td>
+                                            <span class="badge badge-info">{{ property.property_type.replace('_', ' ').title() }}</span>
+                                        </td>
+                                        <td>
+                                            <div class="small">
+                                                {% for identifier in (property.identifiers or []) %}
+                                                    <div>
+                                                        <strong>{{ identifier.type }}:</strong> {{ identifier.value }}
+                                                    </div>
+                                                {% endfor %}
+                                            </div>
+                                        </td>
+                                        <td>
+                                            {% if property.tags %}
+                                                {% for tag in property.tags %}
+                                                    <span class="badge badge-secondary badge-sm">{{ tag }}</span>
+                                                {% endfor %}
+                                            {% else %}
+                                                <span class="text-muted">No tags</span>
+                                            {% endif %}
+                                        </td>
+                                        <td>
+                                            <a href="https://{{ property.publisher_domain }}" target="_blank" class="text-decoration-none">
+                                                {{ property.publisher_domain }}
+                                                <i class="fas fa-external-link-alt fa-sm"></i>
+                                            </a>
+                                        </td>
+                                        <td>
+                                            {% if property.verification_status == 'verified' %}
+                                                <span class="badge bg-success text-white">Verified</span>
+                                            {% elif property.verification_status == 'pending' %}
+                                                <span class="badge bg-warning text-dark">Pending</span>
+                                            {% elif property.verification_status == 'failed' %}
+                                                <span class="badge bg-danger text-white">Failed</span>
+                                                {% if property.verification_error %}
+                                                    <div class="small text-danger mt-1">{{ property.verification_error }}</div>
+                                                {% endif %}
+                                            {% else %}
+                                                <span class="badge bg-secondary text-white">Unknown: {{ property.verification_status }}</span>
+                                            {% endif %}
+                                        </td>
+                                        <td>
+                                            <div class="small">{{ property.created_at.strftime('%Y-%m-%d') }}</div>
+                                        </td>
+                                        <td>
+                                            <div class="btn-group btn-group-sm">
+                                                <a href="{{ url_for('authorized_properties.edit_property', tenant_id=tenant.tenant_id, property_id=property.property_id) }}"
+                                                   class="btn btn-sm btn-outline-primary" title="Edit Property">
+                                                    <i class="fas fa-edit"></i>
+                                                </a>
+                                                {% if property.verification_status != 'verified' %}
+                                                    <form method="POST" action="{{ url_for('authorized_properties.verify_property_auto', tenant_id=tenant.tenant_id, property_id=property.property_id) }}" class="d-inline">
+                                                        <button type="submit" class="btn btn-sm btn-info" title="Verify via adagents.json">
+                                                            <i class="fas fa-shield-alt"></i> Verify
+                                                        </button>
+                                                    </form>
+                                                {% endif %}
+                                                <form method="POST" action="{{ url_for('authorized_properties.delete_property', tenant_id=tenant.tenant_id, property_id=property.property_id) }}"
+                                                      class="d-inline"
+                                                      onsubmit="return confirm('Are you sure you want to delete this property?')">
+                                                    <button type="submit" class="btn btn-sm btn-danger" title="Delete Property">
+                                                        <i class="fas fa-trash"></i>
+                                                    </button>
+                                                </form>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    {% else %}
+                        <div class="text-center py-5">
+                            <i class="fas fa-home fa-3x text-muted mb-3"></i>
+                            <h5>No Properties Found</h5>
+                            <p class="text-muted">Create individual properties or upload from JSON or CSV files to get started.</p>
+                            <div class="d-flex justify-content-center gap-2">
+                                <a href="{{ url_for('authorized_properties.create_property', tenant_id=tenant.tenant_id) }}"
+                                   class="btn btn-success">
+                                    <i class="fas fa-plus"></i> Create Property
+                                </a>
+                                <a href="{{ url_for('authorized_properties.upload_authorized_properties', tenant_id=tenant.tenant_id) }}"
+                                   class="btn btn-primary">
+                                    <i class="fas fa-upload"></i> Upload Properties
+                                </a>
+                            </div>
+                        </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    let devAgentUrl = localStorage.getItem('devAgentUrl') || '';
+
+    function setDevAgentUrl() {
+        devAgentUrl = document.getElementById('dev-agent-url').value;
+        localStorage.setItem('devAgentUrl', devAgentUrl);
+
+        // Update all verify button forms to include the dev URL
+        const verifyForms = document.querySelectorAll('form[action*="verify-auto"]');
+
+        verifyForms.forEach(form => {
+            // Remove existing dev_agent_url input if present
+            const existingInput = form.querySelector('input[name="dev_agent_url"]');
+            if (existingInput) {
+                existingInput.remove();
+            }
+
+            // Add new hidden input with current dev URL
+            if (devAgentUrl) {
+                const input = document.createElement('input');
+                input.type = 'hidden';
+                input.name = 'dev_agent_url';
+                input.value = devAgentUrl;
+                form.appendChild(input);
+            }
+        });
+
+        // Update verify all form
+        const verifyAllForm = document.querySelector('form[action*="verify-all-properties"]');
+        if (verifyAllForm) {
+            const existingInput = verifyAllForm.querySelector('input[name="dev_agent_url"]');
+            if (existingInput) {
+                existingInput.remove();
+            }
+
+            if (devAgentUrl) {
+                const input = document.createElement('input');
+                input.type = 'hidden';
+                input.name = 'dev_agent_url';
+                input.value = devAgentUrl;
+                verifyAllForm.appendChild(input);
+            }
+        }
+
+        // Visual feedback without modal
+        const button = document.querySelector('button[onclick="setDevAgentUrl()"]');
+        const originalText = button.innerHTML;
+        button.innerHTML = '<i class="fas fa-check"></i> URL Set';
+        button.classList.remove('btn-secondary');
+        button.classList.add('btn-success');
+
+        setTimeout(() => {
+            button.innerHTML = originalText;
+            button.classList.remove('btn-success');
+            button.classList.add('btn-secondary');
+        }, 2000);
+    }
+
+    // Initialize on page load
+    document.addEventListener('DOMContentLoaded', function() {
+        if (devAgentUrl) {
+            const input = document.getElementById('dev-agent-url');
+            if (input) {
+                input.value = devAgentUrl;
+
+                // Small delay to ensure forms are fully rendered
+                setTimeout(() => {
+                    setDevAgentUrl(); // Apply saved URL to forms
+                }, 100);
+            }
+        }
+    });
+</script>
+{% endblock %}

@@ -2288,3 +2288,87 @@ class SimulationControlResponse(BaseModel):
     message: str | None = None
     current_state: dict[str, Any] | None = None
     simulation_time: datetime | None = None
+
+
+# --- Authorized Properties (AdCP Spec) ---
+class PropertyIdentifier(BaseModel):
+    """Identifier for an advertising property."""
+
+    type: str = Field(
+        ..., description="Type of identifier (e.g., 'domain', 'bundle_id', 'roku_store_id', 'podcast_guid')"
+    )
+    value: str = Field(
+        ...,
+        description="The identifier value. For domain type: 'example.com' matches www.example.com and m.example.com only; 'subdomain.example.com' matches that specific subdomain; '*.example.com' matches all subdomains",
+    )
+
+
+class Property(BaseModel):
+    """An advertising property that can be validated via adagents.json (AdCP spec)."""
+
+    property_type: Literal["website", "mobile_app", "ctv_app", "dooh", "podcast", "radio", "streaming_audio"] = Field(
+        ..., description="Type of advertising property"
+    )
+    name: str = Field(..., description="Human-readable property name")
+    identifiers: list[PropertyIdentifier] = Field(
+        ..., min_length=1, description="Array of identifiers for this property"
+    )
+    tags: list[str] | None = Field(
+        None, description="Tags for categorization and grouping (e.g., network membership, content categories)"
+    )
+    publisher_domain: str = Field(
+        ..., description="Domain where adagents.json should be checked for authorization validation"
+    )
+
+    def model_dump(self, **kwargs) -> dict[str, Any]:
+        """Return AdCP-compliant property representation."""
+        data = super().model_dump(**kwargs)
+        # Ensure tags is always present per AdCP schema
+        if data.get("tags") is None:
+            data["tags"] = []
+        return data
+
+
+class PropertyTagMetadata(BaseModel):
+    """Metadata for a property tag."""
+
+    name: str = Field(..., description="Human-readable name for this tag")
+    description: str = Field(..., description="Description of what this tag represents")
+
+
+class ListAuthorizedPropertiesRequest(BaseModel):
+    """Request parameters for discovering all properties this agent is authorized to represent (AdCP spec)."""
+
+    adcp_version: str = Field(
+        default="1.0.0", pattern=r"^\d+\.\d+\.\d+$", description="AdCP schema version for this request"
+    )
+    tags: list[str] | None = Field(None, description="Filter properties by specific tags (optional)")
+
+    @model_validator(mode="before")
+    @classmethod
+    def normalize_tags(cls, data):
+        """Ensure tags are lowercase with underscores only."""
+        if isinstance(data, dict) and "tags" in data and data["tags"]:
+            data["tags"] = [tag.lower().replace("-", "_") for tag in data["tags"]]
+        return data
+
+
+class ListAuthorizedPropertiesResponse(BaseModel):
+    """Response payload for list_authorized_properties task (AdCP spec)."""
+
+    adcp_version: str = Field(..., pattern=r"^\d+\.\d+\.\d+$", description="AdCP schema version used for this response")
+    properties: list[Property] = Field(..., description="Array of all properties this agent is authorized to represent")
+    tags: dict[str, PropertyTagMetadata] = Field(
+        default_factory=dict, description="Metadata for each tag referenced by properties"
+    )
+    errors: list[dict[str, Any]] | None = Field(
+        None, description="Task-specific errors and warnings (e.g., property availability issues)"
+    )
+
+    def model_dump(self, **kwargs) -> dict[str, Any]:
+        """Return AdCP-compliant response."""
+        data = super().model_dump(**kwargs)
+        # Ensure errors is always present per AdCP schema
+        if data.get("errors") is None:
+            data["errors"] = []
+        return data
