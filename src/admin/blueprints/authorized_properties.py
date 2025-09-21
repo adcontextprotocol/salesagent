@@ -4,17 +4,205 @@ import json
 import logging
 import uuid
 from datetime import datetime
+from typing import Tuple, Dict, List, Any
 
 from flask import Blueprint, flash, redirect, render_template, request, session, url_for
 
 from src.admin.utils import require_tenant_access
 from src.core.database.database_session import get_db_session
 from src.core.database.models import AuthorizedProperty, PropertyTag, Tenant
+from src.core.schemas import (
+    PROPERTY_TYPES,
+    PROPERTY_REQUIRED_FIELDS,
+    PROPERTY_ERROR_MESSAGES,
+    SUPPORTED_UPLOAD_FILE_TYPES,
+    PROPERTY_VALIDATION_RULES
+)
 from src.services.property_verification_service import get_property_verification_service
 
 logger = logging.getLogger(__name__)
 
 authorized_properties_bp = Blueprint("authorized_properties", __name__)
+
+
+def _validate_property_form(request) -> Tuple[bool, str, Tuple[str, str, str, List[Dict[str, str]], List[str]]]:
+    """Validate property form data and return parsed values.
+    
+    Returns:
+        Tuple of (is_valid, error_message, (property_type, name, publisher_domain, identifiers, tags))
+    """
+    # Get form data
+    property_type = request.form.get("property_type", "").strip()
+    name = request.form.get("name", "").strip()
+    publisher_domain = request.form.get("publisher_domain", "").strip()
+
+    # Validate required fields
+    if not property_type or not name or not publisher_domain:
+        return False, PROPERTY_ERROR_MESSAGES["missing_required_field"], None
+
+    # Validate property_type
+    if property_type not in PROPERTY_TYPES:
+        return False, PROPERTY_ERROR_MESSAGES["invalid_property_type"].format(
+            property_type=property_type, 
+            valid_types=", ".join(PROPERTY_TYPES)
+        ), None
+
+    # Parse identifiers from form
+    identifiers = []
+    identifier_count = 0
+    while True:
+        identifier_type = request.form.get(f"identifier_type_{identifier_count}", "").strip()
+        identifier_value = request.form.get(f"identifier_value_{identifier_count}", "").strip()
+
+        if not identifier_type and not identifier_value:
+            break
+
+        if identifier_type and identifier_value:
+            identifiers.append({"type": identifier_type, "value": identifier_value})
+        elif identifier_type or identifier_value:
+            return False, PROPERTY_ERROR_MESSAGES["identifier_incomplete"].format(index=identifier_count + 1), None
+
+        identifier_count += 1
+
+    if not identifiers:
+        return False, PROPERTY_ERROR_MESSAGES["at_least_one_identifier"], None
+
+    # Parse tags
+    tags = []
+    tag_values = request.form.getlist("tags")
+    for tag in tag_values:
+        if tag.strip():
+            tags.append(tag.strip())
+
+    return True, "", (property_type, name, publisher_domain, identifiers, tags)
+
+
+def _parse_properties_file(file) -> Tuple[List[Dict[str, Any]], str]:
+    """Parse properties from uploaded file.
+    
+    Returns:
+        Tuple of (properties_data, error_message)
+    """
+    try:
+        file_content = file.read().decode("utf-8")
+        properties_data = []
+
+        if file.filename.lower().endswith(".json"):
+            try:
+                data = json.loads(file_content)
+                if isinstance(data, list):
+                    properties_data = data
+                elif isinstance(data, dict) and "properties" in data:
+                    properties_data = data["properties"]
+                else:
+                    return [], "JSON file must contain an array of properties or an object with 'properties' key"
+            except json.JSONDecodeError as e:
+                return [], PROPERTY_ERROR_MESSAGES["invalid_json"].format(error=str(e))
+
+        elif file.filename.lower().endswith(".csv"):
+            # TODO: Implement CSV parsing
+            return [], "CSV upload is not yet implemented"
+
+        return properties_data, ""
+    except Exception as e:
+        return [], f"Error reading file: {str(e)}"
+
+
+def _save_properties_batch(properties_data: List[Dict[str, Any]], tenant_id: str) -> Tuple[int, int, List[str]]:
+    """Save a batch of properties to the database.
+    
+    Returns:
+        Tuple of (success_count, error_count, errors)
+    """
+    success_count = 0
+    error_count = 0
+    errors = []
+
+    with get_db_session() as db_session:
+        for i, prop_data in enumerate(properties_data):
+            try:
+                # Validate required fields
+                for field in PROPERTY_REQUIRED_FIELDS:
+                    if field not in prop_data:
+                        raise ValueError(f"Missing required field: {field}")
+
+                # Validate property_type
+                if prop_data["property_type"] not in PROPERTY_TYPES:
+                    raise ValueError(f"Invalid property_type: {prop_data['property_type']}")
+
+                # Validate identifiers
+                if not isinstance(prop_data["identifiers"], list) or len(prop_data["identifiers"]) == 0:
+                    raise ValueError("identifiers must be a non-empty array")
+
+                for ident in prop_data["identifiers"]:
+                    if not isinstance(ident, dict) or "type" not in ident or "value" not in ident:
+                        raise ValueError("Each identifier must have 'type' and 'value' fields")
+
+                # Generate property_id if not provided
+                property_id = prop_data.get("property_id", str(uuid.uuid4()))
+
+                # Check if property already exists
+                existing_property = (
+                    db_session.query(AuthorizedProperty)
+                    .filter(
+                        AuthorizedProperty.tenant_id == tenant_id,
+                        AuthorizedProperty.property_id == property_id,
+                    )
+                    .first()
+                )
+
+                if existing_property:
+                    # Update existing property
+                    existing_property.property_type = prop_data["property_type"]
+                    existing_property.name = prop_data["name"]
+                    existing_property.identifiers = prop_data["identifiers"]
+                    existing_property.tags = prop_data.get("tags", [])
+                    existing_property.publisher_domain = prop_data["publisher_domain"]
+                    existing_property.verification_status = "pending"
+                    existing_property.verification_checked_at = None
+                    existing_property.verification_error = None
+                    existing_property.updated_at = datetime.utcnow()
+                else:
+                    # Create new property
+                    new_property = AuthorizedProperty(
+                        property_id=property_id,
+                        tenant_id=tenant_id,
+                        property_type=prop_data["property_type"],
+                        name=prop_data["name"],
+                        identifiers=prop_data["identifiers"],
+                        tags=prop_data.get("tags", []),
+                        publisher_domain=prop_data["publisher_domain"],
+                        verification_status="pending",
+                        created_at=datetime.utcnow(),
+                        updated_at=datetime.utcnow(),
+                    )
+                    db_session.add(new_property)
+
+                success_count += 1
+
+            except Exception as e:
+                error_count += 1
+                errors.append(f"Property {i+1}: {str(e)}")
+                logger.error(f"Error processing property {i+1}: {e}")
+
+        # Commit all changes
+        if success_count > 0:
+            db_session.commit()
+
+    return success_count, error_count, errors
+
+
+def _parse_and_save_properties_file(file, tenant_id: str) -> Tuple[int, int, List[str]]:
+    """Parse properties file and save to database.
+    
+    Returns:
+        Tuple of (success_count, error_count, errors)
+    """
+    properties_data, parse_error = _parse_properties_file(file)
+    if parse_error:
+        return 0, 1, [parse_error]
+    
+    return _save_properties_batch(properties_data, tenant_id)
 
 
 def _construct_agent_url(tenant_id: str, request) -> str:
@@ -67,7 +255,7 @@ def list_authorized_properties(tenant_id):
             tenant = db_session.query(Tenant).filter(Tenant.tenant_id == tenant_id).first()
             if not tenant:
                 logger.error(f"Tenant not found: {tenant_id}")
-                flash("Tenant not found", "error")
+                flash(PROPERTY_ERROR_MESSAGES["tenant_not_found"], "error")
                 return redirect(url_for("core.admin_dashboard"))
 
             logger.info(f"Found tenant: {tenant.name}")
@@ -118,7 +306,7 @@ def upload_authorized_properties(tenant_id):
             with get_db_session() as db_session:
                 tenant = db_session.query(Tenant).filter(Tenant.tenant_id == tenant_id).first()
                 if not tenant:
-                    flash("Tenant not found", "error")
+                    flash(PROPERTY_ERROR_MESSAGES["tenant_not_found"], "error")
                     return redirect(url_for("core.admin_dashboard"))
 
                 # Get existing tags for this tenant
@@ -140,118 +328,20 @@ def upload_authorized_properties(tenant_id):
     # Handle POST request (file upload)
     try:
         if "file" not in request.files:
-            flash("No file selected", "error")
+            flash(PROPERTY_ERROR_MESSAGES["no_file_selected"], "error")
             return redirect(request.url)
 
         file = request.files["file"]
         if file.filename == "":
-            flash("No file selected", "error")
+            flash(PROPERTY_ERROR_MESSAGES["no_file_selected"], "error")
             return redirect(request.url)
 
-        if not file.filename.lower().endswith((".json", ".csv")):
-            flash("Only JSON and CSV files are supported", "error")
+        if not file.filename.lower().endswith(tuple(SUPPORTED_UPLOAD_FILE_TYPES)):
+            flash(PROPERTY_ERROR_MESSAGES["invalid_file_type"], "error")
             return redirect(request.url)
 
-        # Read and parse file content
-        file_content = file.read().decode("utf-8")
-        properties_data = []
-
-        if file.filename.lower().endswith(".json"):
-            try:
-                data = json.loads(file_content)
-                if isinstance(data, list):
-                    properties_data = data
-                elif isinstance(data, dict) and "properties" in data:
-                    properties_data = data["properties"]
-                else:
-                    flash("JSON file must contain an array of properties or an object with 'properties' key", "error")
-                    return redirect(request.url)
-            except json.JSONDecodeError as e:
-                flash(f"Invalid JSON format: {str(e)}", "error")
-                return redirect(request.url)
-
-        elif file.filename.lower().endswith(".csv"):
-            # TODO: Implement CSV parsing
-            flash("CSV upload is not yet implemented", "error")
-            return redirect(request.url)
-
-        # Validate and save properties
-        success_count = 0
-        error_count = 0
-        errors = []
-
-        with get_db_session() as db_session:
-            for i, prop_data in enumerate(properties_data):
-                try:
-                    # Validate required fields
-                    required_fields = ["property_type", "name", "identifiers", "publisher_domain"]
-                    for field in required_fields:
-                        if field not in prop_data:
-                            raise ValueError(f"Missing required field: {field}")
-
-                    # Validate property_type
-                    valid_types = ["website", "mobile_app", "ctv_app", "dooh", "podcast", "radio", "streaming_audio"]
-                    if prop_data["property_type"] not in valid_types:
-                        raise ValueError(f"Invalid property_type: {prop_data['property_type']}")
-
-                    # Validate identifiers
-                    if not isinstance(prop_data["identifiers"], list) or len(prop_data["identifiers"]) == 0:
-                        raise ValueError("identifiers must be a non-empty array")
-
-                    for ident in prop_data["identifiers"]:
-                        if not isinstance(ident, dict) or "type" not in ident or "value" not in ident:
-                            raise ValueError("Each identifier must have 'type' and 'value' fields")
-
-                    # Generate property_id if not provided
-                    property_id = prop_data.get("property_id", str(uuid.uuid4()))
-
-                    # Check if property already exists
-                    existing_property = (
-                        db_session.query(AuthorizedProperty)
-                        .filter(
-                            AuthorizedProperty.tenant_id == tenant_id,
-                            AuthorizedProperty.property_id == property_id,
-                        )
-                        .first()
-                    )
-
-                    if existing_property:
-                        # Update existing property
-                        existing_property.property_type = prop_data["property_type"]
-                        existing_property.name = prop_data["name"]
-                        existing_property.identifiers = prop_data["identifiers"]
-                        existing_property.tags = prop_data.get("tags", [])
-                        existing_property.publisher_domain = prop_data["publisher_domain"]
-                        existing_property.verification_status = "pending"
-                        existing_property.verification_checked_at = None
-                        existing_property.verification_error = None
-                        existing_property.updated_at = datetime.utcnow()
-                    else:
-                        # Create new property
-                        new_property = AuthorizedProperty(
-                            property_id=property_id,
-                            tenant_id=tenant_id,
-                            property_type=prop_data["property_type"],
-                            name=prop_data["name"],
-                            identifiers=prop_data["identifiers"],
-                            tags=prop_data.get("tags", []),
-                            publisher_domain=prop_data["publisher_domain"],
-                            verification_status="pending",
-                            created_at=datetime.utcnow(),
-                            updated_at=datetime.utcnow(),
-                        )
-                        db_session.add(new_property)
-
-                    success_count += 1
-
-                except Exception as e:
-                    error_count += 1
-                    errors.append(f"Property {i+1}: {str(e)}")
-                    logger.error(f"Error processing property {i+1}: {e}")
-
-            # Commit all changes
-            if success_count > 0:
-                db_session.commit()
+        # Parse and save properties
+        success_count, error_count, errors = _parse_and_save_properties_file(file, tenant_id)
 
         # Show results
         if success_count > 0:
@@ -289,7 +379,7 @@ def delete_property(tenant_id, property_id):
             )
 
             if not property_obj:
-                flash("Property not found", "error")
+                flash(PROPERTY_ERROR_MESSAGES["property_not_found"], "error")
                 return redirect(url_for("authorized_properties.list_authorized_properties", tenant_id=tenant_id))
 
             property_name = property_obj.name
@@ -348,12 +438,12 @@ def create_property_tag(tenant_id):
         description = request.form.get("description", "").strip()
 
         if not tag_id or not name or not description:
-            flash("All fields are required", "error")
+            flash(PROPERTY_ERROR_MESSAGES["all_fields_required"], "error")
             return redirect(url_for("authorized_properties.list_property_tags", tenant_id=tenant_id))
 
         # Validate tag_id format (lowercase, underscores only)
         if not tag_id.replace("_", "").replace("-", "").isalnum():
-            flash("Tag ID must contain only letters, numbers, and underscores", "error")
+            flash(PROPERTY_ERROR_MESSAGES["invalid_tag_id"], "error")
             return redirect(url_for("authorized_properties.list_property_tags", tenant_id=tenant_id))
 
         tag_id = tag_id.lower().replace("-", "_")
@@ -367,7 +457,7 @@ def create_property_tag(tenant_id):
             )
 
             if existing_tag:
-                flash(f"Tag '{tag_id}' already exists", "error")
+                flash(PROPERTY_ERROR_MESSAGES["tag_already_exists"].format(tag_id=tag_id), "error")
                 return redirect(url_for("authorized_properties.list_property_tags", tenant_id=tenant_id))
 
             # Create new tag
@@ -462,7 +552,7 @@ def create_property(tenant_id):
             with get_db_session() as db_session:
                 tenant = db_session.query(Tenant).filter(Tenant.tenant_id == tenant_id).first()
                 if not tenant:
-                    flash("Tenant not found", "error")
+                    flash(PROPERTY_ERROR_MESSAGES["tenant_not_found"], "error")
                     return redirect(url_for("core.admin_dashboard"))
 
                 # Get existing tags for this tenant
@@ -485,50 +575,13 @@ def create_property(tenant_id):
 
     # Handle POST request (form submission)
     try:
-        # Get form data
-        property_type = request.form.get("property_type", "").strip()
-        name = request.form.get("name", "").strip()
-        publisher_domain = request.form.get("publisher_domain", "").strip()
-
-        # Validate required fields
-        if not property_type or not name or not publisher_domain:
-            flash("Property type, name, and publisher domain are required", "error")
+        # Validate form data
+        is_valid, error_message, parsed_data = _validate_property_form(request)
+        if not is_valid:
+            flash(error_message, "error")
             return redirect(request.url)
-
-        # Validate property_type
-        valid_types = ["website", "mobile_app", "ctv_app", "dooh", "podcast", "radio", "streaming_audio"]
-        if property_type not in valid_types:
-            flash(f"Invalid property type: {property_type}", "error")
-            return redirect(request.url)
-
-        # Parse identifiers from form
-        identifiers = []
-        identifier_count = 0
-        while True:
-            identifier_type = request.form.get(f"identifier_type_{identifier_count}", "").strip()
-            identifier_value = request.form.get(f"identifier_value_{identifier_count}", "").strip()
-
-            if not identifier_type and not identifier_value:
-                break
-
-            if identifier_type and identifier_value:
-                identifiers.append({"type": identifier_type, "value": identifier_value})
-            elif identifier_type or identifier_value:
-                flash(f"Identifier {identifier_count + 1}: Both type and value are required", "error")
-                return redirect(request.url)
-
-            identifier_count += 1
-
-        if not identifiers:
-            flash("At least one identifier is required", "error")
-            return redirect(request.url)
-
-        # Parse tags
-        tags = []
-        tag_values = request.form.getlist("tags")
-        for tag in tag_values:
-            if tag.strip():
-                tags.append(tag.strip())
+        
+        property_type, name, publisher_domain, identifiers, tags = parsed_data
 
         # Generate unique property_id
         property_id = str(uuid.uuid4())
@@ -569,7 +622,7 @@ def edit_property(tenant_id, property_id):
             with get_db_session() as db_session:
                 tenant = db_session.query(Tenant).filter(Tenant.tenant_id == tenant_id).first()
                 if not tenant:
-                    flash("Tenant not found", "error")
+                    flash(PROPERTY_ERROR_MESSAGES["tenant_not_found"], "error")
                     return redirect(url_for("core.admin_dashboard"))
 
                 # Get the property to edit
@@ -583,7 +636,7 @@ def edit_property(tenant_id, property_id):
                 )
 
                 if not property_obj:
-                    flash("Property not found", "error")
+                    flash(PROPERTY_ERROR_MESSAGES["property_not_found"], "error")
                     return redirect(url_for("authorized_properties.list_authorized_properties", tenant_id=tenant_id))
 
                 # Get existing tags for this tenant
@@ -606,50 +659,13 @@ def edit_property(tenant_id, property_id):
 
     # Handle POST request (form submission)
     try:
-        # Get form data
-        property_type = request.form.get("property_type", "").strip()
-        name = request.form.get("name", "").strip()
-        publisher_domain = request.form.get("publisher_domain", "").strip()
-
-        # Validate required fields
-        if not property_type or not name or not publisher_domain:
-            flash("Property type, name, and publisher domain are required", "error")
+        # Validate form data
+        is_valid, error_message, parsed_data = _validate_property_form(request)
+        if not is_valid:
+            flash(error_message, "error")
             return redirect(request.url)
-
-        # Validate property_type
-        valid_types = ["website", "mobile_app", "ctv_app", "dooh", "podcast", "radio", "streaming_audio"]
-        if property_type not in valid_types:
-            flash(f"Invalid property type: {property_type}", "error")
-            return redirect(request.url)
-
-        # Parse identifiers from form
-        identifiers = []
-        identifier_count = 0
-        while True:
-            identifier_type = request.form.get(f"identifier_type_{identifier_count}", "").strip()
-            identifier_value = request.form.get(f"identifier_value_{identifier_count}", "").strip()
-
-            if not identifier_type and not identifier_value:
-                break
-
-            if identifier_type and identifier_value:
-                identifiers.append({"type": identifier_type, "value": identifier_value})
-            elif identifier_type or identifier_value:
-                flash(f"Identifier {identifier_count + 1}: Both type and value are required", "error")
-                return redirect(request.url)
-
-            identifier_count += 1
-
-        if not identifiers:
-            flash("At least one identifier is required", "error")
-            return redirect(request.url)
-
-        # Parse tags
-        tags = []
-        tag_values = request.form.getlist("tags")
-        for tag in tag_values:
-            if tag.strip():
-                tags.append(tag.strip())
+        
+        property_type, name, publisher_domain, identifiers, tags = parsed_data
 
         with get_db_session() as db_session:
             # Get the property to update
@@ -663,7 +679,7 @@ def edit_property(tenant_id, property_id):
             )
 
             if not property_obj:
-                flash("Property not found", "error")
+                flash(PROPERTY_ERROR_MESSAGES["property_not_found"], "error")
                 return redirect(url_for("authorized_properties.list_authorized_properties", tenant_id=tenant_id))
 
             # Update property fields
