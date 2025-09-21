@@ -310,6 +310,130 @@ The GAM adapter has been refactored into a clean modular architecture:
 - **DNS Setup**: A/AAAA records for base domain, CNAME wildcard for tenant subdomains
 - **Production Deployment**: Live on Fly.io with proper certificate and routing configuration
 
+### 🌐 Approximated External Routing Integration (Jan 2025)
+**CRITICAL ARCHITECTURE**: The system integrates with Approximated service for external domain routing, providing seamless tenant access through custom publisher domains.
+
+#### How Approximated Routing Works
+1. **External Request Flow**: Client requests `test-agent.adcontextprotocol.org` → Approximated service
+2. **Header Injection**: Approximated forwards request to our servers with `Apx-Incoming-Host: test-agent.adcontextprotocol.org`
+3. **Tenant Detection**: Our application uses `Apx-Incoming-Host` header to look up tenant by `virtual_host` field
+4. **Response Generation**: Application generates responses with tenant context preserved (agent cards, URLs, etc.)
+
+#### NO Domain-Specific Code Policy
+**🚨 CRITICAL**: The application should have **ZERO** hardcoded logic for external domains (adcontextprotocol.org, etc.).
+
+**Why This Matters**:
+- Approximated handles ALL external domain routing transparently
+- Custom publisher domains can be added/changed without code changes
+- Application remains domain-agnostic and portable
+- Prevents coupling between our code and specific external domains
+
+#### Tenant Detection Priority (Correct Implementation)
+```python
+# 1. Check Approximated routing headers FIRST
+approximated_host = request.headers.get("Apx-Incoming-Host")
+if approximated_host and not approximated_host.startswith("admin."):
+    # Approximated handles all external routing - look up tenant by virtual_host
+    tenant = db_session.query(Tenant).filter_by(virtual_host=approximated_host).first()
+    return tenant
+
+# 2. Fallback to direct domain routing (sales-agent.scope3.com)
+if ".sales-agent.scope3.com" in host and not host.startswith("admin."):
+    tenant_subdomain = host.split(".")[0]
+    tenant = db_session.query(Tenant).filter_by(subdomain=tenant_subdomain).first()
+    return tenant
+```
+
+#### Database Schema for External Domains
+- **`virtual_host`**: Stores external domain (e.g., `test-agent.adcontextprotocol.org`)
+- **`subdomain`**: Stores internal subdomain (e.g., `test-agent` for `test-agent.sales-agent.scope3.com`)
+- **Tenant Lookup**: External requests use `virtual_host`, internal requests use `subdomain`
+
+#### Agent Card URL Generation
+Agent cards dynamically generate URLs that preserve tenant context:
+```python
+# Agent card URL respects the incoming domain via Apx-Incoming-Host
+if approximated_host:
+    agent_url = f"https://{approximated_host}"  # Preserves external domain
+else:
+    agent_url = f"https://{tenant.subdomain}.sales-agent.scope3.com"  # Fallback to internal
+```
+
+#### Configuration Requirements
+1. **Nginx**: Forward `Apx-Incoming-Host` header to backend services
+2. **OAuth**: Always use registered redirect URI (`sales-agent.scope3.com`) for OAuth callbacks
+3. **Tenant Setup**: Configure both `subdomain` and `virtual_host` for each tenant
+4. **Testing**: Use `virtual_host` field for testing external domain scenarios
+
+#### Production Setup Checklist
+- ✅ **No hardcoded domain checks** in application code
+- ✅ **Approximated integration** via `Apx-Incoming-Host` header
+- ✅ **Tenant virtual_host configuration** for all external domains
+- ✅ **Agent card URL generation** respects incoming domain context
+- ✅ **OAuth redirect handling** uses registered redirect URI always
+- ✅ **Nginx header forwarding** includes `Apx-Incoming-Host`
+
+### OAuth Cross-Domain Authentication
+
+#### Current Implementation Status
+**✅ Working**: OAuth authentication works correctly within the `sales-agent.scope3.com` domain and its subdomains.
+
+**⚠️ Known Limitation**: OAuth authentication from external domains (e.g., `test-agent.adcontextprotocol.org`) has limitations due to browser cookie security restrictions.
+
+#### How OAuth Currently Works
+1. **Same-Domain OAuth** (✅ Fully Functional):
+   - User visits `https://tenant.sales-agent.scope3.com/admin/`
+   - OAuth flow works perfectly with session cookies
+   - User redirected back to tenant subdomain after authentication
+
+2. **Cross-Domain OAuth** (⚠️ Limited):
+   - User visits external domain (e.g., `https://test-agent.adcontextprotocol.org/admin/`)
+   - OAuth initiation works and stores external domain in session
+   - OAuth callback cannot retrieve session data due to cookie domain restrictions
+   - User redirected to login page instead of back to external domain
+
+#### Technical Details
+**Session Cookie Configuration**:
+```python
+# Production session config
+SESSION_COOKIE_DOMAIN = ".sales-agent.scope3.com"  # Scoped to internal domain
+SESSION_COOKIE_SECURE = True                        # HTTPS only
+SESSION_COOKIE_SAMESITE = "None"                   # Required for OAuth
+SESSION_COOKIE_PATH = "/admin/"                     # Admin interface only
+```
+
+**OAuth Flow Architecture**:
+```python
+# OAuth Initiation (stores external domain in session)
+session["oauth_external_domain"] = request.headers.get("Apx-Incoming-Host")
+
+# OAuth Callback (retrieves from session - fails cross-domain)
+external_domain = session.pop("oauth_external_domain", None)
+```
+
+#### Browser Security Limitation
+The limitation is due to fundamental browser security: **cookies cannot be shared across different domains**. When a user comes from `test-agent.adcontextprotocol.org`, the browser cannot access session cookies scoped to `.sales-agent.scope3.com`.
+
+#### Testing and Regression Prevention
+**Test Coverage**:
+- ✅ OAuth session handling within same domain
+- ✅ Approximated header detection and processing
+- ✅ Session cookie configuration
+- ✅ Redirect URI integrity (no modifications)
+- ✅ CSRF protection preservation (Authlib state management)
+- ✅ Cross-domain limitation documentation
+
+**Key Test File**: `tests/integration/test_oauth_session_handling.py`
+
+#### Future Solutions (Research Needed)
+Potential approaches for cross-domain OAuth:
+1. **Alternative State Storage**: Redis, database, or external service
+2. **Modified Redirect URI Approach**: Register additional redirect URIs with domain-specific query parameters
+3. **Authentication Architecture Changes**: Different authentication flow for external domains
+4. **Proxy-Based Solution**: Handle authentication at the proxy/gateway level
+
+**Current Recommendation**: For immediate needs, direct users to use `https://tenant.sales-agent.scope3.com/admin/` for OAuth authentication rather than external domain URLs.
+
 ### AdCP Testing Specification Implementation (Aug 2025)
 - **Full Testing Backend**: Complete implementation of AdCP Testing Specification (https://adcontextprotocol.org/docs/media-buy/testing/)
 - **Testing Hooks System**: All 9 request headers (X-Dry-Run, X-Mock-Time, X-Jump-To-Event, etc.) with session isolation

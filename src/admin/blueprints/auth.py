@@ -159,21 +159,21 @@ def google_auth():
                 tenant_context = tenant.tenant_id
                 logger.info(f"Detected tenant context from Host header: {tenant_subdomain} -> {tenant_context}")
 
-    # Always use the registered OAuth redirect URI for Google
-    # The originating domain is preserved in session and handled after OAuth callback
+    # Always use the registered OAuth redirect URI for Google (no modifications allowed)
     if os.environ.get("PRODUCTION") == "true":
-        # For production, always use the registered redirect URI
+        # For production, always use the exact registered redirect URI
         redirect_uri = "https://sales-agent.scope3.com/admin/auth/google/callback"
     else:
         # Development fallback
         redirect_uri = url_for("auth.google_callback", _external=True)
 
     # Store originating host and tenant context in session for OAuth callback
-    # We can't use custom state parameter due to CSRF validation, so use session instead
     session["oauth_originating_host"] = host
 
-    # Also store the external domain if routed through Approximated
+    # Store external domain and tenant context in session for OAuth callback
+    # Note: This works for same-domain OAuth but has limitations for cross-domain scenarios
     approximated_host = request.headers.get("Apx-Incoming-Host")
+
     if approximated_host:
         session["oauth_external_domain"] = approximated_host
         logger.info(f"Stored external domain for OAuth redirect: {approximated_host}")
@@ -181,6 +181,7 @@ def google_auth():
     if tenant_context:
         session["oauth_tenant_context"] = tenant_context
 
+    # Let Authlib manage the state parameter for CSRF protection
     return oauth.google.authorize_redirect(redirect_uri)
 
 
@@ -194,27 +195,28 @@ def tenant_google_auth(tenant_id):
 
     host = request.headers.get("Host", "")
 
-    # Always use the registered OAuth redirect URI for Google
-    # The originating domain is preserved in session and handled after OAuth callback
+    # Always use the registered OAuth redirect URI for Google (no modifications allowed)
     if os.environ.get("PRODUCTION") == "true":
-        # For production, always use the registered redirect URI
+        # For production, always use the exact registered redirect URI
         redirect_uri = "https://sales-agent.scope3.com/admin/auth/google/callback"
     else:
         # Development fallback
         redirect_uri = url_for("auth.google_callback", _external=True)
 
     # Store originating host and tenant context in session for OAuth callback
-    # We can't use custom state parameter due to CSRF validation, so use session instead
     session["oauth_originating_host"] = host
 
-    # Also store the external domain if routed through Approximated
+    # Store external domain and tenant context in session for OAuth callback
+    # Note: This works for same-domain OAuth but has limitations for cross-domain scenarios
     approximated_host = request.headers.get("Apx-Incoming-Host")
+
     if approximated_host:
         session["oauth_external_domain"] = approximated_host
         logger.info(f"Stored external domain for OAuth redirect: {approximated_host}")
 
     session["oauth_tenant_context"] = tenant_id
 
+    # Let Authlib manage the state parameter for CSRF protection
     return oauth.google.authorize_redirect(redirect_uri)
 
 
@@ -252,6 +254,9 @@ def google_callback():
         session["user_name"] = user.get("name", email)
         session["user_picture"] = user.get("picture", "")
 
+        # Debug session state before popping values
+        logger.info(f"OAuth callback - full session: {dict(session)}")
+
         # Get originating host and tenant context from session
         originating_host = session.pop("oauth_originating_host", None)
         external_domain = session.pop("oauth_external_domain", None)
@@ -263,6 +268,7 @@ def google_callback():
         logger.info(f"OAuth callback debug - tenant_id: {tenant_id}")
         logger.info(f"OAuth callback debug - PRODUCTION env: {os.environ.get('PRODUCTION')}")
         logger.info(f"OAuth callback debug - user email: {email}")
+        logger.info(f"OAuth callback debug - request headers: {dict(request.headers)}")
         if tenant_id:
             # Verify user has access to this tenant
             with get_db_session() as db_session:
@@ -319,6 +325,7 @@ def google_callback():
             # Check where the OAuth flow originated from
             if external_domain and os.environ.get("PRODUCTION") == "true":
                 # OAuth was initiated from external domain routed through Approximated
+                # Important: External domains handle routing via Approximated - just use /admin/
                 redirect_url = f"https://{external_domain}/admin/"
                 logger.info(f"Redirecting super admin back to external domain: {external_domain} -> {redirect_url}")
                 return redirect(redirect_url)
