@@ -9,6 +9,7 @@ from src.admin.app import create_app
 
 app, _ = create_app()
 from tests.fixtures import TenantFactory
+from tests.utils.database_helpers import create_tenant_with_timestamps
 
 
 @pytest.fixture
@@ -40,10 +41,9 @@ def test_tenant(integration_db):
     from src.core.database.models import Tenant
 
     tenant_data = TenantFactory.create()
-    now = datetime.now(UTC)
 
     with get_db_session() as session:
-        tenant = Tenant(
+        tenant = create_tenant_with_timestamps(
             tenant_id=tenant_data["tenant_id"],
             name=tenant_data["name"],
             subdomain=tenant_data["subdomain"],
@@ -51,9 +51,7 @@ def test_tenant(integration_db):
             ad_server="mock",
             auto_approve_formats=json.dumps([]),
             human_review_required=False,
-            policy_settings=json.dumps({}),
-            created_at=now,
-            updated_at=now,
+            policy_settings=json.dumps({})
         )
         session.add(tenant)
         session.commit()

@@ -71,14 +71,55 @@ def clean_db(test_database):
 
     # Clear all data but keep schema
     with engine.connect() as conn:
-        # Get all table names
-        inspector = inspect(engine)
-        tables = inspector.get_table_names()
+        # Define deletion order to handle foreign key constraints properly
+        # Tables with foreign keys should be deleted before their referenced tables
+        deletion_order = [
+            # Tables that reference other tables via foreign keys
+            "strategy_states",
+            "object_workflow_mapping",
+            "workflow_steps",
+            "contexts",
+            "sync_jobs",
+            "gam_line_items",
+            "gam_orders",
+            "product_inventory_mappings",
+            "gam_inventory",
+            "adapter_config",
+            "audit_logs",
+            "media_buys",
+            "creative_assignments",
+            "creatives",
+            "users",
+            "principals",
+            "products",
+            "creative_formats",
+            "strategies",
+            # Base tables with no dependencies
+            "tenants",
+            "superadmin_config",
+        ]
 
-        # Delete data from all tables
-        for table in reversed(tables):  # Reverse to handle foreign keys
-            if table != "alembic_version":  # Don't delete migration history
-                conn.execute(text(f"DELETE FROM {table}"))
+        # Get all existing table names
+        inspector = inspect(engine)
+        existing_tables = set(inspector.get_table_names())
+
+        # Delete data from tables in proper order
+        for table in deletion_order:
+            if table in existing_tables and table != "alembic_version":
+                try:
+                    conn.execute(text(f"DELETE FROM {table}"))
+                except Exception as e:
+                    # Log but continue - some tables might not exist in all test scenarios
+                    logger.debug(f"Could not delete from {table}: {e}")
+
+        # Delete any remaining tables not in our explicit order
+        for table in existing_tables:
+            if table not in deletion_order and table != "alembic_version":
+                try:
+                    conn.execute(text(f"DELETE FROM {table}"))
+                except Exception as e:
+                    logger.debug(f"Could not delete from remaining table {table}: {e}")
+
         conn.commit()
 
     # Re-initialize with test data

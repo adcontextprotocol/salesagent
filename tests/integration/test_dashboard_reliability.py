@@ -90,8 +90,8 @@ class TestDashboardReliability:
             mock_session = mock_get_db.return_value.__enter__.return_value
             mock_engine = mock_session.get_bind.return_value
 
-            with patch("src.core.database.health_check.reflection.Inspector") as mock_inspector_class:
-                mock_inspector = mock_inspector_class.from_engine.return_value
+            with patch("src.core.database.health_check.inspect") as mock_inspect:
+                mock_inspector = mock_inspect.return_value
 
                 # Simulate missing workflow tables
                 mock_inspector.get_table_names.return_value = [

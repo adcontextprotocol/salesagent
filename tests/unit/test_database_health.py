@@ -68,8 +68,8 @@ class TestDatabaseHealthLogic:
         mock_get_db.return_value.__enter__.return_value = mock_session
         mock_session.get_bind.return_value = mock_engine
 
-        with patch("src.core.database.health_check.reflection.Inspector") as mock_inspector_class:
-            mock_inspector_class.from_engine.return_value = mock_inspector
+        with patch("src.core.database.health_check.inspect") as mock_inspect:
+            mock_inspect.return_value = mock_inspector
             mock_inspector.get_table_names.return_value = ["tenants", "alembic_version"]
             mock_session.execute.return_value.scalar.return_value = "some_version"
 

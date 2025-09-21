@@ -192,7 +192,7 @@ class User(Base):
 
 
 class Creative(Base):
-    """Creative database model matching the creatives table schema."""
+    """Creative database model matching the actual creatives table schema."""
 
     __tablename__ = "creatives"
 
@@ -200,24 +200,10 @@ class Creative(Base):
     tenant_id = Column(String(50), ForeignKey("tenants.tenant_id", ondelete="CASCADE"), nullable=False)
     principal_id = Column(String(100), nullable=False)
     name = Column(String(255), nullable=False)
-    format_id = Column(String(100), nullable=False)  # Maps to format field in schema
+    format = Column(String(100), nullable=False)  # Format field matches database schema
     status = Column(String(50), nullable=False, default="pending")
 
-    # Creative content URLs (AdCP spec fields)
-    url = Column(Text, nullable=True)  # media_url / content_uri
-    click_url = Column(Text, nullable=True)  # click_through_url
-
-    # Dimensions (extracted from data JSON or separate columns)
-    width = Column(Integer, nullable=True)
-    height = Column(Integer, nullable=True)
-    duration = Column(Float, nullable=True)
-
-    # AdCP v1.3+ fields for third-party creatives
-    snippet = Column(Text, nullable=True)
-    snippet_type = Column(String(50), nullable=True)
-    template_variables = Column(JSON, nullable=True)
-
-    # Legacy data field (for backward compatibility)
+    # Data field stores creative content and metadata as JSON
     data = Column(JSON, nullable=False, default=dict)
 
     # Relationships and metadata
@@ -226,6 +212,7 @@ class Creative(Base):
     updated_at = Column(DateTime, nullable=True)
     approved_at = Column(DateTime, nullable=True)
     approved_by = Column(String(255), nullable=True)
+    strategy_id = Column(String(255), nullable=True)  # Missing field from database
 
     # Relationships
     tenant = relationship("Tenant", backref="creatives")

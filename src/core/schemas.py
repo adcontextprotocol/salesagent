@@ -904,10 +904,24 @@ class Product(BaseModel):
         if "formats" in data:
             data["format_ids"] = data.pop("formats")
 
-        # Remove null fields per AdCP spec (measurement, creative_policy should be omitted if null)
+        # Remove null fields per AdCP spec but keep core pricing fields
+        # Core fields that should be present even if None for AdCP compliance
+        core_fields = {
+            "cpm",
+            "min_spend",
+            "product_id",
+            "name",
+            "description",
+            "format_ids",
+            "delivery_type",
+            "is_fixed_price",
+            "is_custom",
+        }
+
         adcp_data = {}
         for key, value in data.items():
-            if value is not None:
+            # Include core fields always, and non-null optional fields
+            if key in core_fields or value is not None:
                 adcp_data[key] = value
 
         return adcp_data

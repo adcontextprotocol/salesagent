@@ -13,8 +13,9 @@ import pytest
 
 from src.core.database.database_session import get_db_session
 from src.core.database.models import Creative as DBCreative
-from src.core.database.models import CreativeAssignment, MediaBuy, Principal, Tenant
+from src.core.database.models import CreativeAssignment, MediaBuy, Principal
 from src.core.schemas import ListCreativesResponse, SyncCreativesResponse
+from tests.utils.database_helpers import create_tenant_with_timestamps, get_utc_now
 
 
 class MockContext:
@@ -43,7 +44,7 @@ class TestCreativeLifecycleMCP:
         """Create test tenant, principal, and media buy for creative tests."""
         with get_db_session() as session:
             # Create test tenant
-            tenant = Tenant(
+            tenant = create_tenant_with_timestamps(
                 tenant_id="creative_test",
                 name="Creative Test Tenant",
                 subdomain="creative-test",
@@ -77,8 +78,8 @@ class TestCreativeLifecycleMCP:
                 advertiser_name="Test Advertiser",
                 status="active",
                 budget=5000.0,
-                start_date=datetime.now(UTC).date(),
-                end_date=(datetime.now(UTC) + timedelta(days=30)).date(),
+                start_date=get_utc_now().date(),
+                end_date=(get_utc_now() + timedelta(days=30)).date(),
                 buyer_ref="buyer_ref_123",
                 raw_request={"test": True},
             )
@@ -156,25 +157,28 @@ class TestCreativeLifecycleMCP:
                 assert len(db_creatives) == 3
 
                 # Verify display creative
-                display_creative = next((c for c in db_creatives if c.format_id == "display_300x250"), None)
+                display_creative = next((c for c in db_creatives if c.format == "display_300x250"), None)
                 assert display_creative is not None
                 assert display_creative.name == "Banner Ad 300x250"
-                assert display_creative.url == "https://example.com/banner.jpg"
-                assert display_creative.width == 300
-                assert display_creative.height == 250
+                assert display_creative.data.get("url") == "https://example.com/banner.jpg"
+                assert display_creative.data.get("width") == 300
+                assert display_creative.data.get("height") == 250
                 assert display_creative.status == "pending"
 
                 # Verify video creative
-                video_creative = next((c for c in db_creatives if c.format_id == "video_pre_roll"), None)
+                video_creative = next((c for c in db_creatives if c.format == "video_pre_roll"), None)
                 assert video_creative is not None
-                assert video_creative.duration == 30.0
+                assert video_creative.data.get("duration") == 30.0
 
                 # Verify native creative with snippet
-                native_creative = next((c for c in db_creatives if c.format_id == "native_content"), None)
+                native_creative = next((c for c in db_creatives if c.format == "native_content"), None)
                 assert native_creative is not None
-                assert native_creative.snippet == "<script>window.adTag = 'native';</script>"
-                assert native_creative.snippet_type == "javascript"
-                assert native_creative.template_variables == {"headline": "Amazing Product!", "cta": "Learn More"}
+                assert native_creative.data.get("snippet") == "<script>window.adTag = 'native';</script>"
+                assert native_creative.data.get("snippet_type") == "javascript"
+                assert native_creative.data.get("template_variables") == {
+                    "headline": "Amazing Product!",
+                    "cta": "Learn More",
+                }
 
     def test_sync_creatives_upsert_existing_creative(self, mock_context):
         """Test sync_creatives updates existing creative when upsert=True."""
@@ -186,11 +190,13 @@ class TestCreativeLifecycleMCP:
                 creative_id="creative_update_test",
                 principal_id=self.test_principal_id,
                 name="Old Creative Name",
-                format_id="display_300x250",
-                url="https://example.com/old.jpg",
-                width=300,
-                height=250,
+                format="display_300x250",
                 status="pending",
+                data={
+                    "url": "https://example.com/old.jpg",
+                    "width": 300,
+                    "height": 250,
+                },
             )
             session.add(existing_creative)
             session.commit()
@@ -228,8 +234,8 @@ class TestCreativeLifecycleMCP:
                 )
 
                 assert updated_creative.name == "Updated Creative Name"
-                assert updated_creative.url == "https://example.com/updated.jpg"
-                assert updated_creative.click_url == "https://advertiser.com/updated-landing"
+                assert updated_creative.data.get("url") == "https://example.com/updated.jpg"
+                assert updated_creative.data.get("click_url") == "https://advertiser.com/updated-landing"
                 assert updated_creative.updated_at is not None
 
     def test_sync_creatives_with_package_assignments(self, mock_context, sample_creatives):
@@ -331,11 +337,13 @@ class TestCreativeLifecycleMCP:
                     creative_id=f"list_test_{i}",
                     principal_id=self.test_principal_id,
                     name=f"Test Creative {i}",
-                    format_id="display_300x250",
-                    url=f"https://example.com/creative_{i}.jpg",
+                    format="display_300x250",
                     status="approved" if i % 2 == 0 else "pending",
-                    width=300,
-                    height=250,
+                    data={
+                        "url": f"https://example.com/creative_{i}.jpg",
+                        "width": 300,
+                        "height": 250,
+                    },
                 )
                 for i in range(5)
             ]
@@ -371,7 +379,7 @@ class TestCreativeLifecycleMCP:
                     creative_id=f"status_test_approved_{i}",
                     principal_id=self.test_principal_id,
                     name=f"Approved Creative {i}",
-                    format_id="display_300x250",
+                    format="display_300x250",
                     status="approved",
                 )
                 for i in range(3)
@@ -381,7 +389,7 @@ class TestCreativeLifecycleMCP:
                     creative_id=f"status_test_pending_{i}",
                     principal_id=self.test_principal_id,
                     name=f"Pending Creative {i}",
-                    format_id="display_728x90",
+                    format="display_728x90",
                     status="pending",
                 )
                 for i in range(2)
@@ -415,7 +423,7 @@ class TestCreativeLifecycleMCP:
                     creative_id=f"format_test_300x250_{i}",
                     principal_id=self.test_principal_id,
                     name=f"Banner {i}",
-                    format_id="display_300x250",
+                    format="display_300x250",
                     status="approved",
                 )
                 for i in range(2)
@@ -425,9 +433,9 @@ class TestCreativeLifecycleMCP:
                     creative_id=f"format_test_video_{i}",
                     principal_id=self.test_principal_id,
                     name=f"Video {i}",
-                    format_id="video_pre_roll",
+                    format="video_pre_roll",
                     status="approved",
-                    duration=15.0,
+                    data={"duration": 15.0},
                 )
                 for i in range(3)
             ]
@@ -462,7 +470,7 @@ class TestCreativeLifecycleMCP:
                     creative_id=f"date_test_old_{i}",
                     principal_id=self.test_principal_id,
                     name=f"Old Creative {i}",
-                    format_id="display_300x250",
+                    format="display_300x250",
                     status="approved",
                     created_at=now - timedelta(days=10 + i),  # 10+ days ago
                 )
@@ -473,7 +481,7 @@ class TestCreativeLifecycleMCP:
                     creative_id=f"date_test_recent_{i}",
                     principal_id=self.test_principal_id,
                     name=f"Recent Creative {i}",
-                    format_id="display_300x250",
+                    format="display_300x250",
                     status="approved",
                     created_at=now - timedelta(days=2 + i),  # 2-3 days ago
                 )
@@ -508,7 +516,7 @@ class TestCreativeLifecycleMCP:
                     creative_id="search_test_banner_1",
                     principal_id=self.test_principal_id,
                     name="Holiday Banner Ad",
-                    format_id="display_300x250",
+                    format="display_300x250",
                     status="approved",
                 ),
                 DBCreative(
@@ -516,7 +524,7 @@ class TestCreativeLifecycleMCP:
                     creative_id="search_test_video_1",
                     principal_id=self.test_principal_id,
                     name="Holiday Video Ad",
-                    format_id="video_pre_roll",
+                    format="video_pre_roll",
                     status="approved",
                 ),
                 DBCreative(
@@ -524,7 +532,7 @@ class TestCreativeLifecycleMCP:
                     creative_id="search_test_summer_1",
                     principal_id=self.test_principal_id,
                     name="Summer Sale Banner",
-                    format_id="display_728x90",
+                    format="display_728x90",
                     status="approved",
                 ),
             ]
@@ -557,7 +565,7 @@ class TestCreativeLifecycleMCP:
                     creative_id=f"page_test_{i:02d}",
                     principal_id=self.test_principal_id,
                     name=f"Creative {i:02d}",
-                    format_id="display_300x250",
+                    format="display_300x250",
                     status="approved",
                 )
                 for i in range(25)  # Create 25 creatives
@@ -602,7 +610,7 @@ class TestCreativeLifecycleMCP:
                 creative_id="assignment_test_1",
                 principal_id=self.test_principal_id,
                 name="Assigned Creative 1",
-                format_id="display_300x250",
+                format="display_300x250",
                 status="approved",
             )
             creative_2 = DBCreative(
@@ -610,7 +618,7 @@ class TestCreativeLifecycleMCP:
                 creative_id="assignment_test_2",
                 principal_id=self.test_principal_id,
                 name="Unassigned Creative",
-                format_id="display_300x250",
+                format="display_300x250",
                 status="approved",
             )
             session.add_all([creative_1, creative_2])

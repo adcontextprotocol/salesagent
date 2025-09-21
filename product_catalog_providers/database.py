@@ -37,7 +37,9 @@ class DatabaseProductCatalog(ProductCatalogProvider):
         Future enhancement could add brief-based filtering.
         """
         with get_db_session() as db_session:
-            products = db_session.query(ProductModel).filter_by(tenant_id=tenant_id).all()
+            products = (
+                db_session.query(ProductModel).filter_by(tenant_id=tenant_id).order_by(ProductModel.product_id).all()
+            )
 
             loaded_products = []
             for product_obj in products:
@@ -50,6 +52,7 @@ class DatabaseProductCatalog(ProductCatalogProvider):
                     "delivery_type": product_obj.delivery_type,
                     "is_fixed_price": product_obj.is_fixed_price,
                     "cpm": product_obj.cpm,
+                    "min_spend": product_obj.min_spend,
                     "price_guidance": product_obj.price_guidance,
                     "is_custom": product_obj.is_custom,
                     "countries": product_obj.countries,

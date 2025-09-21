@@ -6,6 +6,7 @@ import pytest
 from flask import Flask
 
 from src.admin.tenant_management_api import tenant_management_api
+from src.core.database.models import Tenant
 
 pytestmark = pytest.mark.integration
 
@@ -43,15 +44,12 @@ def api_key(client):
 @pytest.fixture
 def test_tenant(integration_db):
     """Create a test tenant."""
-    from datetime import UTC, datetime
-
     from src.core.database.database_session import get_db_session
-    from src.core.database.models import Tenant
+    from tests.utils.database_helpers import create_tenant_with_timestamps
 
     with get_db_session() as session:
         # Create a test tenant
-        now = datetime.now(UTC)
-        tenant = Tenant(
+        tenant = create_tenant_with_timestamps(
             tenant_id="test_tenant",
             name="Test Tenant",
             subdomain="test",
@@ -62,8 +60,6 @@ def test_tenant(integration_db):
             human_review_required=False,
             billing_plan="basic",
             is_active=True,
-            created_at=now,
-            updated_at=now,
         )
         session.add(tenant)
         session.commit()

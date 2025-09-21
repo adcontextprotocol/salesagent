@@ -9,7 +9,7 @@ This guide explains the different types of testing available in the AdCP Sales A
 | **E2E Tests** | Automated protocol validation | CI/CD, regression testing | `tests/e2e/` |
 | **Simulations** | Developer tools & demos | Manual testing, debugging | `tools/simulations/` |
 | **Unit Tests** | Individual component testing | Development, fast feedback | `tests/unit/` |
-| **Integration Tests** | Database & service integration | Database changes, API testing | `tests/integration/` |
+| **Integration Tests** | Database & service integration | Database changes, API testing, field access validation | `tests/integration/` |
 
 ## 🚀 Quick Start
 
@@ -62,6 +62,22 @@ uv run pytest tests/e2e/test_adcp_full_lifecycle.py::TestAdCPFullLifecycle::test
   - 🔧 **Debugging** - shows exactly what APIs would be called in production
   - 🎯 **Interactive** - can be run manually to explore functionality
 - **Example**: Shows a complete campaign from planning → buying → creatives → delivery
+
+## 🗃️ Database Field Access Testing
+
+### **Integration Tests** (`tests/integration/test_*database*`, `test_*schema*`)
+- **Purpose**: Prevent database field access bugs like `'Product' object has no attribute 'pricing'`
+- **Characteristics**:
+  - 🗃️ **Real database connections** - tests actual ORM to schema conversion
+  - 🔍 **Field alignment validation** - ensures schema fields map to database columns
+  - 🛡️ **AttributeError prevention** - catches field access bugs in development
+  - ⚡ **Pre-commit hook validation** - automated prevention of field misalignment
+- **Key files**:
+  - `test_get_products_database_integration.py` - Real database conversion testing
+  - `test_schema_database_mapping.py` - Field alignment validation
+  - `test_a2a_real_data_flow.py` - End-to-end data flow testing
+
+**Learn more**: [Testing Guide - Database Field Access Testing](../testing.md#database-field-access-testing)
 
 ## 📂 Directory Structure
 

@@ -132,6 +132,90 @@ with get_db_session() as session:
 - `get_db_connection()` creates new connection each time - thread-safe
 - Never share sessions/connections between threads
 
+## Field Access Safety Testing
+
+### Safe Field Access Patterns
+
+When accessing database model fields, use these patterns to prevent AttributeError bugs:
+
+```python
+# ✅ GOOD - Direct access for known required fields
+tenant_id = product.tenant_id
+product_name = product.name
+
+# ✅ GOOD - Conditional access for optional fields
+cpm = getattr(product, 'cpm', None)
+min_spend = getattr(product, 'min_spend', 0.0)
+
+# ✅ GOOD - Check field existence before access
+if hasattr(product, 'expires_at'):
+    expiry = product.expires_at
+
+# ✅ GOOD - Safe dict-style access
+product_dict = {
+    'product_id': product.product_id,
+    'name': product.name,
+    'cpm': product.cpm if hasattr(product, 'cpm') else None
+}
+```
+
+### Unsafe Field Access Patterns
+
+Avoid these patterns that can cause production AttributeError bugs:
+
+```python
+# ❌ BAD - Accessing non-existent fields
+pricing = product.pricing  # Field doesn't exist in database
+
+# ❌ BAD - Assuming computed fields exist in database
+format_ids = product.format_ids  # This is a schema property, not DB field
+
+# ❌ BAD - Not checking for None values
+amount = float(product.cpm)  # Fails if cpm is None
+
+# ❌ BAD - Generic attribute access without validation
+for field in ['pricing', 'cost', 'margin']:
+    value = getattr(product, field)  # May not exist
+```
+
+### Testing Field Access
+
+Integration tests should validate that database fields are accessed safely:
+
+```python
+def test_product_field_access_safety(self):
+    with get_db_session() as session:
+        product = session.query(ProductModel).first()
+        
+        # Test that safe fields exist
+        assert hasattr(product, 'product_id')
+        assert hasattr(product, 'name')
+        assert hasattr(product, 'cpm')
+        
+        # Test that unsafe fields don't exist
+        assert not hasattr(product, 'pricing')
+        assert not hasattr(product, 'format_ids')
+        assert not hasattr(product, 'cost')
+        
+        # Test safe access patterns work
+        cpm_value = getattr(product, 'cpm', None)
+        # This shouldn't raise an exception
+```
+
+### Field Validation Pre-commit Hook
+
+The `schema-database-alignment` pre-commit hook automatically prevents field access bugs:
+
+```bash
+# Validates field alignment before commits
+pre-commit run schema-database-alignment
+
+# Check manually
+uv run python scripts/validate_schema_database_alignment.py
+```
+
+For comprehensive database field access testing strategies, see [Testing Guide - Database Field Access Testing](testing.md#database-field-access-testing).
+
 ## Database Configuration
 
 ### Environment Variables

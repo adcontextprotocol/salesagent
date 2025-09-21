@@ -1038,6 +1038,86 @@ uv run pytest tests/unit/test_adcp_contract.py --cov=src.core.schemas --cov-repo
 - **🚨 ZERO HARDCODED IDs**: NO hardcoded external system IDs (GAM, Kevel, etc.) in code - use configuration/database only
 - **🛡️ TEST SAFETY**: Never test against production systems - use dedicated test configuration files (e.g., `.gam-test-config.json`) with validation
 
+### 🚨 Schema Alignment Prevention - CRITICAL FOR DATABASE/ORM CONSISTENCY 🚨
+
+**CRITICAL LESSON**: ORM Model ↔ Database Schema mismatches cause production `AttributeError` failures and CI/CD instability.
+
+**MANDATORY Prevention Practices:**
+
+1. **Always Use `attributes.flag_modified()` for JSONB Updates**:
+   ```python
+   # ✅ CORRECT - SQLAlchemy detects JSONB changes
+   from sqlalchemy.orm import attributes
+   existing_creative.data.update(new_data)
+   attributes.flag_modified(existing_creative, 'data')
+   session.commit()
+
+   # ❌ WRONG - Changes not persisted to database
+   existing_creative.data.update(new_data)
+   session.commit()  # SQLAlchemy doesn't detect JSONB mutations
+   ```
+
+2. **Schema Evolution Pattern - Update All Three Layers**:
+   ```python
+   # When refactoring models, update ALL layers:
+   # 1. Database Schema (via Alembic migration)
+   # 2. ORM Model (src/core/database/models.py)
+   # 3. MCP Tools (src/core/main.py)
+   # 4. Test Files (tests/integration/)
+   ```
+
+3. **Pre-Commit Schema Validation**:
+   - Use `scripts/validate_schema_database_alignment.py` to catch field mismatches
+   - Pre-commit hook runs on changes to `schemas.py` and `models.py`
+   - Validates field consistency between ORM and Pydantic models
+
+4. **Testing Pattern for Schema Changes**:
+   ```python
+   # Test BOTH model creation AND updates
+   def test_creative_schema_alignment():
+       # Test field access patterns used in production
+       creative = DBCreative(format="video", data={"url": "test.mp4"})
+       assert creative.format == "video"  # Direct field
+       assert creative.data.get("url") == "test.mp4"  # JSONB field
+
+       # Test update patterns with flag_modified
+       creative.data["width"] = 1920
+       attributes.flag_modified(creative, 'data')
+       session.commit()
+   ```
+
+5. **Critical Field Access Patterns**:
+   - **Direct fields**: `creative.format`, `creative.tenant_id`, `creative.created_at`
+   - **JSONB fields**: `creative.data.get("url")`, `creative.data.get("width")`
+   - **NEVER**: `creative.format_id` (deprecated field removed in schema evolution)
+
+**Common Schema Alignment Issues:**
+- ❌ `AttributeError: 'Creative' object has no attribute 'format_id'` - Field removed in schema migration
+- ❌ `AttributeError: 'str' object has no attribute 'get'` - Wrong data type assumptions
+- ❌ JSONB updates not persisting - Missing `attributes.flag_modified()`
+- ❌ Tests passing locally but failing in CI - Schema drift between environments
+
+**When Refactoring Models:**
+1. ✅ **Plan the migration**: Document old → new field mappings
+2. ✅ **Update database schema**: Create Alembic migration first
+3. ✅ **Update ORM model**: Align with new database schema exactly
+4. ✅ **Update all usage**: Search codebase for old field names
+5. ✅ **Update tests**: Align test data with new schema
+6. ✅ **Test JSONB mutation patterns**: Verify `attributes.flag_modified()` usage
+7. ✅ **Run schema validation**: Use pre-commit hook to validate alignment
+
+**Schema Validation Commands:**
+```bash
+# Run schema alignment validation
+uv run python scripts/validate_schema_database_alignment.py --quiet
+
+# Run comprehensive integration tests
+uv run pytest tests/integration/test_schema_database_mapping.py -v
+
+# Check all Creative-related tests
+uv run pytest -k "creative" tests/integration/ -v
+```
+
 ### ⛔ NO QUIET FAILURES - CONTRACT FULFILLMENT POLICY
 
 **CRITICAL**: We NEVER quietly fail or skip requested features. This is a CONTRACT VIOLATION with buyers.

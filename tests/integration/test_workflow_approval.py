@@ -10,6 +10,7 @@ import pytest
 from src.core.context_manager import ContextManager
 from src.core.database.database_session import get_db_session
 from src.core.database.models import Context, ObjectWorkflowMapping, WorkflowStep
+from tests.utils.database_helpers import get_utc_now
 
 
 @pytest.mark.integration
@@ -42,7 +43,7 @@ class TestWorkflowApproval:
             tenant_id=tenant_id,
             principal_id=principal_id,
             initial_conversation=[
-                {"role": "user", "content": "Create a media buy", "timestamp": datetime.now(UTC).isoformat()}
+                {"role": "user", "content": "Create a media buy", "timestamp": get_utc_now().isoformat()}
             ],
         )
 

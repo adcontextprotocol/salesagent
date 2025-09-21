@@ -314,6 +314,118 @@ class TestFeatureName:
 6. **Keep tests focused** - one assertion per test when possible
 7. **Use descriptive names** that explain what is being tested
 
+## Database Field Access Testing
+
+This section addresses comprehensive testing strategies to prevent database field access bugs like the `'Product' object has no attribute 'pricing'` error that reached production (Issue #161).
+
+### Problem Statement
+
+Over-mocking of the database layer can hide real field access bugs:
+- Tests mock ORM objects instead of using real database connections
+- Schema validation happens after field access errors occur
+- Missing integration between database and schema layers
+
+### Testing Strategy
+
+Our approach uses four complementary testing methods:
+
+1. **Database Integration Tests** - Test actual ORM model to schema conversion with real database
+2. **Schema-Database Mapping Validation** - Validate that schema fields align with database columns
+3. **Real Data Flow Tests** - End-to-end testing with minimal mocking
+4. **Pre-commit Hook Validation** - Automated prevention of field misalignment
+
+### Key Test Files
+
+- `tests/integration/test_get_products_database_integration.py` - Real database conversion testing
+- `tests/integration/test_schema_database_mapping.py` - Field alignment validation
+- `tests/integration/test_a2a_real_data_flow.py` - End-to-end data flow testing
+
+### Recommended Testing Patterns
+
+#### ❌ Problematic Pattern (Over-Mocking)
+```python
+@patch('product_catalog_providers.database.ProductModel')
+def test_get_products(self, mock_product_model):
+    mock_product = Mock()
+    mock_product.pricing = 5.00  # Mock allows any attribute
+    mock_product_model.query.return_value = [mock_product]
+    
+    # Test passes even though real ProductModel has no 'pricing' field
+    result = get_products()
+    assert result[0].pricing == 5.00
+```
+
+#### ✅ Better Pattern (Database Integration)
+```python
+def test_get_products_real_database(self, test_tenant_setup):
+    # Use real database connection
+    with get_db_session() as session:
+        db_product = session.query(ProductModel).first()
+        
+        # This would fail if 'pricing' field doesn't exist
+        assert hasattr(db_product, 'cpm')  # Real field
+        assert not hasattr(db_product, 'pricing')  # Non-existent field
+        
+        # Test actual conversion
+        catalog = DatabaseProductCatalog()
+        products = await catalog.get_products(brief="test", tenant_id=tenant_id)
+        assert products[0].cpm == 5.00  # Real field access
+```
+
+### Safe Field Access Patterns
+
+When working with database models, use these patterns to avoid AttributeError:
+
+```python
+# Pattern 1: Direct access for known required fields
+assert product.product_id == 'expected_id'
+
+# Pattern 2: Conditional access for optional fields  
+cpm = getattr(product, 'cpm', None)
+
+# Pattern 3: Check field existence before access
+if hasattr(product, 'brief_relevance'):
+    relevance = product.brief_relevance
+
+# Pattern 4: Use model_dump() for safe dict access
+product_dict = product.model_dump()
+field_value = product_dict.get('optional_field')
+```
+
+### Running Database Field Access Tests
+
+```bash
+# All database field access tests
+uv run pytest tests/integration/test_*database* tests/integration/test_*schema* -v
+
+# Specific test files
+uv run pytest tests/integration/test_get_products_database_integration.py -v
+uv run pytest tests/integration/test_schema_database_mapping.py -v
+
+# Field alignment validation (pre-commit hook)
+uv run python scripts/validate_schema_database_alignment.py
+```
+
+### Pre-commit Hook Validation
+
+The `schema-database-alignment` hook automatically validates field alignment:
+- Runs when `src/core/schemas.py` or `src/core/database/models.py` change
+- Prevents commits with missing database fields for schema properties
+- Checks for unsafe field access patterns in code
+
+### Troubleshooting Field Access Issues
+
+**Error**: `'Product' object has no attribute 'pricing'`
+**Solution**: Use the correct field name (`cpm`) or add the field to the database schema
+
+**Error**: Schema validation fails with database data
+**Solution**: Check field type conversions (e.g., `Decimal` → `float`) in the database provider
+
+**Error**: Pre-commit hook fails with field alignment issues
+**Solution**: Either add missing database columns or mark schema fields as `computed_fields`
+
+For additional database field access safety patterns, see [Database Patterns - Field Access Safety](database-patterns.md#field-access-safety-testing).
+
 ### Integration Test Authentication
 
 When writing integration tests that need authentication:
