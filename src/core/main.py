@@ -39,7 +39,6 @@ from src.core.config_loader import (
     get_current_tenant,
     get_tenant_by_virtual_host,
     load_config,
-    safe_json_loads,
     set_current_tenant,
 )
 from src.core.context_manager import get_context_manager
@@ -961,7 +960,25 @@ def list_creative_formats(context: Context) -> ListCreativeFormatsResponse:
     log_tool_activity(context, "list_creative_formats", start_time)
 
     message = f"Found {len(formats)} creative formats across {len({f.type for f in formats})} format types"
-    return ListCreativeFormatsResponse(formats=formats, message=message, specification_version="AdCP v2.4")
+
+    # Create response with schema validation metadata
+    response = ListCreativeFormatsResponse(formats=formats, message=message, specification_version="AdCP v2.4")
+
+    # Add schema validation metadata for client validation
+    from src.core.schema_validation import INCLUDE_SCHEMAS_IN_RESPONSES, enhance_mcp_response_with_schema
+
+    if INCLUDE_SCHEMAS_IN_RESPONSES:
+        # Convert to dict, enhance with schema, return enhanced dict
+        response_dict = response.model_dump()
+        enhanced_response = enhance_mcp_response_with_schema(
+            response_data=response_dict,
+            model_class=ListCreativeFormatsResponse,
+            include_full_schema=False,  # Set to True for development debugging
+        )
+        # Return the enhanced response (FastMCP handles dict returns)
+        return enhanced_response
+
+    return response
 
 
 @mcp.tool
@@ -3353,6 +3370,129 @@ async def health(request: Request):
     return JSONResponse({"status": "healthy", "service": "mcp"})
 
 
+@mcp.custom_route("/debug/root", methods=["GET"])
+async def debug_root(request: Request):
+    """Debug endpoint to test root route logic without redirects."""
+    headers = dict(request.headers)
+
+    # Check for Apx-Incoming-Host header (Approximated.app virtual host)
+    # Try both capitalized and lowercase versions since HTTP header names are case-insensitive
+    apx_host = headers.get("apx-incoming-host") or headers.get("Apx-Incoming-Host")
+    # Also check standard Host header for direct virtual hosts
+    host_header = headers.get("host") or headers.get("Host")
+
+    virtual_host = apx_host or host_header
+
+    # Get tenant
+    tenant = get_tenant_by_virtual_host(virtual_host) if virtual_host else None
+
+    debug_info = {
+        "all_headers": headers,
+        "apx_host": apx_host,
+        "host_header": host_header,
+        "virtual_host": virtual_host,
+        "tenant_found": tenant is not None,
+        "tenant_id": tenant.get("tenant_id") if tenant else None,
+        "tenant_name": tenant.get("name") if tenant else None,
+    }
+
+    # Also test landing page generation
+    if tenant:
+        try:
+            html_content = generate_tenant_landing_page(tenant, virtual_host)
+            debug_info["landing_page_generated"] = True
+            debug_info["landing_page_length"] = len(html_content)
+        except Exception as e:
+            debug_info["landing_page_generated"] = False
+            debug_info["landing_page_error"] = str(e)
+
+    return JSONResponse(debug_info)
+
+
+@mcp.custom_route("/debug/landing", methods=["GET"])
+async def debug_landing(request: Request):
+    """Debug endpoint to test landing page generation directly."""
+    headers = dict(request.headers)
+
+    # Same logic as root route
+    apx_host = headers.get("apx-incoming-host") or headers.get("Apx-Incoming-Host")
+    host_header = headers.get("host") or headers.get("Host")
+    virtual_host = apx_host or host_header
+
+    if virtual_host:
+        tenant = get_tenant_by_virtual_host(virtual_host)
+        if tenant:
+            try:
+                html_content = generate_tenant_landing_page(tenant, virtual_host)
+                return HTMLResponse(content=html_content)
+            except Exception as e:
+                return JSONResponse({"error": f"Landing page generation failed: {e}"}, status_code=500)
+
+    return JSONResponse({"error": "No tenant found"}, status_code=404)
+
+
+@mcp.custom_route("/debug/root-logic", methods=["GET"])
+async def debug_root_logic(request: Request):
+    """Debug endpoint that exactly mimics the root route logic for testing."""
+    headers = dict(request.headers)
+
+    # Exact same logic as root route
+    apx_host = headers.get("apx-incoming-host") or headers.get("Apx-Incoming-Host")
+    host_header = headers.get("host") or headers.get("Host")
+    virtual_host = apx_host or host_header
+
+    debug_info = {"step": "initial", "virtual_host": virtual_host, "apx_host": apx_host, "host_header": host_header}
+
+    if virtual_host:
+        debug_info["step"] = "virtual_host_found"
+
+        # First try to look up tenant by exact virtual host match
+        tenant = get_tenant_by_virtual_host(virtual_host)
+        debug_info["exact_tenant_lookup"] = tenant is not None
+
+        # If no exact match, check for domain-based routing patterns
+        if not tenant and ".sales-agent.scope3.com" in virtual_host and not virtual_host.startswith("admin."):
+            debug_info["step"] = "subdomain_fallback"
+            subdomain = virtual_host.split(".sales-agent.scope3.com")[0]
+            debug_info["extracted_subdomain"] = subdomain
+
+            # This is the fallback logic we don't need for test-agent
+            try:
+                with get_db_session() as db_session:
+                    tenant_obj = db_session.query(Tenant).filter_by(subdomain=subdomain, is_active=True).first()
+                    if tenant_obj:
+                        debug_info["subdomain_tenant_found"] = True
+                        # Build tenant dict...
+                    else:
+                        debug_info["subdomain_tenant_found"] = False
+            except Exception as e:
+                debug_info["subdomain_error"] = str(e)
+
+        if tenant:
+            debug_info["step"] = "tenant_found"
+            debug_info["tenant_id"] = tenant.get("tenant_id")
+            debug_info["tenant_name"] = tenant.get("name")
+
+            # Try landing page generation
+            try:
+                html_content = generate_tenant_landing_page(tenant, virtual_host)
+                debug_info["step"] = "landing_page_success"
+                debug_info["landing_page_length"] = len(html_content)
+                debug_info["would_return"] = "HTMLResponse"
+            except Exception as e:
+                debug_info["step"] = "landing_page_error"
+                debug_info["error"] = str(e)
+                debug_info["would_return"] = "fallback HTMLResponse"
+        else:
+            debug_info["step"] = "no_tenant_found"
+            debug_info["would_return"] = "redirect to /admin/"
+    else:
+        debug_info["step"] = "no_virtual_host"
+        debug_info["would_return"] = "redirect to /admin/"
+
+    return JSONResponse(debug_info)
+
+
 @mcp.custom_route("/health/config", methods=["GET"])
 async def health_config(request: Request):
     """Configuration health check endpoint."""
@@ -3375,7 +3515,9 @@ async def health_config(request: Request):
 
 
 # Add admin UI routes when running unified
-if os.environ.get("ADCP_UNIFIED_MODE"):
+unified_mode = os.environ.get("ADCP_UNIFIED_MODE")
+logger.info(f"STARTUP: ADCP_UNIFIED_MODE = '{unified_mode}' (type: {type(unified_mode)})")
+if unified_mode:
     from fastapi.middleware.wsgi import WSGIMiddleware
     from fastapi.responses import HTMLResponse, RedirectResponse
 
@@ -3387,68 +3529,98 @@ if os.environ.get("ADCP_UNIFIED_MODE"):
     # Create WSGI middleware for Flask app
     admin_wsgi = WSGIMiddleware(flask_admin_app)
 
-    @mcp.custom_route("/", methods=["GET"])
-    async def root(request: Request):
-        """Handle root route - show landing page for virtual hosts, redirect to admin for others."""
+    logger.info("STARTUP: Registering unified mode routes...")
+
+    logger.info("STARTUP: ADCP_UNIFIED_MODE enabled, registering routes...")
+
+    async def handle_landing_page(request: Request):
+        """Common landing page logic for both root and /landing routes."""
         headers = dict(request.headers)
+        apx_host = headers.get("apx-incoming-host") or headers.get("Apx-Incoming-Host")
 
-        # Check for Apx-Incoming-Host header (Approximated.app virtual host)
-        apx_host = headers.get("apx-incoming-host")
-        # Also check standard Host header for direct virtual hosts
-        host_header = headers.get("host")
-
-        virtual_host = apx_host or host_header
-
-        if virtual_host:
-            # First try to look up tenant by exact virtual host match
-            tenant = get_tenant_by_virtual_host(virtual_host)
-
-            # If no exact match, check for sales-agent.scope3.com subdomain routing
-            if not tenant and ".sales-agent.scope3.com" in virtual_host and not virtual_host.startswith("admin."):
-                # Extract subdomain (e.g., "wonderstruck" from "wonderstruck.sales-agent.scope3.com")
-                subdomain = virtual_host.split(".sales-agent.scope3.com")[0]
-
-                # Look up tenant by subdomain
-                try:
-                    with get_db_session() as db_session:
-                        tenant_obj = db_session.query(Tenant).filter_by(subdomain=subdomain, is_active=True).first()
-                        if tenant_obj:
-                            tenant = {
-                                "tenant_id": tenant_obj.tenant_id,
-                                "name": tenant_obj.name,
-                                "subdomain": tenant_obj.subdomain,
-                                "virtual_host": tenant_obj.virtual_host,
-                                "ad_server": tenant_obj.ad_server,
-                                "max_daily_budget": tenant_obj.max_daily_budget,
-                                "enable_axe_signals": tenant_obj.enable_axe_signals,
-                                "authorized_emails": safe_json_loads(tenant_obj.authorized_emails, []),
-                                "authorized_domains": safe_json_loads(tenant_obj.authorized_domains, []),
-                                "slack_webhook_url": tenant_obj.slack_webhook_url,
-                                "admin_token": tenant_obj.admin_token,
-                                "auto_approve_formats": safe_json_loads(tenant_obj.auto_approve_formats, []),
-                                "human_review_required": tenant_obj.human_review_required,
-                                "is_active": tenant_obj.is_active,
-                                "created_at": tenant_obj.created_at,
-                                "updated_at": tenant_obj.updated_at,
-                            }
-                except Exception as e:
-                    logger.error(f"Error looking up tenant by subdomain {subdomain}: {e}")
+        # Check if this is an external domain request
+        if apx_host and apx_host.endswith(".adcontextprotocol.org"):
+            # Look up tenant by virtual host
+            tenant = get_tenant_by_virtual_host(apx_host)
 
             if tenant:
-                # Generate enhanced landing page using dedicated module
+                # Generate tenant landing page
                 try:
-                    html_content = generate_tenant_landing_page(tenant, virtual_host)
+                    html_content = generate_tenant_landing_page(tenant, apx_host)
                     return HTMLResponse(content=html_content)
                 except Exception as e:
-                    logger.error(f"Error generating landing page for tenant {tenant.get('name', 'unknown')}: {e}")
-                    # Fallback to simple error page
-                    from src.landing.landing_page import generate_fallback_landing_page
+                    logger.error(f"Error generating landing page: {e}", exc_info=True)
+                    return HTMLResponse(
+                        content=f"""
+                    <html>
+                    <body>
+                    <h1>Welcome to {tenant.get('name', 'AdCP Sales Agent')}</h1>
+                    <p>This is a sales agent for advertising inventory.</p>
+                    <p>Domain: {apx_host}</p>
+                    </body>
+                    </html>
+                    """
+                    )
 
-                    fallback_content = generate_fallback_landing_page("Unable to load landing page")
-                    return HTMLResponse(content=fallback_content)
+        # Check if this is a subdomain request
+        if apx_host and ".sales-agent.scope3.com" in apx_host:
+            # Extract subdomain from apx_host
+            subdomain = apx_host.split(".sales-agent.scope3.com")[0]
 
-        # Default behavior: redirect to admin
-        return RedirectResponse(url="/admin/")
+            # Look up tenant by subdomain
+            try:
+                with get_db_session() as db_session:
+                    tenant_obj = db_session.query(Tenant).filter_by(subdomain=subdomain, is_active=True).first()
+                    if tenant_obj:
+                        tenant = {
+                            "tenant_id": tenant_obj.tenant_id,
+                            "name": tenant_obj.name,
+                            "subdomain": tenant_obj.subdomain,
+                            "virtual_host": tenant_obj.virtual_host,
+                        }
+                        # Generate tenant landing page for subdomain
+                        try:
+                            html_content = generate_tenant_landing_page(tenant, apx_host)
+                            return HTMLResponse(content=html_content)
+                        except Exception as e:
+                            logger.error(f"Error generating subdomain landing page: {e}", exc_info=True)
+                            return HTMLResponse(
+                                content=f"""
+                            <html>
+                            <body>
+                            <h1>Welcome to {tenant.get('name', 'AdCP Sales Agent')}</h1>
+                            <p>Subdomain: {apx_host}</p>
+                            </body>
+                            </html>
+                            """
+                            )
+            except Exception as e:
+                logger.error(f"Error looking up subdomain {subdomain}: {e}")
+
+        # Fallback for unrecognized domains
+        return HTMLResponse(
+            content=f"""
+        <html>
+        <body>
+        <h1>🎉 LANDING PAGE WORKING!</h1>
+        <p>Domain: {apx_host}</p>
+        <p>Success! The landing page is working.</p>
+        </body>
+        </html>
+        """
+        )
+
+    @mcp.custom_route("/", methods=["GET"])
+    async def root(request: Request):
+        """Root route handler for all domains."""
+        return await handle_landing_page(request)
+
+    @mcp.custom_route("/landing", methods=["GET"])
+    async def landing_page(request: Request):
+        """Landing page route for external domains."""
+        return await handle_landing_page(request)
+
+    logger.info("STARTUP: Registered root route")
 
     @mcp.custom_route(
         "/admin/{path:path}",

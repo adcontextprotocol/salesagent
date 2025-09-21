@@ -60,11 +60,15 @@ from src.core.config_loader import get_current_tenant
 from src.core.schemas import (
     CreateMediaBuyRequest,
     GetSignalsRequest,
+    ListAuthorizedPropertiesRequest,
 )
 from src.core.testing_hooks import TestingContext
 from src.core.tool_context import ToolContext
 from src.core.tools import (
     create_media_buy_raw as core_create_media_buy_tool,
+)
+from src.core.tools import (
+    get_media_buy_delivery_raw as core_get_media_buy_delivery_tool,
 )
 from src.core.tools import (
     get_products_raw as core_get_products_tool,
@@ -73,10 +77,22 @@ from src.core.tools import (
     get_signals_raw as core_get_signals_tool,
 )
 from src.core.tools import (
+    list_authorized_properties_raw as core_list_authorized_properties_tool,
+)
+from src.core.tools import (
+    list_creative_formats_raw as core_list_creative_formats_tool,
+)
+from src.core.tools import (
     list_creatives_raw as core_list_creatives_tool,
 )
 from src.core.tools import (
     sync_creatives_raw as core_sync_creatives_tool,
+)
+from src.core.tools import (
+    update_media_buy_raw as core_update_media_buy_tool,
+)
+from src.core.tools import (
+    update_performance_index_raw as core_update_performance_index_tool,
 )
 
 # Configure logging
@@ -631,6 +647,13 @@ class AdCPRequestHandler(RequestHandler):
             # Core AdCP Media Buy Skills
             "get_products": self._handle_get_products_skill,
             "create_media_buy": self._handle_create_media_buy_skill,
+            # ✅ NEW: Missing AdCP Discovery Skills (CRITICAL for protocol compliance)
+            "list_creative_formats": self._handle_list_creative_formats_skill,
+            "list_authorized_properties": self._handle_list_authorized_properties_skill,
+            # ✅ NEW: Missing Media Buy Management Skills (CRITICAL for campaign lifecycle)
+            "update_media_buy": self._handle_update_media_buy_skill,
+            "get_media_buy_delivery": self._handle_get_media_buy_delivery_skill,
+            "update_performance_index": self._handle_update_performance_index_skill,
             # AdCP Spec Creative Management (centralized library approach)
             "sync_creatives": self._handle_sync_creatives_skill,
             "list_creatives": self._handle_list_creatives_skill,
@@ -1087,6 +1110,180 @@ class AdCPRequestHandler(RequestHandler):
             "parameters_received": parameters,
         }
 
+    async def _handle_list_creative_formats_skill(self, parameters: dict, auth_token: str) -> dict:
+        """Handle explicit list_creative_formats skill invocation (CRITICAL AdCP endpoint)."""
+        try:
+            # Create ToolContext from A2A auth info
+            tool_context = self._create_tool_context_from_a2a(
+                auth_token=auth_token,
+                tool_name="list_creative_formats",
+            )
+
+            # Call core function directly - no parameters needed for this endpoint
+            response = core_list_creative_formats_tool(context=tool_context)
+
+            # Convert response to A2A format with schema validation
+            from src.core.schema_validation import INCLUDE_SCHEMAS_IN_RESPONSES, enhance_a2a_response_with_schema
+
+            a2a_response = {
+                "success": True,
+                "formats": [format_obj.model_dump() for format_obj in response.formats],
+                "message": response.message or "Creative formats retrieved successfully",
+                "total_count": len(response.formats),
+                "specification_version": "AdCP v2.4",
+            }
+
+            # Add schema validation metadata for client validation
+            if INCLUDE_SCHEMAS_IN_RESPONSES:
+                from src.core.schemas import ListCreativeFormatsResponse
+
+                enhanced_response = enhance_a2a_response_with_schema(
+                    response_data=a2a_response,
+                    model_class=ListCreativeFormatsResponse,
+                    include_full_schema=False,  # Set to True for development debugging
+                )
+                return enhanced_response
+
+            return a2a_response
+
+        except Exception as e:
+            logger.error(f"Error in list_creative_formats skill: {e}")
+            raise ServerError(InternalError(message=f"Unable to retrieve creative formats: {str(e)}"))
+
+    async def _handle_list_authorized_properties_skill(self, parameters: dict, auth_token: str) -> dict:
+        """Handle explicit list_authorized_properties skill invocation (CRITICAL AdCP endpoint)."""
+        try:
+            # Create ToolContext from A2A auth info
+            tool_context = self._create_tool_context_from_a2a(
+                auth_token=auth_token,
+                tool_name="list_authorized_properties",
+            )
+
+            # Map A2A parameters to ListAuthorizedPropertiesRequest
+            request = ListAuthorizedPropertiesRequest(tags=parameters.get("tags", []))
+
+            # Call core function directly
+            response = core_list_authorized_properties_tool(req=request, context=tool_context)
+
+            # Convert response to A2A format
+            return {
+                "success": True,
+                "properties": [prop.model_dump() for prop in response.properties],
+                "tag_definitions": response.tag_definitions,
+                "message": response.message or "Authorized properties retrieved successfully",
+                "total_count": len(response.properties),
+            }
+
+        except Exception as e:
+            logger.error(f"Error in list_authorized_properties skill: {e}")
+            raise ServerError(InternalError(message=f"Unable to retrieve authorized properties: {str(e)}"))
+
+    async def _handle_update_media_buy_skill(self, parameters: dict, auth_token: str) -> dict:
+        """Handle explicit update_media_buy skill invocation (CRITICAL for campaign management)."""
+        try:
+            # Create ToolContext from A2A auth info
+            tool_context = self._create_tool_context_from_a2a(
+                auth_token=auth_token,
+                tool_name="update_media_buy",
+            )
+
+            # Validate required parameters
+            if "media_buy_id" not in parameters:
+                return {
+                    "success": False,
+                    "message": "Missing required parameter: 'media_buy_id'",
+                    "required_parameters": ["media_buy_id", "updates"],
+                    "received_parameters": list(parameters.keys()),
+                }
+
+            if "updates" not in parameters:
+                return {
+                    "success": False,
+                    "message": "Missing required parameter: 'updates'",
+                    "required_parameters": ["media_buy_id", "updates"],
+                    "received_parameters": list(parameters.keys()),
+                }
+
+            # Call core function directly
+            response = core_update_media_buy_tool(
+                media_buy_id=parameters["media_buy_id"],
+                updates=parameters["updates"],
+                context=tool_context,
+            )
+
+            # Convert response to A2A format
+            return response  # Raw function already returns dict format
+
+        except Exception as e:
+            logger.error(f"Error in update_media_buy skill: {e}")
+            raise ServerError(InternalError(message=f"Unable to update media buy: {str(e)}"))
+
+    async def _handle_get_media_buy_delivery_skill(self, parameters: dict, auth_token: str) -> dict:
+        """Handle explicit get_media_buy_delivery skill invocation (CRITICAL for monitoring)."""
+        try:
+            # Create ToolContext from A2A auth info
+            tool_context = self._create_tool_context_from_a2a(
+                auth_token=auth_token,
+                tool_name="get_media_buy_delivery",
+            )
+
+            # Validate required parameters
+            if "media_buy_id" not in parameters:
+                return {
+                    "success": False,
+                    "message": "Missing required parameter: 'media_buy_id'",
+                    "required_parameters": ["media_buy_id"],
+                    "received_parameters": list(parameters.keys()),
+                }
+
+            # Call core function directly
+            response = core_get_media_buy_delivery_tool(
+                media_buy_id=parameters["media_buy_id"],
+                context=tool_context,
+            )
+
+            # Convert response to A2A format
+            return response  # Raw function already returns dict format
+
+        except Exception as e:
+            logger.error(f"Error in get_media_buy_delivery skill: {e}")
+            raise ServerError(InternalError(message=f"Unable to get media buy delivery: {str(e)}"))
+
+    async def _handle_update_performance_index_skill(self, parameters: dict, auth_token: str) -> dict:
+        """Handle explicit update_performance_index skill invocation (CRITICAL for optimization)."""
+        try:
+            # Create ToolContext from A2A auth info
+            tool_context = self._create_tool_context_from_a2a(
+                auth_token=auth_token,
+                tool_name="update_performance_index",
+            )
+
+            # Validate required parameters
+            required_params = ["media_buy_id", "performance_data"]
+            missing_params = [param for param in required_params if param not in parameters]
+
+            if missing_params:
+                return {
+                    "success": False,
+                    "message": f"Missing required parameters: {missing_params}",
+                    "required_parameters": required_params,
+                    "received_parameters": list(parameters.keys()),
+                }
+
+            # Call core function directly
+            response = core_update_performance_index_tool(
+                media_buy_id=parameters["media_buy_id"],
+                performance_data=parameters["performance_data"],
+                context=tool_context,
+            )
+
+            # Convert response to A2A format
+            return response  # Raw function already returns dict format
+
+        except Exception as e:
+            logger.error(f"Error in update_performance_index skill: {e}")
+            raise ServerError(InternalError(message=f"Unable to update performance index: {str(e)}"))
+
     async def _get_products(self, query: str, auth_token: str) -> dict:
         """Get available advertising products by calling core functions directly.
 
@@ -1288,7 +1485,7 @@ def create_agent_card() -> AgentCard:
         defaultInputModes=["message"],
         defaultOutputModes=["message"],
         skills=[
-            # Core AdCP Media Buy Skills (6 total)
+            # Core AdCP Media Buy Skills
             AgentSkill(
                 id="get_products",
                 name="get_products",
@@ -1300,6 +1497,38 @@ def create_agent_card() -> AgentCard:
                 name="create_media_buy",
                 description="Create advertising campaigns with products, targeting, and budget",
                 tags=["campaign", "media", "buy", "adcp"],
+            ),
+            # ✅ NEW: Critical AdCP Discovery Endpoints (REQUIRED for protocol compliance)
+            AgentSkill(
+                id="list_creative_formats",
+                name="list_creative_formats",
+                description="List all available creative formats and specifications",
+                tags=["creative", "formats", "specs", "discovery", "adcp"],
+            ),
+            AgentSkill(
+                id="list_authorized_properties",
+                name="list_authorized_properties",
+                description="List authorized properties this agent can sell advertising for",
+                tags=["properties", "authorization", "publisher", "adcp"],
+            ),
+            # ✅ NEW: Media Buy Management Skills (CRITICAL for campaign lifecycle)
+            AgentSkill(
+                id="update_media_buy",
+                name="update_media_buy",
+                description="Update existing media buy configuration and settings",
+                tags=["campaign", "update", "management", "adcp"],
+            ),
+            AgentSkill(
+                id="get_media_buy_delivery",
+                name="get_media_buy_delivery",
+                description="Get delivery metrics and performance data for media buys",
+                tags=["delivery", "metrics", "performance", "monitoring", "adcp"],
+            ),
+            AgentSkill(
+                id="update_performance_index",
+                name="update_performance_index",
+                description="Update performance data and optimization metrics",
+                tags=["performance", "optimization", "metrics", "adcp"],
             ),
             # AdCP Spec Creative Management (centralized library approach)
             AgentSkill(
@@ -1392,6 +1621,69 @@ def main():
         extended_agent_card_url="/agent.json",
     )
 
+    # Override the agent card endpoints to support tenant-specific URLs
+    def create_dynamic_agent_card(request) -> AgentCard:
+        """Create agent card with tenant-specific URL from request headers."""
+        # Debug logging
+        logger.info(f"Agent card request headers: {dict(request.headers)}")
+
+        # Check for Approximated routing first (takes priority)
+        apx_incoming_host = request.headers.get("Apx-Incoming-Host")
+        if apx_incoming_host:
+            # Use the original host from Approximated - preserve the exact domain
+            server_url = f"https://{apx_incoming_host}/a2a"
+            logger.info(f"Using Apx-Incoming-Host: {apx_incoming_host} -> {server_url}")
+        else:
+            # Fallback to Host header
+            host = request.headers.get("Host", "")
+            if host and host != "sales-agent.scope3.com":
+                # For external domains, preserve the original host
+                server_url = f"https://{host}/a2a"
+                logger.info(f"Using Host header: {host} -> {server_url}")
+            else:
+                # Default fallback
+                server_url = "https://sales-agent.scope3.com/a2a"
+                logger.info(f"Using default URL: {server_url}")
+
+        # Create a copy of the static agent card with dynamic URL
+        dynamic_card = agent_card.model_copy()
+        dynamic_card.url = server_url
+        return dynamic_card
+
+    # Replace the library's agent card endpoints with our dynamic ones
+    from starlette.responses import JSONResponse
+    from starlette.routing import Route
+
+    async def dynamic_agent_discovery(request):
+        """Override for /.well-known/agent.json with tenant-specific URL."""
+        dynamic_card = create_dynamic_agent_card(request)
+        return JSONResponse(dynamic_card.model_dump())
+
+    async def dynamic_agent_card_endpoint(request):
+        """Override for /agent.json with tenant-specific URL."""
+        dynamic_card = create_dynamic_agent_card(request)
+        return JSONResponse(dynamic_card.model_dump())
+
+    # Find and replace the existing routes
+    new_routes = []
+    for route in app.routes:
+        if hasattr(route, "path"):
+            if route.path == "/.well-known/agent.json":
+                # Replace with our dynamic endpoint
+                new_routes.append(Route("/.well-known/agent.json", dynamic_agent_discovery, methods=["GET"]))
+                logger.info("Replaced /.well-known/agent.json with dynamic version")
+            elif route.path == "/agent.json":
+                # Replace with our dynamic endpoint
+                new_routes.append(Route("/agent.json", dynamic_agent_card_endpoint, methods=["GET"]))
+                logger.info("Replaced /agent.json with dynamic version")
+            else:
+                new_routes.append(route)
+        else:
+            new_routes.append(route)
+
+    # Update the app's router with new routes
+    app.router.routes = new_routes
+
     # Add middleware for backward compatibility with numeric messageId
     @app.middleware("http")
     async def messageId_compatibility_middleware(request, call_next):
@@ -1469,71 +1761,6 @@ def main():
             delattr(_request_context, "auth_token")
 
         return response
-
-    def create_dynamic_agent_card(request) -> AgentCard:
-        """Create agent card with tenant-specific URL from request headers."""
-        # Get tenant from request headers (passed by nginx)
-        tenant = request.headers.get("x-adcp-tenant")
-
-        # If no tenant header, try to extract from Host header
-        if not tenant:
-            host = request.headers.get("Host", "")
-            # Check for sales-agent.scope3.com subdomain pattern
-            if ".sales-agent.scope3.com" in host and not host.startswith("admin."):
-                # Extract tenant from subdomain (e.g., "tenant" from "tenant.sales-agent.scope3.com")
-                tenant = host.split(".sales-agent.scope3.com")[0]
-            # Check for other tenant-specific domains (like test-agent.adcontextprotocol.org)
-            elif host and not host.startswith("sales-agent.scope3.com") and not host.startswith("localhost"):
-                # For domains like test-agent.adcontextprotocol.org, extract the first part as tenant
-                if "." in host:
-                    potential_tenant = host.split(".")[0]
-                    # Only use if it looks like a tenant name (not www, api, etc.)
-                    if potential_tenant not in ["www", "api", "admin"]:
-                        tenant = potential_tenant
-
-        if tenant:
-            # Use tenant-specific subdomain (production pattern)
-            server_url = f"https://{tenant}.sales-agent.scope3.com/a2a"
-        else:
-            # Fallback for development or unknown tenant
-            fly_app = os.getenv("FLY_APP_NAME")
-            if fly_app and fly_app != "adcp-sales-agent":
-                # Development deployment with different app name
-                server_url = f"https://{fly_app}.fly.dev/a2a"
-            else:
-                # Production fallback - use virtual host domain
-                server_url = "https://sales-agent.scope3.com/a2a"
-
-        # Create a copy of the static agent card with dynamic URL
-        dynamic_card = agent_card.model_copy()
-        dynamic_card.url = server_url
-        return dynamic_card
-
-    # Override standard agent card endpoints to be dynamic
-    @app.route("/.well-known/agent.json", methods=["GET"])
-    async def agent_discovery(request):
-        """Dynamic agent discovery endpoint with tenant-specific URL."""
-        from starlette.responses import JSONResponse
-
-        dynamic_card = create_dynamic_agent_card(request)
-        return JSONResponse(dynamic_card.model_dump())
-
-    @app.route("/agent.json", methods=["GET"])
-    async def agent_card_endpoint(request):
-        """Dynamic agent card endpoint with tenant-specific URL."""
-        from starlette.responses import JSONResponse
-
-        dynamic_card = create_dynamic_agent_card(request)
-        return JSONResponse(dynamic_card.model_dump())
-
-    # Add alias for agent-card.json (some clients look for this)
-    @app.route("/.well-known/agent-card.json", methods=["GET"])
-    async def agent_card_alias(request):
-        """Alias for agent.json to support different client expectations."""
-        from starlette.responses import JSONResponse
-
-        dynamic_card = create_dynamic_agent_card(request)
-        return JSONResponse(dynamic_card.model_dump())
 
     # Run with uvicorn
     import uvicorn
