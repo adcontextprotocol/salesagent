@@ -6,6 +6,7 @@ import uuid
 from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
+import sqlalchemy as sa
 from fastmcp import FastMCP
 from fastmcp.exceptions import ToolError
 from fastmcp.server.context import Context
@@ -43,7 +44,7 @@ from src.core.config_loader import (
 )
 from src.core.context_manager import get_context_manager
 from src.core.database.database_session import get_db_session
-from src.core.database.models import AdapterConfig, MediaBuy, Tenant
+from src.core.database.models import AdapterConfig, AuthorizedProperty, MediaBuy, PropertyTag, Tenant
 from src.core.database.models import Principal as ModelPrincipal
 from src.core.database.models import Product as ModelProduct
 
@@ -61,6 +62,8 @@ from src.core.schemas import (
     GetProductsResponse,
     GetSignalsRequest,
     GetSignalsResponse,
+    ListAuthorizedPropertiesRequest,
+    ListAuthorizedPropertiesResponse,
     ListCreativeFormatsResponse,
     ListCreativesResponse,
     MediaBuyDeliveryData,
@@ -68,6 +71,9 @@ from src.core.schemas import (
     PackagePerformance,
     Principal,
     Product,
+    Property,
+    PropertyIdentifier,
+    PropertyTagMetadata,
     ReportingPeriod,
     Signal,
     SyncCreativesResponse,
@@ -1628,6 +1634,134 @@ async def get_signals(req: GetSignalsRequest, context: Context = None) -> GetSig
         signals = signals[: req.limit]
 
     return GetSignalsResponse(signals=signals)
+
+
+@mcp.tool
+def list_authorized_properties(
+    req: ListAuthorizedPropertiesRequest = None, context: Context = None
+) -> ListAuthorizedPropertiesResponse:
+    """List all properties this agent is authorized to represent (AdCP spec endpoint).
+
+    Discovers advertising properties (websites, apps, podcasts, etc.) that this
+    sales agent is authorized to sell advertising on behalf of publishers.
+
+    Args:
+        req: Request parameters including optional tag filters
+        context: FastMCP context for authentication
+
+    Returns:
+        ListAuthorizedPropertiesResponse with properties and tag metadata
+    """
+    start_time = time.time()
+
+    # Handle missing request object (allows empty calls)
+    if req is None:
+        req = ListAuthorizedPropertiesRequest()
+
+    # Get tenant and principal from context
+    tenant = get_current_tenant()
+    if not tenant:
+        raise ToolError("AUTHENTICATION_ERROR", "Could not resolve tenant from context")
+
+    tenant_id = tenant["tenant_id"]
+    principal_id = _get_principal_id_from_context(context)
+
+    # Apply testing hooks
+    headers = context.meta.get("headers", {}) if context and context.meta else {}
+    testing_context = get_testing_context(headers)
+    campaign_info = {"endpoint": "list_authorized_properties", "tenant_id": tenant_id}
+    apply_testing_hooks(testing_context, campaign_info, headers)
+
+    log_tool_activity(context, "list_authorized_properties", start_time)
+
+    try:
+        with get_db_session() as session:
+            # Query authorized properties for this tenant
+            query = session.query(AuthorizedProperty).filter(AuthorizedProperty.tenant_id == tenant_id)
+
+            # Apply tag filtering if requested
+            if req.tags:
+                # Filter properties that have any of the requested tags
+                tag_filters = []
+                for tag in req.tags:
+                    tag_filters.append(AuthorizedProperty.tags.contains([tag]))
+                query = query.filter(sa.or_(*tag_filters))
+
+            # Only include verified properties
+            query = query.filter(AuthorizedProperty.verification_status == "verified")
+
+            authorized_properties = query.all()
+
+            # Convert database models to Pydantic models
+            properties = []
+            all_tags = set()
+
+            for prop in authorized_properties:
+                # Extract identifiers from JSON
+                identifiers = [
+                    PropertyIdentifier(type=ident["type"], value=ident["value"]) for ident in (prop.identifiers or [])
+                ]
+
+                # Extract tags
+                prop_tags = prop.tags or []
+                all_tags.update(prop_tags)
+
+                property_obj = Property(
+                    property_type=prop.property_type,
+                    name=prop.name,
+                    identifiers=identifiers,
+                    tags=prop_tags,
+                    publisher_domain=prop.publisher_domain,
+                )
+                properties.append(property_obj)
+
+            # Get tag metadata for all referenced tags
+            tag_metadata = {}
+            if all_tags:
+                property_tags = (
+                    session.query(PropertyTag)
+                    .filter(PropertyTag.tenant_id == tenant_id, PropertyTag.tag_id.in_(all_tags))
+                    .all()
+                )
+
+                for tag in property_tags:
+                    tag_metadata[tag.tag_id] = PropertyTagMetadata(name=tag.name, description=tag.description)
+
+            # Create response
+            response = ListAuthorizedPropertiesResponse(
+                adcp_version=req.adcp_version, properties=properties, tags=tag_metadata, errors=[]
+            )
+
+            # Log audit
+            audit_logger = get_audit_logger()
+            audit_logger.log_operation(
+                operation="list_authorized_properties",
+                tenant_id=tenant_id,
+                principal_id=principal_id,
+                success=True,
+                details={
+                    "properties_count": len(properties),
+                    "requested_tags": req.tags,
+                    "response_tags_count": len(tag_metadata),
+                },
+            )
+
+            return response
+
+    except Exception as e:
+        logger.error(f"Error listing authorized properties: {str(e)}")
+
+        # Log audit for failure
+        audit_logger = get_audit_logger()
+        audit_logger.log_operation(
+            operation="list_authorized_properties",
+            tenant_id=tenant_id,
+            principal_id=principal_id,
+            success=False,
+            error_message=str(e),
+        )
+
+        raise ToolError("PROPERTIES_ERROR", f"Failed to list authorized properties: {str(e)}")
 
 
 @mcp.tool

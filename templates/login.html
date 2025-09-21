@@ -11,11 +11,11 @@
     {% endif %}
 
     {% if tenant_context %}
-        <h2>{{ tenant_name or tenant_context }} Internal Dashboard</h2>
-        <p style="color: #666; margin-bottom: 2rem;">Internal dashboard for {{ tenant_name or tenant_context }} team</p>
+        <h2>{{ tenant_name or tenant_context }} Sales Agent Dashboard</h2>
+        <p style="color: #666; margin-bottom: 2rem;">Sales agent dashboard for {{ tenant_name or tenant_context }} team</p>
     {% elif tenant_id %}
-        <h2>{{ tenant_name or tenant_id }} Internal Dashboard</h2>
-        <p style="color: #666; margin-bottom: 2rem;">Internal dashboard for {{ tenant_name or tenant_id }} team</p>
+        <h2>{{ tenant_name or tenant_id }} Sales Agent Dashboard</h2>
+        <p style="color: #666; margin-bottom: 2rem;">Sales agent dashboard for {{ tenant_name or tenant_id }} team</p>
     {% else %}
         <h2>Sales Agent Admin</h2>
         <p style="color: #666; margin-bottom: 2rem;">Super Admin Login</p>
@@ -95,7 +95,7 @@
 
     <p style="color: #666; font-size: 14px; margin-top: 2rem;">
         {% if tenant_id or tenant_context %}
-        Internal access only - {{ tenant_name or tenant_context or tenant_id }} employees.<br>
+        Sales agent access only - {{ tenant_name or tenant_context or tenant_id }} employees.<br>
         Contact your team administrator if you need access.
         {% else %}
         Access is restricted to super administrators.<br>

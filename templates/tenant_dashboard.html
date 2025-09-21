@@ -597,6 +597,13 @@
                         <div style="font-size: 0.75rem; color: #6b7280;">{{ product_count }} configured</div>
                     </div>
                 </a>
+                <a href="{{ script_name }}/tenant/{{ tenant.tenant_id }}/authorized-properties" class="action-button">
+                    <div class="action-icon properties">🏠</div>
+                    <div>
+                        <div style="font-weight: 600;">Authorized Properties</div>
+                        <div style="font-size: 0.75rem; color: #6b7280;">Properties this agent represents</div>
+                    </div>
+                </a>
 
                 {% if tenant.ad_server == 'google_ad_manager' %}
                 <a href="{{ script_name }}/tenant/{{ tenant.tenant_id }}/inventory" class="action-button">

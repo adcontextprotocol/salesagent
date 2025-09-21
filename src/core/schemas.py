@@ -2288,3 +2288,149 @@ class SimulationControlResponse(BaseModel):
     message: str | None = None
     current_state: dict[str, Any] | None = None
     simulation_time: datetime | None = None
+
+
+# --- Authorized Properties Constants ---
+
+# Valid property types per AdCP specification
+PROPERTY_TYPES = [
+    "website",
+    "mobile_app", 
+    "ctv_app",
+    "dooh",
+    "podcast",
+    "radio",
+    "streaming_audio"
+]
+
+# Valid verification statuses
+VERIFICATION_STATUSES = [
+    "pending",
+    "verified", 
+    "failed"
+]
+
+# Valid identifier types by property type (AdCP compliant mappings)
+IDENTIFIER_TYPES_BY_PROPERTY_TYPE = {
+    "website": ["domain", "subdomain"],
+    "mobile_app": ["bundle_id", "store_id"],
+    "ctv_app": ["roku_store_id", "amazon_store_id", "samsung_store_id", "lg_store_id"], 
+    "dooh": ["venue_id", "network_id"],
+    "podcast": ["podcast_guid", "rss_feed_url"],
+    "radio": ["station_call_sign", "stream_url"],
+    "streaming_audio": ["platform_id", "stream_id"]
+}
+
+# Property form field requirements
+PROPERTY_REQUIRED_FIELDS = ["property_type", "name", "identifiers", "publisher_domain"]
+
+# Property form validation rules
+PROPERTY_VALIDATION_RULES = {
+    "name": {"min_length": 1, "max_length": 255},
+    "publisher_domain": {"min_length": 1, "max_length": 255},
+    "property_type": {"allowed_values": PROPERTY_TYPES},
+    "verification_status": {"allowed_values": VERIFICATION_STATUSES},
+    "tag_id": {"pattern": r"^[a-z0-9_]+$", "max_length": 50}
+}
+
+# Supported file types for bulk upload
+SUPPORTED_UPLOAD_FILE_TYPES = [".json", ".csv"]
+
+# Property form error messages
+PROPERTY_ERROR_MESSAGES = {
+    "missing_required_field": "Property type, name, and publisher domain are required",
+    "invalid_property_type": "Invalid property type: {property_type}. Must be one of: {valid_types}",
+    "invalid_file_type": "Only JSON and CSV files are supported",
+    "no_file_selected": "No file selected",
+    "at_least_one_identifier": "At least one identifier is required",
+    "identifier_incomplete": "Identifier {index}: Both type and value are required",
+    "invalid_json": "Invalid JSON format: {error}",
+    "invalid_tag_id": "Tag ID must contain only letters, numbers, and underscores",
+    "tag_already_exists": "Tag '{tag_id}' already exists",
+    "all_fields_required": "All fields are required",
+    "property_not_found": "Property not found",
+    "tenant_not_found": "Tenant not found"
+}
+
+# --- Authorized Properties (AdCP Spec) ---
+class PropertyIdentifier(BaseModel):
+    """Identifier for an advertising property."""
+
+    type: str = Field(
+        ..., description="Type of identifier (e.g., 'domain', 'bundle_id', 'roku_store_id', 'podcast_guid')"
+    )
+    value: str = Field(
+        ...,
+        description="The identifier value. For domain type: 'example.com' matches www.example.com and m.example.com only; 'subdomain.example.com' matches that specific subdomain; '*.example.com' matches all subdomains",
+    )
+
+
+class Property(BaseModel):
+    """An advertising property that can be validated via adagents.json (AdCP spec)."""
+
+    property_type: Literal["website", "mobile_app", "ctv_app", "dooh", "podcast", "radio", "streaming_audio"] = Field(
+        ..., description="Type of advertising property"
+    )
+    name: str = Field(..., description="Human-readable property name")
+    identifiers: list[PropertyIdentifier] = Field(
+        ..., min_length=1, description="Array of identifiers for this property"
+    )
+    tags: list[str] | None = Field(
+        None, description="Tags for categorization and grouping (e.g., network membership, content categories)"
+    )
+    publisher_domain: str = Field(
+        ..., description="Domain where adagents.json should be checked for authorization validation"
+    )
+
+    def model_dump(self, **kwargs) -> dict[str, Any]:
+        """Return AdCP-compliant property representation."""
+        data = super().model_dump(**kwargs)
+        # Ensure tags is always present per AdCP schema
+        if data.get("tags") is None:
+            data["tags"] = []
+        return data
+
+
+class PropertyTagMetadata(BaseModel):
+    """Metadata for a property tag."""
+
+    name: str = Field(..., description="Human-readable name for this tag")
+    description: str = Field(..., description="Description of what this tag represents")
+
+
+class ListAuthorizedPropertiesRequest(BaseModel):
+    """Request parameters for discovering all properties this agent is authorized to represent (AdCP spec)."""
+
+    adcp_version: str = Field(
+        default="1.0.0", pattern=r"^\d+\.\d+\.\d+$", description="AdCP schema version for this request"
+    )
+    tags: list[str] | None = Field(None, description="Filter properties by specific tags (optional)")
+
+    @model_validator(mode="before")
+    @classmethod
+    def normalize_tags(cls, data):
+        """Ensure tags are lowercase with underscores only."""
+        if isinstance(data, dict) and "tags" in data and data["tags"]:
+            data["tags"] = [tag.lower().replace("-", "_") for tag in data["tags"]]
+        return data
+
+
+class ListAuthorizedPropertiesResponse(BaseModel):
+    """Response payload for list_authorized_properties task (AdCP spec)."""
+
+    adcp_version: str = Field(..., pattern=r"^\d+\.\d+\.\d+$", description="AdCP schema version used for this response")
+    properties: list[Property] = Field(..., description="Array of all properties this agent is authorized to represent")
+    tags: dict[str, PropertyTagMetadata] = Field(
+        default_factory=dict, description="Metadata for each tag referenced by properties"
+    )
+    errors: list[dict[str, Any]] | None = Field(
+        None, description="Task-specific errors and warnings (e.g., property availability issues)"
+    )
+
+    def model_dump(self, **kwargs) -> dict[str, Any]:
+        """Return AdCP-compliant response."""
+        data = super().model_dump(**kwargs)
+        # Ensure errors is always present per AdCP schema
+        if data.get("errors") is None:
+            data["errors"] = []
+        return data

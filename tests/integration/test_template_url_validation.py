@@ -72,6 +72,8 @@ class TestTemplateUrlValidation:
                             test_params["media_buy_id"] = "test_buy"
                         if "task_id" in params:
                             test_params["task_id"] = "test_task"
+                        if "property_id" in params:
+                            test_params["property_id"] = "test_property"
 
                         # Try to build the URL
                         url = url_for(endpoint, **test_params)
@@ -149,10 +151,16 @@ class TestTemplateUrlValidation:
                                 or "template" in endpoint
                                 or "analyze" in endpoint
                                 or "sync" in endpoint
+                                or "authorized_properties" in endpoint
                                 or endpoint not in ["login", "logout", "index", "settings", "auth.login", "auth.logout"]
                             )
                             if needs_tenant:
                                 test_params["tenant_id"] = "test"
+
+                            # Add property_id for authorized_properties endpoints
+                            if "authorized_properties" in endpoint and "property" in endpoint:
+                                test_params["property_id"] = "test_property"
+
                             url_for(endpoint, **test_params)
                         except BuildError as e:
                             form_errors.append({"template": str(relative_path), "endpoint": endpoint, "error": str(e)})

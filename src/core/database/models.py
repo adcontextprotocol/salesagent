@@ -791,3 +791,69 @@ class StrategyState(Base, JSONValidatorMixin):
         ForeignKeyConstraint(["strategy_id"], ["strategies.strategy_id"], ondelete="CASCADE"),
         Index("idx_strategy_states_id", "strategy_id"),
     )
+
+
+class AuthorizedProperty(Base, JSONValidatorMixin):
+    """Properties (websites, apps, etc.) that this agent is authorized to represent.
+
+    Used for the list_authorized_properties AdCP endpoint.
+    Stores property details and verification status.
+    """
+
+    __tablename__ = "authorized_properties"
+
+    property_id = Column(String(100), nullable=False, primary_key=True)
+    tenant_id = Column(String(50), nullable=False, primary_key=True)
+    property_type = Column(
+        String(20), nullable=False
+    )  # website, mobile_app, ctv_app, dooh, podcast, radio, streaming_audio
+    name = Column(String(255), nullable=False)
+    identifiers = Column(JSON, nullable=False)  # Array of {type, value} objects
+    tags = Column(JSON, nullable=True)  # Array of tag strings
+    publisher_domain = Column(String(255), nullable=False)  # Domain for adagents.json verification
+    verification_status = Column(String(20), nullable=False, default="pending")  # pending, verified, failed
+    verification_checked_at = Column(DateTime, nullable=True)
+    verification_error = Column(Text, nullable=True)
+    created_at = Column(DateTime, nullable=False, server_default=func.now())
+    updated_at = Column(DateTime, nullable=False, server_default=func.now(), onupdate=func.now())
+
+    # Relationships
+    tenant = relationship("Tenant", backref="authorized_properties")
+
+    __table_args__ = (
+        ForeignKeyConstraint(["tenant_id"], ["tenants.tenant_id"], ondelete="CASCADE"),
+        CheckConstraint(
+            "property_type IN ('website', 'mobile_app', 'ctv_app', 'dooh', 'podcast', 'radio', 'streaming_audio')",
+            name="ck_property_type",
+        ),
+        CheckConstraint("verification_status IN ('pending', 'verified', 'failed')", name="ck_verification_status"),
+        Index("idx_authorized_properties_tenant", "tenant_id"),
+        Index("idx_authorized_properties_domain", "publisher_domain"),
+        Index("idx_authorized_properties_type", "property_type"),
+        Index("idx_authorized_properties_verification", "verification_status"),
+    )
+
+
+class PropertyTag(Base, JSONValidatorMixin):
+    """Metadata for property tags used in authorized properties.
+
+    Provides human-readable names and descriptions for tags
+    referenced in the list_authorized_properties response.
+    """
+
+    __tablename__ = "property_tags"
+
+    tag_id = Column(String(50), nullable=False, primary_key=True)
+    tenant_id = Column(String(50), nullable=False, primary_key=True)
+    name = Column(String(255), nullable=False)
+    description = Column(Text, nullable=False)
+    created_at = Column(DateTime, nullable=False, server_default=func.now())
+    updated_at = Column(DateTime, nullable=False, server_default=func.now(), onupdate=func.now())
+
+    # Relationships
+    tenant = relationship("Tenant", backref="property_tags")
+
+    __table_args__ = (
+        ForeignKeyConstraint(["tenant_id"], ["tenants.tenant_id"], ondelete="CASCADE"),
+        Index("idx_property_tags_tenant", "tenant_id"),
+    )

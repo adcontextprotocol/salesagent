@@ -85,6 +85,7 @@ The server provides:
 - **Admin UI**: Secure web interface with Google OAuth authentication (port 8001)
 - **A2A Server**: Standard python-a2a server for agent-to-agent communication (port 8091)
 - **Multi-Tenant Architecture**: Database-backed tenant isolation with subdomain routing
+- **Authorized Properties**: AdCP-compliant property management with automatic verification via adagents.json
 - **Advanced Targeting**: Comprehensive targeting system with overlay and managed-only dimensions
 - **Creative Management**: Auto-approval workflows, creative groups, and admin review
 - **Human-in-the-Loop**: Optional manual approval mode for sensitive operations
@@ -273,7 +274,21 @@ The GAM adapter has been refactored into a clean modular architecture:
 
 ## Recent Major Changes
 
-### Google Ad Manager Adapter Refactoring (Latest - Sep 2025)
+### Authorized Properties Implementation (Latest - Jan 2025)
+- **AdCP Compliance**: Full implementation of AdCP `list_authorized_properties` endpoint
+- **Property Management**: Admin UI for uploading and managing authorized properties
+- **Automatic Verification**: Verification against publisher domains' adagents.json files with correct "authorized_agents" field parsing
+- **Development Testing**: UI for setting custom agent URLs to test verification against external publishers without localhost
+- **Domain Matching**: Implements AdCP domain matching rules (*.domain.com, www.domain.com, etc.)
+- **Tag-based Filtering**: Property categorization and filtering system
+- **Multi-tenant Support**: Properties isolated per tenant with verification status tracking
+- **Security Fix**: Removed manual verification bypass to prevent unauthorized property marking
+- **Enhanced Property Form**: Dynamic identifier type selection based on property type with AdCP-compliant mappings
+- **Comprehensive Testing**: Unit tests, AdCP contract tests, and property verification service tests
+- **Admin Integration**: Dashboard integration with navigation, bulk operations, and proper Bootstrap 5 badge styling
+- **Database Schema**: New authorized_properties and property_tags tables with proper migrations
+
+### Google Ad Manager Adapter Refactoring (Sep 2025)
 - **Complete Modular Refactoring**: Broke down monolithic 2800+ line GAM adapter into focused manager classes
 - **90% Code Reduction**: Main orchestrator reduced to 250 lines with clear delegation patterns
 - **Modular Architecture**: Separated authentication, client management, targeting, orders, and creatives into distinct managers

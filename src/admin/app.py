@@ -13,6 +13,7 @@ from src.admin.blueprints.activity_stream import activity_stream_bp
 from src.admin.blueprints.adapters import adapters_bp
 from src.admin.blueprints.api import api_bp
 from src.admin.blueprints.auth import auth_bp, init_oauth
+from src.admin.blueprints.authorized_properties import authorized_properties_bp
 from src.admin.blueprints.core import core_bp
 from src.admin.blueprints.creatives import creatives_bp
 from src.admin.blueprints.gam import gam_bp
@@ -195,6 +196,7 @@ def create_app(config=None):
     app.register_blueprint(policy_bp, url_prefix="/tenant/<tenant_id>/policy")
     app.register_blueprint(settings_bp, url_prefix="/tenant/<tenant_id>/settings")
     app.register_blueprint(adapters_bp, url_prefix="/tenant/<tenant_id>")
+    app.register_blueprint(authorized_properties_bp, url_prefix="/tenant")  # Tenant-specific routes
     app.register_blueprint(inventory_bp)  # Has its own internal routing
     app.register_blueprint(api_bp, url_prefix="/api")
     app.register_blueprint(activity_stream_bp)  # SSE endpoints - Flask handles /admin via script_name from nginx proxy
