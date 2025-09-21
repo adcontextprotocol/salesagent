@@ -25,8 +25,8 @@ def get_tenant_from_hostname():
     host = request.headers.get("Host", "")
 
     # Check for Approximated routing headers first
-    # Approximated typically sends X-Forwarded-Host or X-Original-Host
-    approximated_host = request.headers.get("X-Forwarded-Host") or request.headers.get("X-Original-Host")
+    # Approximated sends Apx-Incoming-Host with the original requested domain
+    approximated_host = request.headers.get("Apx-Incoming-Host")
     if approximated_host:
         # Handle adcontextprotocol.org domains routed through Approximated
         if ".adcontextprotocol.org" in approximated_host and not approximated_host.startswith("admin."):
@@ -115,6 +115,7 @@ def debug_headers():
         ),
         "routing_analysis": {
             "host_header": request.headers.get("Host"),
+            "apx_incoming_host": request.headers.get("Apx-Incoming-Host"),
             "x_forwarded_host": request.headers.get("X-Forwarded-Host"),
             "x_original_host": request.headers.get("X-Original-Host"),
             "x_forwarded_for": request.headers.get("X-Forwarded-For"),

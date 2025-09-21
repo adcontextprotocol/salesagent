@@ -70,7 +70,8 @@ def login():
     tenant_name = None
 
     # Check for Approximated routing headers first
-    approximated_host = request.headers.get("X-Forwarded-Host") or request.headers.get("X-Original-Host")
+    # Approximated sends Apx-Incoming-Host with the original requested domain
+    approximated_host = request.headers.get("Apx-Incoming-Host")
     if approximated_host:
         # Handle adcontextprotocol.org domains routed through Approximated
         if ".adcontextprotocol.org" in approximated_host and not approximated_host.startswith("admin."):
@@ -150,7 +151,7 @@ def google_auth():
 
     # Check for Approximated routing headers first
     if not tenant_context:
-        approximated_host = request.headers.get("X-Forwarded-Host") or request.headers.get("X-Original-Host")
+        approximated_host = request.headers.get("Apx-Incoming-Host")
         if (
             approximated_host
             and ".adcontextprotocol.org" in approximated_host
