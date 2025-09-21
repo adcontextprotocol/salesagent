@@ -10,62 +10,23 @@ This addresses the pattern identified in issue #161 of reducing mocking at data 
 to improve test coverage and catch real bugs.
 """
 
-import os
-import tempfile
 
-import pytest
 from sqlalchemy import text
 
 from src.core.database.database_session import get_db_session
 from src.core.database.health_check import check_database_health, print_health_report
 from src.core.database.models import Base, Product, Tenant
-from tests.utils.database_helpers import create_tenant_with_timestamps
 
 
 class TestDatabaseHealthIntegration:
     """Test database health check with real database connections."""
 
-    @pytest.fixture
-    def temp_database(self):
-        """Create a temporary SQLite database for testing."""
-        with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as tmp_file:
-            temp_db_path = tmp_file.name
+    # Note: Using conftest_db fixtures instead of custom temp_database
+    # This ensures proper test isolation and database setup
 
-        # Set up temporary database URL
-        original_db_url = os.environ.get("DATABASE_URL")
-        temp_db_url = f"sqlite:///{temp_db_path}"
-        os.environ["DATABASE_URL"] = temp_db_url
-
-        # Create all tables
-        from src.core.database.database_session import engine
-
-        Base.metadata.create_all(bind=engine)
-
-        yield temp_db_path
-
-        # Cleanup
-        if original_db_url:
-            os.environ["DATABASE_URL"] = original_db_url
-        else:
-            os.environ.pop("DATABASE_URL", None)
-
-        try:
-            os.unlink(temp_db_path)
-        except OSError:
-            pass
-
-    def test_health_check_with_complete_database(self, temp_database):
+    def test_health_check_with_complete_database(self, test_tenant):
         """Test health check against a complete, properly migrated database."""
-        # Create some test data to ensure database is functional
-        with get_db_session() as session:
-            tenant = create_tenant_with_timestamps(
-                tenant_id="health_test_tenant",
-                name="Health Check Test Tenant",
-                subdomain="health-test",
-                billing_plan="test",
-            )
-            session.add(tenant)
-            session.commit()
+        # test_tenant fixture provides a functional database with test data
 
         # Run health check with real database
         health = check_database_health()
@@ -89,7 +50,7 @@ class TestDatabaseHealthIntegration:
         assert isinstance(health["schema_issues"], list)
         assert isinstance(health["recommendations"], list)
 
-    def test_health_check_with_missing_tables(self, temp_database):
+    def test_health_check_with_missing_tables(self, clean_db):
         """Test health check detects missing tables correctly."""
         # Drop a critical table to simulate missing tables
         from src.core.database.database_session import engine
@@ -107,7 +68,7 @@ class TestDatabaseHealthIntegration:
         assert health["status"] in ["unhealthy", "warning"], "Should report unhealthy status"
         assert len(health["schema_issues"]) > 0, "Should report schema issues"
 
-    def test_health_check_with_extra_tables(self, temp_database):
+    def test_health_check_with_extra_tables(self, clean_db):
         """Test health check detects extra/deprecated tables."""
         # Add an extra table that shouldn't exist
         from src.core.database.database_session import engine
@@ -124,31 +85,31 @@ class TestDatabaseHealthIntegration:
 
     def test_health_check_database_access_errors(self):
         """Test health check handles database access errors gracefully."""
-        # Set invalid database URL to simulate connection failure
-        original_db_url = os.environ.get("DATABASE_URL")
-        os.environ["DATABASE_URL"] = "sqlite:///nonexistent_path/invalid.db"
+        # Mock the database session to raise a connection error
+        from unittest.mock import MagicMock, patch
 
-        try:
+        from sqlalchemy.exc import OperationalError
+
+        # Create a mock context manager that raises an error when entered
+        mock_session_context = MagicMock()
+        mock_session_context.__enter__.side_effect = OperationalError("connection failed", None, None)
+
+        with patch("src.core.database.health_check.get_db_session") as mock_get_session:
+            mock_get_session.return_value = mock_session_context
+
             health = check_database_health()
 
             # Should handle error gracefully
-            assert health["status"] == "error", "Should report error status for invalid database"
+            assert (
+                health["status"] == "error"
+            ), f"Should report error status for database connection failure, got: {health['status']}"
             assert len(health["schema_issues"]) > 0, "Should report schema issues for failed connection"
 
             # Error should be descriptive
-            error_found = any(
-                "connection" in issue.lower() or "database" in issue.lower() for issue in health["schema_issues"]
-            )
-            assert error_found, "Should include database connection error in issues"
+            error_found = any("health check failed" in issue.lower() for issue in health["schema_issues"])
+            assert error_found, f"Should include database connection error in issues: {health['schema_issues']}"
 
-        finally:
-            # Restore original database URL
-            if original_db_url:
-                os.environ["DATABASE_URL"] = original_db_url
-            else:
-                os.environ.pop("DATABASE_URL", None)
-
-    def test_health_check_migration_status_detection(self, temp_database):
+    def test_health_check_migration_status_detection(self, clean_db):
         """Test that health check correctly detects migration status."""
         # The health check should detect current migration version
         health = check_database_health()
@@ -161,7 +122,7 @@ class TestDatabaseHealthIntegration:
         if health["migration_status"]:
             assert len(health["migration_status"]) > 0, "Migration status should not be empty string"
 
-    def test_print_health_report_integration(self, temp_database, capsys):
+    def test_print_health_report_integration(self, clean_db, capsys):
         """Test health report printing with real health check data."""
         # Run real health check
         health = check_database_health()
@@ -180,27 +141,9 @@ class TestDatabaseHealthIntegration:
         # Should be properly formatted
         assert "Database Health Status:" in captured.out, "Should have header"
 
-    def test_health_check_with_real_schema_validation(self, temp_database):
+    def test_health_check_with_real_schema_validation(self, test_tenant, test_product):
         """Test health check validates actual database schema against expected schema."""
-        # Add test data to verify schema works
-        with get_db_session() as session:
-            tenant = create_tenant_with_timestamps(
-                tenant_id="schema_test_tenant", name="Schema Test Tenant", subdomain="schema-test", billing_plan="test"
-            )
-            session.add(tenant)
-
-            product = Product(
-                tenant_id="schema_test_tenant",
-                product_id="schema_test_product",
-                name="Schema Test Product",
-                description="Product for schema validation testing",
-                formats=["display_300x250"],
-                targeting_template={},
-                delivery_type="non_guaranteed",
-                is_fixed_price=False,
-            )
-            session.add(product)
-            session.commit()
+        # test_tenant and test_product fixtures provide test data
 
         # Run health check
         health = check_database_health()
@@ -217,14 +160,14 @@ class TestDatabaseHealthIntegration:
             assert tenant_count >= 1, "Should have at least one tenant"
             assert product_count >= 1, "Should have at least one product"
 
-    def test_health_check_performance_with_real_database(self, temp_database):
+    def test_health_check_performance_with_real_database(self, clean_db):
         """Test that health check completes in reasonable time with real database."""
         import time
 
         # Add some test data to make it more realistic
         with get_db_session() as session:
             for i in range(10):
-                tenant = create_tenant_with_timestamps(
+                tenant = Tenant(
                     tenant_id=f"perf_test_tenant_{i}",
                     name=f"Performance Test Tenant {i}",
                     subdomain=f"perf-test-{i}",
@@ -244,10 +187,9 @@ class TestDatabaseHealthIntegration:
         # Should still return valid results
         assert "status" in health, "Should return valid health report even with larger dataset"
 
-    def test_health_check_table_existence_validation(self, temp_database):
+    def test_health_check_table_existence_validation(self, test_tenant):
         """Test that health check validates existence of all required tables."""
         # Get list of tables that should exist
-        from src.core.database.models import Base
 
         expected_tables = set(Base.metadata.tables.keys())
 
@@ -267,7 +209,7 @@ class TestDatabaseHealthIntegration:
             # This should not raise an exception if schema is correct
             tenant_table_exists = True
             try:
-                session.execute("SELECT COUNT(*) FROM tenants")
+                session.execute(text("SELECT COUNT(*) FROM tenants"))
             except Exception:
                 tenant_table_exists = False
 

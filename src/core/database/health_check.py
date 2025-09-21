@@ -6,8 +6,7 @@ identify missing tables, and validate that migrations have been applied correctl
 
 import logging
 
-from sqlalchemy import text
-from sqlalchemy.engine import reflection
+from sqlalchemy import inspect, text
 
 from src.core.database.database_session import get_db_session
 
@@ -36,7 +35,7 @@ def check_database_health() -> dict[str, any]:
     try:
         with get_db_session() as db_session:
             engine = db_session.get_bind()
-            inspector = reflection.Inspector.from_engine(engine)
+            inspector = inspect(engine)
 
             # Get current tables
             existing_tables = set(inspector.get_table_names())
@@ -48,6 +47,8 @@ def check_database_health() -> dict[str, any]:
                 "products",
                 "principals",
                 "users",
+                "creatives",
+                "creative_assignments",
                 "media_buys",
                 "audit_logs",
                 "superadmin_config",
@@ -65,7 +66,7 @@ def check_database_health() -> dict[str, any]:
             }
 
             # Deprecated tables that may still exist but are not used
-            deprecated_tables = {"tasks", "human_tasks"}
+            deprecated_tables = {"tasks", "human_tasks", "creative_associations", "media_packages"}
 
             # Check for missing tables
             missing = expected_tables - existing_tables
@@ -106,9 +107,28 @@ def check_database_health() -> dict[str, any]:
             if "workflow_steps" in missing or "object_workflow_mapping" in missing:
                 health_report["recommendations"].append("Migration 020 may have failed - check migration logs")
 
-            # Overall health status
-            if missing or health_report["schema_issues"]:
+            # Overall health status - distinguish between critical issues and warnings
+            critical_issues = []
+            warning_issues = []
+
+            # Missing tables are critical
+            if missing:
+                critical_issues.extend([f"Missing table: {table}" for table in missing])
+
+            # Categorize schema issues
+            for issue in health_report["schema_issues"]:
+                if "Critical table" in issue or "Cannot read alembic_version" in issue:
+                    critical_issues.append(issue)
+                elif "Deprecated table" in issue and "safe to ignore" in issue:
+                    warning_issues.append(issue)
+                else:
+                    critical_issues.append(issue)
+
+            # Determine overall status
+            if critical_issues:
                 health_report["status"] = "unhealthy"
+            elif warning_issues:
+                health_report["status"] = "warning"
             else:
                 health_report["status"] = "healthy"
 
@@ -158,7 +178,7 @@ def check_table_exists(table_name: str) -> bool:
     try:
         with get_db_session() as db_session:
             engine = db_session.get_bind()
-            inspector = reflection.Inspector.from_engine(engine)
+            inspector = inspect(engine)
             return table_name in inspector.get_table_names()
     except Exception as e:
         logger.error(f"Error checking if table {table_name} exists: {e}")
@@ -170,7 +190,7 @@ def get_table_info(table_name: str) -> dict[str, any]:
     try:
         with get_db_session() as db_session:
             engine = db_session.get_bind()
-            inspector = reflection.Inspector.from_engine(engine)
+            inspector = inspect(engine)
 
             if table_name not in inspector.get_table_names():
                 return {"exists": False}
