@@ -47,6 +47,10 @@ class TestMCPToolsAudit:
             # Clean up any existing test data
             session.query(MediaBuyModel).filter_by(tenant_id=tenant_id).delete()
             session.query(ProductModel).filter_by(tenant_id=tenant_id).delete()
+            # Clean up principals
+            from src.core.database.models import Principal as PrincipalModel
+
+            session.query(PrincipalModel).filter_by(tenant_id=tenant_id).delete()
             session.query(Tenant).filter_by(tenant_id=tenant_id).delete()
 
             # Create test tenant
@@ -62,6 +66,10 @@ class TestMCPToolsAudit:
         with get_db_session() as session:
             session.query(MediaBuyModel).filter_by(tenant_id=tenant_id).delete()
             session.query(ProductModel).filter_by(tenant_id=tenant_id).delete()
+            # Clean up principals
+            from src.core.database.models import Principal as PrincipalModel
+
+            session.query(PrincipalModel).filter_by(tenant_id=tenant_id).delete()
             session.query(Tenant).filter_by(tenant_id=tenant_id).delete()
             session.commit()
 
@@ -89,7 +97,19 @@ class TestMCPToolsAudit:
         }
 
         with get_db_session() as session:
-            # Create test product first
+            # Create test principal first (required for foreign key constraint)
+            from src.core.database.models import Principal as PrincipalModel
+
+            principal = PrincipalModel(
+                tenant_id=test_tenant_id,
+                principal_id="audit_test_principal",
+                name="Audit Test Principal",
+                access_token="audit_test_token",
+                platform_mappings={},
+            )
+            session.add(principal)
+
+            # Create test product
             product = ProductModel(
                 tenant_id=test_tenant_id,
                 product_id="audit_test_product",
