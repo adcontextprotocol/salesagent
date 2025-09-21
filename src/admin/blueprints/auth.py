@@ -64,22 +64,52 @@ def init_oauth(app):
 @auth_bp.route("/login")
 def login():
     """Show login page with tenant context detection."""
-    # Extract tenant from Host header for tenant-specific subdomains
+    # Extract tenant from headers (Approximated routing or direct Host header)
     host = request.headers.get("Host", "")
     tenant_context = None
     tenant_name = None
 
-    if ".sales-agent.scope3.com" in host and not host.startswith("admin."):
-        # Extract tenant subdomain (e.g., "scribd" from "scribd.sales-agent.scope3.com")
-        tenant_subdomain = host.split(".")[0]
+    # Check for Approximated routing headers first
+    approximated_host = request.headers.get("X-Forwarded-Host") or request.headers.get("X-Original-Host")
+    if approximated_host:
+        # Handle adcontextprotocol.org domains routed through Approximated
+        if ".adcontextprotocol.org" in approximated_host and not approximated_host.startswith("admin."):
+            # Extract tenant from subdomain (e.g., test-agent.adcontextprotocol.org -> test-agent)
+            tenant_subdomain = approximated_host.split(".")[0]
+            with get_db_session() as db_session:
+                # Look for tenant by subdomain or virtual_host
+                tenant = (
+                    db_session.query(Tenant)
+                    .filter((Tenant.subdomain == tenant_subdomain) | (Tenant.virtual_host == approximated_host))
+                    .first()
+                )
+                if tenant:
+                    tenant_context = tenant.tenant_id
+                    tenant_name = tenant.name
+                    logger.info(
+                        f"Detected tenant context from Approximated headers: {approximated_host} -> {tenant_context}"
+                    )
 
-        # Look up tenant by subdomain
-        with get_db_session() as db_session:
-            tenant = db_session.query(Tenant).filter_by(subdomain=tenant_subdomain).first()
-            if tenant:
-                tenant_context = tenant.tenant_id
-                tenant_name = tenant.name
-                logger.info(f"Detected tenant context from Host header: {tenant_subdomain} -> {tenant_context}")
+    # Fallback to direct domain routing (sales-agent.scope3.com)
+    if not tenant_context:
+        tenant_subdomain = None
+        if ".sales-agent.scope3.com" in host and not host.startswith("admin."):
+            # Extract tenant subdomain (e.g., "scribd" from "scribd.sales-agent.scope3.com")
+            tenant_subdomain = host.split(".")[0]
+        elif ".adcontextprotocol.org" in host:
+            # Extract agent name (e.g., "test-agent" from "test-agent.adcontextprotocol.org")
+            agent_name = host.split(".")[0]
+            # Map agent names to tenant subdomains (for now, use the agent name as subdomain)
+            tenant_subdomain = agent_name
+
+        if tenant_subdomain:
+            # Look up tenant by subdomain
+            with get_db_session() as db_session:
+                tenant = db_session.query(Tenant).filter_by(subdomain=tenant_subdomain).first()
+                if tenant:
+                    tenant_context = tenant.tenant_id
+                    tenant_name = tenant.name
+                    logger.info(f"Detected tenant context from Host header: {tenant_subdomain} -> {tenant_context}")
 
     return render_template(
         "login.html",
@@ -114,10 +144,33 @@ def google_auth():
         flash("OAuth not configured", "error")
         return redirect(url_for("auth.login"))
 
-    # Capture tenant context from Host header or form data
+    # Capture tenant context from headers or form data
     host = request.headers.get("Host", "")
     tenant_context = request.args.get("tenant_context")  # From login form
 
+    # Check for Approximated routing headers first
+    if not tenant_context:
+        approximated_host = request.headers.get("X-Forwarded-Host") or request.headers.get("X-Original-Host")
+        if (
+            approximated_host
+            and ".adcontextprotocol.org" in approximated_host
+            and not approximated_host.startswith("admin.")
+        ):
+            # Extract tenant from subdomain via Approximated routing
+            tenant_subdomain = approximated_host.split(".")[0]
+            with get_db_session() as db_session:
+                tenant = (
+                    db_session.query(Tenant)
+                    .filter((Tenant.subdomain == tenant_subdomain) | (Tenant.virtual_host == approximated_host))
+                    .first()
+                )
+                if tenant:
+                    tenant_context = tenant.tenant_id
+                    logger.info(
+                        f"Detected tenant context from Approximated headers: {approximated_host} -> {tenant_context}"
+                    )
+
+    # Fallback to direct domain routing
     if not tenant_context and ".sales-agent.scope3.com" in host and not host.startswith("admin."):
         # Extract tenant subdomain from Host header
         tenant_subdomain = host.split(".")[0]

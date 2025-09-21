@@ -7,7 +7,7 @@ import secrets
 import string
 from datetime import UTC, datetime
 
-from flask import Blueprint, flash, redirect, render_template, request, send_from_directory, session, url_for
+from flask import Blueprint, flash, jsonify, redirect, render_template, request, send_from_directory, session, url_for
 from sqlalchemy import text
 
 from src.admin.utils import require_auth
@@ -23,6 +23,25 @@ core_bp = Blueprint("core", __name__)
 def get_tenant_from_hostname():
     """Extract tenant from hostname for tenant-specific subdomains."""
     host = request.headers.get("Host", "")
+
+    # Check for Approximated routing headers first
+    # Approximated typically sends X-Forwarded-Host or X-Original-Host
+    approximated_host = request.headers.get("X-Forwarded-Host") or request.headers.get("X-Original-Host")
+    if approximated_host:
+        # Handle adcontextprotocol.org domains routed through Approximated
+        if ".adcontextprotocol.org" in approximated_host and not approximated_host.startswith("admin."):
+            # Extract tenant from subdomain (e.g., test-agent.adcontextprotocol.org -> test-agent)
+            tenant_subdomain = approximated_host.split(".")[0]
+            with get_db_session() as db_session:
+                # Look for tenant by subdomain or virtual_host
+                tenant = (
+                    db_session.query(Tenant)
+                    .filter((Tenant.subdomain == tenant_subdomain) | (Tenant.virtual_host == approximated_host))
+                    .first()
+                )
+                return tenant
+
+    # Fallback to direct domain routing (sales-agent.scope3.com)
     if ".sales-agent.scope3.com" in host and not host.startswith("admin."):
         tenant_subdomain = host.split(".")[0]
         with get_db_session() as db_session:
@@ -74,6 +93,42 @@ def index():
     else:
         # Unknown role
         return "Access denied", 403
+
+
+@core_bp.route("/debug/headers")
+def debug_headers():
+    """Debug endpoint to inspect all incoming headers (for Approximated routing testing)."""
+    headers_dict = dict(request.headers)
+    detected_tenant = get_tenant_from_hostname()
+
+    debug_info = {
+        "all_headers": headers_dict,
+        "detected_tenant": (
+            {
+                "tenant_id": detected_tenant.tenant_id if detected_tenant else None,
+                "name": detected_tenant.name if detected_tenant else None,
+                "subdomain": detected_tenant.subdomain if detected_tenant else None,
+                "virtual_host": detected_tenant.virtual_host if detected_tenant else None,
+            }
+            if detected_tenant
+            else None
+        ),
+        "routing_analysis": {
+            "host_header": request.headers.get("Host"),
+            "x_forwarded_host": request.headers.get("X-Forwarded-Host"),
+            "x_original_host": request.headers.get("X-Original-Host"),
+            "x_forwarded_for": request.headers.get("X-Forwarded-For"),
+            "user_agent": request.headers.get("User-Agent"),
+        },
+        "request_info": {
+            "remote_addr": request.remote_addr,
+            "url": request.url,
+            "path": request.path,
+            "method": request.method,
+        },
+    }
+
+    return jsonify(debug_info)
 
 
 @core_bp.route("/health")

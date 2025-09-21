@@ -961,7 +961,25 @@ def list_creative_formats(context: Context) -> ListCreativeFormatsResponse:
     log_tool_activity(context, "list_creative_formats", start_time)
 
     message = f"Found {len(formats)} creative formats across {len({f.type for f in formats})} format types"
-    return ListCreativeFormatsResponse(formats=formats, message=message, specification_version="AdCP v2.4")
+
+    # Create response with schema validation metadata
+    response = ListCreativeFormatsResponse(formats=formats, message=message, specification_version="AdCP v2.4")
+
+    # Add schema validation metadata for client validation
+    from src.core.schema_validation import INCLUDE_SCHEMAS_IN_RESPONSES, enhance_mcp_response_with_schema
+
+    if INCLUDE_SCHEMAS_IN_RESPONSES:
+        # Convert to dict, enhance with schema, return enhanced dict
+        response_dict = response.model_dump()
+        enhanced_response = enhance_mcp_response_with_schema(
+            response_data=response_dict,
+            model_class=ListCreativeFormatsResponse,
+            include_full_schema=False,  # Set to True for development debugging
+        )
+        # Return the enhanced response (FastMCP handles dict returns)
+        return enhanced_response
+
+    return response
 
 
 @mcp.tool

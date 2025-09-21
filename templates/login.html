@@ -17,8 +17,8 @@
         <h2>{{ tenant_name or tenant_id }} Sales Agent Dashboard</h2>
         <p style="color: #666; margin-bottom: 2rem;">Sales agent dashboard for {{ tenant_name or tenant_id }} team</p>
     {% else %}
-        <h2>Sales Agent Admin</h2>
-        <p style="color: #666; margin-bottom: 2rem;">Super Admin Login</p>
+        <h2>AdCP Sales Agent</h2>
+        <p style="color: #666; margin-bottom: 2rem;">Administrator Access</p>
     {% endif %}
 
     {% if error %}
@@ -98,16 +98,17 @@
         Sales agent access only - {{ tenant_name or tenant_context or tenant_id }} employees.<br>
         Contact your team administrator if you need access.
         {% else %}
-        Access is restricted to super administrators.<br>
-        For account access, use your account-specific login URL.
+        Access is restricted to authorized administrators.<br>
+        For tenant-specific access, use your tenant login URL.
         {% endif %}
     </p>
 
     {% if not tenant_id and not tenant_context %}
     <div style="margin-top: 3rem; padding-top: 2rem; border-top: 1px solid #eee;">
         <p style="color: #666; font-size: 13px;">
-            <strong>Account Access:</strong> Use your account-specific URL<br>
-            <code>https://[account-subdomain].sales-agent.scope3.com</code>
+            <strong>Tenant Access:</strong> Use your tenant-specific URL<br>
+            <code>https://[tenant-subdomain].sales-agent.scope3.com</code><br>
+            <code>https://[agent-name].adcontextprotocol.org</code>
         </p>
     </div>
     {% endif %}
