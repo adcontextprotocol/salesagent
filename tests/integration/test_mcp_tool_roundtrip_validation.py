@@ -18,6 +18,7 @@ Key Testing Principles:
 5. Follow anti-mocking principles from CLAUDE.md
 """
 
+from contextlib import nullcontext
 from decimal import Decimal
 from unittest.mock import Mock
 
@@ -26,7 +27,7 @@ import pytest
 from src.core.database.database_session import get_db_session
 from src.core.database.models import Product as ProductModel
 from src.core.database.models import Tenant
-from src.core.main import get_products as get_products_tool
+from src.core.main import get_products
 from src.core.schemas import Product as ProductSchema
 from src.core.testing_hooks import TestingContext, apply_testing_hooks
 from tests.utils.database_helpers import create_tenant_with_timestamps
@@ -113,7 +114,8 @@ class TestMCPToolRoundtripValidation:
 
         return created_products
 
-    def test_get_products_real_object_roundtrip_conversion(self, test_tenant_id, real_products_in_db):
+    @pytest.mark.asyncio
+    async def test_get_products_real_object_roundtrip_conversion(self, test_tenant_id, real_products_in_db):
         """
         Test get_products with REAL Product objects to catch roundtrip conversion issues.
 
@@ -141,7 +143,7 @@ class TestMCPToolRoundtripValidation:
             mock_principal.return_value = "test_principal"
 
             # Execute the ACTUAL get_products tool (not mocked!)
-            result = get_products_tool(context)
+            result = await get_products(brief="test brief", promoted_offering="test offering", context=context)
 
             # Verify the tool executed successfully
             assert result is not None
@@ -172,7 +174,8 @@ class TestMCPToolRoundtripValidation:
             assert display_product.format_ids == ["display_300x250", "display_728x90"]
             assert video_product.format_ids == ["video_15s", "video_30s"]
 
-    def test_get_products_with_testing_hooks_roundtrip(self, test_tenant_id, real_products_in_db):
+    @pytest.mark.asyncio
+    async def test_get_products_with_testing_hooks_roundtrip(self, test_tenant_id, real_products_in_db):
         """
         Test get_products with testing hooks to catch the EXACT conversion issue.
 
@@ -202,7 +205,7 @@ class TestMCPToolRoundtripValidation:
         with (
             patch("src.core.main.get_current_tenant") as mock_tenant,
             patch("src.core.main.get_principal_from_context") as mock_principal,
-            patch("src.core.main.extract_testing_context") as mock_testing_ctx,
+            patch("src.core.main.get_testing_context") as mock_testing_ctx,
             patch("src.core.main.log_tool_activity"),
         ):
 
@@ -212,7 +215,7 @@ class TestMCPToolRoundtripValidation:
             mock_testing_ctx.return_value = testing_ctx
 
             # Execute get_products with testing hooks enabled
-            result = get_products_tool(context)
+            result = await get_products(brief="test brief", promoted_offering="test offering", context=context)
 
             # Verify the roundtrip conversion worked
             assert result is not None
@@ -432,7 +435,7 @@ class TestMCPToolRoundtripPatterns:
         ]
 
         for test_case in test_cases:
-            with pytest.raises(Exception) if test_case["type"] == "should_fail" else pytest.nullcontext():
+            with pytest.raises(Exception) if test_case["type"] == "should_fail" else nullcontext():
                 # Step 1: Create object
                 original = ProductSchema(**test_case["data"])
 

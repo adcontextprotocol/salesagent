@@ -78,13 +78,14 @@ class TestMCPToolsAudit:
             "media_buy_id": "audit_test_mb_001",
             "principal_id": "audit_test_principal",
             "status": "active",
+            "order_name": "Audit Test Order",
+            "advertiser_name": "Test Advertiser",
+            "start_date": date(2025, 1, 1),
+            "end_date": date(2025, 1, 31),
             "start_time": datetime(2025, 1, 1),
             "end_time": datetime(2025, 1, 31),
-            "total_budget": Decimal("10000.00"),
-            "daily_budget": Decimal("500.00"),
-            "targeting": {"geo_country": ["US"]},
-            "product_ids": ["audit_test_product"],
-            "creative_assignments": [],
+            "budget": Decimal("10000.00"),
+            "raw_request": {"targeting": {"geo_country": ["US"]}, "product_ids": ["audit_test_product"]},
         }
 
         with get_db_session() as session:
@@ -112,7 +113,7 @@ class TestMCPToolsAudit:
             media_buy_id="audit_test_mb_001",
             buyer_ref="audit_test_ref",
             status="active",
-            spend=Budget(total_budget_usd=5000.0, daily_budget_usd=250.0, pacing="even"),
+            spend=Budget(total=5000.0, currency="USD", daily_cap=250.0, pacing="even"),
             impressions=100000,
             pacing="on_track",
             days_elapsed=10,
@@ -164,7 +165,7 @@ class TestMCPToolsAudit:
             media_buy_id="field_consistency_test",
             buyer_ref="consistency_ref",
             status="active",
-            spend=Budget(total_budget_usd=3000.0, pacing="even"),
+            spend=Budget(total=3000.0, currency="USD", pacing="even"),
             impressions=50000,
             pacing="ahead",
             days_elapsed=5,
@@ -209,12 +210,13 @@ class TestMCPToolsAudit:
         """
         # Test various Budget configurations
         budget_configs = [
-            {"total_budget_usd": 5000.0, "daily_budget_usd": 200.0, "pacing": "even"},
-            {"total_budget_usd": 10000.0, "pacing": "fast"},  # No daily budget
+            {"total": 5000.0, "currency": "USD", "daily_cap": 200.0, "pacing": "even"},
+            {"total": 10000.0, "currency": "USD", "pacing": "asap"},  # No daily budget
             {
-                "total_budget_usd": 1000.0,
-                "daily_budget_usd": 50.0,
-                "pacing": "slow",
+                "total": 1000.0,
+                "currency": "USD",
+                "daily_cap": 50.0,
+                "pacing": "daily_budget",
                 "auto_pause_on_budget_exhaustion": True,
             },
         ]

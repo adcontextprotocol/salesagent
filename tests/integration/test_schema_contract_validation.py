@@ -156,8 +156,19 @@ class TestProductSchemaContract:
             "is_fixed_price": True,
             "cpm": 15.0,
             "min_spend": 2000.0,
-            "measurement": {"viewability": True, "brand_safety": True},
-            "creative_policy": {"max_file_size": "10MB"},
+            "measurement": {
+                "type": "brand_lift",
+                "attribution": "deterministic_purchase",
+                "reporting": "weekly_dashboard",
+                "viewability": True,
+                "brand_safety": True,
+            },
+            "creative_policy": {
+                "co_branding": "optional",
+                "landing_page": "any",
+                "templates_available": True,
+                "max_file_size": "10MB",
+            },
             "is_custom": False,
             "brief_relevance": "Highly relevant for display advertising",
             # Internal fields
@@ -276,7 +287,13 @@ class TestCreativeSchemaContract:
             "width": 300,
             "height": 250,
             "file_size": "250KB",
-            "creative_policy": {"max_file_size": "5MB", "formats": ["jpg", "png", "gif"]},
+            "creative_policy": {
+                "co_branding": "none",
+                "landing_page": "any",
+                "templates_available": False,
+                "max_file_size": "5MB",
+                "formats": ["jpg", "png", "gif"],
+            },
         }
 
         # AdCP spec required fields for creatives
@@ -296,7 +313,14 @@ class TestCreativeSchemaContract:
             "height": 1080,
             "duration": 30,
             "file_size": "45MB",
-            "creative_policy": {"max_file_size": "100MB", "duration_max": 30, "aspect_ratios": ["16:9"]},
+            "creative_policy": {
+                "co_branding": "required",
+                "landing_page": "must_include_retailer",
+                "templates_available": True,
+                "max_file_size": "100MB",
+                "duration_max": 30,
+                "aspect_ratios": ["16:9"],
+            },
         }
 
         # Video creatives have additional required fields
