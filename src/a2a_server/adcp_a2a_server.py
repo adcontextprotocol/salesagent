@@ -1621,6 +1621,69 @@ def main():
         extended_agent_card_url="/agent.json",
     )
 
+    # Override the agent card endpoints to support tenant-specific URLs
+    def create_dynamic_agent_card(request) -> AgentCard:
+        """Create agent card with tenant-specific URL from request headers."""
+        # Debug logging
+        logger.info(f"Agent card request headers: {dict(request.headers)}")
+
+        # Check for Approximated routing first (takes priority)
+        apx_incoming_host = request.headers.get("Apx-Incoming-Host")
+        if apx_incoming_host:
+            # Use the original host from Approximated - preserve the exact domain
+            server_url = f"https://{apx_incoming_host}/a2a"
+            logger.info(f"Using Apx-Incoming-Host: {apx_incoming_host} -> {server_url}")
+        else:
+            # Fallback to Host header
+            host = request.headers.get("Host", "")
+            if host and host != "sales-agent.scope3.com":
+                # For external domains, preserve the original host
+                server_url = f"https://{host}/a2a"
+                logger.info(f"Using Host header: {host} -> {server_url}")
+            else:
+                # Default fallback
+                server_url = "https://sales-agent.scope3.com/a2a"
+                logger.info(f"Using default URL: {server_url}")
+
+        # Create a copy of the static agent card with dynamic URL
+        dynamic_card = agent_card.model_copy()
+        dynamic_card.url = server_url
+        return dynamic_card
+
+    # Replace the library's agent card endpoints with our dynamic ones
+    from starlette.responses import JSONResponse
+    from starlette.routing import Route
+
+    async def dynamic_agent_discovery(request):
+        """Override for /.well-known/agent.json with tenant-specific URL."""
+        dynamic_card = create_dynamic_agent_card(request)
+        return JSONResponse(dynamic_card.model_dump())
+
+    async def dynamic_agent_card_endpoint(request):
+        """Override for /agent.json with tenant-specific URL."""
+        dynamic_card = create_dynamic_agent_card(request)
+        return JSONResponse(dynamic_card.model_dump())
+
+    # Find and replace the existing routes
+    new_routes = []
+    for route in app.routes:
+        if hasattr(route, "path"):
+            if route.path == "/.well-known/agent.json":
+                # Replace with our dynamic endpoint
+                new_routes.append(Route("/.well-known/agent.json", dynamic_agent_discovery, methods=["GET"]))
+                logger.info("Replaced /.well-known/agent.json with dynamic version")
+            elif route.path == "/agent.json":
+                # Replace with our dynamic endpoint
+                new_routes.append(Route("/agent.json", dynamic_agent_card_endpoint, methods=["GET"]))
+                logger.info("Replaced /agent.json with dynamic version")
+            else:
+                new_routes.append(route)
+        else:
+            new_routes.append(route)
+
+    # Update the app's router with new routes
+    app.router.routes = new_routes
+
     # Add middleware for backward compatibility with numeric messageId
     @app.middleware("http")
     async def messageId_compatibility_middleware(request, call_next):
@@ -1698,71 +1761,6 @@ def main():
             delattr(_request_context, "auth_token")
 
         return response
-
-    def create_dynamic_agent_card(request) -> AgentCard:
-        """Create agent card with tenant-specific URL from request headers."""
-        # Get tenant from request headers (passed by nginx)
-        tenant = request.headers.get("x-adcp-tenant")
-
-        # If no tenant header, try to extract from Host header
-        if not tenant:
-            host = request.headers.get("Host", "")
-            # Check for sales-agent.scope3.com subdomain pattern
-            if ".sales-agent.scope3.com" in host and not host.startswith("admin."):
-                # Extract tenant from subdomain (e.g., "tenant" from "tenant.sales-agent.scope3.com")
-                tenant = host.split(".sales-agent.scope3.com")[0]
-            # Check for other tenant-specific domains (like test-agent.adcontextprotocol.org)
-            elif host and not host.startswith("sales-agent.scope3.com") and not host.startswith("localhost"):
-                # For domains like test-agent.adcontextprotocol.org, extract the first part as tenant
-                if "." in host:
-                    potential_tenant = host.split(".")[0]
-                    # Only use if it looks like a tenant name (not www, api, etc.)
-                    if potential_tenant not in ["www", "api", "admin"]:
-                        tenant = potential_tenant
-
-        if tenant:
-            # Use tenant-specific subdomain (production pattern)
-            server_url = f"https://{tenant}.sales-agent.scope3.com/a2a"
-        else:
-            # Fallback for development or unknown tenant
-            fly_app = os.getenv("FLY_APP_NAME")
-            if fly_app and fly_app != "adcp-sales-agent":
-                # Development deployment with different app name
-                server_url = f"https://{fly_app}.fly.dev/a2a"
-            else:
-                # Production fallback - use virtual host domain
-                server_url = "https://sales-agent.scope3.com/a2a"
-
-        # Create a copy of the static agent card with dynamic URL
-        dynamic_card = agent_card.model_copy()
-        dynamic_card.url = server_url
-        return dynamic_card
-
-    # Override standard agent card endpoints to be dynamic
-    @app.route("/.well-known/agent.json", methods=["GET"])
-    async def agent_discovery(request):
-        """Dynamic agent discovery endpoint with tenant-specific URL."""
-        from starlette.responses import JSONResponse
-
-        dynamic_card = create_dynamic_agent_card(request)
-        return JSONResponse(dynamic_card.model_dump())
-
-    @app.route("/agent.json", methods=["GET"])
-    async def agent_card_endpoint(request):
-        """Dynamic agent card endpoint with tenant-specific URL."""
-        from starlette.responses import JSONResponse
-
-        dynamic_card = create_dynamic_agent_card(request)
-        return JSONResponse(dynamic_card.model_dump())
-
-    # Add alias for agent-card.json (some clients look for this)
-    @app.route("/.well-known/agent-card.json", methods=["GET"])
-    async def agent_card_alias(request):
-        """Alias for agent.json to support different client expectations."""
-        from starlette.responses import JSONResponse
-
-        dynamic_card = create_dynamic_agent_card(request)
-        return JSONResponse(dynamic_card.model_dump())
 
     # Run with uvicorn
     import uvicorn

@@ -27,19 +27,11 @@ def get_tenant_from_hostname():
     # Check for Approximated routing headers first
     # Approximated sends Apx-Incoming-Host with the original requested domain
     approximated_host = request.headers.get("Apx-Incoming-Host")
-    if approximated_host:
-        # Handle adcontextprotocol.org domains routed through Approximated
-        if ".adcontextprotocol.org" in approximated_host and not approximated_host.startswith("admin."):
-            # Extract tenant from subdomain (e.g., test-agent.adcontextprotocol.org -> test-agent)
-            tenant_subdomain = approximated_host.split(".")[0]
-            with get_db_session() as db_session:
-                # Look for tenant by subdomain or virtual_host
-                tenant = (
-                    db_session.query(Tenant)
-                    .filter((Tenant.subdomain == tenant_subdomain) | (Tenant.virtual_host == approximated_host))
-                    .first()
-                )
-                return tenant
+    if approximated_host and not approximated_host.startswith("admin."):
+        # Approximated handles all external routing - look up tenant by virtual_host
+        with get_db_session() as db_session:
+            tenant = db_session.query(Tenant).filter_by(virtual_host=approximated_host).first()
+            return tenant
 
     # Fallback to direct domain routing (sales-agent.scope3.com)
     if ".sales-agent.scope3.com" in host and not host.startswith("admin."):
