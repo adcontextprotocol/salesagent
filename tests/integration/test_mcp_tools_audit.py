@@ -98,13 +98,15 @@ class TestMCPToolsAudit:
 
         with get_db_session() as session:
             # Create test principal first (required for foreign key constraint)
+            import uuid
+
             from src.core.database.models import Principal as PrincipalModel
 
             principal = PrincipalModel(
                 tenant_id=test_tenant_id,
                 principal_id="audit_test_principal",
                 name="Audit Test Principal",
-                access_token="audit_test_token",
+                access_token=f"audit_test_token_{uuid.uuid4().hex[:8]}",
                 platform_mappings={},
             )
             session.add(principal)
