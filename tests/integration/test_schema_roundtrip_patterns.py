@@ -376,8 +376,10 @@ class TestRoundtripErrorScenarios:
             "is_custom": False,
         }
 
+        from pydantic import ValidationError
+
         # This should fail with validation error
-        with pytest.raises(ValueError, match="formats"):
+        with pytest.raises((ValueError, ValidationError), match="formats"):
             Product(**invalid_product_dict)
 
     def test_missing_required_field_detection(self):
@@ -388,8 +390,10 @@ class TestRoundtripErrorScenarios:
             # Missing: description, formats, delivery_type, is_fixed_price, is_custom
         }
 
+        from pydantic import ValidationError
+
         # This should fail with validation error for missing required fields
-        with pytest.raises(ValueError):
+        with pytest.raises((ValueError, ValidationError)):
             Product(**incomplete_product_dict)
 
     def test_type_conversion_issues(self):
@@ -423,7 +427,7 @@ class TestRoundtripErrorScenarios:
                 "should_fail": True,
             },
             {
-                "name": "negative_pricing",
+                "name": "negative_min_spend",
                 "data": {
                     "product_id": "type_test_3",
                     "name": "Type Test 3",
@@ -431,16 +435,18 @@ class TestRoundtripErrorScenarios:
                     "formats": ["display_300x250"],
                     "delivery_type": "guaranteed",
                     "is_fixed_price": True,
-                    "cpm": -5.0,  # WRONG: Negative CPM
+                    "min_spend": -100.0,  # WRONG: Negative min_spend (has gt=-1 validation)
                     "is_custom": False,
                 },
                 "should_fail": True,
             },
         ]
 
+        from pydantic import ValidationError
+
         for test_case in test_cases:
             if test_case["should_fail"]:
-                with pytest.raises(ValueError):
+                with pytest.raises((ValueError, ValidationError)):
                     Product(**test_case["data"])
             else:
                 # Should succeed

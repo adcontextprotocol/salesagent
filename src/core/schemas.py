@@ -841,6 +841,10 @@ class Budget(BaseModel):
         None, description="Whether to pause campaign when budget is exhausted"
     )
 
+    def model_dump_internal(self, **kwargs):
+        """Dump including all fields for internal processing."""
+        return super().model_dump(**kwargs)
+
 
 # AdCP Compliance Models
 class Measurement(BaseModel):
