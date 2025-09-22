@@ -74,8 +74,20 @@ class TestMCPToolRoundtripValidation:
                 "is_fixed_price": True,
                 "cpm": Decimal("12.50"),
                 "min_spend": Decimal("2000.00"),
-                "measurement": {"viewability": True, "brand_safety": True},
-                "creative_policy": {"max_file_size": "10MB", "formats": ["jpg", "png", "gif"]},
+                "measurement": {
+                    "type": "brand_lift",
+                    "attribution": "deterministic_purchase",
+                    "reporting": "weekly_dashboard",
+                    "viewability": True,
+                    "brand_safety": True,
+                },
+                "creative_policy": {
+                    "co_branding": "optional",
+                    "landing_page": "any",
+                    "templates_available": True,
+                    "max_file_size": "10MB",
+                    "formats": ["jpg", "png", "gif"],
+                },
                 "is_custom": False,
                 "expires_at": None,
                 "countries": ["US", "CA"],
@@ -91,8 +103,18 @@ class TestMCPToolRoundtripValidation:
                 "is_fixed_price": False,
                 "cpm": None,  # Test null handling
                 "min_spend": Decimal("5000.00"),
-                "measurement": {"completion_rate": True},
-                "creative_policy": {"duration_max": 30},
+                "measurement": {
+                    "type": "incremental_sales_lift",
+                    "attribution": "probabilistic",
+                    "reporting": "real_time_api",
+                    "completion_rate": True,
+                },
+                "creative_policy": {
+                    "co_branding": "none",
+                    "landing_page": "retailer_site_only",
+                    "templates_available": False,
+                    "duration_max": 30,
+                },
                 "is_custom": True,
                 "expires_at": None,
                 "countries": ["US", "UK", "DE"],
@@ -133,9 +155,8 @@ class TestMCPToolRoundtripValidation:
         from unittest.mock import patch
 
         with (
-            patch("src.core.main.get_current_tenant") as mock_tenant,
-            patch("src.core.main.get_principal_from_context") as mock_principal,
-            patch("src.core.main.log_tool_activity"),
+            patch("src.core.tools.get_current_tenant") as mock_tenant,
+            patch("src.core.tools.get_principal_from_context") as mock_principal,
         ):
 
             # Configure minimal external dependencies
@@ -203,10 +224,9 @@ class TestMCPToolRoundtripValidation:
         from unittest.mock import patch
 
         with (
-            patch("src.core.main.get_current_tenant") as mock_tenant,
-            patch("src.core.main.get_principal_from_context") as mock_principal,
-            patch("src.core.main.get_testing_context") as mock_testing_ctx,
-            patch("src.core.main.log_tool_activity"),
+            patch("src.core.tools.get_current_tenant") as mock_tenant,
+            patch("src.core.tools.get_principal_from_context") as mock_principal,
+            patch("src.core.tools.get_testing_context") as mock_testing_ctx,
         ):
 
             # Configure dependencies
