@@ -837,6 +837,9 @@ class Budget(BaseModel):
     currency: str = Field(..., description="ISO 4217 currency code (e.g., 'USD', 'EUR')")
     daily_cap: float | None = Field(None, description="Optional daily spending limit")
     pacing: Literal["even", "asap", "daily_budget"] = Field("even", description="Budget pacing strategy")
+    auto_pause_on_budget_exhaustion: bool | None = Field(
+        None, description="Whether to pause campaign when budget is exhausted"
+    )
 
 
 # AdCP Compliance Models
@@ -1053,6 +1056,24 @@ class GetProductsResponse(BaseModel):
 
         return data
 
+    def model_dump_internal(self, **kwargs):
+        """Override to ensure products use internal field names for reconstruction."""
+        data = {}
+
+        # Serialize products using their internal model_dump method
+        if self.products:
+            data["products"] = [product.model_dump_internal(**kwargs) for product in self.products]
+        else:
+            data["products"] = []
+
+        # Add other fields
+        if self.message is not None:
+            data["message"] = self.message
+        if self.errors is not None:
+            data["errors"] = self.errors
+
+        return data
+
 
 class ListCreativeFormatsResponse(BaseModel):
     """Response for list_creative_formats tool.
@@ -1245,7 +1266,18 @@ class Creative(BaseModel):
         """Dump including internal fields for database storage and internal processing."""
         # Don't exclude internal fields
         kwargs.pop("exclude", None)  # Remove any exclude parameter
-        return super().model_dump(**kwargs)
+        data = super().model_dump(**kwargs)
+
+        # For internal dumps, also include alias field names for backward compatibility
+        # This ensures that tests expecting both field names can access them
+        if "format" in data:
+            data["format_id"] = data["format"]
+        if "url" in data:
+            data["content_uri"] = data["url"]
+        if "click_url" in data:
+            data["click_through_url"] = data["click_url"]
+
+        return data
 
     # === AdCP v1.3+ Helper Methods ===
 
@@ -2293,32 +2325,20 @@ class SimulationControlResponse(BaseModel):
 # --- Authorized Properties Constants ---
 
 # Valid property types per AdCP specification
-PROPERTY_TYPES = [
-    "website",
-    "mobile_app", 
-    "ctv_app",
-    "dooh",
-    "podcast",
-    "radio",
-    "streaming_audio"
-]
+PROPERTY_TYPES = ["website", "mobile_app", "ctv_app", "dooh", "podcast", "radio", "streaming_audio"]
 
 # Valid verification statuses
-VERIFICATION_STATUSES = [
-    "pending",
-    "verified", 
-    "failed"
-]
+VERIFICATION_STATUSES = ["pending", "verified", "failed"]
 
 # Valid identifier types by property type (AdCP compliant mappings)
 IDENTIFIER_TYPES_BY_PROPERTY_TYPE = {
     "website": ["domain", "subdomain"],
     "mobile_app": ["bundle_id", "store_id"],
-    "ctv_app": ["roku_store_id", "amazon_store_id", "samsung_store_id", "lg_store_id"], 
+    "ctv_app": ["roku_store_id", "amazon_store_id", "samsung_store_id", "lg_store_id"],
     "dooh": ["venue_id", "network_id"],
     "podcast": ["podcast_guid", "rss_feed_url"],
     "radio": ["station_call_sign", "stream_url"],
-    "streaming_audio": ["platform_id", "stream_id"]
+    "streaming_audio": ["platform_id", "stream_id"],
 }
 
 # Property form field requirements
@@ -2330,7 +2350,7 @@ PROPERTY_VALIDATION_RULES = {
     "publisher_domain": {"min_length": 1, "max_length": 255},
     "property_type": {"allowed_values": PROPERTY_TYPES},
     "verification_status": {"allowed_values": VERIFICATION_STATUSES},
-    "tag_id": {"pattern": r"^[a-z0-9_]+$", "max_length": 50}
+    "tag_id": {"pattern": r"^[a-z0-9_]+$", "max_length": 50},
 }
 
 # Supported file types for bulk upload
@@ -2349,8 +2369,9 @@ PROPERTY_ERROR_MESSAGES = {
     "tag_already_exists": "Tag '{tag_id}' already exists",
     "all_fields_required": "All fields are required",
     "property_not_found": "Property not found",
-    "tenant_not_found": "Tenant not found"
+    "tenant_not_found": "Tenant not found",
 }
+
 
 # --- Authorized Properties (AdCP Spec) ---
 class PropertyIdentifier(BaseModel):

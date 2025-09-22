@@ -295,16 +295,8 @@ class TestCreativeSchemaContract:
             "principal_id": "test_principal",
             "width": 300,
             "height": 250,
-            "file_size": "250KB",
             "created_at": datetime.now(),
             "updated_at": datetime.now(),
-            "creative_policy": {
-                "co_branding": "none",
-                "landing_page": "any",
-                "templates_available": False,
-                "max_file_size": "5MB",
-                "formats": ["jpg", "png", "gif"],
-            },
         }
 
         # AdCP spec required fields for creatives
@@ -325,18 +317,9 @@ class TestCreativeSchemaContract:
             "principal_id": "test_principal",
             "width": 1920,
             "height": 1080,
-            "duration": 30,
-            "file_size": "45MB",
+            "duration": 30.0,
             "created_at": datetime.now(),
             "updated_at": datetime.now(),
-            "creative_policy": {
-                "co_branding": "required",
-                "landing_page": "must_include_retailer",
-                "templates_available": True,
-                "max_file_size": "100MB",
-                "duration_max": 30,
-                "aspect_ratios": ["16:9"],
-            },
         }
 
         # Video creatives have additional required fields
@@ -355,14 +338,13 @@ class TestTargetingSchemaContract:
     def test_targeting_adcp_contract_compliance(self, validator):
         """Test Targeting schema AdCP spec compliance."""
         test_data = {
-            "geo_country": ["US", "CA", "GB"],
-            "geo_region": ["NY", "CA", "TX"],
-            "geo_city": ["New York", "Los Angeles", "London"],
+            "geo_country_any_of": ["US", "CA", "GB"],
+            "geo_region_any_of": ["NY", "CA", "TX"],
+            "geo_city_any_of": ["New York", "Los Angeles", "London"],
             "device_type_any_of": ["desktop", "mobile", "tablet"],
-            "operating_system_any_of": ["iOS", "Android", "Windows"],
+            "os_any_of": ["iOS", "Android", "Windows"],
             "browser_any_of": ["Chrome", "Safari", "Firefox"],
-            "age_range": {"min": 18, "max": 65},
-            "signals": {"contextual_keywords": ["sports", "news", "technology"]},
+            "signals": ["sports_signal_id", "news_signal_id", "technology_signal_id"],
         }
 
         # Targeting schemas have flexible field requirements
@@ -374,10 +356,10 @@ class TestTargetingSchemaContract:
     def test_minimal_targeting_contract(self, validator):
         """Test minimal targeting configuration contract."""
         test_data = {
-            "geo_country": ["US"],
+            "geo_country_any_of": ["US"],
         }
 
-        adcp_spec_fields = {"geo_country"}
+        adcp_spec_fields = {"geo_country_any_of"}
 
         validator.validate_schema_contract(Targeting, test_data, adcp_spec_fields)
 
@@ -392,18 +374,27 @@ class TestSignalSchemaContract:
     def test_signal_adcp_contract_compliance(self, validator):
         """Test Signal schema AdCP spec compliance."""
         test_data = {
-            "signal_id": "signal_contract_test",
+            "signal_agent_segment_id": "signal_contract_test",
             "name": "Signal Contract Test",
             "description": "Testing signal contract compliance",
-            "signal_type": "contextual",
-            "deployment": SignalDeployment(availability="real_time", latency_ms=100, coverage_percentage=95.0),
-            "pricing": SignalPricing(
-                pricing_model="cpm_uplift", base_cpm_uplift=3.50, tier_pricing=[{"tier": "premium", "cpm_uplift": 7.00}]
-            ),
+            "signal_type": "marketplace",
+            "data_provider": "Test Data Provider",
+            "coverage_percentage": 95.0,
+            "deployments": [SignalDeployment(platform="test_platform", is_live=True, scope="platform-wide")],
+            "pricing": SignalPricing(cpm=3.50, currency="USD"),
         }
 
         # AdCP spec required fields for signals
-        adcp_spec_fields = {"signal_id", "name", "description", "signal_type", "deployment", "pricing"}
+        adcp_spec_fields = {
+            "signal_agent_segment_id",
+            "name",
+            "description",
+            "signal_type",
+            "data_provider",
+            "coverage_percentage",
+            "deployments",
+            "pricing",
+        }
 
         validator.validate_schema_contract(Signal, test_data, adcp_spec_fields)
 
@@ -418,25 +409,27 @@ class TestBudgetSchemaContract:
     def test_budget_adcp_contract_compliance(self, validator):
         """Test Budget schema AdCP spec compliance."""
         test_data = {
-            "total_budget_usd": 50000.0,
-            "daily_budget_usd": 2000.0,
+            "total": 50000.0,
+            "currency": "USD",
+            "daily_cap": 2000.0,
             "pacing": "even",
             "auto_pause_on_budget_exhaustion": True,
         }
 
         # AdCP spec required fields for budgets
-        adcp_spec_fields = {"total_budget_usd", "pacing"}
+        adcp_spec_fields = {"total", "currency", "pacing"}
 
         validator.validate_schema_contract(Budget, test_data, adcp_spec_fields)
 
     def test_minimal_budget_contract(self, validator):
         """Test minimal budget configuration contract."""
         test_data = {
-            "total_budget_usd": 10000.0,
-            "pacing": "fast",
+            "total": 10000.0,
+            "currency": "USD",
+            "pacing": "asap",
         }
 
-        adcp_spec_fields = {"total_budget_usd", "pacing"}
+        adcp_spec_fields = {"total", "currency", "pacing"}
 
         validator.validate_schema_contract(Budget, test_data, adcp_spec_fields)
 
