@@ -224,12 +224,18 @@ class TestProductSchemaContract:
             "cpm": 25.75,
             "min_spend": 5000.0,
             "measurement": {
+                "type": "incremental_sales_lift",
+                "attribution": "probabilistic",
+                "reporting": "real_time_api",
                 "viewability": True,
                 "brand_safety": True,
                 "completion_rate": True,
                 "custom_metrics": ["engagement_rate", "attention_score"],
             },
             "creative_policy": {
+                "co_branding": "required",
+                "landing_page": "must_include_retailer",
+                "templates_available": True,
                 "max_file_size": "50MB",
                 "formats": ["jpg", "png", "gif", "mp4"],
                 "aspect_ratios": ["16:9", "1:1", "9:16"],
@@ -278,15 +284,20 @@ class TestCreativeSchemaContract:
 
     def test_creative_adcp_contract_compliance(self, validator):
         """Test Creative schema AdCP spec compliance."""
+        from datetime import datetime
+
         test_data = {
             "creative_id": "creative_contract_test",
             "name": "Creative Contract Test",
-            "format": "display_300x250",
+            "format_id": "display_300x250",
             "status": "approved",
-            "url": "https://example.com/creative.jpg",
+            "content_uri": "https://example.com/creative.jpg",
+            "principal_id": "test_principal",
             "width": 300,
             "height": 250,
             "file_size": "250KB",
+            "created_at": datetime.now(),
+            "updated_at": datetime.now(),
             "creative_policy": {
                 "co_branding": "none",
                 "landing_page": "any",
@@ -303,16 +314,21 @@ class TestCreativeSchemaContract:
 
     def test_video_creative_contract(self, validator):
         """Test video creative specific contract requirements."""
+        from datetime import datetime
+
         test_data = {
             "creative_id": "video_contract_test",
             "name": "Video Creative Contract Test",
-            "format": "video_30s",
+            "format_id": "video_30s",
             "status": "pending",
-            "url": "https://example.com/video.mp4",
+            "content_uri": "https://example.com/video.mp4",
+            "principal_id": "test_principal",
             "width": 1920,
             "height": 1080,
             "duration": 30,
             "file_size": "45MB",
+            "created_at": datetime.now(),
+            "updated_at": datetime.now(),
             "creative_policy": {
                 "co_branding": "required",
                 "landing_page": "must_include_retailer",

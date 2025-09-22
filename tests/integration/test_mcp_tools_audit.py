@@ -107,7 +107,7 @@ class TestMCPToolsAudit:
                 principal_id="audit_test_principal",
                 name="Audit Test Principal",
                 access_token=f"audit_test_token_{uuid.uuid4().hex[:8]}",
-                platform_mappings={},
+                platform_mappings={"mock_ad_server": {"advertiser_id": "test_advertiser"}},
             )
             session.add(principal)
 
@@ -262,11 +262,11 @@ class TestMCPToolsAudit:
             reconstructed = MediaBuyDeliveryData(**delivery_dict)
 
             # Verify Budget object survived roundtrip correctly
-            assert reconstructed.spend.total_budget_usd == budget.total_budget_usd
+            assert reconstructed.spend.total == budget.total
             assert reconstructed.spend.pacing == budget.pacing
 
-            if budget_config.get("daily_budget_usd"):
-                assert reconstructed.spend.daily_budget_usd == budget.daily_budget_usd
+            if budget_config.get("daily_cap"):
+                assert reconstructed.spend.daily_cap == budget.daily_cap
 
             if "auto_pause_on_budget_exhaustion" in budget_config:
                 assert reconstructed.spend.auto_pause_on_budget_exhaustion == budget.auto_pause_on_budget_exhaustion
