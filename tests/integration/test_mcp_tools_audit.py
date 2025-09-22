@@ -107,7 +107,7 @@ class TestMCPToolsAudit:
                 principal_id="audit_test_principal",
                 name="Audit Test Principal",
                 access_token=f"audit_test_token_{uuid.uuid4().hex[:8]}",
-                platform_mappings={"mock_ad_server": {"advertiser_id": "test_advertiser"}},
+                platform_mappings={"mock": {"advertiser_id": "test_advertiser"}},
             )
             session.add(principal)
 
