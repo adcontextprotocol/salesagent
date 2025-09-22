@@ -27,9 +27,9 @@ import pytest
 from src.core.database.database_session import get_db_session
 from src.core.database.models import Product as ProductModel
 from src.core.database.models import Tenant
-from src.core.main import get_products
 from src.core.schemas import Product as ProductSchema
 from src.core.testing_hooks import TestingContext, apply_testing_hooks
+from src.core.tools import get_products_raw
 from tests.utils.database_helpers import create_tenant_with_timestamps
 
 
@@ -143,7 +143,7 @@ class TestMCPToolRoundtripValidation:
             mock_principal.return_value = "test_principal"
 
             # Execute the ACTUAL get_products tool (not mocked!)
-            result = await get_products(brief="test brief", promoted_offering="test offering", context=context)
+            result = await get_products_raw(brief="test brief", promoted_offering="test offering", context=context)
 
             # Verify the tool executed successfully
             assert result is not None
@@ -215,7 +215,7 @@ class TestMCPToolRoundtripValidation:
             mock_testing_ctx.return_value = testing_ctx
 
             # Execute get_products with testing hooks enabled
-            result = await get_products(brief="test brief", promoted_offering="test offering", context=context)
+            result = await get_products_raw(brief="test brief", promoted_offering="test offering", context=context)
 
             # Verify the roundtrip conversion worked
             assert result is not None
@@ -482,8 +482,18 @@ class TestMCPToolRoundtripPatterns:
             "min_spend": 2500.0,
             "is_custom": False,
             # Optional fields that might cause mapping issues
-            "measurement": {"viewability": True},
-            "creative_policy": {"max_file_size": "5MB"},
+            "measurement": {
+                "type": "incremental_sales_lift",
+                "attribution": "deterministic_purchase",
+                "reporting": "weekly_dashboard",
+                "viewability": True,
+            },
+            "creative_policy": {
+                "co_branding": "optional",
+                "landing_page": "any",
+                "templates_available": True,
+                "max_file_size": "5MB",
+            },
         }
 
         # Create Product object
