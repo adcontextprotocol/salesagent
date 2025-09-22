@@ -212,33 +212,39 @@ class TestCreativeSchemaRoundtrip:
 
     def test_display_creative_roundtrip(self, validator):
         """Test roundtrip for display creative."""
+        from datetime import datetime
+
         test_data = {
             "creative_id": "display_creative_roundtrip",
             "name": "Display Creative Roundtrip Test",
-            "format": "display_300x250",
+            "format_id": "display_300x250",
             "status": "pending",
-            "url": "https://example.com/creative.jpg",
+            "content_uri": "https://example.com/creative.jpg",
+            "principal_id": "test_principal",
             "width": 300,
             "height": 250,
-            "file_size": "150KB",
-            "creative_policy": {"max_file_size": "5MB", "formats": ["jpg", "png", "gif"]},
+            "created_at": datetime.now(),
+            "updated_at": datetime.now(),
         }
 
         validator.test_model_roundtrip(Creative, test_data)
 
     def test_video_creative_roundtrip(self, validator):
         """Test roundtrip for video creative."""
+        from datetime import datetime
+
         test_data = {
             "creative_id": "video_creative_roundtrip",
             "name": "Video Creative Roundtrip Test",
-            "format": "video_30s",
+            "format_id": "video_30s",
             "status": "approved",
-            "url": "https://example.com/creative.mp4",
+            "content_uri": "https://example.com/creative.mp4",
+            "principal_id": "test_principal",
             "width": 1920,
             "height": 1080,
-            "duration": 30,
-            "file_size": "25MB",
-            "creative_policy": {"max_file_size": "100MB", "duration_max": 30},
+            "duration": 30.0,
+            "created_at": datetime.now(),
+            "updated_at": datetime.now(),
         }
 
         validator.test_model_roundtrip(Creative, test_data)
@@ -274,13 +280,12 @@ class TestTargetingSchemaRoundtrip:
     def test_complex_targeting_roundtrip(self, validator):
         """Test roundtrip for complex targeting with multiple dimensions."""
         test_data = {
-            "geo_country": ["US", "CA"],
-            "geo_region": ["NY", "CA"],
+            "geo_country_any_of": ["US", "CA"],
+            "geo_region_any_of": ["NY", "CA"],
             "device_type_any_of": ["desktop", "mobile"],
-            "operating_system_any_of": ["iOS", "Android"],
+            "os_any_of": ["iOS", "Android"],
             "browser_any_of": ["Chrome", "Safari"],
-            "age_range": {"min": 18, "max": 65},
-            "signals": {"contextual_keywords": ["sports", "news"]},
+            "signals": ["sports_signal_id", "news_signal_id"],
         }
 
         validator.test_model_roundtrip(Targeting, test_data)
@@ -296,16 +301,14 @@ class TestSignalSchemaRoundtrip:
     def test_contextual_signal_roundtrip(self, validator):
         """Test roundtrip for contextual signals."""
         test_data = {
-            "signal_id": "contextual_keywords",
+            "signal_agent_segment_id": "contextual_keywords",
             "name": "Contextual Keywords",
             "description": "Keywords extracted from page content",
-            "signal_type": "contextual",
-            "deployment": SignalDeployment(availability="real_time", latency_ms=50, coverage_percentage=95.0),
-            "pricing": SignalPricing(
-                pricing_model="cpm_uplift",
-                base_cpm_uplift=2.50,
-                tier_pricing=[{"tier": "premium", "cpm_uplift": 5.00}, {"tier": "standard", "cpm_uplift": 2.50}],
-            ),
+            "signal_type": "marketplace",
+            "data_provider": "Test Data Provider",
+            "coverage_percentage": 95.0,
+            "deployments": [SignalDeployment(platform="test_platform", is_live=True, scope="platform-wide")],
+            "pricing": SignalPricing(cpm=2.50, currency="USD"),
         }
 
         validator.test_model_roundtrip(Signal, test_data)
@@ -313,12 +316,14 @@ class TestSignalSchemaRoundtrip:
     def test_audience_signal_roundtrip(self, validator):
         """Test roundtrip for audience signals."""
         test_data = {
-            "signal_id": "lookalike_audience",
+            "signal_agent_segment_id": "lookalike_audience",
             "name": "Lookalike Audience",
             "description": "AI-generated lookalike audience segments",
-            "signal_type": "audience",
-            "deployment": SignalDeployment(availability="batch_daily", latency_ms=None, coverage_percentage=75.0),
-            "pricing": SignalPricing(pricing_model="flat_fee", flat_fee_usd=1000.0),
+            "signal_type": "custom",
+            "data_provider": "Audience Provider",
+            "coverage_percentage": 75.0,
+            "deployments": [SignalDeployment(platform="audience_platform", is_live=True, scope="account-specific")],
+            "pricing": SignalPricing(cpm=5.00, currency="USD"),
         }
 
         validator.test_model_roundtrip(Signal, test_data)
@@ -334,8 +339,9 @@ class TestBudgetSchemaRoundtrip:
     def test_daily_budget_roundtrip(self, validator):
         """Test roundtrip for daily budget configuration."""
         test_data = {
-            "total_budget_usd": 50000.0,
-            "daily_budget_usd": 2500.0,
+            "total": 50000.0,
+            "currency": "USD",
+            "daily_cap": 2500.0,
             "pacing": "even",
             "auto_pause_on_budget_exhaustion": True,
         }
@@ -345,8 +351,9 @@ class TestBudgetSchemaRoundtrip:
     def test_total_budget_only_roundtrip(self, validator):
         """Test roundtrip for total budget only (no daily limit)."""
         test_data = {
-            "total_budget_usd": 100000.0,
-            "pacing": "fast",
+            "total": 100000.0,
+            "currency": "USD",
+            "pacing": "asap",
             "auto_pause_on_budget_exhaustion": False,
         }
 
@@ -452,8 +459,16 @@ class TestRoundtripErrorScenarios:
             "is_fixed_price": True,
             "cpm": 20.0,
             "min_spend": 3000.0,
-            "measurement": {"viewability": True, "brand_safety": True},
-            "creative_policy": {"max_file_size": "15MB"},
+            "measurement": Measurement(
+                type="incremental_sales_lift",
+                attribution="probabilistic",
+                reporting="real_time_api",
+            ),
+            "creative_policy": CreativePolicy(
+                co_branding="none",
+                landing_page="any",
+                templates_available=False,
+            ),
             "is_custom": False,
             "brief_relevance": "Test relevance explanation",
         }
