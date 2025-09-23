@@ -2646,7 +2646,7 @@ def _get_media_buy_delivery_impl(req: GetMediaBuyDeliveryRequest, context: Conte
 
 @mcp.tool
 def get_media_buy_delivery(
-    today: date,
+    today: date = None,
     media_buy_ids: list[str] = None,
     buyer_refs: list[str] = None,
     status_filter: str = "active",
@@ -2666,6 +2666,10 @@ def get_media_buy_delivery(
     Returns:
         GetMediaBuyDeliveryResponse with delivery data for the requested media buys
     """
+    # Use current date if today is not provided
+    if today is None:
+        today = date.today()
+
     # Create request object from individual parameters (MCP-compliant)
     req = GetMediaBuyDeliveryRequest(
         media_buy_ids=media_buy_ids,

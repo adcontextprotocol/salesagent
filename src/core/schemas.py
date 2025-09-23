@@ -1842,7 +1842,9 @@ class GetMediaBuyDeliveryRequest(BaseModel):
         "active",
         description="Filter for which buys to fetch when IDs/refs not provided: 'active', 'all', 'completed'",
     )
-    today: date = Field(..., description="Reference date for calculating delivery metrics")
+    today: date | None = Field(
+        None, description="Reference date for calculating delivery metrics (defaults to current date)"
+    )
     strategy_id: str | None = Field(
         None,
         description="Optional strategy ID for consistent simulation/testing context",
