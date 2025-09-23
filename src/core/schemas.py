@@ -885,6 +885,13 @@ class Budget(BaseModel):
     currency: str = Field(..., description="ISO 4217 currency code (e.g., 'USD', 'EUR')")
     daily_cap: float | None = Field(None, description="Optional daily spending limit")
     pacing: Literal["even", "asap", "daily_budget"] = Field("even", description="Budget pacing strategy")
+    auto_pause_on_budget_exhaustion: bool | None = Field(
+        None, description="Whether to pause campaign when budget is exhausted"
+    )
+
+    def model_dump_internal(self, **kwargs):
+        """Dump including all fields for internal processing."""
+        return super().model_dump(**kwargs)
 
 
 # AdCP Compliance Models
@@ -1104,6 +1111,24 @@ class GetProductsResponse(BaseModel):
 
         return data
 
+    def model_dump_internal(self, **kwargs):
+        """Override to ensure products use internal field names for reconstruction."""
+        data = {}
+
+        # Serialize products using their internal model_dump method
+        if self.products:
+            data["products"] = [product.model_dump_internal(**kwargs) for product in self.products]
+        else:
+            data["products"] = []
+
+        # Add other fields
+        if self.message is not None:
+            data["message"] = self.message
+        if self.errors is not None:
+            data["errors"] = self.errors
+
+        return data
+
 
 class ListCreativeFormatsResponse(BaseModel):
     """Response for list_creative_formats tool.
@@ -1297,7 +1322,18 @@ class Creative(BaseModel):
         """Dump including internal fields for database storage and internal processing."""
         # Don't exclude internal fields
         kwargs.pop("exclude", None)  # Remove any exclude parameter
-        return super().model_dump(**kwargs)
+        data = super().model_dump(**kwargs)
+
+        # For internal dumps, also include alias field names for backward compatibility
+        # This ensures that tests expecting both field names can access them
+        if "format" in data:
+            data["format_id"] = data["format"]
+        if "url" in data:
+            data["content_uri"] = data["url"]
+        if "click_url" in data:
+            data["click_through_url"] = data["click_url"]
+
+        return data
 
     # === AdCP v1.3+ Helper Methods ===
 
@@ -1841,55 +1877,109 @@ class LegacyUpdateMediaBuyRequest(BaseModel):
 class GetMediaBuyDeliveryRequest(BaseModel):
     """Request delivery data for one or more media buys.
 
+    AdCP-compliant request matching official get-media-buy-delivery-request schema.
+
     Examples:
     - Single buy: media_buy_ids=["buy_123"]
     - Multiple buys: buyer_refs=["ref_123", "ref_456"]
     - All active buys: status_filter="active"
     - All buys: status_filter="all"
+    - Date range: start_date="2025-01-01", end_date="2025-01-31"
     """
 
     media_buy_ids: list[str] | None = Field(
-        None, description="Specific media buy IDs to fetch. If omitted, fetches based on status_filter."
+        None, description="Array of publisher media buy IDs to get delivery data for"
     )
-    buyer_refs: list[str] | None = Field(
-        None, description="Alternative: specify buyer references instead of media buy IDs."
-    )
-    status_filter: str | None = Field(
-        "active",
-        description="Filter for which buys to fetch when IDs/refs not provided: 'active', 'all', 'completed'",
-    )
-    today: date = Field(..., description="Reference date for calculating delivery metrics")
-    strategy_id: str | None = Field(
+    buyer_refs: list[str] | None = Field(None, description="Array of buyer reference IDs to get delivery data for")
+    status_filter: str | list[str] | None = Field(
         None,
-        description="Optional strategy ID for consistent simulation/testing context",
+        description="Filter by status. Can be a single status or array of statuses: 'active', 'pending', 'paused', 'completed', 'failed', 'all'",
     )
+    start_date: str | None = Field(
+        None, description="Start date for reporting period (YYYY-MM-DD)", pattern=r"^\d{4}-\d{2}-\d{2}$"
+    )
+    end_date: str | None = Field(
+        None, description="End date for reporting period (YYYY-MM-DD)", pattern=r"^\d{4}-\d{2}-\d{2}$"
+    )
+
+
+# AdCP-compliant delivery models
+class DeliveryTotals(BaseModel):
+    """Aggregate metrics for a media buy or package."""
+
+    impressions: float = Field(ge=0, description="Total impressions delivered")
+    spend: float = Field(ge=0, description="Total amount spent")
+    clicks: float | None = Field(None, ge=0, description="Total clicks (if applicable)")
+    ctr: float | None = Field(None, ge=0, le=1, description="Click-through rate (clicks/impressions)")
+    video_completions: float | None = Field(None, ge=0, description="Total video completions (if applicable)")
+    completion_rate: float | None = Field(
+        None, ge=0, le=1, description="Video completion rate (completions/impressions)"
+    )
+
+
+class PackageDelivery(BaseModel):
+    """Metrics broken down by package."""
+
+    package_id: str = Field(description="Publisher's package identifier")
+    buyer_ref: str | None = Field(None, description="Buyer's reference identifier for this package")
+    impressions: float = Field(ge=0, description="Package impressions")
+    spend: float = Field(ge=0, description="Package spend")
+    clicks: float | None = Field(None, ge=0, description="Package clicks")
+    video_completions: float | None = Field(None, ge=0, description="Package video completions")
+    pacing_index: float | None = Field(
+        None, ge=0, description="Delivery pace (1.0 = on track, <1.0 = behind, >1.0 = ahead)"
+    )
+
+
+class DailyBreakdown(BaseModel):
+    """Day-by-day delivery metrics."""
+
+    date: str = Field(description="Date (YYYY-MM-DD)", pattern=r"^\d{4}-\d{2}-\d{2}$")
+    impressions: float = Field(ge=0, description="Daily impressions")
+    spend: float = Field(ge=0, description="Daily spend")
 
 
 class MediaBuyDeliveryData(BaseModel):
-    """Delivery data for a single media buy."""
+    """AdCP-compliant delivery data for a single media buy."""
 
-    media_buy_id: str
-    buyer_ref: str
-    status: str
-    spend: Budget
-    impressions: int
-    pacing: str
-    days_elapsed: int
-    total_days: int
+    media_buy_id: str = Field(description="Publisher's media buy identifier")
+    buyer_ref: str | None = Field(None, description="Buyer's reference identifier for this media buy")
+    status: Literal["pending", "active", "paused", "completed", "failed"] = Field(
+        description="Current media buy status"
+    )
+    totals: DeliveryTotals = Field(description="Aggregate metrics for this media buy across all packages")
+    by_package: list[PackageDelivery] = Field(description="Metrics broken down by package")
+    daily_breakdown: list[DailyBreakdown] | None = Field(None, description="Day-by-day delivery")
+
+
+class ReportingPeriod(BaseModel):
+    """Date range for the report."""
+
+    start: str = Field(description="ISO 8601 start timestamp")
+    end: str = Field(description="ISO 8601 end timestamp")
+
+
+class AggregatedTotals(BaseModel):
+    """Combined metrics across all returned media buys."""
+
+    impressions: float = Field(ge=0, description="Total impressions delivered across all media buys")
+    spend: float = Field(ge=0, description="Total amount spent across all media buys")
+    clicks: float | None = Field(None, ge=0, description="Total clicks across all media buys (if applicable)")
+    video_completions: float | None = Field(
+        None, ge=0, description="Total video completions across all media buys (if applicable)"
+    )
+    media_buy_count: int = Field(ge=0, description="Number of media buys included in the response")
 
 
 class GetMediaBuyDeliveryResponse(BaseModel):
-    """Response containing delivery data for requested media buys.
+    """AdCP-compliant response for get_media_buy_delivery task."""
 
-    For single buy requests, 'deliveries' will contain one item.
-    For multiple/all requests, it contains all matching buys.
-    """
-
-    deliveries: list[MediaBuyDeliveryData]
-    total_spend: float
-    total_impressions: int
-    active_count: int
-    summary_date: date
+    adcp_version: str = Field(description="AdCP schema version used for this response", pattern=r"^\d+\.\d+\.\d+$")
+    reporting_period: ReportingPeriod = Field(description="Date range for the report")
+    currency: str = Field(description="ISO 4217 currency code", pattern=r"^[A-Z]{3}$")
+    aggregated_totals: AggregatedTotals = Field(description="Combined metrics across all returned media buys")
+    deliveries: list[MediaBuyDeliveryData] = Field(description="Array of delivery data for each media buy")
+    errors: list[dict] | None = Field(None, description="Task-specific errors and warnings")
 
 
 # Deprecated - kept for backward compatibility
@@ -1918,20 +2008,6 @@ class MediaPackage(BaseModel):
     cpm: float
     impressions: int
     format_ids: list[str]
-
-
-class ReportingPeriod(BaseModel):
-    start: datetime
-    end: datetime
-    start_date: date | None = None  # For compatibility
-    end_date: date | None = None  # For compatibility
-
-
-class DeliveryTotals(BaseModel):
-    impressions: int
-    spend: float
-    clicks: int | None = 0
-    video_completions: int | None = 0
 
 
 class PackagePerformance(BaseModel):
@@ -1981,60 +2057,76 @@ class UpdatePackageRequest(BaseModel):
     today: date | None = None  # For testing/simulation
 
 
-class UpdateMediaBuyRequest(BaseModel):
-    """Update a media buy - mirrors CreateMediaBuyRequest structure.
+# AdCP-compliant supporting models for update-media-buy-request
+class AdCPPackageUpdate(BaseModel):
+    """Package-specific update per AdCP update-media-buy-request schema."""
 
-    Uses PATCH semantics: Only fields provided are updated.
-    Package updates only affect packages explicitly mentioned.
-    To pause all packages, set active=false at campaign level.
-    To pause specific packages, include them in packages list with active=false.
+    package_id: str | None = None
+    buyer_ref: str | None = None
+    budget: Budget | None = None
+    active: bool | None = None
+    targeting_overlay: Targeting | None = None
+    creative_ids: list[str] | None = None
+
+    @model_validator(mode="after")
+    def validate_oneOf_constraint(self):
+        """Validate that either package_id OR buyer_ref is provided (AdCP oneOf constraint)."""
+        if not self.package_id and not self.buyer_ref:
+            raise ValueError("Either package_id or buyer_ref must be provided")
+        return self
+
+
+class UpdateMediaBuyRequest(BaseModel):
+    """AdCP-compliant update media buy request per update-media-buy-request schema.
+
+    Fully compliant with AdCP specification:
+    - OneOf constraint: either media_buy_id OR buyer_ref (not both)
+    - Uses start_time/end_time (datetime) per AdCP spec
+    - Budget object contains currency and pacing
+    - Packages array for package-specific updates
+    - All fields optional except the oneOf identifier
     """
 
-    media_buy_id: str
-    # Campaign-level updates
-    buyer_ref: str | None = None  # Update buyer reference
-    active: bool | None = None  # True to activate, False to pause entire campaign
-    flight_start_date: date | None = None  # Change start date (if not started)
-    flight_end_date: date | None = None  # Extend or shorten campaign
-    budget: Budget | float | None = None  # Update total budget (supports Budget object or float)
-    currency: str | None = None  # Update currency (ISO 4217)
-    targeting_overlay: Targeting | None = None  # Update global targeting
-    start_time: datetime | None = None  # Update start datetime
-    end_time: datetime | None = None  # Update end datetime
-    pacing: Literal["even", "asap", "daily_budget"] | None = None
-    daily_budget: float | None = None  # Daily spend cap across all packages
-    # Package-level updates
-    packages: list[PackageUpdate] | None = None  # Package-specific updates (only these are affected)
-    # Creative updates
-    creatives: list[Creative] | None = None  # Add new creatives
+    # AdCP oneOf constraint: either media_buy_id OR buyer_ref
+    media_buy_id: str | None = None
+    buyer_ref: str | None = None
 
-    # Backward compatibility properties
+    # Campaign-level updates (all optional per AdCP spec)
+    active: bool | None = None
+    start_time: datetime | None = None  # AdCP uses datetime, not date
+    end_time: datetime | None = None  # AdCP uses datetime, not date
+    budget: Budget | None = None  # Budget object contains currency/pacing
+    packages: list[AdCPPackageUpdate] | None = None
+
+    @model_validator(mode="after")
+    def validate_oneOf_constraint(self):
+        """Validate AdCP oneOf constraint: either media_buy_id OR buyer_ref."""
+        if not self.media_buy_id and not self.buyer_ref:
+            raise ValueError("Either media_buy_id or buyer_ref must be provided")
+        if self.media_buy_id and self.buyer_ref:
+            raise ValueError("Cannot provide both media_buy_id and buyer_ref (AdCP oneOf constraint)")
+        return self
+
+    # Backward compatibility properties (deprecated)
     @property
-    def total_budget(self) -> float | None:
-        """Backward compatibility for old field name."""
-        return self.budget
+    def flight_start_date(self) -> date | None:
+        """DEPRECATED: Use start_time instead. Backward compatibility only."""
+        if self.start_time:
+            warnings.warn("flight_start_date is deprecated. Use start_time instead.", DeprecationWarning, stacklevel=2)
+            return self.start_time.date()
+        return None
 
     @property
-    def start_date(self) -> date | None:
-        """Alias for consistency with CreateMediaBuyRequest."""
-        return self.flight_start_date
-
-    @property
-    def end_date(self) -> date | None:
-        """Alias for consistency with CreateMediaBuyRequest."""
-        return self.flight_end_date
-
-    # Legacy fields
-    creative_assignments: dict[str, list[str]] | None = None  # Update creative-to-package mapping
-    today: date | None = None  # For testing/simulation
-    strategy_id: str | None = Field(
-        None,
-        description="Optional strategy ID for consistent simulation/testing context",
-    )
+    def flight_end_date(self) -> date | None:
+        """DEPRECATED: Use end_time instead. Backward compatibility only."""
+        if self.end_time:
+            warnings.warn("flight_end_date is deprecated. Use end_time instead.", DeprecationWarning, stacklevel=2)
+            return self.end_time.date()
+        return None
 
 
 # Adapter-specific response schemas
-class PackageDelivery(BaseModel):
+class AdapterPackageDelivery(BaseModel):
     package_id: str
     impressions: int
     spend: float
@@ -2046,7 +2138,7 @@ class AdapterGetMediaBuyDeliveryResponse(BaseModel):
     media_buy_id: str
     reporting_period: ReportingPeriod
     totals: DeliveryTotals
-    by_package: list[PackageDelivery]
+    by_package: list[AdapterPackageDelivery]
     currency: str
 
 
@@ -2309,13 +2401,61 @@ class Signal(BaseModel):
         return super().model_dump(**kwargs)
 
 
-class GetSignalsRequest(BaseModel):
-    """Request to discover available signals."""
+# AdCP-compliant supporting models for get-signals-request
+class SignalDeliverTo(BaseModel):
+    """Delivery requirements per AdCP get-signals-request schema."""
 
-    query: str | None = None  # Natural language search query
-    type: str | None = None  # Filter by signal type
-    category: str | None = None  # Filter by category
-    limit: int | None = 100
+    platforms: str | list[str] = Field(..., description="Target platforms: 'all' or array of platform names")
+    accounts: list[dict[str, str]] | None = Field(None, description="Specific platform-account combinations")
+    countries: list[str] = Field(..., description="Countries where signals will be used (ISO codes)")
+
+    @model_validator(mode="after")
+    def validate_accounts_structure(self):
+        """Validate accounts array structure if provided."""
+        if self.accounts:
+            for account in self.accounts:
+                if not isinstance(account, dict) or "platform" not in account or "account" not in account:
+                    raise ValueError("Each account must have 'platform' and 'account' fields")
+        return self
+
+
+class SignalFilters(BaseModel):
+    """Signal filters per AdCP get-signals-request schema."""
+
+    catalog_types: list[Literal["marketplace", "custom", "owned"]] | None = None
+    data_providers: list[str] | None = None
+    max_cpm: float | None = Field(None, ge=0, description="Maximum CPM price filter")
+    min_coverage_percentage: float | None = Field(None, ge=0, le=100, description="Minimum coverage requirement")
+
+
+class GetSignalsRequest(BaseModel):
+    """AdCP-compliant request to discover available signals per get-signals-request schema.
+
+    Fully compliant with AdCP specification:
+    - Required: signal_spec (natural language description)
+    - Required: deliver_to (delivery requirements)
+    - Optional: filters (refinement criteria)
+    - Optional: max_results (result limit)
+    """
+
+    signal_spec: str = Field(..., description="Natural language description of the desired signals")
+    deliver_to: SignalDeliverTo = Field(..., description="Where the signals need to be delivered")
+    filters: SignalFilters | None = Field(None, description="Filters to refine results")
+    max_results: int | None = Field(None, ge=1, description="Maximum number of results to return")
+
+    # Backward compatibility properties (deprecated)
+    @property
+    def query(self) -> str:
+        """DEPRECATED: Use signal_spec instead. Backward compatibility only."""
+        warnings.warn("query is deprecated. Use signal_spec instead.", DeprecationWarning, stacklevel=2)
+        return self.signal_spec
+
+    @property
+    def limit(self) -> int | None:
+        """DEPRECATED: Use max_results instead. Backward compatibility only."""
+        if self.max_results:
+            warnings.warn("limit is deprecated. Use max_results instead.", DeprecationWarning, stacklevel=2)
+        return self.max_results
 
 
 class GetSignalsResponse(BaseModel):

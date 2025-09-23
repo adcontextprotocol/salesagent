@@ -133,6 +133,86 @@ tests/
     └── data/               # Sample data files
 ```
 
+## MCP Tool Roundtrip Validation
+
+### Critical Testing Pattern
+
+The MCP tools use a roundtrip conversion pattern that requires special testing attention:
+
+```python
+# Pattern used in get_products and other MCP tools:
+response_data = {"products": [p.model_dump_internal() for p in eligible_products]}
+response_data = apply_testing_hooks(response_data, testing_ctx, "get_products")
+modified_products = [Product(**p) for p in response_data["products"]]  # Critical conversion
+```
+
+### Why This Requires Testing
+
+**The Issue**: Our Pydantic models use internal field names (`formats`) but AdCP spec requires external names (`format_ids`). The `model_dump()` method converts field names for AdCP compliance, but `model_dump_internal()` preserves internal names for roundtrip conversion.
+
+**Production Impact**: A validation error "formats field required" occurred because tests used mock dictionaries instead of real Product objects, missing this conversion.
+
+### Roundtrip Validation Tests
+
+**Key Test Files:**
+- `tests/integration/test_mcp_tool_roundtrip_validation.py` - Tests actual MCP tool execution paths
+- `tests/integration/test_schema_roundtrip_patterns.py` - Reusable roundtrip validation patterns
+- `tests/integration/test_schema_contract_validation.py` - AdCP spec compliance validation
+
+**Critical Test Pattern:**
+```python
+# Test the actual roundtrip conversion that occurs in production
+def test_product_roundtrip_conversion(self):
+    # 1. Create real Product object
+    product = Product(
+        product_id="test",
+        name="Test Product",
+        formats=["display_300x250"],  # Internal field name
+        delivery_type="non_guaranteed",
+        is_fixed_price=False
+    )
+
+    # 2. Convert to internal dict (preserves field names)
+    product_dict = product.model_dump_internal()
+
+    # 3. Apply testing hooks (simulates production path)
+    response_data = {"products": [product_dict]}
+    response_data = apply_testing_hooks(response_data, testing_ctx, "get_products")
+
+    # 4. Test reconstruction (this was failing in production)
+    modified_products = [Product(**p) for p in response_data["products"]]
+
+    # 5. Verify successful roundtrip
+    assert modified_products[0].formats == ["display_300x250"]
+```
+
+### Testing Guidelines
+
+**✅ DO:**
+- Use real Product/Schema objects in tests
+- Test the complete MCP tool execution path
+- Validate both internal and external field mappings
+- Test roundtrip conversions: Object → dict → Object
+
+**❌ DON'T:**
+- Use mock dictionaries that bypass Pydantic validation
+- Test only isolated components without integration
+- Skip testing hooks application
+- Assume field name conversions work without testing
+
+### Running Roundtrip Tests
+
+```bash
+# Run all roundtrip validation tests
+uv run pytest tests/integration/test_mcp_tool_roundtrip_validation.py
+
+# Run schema contract validation
+uv run pytest tests/integration/test_schema_contract_validation.py
+
+# Test specific roundtrip pattern
+uv run pytest -k "roundtrip_conversion"
+```
+
 ## Running Tests with Different Databases
 
 ### SQLite (Default)
@@ -349,7 +429,7 @@ def test_get_products(self, mock_product_model):
     mock_product = Mock()
     mock_product.pricing = 5.00  # Mock allows any attribute
     mock_product_model.query.return_value = [mock_product]
-    
+
     # Test passes even though real ProductModel has no 'pricing' field
     result = get_products()
     assert result[0].pricing == 5.00
@@ -361,11 +441,11 @@ def test_get_products_real_database(self, test_tenant_setup):
     # Use real database connection
     with get_db_session() as session:
         db_product = session.query(ProductModel).first()
-        
+
         # This would fail if 'pricing' field doesn't exist
         assert hasattr(db_product, 'cpm')  # Real field
         assert not hasattr(db_product, 'pricing')  # Non-existent field
-        
+
         # Test actual conversion
         catalog = DatabaseProductCatalog()
         products = await catalog.get_products(brief="test", tenant_id=tenant_id)
@@ -380,7 +460,7 @@ When working with database models, use these patterns to avoid AttributeError:
 # Pattern 1: Direct access for known required fields
 assert product.product_id == 'expected_id'
 
-# Pattern 2: Conditional access for optional fields  
+# Pattern 2: Conditional access for optional fields
 cpm = getattr(product, 'cpm', None)
 
 # Pattern 3: Check field existence before access

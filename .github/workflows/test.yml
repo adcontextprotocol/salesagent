@@ -40,6 +40,7 @@ jobs:
 
     - name: Install dependencies
       run: |
+        export PATH="$HOME/.cargo/bin:$PATH"
         uv sync --extra dev
 
     - name: Check AdCP schema sync
@@ -47,6 +48,7 @@ jobs:
         PYTEST_CURRENT_TEST: true
         ADCP_TESTING: true
       run: |
+        export PATH="$HOME/.cargo/bin:$PATH"
         echo "🔍 Checking AdCP schema sync..."
         uv run python scripts/check_schema_sync.py --ci
         echo "✅ Schema sync check passed"
@@ -274,18 +276,21 @@ jobs:
 
     - name: Install dependencies
       run: |
+        export PATH="$HOME/.cargo/bin:$PATH"
         uv sync --extra dev
 
     - name: Run database migrations
       env:
         DATABASE_URL: postgresql://adcp_user:test_password@localhost:5432/adcp_test
       run: |
+        export PATH="$HOME/.cargo/bin:$PATH"
         uv run python scripts/ops/migrate.py
 
     - name: Initialize test data
       env:
         DATABASE_URL: postgresql://adcp_user:test_password@localhost:5432/adcp_test
       run: |
+        export PATH="$HOME/.cargo/bin:$PATH"
         uv run python scripts/setup/init_database.py
 
     - name: Start AdCP server in background
@@ -299,6 +304,7 @@ jobs:
         ADCP_SALES_PORT: 8080
         A2A_PORT: 8091
       run: |
+        export PATH="$HOME/.cargo/bin:$PATH"
         # Start MCP server in background
         uv run python scripts/run_server.py &
         MCP_PID=$!
@@ -332,6 +338,7 @@ jobs:
         ADCP_SALES_PORT: 8080
         A2A_PORT: 8091
       run: |
+        export PATH="$HOME/.cargo/bin:$PATH"
         uv run pytest tests/e2e/ -v --tb=short --skip-docker
       continue-on-error: true  # E2E tests may be flaky
 

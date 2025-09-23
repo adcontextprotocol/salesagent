@@ -94,21 +94,21 @@ def test_database_queries():
         result = cursor.fetchone()
         print(f"   ✓ Total principals: {result['total_principals']}")
 
-        # Test 5: Check tasks table (may not exist in all setups)
-        print("\n5. Testing tasks query...")
+        # Test 5: Check workflow_steps table (replaces deprecated tasks table)
+        print("\n5. Testing workflow steps query...")
         try:
             cursor.execute(
                 """
-                SELECT COUNT(*) as pending_tasks
-                FROM tasks
-                WHERE tenant_id = %s AND status = 'pending'
+                SELECT COUNT(*) as pending_workflow_steps
+                FROM workflow_steps
+                WHERE tenant_id = %s AND status = 'requires_approval'
             """,
                 ("default",),
             )
             result = cursor.fetchone()
-            print(f"   ✓ Pending tasks: {result['pending_tasks']}")
+            print(f"   ✓ Pending workflow steps: {result['pending_workflow_steps']}")
         except psycopg2.errors.UndefinedTable:
-            print("   ⚠️  Tasks table doesn't exist (optional feature)")
+            print("   ⚠️  Workflow steps table doesn't exist (may not be initialized)")
 
         cursor.close()
         conn.close()

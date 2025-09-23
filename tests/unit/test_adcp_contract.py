@@ -7,6 +7,7 @@ These tests verify that:
 4. AdCP protocol requirements are met
 """
 
+import warnings
 from datetime import datetime, timedelta
 from decimal import Decimal
 
@@ -26,6 +27,7 @@ from src.core.schemas import (
     CreativeStatus,
     Error,
     Format,
+    GetMediaBuyDeliveryRequest,
     GetMediaBuyDeliveryResponse,
     GetProductsRequest,
     GetProductsResponse,
@@ -729,8 +731,8 @@ class TestAdCPContract:
         assert len(adcp_response["currency"]) == 3, "Currency must be 3-letter ISO code"
         assert adcp_response["pacing"] in ["even", "asap", "daily_budget"], "Invalid pacing value"
 
-        # Verify field count (Budget is simple, count should be stable)
-        assert len(adcp_response) == 4, f"Budget response should have exactly 4 fields, got {len(adcp_response)}"
+        # Verify field count (Budget has 5 fields including auto_pause_on_budget_exhaustion)
+        assert len(adcp_response) == 5, f"Budget response should have exactly 5 fields, got {len(adcp_response)}"
 
     def test_measurement_adcp_compliance(self):
         """Test that Measurement model complies with AdCP measurement schema."""
@@ -1320,71 +1322,215 @@ class TestAdCPContract:
         # Verify field count (4 fields total - only non-None fields included)
         assert len(adcp_response) <= 4, f"UpdateMediaBuyResponse should have at most 4 fields, got {len(adcp_response)}"
 
+    def test_get_media_buy_delivery_request_adcp_compliance(self):
+        """Test that GetMediaBuyDeliveryRequest complies with AdCP get-media-buy-delivery-request schema."""
+
+        # Test request with all required + optional fields
+        request = GetMediaBuyDeliveryRequest(
+            media_buy_ids=["mb_123", "mb_456"],
+            buyer_refs=["br_789", "br_012"],
+            status_filter="active",
+            start_date="2025-01-01",
+            end_date="2025-01-31",
+        )
+
+        # Test AdCP-compliant request
+        adcp_request = request.model_dump()
+
+        # Verify all fields are optional in AdCP spec
+        adcp_optional_fields = ["media_buy_ids", "buyer_refs", "status_filter", "start_date", "end_date"]
+        for field in adcp_optional_fields:
+            assert field in adcp_request, f"AdCP optional field '{field}' missing from request"
+
+        # Verify field types and constraints
+        if adcp_request.get("media_buy_ids") is not None:
+            assert isinstance(adcp_request["media_buy_ids"], list), "media_buy_ids must be array"
+
+        if adcp_request.get("buyer_refs") is not None:
+            assert isinstance(adcp_request["buyer_refs"], list), "buyer_refs must be array"
+
+        if adcp_request.get("status_filter") is not None:
+            # Can be string or array according to spec
+            valid_statuses = ["active", "pending", "paused", "completed", "failed", "all"]
+            if isinstance(adcp_request["status_filter"], str):
+                assert (
+                    adcp_request["status_filter"] in valid_statuses
+                ), f"Invalid status: {adcp_request['status_filter']}"
+            elif isinstance(adcp_request["status_filter"], list):
+                for status in adcp_request["status_filter"]:
+                    assert (
+                        status in valid_statuses[:-1]
+                    ), f"Invalid status in array: {status}"  # 'all' not valid in array
+
+        # Verify date format if provided
+        if adcp_request.get("start_date") is not None:
+            import re
+
+            date_pattern = r"^\d{4}-\d{2}-\d{2}$"
+            assert re.match(date_pattern, adcp_request["start_date"]), "start_date must be YYYY-MM-DD format"
+
+        if adcp_request.get("end_date") is not None:
+            import re
+
+            date_pattern = r"^\d{4}-\d{2}-\d{2}$"
+            assert re.match(date_pattern, adcp_request["end_date"]), "end_date must be YYYY-MM-DD format"
+
+        # Test minimal request (all fields optional)
+        minimal_request = GetMediaBuyDeliveryRequest()
+        minimal_adcp_request = minimal_request.model_dump()
+
+        # Should work with no fields set
+        assert isinstance(minimal_adcp_request, dict), "Minimal request should be valid"
+
+        # Test array status_filter
+        array_request = GetMediaBuyDeliveryRequest(status_filter=["active", "pending"])
+        array_adcp_request = array_request.model_dump()
+        assert isinstance(array_adcp_request["status_filter"], list), "status_filter should support array format"
+
     def test_get_media_buy_delivery_response_adcp_compliance(self):
         """Test that GetMediaBuyDeliveryResponse complies with AdCP get-media-buy-delivery-response schema."""
+        from src.core.schemas import (
+            AggregatedTotals,
+            DailyBreakdown,
+            DeliveryTotals,
+            PackageDelivery,
+            ReportingPeriod,
+        )
 
-        # Create delivery data with correct structure using MediaBuyDeliveryData
+        # Create AdCP-compliant delivery data using new models
+        package_delivery = PackageDelivery(
+            package_id="pkg_123",
+            buyer_ref="br_456",
+            impressions=25000.0,
+            spend=500.75,
+            clicks=125.0,
+            video_completions=None,
+            pacing_index=1.0,
+        )
+
+        daily_breakdown = DailyBreakdown(date="2025-01-15", impressions=1250.0, spend=25.05)
+
+        delivery_totals = DeliveryTotals(
+            impressions=25000.0, spend=500.75, clicks=125.0, ctr=0.005, video_completions=None, completion_rate=None
+        )
+
         delivery_data = MediaBuyDeliveryData(
             media_buy_id="mb_12345",
             buyer_ref="br_67890",
             status="active",
-            spend=Budget(total=2500.50, currency="USD"),
-            impressions=125000,
-            pacing="even",
-            days_elapsed=15,
-            total_days=30,
+            totals=delivery_totals,
+            by_package=[package_delivery.model_dump()],
+            daily_breakdown=[daily_breakdown.model_dump()],
         )
 
-        # Create delivery response with metrics
+        reporting_period = ReportingPeriod(start="2025-01-01T00:00:00Z", end="2025-01-31T23:59:59Z")
+
+        aggregated_totals = AggregatedTotals(
+            impressions=25000.0, spend=500.75, clicks=125.0, video_completions=None, media_buy_count=1
+        )
+
+        # Create AdCP-compliant response
         response = GetMediaBuyDeliveryResponse(
+            adcp_version="1.5.0",
+            reporting_period=reporting_period,
+            currency="USD",
+            aggregated_totals=aggregated_totals,
             deliveries=[delivery_data],
-            total_spend=2500.50,
-            total_impressions=125000,
-            active_count=1,
-            summary_date=datetime.now().date(),
+            errors=None,
         )
 
         # Test AdCP-compliant response
         adcp_response = response.model_dump()
 
         # Verify required AdCP fields present and non-null
-        required_fields = ["deliveries", "total_spend", "total_impressions", "active_count", "summary_date"]
+        required_fields = ["adcp_version", "reporting_period", "currency", "aggregated_totals", "deliveries"]
         for field in required_fields:
             assert field in adcp_response, f"Required AdCP field '{field}' missing from response"
             assert adcp_response[field] is not None, f"Required AdCP field '{field}' is None"
 
-        # Verify specific field types and constraints
+        # Verify optional AdCP fields present (can be null)
+        optional_fields = ["errors"]
+        for field in optional_fields:
+            assert field in adcp_response, f"AdCP optional field '{field}' missing from response"
+
+        # Verify adcp_version format
+        import re
+
+        version_pattern = r"^\d+\.\d+\.\d+$"
+        assert re.match(version_pattern, adcp_response["adcp_version"]), "adcp_version must match pattern"
+
+        # Verify currency format
+        currency_pattern = r"^[A-Z]{3}$"
+        assert re.match(currency_pattern, adcp_response["currency"]), "currency must be 3-letter ISO code"
+
+        # Verify reporting_period structure
+        reporting_period_obj = adcp_response["reporting_period"]
+        assert "start" in reporting_period_obj, "reporting_period must have start"
+        assert "end" in reporting_period_obj, "reporting_period must have end"
+
+        # Verify aggregated_totals structure
+        aggregated_obj = adcp_response["aggregated_totals"]
+        assert "impressions" in aggregated_obj, "aggregated_totals must have impressions"
+        assert "spend" in aggregated_obj, "aggregated_totals must have spend"
+        assert "media_buy_count" in aggregated_obj, "aggregated_totals must have media_buy_count"
+        assert aggregated_obj["impressions"] >= 0, "impressions must be non-negative"
+        assert aggregated_obj["spend"] >= 0, "spend must be non-negative"
+        assert aggregated_obj["media_buy_count"] >= 0, "media_buy_count must be non-negative"
+
+        # Verify deliveries array structure
         assert isinstance(adcp_response["deliveries"], list), "deliveries must be array"
 
-        # Verify delivery structure (MediaBuyDeliveryData fields)
         if len(adcp_response["deliveries"]) > 0:
             delivery = adcp_response["deliveries"][0]
-            assert "media_buy_id" in delivery, "delivery must have media_buy_id"
-            assert "buyer_ref" in delivery, "delivery must have buyer_ref"
-            assert "status" in delivery, "delivery must have status"
-            assert "spend" in delivery, "delivery must have spend (Budget object)"
-            assert "impressions" in delivery, "delivery must have impressions"
-            assert "pacing" in delivery, "delivery must have pacing"
-            assert "days_elapsed" in delivery, "delivery must have days_elapsed"
-            assert "total_days" in delivery, "delivery must have total_days"
 
-            # Verify Budget structure within spend
-            spend = delivery["spend"]
-            assert "total" in spend, "spend must have total"
-            assert "currency" in spend, "spend must have currency"
+            # Verify required delivery fields
+            delivery_required_fields = ["media_buy_id", "status", "totals", "by_package"]
+            for field in delivery_required_fields:
+                assert field in delivery, f"delivery must have {field}"
+                assert delivery[field] is not None, f"delivery {field} must not be None"
+
+            # Verify delivery optional fields
+            delivery_optional_fields = ["buyer_ref", "daily_breakdown"]
+            for field in delivery_optional_fields:
+                assert field in delivery, f"delivery optional field '{field}' missing"
+
+            # Verify status enum
+            valid_statuses = ["pending", "active", "paused", "completed", "failed"]
+            assert delivery["status"] in valid_statuses, f"Invalid delivery status: {delivery['status']}"
+
+            # Verify totals structure
+            totals = delivery["totals"]
+            assert "impressions" in totals, "totals must have impressions"
+            assert "spend" in totals, "totals must have spend"
+            assert totals["impressions"] >= 0, "totals impressions must be non-negative"
+            assert totals["spend"] >= 0, "totals spend must be non-negative"
+
+            # Verify by_package array
+            assert isinstance(delivery["by_package"], list), "by_package must be array"
+            if len(delivery["by_package"]) > 0:
+                package = delivery["by_package"][0]
+                package_required_fields = ["package_id", "impressions", "spend"]
+                for field in package_required_fields:
+                    assert field in package, f"package must have {field}"
+                    assert package[field] is not None, f"package {field} must not be None"
 
         # Test empty response case
+        empty_aggregated = AggregatedTotals(impressions=0, spend=0, media_buy_count=0)
         empty_response = GetMediaBuyDeliveryResponse(
-            deliveries=[], total_spend=0.0, total_impressions=0, active_count=0, summary_date=datetime.now().date()
+            adcp_version="1.5.0",
+            reporting_period=reporting_period,
+            currency="USD",
+            aggregated_totals=empty_aggregated,
+            deliveries=[],
         )
 
         empty_adcp_response = empty_response.model_dump()
         assert empty_adcp_response["deliveries"] == [], "Empty deliveries list should be empty array"
 
-        # Verify field count (5 fields total)
+        # Verify field count (6 fields total)
         assert (
-            len(adcp_response) == 5
-        ), f"GetMediaBuyDeliveryResponse should have exactly 5 fields, got {len(adcp_response)}"
+            len(adcp_response) == 6
+        ), f"GetMediaBuyDeliveryResponse should have exactly 6 fields, got {len(adcp_response)}"
 
     def test_property_identifier_adcp_compliance(self):
         """Test that PropertyIdentifier complies with AdCP property identifier schema."""
@@ -1543,6 +1689,191 @@ class TestAdCPContract:
 
         # Verify field count expectations
         assert len(adcp_response) == 4
+
+    def test_get_signals_request_adcp_compliance(self):
+        """Test that GetSignalsRequest model complies with AdCP get-signals-request schema."""
+        # ✅ FIXED: Implementation now matches AdCP spec
+        # AdCP spec requires: signal_spec, deliver_to, optional filters/max_results
+
+        from src.core.schemas import GetSignalsRequest, SignalDeliverTo, SignalFilters
+
+        # Test AdCP-compliant request with all required fields
+        adcp_request = GetSignalsRequest(
+            signal_spec="Sports enthusiasts in automotive market",
+            deliver_to=SignalDeliverTo(
+                platforms=["google_ad_manager", "the_trade_desk"],
+                countries=["US", "CA"],
+                accounts=[
+                    {"platform": "google_ad_manager", "account": "123456"},
+                    {"platform": "the_trade_desk", "account": "ttd789"},
+                ],
+            ),
+            filters=SignalFilters(
+                catalog_types=["marketplace", "custom"],
+                data_providers=["Acme Data Solutions"],
+                max_cpm=5.0,
+                min_coverage_percentage=75.0,
+            ),
+            max_results=50,
+        )
+
+        adcp_response = adcp_request.model_dump()
+
+        # ✅ VERIFY ADCP COMPLIANCE: Required fields present
+        required_fields = ["signal_spec", "deliver_to"]
+        for field in required_fields:
+            assert field in adcp_response, f"Required AdCP field '{field}' missing from response"
+            assert adcp_response[field] is not None, f"Required AdCP field '{field}' is None"
+
+        # ✅ VERIFY ADCP COMPLIANCE: Optional fields present when provided
+        optional_fields = ["filters", "max_results"]
+        for field in optional_fields:
+            assert field in adcp_response, f"Optional AdCP field '{field}' missing from response"
+
+        # ✅ VERIFY deliver_to structure
+        deliver_to = adcp_response["deliver_to"]
+        assert "platforms" in deliver_to, "deliver_to must have platforms field"
+        assert "countries" in deliver_to, "deliver_to must have countries field"
+        assert isinstance(deliver_to["platforms"], list), "platforms must be array when not 'all'"
+        assert isinstance(deliver_to["countries"], list), "countries must be array"
+
+        # Verify country codes are 2-letter ISO
+        for country in deliver_to["countries"]:
+            assert len(country) == 2, f"Country code '{country}' must be 2-letter ISO code"
+            assert country.isupper(), f"Country code '{country}' must be uppercase"
+
+        # ✅ VERIFY filters structure when present
+        filters = adcp_response["filters"]
+        if filters.get("catalog_types"):
+            valid_catalog_types = ["marketplace", "custom", "owned"]
+            for catalog_type in filters["catalog_types"]:
+                assert catalog_type in valid_catalog_types, f"Invalid catalog_type: {catalog_type}"
+
+        if filters.get("max_cpm") is not None:
+            assert filters["max_cpm"] >= 0, "max_cpm must be non-negative"
+
+        if filters.get("min_coverage_percentage") is not None:
+            assert 0 <= filters["min_coverage_percentage"] <= 100, "min_coverage_percentage must be 0-100"
+
+        # ✅ VERIFY max_results constraint
+        if adcp_response.get("max_results") is not None:
+            assert adcp_response["max_results"] >= 1, "max_results must be positive"
+
+        # Test minimal request (only required fields)
+        minimal_request = GetSignalsRequest(
+            signal_spec="Automotive intenders", deliver_to=SignalDeliverTo(platforms="all", countries=["US"])
+        )
+        minimal_response = minimal_request.model_dump()
+        assert minimal_response["deliver_to"]["platforms"] == "all"
+
+        # ✅ VERIFY backward compatibility properties work (deprecated)
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            query_value = adcp_request.query
+            assert query_value == "Sports enthusiasts in automotive market"
+            assert len(w) == 1
+            assert issubclass(w[0].category, DeprecationWarning)
+            assert "query is deprecated" in str(w[0].message)
+
+        # Verify field count (4 fields: signal_spec, deliver_to, filters, max_results)
+        assert len(adcp_response) == 4, f"AdCP request should have exactly 4 fields, got {len(adcp_response)}"
+
+    def test_update_media_buy_request_adcp_compliance(self):
+        """Test that UpdateMediaBuyRequest model complies with AdCP update-media-buy-request schema."""
+        # ✅ FIXED: Implementation now matches AdCP spec
+        # AdCP spec requires: oneOf(media_buy_id OR buyer_ref), optional active/start_time/end_time/budget/packages
+
+        from datetime import datetime
+
+        from src.core.schemas import AdCPPackageUpdate, Budget, UpdateMediaBuyRequest
+
+        # Test AdCP-compliant request with media_buy_id (oneOf option 1)
+        adcp_request_id = UpdateMediaBuyRequest(
+            media_buy_id="mb_12345",
+            active=True,
+            start_time=datetime(2025, 2, 1, 9, 0, 0),
+            end_time=datetime(2025, 2, 28, 23, 59, 59),
+            budget=Budget(total=5000.0, currency="USD", pacing="even"),
+            packages=[
+                AdCPPackageUpdate(package_id="pkg_123", active=True, budget=Budget(total=2500.0, currency="USD"))
+            ],
+        )
+
+        adcp_response_id = adcp_request_id.model_dump()
+
+        # ✅ VERIFY ADCP COMPLIANCE: OneOf constraint satisfied
+        assert "media_buy_id" in adcp_response_id, "media_buy_id must be present"
+        assert adcp_response_id["media_buy_id"] is not None, "media_buy_id must not be None"
+        assert (
+            "buyer_ref" not in adcp_response_id or adcp_response_id["buyer_ref"] is None
+        ), "buyer_ref must be None when media_buy_id is provided"
+
+        # Test AdCP-compliant request with buyer_ref (oneOf option 2)
+        adcp_request_ref = UpdateMediaBuyRequest(
+            buyer_ref="br_67890", active=False, start_time=datetime(2025, 3, 1, 0, 0, 0)
+        )
+
+        adcp_response_ref = adcp_request_ref.model_dump()
+
+        # ✅ VERIFY ADCP COMPLIANCE: OneOf constraint satisfied
+        assert "buyer_ref" in adcp_response_ref, "buyer_ref must be present"
+        assert adcp_response_ref["buyer_ref"] is not None, "buyer_ref must not be None"
+        assert (
+            "media_buy_id" not in adcp_response_ref or adcp_response_ref["media_buy_id"] is None
+        ), "media_buy_id must be None when buyer_ref is provided"
+
+        # ✅ VERIFY ADCP COMPLIANCE: Optional fields present when provided
+        optional_fields = ["active", "start_time", "end_time", "budget", "packages"]
+        for field in optional_fields:
+            if getattr(adcp_request_id, field) is not None:
+                assert field in adcp_response_id, f"Optional AdCP field '{field}' missing from response"
+
+        # ✅ VERIFY start_time/end_time are datetime (not date)
+        if adcp_response_id.get("start_time"):
+            # Should be datetime object (model_dump preserves datetime objects)
+            start_time_obj = adcp_response_id["start_time"]
+            assert isinstance(start_time_obj, datetime), "start_time should be datetime object"
+
+        if adcp_response_id.get("end_time"):
+            # Should be datetime object (model_dump preserves datetime objects)
+            end_time_obj = adcp_response_id["end_time"]
+            assert isinstance(end_time_obj, datetime), "end_time should be datetime object"
+
+        # ✅ VERIFY packages array structure
+        if adcp_response_id.get("packages"):
+            assert isinstance(adcp_response_id["packages"], list), "packages must be array"
+            for package in adcp_response_id["packages"]:
+                # Each package must have either package_id OR buyer_ref (oneOf constraint)
+                has_package_id = package.get("package_id") is not None
+                has_buyer_ref = package.get("buyer_ref") is not None
+                assert has_package_id or has_buyer_ref, "Each package must have either package_id or buyer_ref"
+                assert not (has_package_id and has_buyer_ref), "Package cannot have both package_id and buyer_ref"
+
+        # ✅ VERIFY budget structure (currency/pacing in budget object, not top-level)
+        if adcp_response_id.get("budget"):
+            budget = adcp_response_id["budget"]
+            assert isinstance(budget, dict), "budget must be object"
+            assert "total" in budget, "budget must have total field"
+            assert "currency" in budget, "budget must have currency field (not top-level)"
+
+        # Test oneOf constraint validation
+        with pytest.raises(ValueError, match="Cannot provide both media_buy_id and buyer_ref"):
+            UpdateMediaBuyRequest(media_buy_id="mb_123", buyer_ref="br_456")  # This should fail oneOf constraint
+
+        with pytest.raises(ValueError, match="Either media_buy_id or buyer_ref must be provided"):
+            UpdateMediaBuyRequest(active=True)  # This should fail - no identifier provided
+
+        # ✅ VERIFY backward compatibility properties work (deprecated)
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            flight_start = adcp_request_id.flight_start_date
+            assert flight_start == datetime(2025, 2, 1, 9, 0, 0).date()
+            assert len(w) == 1
+            assert issubclass(w[0].category, DeprecationWarning)
+            assert "flight_start_date is deprecated" in str(w[0].message)
+
+        # Verify field count (6-7 fields including oneOf field that might be None)
+        assert len(adcp_response_id) <= 7, f"AdCP request should have at most 7 fields, got {len(adcp_response_id)}"
 
     def test_task_status_mcp_integration(self):
         """Test TaskStatus integration with MCP response schemas (AdCP PR #77)."""
