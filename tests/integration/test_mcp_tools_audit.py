@@ -131,15 +131,23 @@ class TestMCPToolsAudit:
             session.commit()
 
         # Create delivery data object to test roundtrip
+        from src.core.schemas import DeliveryTotals, PackageDelivery
+
         delivery_data = MediaBuyDeliveryData(
             media_buy_id="audit_test_mb_001",
             buyer_ref="audit_test_ref",
             status="active",
-            spend=Budget(total=5000.0, currency="USD", daily_cap=250.0, pacing="even"),
-            impressions=100000,
-            pacing="on_track",
-            days_elapsed=10,
-            total_days=31,
+            totals=DeliveryTotals(impressions=100000.0, spend=5000.0, clicks=2500.0, ctr=0.025),
+            by_package=[
+                PackageDelivery(
+                    package_id="audit_test_package_001",
+                    buyer_ref="audit_package_ref",
+                    impressions=100000.0,
+                    spend=5000.0,
+                    clicks=2500.0,
+                    pacing_index=1.0,
+                )
+            ],
         )
 
         # Test the roundtrip pattern used by get_media_buy_delivery
@@ -166,10 +174,11 @@ class TestMCPToolsAudit:
             assert reconstructed_delivery.media_buy_id == delivery_data.media_buy_id
             assert reconstructed_delivery.buyer_ref == delivery_data.buyer_ref
             assert reconstructed_delivery.status == delivery_data.status
-            assert reconstructed_delivery.impressions == delivery_data.impressions
-            assert reconstructed_delivery.pacing == delivery_data.pacing
-            assert reconstructed_delivery.days_elapsed == delivery_data.days_elapsed
-            assert reconstructed_delivery.total_days == delivery_data.total_days
+            assert reconstructed_delivery.totals.impressions == delivery_data.totals.impressions
+            assert reconstructed_delivery.totals.spend == delivery_data.totals.spend
+            assert reconstructed_delivery.totals.clicks == delivery_data.totals.clicks
+            assert len(reconstructed_delivery.by_package) == len(delivery_data.by_package)
+            assert reconstructed_delivery.by_package[0].package_id == delivery_data.by_package[0].package_id
 
             print("✅ get_media_buy_delivery roundtrip is SAFE")
 
@@ -187,11 +196,17 @@ class TestMCPToolsAudit:
             media_buy_id="field_consistency_test",
             buyer_ref="consistency_ref",
             status="active",
-            spend=Budget(total=3000.0, currency="USD", pacing="even"),
-            impressions=50000,
-            pacing="ahead",
-            days_elapsed=5,
-            total_days=20,
+            totals=DeliveryTotals(impressions=50000.0, spend=3000.0, clicks=1500.0, ctr=0.03),
+            by_package=[
+                PackageDelivery(
+                    package_id="consistency_test_package",
+                    buyer_ref="consistency_package_ref",
+                    impressions=50000.0,
+                    spend=3000.0,
+                    clicks=1500.0,
+                    pacing_index=1.2,
+                )
+            ],
         )
 
         # Test external dump
@@ -221,8 +236,8 @@ class TestMCPToolsAudit:
         assert reconstructed.media_buy_id == delivery_data.media_buy_id
         assert reconstructed.buyer_ref == delivery_data.buyer_ref
         assert reconstructed.status == delivery_data.status
-        assert reconstructed.impressions == delivery_data.impressions
-        assert reconstructed.pacing == delivery_data.pacing
+        assert reconstructed.totals.impressions == delivery_data.totals.impressions
+        assert reconstructed.totals.spend == delivery_data.totals.spend
 
     def test_budget_nested_object_roundtrip(self):
         """
@@ -250,26 +265,30 @@ class TestMCPToolsAudit:
                 media_buy_id=f"budget_test_{i}",
                 buyer_ref=f"budget_ref_{i}",
                 status="active",
-                spend=budget,
-                impressions=25000,
-                pacing="on_track",
-                days_elapsed=3,
-                total_days=15,
+                totals=DeliveryTotals(
+                    impressions=25000.0, spend=budget.total, clicks=750.0, ctr=0.03  # Use budget total as spend amount
+                ),
+                by_package=[
+                    PackageDelivery(
+                        package_id=f"budget_test_package_{i}",
+                        buyer_ref=f"budget_package_ref_{i}",
+                        impressions=25000.0,
+                        spend=budget.total,
+                        clicks=750.0,
+                        pacing_index=1.0,
+                    )
+                ],
             )
 
-            # Test roundtrip with nested Budget object
+            # Test roundtrip with delivery data structure
             delivery_dict = delivery_data.model_dump()
             reconstructed = MediaBuyDeliveryData(**delivery_dict)
 
-            # Verify Budget object survived roundtrip correctly
-            assert reconstructed.spend.total == budget.total
-            assert reconstructed.spend.pacing == budget.pacing
-
-            if budget_config.get("daily_cap"):
-                assert reconstructed.spend.daily_cap == budget.daily_cap
-
-            if "auto_pause_on_budget_exhaustion" in budget_config:
-                assert reconstructed.spend.auto_pause_on_budget_exhaustion == budget.auto_pause_on_budget_exhaustion
+            # Verify data survived roundtrip correctly
+            assert reconstructed.totals.spend == budget.total
+            assert reconstructed.totals.impressions == 25000.0
+            assert len(reconstructed.by_package) == 1
+            assert reconstructed.by_package[0].spend == budget.total
 
     def test_all_mcp_tools_roundtrip_pattern_audit(self):
         """
@@ -371,11 +390,8 @@ class TestMCPToolsAudit:
             "media_buy_id": "type_mismatch_test",
             "buyer_ref": "mismatch_ref",
             "status": "active",
-            "spend": {"total_budget_usd": 1000.0},  # WRONG: Dict instead of Budget object
-            "impressions": 10000,
-            "pacing": "on_track",
-            "days_elapsed": 2,
-            "total_days": 10,
+            "totals": {"total_budget_usd": 1000.0},  # WRONG: Dict instead of DeliveryTotals object
+            "by_package": [{"package_id": "test", "wrong_field": "invalid"}],  # WRONG: Missing required fields
         }
 
         # This should fail with validation error

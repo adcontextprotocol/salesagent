@@ -2058,7 +2058,7 @@ class UpdateMediaBuyRequest(BaseModel):
 
 
 # Adapter-specific response schemas
-class PackageDelivery(BaseModel):
+class AdapterPackageDelivery(BaseModel):
     package_id: str
     impressions: int
     spend: float
@@ -2070,7 +2070,7 @@ class AdapterGetMediaBuyDeliveryResponse(BaseModel):
     media_buy_id: str
     reporting_period: ReportingPeriod
     totals: DeliveryTotals
-    by_package: list[PackageDelivery]
+    by_package: list[AdapterPackageDelivery]
     currency: str
 
 
