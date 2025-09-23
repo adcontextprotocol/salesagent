@@ -1,11 +1,59 @@
 import uuid
 import warnings
 from datetime import date, datetime, time
+
+# --- V2.3 Pydantic Models (Bearer Auth, Restored & Complete) ---
+# --- MCP Status System (AdCP PR #77) ---
+from enum import Enum
 from typing import Any, Literal
 
 from pydantic import BaseModel, Field, model_validator
 
-# --- V2.3 Pydantic Models (Bearer Auth, Restored & Complete) ---
+
+class TaskStatus(str, Enum):
+    """Standardized task status enum per AdCP MCP Status specification.
+
+    Provides crystal clear guidance on when operations need clarification,
+    approval, or other human input with consistent status handling across
+    MCP and A2A protocols.
+    """
+
+    SUBMITTED = "submitted"
+    WORKING = "working"
+    INPUT_REQUIRED = "input-required"
+    COMPLETED = "completed"
+    FAILED = "failed"
+    CANCELED = "canceled"
+    REJECTED = "rejected"
+    AUTH_REQUIRED = "auth-required"
+    UNKNOWN = "unknown"
+
+    @classmethod
+    def from_operation_state(
+        cls, operation_type: str, has_errors: bool = False, requires_approval: bool = False, requires_auth: bool = False
+    ) -> str:
+        """Convert operation state to appropriate status for decision trees.
+
+        Args:
+            operation_type: Type of operation (discovery, creation, activation, etc.)
+            has_errors: Whether the operation encountered errors
+            requires_approval: Whether the operation requires human approval
+            requires_auth: Whether the operation requires authentication
+
+        Returns:
+            Appropriate TaskStatus value for client decision making
+        """
+        if requires_auth:
+            return cls.AUTH_REQUIRED
+        if has_errors:
+            return cls.FAILED
+        if requires_approval:
+            return cls.INPUT_REQUIRED
+        if operation_type in ["discovery", "listing"]:
+            return cls.COMPLETED  # Discovery operations complete immediately
+        if operation_type in ["creation", "activation", "update"]:
+            return cls.WORKING  # Async operations in progress
+        return cls.UNKNOWN
 
 
 # --- Core Models ---
@@ -1040,6 +1088,7 @@ class GetProductsResponse(BaseModel):
     products: list[Product]
     message: str | None = None  # Optional human-readable message
     errors: list[Error] | None = None  # Optional error reporting
+    status: str | None = Field(None, description="Optional task status per AdCP MCP Status specification")
 
     def model_dump(self, **kwargs):
         """Override to ensure products use AdCP-compliant serialization."""
@@ -1057,6 +1106,8 @@ class GetProductsResponse(BaseModel):
             data["message"] = self.message
         if self.errors is not None:
             data["errors"] = self.errors
+        if self.status is not None:
+            data["status"] = self.status
 
         return data
 
@@ -1090,6 +1141,7 @@ class ListCreativeFormatsResponse(BaseModel):
     message: str | None = None  # Optional human-readable message
     errors: list[Error] | None = None  # Optional error reporting
     specification_version: str | None = Field(None, description="AdCP format specification version")
+    status: str | None = Field(None, description="Optional task status per AdCP MCP Status specification")
 
 
 # --- Creative Lifecycle ---
@@ -1780,7 +1832,7 @@ class CreateMediaBuyResponse(BaseModel):
 
     media_buy_id: str
     buyer_ref: str | None = None  # May not have buyer_ref if failed
-    status: str | None = None  # pending_manual, failed, active, etc.
+    status: str | None = None  # TaskStatus values: submitted, working, input-required, completed, failed, etc.
     detail: str | None = None  # Additional status details
     message: str | None = None  # Human-readable message
     packages: list[dict[str, Any]] = Field(default_factory=list, description="Created packages with IDs")
@@ -2410,6 +2462,26 @@ class GetSignalsResponse(BaseModel):
     """Response containing available signals."""
 
     signals: list[Signal]
+    status: str | None = Field(None, description="Optional task status per AdCP MCP Status specification")
+
+
+# --- Signal Activation ---
+class ActivateSignalRequest(BaseModel):
+    """Request to activate a signal for use in campaigns."""
+
+    signal_id: str = Field(..., description="Signal ID to activate")
+    campaign_id: str | None = Field(None, description="Optional campaign ID to activate signal for")
+    media_buy_id: str | None = Field(None, description="Optional media buy ID to activate signal for")
+
+
+class ActivateSignalResponse(BaseModel):
+    """Response from signal activation."""
+
+    signal_id: str = Field(..., description="Activated signal ID")
+    status: str = Field(..., description="Task status per AdCP MCP Status specification")
+    message: str | None = Field(None, description="Human-readable status message")
+    activation_details: dict[str, Any] | None = Field(None, description="Platform-specific activation details")
+    errors: list[Error] | None = Field(None, description="Optional error reporting")
 
 
 # --- Simulation and Time Progression Control ---
