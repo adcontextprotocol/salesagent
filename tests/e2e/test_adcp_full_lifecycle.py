@@ -736,7 +736,8 @@ class TestAdCPFullLifecycle:
 
         # Test individual media buy delivery
         delivery = await test_client.call_mcp_tool(
-            "get_media_buy_delivery", {"media_buy_id": media_buy_id, "today": "2025-09-15"}  # Mid-campaign
+            "get_media_buy_delivery",
+            {"media_buy_ids": [media_buy_id], "start_date": "2025-09-15", "end_date": "2025-09-15"},  # Mid-campaign
         )
 
         # Comprehensive delivery response validation
@@ -780,7 +781,12 @@ class TestAdCPFullLifecycle:
         try:
             # Test campaign start delivery
             start_delivery = await test_client.call_mcp_tool(
-                "get_media_buy_delivery", {"media_buy_id": media_buy_id, "today": "2025-09-01"}  # Campaign start
+                "get_media_buy_delivery",
+                {
+                    "media_buy_ids": [media_buy_id],
+                    "start_date": "2025-09-01",
+                    "end_date": "2025-09-01",
+                },  # Campaign start
             )
 
             if start_delivery["deliveries"]:
@@ -789,7 +795,8 @@ class TestAdCPFullLifecycle:
 
             # Test campaign end delivery
             end_delivery = await test_client.call_mcp_tool(
-                "get_media_buy_delivery", {"media_buy_id": media_buy_id, "today": "2025-10-01"}  # Campaign end
+                "get_media_buy_delivery",
+                {"media_buy_ids": [media_buy_id], "start_date": "2025-10-01", "end_date": "2025-10-01"},  # Campaign end
             )
 
             if end_delivery["deliveries"]:
@@ -1132,7 +1139,8 @@ class TestAdCPFullLifecycle:
 
         # Check delivery at midpoint
         delivery = await test_client.call_mcp_tool(
-            "get_media_buy_delivery", {"media_buy_id": media_buy_id, "today": "2025-09-15"}
+            "get_media_buy_delivery",
+            {"media_buy_ids": [media_buy_id], "start_date": "2025-09-15", "end_date": "2025-09-15"},
         )
 
         # The response has deliveries array with the media buy data
@@ -1496,7 +1504,8 @@ class TestAdCPFullLifecycle:
         test_client.jump_to_event("campaign-midpoint")
 
         delivery = await test_client.call_mcp_tool(
-            "get_media_buy_delivery", {"media_buy_id": media_buy_id, "today": "2025-09-15"}
+            "get_media_buy_delivery",
+            {"media_buy_ids": [media_buy_id], "start_date": "2025-09-15", "end_date": "2025-09-15"},
         )
 
         print(f"✓ Mid-flight delivery: {delivery.get('impressions', 0)} impressions, ${delivery.get('spend', 0)} spend")
@@ -1514,7 +1523,8 @@ class TestAdCPFullLifecycle:
         test_client.jump_to_event("campaign-complete")
 
         final_delivery = await test_client.call_mcp_tool(
-            "get_media_buy_delivery", {"media_buy_id": media_buy_id, "today": "2025-10-01"}
+            "get_media_buy_delivery",
+            {"media_buy_ids": [media_buy_id], "start_date": "2025-10-01", "end_date": "2025-10-01"},
         )
 
         print("✓ Campaign completed:")

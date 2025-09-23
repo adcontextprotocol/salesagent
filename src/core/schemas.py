@@ -1825,57 +1825,109 @@ class LegacyUpdateMediaBuyRequest(BaseModel):
 class GetMediaBuyDeliveryRequest(BaseModel):
     """Request delivery data for one or more media buys.
 
+    AdCP-compliant request matching official get-media-buy-delivery-request schema.
+
     Examples:
     - Single buy: media_buy_ids=["buy_123"]
     - Multiple buys: buyer_refs=["ref_123", "ref_456"]
     - All active buys: status_filter="active"
     - All buys: status_filter="all"
+    - Date range: start_date="2025-01-01", end_date="2025-01-31"
     """
 
     media_buy_ids: list[str] | None = Field(
-        None, description="Specific media buy IDs to fetch. If omitted, fetches based on status_filter."
+        None, description="Array of publisher media buy IDs to get delivery data for"
     )
-    buyer_refs: list[str] | None = Field(
-        None, description="Alternative: specify buyer references instead of media buy IDs."
-    )
-    status_filter: str | None = Field(
-        "active",
-        description="Filter for which buys to fetch when IDs/refs not provided: 'active', 'all', 'completed'",
-    )
-    today: date | None = Field(
-        None, description="Reference date for calculating delivery metrics (defaults to current date)"
-    )
-    strategy_id: str | None = Field(
+    buyer_refs: list[str] | None = Field(None, description="Array of buyer reference IDs to get delivery data for")
+    status_filter: str | list[str] | None = Field(
         None,
-        description="Optional strategy ID for consistent simulation/testing context",
+        description="Filter by status. Can be a single status or array of statuses: 'active', 'pending', 'paused', 'completed', 'failed', 'all'",
     )
+    start_date: str | None = Field(
+        None, description="Start date for reporting period (YYYY-MM-DD)", pattern=r"^\d{4}-\d{2}-\d{2}$"
+    )
+    end_date: str | None = Field(
+        None, description="End date for reporting period (YYYY-MM-DD)", pattern=r"^\d{4}-\d{2}-\d{2}$"
+    )
+
+
+# AdCP-compliant delivery models
+class DeliveryTotals(BaseModel):
+    """Aggregate metrics for a media buy or package."""
+
+    impressions: float = Field(ge=0, description="Total impressions delivered")
+    spend: float = Field(ge=0, description="Total amount spent")
+    clicks: float | None = Field(None, ge=0, description="Total clicks (if applicable)")
+    ctr: float | None = Field(None, ge=0, le=1, description="Click-through rate (clicks/impressions)")
+    video_completions: float | None = Field(None, ge=0, description="Total video completions (if applicable)")
+    completion_rate: float | None = Field(
+        None, ge=0, le=1, description="Video completion rate (completions/impressions)"
+    )
+
+
+class PackageDelivery(BaseModel):
+    """Metrics broken down by package."""
+
+    package_id: str = Field(description="Publisher's package identifier")
+    buyer_ref: str | None = Field(None, description="Buyer's reference identifier for this package")
+    impressions: float = Field(ge=0, description="Package impressions")
+    spend: float = Field(ge=0, description="Package spend")
+    clicks: float | None = Field(None, ge=0, description="Package clicks")
+    video_completions: float | None = Field(None, ge=0, description="Package video completions")
+    pacing_index: float | None = Field(
+        None, ge=0, description="Delivery pace (1.0 = on track, <1.0 = behind, >1.0 = ahead)"
+    )
+
+
+class DailyBreakdown(BaseModel):
+    """Day-by-day delivery metrics."""
+
+    date: str = Field(description="Date (YYYY-MM-DD)", pattern=r"^\d{4}-\d{2}-\d{2}$")
+    impressions: float = Field(ge=0, description="Daily impressions")
+    spend: float = Field(ge=0, description="Daily spend")
 
 
 class MediaBuyDeliveryData(BaseModel):
-    """Delivery data for a single media buy."""
+    """AdCP-compliant delivery data for a single media buy."""
 
-    media_buy_id: str
-    buyer_ref: str
-    status: str
-    spend: Budget
-    impressions: int
-    pacing: str
-    days_elapsed: int
-    total_days: int
+    media_buy_id: str = Field(description="Publisher's media buy identifier")
+    buyer_ref: str | None = Field(None, description="Buyer's reference identifier for this media buy")
+    status: Literal["pending", "active", "paused", "completed", "failed"] = Field(
+        description="Current media buy status"
+    )
+    totals: DeliveryTotals = Field(description="Aggregate metrics for this media buy across all packages")
+    by_package: list[PackageDelivery] = Field(description="Metrics broken down by package")
+    daily_breakdown: list[DailyBreakdown] | None = Field(None, description="Day-by-day delivery")
+
+
+class ReportingPeriod(BaseModel):
+    """Date range for the report."""
+
+    start: str = Field(description="ISO 8601 start timestamp")
+    end: str = Field(description="ISO 8601 end timestamp")
+
+
+class AggregatedTotals(BaseModel):
+    """Combined metrics across all returned media buys."""
+
+    impressions: float = Field(ge=0, description="Total impressions delivered across all media buys")
+    spend: float = Field(ge=0, description="Total amount spent across all media buys")
+    clicks: float | None = Field(None, ge=0, description="Total clicks across all media buys (if applicable)")
+    video_completions: float | None = Field(
+        None, ge=0, description="Total video completions across all media buys (if applicable)"
+    )
+    media_buy_count: int = Field(ge=0, description="Number of media buys included in the response")
 
 
 class GetMediaBuyDeliveryResponse(BaseModel):
-    """Response containing delivery data for requested media buys.
+    """AdCP-compliant response for get_media_buy_delivery task."""
 
-    For single buy requests, 'deliveries' will contain one item.
-    For multiple/all requests, it contains all matching buys.
-    """
-
-    deliveries: list[MediaBuyDeliveryData]
-    total_spend: float
-    total_impressions: int
-    active_count: int
-    summary_date: date
+    adcp_version: str = Field(description="AdCP schema version used for this response", pattern=r"^\d+\.\d+\.\d+$")
+    reporting_period: ReportingPeriod = Field(description="Date range for the report")
+    currency: str = Field(description="ISO 4217 currency code", pattern=r"^[A-Z]{3}$")
+    aggregated_totals: AggregatedTotals = Field(description="Combined metrics across all returned media buys")
+    deliveries: list[MediaBuyDeliveryData] = Field(description="Array of delivery data for each media buy")
+    errors: list[dict] | None = Field(None, description="Task-specific errors and warnings")
 
 
 # Deprecated - kept for backward compatibility
@@ -1904,20 +1956,6 @@ class MediaPackage(BaseModel):
     cpm: float
     impressions: int
     format_ids: list[str]
-
-
-class ReportingPeriod(BaseModel):
-    start: datetime
-    end: datetime
-    start_date: date | None = None  # For compatibility
-    end_date: date | None = None  # For compatibility
-
-
-class DeliveryTotals(BaseModel):
-    impressions: int
-    spend: float
-    clicks: int | None = 0
-    video_completions: int | None = 0
 
 
 class PackagePerformance(BaseModel):

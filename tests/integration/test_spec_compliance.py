@@ -77,7 +77,12 @@ async def test_core_adcp_tools_callable(sample_principal):
         # 2. get_media_buy_delivery (unified endpoint)
         try:
             await client.call_tool(
-                "get_media_buy_delivery", {"media_buy_ids": ["test"], "today": date.today().isoformat()}
+                "get_media_buy_delivery",
+                {
+                    "media_buy_ids": ["test"],
+                    "start_date": date.today().isoformat(),
+                    "end_date": date.today().isoformat(),
+                },
             )
             core_tools_tested += 1
         except AttributeError:

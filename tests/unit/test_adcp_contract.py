@@ -26,6 +26,7 @@ from src.core.schemas import (
     CreativeStatus,
     Error,
     Format,
+    GetMediaBuyDeliveryRequest,
     GetMediaBuyDeliveryResponse,
     GetProductsRequest,
     GetProductsResponse,
@@ -1313,71 +1314,215 @@ class TestAdCPContract:
         # Verify field count (4 fields total - only non-None fields included)
         assert len(adcp_response) <= 4, f"UpdateMediaBuyResponse should have at most 4 fields, got {len(adcp_response)}"
 
+    def test_get_media_buy_delivery_request_adcp_compliance(self):
+        """Test that GetMediaBuyDeliveryRequest complies with AdCP get-media-buy-delivery-request schema."""
+
+        # Test request with all required + optional fields
+        request = GetMediaBuyDeliveryRequest(
+            media_buy_ids=["mb_123", "mb_456"],
+            buyer_refs=["br_789", "br_012"],
+            status_filter="active",
+            start_date="2025-01-01",
+            end_date="2025-01-31",
+        )
+
+        # Test AdCP-compliant request
+        adcp_request = request.model_dump()
+
+        # Verify all fields are optional in AdCP spec
+        adcp_optional_fields = ["media_buy_ids", "buyer_refs", "status_filter", "start_date", "end_date"]
+        for field in adcp_optional_fields:
+            assert field in adcp_request, f"AdCP optional field '{field}' missing from request"
+
+        # Verify field types and constraints
+        if adcp_request.get("media_buy_ids") is not None:
+            assert isinstance(adcp_request["media_buy_ids"], list), "media_buy_ids must be array"
+
+        if adcp_request.get("buyer_refs") is not None:
+            assert isinstance(adcp_request["buyer_refs"], list), "buyer_refs must be array"
+
+        if adcp_request.get("status_filter") is not None:
+            # Can be string or array according to spec
+            valid_statuses = ["active", "pending", "paused", "completed", "failed", "all"]
+            if isinstance(adcp_request["status_filter"], str):
+                assert (
+                    adcp_request["status_filter"] in valid_statuses
+                ), f"Invalid status: {adcp_request['status_filter']}"
+            elif isinstance(adcp_request["status_filter"], list):
+                for status in adcp_request["status_filter"]:
+                    assert (
+                        status in valid_statuses[:-1]
+                    ), f"Invalid status in array: {status}"  # 'all' not valid in array
+
+        # Verify date format if provided
+        if adcp_request.get("start_date") is not None:
+            import re
+
+            date_pattern = r"^\d{4}-\d{2}-\d{2}$"
+            assert re.match(date_pattern, adcp_request["start_date"]), "start_date must be YYYY-MM-DD format"
+
+        if adcp_request.get("end_date") is not None:
+            import re
+
+            date_pattern = r"^\d{4}-\d{2}-\d{2}$"
+            assert re.match(date_pattern, adcp_request["end_date"]), "end_date must be YYYY-MM-DD format"
+
+        # Test minimal request (all fields optional)
+        minimal_request = GetMediaBuyDeliveryRequest()
+        minimal_adcp_request = minimal_request.model_dump()
+
+        # Should work with no fields set
+        assert isinstance(minimal_adcp_request, dict), "Minimal request should be valid"
+
+        # Test array status_filter
+        array_request = GetMediaBuyDeliveryRequest(status_filter=["active", "pending"])
+        array_adcp_request = array_request.model_dump()
+        assert isinstance(array_adcp_request["status_filter"], list), "status_filter should support array format"
+
     def test_get_media_buy_delivery_response_adcp_compliance(self):
         """Test that GetMediaBuyDeliveryResponse complies with AdCP get-media-buy-delivery-response schema."""
+        from src.core.schemas import (
+            AggregatedTotals,
+            DailyBreakdown,
+            DeliveryTotals,
+            PackageDelivery,
+            ReportingPeriod,
+        )
 
-        # Create delivery data with correct structure using MediaBuyDeliveryData
+        # Create AdCP-compliant delivery data using new models
+        package_delivery = PackageDelivery(
+            package_id="pkg_123",
+            buyer_ref="br_456",
+            impressions=25000.0,
+            spend=500.75,
+            clicks=125.0,
+            video_completions=None,
+            pacing_index=1.0,
+        )
+
+        daily_breakdown = DailyBreakdown(date="2025-01-15", impressions=1250.0, spend=25.05)
+
+        delivery_totals = DeliveryTotals(
+            impressions=25000.0, spend=500.75, clicks=125.0, ctr=0.005, video_completions=None, completion_rate=None
+        )
+
         delivery_data = MediaBuyDeliveryData(
             media_buy_id="mb_12345",
             buyer_ref="br_67890",
             status="active",
-            spend=Budget(total=2500.50, currency="USD"),
-            impressions=125000,
-            pacing="even",
-            days_elapsed=15,
-            total_days=30,
+            totals=delivery_totals,
+            by_package=[package_delivery.model_dump()],
+            daily_breakdown=[daily_breakdown.model_dump()],
         )
 
-        # Create delivery response with metrics
+        reporting_period = ReportingPeriod(start="2025-01-01T00:00:00Z", end="2025-01-31T23:59:59Z")
+
+        aggregated_totals = AggregatedTotals(
+            impressions=25000.0, spend=500.75, clicks=125.0, video_completions=None, media_buy_count=1
+        )
+
+        # Create AdCP-compliant response
         response = GetMediaBuyDeliveryResponse(
+            adcp_version="1.5.0",
+            reporting_period=reporting_period,
+            currency="USD",
+            aggregated_totals=aggregated_totals,
             deliveries=[delivery_data],
-            total_spend=2500.50,
-            total_impressions=125000,
-            active_count=1,
-            summary_date=datetime.now().date(),
+            errors=None,
         )
 
         # Test AdCP-compliant response
         adcp_response = response.model_dump()
 
         # Verify required AdCP fields present and non-null
-        required_fields = ["deliveries", "total_spend", "total_impressions", "active_count", "summary_date"]
+        required_fields = ["adcp_version", "reporting_period", "currency", "aggregated_totals", "deliveries"]
         for field in required_fields:
             assert field in adcp_response, f"Required AdCP field '{field}' missing from response"
             assert adcp_response[field] is not None, f"Required AdCP field '{field}' is None"
 
-        # Verify specific field types and constraints
+        # Verify optional AdCP fields present (can be null)
+        optional_fields = ["errors"]
+        for field in optional_fields:
+            assert field in adcp_response, f"AdCP optional field '{field}' missing from response"
+
+        # Verify adcp_version format
+        import re
+
+        version_pattern = r"^\d+\.\d+\.\d+$"
+        assert re.match(version_pattern, adcp_response["adcp_version"]), "adcp_version must match pattern"
+
+        # Verify currency format
+        currency_pattern = r"^[A-Z]{3}$"
+        assert re.match(currency_pattern, adcp_response["currency"]), "currency must be 3-letter ISO code"
+
+        # Verify reporting_period structure
+        reporting_period_obj = adcp_response["reporting_period"]
+        assert "start" in reporting_period_obj, "reporting_period must have start"
+        assert "end" in reporting_period_obj, "reporting_period must have end"
+
+        # Verify aggregated_totals structure
+        aggregated_obj = adcp_response["aggregated_totals"]
+        assert "impressions" in aggregated_obj, "aggregated_totals must have impressions"
+        assert "spend" in aggregated_obj, "aggregated_totals must have spend"
+        assert "media_buy_count" in aggregated_obj, "aggregated_totals must have media_buy_count"
+        assert aggregated_obj["impressions"] >= 0, "impressions must be non-negative"
+        assert aggregated_obj["spend"] >= 0, "spend must be non-negative"
+        assert aggregated_obj["media_buy_count"] >= 0, "media_buy_count must be non-negative"
+
+        # Verify deliveries array structure
         assert isinstance(adcp_response["deliveries"], list), "deliveries must be array"
 
-        # Verify delivery structure (MediaBuyDeliveryData fields)
         if len(adcp_response["deliveries"]) > 0:
             delivery = adcp_response["deliveries"][0]
-            assert "media_buy_id" in delivery, "delivery must have media_buy_id"
-            assert "buyer_ref" in delivery, "delivery must have buyer_ref"
-            assert "status" in delivery, "delivery must have status"
-            assert "spend" in delivery, "delivery must have spend (Budget object)"
-            assert "impressions" in delivery, "delivery must have impressions"
-            assert "pacing" in delivery, "delivery must have pacing"
-            assert "days_elapsed" in delivery, "delivery must have days_elapsed"
-            assert "total_days" in delivery, "delivery must have total_days"
 
-            # Verify Budget structure within spend
-            spend = delivery["spend"]
-            assert "total" in spend, "spend must have total"
-            assert "currency" in spend, "spend must have currency"
+            # Verify required delivery fields
+            delivery_required_fields = ["media_buy_id", "status", "totals", "by_package"]
+            for field in delivery_required_fields:
+                assert field in delivery, f"delivery must have {field}"
+                assert delivery[field] is not None, f"delivery {field} must not be None"
+
+            # Verify delivery optional fields
+            delivery_optional_fields = ["buyer_ref", "daily_breakdown"]
+            for field in delivery_optional_fields:
+                assert field in delivery, f"delivery optional field '{field}' missing"
+
+            # Verify status enum
+            valid_statuses = ["pending", "active", "paused", "completed", "failed"]
+            assert delivery["status"] in valid_statuses, f"Invalid delivery status: {delivery['status']}"
+
+            # Verify totals structure
+            totals = delivery["totals"]
+            assert "impressions" in totals, "totals must have impressions"
+            assert "spend" in totals, "totals must have spend"
+            assert totals["impressions"] >= 0, "totals impressions must be non-negative"
+            assert totals["spend"] >= 0, "totals spend must be non-negative"
+
+            # Verify by_package array
+            assert isinstance(delivery["by_package"], list), "by_package must be array"
+            if len(delivery["by_package"]) > 0:
+                package = delivery["by_package"][0]
+                package_required_fields = ["package_id", "impressions", "spend"]
+                for field in package_required_fields:
+                    assert field in package, f"package must have {field}"
+                    assert package[field] is not None, f"package {field} must not be None"
 
         # Test empty response case
+        empty_aggregated = AggregatedTotals(impressions=0, spend=0, media_buy_count=0)
         empty_response = GetMediaBuyDeliveryResponse(
-            deliveries=[], total_spend=0.0, total_impressions=0, active_count=0, summary_date=datetime.now().date()
+            adcp_version="1.5.0",
+            reporting_period=reporting_period,
+            currency="USD",
+            aggregated_totals=empty_aggregated,
+            deliveries=[],
         )
 
         empty_adcp_response = empty_response.model_dump()
         assert empty_adcp_response["deliveries"] == [], "Empty deliveries list should be empty array"
 
-        # Verify field count (5 fields total)
+        # Verify field count (6 fields total)
         assert (
-            len(adcp_response) == 5
-        ), f"GetMediaBuyDeliveryResponse should have exactly 5 fields, got {len(adcp_response)}"
+            len(adcp_response) == 6
+        ), f"GetMediaBuyDeliveryResponse should have exactly 6 fields, got {len(adcp_response)}"
 
     def test_property_identifier_adcp_compliance(self):
         """Test that PropertyIdentifier complies with AdCP property identifier schema."""

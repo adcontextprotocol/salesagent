@@ -23,7 +23,12 @@ async def test_unified_delivery_single_buy(sample_principal, sample_media_buy_re
     async with client:
         # Test single media buy query
         result = await client.call_tool(
-            "get_media_buy_delivery", {"req": {"media_buy_ids": ["test_buy_123"], "today": date.today().isoformat()}}
+            "get_media_buy_delivery",
+            {
+                "media_buy_ids": ["test_buy_123"],
+                "start_date": date.today().isoformat(),
+                "end_date": date.today().isoformat(),
+            },
         )
 
         assert "deliveries" in result, "Response missing 'deliveries' array"
@@ -42,7 +47,11 @@ async def test_unified_delivery_multiple_buys(sample_principal):
     async with client:
         result = await client.call_tool(
             "get_media_buy_delivery",
-            {"req": {"media_buy_ids": ["test_buy_123", "test_buy_456"], "today": date.today().isoformat()}},
+            {
+                "media_buy_ids": ["test_buy_123", "test_buy_456"],
+                "start_date": date.today().isoformat(),
+                "end_date": date.today().isoformat(),
+            },
         )
 
         assert "deliveries" in result
@@ -60,7 +69,9 @@ async def test_unified_delivery_active_filter(sample_principal):
 
     async with client:
         # Default filter should be 'active'
-        result = await client.call_tool("get_media_buy_delivery", {"req": {"today": date.today().isoformat()}})
+        result = await client.call_tool(
+            "get_media_buy_delivery", {"start_date": date.today().isoformat(), "end_date": date.today().isoformat()}
+        )
 
         assert "deliveries" in result
         assert isinstance(result["deliveries"], list)
@@ -77,16 +88,18 @@ async def test_unified_delivery_all_filter(sample_principal):
 
     async with client:
         result = await client.call_tool(
-            "get_media_buy_delivery", {"req": {"status_filter": "all", "today": date.today().isoformat()}}
+            "get_media_buy_delivery",
+            {"status_filter": "all", "start_date": date.today().isoformat(), "end_date": date.today().isoformat()},
         )
 
         assert "deliveries" in result
         assert isinstance(result["deliveries"], list)
-        # Check aggregate fields
-        assert "total_spend" in result
-        assert "active_count" in result
-        assert isinstance(result["total_spend"], int | float)
-        assert isinstance(result["active_count"], int)
+        # Check AdCP-compliant response fields
+        assert "adcp_version" in result
+        assert "reporting_period" in result
+        assert "currency" in result
+        assert "aggregated_totals" in result
+        assert isinstance(result["aggregated_totals"]["media_buy_count"], int)
 
 
 @pytest.mark.asyncio
@@ -100,7 +113,12 @@ async def test_unified_delivery_completed_filter(sample_principal):
 
     async with client:
         result = await client.call_tool(
-            "get_media_buy_delivery", {"req": {"status_filter": "completed", "today": date.today().isoformat()}}
+            "get_media_buy_delivery",
+            {
+                "status_filter": "completed",
+                "start_date": date.today().isoformat(),
+                "end_date": date.today().isoformat(),
+            },
         )
 
         assert "deliveries" in result
