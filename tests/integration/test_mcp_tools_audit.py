@@ -30,7 +30,9 @@ from src.core.database.models import Product as ProductModel
 from src.core.database.models import Tenant
 from src.core.schemas import (
     Budget,
+    DeliveryTotals,
     MediaBuyDeliveryData,
+    PackageDelivery,
 )
 from src.core.testing_hooks import TestingContext, apply_testing_hooks
 from tests.utils.database_helpers import create_tenant_with_timestamps
@@ -131,8 +133,6 @@ class TestMCPToolsAudit:
             session.commit()
 
         # Create delivery data object to test roundtrip
-        from src.core.schemas import DeliveryTotals, PackageDelivery
-
         delivery_data = MediaBuyDeliveryData(
             media_buy_id="audit_test_mb_001",
             buyer_ref="audit_test_ref",
