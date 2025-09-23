@@ -226,8 +226,11 @@ class TestFunctionCallIntegration:
             testing_context={},
         )
 
-        # Create minimal request
-        request = GetSignalsRequest(signal_types=[], categories=[])
+        # Create minimal AdCP-compliant request
+        from src.core.schemas import SignalDeliverTo
+
+        deliver_to = SignalDeliverTo(platforms="all", countries=["US"])
+        request = GetSignalsRequest(signal_spec="test signal description", deliver_to=deliver_to)
 
         # This should not fail with import/call errors
         # We're not testing the business logic, just that the function can be called
