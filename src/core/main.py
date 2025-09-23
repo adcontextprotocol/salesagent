@@ -75,6 +75,8 @@ from src.core.schemas import (
     PropertyTagMetadata,
     ReportingPeriod,
     Signal,
+    SignalDeployment,
+    SignalPricing,
     SyncCreativesResponse,
     UpdateMediaBuyRequest,
     UpdateMediaBuyResponse,
@@ -1566,89 +1568,138 @@ async def get_signals(req: GetSignalsRequest, context: Context = None) -> GetSig
     # or the ad server's available audience segments
     signals = []
 
-    # Sample signals for demonstration
+    # Sample signals for demonstration using AdCP-compliant structure
     sample_signals = [
         Signal(
-            signal_id="auto_intenders_q1_2025",
+            signal_agent_segment_id="auto_intenders_q1_2025",
             name="Auto Intenders Q1 2025",
             description="Users actively researching new vehicles in Q1 2025",
-            type="audience",
-            category="automotive",
-            reach=2.5,
-            cpm_uplift=3.0,
+            signal_type="marketplace",
+            data_provider="Acme Data Solutions",
+            coverage_percentage=85.0,
+            deployments=[
+                SignalDeployment(
+                    platform="google_ad_manager",
+                    account="123456",
+                    is_live=True,
+                    scope="account-specific",
+                    decisioning_platform_segment_id="gam_auto_intenders",
+                    estimated_activation_duration_minutes=0,
+                )
+            ],
+            pricing=SignalPricing(cpm=3.0, currency="USD"),
         ),
         Signal(
-            signal_id="luxury_travel_enthusiasts",
+            signal_agent_segment_id="luxury_travel_enthusiasts",
             name="Luxury Travel Enthusiasts",
             description="High-income individuals interested in premium travel experiences",
-            type="audience",
-            category="travel",
-            reach=1.2,
-            cpm_uplift=5.0,
+            signal_type="marketplace",
+            data_provider="Premium Audience Co",
+            coverage_percentage=75.0,
+            deployments=[
+                SignalDeployment(
+                    platform="google_ad_manager",
+                    is_live=True,
+                    scope="platform-wide",
+                    estimated_activation_duration_minutes=15,
+                )
+            ],
+            pricing=SignalPricing(cpm=5.0, currency="USD"),
         ),
         Signal(
-            signal_id="sports_content",
+            signal_agent_segment_id="sports_content",
             name="Sports Content Pages",
             description="Target ads on sports-related content",
-            type="contextual",
-            category="sports",
-            reach=15.0,
-            cpm_uplift=1.5,
+            signal_type="owned",
+            data_provider="Publisher Sports Network",
+            coverage_percentage=95.0,
+            deployments=[
+                SignalDeployment(
+                    platform="google_ad_manager",
+                    is_live=True,
+                    scope="account-specific",
+                    decisioning_platform_segment_id="sports_contextual",
+                )
+            ],
+            pricing=SignalPricing(cpm=1.5, currency="USD"),
         ),
         Signal(
-            signal_id="finance_content",
+            signal_agent_segment_id="finance_content",
             name="Finance & Business Content",
             description="Target ads on finance and business content",
-            type="contextual",
-            category="finance",
-            reach=8.0,
-            cpm_uplift=2.0,
+            signal_type="owned",
+            data_provider="Financial News Corp",
+            coverage_percentage=88.0,
+            deployments=[SignalDeployment(platform="google_ad_manager", is_live=True, scope="platform-wide")],
+            pricing=SignalPricing(cpm=2.0, currency="USD"),
         ),
         Signal(
-            signal_id="urban_millennials",
+            signal_agent_segment_id="urban_millennials",
             name="Urban Millennials",
             description="Millennials living in major metropolitan areas",
-            type="audience",
-            category="demographic",
-            reach=5.0,
-            cpm_uplift=1.8,
+            signal_type="marketplace",
+            data_provider="Demographics Plus",
+            coverage_percentage=78.0,
+            deployments=[
+                SignalDeployment(
+                    platform="google_ad_manager",
+                    is_live=True,
+                    scope="account-specific",
+                    estimated_activation_duration_minutes=30,
+                )
+            ],
+            pricing=SignalPricing(cpm=1.8, currency="USD"),
         ),
         Signal(
-            signal_id="pet_owners",
+            signal_agent_segment_id="pet_owners",
             name="Pet Owners",
             description="Households with dogs or cats",
-            type="audience",
-            category="lifestyle",
-            reach=35.0,
-            cpm_uplift=1.2,
+            signal_type="marketplace",
+            data_provider="Lifestyle Data Inc",
+            coverage_percentage=92.0,
+            deployments=[SignalDeployment(platform="google_ad_manager", is_live=True, scope="platform-wide")],
+            pricing=SignalPricing(cpm=1.2, currency="USD"),
         ),
     ]
 
-    # Filter based on request parameters
+    # Filter based on request parameters using new AdCP-compliant fields
     for signal in sample_signals:
-        # Apply query filter
-        if req.query:
-            query_lower = req.query.lower()
+        # Apply signal_spec filter (natural language description matching)
+        if req.signal_spec:
+            spec_lower = req.signal_spec.lower()
             if (
-                query_lower not in signal.name.lower()
-                and query_lower not in signal.description.lower()
-                and query_lower not in signal.category.lower()
+                spec_lower not in signal.name.lower()
+                and spec_lower not in signal.description.lower()
+                and spec_lower not in signal.signal_type.lower()
             ):
                 continue
 
-        # Apply type filter
-        if req.type and signal.type != req.type:
-            continue
+        # Apply filters if provided
+        if req.filters:
+            # Filter by catalog_types (equivalent to old 'type' field)
+            if req.filters.catalog_types and signal.signal_type not in req.filters.catalog_types:
+                continue
 
-        # Apply category filter
-        if req.category and signal.category != req.category:
-            continue
+            # Filter by data_providers
+            if req.filters.data_providers and signal.data_provider not in req.filters.data_providers:
+                continue
+
+            # Filter by max_cpm (using signal's pricing.cpm)
+            if req.filters.max_cpm is not None and signal.pricing and signal.pricing.cpm > req.filters.max_cpm:
+                continue
+
+            # Filter by min_coverage_percentage
+            if (
+                req.filters.min_coverage_percentage is not None
+                and signal.coverage_percentage < req.filters.min_coverage_percentage
+            ):
+                continue
 
         signals.append(signal)
 
-    # Apply limit
-    if req.limit:
-        signals = signals[: req.limit]
+    # Apply max_results limit (AdCP-compliant field name)
+    if req.max_results:
+        signals = signals[: req.max_results]
 
     return GetSignalsResponse(signals=signals)
 

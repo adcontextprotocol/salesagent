@@ -2005,56 +2005,72 @@ class UpdatePackageRequest(BaseModel):
     today: date | None = None  # For testing/simulation
 
 
-class UpdateMediaBuyRequest(BaseModel):
-    """Update a media buy - mirrors CreateMediaBuyRequest structure.
+# AdCP-compliant supporting models for update-media-buy-request
+class AdCPPackageUpdate(BaseModel):
+    """Package-specific update per AdCP update-media-buy-request schema."""
 
-    Uses PATCH semantics: Only fields provided are updated.
-    Package updates only affect packages explicitly mentioned.
-    To pause all packages, set active=false at campaign level.
-    To pause specific packages, include them in packages list with active=false.
+    package_id: str | None = None
+    buyer_ref: str | None = None
+    budget: Budget | None = None
+    active: bool | None = None
+    targeting_overlay: Targeting | None = None
+    creative_ids: list[str] | None = None
+
+    @model_validator(mode="after")
+    def validate_oneOf_constraint(self):
+        """Validate that either package_id OR buyer_ref is provided (AdCP oneOf constraint)."""
+        if not self.package_id and not self.buyer_ref:
+            raise ValueError("Either package_id or buyer_ref must be provided")
+        return self
+
+
+class UpdateMediaBuyRequest(BaseModel):
+    """AdCP-compliant update media buy request per update-media-buy-request schema.
+
+    Fully compliant with AdCP specification:
+    - OneOf constraint: either media_buy_id OR buyer_ref (not both)
+    - Uses start_time/end_time (datetime) per AdCP spec
+    - Budget object contains currency and pacing
+    - Packages array for package-specific updates
+    - All fields optional except the oneOf identifier
     """
 
-    media_buy_id: str
-    # Campaign-level updates
-    buyer_ref: str | None = None  # Update buyer reference
-    active: bool | None = None  # True to activate, False to pause entire campaign
-    flight_start_date: date | None = None  # Change start date (if not started)
-    flight_end_date: date | None = None  # Extend or shorten campaign
-    budget: Budget | float | None = None  # Update total budget (supports Budget object or float)
-    currency: str | None = None  # Update currency (ISO 4217)
-    targeting_overlay: Targeting | None = None  # Update global targeting
-    start_time: datetime | None = None  # Update start datetime
-    end_time: datetime | None = None  # Update end datetime
-    pacing: Literal["even", "asap", "daily_budget"] | None = None
-    daily_budget: float | None = None  # Daily spend cap across all packages
-    # Package-level updates
-    packages: list[PackageUpdate] | None = None  # Package-specific updates (only these are affected)
-    # Creative updates
-    creatives: list[Creative] | None = None  # Add new creatives
+    # AdCP oneOf constraint: either media_buy_id OR buyer_ref
+    media_buy_id: str | None = None
+    buyer_ref: str | None = None
 
-    # Backward compatibility properties
+    # Campaign-level updates (all optional per AdCP spec)
+    active: bool | None = None
+    start_time: datetime | None = None  # AdCP uses datetime, not date
+    end_time: datetime | None = None  # AdCP uses datetime, not date
+    budget: Budget | None = None  # Budget object contains currency/pacing
+    packages: list[AdCPPackageUpdate] | None = None
+
+    @model_validator(mode="after")
+    def validate_oneOf_constraint(self):
+        """Validate AdCP oneOf constraint: either media_buy_id OR buyer_ref."""
+        if not self.media_buy_id and not self.buyer_ref:
+            raise ValueError("Either media_buy_id or buyer_ref must be provided")
+        if self.media_buy_id and self.buyer_ref:
+            raise ValueError("Cannot provide both media_buy_id and buyer_ref (AdCP oneOf constraint)")
+        return self
+
+    # Backward compatibility properties (deprecated)
     @property
-    def total_budget(self) -> float | None:
-        """Backward compatibility for old field name."""
-        return self.budget
+    def flight_start_date(self) -> date | None:
+        """DEPRECATED: Use start_time instead. Backward compatibility only."""
+        if self.start_time:
+            warnings.warn("flight_start_date is deprecated. Use start_time instead.", DeprecationWarning, stacklevel=2)
+            return self.start_time.date()
+        return None
 
     @property
-    def start_date(self) -> date | None:
-        """Alias for consistency with CreateMediaBuyRequest."""
-        return self.flight_start_date
-
-    @property
-    def end_date(self) -> date | None:
-        """Alias for consistency with CreateMediaBuyRequest."""
-        return self.flight_end_date
-
-    # Legacy fields
-    creative_assignments: dict[str, list[str]] | None = None  # Update creative-to-package mapping
-    today: date | None = None  # For testing/simulation
-    strategy_id: str | None = Field(
-        None,
-        description="Optional strategy ID for consistent simulation/testing context",
-    )
+    def flight_end_date(self) -> date | None:
+        """DEPRECATED: Use end_time instead. Backward compatibility only."""
+        if self.end_time:
+            warnings.warn("flight_end_date is deprecated. Use end_time instead.", DeprecationWarning, stacklevel=2)
+            return self.end_time.date()
+        return None
 
 
 # Adapter-specific response schemas
@@ -2333,13 +2349,61 @@ class Signal(BaseModel):
         return super().model_dump(**kwargs)
 
 
-class GetSignalsRequest(BaseModel):
-    """Request to discover available signals."""
+# AdCP-compliant supporting models for get-signals-request
+class SignalDeliverTo(BaseModel):
+    """Delivery requirements per AdCP get-signals-request schema."""
 
-    query: str | None = None  # Natural language search query
-    type: str | None = None  # Filter by signal type
-    category: str | None = None  # Filter by category
-    limit: int | None = 100
+    platforms: str | list[str] = Field(..., description="Target platforms: 'all' or array of platform names")
+    accounts: list[dict[str, str]] | None = Field(None, description="Specific platform-account combinations")
+    countries: list[str] = Field(..., description="Countries where signals will be used (ISO codes)")
+
+    @model_validator(mode="after")
+    def validate_accounts_structure(self):
+        """Validate accounts array structure if provided."""
+        if self.accounts:
+            for account in self.accounts:
+                if not isinstance(account, dict) or "platform" not in account or "account" not in account:
+                    raise ValueError("Each account must have 'platform' and 'account' fields")
+        return self
+
+
+class SignalFilters(BaseModel):
+    """Signal filters per AdCP get-signals-request schema."""
+
+    catalog_types: list[Literal["marketplace", "custom", "owned"]] | None = None
+    data_providers: list[str] | None = None
+    max_cpm: float | None = Field(None, ge=0, description="Maximum CPM price filter")
+    min_coverage_percentage: float | None = Field(None, ge=0, le=100, description="Minimum coverage requirement")
+
+
+class GetSignalsRequest(BaseModel):
+    """AdCP-compliant request to discover available signals per get-signals-request schema.
+
+    Fully compliant with AdCP specification:
+    - Required: signal_spec (natural language description)
+    - Required: deliver_to (delivery requirements)
+    - Optional: filters (refinement criteria)
+    - Optional: max_results (result limit)
+    """
+
+    signal_spec: str = Field(..., description="Natural language description of the desired signals")
+    deliver_to: SignalDeliverTo = Field(..., description="Where the signals need to be delivered")
+    filters: SignalFilters | None = Field(None, description="Filters to refine results")
+    max_results: int | None = Field(None, ge=1, description="Maximum number of results to return")
+
+    # Backward compatibility properties (deprecated)
+    @property
+    def query(self) -> str:
+        """DEPRECATED: Use signal_spec instead. Backward compatibility only."""
+        warnings.warn("query is deprecated. Use signal_spec instead.", DeprecationWarning, stacklevel=2)
+        return self.signal_spec
+
+    @property
+    def limit(self) -> int | None:
+        """DEPRECATED: Use max_results instead. Backward compatibility only."""
+        if self.max_results:
+            warnings.warn("limit is deprecated. Use max_results instead.", DeprecationWarning, stacklevel=2)
+        return self.max_results
 
 
 class GetSignalsResponse(BaseModel):

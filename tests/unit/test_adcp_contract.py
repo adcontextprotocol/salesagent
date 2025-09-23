@@ -7,6 +7,7 @@ These tests verify that:
 4. AdCP protocol requirements are met
 """
 
+import warnings
 from datetime import datetime, timedelta
 from decimal import Decimal
 
@@ -1681,6 +1682,191 @@ class TestAdCPContract:
 
         # Verify field count expectations
         assert len(adcp_response) == 4
+
+    def test_get_signals_request_adcp_compliance(self):
+        """Test that GetSignalsRequest model complies with AdCP get-signals-request schema."""
+        # ✅ FIXED: Implementation now matches AdCP spec
+        # AdCP spec requires: signal_spec, deliver_to, optional filters/max_results
+
+        from src.core.schemas import GetSignalsRequest, SignalDeliverTo, SignalFilters
+
+        # Test AdCP-compliant request with all required fields
+        adcp_request = GetSignalsRequest(
+            signal_spec="Sports enthusiasts in automotive market",
+            deliver_to=SignalDeliverTo(
+                platforms=["google_ad_manager", "the_trade_desk"],
+                countries=["US", "CA"],
+                accounts=[
+                    {"platform": "google_ad_manager", "account": "123456"},
+                    {"platform": "the_trade_desk", "account": "ttd789"},
+                ],
+            ),
+            filters=SignalFilters(
+                catalog_types=["marketplace", "custom"],
+                data_providers=["Acme Data Solutions"],
+                max_cpm=5.0,
+                min_coverage_percentage=75.0,
+            ),
+            max_results=50,
+        )
+
+        adcp_response = adcp_request.model_dump()
+
+        # ✅ VERIFY ADCP COMPLIANCE: Required fields present
+        required_fields = ["signal_spec", "deliver_to"]
+        for field in required_fields:
+            assert field in adcp_response, f"Required AdCP field '{field}' missing from response"
+            assert adcp_response[field] is not None, f"Required AdCP field '{field}' is None"
+
+        # ✅ VERIFY ADCP COMPLIANCE: Optional fields present when provided
+        optional_fields = ["filters", "max_results"]
+        for field in optional_fields:
+            assert field in adcp_response, f"Optional AdCP field '{field}' missing from response"
+
+        # ✅ VERIFY deliver_to structure
+        deliver_to = adcp_response["deliver_to"]
+        assert "platforms" in deliver_to, "deliver_to must have platforms field"
+        assert "countries" in deliver_to, "deliver_to must have countries field"
+        assert isinstance(deliver_to["platforms"], list), "platforms must be array when not 'all'"
+        assert isinstance(deliver_to["countries"], list), "countries must be array"
+
+        # Verify country codes are 2-letter ISO
+        for country in deliver_to["countries"]:
+            assert len(country) == 2, f"Country code '{country}' must be 2-letter ISO code"
+            assert country.isupper(), f"Country code '{country}' must be uppercase"
+
+        # ✅ VERIFY filters structure when present
+        filters = adcp_response["filters"]
+        if filters.get("catalog_types"):
+            valid_catalog_types = ["marketplace", "custom", "owned"]
+            for catalog_type in filters["catalog_types"]:
+                assert catalog_type in valid_catalog_types, f"Invalid catalog_type: {catalog_type}"
+
+        if filters.get("max_cpm") is not None:
+            assert filters["max_cpm"] >= 0, "max_cpm must be non-negative"
+
+        if filters.get("min_coverage_percentage") is not None:
+            assert 0 <= filters["min_coverage_percentage"] <= 100, "min_coverage_percentage must be 0-100"
+
+        # ✅ VERIFY max_results constraint
+        if adcp_response.get("max_results") is not None:
+            assert adcp_response["max_results"] >= 1, "max_results must be positive"
+
+        # Test minimal request (only required fields)
+        minimal_request = GetSignalsRequest(
+            signal_spec="Automotive intenders", deliver_to=SignalDeliverTo(platforms="all", countries=["US"])
+        )
+        minimal_response = minimal_request.model_dump()
+        assert minimal_response["deliver_to"]["platforms"] == "all"
+
+        # ✅ VERIFY backward compatibility properties work (deprecated)
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            query_value = adcp_request.query
+            assert query_value == "Sports enthusiasts in automotive market"
+            assert len(w) == 1
+            assert issubclass(w[0].category, DeprecationWarning)
+            assert "query is deprecated" in str(w[0].message)
+
+        # Verify field count (4 fields: signal_spec, deliver_to, filters, max_results)
+        assert len(adcp_response) == 4, f"AdCP request should have exactly 4 fields, got {len(adcp_response)}"
+
+    def test_update_media_buy_request_adcp_compliance(self):
+        """Test that UpdateMediaBuyRequest model complies with AdCP update-media-buy-request schema."""
+        # ✅ FIXED: Implementation now matches AdCP spec
+        # AdCP spec requires: oneOf(media_buy_id OR buyer_ref), optional active/start_time/end_time/budget/packages
+
+        from datetime import datetime
+
+        from src.core.schemas import AdCPPackageUpdate, Budget, UpdateMediaBuyRequest
+
+        # Test AdCP-compliant request with media_buy_id (oneOf option 1)
+        adcp_request_id = UpdateMediaBuyRequest(
+            media_buy_id="mb_12345",
+            active=True,
+            start_time=datetime(2025, 2, 1, 9, 0, 0),
+            end_time=datetime(2025, 2, 28, 23, 59, 59),
+            budget=Budget(total=5000.0, currency="USD", pacing="even"),
+            packages=[
+                AdCPPackageUpdate(package_id="pkg_123", active=True, budget=Budget(total=2500.0, currency="USD"))
+            ],
+        )
+
+        adcp_response_id = adcp_request_id.model_dump()
+
+        # ✅ VERIFY ADCP COMPLIANCE: OneOf constraint satisfied
+        assert "media_buy_id" in adcp_response_id, "media_buy_id must be present"
+        assert adcp_response_id["media_buy_id"] is not None, "media_buy_id must not be None"
+        assert (
+            "buyer_ref" not in adcp_response_id or adcp_response_id["buyer_ref"] is None
+        ), "buyer_ref must be None when media_buy_id is provided"
+
+        # Test AdCP-compliant request with buyer_ref (oneOf option 2)
+        adcp_request_ref = UpdateMediaBuyRequest(
+            buyer_ref="br_67890", active=False, start_time=datetime(2025, 3, 1, 0, 0, 0)
+        )
+
+        adcp_response_ref = adcp_request_ref.model_dump()
+
+        # ✅ VERIFY ADCP COMPLIANCE: OneOf constraint satisfied
+        assert "buyer_ref" in adcp_response_ref, "buyer_ref must be present"
+        assert adcp_response_ref["buyer_ref"] is not None, "buyer_ref must not be None"
+        assert (
+            "media_buy_id" not in adcp_response_ref or adcp_response_ref["media_buy_id"] is None
+        ), "media_buy_id must be None when buyer_ref is provided"
+
+        # ✅ VERIFY ADCP COMPLIANCE: Optional fields present when provided
+        optional_fields = ["active", "start_time", "end_time", "budget", "packages"]
+        for field in optional_fields:
+            if getattr(adcp_request_id, field) is not None:
+                assert field in adcp_response_id, f"Optional AdCP field '{field}' missing from response"
+
+        # ✅ VERIFY start_time/end_time are datetime (not date)
+        if adcp_response_id.get("start_time"):
+            # Should be datetime object (model_dump preserves datetime objects)
+            start_time_obj = adcp_response_id["start_time"]
+            assert isinstance(start_time_obj, datetime), "start_time should be datetime object"
+
+        if adcp_response_id.get("end_time"):
+            # Should be datetime object (model_dump preserves datetime objects)
+            end_time_obj = adcp_response_id["end_time"]
+            assert isinstance(end_time_obj, datetime), "end_time should be datetime object"
+
+        # ✅ VERIFY packages array structure
+        if adcp_response_id.get("packages"):
+            assert isinstance(adcp_response_id["packages"], list), "packages must be array"
+            for package in adcp_response_id["packages"]:
+                # Each package must have either package_id OR buyer_ref (oneOf constraint)
+                has_package_id = package.get("package_id") is not None
+                has_buyer_ref = package.get("buyer_ref") is not None
+                assert has_package_id or has_buyer_ref, "Each package must have either package_id or buyer_ref"
+                assert not (has_package_id and has_buyer_ref), "Package cannot have both package_id and buyer_ref"
+
+        # ✅ VERIFY budget structure (currency/pacing in budget object, not top-level)
+        if adcp_response_id.get("budget"):
+            budget = adcp_response_id["budget"]
+            assert isinstance(budget, dict), "budget must be object"
+            assert "total" in budget, "budget must have total field"
+            assert "currency" in budget, "budget must have currency field (not top-level)"
+
+        # Test oneOf constraint validation
+        with pytest.raises(ValueError, match="Cannot provide both media_buy_id and buyer_ref"):
+            UpdateMediaBuyRequest(media_buy_id="mb_123", buyer_ref="br_456")  # This should fail oneOf constraint
+
+        with pytest.raises(ValueError, match="Either media_buy_id or buyer_ref must be provided"):
+            UpdateMediaBuyRequest(active=True)  # This should fail - no identifier provided
+
+        # ✅ VERIFY backward compatibility properties work (deprecated)
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            flight_start = adcp_request_id.flight_start_date
+            assert flight_start == datetime(2025, 2, 1, 9, 0, 0).date()
+            assert len(w) == 1
+            assert issubclass(w[0].category, DeprecationWarning)
+            assert "flight_start_date is deprecated" in str(w[0].message)
+
+        # Verify field count (6-7 fields including oneOf field that might be None)
+        assert len(adcp_response_id) <= 7, f"AdCP request should have at most 7 fields, got {len(adcp_response_id)}"
 
 
 if __name__ == "__main__":
