@@ -98,6 +98,10 @@ class SchemaSyncChecker:
                 "/schemas/v1/media-buy/get-media-buy-delivery-request.json",
                 "/schemas/v1/media-buy/get-media-buy-delivery-response.json",
             ],
+            "list_authorized_properties": [
+                "/schemas/v1/media-buy/list-authorized-properties-request.json",
+                "/schemas/v1/media-buy/list-authorized-properties-response.json",
+            ],
             # Core schemas needed by implemented endpoints
             "core_schemas": [
                 "/schemas/v1/core/product.json",
@@ -421,6 +425,7 @@ class SchemaSyncChecker:
                 "list-creatives",
                 "update-media-buy",
                 "get-media-buy-delivery",
+                "list-authorized-properties",  # AdCP PR #174 implementation
             }
 
             # Check coverage

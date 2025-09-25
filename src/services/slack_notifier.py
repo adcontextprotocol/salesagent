@@ -444,6 +444,188 @@ class SlackNotifier:
 
         return "\n".join(formatted_parts[:5]) if formatted_parts else None  # Limit to 5 items
 
+    def notify_media_buy_event(
+        self,
+        event_type: str,
+        media_buy_id: str | None,
+        principal_name: str,
+        details: dict[str, Any],
+        tenant_name: str | None = None,
+        success: bool = True,
+        error_message: str | None = None,
+    ) -> bool:
+        """
+        Send notification for media buy events (creation, update, activation, etc.).
+
+        Args:
+            event_type: Type of event ('created', 'approval_required', 'failed', 'activated', etc.)
+            media_buy_id: Media buy identifier (can be pending ID for approval cases)
+            principal_name: Principal who initiated the action
+            details: Event-specific details
+            tenant_name: Tenant/publisher name
+            success: Whether the event was successful
+            error_message: Error message if event failed
+
+        Returns:
+            True if notification sent successfully
+        """
+        # Define event-specific formatting
+        event_configs = {
+            "created": {
+                "emoji": "🎉",
+                "title": "Media Buy Created Successfully",
+                "color": "good",
+                "button_text": "View Campaign",
+                "button_style": "primary",
+            },
+            "approval_required": {
+                "emoji": "🔔",
+                "title": "Media Buy Requires Approval",
+                "color": "warning",
+                "button_text": "Review Request",
+                "button_style": "primary",
+            },
+            "config_approval_required": {
+                "emoji": "⚙️",
+                "title": "Media Buy Requires Configuration Approval",
+                "color": "warning",
+                "button_text": "Review Configuration",
+                "button_style": "primary",
+            },
+            "failed": {
+                "emoji": "❌",
+                "title": "Media Buy Creation Failed",
+                "color": "danger",
+                "button_text": "View Error Details",
+                "button_style": "danger",
+            },
+            "activated": {
+                "emoji": "🚀",
+                "title": "Media Buy Activated",
+                "color": "good",
+                "button_text": "View Performance",
+                "button_style": "primary",
+            },
+        }
+
+        config = event_configs.get(
+            event_type,
+            {
+                "emoji": "📢",
+                "title": f"Media Buy {event_type.replace('_', ' ').title()}",
+                "color": "good" if success else "danger",
+                "button_text": "View Details",
+                "button_style": "primary",
+            },
+        )
+
+        # Build main fields
+        fields = [
+            {"type": "mrkdwn", "text": f"*Principal:*\n{principal_name}"},
+        ]
+
+        if media_buy_id:
+            fields.append({"type": "mrkdwn", "text": f"*Media Buy ID:*\n`{media_buy_id}`"})
+
+        if details.get("po_number"):
+            fields.append({"type": "mrkdwn", "text": f"*Campaign:*\n{details['po_number']}"})
+
+        if details.get("total_budget"):
+            budget = details["total_budget"]
+            fields.append({"type": "mrkdwn", "text": f"*Budget:*\n${budget:,.2f}"})
+
+        if tenant_name:
+            fields.append({"type": "mrkdwn", "text": f"*Publisher:*\n{tenant_name}"})
+
+        # Create blocks
+        blocks = [
+            {"type": "header", "text": {"type": "plain_text", "text": f"{config['emoji']} {config['title']}"}},
+            {"type": "section", "fields": fields},
+        ]
+
+        # Add campaign details section
+        detail_parts = []
+        if details.get("product_ids"):
+            products = details["product_ids"][:3]  # Limit to first 3
+            product_text = ", ".join(products)
+            if len(details["product_ids"]) > 3:
+                product_text += f" (and {len(details['product_ids']) - 3} more)"
+            detail_parts.append(f"*Products:* {product_text}")
+
+        if details.get("start_time") and details.get("end_time"):
+            from datetime import datetime
+
+            try:
+                start = datetime.fromisoformat(details["start_time"].replace("Z", "+00:00"))
+                end = datetime.fromisoformat(details["end_time"].replace("Z", "+00:00"))
+                duration = (end - start).days + 1
+                detail_parts.append(f"*Duration:* {duration} days")
+                detail_parts.append(f"*Flight:* {start.strftime('%Y-%m-%d')} to {end.strftime('%Y-%m-%d')}")
+            except Exception:
+                pass  # Skip if date parsing fails
+
+        if details.get("approval_reason"):
+            detail_parts.append(f"*Approval Required:* {details['approval_reason']}")
+
+        if detail_parts:
+            blocks.append({"type": "section", "text": {"type": "mrkdwn", "text": "\n".join(detail_parts)}})
+
+        # Add error section if applicable
+        if error_message:
+            error_text = error_message[:500] + ("..." if len(error_message) > 500 else "")
+            blocks.append({"type": "section", "text": {"type": "mrkdwn", "text": f"*Error:*\n```{error_text}```"}})
+
+        # Add action button
+        blocks.append(
+            {
+                "type": "actions",
+                "elements": [
+                    {
+                        "type": "button",
+                        "text": {"type": "plain_text", "text": config["button_text"]},
+                        "url": f"{os.getenv('ADMIN_UI_URL', 'http://localhost:8001')}/operations",
+                        "style": config["button_style"],
+                    }
+                ],
+            }
+        )
+
+        # Add timestamp
+        blocks.append(
+            {
+                "type": "context",
+                "elements": [
+                    {
+                        "type": "mrkdwn",
+                        "text": f"Event at {datetime.now(UTC).strftime('%Y-%m-%d %H:%M:%S UTC')}",
+                    }
+                ],
+            }
+        )
+
+        # Create fallback text
+        fallback_text = f"{config['emoji']} {config['title']}: {media_buy_id or 'pending'} by {principal_name}"
+
+        # Use attachment for color coding
+        attachments = [{"color": config["color"], "blocks": blocks}] if config["color"] != "good" else None
+
+        # Send message
+        try:
+            payload = {"text": fallback_text}
+            if attachments:
+                payload["attachments"] = attachments
+            else:
+                payload["blocks"] = blocks
+
+            response = requests.post(
+                self.webhook_url, json=payload, headers={"Content-Type": "application/json"}, timeout=10
+            )
+            response.raise_for_status()
+            return True
+        except requests.exceptions.RequestException as e:
+            logger.error(f"Failed to send media buy event notification: {e}")
+            return False
+
 
 # Global instance (will be overridden per-tenant in actual usage)
 slack_notifier = SlackNotifier()

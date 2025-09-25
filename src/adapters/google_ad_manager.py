@@ -28,6 +28,7 @@ from src.adapters.gam.managers import (
     GAMOrdersManager,
     GAMSyncManager,
     GAMTargetingManager,
+    GAMWorkflowManager,
 )
 
 # Re-export constants for backward compatibility
@@ -114,6 +115,7 @@ class GoogleAdManager(AdServerAdapter):
         self.sync_manager = GAMSyncManager(
             self.client_manager, self.inventory_manager, self.orders_manager, tenant_id, dry_run
         )
+        self.workflow_manager = GAMWorkflowManager(tenant_id, audit_logger, self.log)
 
         # Initialize legacy validator for backward compatibility
         from .gam.utils.validation import GAMValidator
@@ -141,6 +143,18 @@ class GoogleAdManager(AdServerAdapter):
     def _build_targeting(self, targeting_overlay):
         """Build GAM targeting criteria from AdCP targeting (delegated to targeting manager)."""
         return self.targeting_manager.build_targeting(targeting_overlay)
+
+    # HITL (Human-in-the-Loop) support methods
+    def _requires_manual_approval(self, operation: str) -> bool:
+        """Check if an operation requires manual approval based on configuration.
+
+        Args:
+            operation: The operation name (e.g., 'create_media_buy', 'add_creative_assets')
+
+        Returns:
+            bool: True if manual approval is required for this operation
+        """
+        return self.manual_approval_required and operation in self.manual_approval_operations
 
     # Legacy admin/business logic methods for backward compatibility
     def _is_admin_principal(self) -> bool:
@@ -194,7 +208,36 @@ class GoogleAdManager(AdServerAdapter):
         """Create a new media buy (order) in GAM - main orchestration method."""
         self.log("[bold]GoogleAdManager.create_media_buy[/bold] - Creating GAM order")
 
-        # Use orders manager for order creation
+        # Check if manual approval is required for media buy creation
+        if self._requires_manual_approval("create_media_buy"):
+            self.log("[yellow]Manual approval mode - creating workflow step for human intervention[/yellow]")
+
+            # Generate a media buy ID for tracking
+            import uuid
+
+            media_buy_id = f"gam_order_{uuid.uuid4().hex[:8]}"
+
+            # Create manual order workflow step
+            step_id = self.workflow_manager.create_manual_order_workflow_step(
+                request, packages, start_time, end_time, media_buy_id
+            )
+
+            if step_id:
+                return CreateMediaBuyResponse(
+                    media_buy_id=media_buy_id,
+                    status="submitted",
+                    message=f"Manual order creation workflow created. Step ID: {step_id}. "
+                    f"Human intervention required to create GAM order.",
+                    workflow_step_id=step_id,
+                )
+            else:
+                return CreateMediaBuyResponse(
+                    media_buy_id=media_buy_id,
+                    status="failed",
+                    message="Failed to create manual order workflow step",
+                )
+
+        # Automatic mode - create order directly
         order_id = self.orders_manager.create_order(
             order_name=f"{request.campaign_name} - {len(packages)} packages",
             total_budget=request.total_budget,
@@ -203,6 +246,21 @@ class GoogleAdManager(AdServerAdapter):
         )
 
         self.log(f"✓ Created GAM Order ID: {order_id}")
+
+        # Check if activation approval is needed (guaranteed line items require human approval)
+        has_guaranteed, item_types = self._check_order_has_guaranteed_items(order_id)
+        if has_guaranteed:
+            self.log("[yellow]Order contains guaranteed line items - creating activation workflow step[/yellow]")
+
+            step_id = self.workflow_manager.create_activation_workflow_step(order_id, packages)
+
+            return CreateMediaBuyResponse(
+                media_buy_id=order_id,
+                status="submitted",
+                message=f"GAM order created with guaranteed line items ({', '.join(item_types)}). "
+                f"Activation approval required. Workflow step: {step_id}",
+                workflow_step_id=step_id,
+            )
 
         return CreateMediaBuyResponse(
             media_buy_id=order_id, status="draft", message=f"Created GAM order with {len(packages)} line items"
@@ -220,6 +278,43 @@ class GoogleAdManager(AdServerAdapter):
         self, media_buy_id: str, assets: list[dict[str, Any]], today: datetime
     ) -> list[AssetStatus]:
         """Create and associate creatives with line items (delegated to creatives manager)."""
+
+        # Check if manual approval is required for creative assets
+        if self._requires_manual_approval("add_creative_assets"):
+            self.log("[yellow]Manual approval mode - creating workflow step for creative asset approval[/yellow]")
+
+            # Create approval workflow step
+            step_id = self.workflow_manager.create_approval_workflow_step(media_buy_id, "creative_assets_approval")
+
+            if step_id:
+                # Return asset statuses indicating they are awaiting approval
+                asset_statuses = []
+                for asset in assets:
+                    asset_statuses.append(
+                        AssetStatus(
+                            asset_id=asset.get("asset_id", f"pending_{len(asset_statuses)}"),
+                            status="submitted",
+                            message=f"Creative asset submitted for approval. Workflow step: {step_id}",
+                            creative_id=None,
+                            workflow_step_id=step_id,
+                        )
+                    )
+                return asset_statuses
+            else:
+                # Return failed statuses if workflow creation failed
+                asset_statuses = []
+                for asset in assets:
+                    asset_statuses.append(
+                        AssetStatus(
+                            asset_id=asset.get("asset_id", f"failed_{len(asset_statuses)}"),
+                            status="failed",
+                            message="Failed to create approval workflow step",
+                            creative_id=None,
+                        )
+                    )
+                return asset_statuses
+
+        # Automatic mode - process creatives directly
         return self.creatives_manager.add_creative_assets(media_buy_id, assets, today)
 
     def check_media_buy_status(self, media_buy_id: str, today: datetime) -> CheckMediaBuyStatusResponse:
@@ -258,19 +353,55 @@ class GoogleAdManager(AdServerAdapter):
                 message="Action denied: insufficient privileges",
             )
 
+        # Check if manual approval is required for media buy updates
+        if self._requires_manual_approval("update_media_buy"):
+            self.log("[yellow]Manual approval mode - creating workflow step for media buy update approval[/yellow]")
+
+            # Create approval workflow step for the update action
+            step_id = self.workflow_manager.create_approval_workflow_step(media_buy_id, f"update_media_buy_{action}")
+
+            if step_id:
+                return UpdateMediaBuyResponse(
+                    media_buy_id=media_buy_id,
+                    status="submitted",
+                    message=f"Media buy update action '{action}' submitted for approval. " f"Workflow step: {step_id}",
+                    workflow_step_id=step_id,
+                )
+            else:
+                return UpdateMediaBuyResponse(
+                    media_buy_id=media_buy_id,
+                    status="failed",
+                    reason="Failed to create approval workflow step",
+                    message="Unable to process update request - workflow creation failed",
+                )
+
         # Check for activate_order action with guaranteed items
         if action == "activate_order":
             # Check if order has guaranteed line items
             has_guaranteed, item_types = self._check_order_has_guaranteed_items(media_buy_id)
             if has_guaranteed:
-                return UpdateMediaBuyResponse(
-                    media_buy_id=media_buy_id,
-                    status="failed",
-                    reason=f"Cannot auto-activate order with guaranteed line items: {', '.join(item_types)}",
-                    message="Manual approval required for guaranteed inventory",
-                )
+                self.log("[yellow]Order contains guaranteed line items - creating activation workflow step[/yellow]")
 
-        # For allowed actions, return success with action details
+                # Create activation workflow step
+                step_id = self.workflow_manager.create_activation_workflow_step(media_buy_id, [])
+
+                if step_id:
+                    return UpdateMediaBuyResponse(
+                        media_buy_id=media_buy_id,
+                        status="submitted",
+                        reason=f"Cannot auto-activate order with guaranteed line items: {', '.join(item_types)}",
+                        message=f"Manual approval required for guaranteed inventory. Workflow step: {step_id}",
+                        workflow_step_id=step_id,
+                    )
+                else:
+                    return UpdateMediaBuyResponse(
+                        media_buy_id=media_buy_id,
+                        status="failed",
+                        reason=f"Cannot auto-activate order with guaranteed line items: {', '.join(item_types)}",
+                        message="Manual approval required for guaranteed inventory, but workflow creation failed",
+                    )
+
+        # For allowed actions in automatic mode, return success with action details
         return UpdateMediaBuyResponse(
             media_buy_id=media_buy_id,
             status="accepted",

@@ -236,7 +236,21 @@ def get_principal_from_context(context: Context | None) -> str | None:
         return None
 
     # Get headers using the recommended FastMCP approach
-    headers = get_http_headers()
+    headers = None
+    try:
+        headers = get_http_headers()
+    except Exception:
+        # Fallback to context.meta approach for sync tools
+        if hasattr(context, "meta") and context.meta and "headers" in context.meta:
+            headers = context.meta["headers"]
+        # Try other possible attributes
+        elif hasattr(context, "headers"):
+            headers = context.headers
+        elif hasattr(context, "_headers"):
+            headers = context._headers
+
+    if not headers:
+        return None
 
     # Get the x-adcp-auth header
     auth_token = headers.get("x-adcp-auth")
@@ -1403,8 +1417,8 @@ def list_creatives(
 
     start_time = time.time()
 
-    # Authentication
-    principal_id = _get_principal_id_from_context(context)
+    # Authentication (optional for discovery, like list_creative_formats)
+    principal_id = get_principal_from_context(context)  # Returns None if no auth
 
     # Get tenant information
     tenant = get_current_tenant()
@@ -2052,11 +2066,21 @@ def create_media_buy(
 
         now = datetime.now(UTC)
 
-        if req.start_time < now:
+        # Ensure start_time is timezone-aware for comparison
+        start_time = req.start_time
+        if start_time.tzinfo is None:
+            start_time = start_time.replace(tzinfo=UTC)
+
+        if start_time < now:
             error_msg = f"Invalid start time: {req.start_time}. Start time cannot be in the past."
             raise ValueError(error_msg)
 
-        if req.end_time <= req.start_time:
+        # Ensure end_time is timezone-aware for comparison
+        end_time = req.end_time
+        if end_time.tzinfo is None:
+            end_time = end_time.replace(tzinfo=UTC)
+
+        if end_time <= start_time:
             error_msg = f"Invalid time range: end time ({req.end_time}) must be after start time ({req.start_time})."
             raise ValueError(error_msg)
 
@@ -2083,7 +2107,7 @@ def create_media_buy(
 
     except (ValueError, PermissionError) as e:
         # Update workflow step as failed
-        ctx_manager.update_workflow_step(step.step_id, status="failed", error=str(e))
+        ctx_manager.update_workflow_step(step.step_id, status="failed", error_message=str(e))
 
         # Return proper error response instead of raising ToolError
         return CreateMediaBuyResponse(
@@ -2099,7 +2123,7 @@ def create_media_buy(
     principal = get_principal_object(principal_id)
     if not principal:
         error_msg = f"Principal {principal_id} not found"
-        ctx_manager.update_workflow_step(step.step_id, status="failed", error=error_msg)
+        ctx_manager.update_workflow_step(step.step_id, status="failed", error_message=error_msg)
         return CreateMediaBuyResponse(
             media_buy_id="",
             status=TaskStatus.FAILED,
@@ -2139,6 +2163,43 @@ def create_media_buy(
             )
             ctx_manager.add_message(persistent_ctx.context_id, "assistant", response_msg)
 
+            # Send Slack notification for manual approval requirement
+            try:
+                # Get principal name for notification
+                principal_name = principal.name if principal else principal_id
+
+                # Build notifier config from tenant fields
+                notifier_config = {
+                    "features": {
+                        "slack_webhook_url": tenant.get("slack_webhook_url"),
+                        "slack_audit_webhook_url": tenant.get("slack_audit_webhook_url"),
+                    }
+                }
+                slack_notifier = get_slack_notifier(notifier_config)
+
+                # Create notification details
+                notification_details = {
+                    "total_budget": total_budget,
+                    "po_number": req.po_number,
+                    "start_time": req.start_time.isoformat() if req.start_time else None,
+                    "end_time": req.end_time.isoformat() if req.end_time else None,
+                    "product_ids": req.get_product_ids(),
+                    "workflow_step_id": step.step_id,
+                    "context_id": persistent_ctx.context_id,
+                }
+
+                slack_notifier.notify_media_buy_event(
+                    event_type="approval_required",
+                    media_buy_id=pending_media_buy_id,
+                    principal_name=principal_name,
+                    details=notification_details,
+                    tenant_name=tenant.get("name", "Unknown"),
+                    success=True,
+                )
+                console.print("[green]📧 Sent manual approval notification to Slack[/green]")
+            except Exception as e:
+                console.print(f"[yellow]⚠️ Failed to send manual approval Slack notification: {e}[/yellow]")
+
             return CreateMediaBuyResponse(
                 media_buy_id=pending_media_buy_id,
                 status=TaskStatus.INPUT_REQUIRED,
@@ -2151,7 +2212,10 @@ def create_media_buy(
         catalog = get_product_catalog()
         product_ids = req.get_product_ids()
         products_in_buy = [p for p in catalog if p.product_id in product_ids]
-        product_auto_create = all(p.get("auto_create_enabled", True) for p in products_in_buy)
+        product_auto_create = all(
+            p.implementation_config.get("auto_create_enabled", True) if p.implementation_config else True
+            for p in products_in_buy
+        )
 
         # Check if either tenant or product disables auto-creation
         if not auto_create_enabled or not product_auto_create:
@@ -2167,6 +2231,46 @@ def create_media_buy(
 
             response_msg = f"Media buy requires approval due to {reason.lower()}. Workflow Step ID: {step.step_id}. Context ID: {persistent_ctx.context_id}"
             ctx_manager.add_message(persistent_ctx.context_id, "assistant", response_msg)
+
+            # Send Slack notification for configuration-based approval requirement
+            try:
+                # Get principal name for notification
+                principal_name = principal.name if principal else principal_id
+
+                # Build notifier config from tenant fields
+                notifier_config = {
+                    "features": {
+                        "slack_webhook_url": tenant.get("slack_webhook_url"),
+                        "slack_audit_webhook_url": tenant.get("slack_audit_webhook_url"),
+                    }
+                }
+                slack_notifier = get_slack_notifier(notifier_config)
+
+                # Create notification details including configuration reason
+                notification_details = {
+                    "total_budget": total_budget,
+                    "po_number": req.po_number,
+                    "start_time": req.start_time.isoformat() if req.start_time else None,
+                    "end_time": req.end_time.isoformat() if req.end_time else None,
+                    "product_ids": req.get_product_ids(),
+                    "approval_reason": reason,
+                    "workflow_step_id": step.step_id,
+                    "context_id": persistent_ctx.context_id,
+                    "auto_create_enabled": auto_create_enabled,
+                    "product_auto_create": product_auto_create,
+                }
+
+                slack_notifier.notify_media_buy_event(
+                    event_type="config_approval_required",
+                    media_buy_id=pending_media_buy_id,
+                    principal_name=principal_name,
+                    details=notification_details,
+                    tenant_name=tenant.get("name", "Unknown"),
+                    success=True,
+                )
+                console.print(f"[green]📧 Sent {reason.lower()} approval notification to Slack[/green]")
+            except Exception as e:
+                console.print(f"[yellow]⚠️ Failed to send configuration approval Slack notification: {e}[/yellow]")
 
             return CreateMediaBuyResponse(
                 media_buy_id=pending_media_buy_id,
@@ -2309,7 +2413,11 @@ def create_media_buy(
         # Apply testing hooks to response with campaign information
         campaign_info = {"start_date": req.start_time, "end_date": req.end_time, "total_budget": total_budget}
 
-        response_data = adcp_response.model_dump_internal()
+        response_data = (
+            adcp_response.model_dump_internal()
+            if hasattr(adcp_response, "model_dump_internal")
+            else adcp_response.model_dump()
+        )
         response_data = apply_testing_hooks(response_data, testing_ctx, "create_media_buy", campaign_info)
 
         # Reconstruct response from modified data
@@ -2318,12 +2426,101 @@ def create_media_buy(
         # Mark workflow step as completed on success
         ctx_manager.update_workflow_step(step.step_id, status="completed")
 
+        # Send Slack notification for successful media buy creation
+        try:
+            # Get principal name for notification (reuse from activity logging above)
+            principal_name = "Unknown"
+            with get_db_session() as session:
+                principal_db = (
+                    session.query(ModelPrincipal)
+                    .filter_by(principal_id=principal_id, tenant_id=tenant["tenant_id"])
+                    .first()
+                )
+                if principal_db:
+                    principal_name = principal_db.name
+
+            # Build notifier config from tenant fields
+            notifier_config = {
+                "features": {
+                    "slack_webhook_url": tenant.get("slack_webhook_url"),
+                    "slack_audit_webhook_url": tenant.get("slack_audit_webhook_url"),
+                }
+            }
+            slack_notifier = get_slack_notifier(notifier_config)
+
+            # Create success notification details
+            success_details = {
+                "total_budget": total_budget,
+                "po_number": req.po_number,
+                "start_time": req.start_time.isoformat() if req.start_time else None,
+                "end_time": req.end_time.isoformat() if req.end_time else None,
+                "product_ids": req.get_product_ids(),
+                "duration_days": (req.end_time - req.start_time).days + 1,
+                "packages_count": len(response_packages) if response_packages else 0,
+                "creatives_count": len(req.creatives) if req.creatives else 0,
+                "workflow_step_id": step.step_id,
+            }
+
+            slack_notifier.notify_media_buy_event(
+                event_type="created",
+                media_buy_id=response.media_buy_id,
+                principal_name=principal_name,
+                details=success_details,
+                tenant_name=tenant.get("name", "Unknown"),
+                success=True,
+            )
+
+            console.print(f"[green]🎉 Sent success notification to Slack for media buy {response.media_buy_id}[/green]")
+        except Exception as e:
+            console.print(f"[yellow]⚠️ Failed to send success Slack notification: {e}[/yellow]")
+
         return modified_response
 
     except Exception as e:
         # Update workflow step as failed on any error during execution
         if step:
-            ctx_manager.update_workflow_step(step.step_id, status="failed", error=str(e))
+            ctx_manager.update_workflow_step(step.step_id, status="failed", error_message=str(e))
+
+        # Send Slack notification for failed media buy creation
+        try:
+            # Get principal name for notification
+            principal_name = "Unknown"
+            if principal:
+                principal_name = principal.name
+
+            # Build notifier config from tenant fields
+            notifier_config = {
+                "features": {
+                    "slack_webhook_url": tenant.get("slack_webhook_url"),
+                    "slack_audit_webhook_url": tenant.get("slack_audit_webhook_url"),
+                }
+            }
+            slack_notifier = get_slack_notifier(notifier_config)
+
+            # Create failure notification details
+            failure_details = {
+                "total_budget": total_budget if "total_budget" in locals() else 0,
+                "po_number": req.po_number,
+                "start_time": req.start_time.isoformat() if req.start_time else None,
+                "end_time": req.end_time.isoformat() if req.end_time else None,
+                "product_ids": req.get_product_ids(),
+                "error_message": str(e),
+                "workflow_step_id": step.step_id if step else "unknown",
+            }
+
+            slack_notifier.notify_media_buy_event(
+                event_type="failed",
+                media_buy_id=None,
+                principal_name=principal_name,
+                details=failure_details,
+                tenant_name=tenant.get("name", "Unknown"),
+                success=False,
+                error_message=str(e),
+            )
+
+            console.print(f"[red]💥 Sent failure notification to Slack for {principal_name}[/red]")
+        except Exception as notification_error:
+            console.print(f"[yellow]⚠️ Failed to send failure Slack notification: {notification_error}[/yellow]")
 
         # Return proper error response instead of raising ToolError
         return CreateMediaBuyResponse(
@@ -2422,7 +2619,7 @@ def update_media_buy(
     principal = get_principal_object(principal_id)
     if not principal:
         error_msg = f"Principal {principal_id} not found"
-        ctx_manager.update_workflow_step(step.step_id, status="failed", error=error_msg)
+        ctx_manager.update_workflow_step(step.step_id, status="failed", error_message=error_msg)
         return UpdateMediaBuyResponse(
             status="failed",
             message=f"Update failed: {error_msg}",
@@ -3785,6 +3982,242 @@ if unified_mode:
         </html>
         """
         )
+
+    # Task Management Tools (for HITL)
+
+    @mcp.tool
+    def list_tasks(
+        status: str = None,
+        object_type: str = None,
+        object_id: str = None,
+        limit: int = 20,
+        offset: int = 0,
+        context: Context = None,
+    ) -> dict:
+        """List workflow tasks with filtering options.
+
+        Args:
+            status: Filter by task status ("pending", "in_progress", "completed", "failed", "requires_approval")
+            object_type: Filter by object type ("media_buy", "creative", "product")
+            object_id: Filter by specific object ID
+            limit: Maximum number of tasks to return (default: 20)
+            offset: Number of tasks to skip (default: 0)
+            context: MCP context (automatically provided)
+
+        Returns:
+            Dict containing tasks list and pagination info
+        """
+
+        # Get tenant and principal info
+        tenant = get_current_tenant()
+        principal_id = _get_principal_id_from_context(context)
+
+        with get_db_session() as session:
+            # Base query for workflow steps in this tenant
+            query = session.query(WorkflowStep).join(Context).filter(Context.tenant_id == tenant["tenant_id"])
+
+            # Apply status filter
+            if status:
+                query = query.filter(WorkflowStep.status == status)
+
+            # Apply object type/ID filters
+            if object_type and object_id:
+                query = query.join(ObjectWorkflowMapping).filter(
+                    ObjectWorkflowMapping.object_type == object_type, ObjectWorkflowMapping.object_id == object_id
+                )
+            elif object_type:
+                query = query.join(ObjectWorkflowMapping).filter(ObjectWorkflowMapping.object_type == object_type)
+
+            # Get total count before pagination
+            total = query.count()
+
+            # Apply pagination and ordering
+            tasks = query.order_by(WorkflowStep.created_at.desc()).offset(offset).limit(limit).all()
+
+            # Format tasks for response
+            formatted_tasks = []
+            for task in tasks:
+                # Get associated objects
+                mappings = session.query(ObjectWorkflowMapping).filter_by(step_id=task.step_id).all()
+
+                formatted_task = {
+                    "task_id": task.step_id,
+                    "status": task.status,
+                    "type": task.step_type,
+                    "tool_name": task.tool_name,
+                    "owner": task.owner,
+                    "created_at": task.created_at.isoformat() if task.created_at else None,
+                    "updated_at": task.updated_at.isoformat() if task.updated_at else None,
+                    "context_id": task.context_id,
+                    "associated_objects": [
+                        {"type": m.object_type, "id": m.object_id, "action": m.action} for m in mappings
+                    ],
+                }
+
+                # Add error message if failed
+                if task.status == "failed" and task.error:
+                    formatted_task["error_message"] = task.error
+
+                # Add basic request info if available
+                if task.request_data:
+                    if isinstance(task.request_data, dict):
+                        formatted_task["summary"] = {
+                            "operation": task.request_data.get("operation"),
+                            "media_buy_id": task.request_data.get("media_buy_id"),
+                            "po_number": (
+                                task.request_data.get("request", {}).get("po_number")
+                                if task.request_data.get("request")
+                                else None
+                            ),
+                        }
+
+                formatted_tasks.append(formatted_task)
+
+            return {
+                "tasks": formatted_tasks,
+                "total": total,
+                "offset": offset,
+                "limit": limit,
+                "has_more": offset + limit < total,
+            }
+
+    @mcp.tool
+    def get_task(task_id: str, context: Context = None) -> dict:
+        """Get detailed information about a specific task.
+
+        Args:
+            task_id: The unique task/workflow step ID
+            context: MCP context (automatically provided)
+
+        Returns:
+            Dict containing complete task details
+        """
+
+        # Get tenant info
+        tenant = get_current_tenant()
+        principal_id = _get_principal_id_from_context(context)
+
+        with get_db_session() as session:
+            # Find the task in this tenant
+            task = (
+                session.query(WorkflowStep)
+                .join(Context)
+                .filter(WorkflowStep.step_id == task_id, Context.tenant_id == tenant["tenant_id"])
+                .first()
+            )
+
+            if not task:
+                raise ValueError(f"Task {task_id} not found")
+
+            # Get associated objects
+            mappings = session.query(ObjectWorkflowMapping).filter_by(step_id=task_id).all()
+
+            # Build detailed response
+            task_detail = {
+                "task_id": task.step_id,
+                "context_id": task.context_id,
+                "status": task.status,
+                "type": task.step_type,
+                "tool_name": task.tool_name,
+                "owner": task.owner,
+                "created_at": task.created_at.isoformat() if task.created_at else None,
+                "updated_at": task.updated_at.isoformat() if task.updated_at else None,
+                "request_data": task.request_data,
+                "response_data": task.response_data,
+                "error_message": task.error,
+                "associated_objects": [
+                    {
+                        "type": m.object_type,
+                        "id": m.object_id,
+                        "action": m.action,
+                        "created_at": m.created_at.isoformat(),
+                    }
+                    for m in mappings
+                ],
+            }
+
+            return task_detail
+
+    @mcp.tool
+    def complete_task(
+        task_id: str,
+        status: str = "completed",
+        response_data: dict = None,
+        error_message: str = None,
+        context: Context = None,
+    ) -> dict:
+        """Complete a pending task (simulates human approval or async completion).
+
+        Args:
+            task_id: The unique task/workflow step ID
+            status: New status ("completed" or "failed")
+            response_data: Optional response data for completed tasks
+            error_message: Error message if status is "failed"
+            context: MCP context (automatically provided)
+
+        Returns:
+            Dict containing task completion status
+        """
+
+        # Get tenant info
+        tenant = get_current_tenant()
+        principal_id = _get_principal_id_from_context(context)
+
+        if status not in ["completed", "failed"]:
+            raise ValueError(f"Invalid status '{status}'. Must be 'completed' or 'failed'")
+
+        with get_db_session() as session:
+            # Find the task in this tenant
+            task = (
+                session.query(WorkflowStep)
+                .join(Context)
+                .filter(WorkflowStep.step_id == task_id, Context.tenant_id == tenant["tenant_id"])
+                .first()
+            )
+
+            if not task:
+                raise ValueError(f"Task {task_id} not found")
+
+            if task.status not in ["pending", "in_progress", "requires_approval"]:
+                raise ValueError(f"Task {task_id} is already {task.status} and cannot be completed")
+
+            # Update task status
+            task.status = status
+            task.updated_at = datetime.now(UTC)
+
+            if status == "completed":
+                task.response_data = response_data or {"manually_completed": True, "completed_by": principal_id}
+                task.error = None
+            else:  # failed
+                task.error = error_message or "Task marked as failed manually"
+                if response_data:
+                    task.response_data = response_data
+
+            session.commit()
+
+            # Log the completion
+            audit_logger = get_audit_logger("task_management", tenant["tenant_id"])
+            audit_logger.log_operation(
+                operation="complete_task",
+                principal_name="Manual Completion",
+                principal_id=principal_id,
+                adapter_id="system",
+                success=True,
+                details={
+                    "task_id": task_id,
+                    "new_status": status,
+                    "original_status": "pending",  # We know it was pending/in_progress
+                    "task_type": task.step_type,
+                },
+            )
+
+            return {
+                "task_id": task_id,
+                "status": status,
+                "message": f"Task {task_id} marked as {status}",
+                "completed_at": task.updated_at.isoformat(),
+                "completed_by": principal_id,
+            }
 
     @mcp.custom_route("/", methods=["GET"])
     async def root(request: Request):

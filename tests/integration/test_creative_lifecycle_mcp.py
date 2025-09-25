@@ -662,17 +662,16 @@ class TestCreativeLifecycleMCP:
 
             assert "Invalid auth token" in str(exc_info.value)
 
-    def test_list_creatives_authentication_required(self, mock_context):
-        """Test list_creatives requires proper authentication."""
+    def test_list_creatives_authentication_optional(self, mock_context):
+        """Test list_creatives allows optional authentication (for discovery)."""
         _, core_list_creatives_tool = self._import_mcp_tools()
         mock_context = MockContext("invalid-token")
 
-        with patch("src.core.main._get_principal_id_from_context", side_effect=Exception("Invalid auth token")):
-
-            with pytest.raises(Exception) as exc_info:
-                core_list_creatives_tool(context=mock_context)
-
-            assert "Invalid auth token" in str(exc_info.value)
+        # list_creatives allows optional auth - should not raise exception
+        result = core_list_creatives_tool(context=mock_context)
+        # Should return valid response even with invalid token
+        assert isinstance(result, ListCreativesResponse)
+        assert result.creatives == []  # Empty list since no creatives match invalid context
 
     def test_sync_creatives_missing_tenant(self, mock_context, sample_creatives):
         """Test sync_creatives handles missing tenant gracefully."""

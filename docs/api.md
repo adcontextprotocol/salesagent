@@ -506,9 +506,58 @@ Error responses include details:
 - MCP API: 1000 requests per minute per token
 - Super Admin API: 100 requests per minute per API key
 
-## Webhooks
+## Webhooks & Notifications
 
-The system can send webhooks for important events:
+The system provides comprehensive real-time notifications for all major workflow events, offering immediate visibility into campaign creation processes, approval requirements, and execution status.
+
+### Slack Notifications
+
+#### Event Types
+
+The system sends detailed Slack notifications for the following media buy events:
+
+- **`approval_required`** 🔔 - Manual approval needed for media buy operations
+- **`config_approval_required`** ⚙️ - Configuration-based approval required (tenant/product settings)
+- **`created`** 🎉 - Media buy created and activated successfully
+- **`failed`** ❌ - Media buy creation failed due to validation or execution errors
+- **`activated`** 🚀 - Campaign went live
+
+#### Notification Details
+
+Each notification includes comprehensive context:
+
+- Principal/advertiser name and campaign details
+- Total budget, PO number, and flight dates
+- Product IDs and package information
+- Workflow step ID for tracking
+- Context ID for session management
+- Direct action buttons to Admin UI
+- Error details and troubleshooting information (for failures)
+
+#### Configuration
+
+Configure Slack notifications per tenant via the Admin UI:
+
+```json
+{
+  "features": {
+    "slack_webhook_url": "https://hooks.slack.com/services/...",
+    "slack_audit_webhook_url": "https://hooks.slack.com/services/..."
+  }
+}
+```
+
+#### Notification Flow Integration
+
+1. **Validation Phase**: No notifications (errors handled inline)
+2. **Manual Approval Check**: → `approval_required` notification
+3. **Config Approval Check**: → `config_approval_required` notification
+4. **Execution Phase**: → Success/failure notifications based on outcome
+5. **Completion**: Workflow status updated, success notification sent
+
+### Standard Webhooks
+
+The system also supports standard webhook delivery for:
 
 - `media_buy.created` - New media buy created
 - `media_buy.approved` - Media buy approved and active

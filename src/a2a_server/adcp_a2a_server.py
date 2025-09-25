@@ -1614,10 +1614,10 @@ def main():
         http_handler=request_handler,
     )
 
-    # Build the Starlette app with standard routing at /a2a
+    # Build the Starlette app with standard A2A specification endpoints
     app = a2a_app.build(
-        agent_card_url="/.well-known/agent.json",
-        rpc_url="/a2a",  # Use standard /a2a endpoint directly
+        agent_card_url="/.well-known/agent-card.json",  # Primary A2A discovery endpoint
+        rpc_url="/a2a",  # Standard JSON-RPC endpoint
         extended_agent_card_url="/agent.json",
     )
 
@@ -1627,21 +1627,28 @@ def main():
         # Debug logging
         logger.info(f"Agent card request headers: {dict(request.headers)}")
 
+        # Determine protocol based on host (localhost = HTTP, others = HTTPS)
+        def get_protocol(hostname: str) -> str:
+            """Return HTTP for localhost, HTTPS for production domains."""
+            return "http" if hostname.startswith("localhost") or hostname.startswith("127.0.0.1") else "https"
+
         # Check for Approximated routing first (takes priority)
         apx_incoming_host = request.headers.get("Apx-Incoming-Host")
         if apx_incoming_host:
             # Use the original host from Approximated - preserve the exact domain
-            server_url = f"https://{apx_incoming_host}/a2a"
+            protocol = get_protocol(apx_incoming_host)
+            server_url = f"{protocol}://{apx_incoming_host}/a2a"
             logger.info(f"Using Apx-Incoming-Host: {apx_incoming_host} -> {server_url}")
         else:
             # Fallback to Host header
             host = request.headers.get("Host", "")
             if host and host != "sales-agent.scope3.com":
-                # For external domains, preserve the original host
-                server_url = f"https://{host}/a2a"
+                # For external domains or localhost, use appropriate protocol
+                protocol = get_protocol(host)
+                server_url = f"{protocol}://{host}/a2a"
                 logger.info(f"Using Host header: {host} -> {server_url}")
             else:
-                # Default fallback
+                # Default fallback - production HTTPS
                 server_url = "https://sales-agent.scope3.com/a2a"
                 logger.info(f"Using default URL: {server_url}")
 
@@ -1664,14 +1671,18 @@ def main():
         dynamic_card = create_dynamic_agent_card(request)
         return JSONResponse(dynamic_card.model_dump())
 
-    # Find and replace the existing routes
+    # Find and replace the existing routes to ensure proper A2A specification compliance
     new_routes = []
     for route in app.routes:
         if hasattr(route, "path"):
             if route.path == "/.well-known/agent.json":
-                # Replace with our dynamic endpoint
+                # Replace with our dynamic endpoint (legacy compatibility)
                 new_routes.append(Route("/.well-known/agent.json", dynamic_agent_discovery, methods=["GET"]))
                 logger.info("Replaced /.well-known/agent.json with dynamic version")
+            elif route.path == "/.well-known/agent-card.json":
+                # Replace with our dynamic endpoint (primary A2A discovery)
+                new_routes.append(Route("/.well-known/agent-card.json", dynamic_agent_discovery, methods=["GET"]))
+                logger.info("Replaced /.well-known/agent-card.json with dynamic version")
             elif route.path == "/agent.json":
                 # Replace with our dynamic endpoint
                 new_routes.append(Route("/agent.json", dynamic_agent_card_endpoint, methods=["GET"]))
