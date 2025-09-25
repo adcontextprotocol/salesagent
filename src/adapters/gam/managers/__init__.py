@@ -9,6 +9,7 @@ This package contains the manager classes that handle specific business logic ar
 - targeting: Targeting translation and validation
 - inventory: Inventory discovery, ad unit management, and placement operations
 - sync: Synchronization coordination between GAM and database
+- workflow: Human-in-the-Loop workflow management and notifications
 """
 
 from .creatives import GAMCreativesManager
@@ -16,6 +17,7 @@ from .inventory import GAMInventoryManager
 from .orders import GAMOrdersManager
 from .sync import GAMSyncManager
 from .targeting import GAMTargetingManager
+from .workflow import GAMWorkflowManager
 
 __all__ = [
     "GAMOrdersManager",
@@ -23,4 +25,5 @@ __all__ = [
     "GAMTargetingManager",
     "GAMInventoryManager",
     "GAMSyncManager",
+    "GAMWorkflowManager",
 ]

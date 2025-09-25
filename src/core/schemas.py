@@ -1,11 +1,14 @@
 import uuid
 import warnings
-from datetime import date, datetime, time
+from datetime import UTC, date, datetime, time
+
+# UTC timezone for timezone-aware datetime objects
+UTC = UTC
 
 # --- V2.3 Pydantic Models (Bearer Auth, Restored & Complete) ---
 # --- MCP Status System (AdCP PR #77) ---
 from enum import Enum
-from typing import Any, Literal
+from typing import Any, Literal, Optional
 
 from pydantic import BaseModel, Field, model_validator
 
@@ -1721,6 +1724,7 @@ class CreateMediaBuyRequest(BaseModel):
     total_budget: float | None = Field(None, description="Legacy: Total budget (converted to Budget object)")
 
     # Common fields
+    campaign_name: str | None = Field(None, description="Campaign name for display purposes")
     targeting_overlay: Targeting | None = None
     po_number: str = Field(..., description="Purchase order number for tracking (REQUIRED per AdCP spec)")
     pacing: Literal["even", "asap", "daily_budget"] = "even"  # Legacy field
@@ -1769,13 +1773,13 @@ class CreateMediaBuyRequest(BaseModel):
             start_date = values["start_date"]
             if isinstance(start_date, str):
                 start_date = date.fromisoformat(start_date)
-            values["start_time"] = datetime.combine(start_date, time.min)
+            values["start_time"] = datetime.combine(start_date, time.min, tzinfo=UTC)
 
         if "end_date" in values and not values.get("end_time"):
             end_date = values["end_date"]
             if isinstance(end_date, str):
                 end_date = date.fromisoformat(end_date)
-            values["end_time"] = datetime.combine(end_date, time.max)
+            values["end_time"] = datetime.combine(end_date, time.max, tzinfo=UTC)
 
         # Convert total_budget to Budget object
         if "total_budget" in values and not values.get("budget"):
@@ -1838,6 +1842,23 @@ class CreateMediaBuyResponse(BaseModel):
     packages: list[dict[str, Any]] = Field(default_factory=list, description="Created packages with IDs")
     creative_deadline: datetime | None = None
     errors: list[Error] | None = None  # Protocol-compliant error reporting
+    workflow_step_id: str | None = None  # HITL workflow step ID for manual approval operations
+
+    def model_dump(self, **kwargs):
+        """Override to provide AdCP-compliant responses while preserving internal fields."""
+        # Default to excluding internal fields for AdCP compliance
+        exclude = kwargs.get("exclude", set())
+        if isinstance(exclude, set):
+            # Add internal fields to exclude by default
+            exclude.add("workflow_step_id")
+            kwargs["exclude"] = exclude
+        return super().model_dump(**kwargs)
+
+    def model_dump_internal(self, **kwargs):
+        """Dump including internal fields for database storage and internal processing."""
+        # Don't exclude internal fields
+        kwargs.pop("exclude", None)  # Remove any exclude parameter
+        return super().model_dump(**kwargs)
 
 
 class CheckMediaBuyStatusRequest(BaseModel):
@@ -2008,6 +2029,7 @@ class MediaPackage(BaseModel):
     cpm: float
     impressions: int
     format_ids: list[str]
+    targeting_overlay: Optional["Targeting"] = None
 
 
 class PackagePerformance(BaseModel):
@@ -2016,15 +2038,37 @@ class PackagePerformance(BaseModel):
 
 
 class AssetStatus(BaseModel):
-    creative_id: str
-    status: str
+    asset_id: str | None = None  # Asset identifier
+    creative_id: str | None = None  # GAM creative ID (may be None for pending/failed)
+    status: str  # Status: draft, active, submitted, failed, etc.
+    message: str | None = None  # Status message
+    workflow_step_id: str | None = None  # HITL workflow step ID for manual approval
 
 
 class UpdateMediaBuyResponse(BaseModel):
-    status: str
+    media_buy_id: str | None = None  # Media buy identifier
+    status: str  # Status: accepted, submitted, failed, etc.
     implementation_date: datetime | None = None
     reason: str | None = None
     detail: str | None = None
+    message: str | None = None  # Human-readable message
+    workflow_step_id: str | None = None  # HITL workflow step ID for manual approval
+
+    def model_dump(self, **kwargs):
+        """Override to provide AdCP-compliant responses while preserving internal fields."""
+        # Default to excluding internal fields for AdCP compliance
+        exclude = kwargs.get("exclude", set())
+        if isinstance(exclude, set):
+            # Add internal fields to exclude by default - per AdCP spec only include: status, implementation_date, detail, reason
+            exclude.update({"media_buy_id", "message", "workflow_step_id"})
+            kwargs["exclude"] = exclude
+        return super().model_dump(**kwargs)
+
+    def model_dump_internal(self, **kwargs):
+        """Dump including internal fields for database storage and internal processing."""
+        # Don't exclude internal fields
+        kwargs.pop("exclude", None)  # Remove any exclude parameter
+        return super().model_dump(**kwargs)
 
 
 # Unified update models

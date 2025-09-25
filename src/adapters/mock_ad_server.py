@@ -38,6 +38,9 @@ class MockAdServer(AdServerAdapter):
         self.strategy_context = strategy_context
         self._current_simulation_time = None
 
+        # Initialize HITL configuration from principal's platform_mappings
+        self._initialize_hitl_config()
+
         # Initialize GAM-like object hierarchy for this instance
         self._initialize_mock_objects()
 
@@ -45,6 +48,8 @@ class MockAdServer(AdServerAdapter):
         """Check if we're running in simulation mode."""
         return (
             self.strategy_context
+            and hasattr(self.strategy_context, "is_simulation")
+            and hasattr(self.strategy_context, "strategy_id")
             and self.strategy_context.is_simulation
             and self.strategy_context.strategy_id.startswith("sim_")
         )
@@ -53,21 +58,27 @@ class MockAdServer(AdServerAdapter):
         """Check if strategy should force a specific error."""
         if not self._is_simulation() or not self.strategy_context:
             return False
-        return self.strategy_context.should_force_error(error_type)
+        if hasattr(self.strategy_context, "should_force_error"):
+            return self.strategy_context.should_force_error(error_type)
+        return False
 
     def _get_simulation_scenario(self) -> str:
         """Get current simulation scenario."""
         if not self._is_simulation() or not self.strategy_context:
             return "normal"
-        return self.strategy_context.get_config_value("scenario", "normal")
+        if hasattr(self.strategy_context, "get_config_value"):
+            return self.strategy_context.get_config_value("scenario", "normal")
+        return "normal"
 
     def _apply_strategy_multipliers(self, base_value: float, multiplier_key: str) -> float:
         """Apply strategy-based multipliers to base values."""
         if not self.strategy_context:
             return base_value
 
-        multiplier = self.strategy_context.get_config_value(multiplier_key, 1.0)
-        return base_value * multiplier
+        if hasattr(self.strategy_context, "get_config_value"):
+            multiplier = self.strategy_context.get_config_value(multiplier_key, 1.0)
+            return base_value * multiplier
+        return base_value
 
     def _simulate_time_progression(self) -> datetime:
         """Get current time for simulation (real or simulated)."""
@@ -78,6 +89,51 @@ class MockAdServer(AdServerAdapter):
     def set_simulation_time(self, simulation_time: datetime):
         """Set the current simulation time."""
         self._current_simulation_time = simulation_time
+
+    def _initialize_hitl_config(self):
+        """Initialize Human-in-the-Loop configuration from principal platform_mappings."""
+        # Extract HITL config from principal's mock platform mapping
+        mock_mapping = self.principal.platform_mappings.get("mock", {})
+        self.hitl_config = mock_mapping.get("hitl_config", {})
+
+        # Parse HITL settings with defaults
+        self.hitl_enabled = self.hitl_config.get("enabled", False)
+        self.hitl_mode = self.hitl_config.get("mode", "sync")  # "sync" | "async" | "mixed"
+
+        # Sync mode settings
+        sync_settings = self.hitl_config.get("sync_settings", {})
+        self.sync_delay_ms = sync_settings.get("delay_ms", 2000)
+        self.streaming_updates = sync_settings.get("streaming_updates", True)
+        self.update_interval_ms = sync_settings.get("update_interval_ms", 500)
+
+        # Async mode settings
+        async_settings = self.hitl_config.get("async_settings", {})
+        self.async_auto_complete = async_settings.get("auto_complete", False)
+        self.async_auto_complete_delay_ms = async_settings.get("auto_complete_delay_ms", 10000)
+        self.async_webhook_url = async_settings.get("webhook_url")
+        self.webhook_on_complete = async_settings.get("webhook_on_complete", True)
+
+        # Per-operation mode overrides
+        self.operation_modes = self.hitl_config.get("operation_modes", {})
+
+        # Approval simulation settings
+        approval_sim = self.hitl_config.get("approval_simulation", {})
+        self.approval_simulation_enabled = approval_sim.get("enabled", False)
+        self.approval_probability = approval_sim.get("approval_probability", 0.8)
+        self.rejection_reasons = approval_sim.get(
+            "rejection_reasons",
+            [
+                "Budget exceeds limits",
+                "Invalid targeting parameters",
+                "Creative policy violation",
+                "Inventory unavailable",
+            ],
+        )
+
+        if self.hitl_enabled:
+            self.log(f"🤖 HITL mode enabled: {self.hitl_mode}")
+            if self.hitl_mode == "mixed":
+                self.log(f"   Operation overrides: {self.operation_modes}")
 
     def _initialize_mock_objects(self):
         """Create realistic GAM-like objects for testing."""
@@ -233,6 +289,148 @@ class MockAdServer(AdServerAdapter):
         """Mock adapter accepts all targeting."""
         return []  # No unsupported features
 
+    def _get_operation_mode(self, operation_name: str) -> str:
+        """Get the HITL mode for a specific operation."""
+        if not self.hitl_enabled:
+            return "immediate"
+
+        # Check for operation-specific override
+        if operation_name in self.operation_modes:
+            return self.operation_modes[operation_name]
+
+        # Use global mode
+        return self.hitl_mode
+
+    def _create_workflow_step(self, step_type: str, status: str, request_data: dict) -> dict:
+        """Create a workflow step for async HITL operations."""
+        from src.core.config_loader import get_current_tenant
+        from src.core.context_manager import get_context_manager
+
+        # Get context manager and tenant info
+        ctx_manager = get_context_manager()
+        tenant = get_current_tenant()
+
+        # Create a context for async operations if needed
+        context = ctx_manager.create_context(tenant_id=tenant["tenant_id"], principal_id=self.principal.principal_id)
+
+        # Create workflow step
+        step = ctx_manager.create_workflow_step(
+            context_id=context.context_id,
+            step_type=step_type,
+            tool_name=step_type.replace("mock_", ""),
+            request_data=request_data,
+            status=status,
+            owner="mock_adapter",
+        )
+
+        return step
+
+    def _stream_working_updates(self, operation_name: str, delay_ms: int):
+        """Stream progress updates during synchronous HITL operation."""
+        if not self.streaming_updates:
+            return
+
+        import time
+
+        num_updates = max(1, delay_ms // self.update_interval_ms)
+
+        for i in range(num_updates):
+            progress = (i + 1) / num_updates * 100
+            self.log(f"⏳ Processing {operation_name}... {progress:.0f}%")
+
+            # Only sleep if not the last update
+            if i < num_updates - 1:
+                time.sleep(self.update_interval_ms / 1000)
+
+    def _simulate_approval(self) -> tuple[bool, str | None]:
+        """Simulate approval/rejection process."""
+        if not self.approval_simulation_enabled:
+            return True, None
+
+        import random
+
+        # Simulate approval probability
+        approved = random.random() < self.approval_probability
+
+        if approved:
+            return True, None
+        else:
+            # Pick a random rejection reason
+            reason = random.choice(self.rejection_reasons)
+            return False, reason
+
+    def _schedule_async_completion(self, step_id: str, delay_ms: int):
+        """Schedule automatic completion of an async task (for testing)."""
+        if not self.async_auto_complete:
+            return
+
+        # This is a simulation - in a real system this would use a proper
+        # job queue like Celery, RQ, or similar
+        import threading
+        import time
+
+        def complete_after_delay():
+            time.sleep(delay_ms / 1000)
+
+            try:
+                from src.core.context_manager import get_context_manager
+
+                ctx_manager = get_context_manager()
+
+                # Simulate approval process
+                approved, rejection_reason = self._simulate_approval()
+
+                if approved:
+                    ctx_manager.update_workflow_step(
+                        step_id, status="completed", response_data={"status": "approved", "auto_completed": True}
+                    )
+                    self.log(f"✅ Auto-completed task {step_id}")
+                else:
+                    ctx_manager.update_workflow_step(
+                        step_id, status="failed", error=f"Auto-rejected: {rejection_reason}"
+                    )
+                    self.log(f"❌ Auto-rejected task {step_id}: {rejection_reason}")
+
+                # Send webhook if configured
+                if self.webhook_on_complete and self.async_webhook_url:
+                    self._send_completion_webhook(step_id, approved, rejection_reason)
+
+            except Exception as e:
+                self.log(f"⚠️ Error in async completion for {step_id}: {e}")
+
+        # Start background thread for auto-completion
+        thread = threading.Thread(target=complete_after_delay)
+        thread.daemon = True
+        thread.start()
+
+    def _send_completion_webhook(self, step_id: str, approved: bool, rejection_reason: str = None):
+        """Send webhook notification when async task completes."""
+        if not self.async_webhook_url:
+            return
+
+        from datetime import UTC, datetime
+
+        import requests
+
+        payload = {
+            "event": "task_completed",
+            "step_id": step_id,
+            "principal_id": self.principal.principal_id,
+            "status": "completed" if approved else "failed",
+            "approved": approved,
+            "rejection_reason": rejection_reason,
+            "timestamp": datetime.now(UTC).isoformat(),
+        }
+
+        try:
+            response = requests.post(
+                self.async_webhook_url, json=payload, headers={"Content-Type": "application/json"}, timeout=10
+            )
+            response.raise_for_status()
+            self.log(f"📤 Sent webhook notification for {step_id}")
+        except Exception as e:
+            self.log(f"⚠️ Webhook failed for {step_id}: {e}")
+
     def _validate_media_buy_request(
         self, request: CreateMediaBuyRequest, packages: list[MediaPackage], start_time: datetime, end_time: datetime
     ):
@@ -243,7 +441,9 @@ class MockAdServer(AdServerAdapter):
         if start_time >= end_time:
             errors.append("NotNullError.NULL @ lineItem[0].endDateTime")
 
-        if end_time <= datetime.now():
+        # Ensure consistent timezone handling for date comparison
+        current_time = datetime.now(UTC) if end_time.tzinfo else datetime.now()
+        if end_time <= current_time:
             errors.append("InvalidArgumentError @ lineItem[0].endDateTime")
 
         # Inventory targeting validation (like GAM requirement)
@@ -322,6 +522,101 @@ class MockAdServer(AdServerAdapter):
         # GAM-like validation (based on real GAM behavior)
         self._validate_media_buy_request(request, packages, start_time, end_time)
 
+        # HITL Mode Processing
+        operation_mode = self._get_operation_mode("create_media_buy")
+
+        if operation_mode == "async":
+            return self._create_media_buy_async(request, packages, start_time, end_time)
+        elif operation_mode == "sync":
+            return self._create_media_buy_sync_with_delay(request, packages, start_time, end_time)
+
+        # Continue with immediate processing (default behavior)
+        return self._create_media_buy_immediate(request, packages, start_time, end_time)
+
+    def _create_media_buy_async(
+        self,
+        request: CreateMediaBuyRequest,
+        packages: list[MediaPackage],
+        start_time: datetime,
+        end_time: datetime,
+    ) -> CreateMediaBuyResponse:
+        """Create media buy in async HITL mode."""
+        self.log("🤖 Processing create_media_buy in ASYNC mode")
+
+        # Create workflow step for async tracking
+        request_data = {
+            "request": request.model_dump(),
+            "packages": [p.model_dump() for p in packages],
+            "start_time": start_time.isoformat(),
+            "end_time": end_time.isoformat(),
+            "operation": "create_media_buy",
+        }
+
+        step = self._create_workflow_step(
+            step_type="mock_create_media_buy", status="pending", request_data=request_data
+        )
+
+        self.log(f"   Created workflow step: {step.step_id}")
+
+        # Schedule auto-completion if configured
+        if self.async_auto_complete:
+            self.log(f"   Auto-completion scheduled in {self.async_auto_complete_delay_ms}ms")
+            self._schedule_async_completion(step.step_id, self.async_auto_complete_delay_ms)
+        else:
+            self.log("   Manual completion required - use complete_task tool")
+
+        # Return pending response
+        return CreateMediaBuyResponse(
+            media_buy_id=f"pending_{step.step_id}",
+            status="submitted",
+            message=f"Media buy submitted for processing. Task ID: {step.step_id}",
+            creative_deadline=None,
+        )
+
+    def _create_media_buy_sync_with_delay(
+        self,
+        request: CreateMediaBuyRequest,
+        packages: list[MediaPackage],
+        start_time: datetime,
+        end_time: datetime,
+    ) -> CreateMediaBuyResponse:
+        """Create media buy in sync HITL mode with configurable delay."""
+        self.log(f"🤖 Processing create_media_buy in SYNC mode ({self.sync_delay_ms}ms delay)")
+
+        # Stream working updates during delay
+        self._stream_working_updates("create_media_buy", self.sync_delay_ms)
+
+        # Final delay to reach total configured delay
+        import time
+
+        if self.streaming_updates:
+            remaining_delay = (
+                self.sync_delay_ms - (self.sync_delay_ms // self.update_interval_ms) * self.update_interval_ms
+            )
+            if remaining_delay > 0:
+                time.sleep(remaining_delay / 1000)
+        else:
+            time.sleep(self.sync_delay_ms / 1000)
+
+        # Simulate approval if configured
+        approved, rejection_reason = self._simulate_approval()
+        if not approved:
+            self.log(f"❌ Simulated rejection: {rejection_reason}")
+            raise Exception(f"Media buy rejected: {rejection_reason}")
+
+        # Continue with immediate processing
+        self.log("✅ SYNC delay completed, proceeding with creation")
+        return self._create_media_buy_immediate(request, packages, start_time, end_time)
+
+    def _create_media_buy_immediate(
+        self,
+        request: CreateMediaBuyRequest,
+        packages: list[MediaPackage],
+        start_time: datetime,
+        end_time: datetime,
+    ) -> CreateMediaBuyResponse:
+        """Create media buy immediately (original behavior)."""
+
         # Generate a unique media_buy_id
         import uuid
 
@@ -329,7 +624,8 @@ class MockAdServer(AdServerAdapter):
 
         # Strategy-aware behavior modifications
         if self._is_simulation():
-            self.log(f"🧪 Running in simulation mode with strategy: {self.strategy_context.strategy_id}")
+            strategy_id = getattr(self.strategy_context, "strategy_id", "unknown")
+            self.log(f"🧪 Running in simulation mode with strategy: {strategy_id}")
             scenario = self._get_simulation_scenario()
             self.log(f"   Simulation scenario: {scenario}")
 
@@ -374,7 +670,7 @@ class MockAdServer(AdServerAdapter):
         total_budget = request.get_total_budget() if hasattr(request, "get_total_budget") else total_budget
 
         # Apply strategy-based bid adjustment
-        if self.strategy_context:
+        if self.strategy_context and hasattr(self.strategy_context, "get_bid_adjustment"):
             bid_adjustment = self.strategy_context.get_bid_adjustment()
             if bid_adjustment != 1.0:
                 adjusted_budget = total_budget * bid_adjustment
@@ -416,6 +712,7 @@ class MockAdServer(AdServerAdapter):
             self._media_buys[media_buy_id] = {
                 "id": media_buy_id,
                 "po_number": request.po_number,
+                "buyer_ref": request.buyer_ref,
                 "packages": [p.model_dump() for p in packages],
                 "total_budget": total_budget,
                 "start_time": start_time,
@@ -438,7 +735,100 @@ class MockAdServer(AdServerAdapter):
     def add_creative_assets(
         self, media_buy_id: str, assets: list[dict[str, Any]], today: datetime
     ) -> list[AssetStatus]:
-        """Simulates adding creatives and returns an 'approved' status."""
+        """Simulates adding creatives with HITL support."""
+
+        # HITL Mode Processing
+        operation_mode = self._get_operation_mode("add_creative_assets")
+
+        if operation_mode == "async":
+            return self._add_creative_assets_async(media_buy_id, assets, today)
+        elif operation_mode == "sync":
+            return self._add_creative_assets_sync_with_delay(media_buy_id, assets, today)
+
+        # Continue with immediate processing (default behavior)
+        return self._add_creative_assets_immediate(media_buy_id, assets, today)
+
+    def _add_creative_assets_async(
+        self, media_buy_id: str, assets: list[dict[str, Any]], today: datetime
+    ) -> list[AssetStatus]:
+        """Add creative assets in async HITL mode."""
+        self.log("🤖 Processing add_creative_assets in ASYNC mode")
+
+        # Create workflow step for async tracking
+        request_data = {
+            "media_buy_id": media_buy_id,
+            "assets": assets,
+            "today": today.isoformat(),
+            "operation": "add_creative_assets",
+        }
+
+        step = self._create_workflow_step(
+            step_type="mock_add_creative_assets", status="pending", request_data=request_data
+        )
+
+        self.log(f"   Created workflow step: {step.step_id}")
+        self.log(f"   Processing {len(assets)} creative assets")
+
+        # Schedule auto-completion if configured
+        if self.async_auto_complete:
+            self.log(f"   Auto-completion scheduled in {self.async_auto_complete_delay_ms}ms")
+            self._schedule_async_completion(step.step_id, self.async_auto_complete_delay_ms)
+        else:
+            self.log("   Manual completion required - use complete_task tool")
+
+        # Return pending status for all assets
+        return [AssetStatus(creative_id=asset["id"], status="pending") for asset in assets]
+
+    def _add_creative_assets_sync_with_delay(
+        self, media_buy_id: str, assets: list[dict[str, Any]], today: datetime
+    ) -> list[AssetStatus]:
+        """Add creative assets in sync HITL mode with configurable delay."""
+        self.log(f"🤖 Processing add_creative_assets in SYNC mode ({self.sync_delay_ms}ms delay)")
+
+        # Stream working updates during delay
+        self._stream_working_updates("add_creative_assets", self.sync_delay_ms)
+
+        # Final delay to reach total configured delay
+        import time
+
+        if self.streaming_updates:
+            remaining_delay = (
+                self.sync_delay_ms - (self.sync_delay_ms // self.update_interval_ms) * self.update_interval_ms
+            )
+            if remaining_delay > 0:
+                time.sleep(remaining_delay / 1000)
+        else:
+            time.sleep(self.sync_delay_ms / 1000)
+
+        # Simulate approval for each creative if configured
+        approved_assets = []
+        rejected_assets = []
+
+        for asset in assets:
+            approved, rejection_reason = self._simulate_approval()
+            if approved:
+                approved_assets.append(asset)
+            else:
+                rejected_assets.append((asset, rejection_reason))
+                self.log(f"❌ Creative {asset['id']} rejected: {rejection_reason}")
+
+        if rejected_assets and not approved_assets:
+            # All rejected
+            raise Exception(f"All creatives rejected: {', '.join([reason for _, reason in rejected_assets])}")
+        elif rejected_assets:
+            # Some rejected - log warnings but continue with approved ones
+            for asset, reason in rejected_assets:
+                self.log(f"⚠️ Creative {asset['id']} rejected: {reason}")
+
+        # Continue with immediate processing for approved assets
+        self.log(f"✅ SYNC delay completed, proceeding with {len(approved_assets)} approved creatives")
+        return self._add_creative_assets_immediate(media_buy_id, approved_assets, today)
+
+    def _add_creative_assets_immediate(
+        self, media_buy_id: str, assets: list[dict[str, Any]], today: datetime
+    ) -> list[AssetStatus]:
+        """Add creative assets immediately (original behavior)."""
+
         # Log operation
         self.audit_logger.log_operation(
             operation="add_creative_assets",
@@ -483,6 +873,14 @@ class MockAdServer(AdServerAdapter):
         start_date = buy["start_time"]
         end_date = buy["end_time"]
 
+        # Ensure consistent timezone handling for comparisons
+        # Convert today to match timezone of stored dates or vice versa
+        if start_date.tzinfo and not today.tzinfo:
+            today = today.replace(tzinfo=UTC)
+        elif not start_date.tzinfo and today.tzinfo:
+            start_date = start_date.replace(tzinfo=UTC)
+            end_date = end_date.replace(tzinfo=UTC)
+
         if today < start_date:
             status = "pending_start"
         elif today > end_date:
@@ -490,7 +888,9 @@ class MockAdServer(AdServerAdapter):
         else:
             status = "delivering"
 
-        return CheckMediaBuyStatusResponse(media_buy_id=media_buy_id, status=status)
+        # Get buyer_ref from stored media buy data
+        buyer_ref = buy.get("buyer_ref", buy.get("po_number", "unknown"))
+        return CheckMediaBuyStatusResponse(media_buy_id=media_buy_id, buyer_ref=buyer_ref, status=status)
 
     def get_media_buy_delivery(
         self, media_buy_id: str, date_range: ReportingPeriod, today: datetime
@@ -531,6 +931,14 @@ class MockAdServer(AdServerAdapter):
             start_time = buy["start_time"]
             end_time = buy["end_time"]
 
+            # Ensure consistent timezone handling for arithmetic operations
+            # Convert today to match timezone of stored dates or vice versa
+            if start_time.tzinfo and not today.tzinfo:
+                today = today.replace(tzinfo=UTC)
+            elif not start_time.tzinfo and today.tzinfo:
+                start_time = start_time.replace(tzinfo=UTC)
+                end_time = end_time.replace(tzinfo=UTC)
+
             # Calculate campaign progress
             campaign_duration = (end_time - start_time).total_seconds() / 86400  # days
             elapsed_duration = (today - start_time).total_seconds() / 86400  # days
@@ -550,7 +958,7 @@ class MockAdServer(AdServerAdapter):
 
                 # Apply strategy-based pacing multiplier
                 pacing_multiplier = 1.0
-                if self.strategy_context:
+                if self.strategy_context and hasattr(self.strategy_context, "get_pacing_multiplier"):
                     pacing_multiplier = self.strategy_context.get_pacing_multiplier()
                     if self._is_simulation():
                         self.log(f"🚀 Strategy pacing multiplier: {pacing_multiplier:.2f}")
