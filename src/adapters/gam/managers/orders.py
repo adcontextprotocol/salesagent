@@ -256,16 +256,16 @@ class GAMOrdersManager:
             statement = statement_builder.ToStatement()
 
             result = company_service.getCompaniesByStatement(statement)
-            companies = result.get("results", [])
+            companies = result.results if result and hasattr(result, "results") else []
 
             # Format for UI
             advertisers = []
             for company in companies:
                 advertisers.append(
                     {
-                        "id": str(company["id"]),
-                        "name": company["name"],
-                        "type": company["type"],
+                        "id": str(company.id),
+                        "name": company.name,
+                        "type": company.type,
                     }
                 )
 
