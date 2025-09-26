@@ -36,9 +36,8 @@ def upgrade() -> None:
         if "protocol" in current_columns and "conversation_history" not in current_columns:
             # This is the production table with wrong schema - recreate it
 
-            # Use raw SQL to drop the table with CASCADE to handle foreign key dependencies
-            connection.execute(sa.text("DROP TABLE contexts CASCADE;"))
-            connection.commit()
+            # Use Alembic's execute to drop the table with CASCADE to handle foreign key dependencies
+            op.execute("DROP TABLE contexts CASCADE")
 
             # Create contexts table with correct schema matching the model
             op.create_table(
