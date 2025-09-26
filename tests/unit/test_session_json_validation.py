@@ -60,7 +60,7 @@ class TestSessionManagement:
                 authorized_emails=["admin@test.com"],
                 authorized_domains=["test.com"],
                 auto_approve_formats=["display_300x250"],
-                policy_settings={"enabled": True}
+                policy_settings={"enabled": True},
             )
             session.add(tenant)
             session.commit()
@@ -197,11 +197,30 @@ class TestJSONValidation:
         assert fmt.width == 300
         assert fmt.type == "display"
 
-        # Invalid type
-        with pytest.raises(ValueError, match="String should match pattern"):
-            CreativeFormatModel(
-                format_id="test", name="Test", type="invalid", description="Test"  # Not in allowed values
-            )
+        # Legacy format type - should be mapped to standard type
+        legacy_fmt = CreativeFormatModel(
+            format_id="banner_728x90",
+            name="Banner",
+            type="banner",  # Legacy type, should be mapped to "display"
+            description="Legacy banner format",
+            width=728,
+            height=90,
+        )
+        assert legacy_fmt.type == "display"  # Should be mapped from "banner" to "display"
+
+        # Unknown format type - should default to "display"
+        unknown_fmt = CreativeFormatModel(
+            format_id="unknown_format",
+            name="Unknown Format",
+            type="some_unknown_type",  # Unknown type, should default to "display"
+        )
+        assert unknown_fmt.type == "display"  # Should default to "display"
+
+        # Empty type should raise error
+        from pydantic import ValidationError
+
+        with pytest.raises(ValidationError, match="String should have at least 1 character"):
+            CreativeFormatModel(format_id="test", name="Test", type="", description="Test")  # Empty type
 
     def test_ensure_json_helpers(self):
         """Test JSON helper functions."""
