@@ -58,6 +58,23 @@ repos:
         pass_filenames: false
         always_run: true
 
+      # Test MCP contract validation (prevent validation errors like 'brief' is required)
+      - id: mcp-contract-validation
+        name: MCP contract validation tests
+        entry: uv run pytest tests/integration/test_mcp_contract_validation.py -v --tb=short
+        language: system
+        files: '^(src/core/schemas\.py|src/core/main\.py)$'
+        pass_filenames: false
+
+      # Audit required fields to catch over-validation
+      - id: audit-required-fields
+        name: Audit required fields for over-validation
+        entry: uv run python scripts/audit_required_fields.py
+        language: system
+        files: '^src/core/schemas\.py$'
+        pass_filenames: false
+        verbose: true
+
       # Check AdCP schema sync (critical for buyer compatibility)
       - id: adcp-schema-sync
         name: Verify AdCP schema sync

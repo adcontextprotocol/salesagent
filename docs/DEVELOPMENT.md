@@ -257,6 +257,37 @@ docker exec -it adcp-server pytest
 - **Integration Tests** - Full workflow tests
 - **Adapter Tests** - Platform-specific tests
 - **UI Tests** - Admin interface tests
+- **Contract Validation Tests** - MCP tool integration tests (prevents client failures)
+- **AdCP Compliance Tests** - Protocol schema compliance tests
+
+### Contract Validation Testing
+
+Ensure MCP tools work with minimal parameters to prevent client integration failures:
+
+```bash
+# Test contract validation
+uv run pytest tests/integration/test_mcp_contract_validation.py -v
+
+# Audit schema field requirements
+uv run python scripts/audit_required_fields.py
+
+# Test specific schema validation
+uv run python -c "
+from src.core.schemas import GetProductsRequest
+req = GetProductsRequest(promoted_offering='test')
+print(f'✅ Brief defaults to: {repr(req.brief)}')
+"
+
+# Run pre-commit validation checks
+pre-commit run mcp-contract-validation --all-files
+pre-commit run audit-required-fields --all-files
+```
+
+**When to run contract validation tests:**
+- Before adding new MCP tools or modifying schemas
+- When changing field requirements (required → optional or vice versa)
+- If clients report validation errors like `'brief' is a required property`
+- As part of schema design review process
 
 ### Simulation Testing
 
@@ -457,11 +488,24 @@ Install Git hooks for code quality:
 ./setup_hooks.sh
 ```
 
-Hooks run:
-- Black (code formatting)
-- Ruff (linting)
-- Unit tests
-- Type checking (mypy)
+Critical hooks run on every commit:
+- **Black** (code formatting)
+- **Ruff** (linting)
+- **AdCP contract tests** (protocol compliance)
+- **MCP contract validation** (prevents client integration failures)
+- **Required fields audit** (catches over-strict validation)
+- **Schema-database alignment** (prevents AttributeError bugs)
+
+Additional quality gates:
+- Unit tests (optional - use `pre-commit run pytest-unit`)
+- Migration testing (manual - use `pre-commit run test-migrations`)
+- Smoke tests (manual - use `pre-commit run smoke-tests`)
+
+**Contract Validation Prevention:**
+The system automatically prevents validation errors like `'brief' is a required property` through:
+- Pre-commit hooks that test minimal parameter calls
+- Automated field requirement auditing
+- Clear error messages with specific fixes
 
 ## Code Style and Standards
 
