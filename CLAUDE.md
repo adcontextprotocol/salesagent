@@ -1167,7 +1167,6 @@ Sales agent returned error: Input validation error: 'brief' is a required proper
 - **Tests**: `tests/integration/test_mcp_contract_validation.py`
 - **Audit**: `scripts/audit_required_fields.py`
 - **Hooks**: `mcp-contract-validation` and `audit-required-fields`
-- **Docs**: `docs/CONTRACT_VALIDATION_PREVENTION.md`
 
 **ZERO TOLERANCE POLICY:**
 - ❌ **No model can be client-facing without a compliance test**

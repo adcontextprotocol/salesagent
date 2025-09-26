@@ -44,7 +44,6 @@ This starts:
 - **[Setup Guide](docs/SETUP.md)** - Admin UI and tenant setup
 - **[Troubleshooting Guide](docs/TROUBLESHOOTING.md)** - Monitoring and debugging
 - **[Architecture](docs/ARCHITECTURE.md)** - System design and database schema
-- **[Contract Validation Prevention](docs/CONTRACT_VALIDATION_PREVENTION.md)** - MCP tool validation best practices
 
 ## Key Features
 
