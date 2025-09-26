@@ -814,20 +814,17 @@ def create_inventory_endpoints(app):
                 platform_mappings={"gam_advertiser_id": adapter_config.gam_company_id or "system"},
             )
 
-            # Validate required fields
+            # Validate required fields for inventory sync (only network code is required)
             if not adapter_config.gam_network_code:
                 return jsonify({"error": "GAM network code not configured"}), 400
-            if not adapter_config.gam_company_id:
-                return jsonify({"error": "GAM company/advertiser ID not configured"}), 400
-            if not adapter_config.gam_trafficker_id:
-                return jsonify({"error": "GAM trafficker ID not configured"}), 400
+            # Note: company_id and trafficker_id are only required for order operations, not inventory sync
 
             adapter = GoogleAdManager(
                 config=gam_config,
                 principal=principal,
                 network_code=adapter_config.gam_network_code,
-                advertiser_id=adapter_config.gam_company_id,
-                trafficker_id=adapter_config.gam_trafficker_id,
+                advertiser_id=None,  # Not needed for inventory sync
+                trafficker_id=None,  # Not needed for inventory sync
                 tenant_id=tenant_id,
                 dry_run=False,
             )
