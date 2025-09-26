@@ -219,6 +219,38 @@ environment:
   - ADCP_KEEPALIVE_INTERVAL=30
 ```
 
+#### Contract Validation Errors (Prevention System Available)
+**Symptoms**: `Input validation error: 'brief' is a required property` or similar parameter validation failures
+
+**Immediate Diagnosis**:
+```bash
+# Test the specific failing request
+uv run python -c "
+from src.core.schemas import GetProductsRequest
+try:
+    req = GetProductsRequest(promoted_offering='test product')
+    print('✅ Request creation successful')
+except Exception as e:
+    print(f'❌ Validation error: {e}')
+"
+
+# Run contract validation tests
+uv run pytest tests/integration/test_mcp_contract_validation.py -v
+
+# Audit all schema requirements
+uv run python scripts/audit_required_fields.py
+```
+
+**Common Fixes**:
+- Make over-strict fields optional with sensible defaults
+- Update MCP tool parameter ordering (required first, optional with defaults)
+- Add contract validation tests for new schemas
+
+**Prevention**:
+- Use pre-commit hooks: `pre-commit run mcp-contract-validation --all-files`
+- Test minimal parameter creation for all Request models
+- Follow schema design guidelines in CLAUDE.md
+
 ### A2A Protocol Issues
 
 #### JSON-RPC "Invalid messageId" Error

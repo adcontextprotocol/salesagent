@@ -1149,6 +1149,26 @@ def test_agent_card_url_format(self):
 - **Data Leakage**: Internal fields exposed to clients create security risks
 - **Protocol Violations**: Non-compliant responses break AdCP specification contracts
 
+### MCP Contract Validation (MANDATORY)
+**🚨 PREVENTS CLIENT INTEGRATION FAILURES**: All MCP tools must work with minimal required parameters to ensure excellent developer experience.
+
+**Contract validation prevents errors like:**
+```
+Sales agent returned error: Input validation error: 'brief' is a required property
+```
+
+**Requirements:**
+- All Request schemas must have sensible defaults for optional fields
+- MCP tools must accept minimal parameters that clients expect
+- Pre-commit hooks automatically prevent over-strict validation
+- Contract tests validate all tools work with minimal params
+
+**Prevention System:**
+- **Tests**: `tests/integration/test_mcp_contract_validation.py`
+- **Audit**: `scripts/audit_required_fields.py`
+- **Hooks**: `mcp-contract-validation` and `audit-required-fields`
+- **Docs**: `docs/CONTRACT_VALIDATION_PREVENTION.md`
+
 **ZERO TOLERANCE POLICY:**
 - ❌ **No model can be client-facing without a compliance test**
 - ❌ **No PR can merge if it adds client-facing models without tests**
@@ -1238,6 +1258,37 @@ uv run pytest tests/unit/test_adcp_contract.py --cov=src.core.schemas --cov-repo
 - Use type hints for all function signatures
 - **🚨 ZERO HARDCODED IDs**: NO hardcoded external system IDs (GAM, Kevel, etc.) in code - use configuration/database only
 - **🛡️ TEST SAFETY**: Never test against production systems - use dedicated test configuration files (e.g., `.gam-test-config.json`) with validation
+
+### Schema Design Guidelines (CRITICAL FOR CLIENT INTEGRATION)
+**🚨 MANDATORY**: Follow these guidelines to prevent client integration failures like `'brief' is a required property`.
+
+**Field Requirement Analysis:**
+Before making any field required, ask:
+- **Is this truly necessary for business logic?**
+- **Can this have a sensible default value?**
+- **Would clients expect this to be optional?**
+
+**Good Default Patterns:**
+- `brief: str = ""` - Empty string for optional descriptions
+- `platforms: str = "all"` - Sensible platform default
+- `countries: list[str] = ["US"]` - Common country default
+- `pacing: str = "even"` - Reasonable strategy default
+
+**Parameter Ordering in MCP Tools:**
+```python
+# ✅ CORRECT ordering
+@mcp.tool
+async def my_tool(
+    required_param: str,           # Required first
+    optional_param: str = "default",  # Optional with defaults
+    context: Context = None        # Context always last
+):
+```
+
+**Validation Testing:**
+- All Request models must pass contract validation tests
+- Test minimal parameter creation: `YourRequest(only_required_param="value")`
+- Use audit script: `uv run python scripts/audit_required_fields.py`
 
 ### 🚨 Schema Alignment Prevention - CRITICAL FOR DATABASE/ORM CONSISTENCY 🚨
 
@@ -1383,6 +1434,12 @@ The project enforces several quality gates via pre-commit hooks:
 - **`adcp-contract-tests`**: Validates AdCP protocol compliance
   - All client-facing models must have compliance tests
   - Prevents protocol violations and data leakage
+- **`mcp-contract-validation`**: Prevents MCP tool validation issues
+  - Ensures all MCP tools work with minimal required parameters
+  - Catches over-strict validation before client integration failures
+- **`audit-required-fields`**: Audits schema field requirements
+  - Automatically detects potentially over-strict field validation
+  - Provides recommendations for better default values
 - **`a2a-regression-check`**: Prevents A2A server regressions (Dec 2024)
   - Validates agent card URL formats (no trailing slashes)
   - Tests function import/call patterns without excessive mocking
