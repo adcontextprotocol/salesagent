@@ -13,14 +13,23 @@ The AdCP Sales Agent is a server that:
 
 ## Quick Start
 
+### Standard Setup
+
 ```bash
 # Clone the repository
 git clone https://github.com/adcontextprotocol/salesagent.git
 cd salesagent
 
-# Copy and configure environment
-cp .env.example .env
-# Edit .env with your GEMINI_API_KEY and Google OAuth credentials
+# Configure secrets (choose one method)
+# Method 1: .env.secrets file (recommended)
+cp .env.secrets.template .env.secrets
+# Edit .env.secrets with your API keys and OAuth credentials
+
+# Method 2: Environment variables
+export GEMINI_API_KEY="your-api-key"
+export GOOGLE_CLIENT_ID="your-client-id"
+export GOOGLE_CLIENT_SECRET="your-client-secret"
+export SUPER_ADMIN_EMAILS="your-email@example.com"
 
 # Start with Docker Compose
 docker-compose up -d
@@ -29,10 +38,26 @@ docker-compose up -d
 open http://localhost:8001  # Admin UI
 ```
 
-This starts:
+### Conductor Setup
+
+```bash
+# One-time: Create secrets file in project root
+cp .env.secrets.template .env.secrets
+# Edit .env.secrets with your actual values
+
+# Create Conductor workspace (auto-runs setup)
+# Services will be available on unique ports
+# Check .env file for your workspace's ports
+```
+
+**Standard Setup** starts services on:
 - PostgreSQL database (port 5432)
 - MCP server (port 8080)
 - Admin UI (port 8001)
+
+**Conductor Setup** uses unique ports per workspace:
+- Check `.env` file for your workspace's assigned ports
+- Example: PostgreSQL (5486), MCP (8134), Admin UI (8055)
 
 ## Documentation
 

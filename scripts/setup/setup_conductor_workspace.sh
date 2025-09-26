@@ -166,10 +166,10 @@ fi
 echo ""
 echo "Copying files from root workspace..."
 
-# Create .env file from environment variables
-echo "Creating .env file from environment variables..."
+# Create .env file with secrets from multiple sources
+echo "Creating .env file with secrets and workspace configuration..."
 
-# Start with a fresh .env file
+# Start with a fresh .env file with workspace-specific settings
 cat > .env << EOF
 # Environment configuration for Conductor workspace: $CONDUCTOR_WORKSPACE_NAME
 # Generated on $(date)
@@ -177,6 +177,28 @@ cat > .env << EOF
 # Docker BuildKit Caching (enabled by default)
 DOCKER_BUILDKIT=1
 COMPOSE_DOCKER_CLI_BUILD=1
+EOF
+
+# Load secrets from .env.secrets file (check current dir first, then root)
+SECRETS_FILE=""
+if [ -f ".env.secrets" ]; then
+    SECRETS_FILE=".env.secrets"
+    echo "Loading secrets from current directory (.env.secrets)..."
+elif [ -f "$BASE_DIR/.env.secrets" ]; then
+    SECRETS_FILE="$BASE_DIR/.env.secrets"
+    echo "Loading secrets from root directory ($BASE_DIR/.env.secrets)..."
+fi
+
+if [ -n "$SECRETS_FILE" ]; then
+    echo "" >> .env
+    echo "# Secrets from $SECRETS_FILE" >> .env
+    cat "$SECRETS_FILE" >> .env
+    echo "✓ Loaded secrets from $SECRETS_FILE"
+else
+    echo "No .env.secrets file found in current or root directory, using environment variables..."
+
+    # Add secrets from environment variables
+    cat >> .env << EOF
 
 # API Keys (from environment)
 GEMINI_API_KEY=${GEMINI_API_KEY:-}
@@ -192,7 +214,9 @@ GAM_OAUTH_CLIENT_ID=${GAM_OAUTH_CLIENT_ID:-}
 GAM_OAUTH_CLIENT_SECRET=${GAM_OAUTH_CLIENT_SECRET:-}
 EOF
 
-echo "✓ Created .env file with environment variables"
+    echo "✓ Created .env file with environment variables"
+    echo "ℹ️  Consider creating a .env.secrets file in current directory or $BASE_DIR/.env.secrets for consistent secrets across workspaces"
+fi
 
 # Copy OAuth credentials file if it exists (legacy method)
 oauth_files=$(ls $BASE_DIR/client_secret*.json 2>/dev/null)
