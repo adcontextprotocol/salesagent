@@ -49,13 +49,60 @@ class CreativeFormatModel(BaseModel):
 
     format_id: str = Field(..., min_length=1)
     name: str = Field(..., min_length=1)
-    type: str = Field(..., pattern="^(display|video|audio|native)$")
+    type: str = Field(..., min_length=1)
     description: str | None = Field(None, min_length=1)
     width: int | None = Field(None, gt=0)
     height: int | None = Field(None, gt=0)
     duration: int | None = Field(None, gt=0)
     assets: list[dict[str, Any]] = Field(default_factory=list)
     delivery_options: dict[str, Any] = Field(default_factory=dict)
+
+    @field_validator("type")
+    @classmethod
+    def validate_type(cls, v: str) -> str:
+        """Validate format type with flexible handling for legacy values."""
+        if not v or not v.strip():
+            raise ValueError("Format type cannot be empty")
+
+        v = v.strip().lower()
+
+        # Standard AdCP format types
+        standard_types = {"display", "video", "audio", "native"}
+
+        # Legacy/alternative format types that should be mapped to standard types
+        type_mapping = {
+            "banner": "display",
+            "image": "display",
+            "static": "display",
+            "advertisement": "display",
+            "rich_media": "display",
+            "expandable": "display",
+            "interstitial": "display",
+            "popup": "display",
+            "overlay": "display",
+            "streaming": "video",
+            "preroll": "video",
+            "midroll": "video",
+            "postroll": "video",
+            "podcast": "audio",
+            "radio": "audio",
+            "sponsored": "native",
+            "content": "native",
+            "article": "native",
+            "feed": "native",
+        }
+
+        # If it's already a standard type, return as-is
+        if v in standard_types:
+            return v
+
+        # If it's a mappable legacy type, map it to standard type
+        if v in type_mapping:
+            return type_mapping[v]
+
+        # If it's not recognized, default to 'display' but allow it
+        # This prevents deletion failures for products with non-standard format types
+        return "display"
 
 
 class TargetingTemplateModel(BaseModel):
