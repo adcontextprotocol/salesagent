@@ -643,12 +643,12 @@ def log_tool_activity(context: Context, tool_name: str, start_time: float = None
 
 
 @mcp.tool
-async def get_products(brief: str, promoted_offering: str, context: Context = None) -> GetProductsResponse:
+async def get_products(promoted_offering: str, brief: str = "", context: Context = None) -> GetProductsResponse:
     """Get available products matching the brief.
 
     Args:
-        brief: Brief description of the advertising campaign or requirements
         promoted_offering: What is being promoted/advertised (required per AdCP spec)
+        brief: Brief description of the advertising campaign or requirements (optional)
         context: FastMCP context (automatically provided)
 
     Returns:

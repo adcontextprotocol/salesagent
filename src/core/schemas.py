@@ -1062,7 +1062,10 @@ class UpdatePerformanceIndexResponse(BaseModel):
 
 # --- Discovery ---
 class GetProductsRequest(BaseModel):
-    brief: str
+    brief: str = Field(
+        "",
+        description="Brief description of the advertising campaign or requirements (optional)",
+    )
     promoted_offering: str = Field(
         ...,
         description="Description of the advertiser and the product or service being promoted (REQUIRED per AdCP spec)",
@@ -2449,9 +2452,14 @@ class Signal(BaseModel):
 class SignalDeliverTo(BaseModel):
     """Delivery requirements per AdCP get-signals-request schema."""
 
-    platforms: str | list[str] = Field(..., description="Target platforms: 'all' or array of platform names")
+    platforms: str | list[str] = Field(
+        "all", description="Target platforms: 'all' or array of platform names (defaults to 'all')"
+    )
     accounts: list[dict[str, str]] | None = Field(None, description="Specific platform-account combinations")
-    countries: list[str] = Field(..., description="Countries where signals will be used (ISO codes)")
+    countries: list[str] = Field(
+        default_factory=lambda: ["US"],
+        description="Countries where signals will be used (ISO codes, defaults to ['US'])",
+    )
 
     @model_validator(mode="after")
     def validate_accounts_structure(self):
