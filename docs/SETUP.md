@@ -45,25 +45,77 @@ uv run python run_server.py
 
 ## Configuration
 
-### Required Environment Variables
+### Environment Setup Options
+
+Choose one of three methods to provide your secrets and configuration:
+
+#### Option 1: `.env.secrets` File (Recommended)
+
+Create `.env.secrets` in the project root directory:
+
+```bash
+# Copy template
+cp .env.secrets.template .env.secrets
+
+# Edit with your values
+# API Keys
+GEMINI_API_KEY=your-gemini-api-key
+
+# OAuth Configuration
+GOOGLE_CLIENT_ID=your-client-id.apps.googleusercontent.com
+GOOGLE_CLIENT_SECRET=your-client-secret
+SUPER_ADMIN_EMAILS=admin1@example.com,admin2@example.com
+SUPER_ADMIN_DOMAINS=example.com
+
+# GAM OAuth (optional)
+GAM_OAUTH_CLIENT_ID=your-gam-client-id.apps.googleusercontent.com
+GAM_OAUTH_CLIENT_SECRET=your-gam-client-secret
+```
+
+**Benefits**:
+- ✅ Consistent across all workspaces/setups
+- ✅ Never committed to git (in `.gitignore`)
+- ✅ Team-friendly with template
+
+#### Option 2: Shell Environment Variables
+
+Add to your `~/.zshrc` or `~/.bashrc`:
+
+```bash
+# AdCP Configuration
+export GEMINI_API_KEY="your-gemini-api-key"
+export GOOGLE_CLIENT_ID="your-client-id.apps.googleusercontent.com"
+export GOOGLE_CLIENT_SECRET="your-client-secret"
+export SUPER_ADMIN_EMAILS="admin1@example.com,admin2@example.com"
+export GAM_OAUTH_CLIENT_ID="your-gam-client-id.apps.googleusercontent.com"
+export GAM_OAUTH_CLIENT_SECRET="your-gam-client-secret"
+
+# Reload shell
+source ~/.zshrc
+```
+
+#### Option 3: Direct `.env` File
+
+Create `.env` in your working directory:
 
 ```bash
 # API Keys
 GEMINI_API_KEY=your-gemini-api-key
-
-# OAuth (choose one method)
 GOOGLE_CLIENT_ID=your-client-id.apps.googleusercontent.com
 GOOGLE_CLIENT_SECRET=your-client-secret
-# OR
-GOOGLE_OAUTH_CREDENTIALS_FILE=/path/to/client_secret.json
-
-# Admin Access
 SUPER_ADMIN_EMAILS=admin1@example.com,admin2@example.com
-SUPER_ADMIN_DOMAINS=example.com
 
 # Database (Docker handles automatically)
 DATABASE_URL=postgresql://user:pass@localhost:5432/adcp
 ```
+
+### Priority Order
+
+The setup system checks for configuration in this order:
+1. **Current directory**: `.env.secrets` (workspace-specific)
+2. **Project root**: `.env.secrets` (shared across workspaces)
+3. **Environment variables**: From shell profile
+4. **Direct .env**: In current directory
 
 ### Google OAuth Setup
 
@@ -294,12 +346,102 @@ ADCP_AUTH_TEST_MODE=true
 
 ## Conductor Workspaces
 
-When using Conductor workspaces:
+### Quick Setup
 
-1. Each workspace gets unique ports via `.env`
-2. OAuth uses environment variables (not mounted files)
-3. Use `docker-compose.override.yml` for dev features
-4. Never modify core application files in workspace
+For Conductor users, the setup is automated:
+
+```bash
+# 1. Create .env.secrets in project root (one-time setup)
+cp .env.secrets.template /path/to/project/root/.env.secrets
+# Edit with your actual secrets
+
+# 2. Create new Conductor workspace
+# Conductor will automatically run setup script
+
+# 3. Start services
+docker-compose up -d
+```
+
+### How Conductor Setup Works
+
+1. **Automatic Environment Loading**: Setup script finds your `.env.secrets` file
+2. **Unique Port Assignment**: Each workspace gets unique ports (no conflicts)
+3. **Docker Caching**: Shared cache volumes speed up builds across workspaces
+4. **Git Hooks**: Pre-commit and pre-push hooks configured per workspace
+
+### Conductor-Specific Features
+
+- **Port Management**: Automatic port reservation system prevents conflicts
+- **Shared Caching**: Docker volumes shared across all AdCP workspaces
+- **Workspace Isolation**: Each workspace has independent `.env` with unique ports
+- **Development Mode**: Hot reloading with `docker-compose.override.yml`
+
+### Workspace Setup Process
+
+When you create a Conductor workspace, it automatically:
+
+1. **Checks for secrets** in this priority order:
+   - `./env.secrets` (workspace-specific)
+   - `$CONDUCTOR_ROOT_PATH/.env.secrets` (your main secrets file)
+   - Environment variables (your shell profile)
+
+2. **Generates workspace config**:
+   - Unique ports (PostgreSQL, MCP Server, Admin UI)
+   - Database URL with workspace-specific port
+   - Docker caching configuration
+
+3. **Creates development files**:
+   - `.env` with secrets + unique ports
+   - `docker-compose.override.yml` for hot reloading
+   - Git hooks for testing and code quality
+
+4. **Sets up dependencies**:
+   - Creates Python virtual environment
+   - Installs all dependencies via `uv`
+   - Configures UI test dependencies if needed
+
+### Troubleshooting Conductor Setup
+
+**Setup script fails with "missing environment variables":**
+```bash
+# Create .env.secrets file in project root
+cp .env.secrets.template /path/to/project/root/.env.secrets
+# Edit with your actual values
+```
+
+**Port conflicts:**
+```bash
+# Check which ports are assigned
+cat .env | grep PORT
+
+# Recreate workspace if needed (gets new ports)
+```
+
+**Docker caching issues:**
+```bash
+# Clear shared cache volumes
+docker volume rm adcp_global_pip_cache adcp_global_uv_cache
+
+# Restart workspace to recreate volumes
+```
+
+**Missing dependencies:**
+```bash
+# Reinstall in workspace
+uv sync --extra ui-tests
+```
+
+### Manual Conductor Setup (if automation fails)
+
+```bash
+# Set required Conductor variables
+export CONDUCTOR_WORKSPACE_NAME="your-workspace"
+export CONDUCTOR_WORKSPACE_PATH="/path/to/workspace"
+export CONDUCTOR_ROOT_PATH="/path/to/project/root"
+
+# Run setup script manually
+bash scripts/setup/setup_conductor_workspace.sh
+```
 
 ## Health Checks
 

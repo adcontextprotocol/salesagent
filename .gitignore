@@ -6,6 +6,7 @@ adcp.db
 .env
 .env.local
 .env.production
+.env.secrets
 
 # Test configurations (contain test network IDs - should not be in production)
 .gam-test-config.json
