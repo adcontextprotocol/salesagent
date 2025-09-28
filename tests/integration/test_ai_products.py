@@ -391,8 +391,8 @@ def test_ai_integration():
     async def run_test():
         service = AIProductConfigurationService()
 
-        # Verify we're using Gemini 2.5 Flash
-        assert "gemini-2.5-flash" in str(service.model)
+        # Verify we're using latest Gemini Flash
+        assert "gemini-flash-latest" in str(service.model)
 
         # Test with a simple prompt
         description = ProductDescription(

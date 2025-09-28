@@ -51,8 +51,8 @@ class AICreativeFormatService:
             raise ValueError("GEMINI_API_KEY environment variable is required")
 
         genai.configure(api_key=api_key)
-        # Upgrade to Gemini 2.5 Flash for better performance
-        self.model = genai.GenerativeModel("gemini-2.5-flash")
+        # Using latest Gemini Flash model for better performance
+        self.model = genai.GenerativeModel("gemini-flash-latest")
 
         # Initialize foundational formats manager if available
         try:

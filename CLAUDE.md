@@ -488,7 +488,7 @@ Potential approaches for cross-domain OAuth:
 ### AI-Powered Product Management
 - **Default Products**: 6 standard products automatically created for new tenants
 - **Industry Templates**: Specialized products for news, sports, entertainment, ecommerce
-- **AI Configuration**: Uses Gemini 2.5 Flash to analyze descriptions and suggest configs
+- **AI Configuration**: Uses latest Gemini Flash model to analyze descriptions and suggest configs
 - **Bulk Operations**: CSV/JSON upload, template browser, quick-create API
 
 ### Principal-Level Advertiser Management

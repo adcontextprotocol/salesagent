@@ -194,7 +194,7 @@ async def get_products(
 
 ## AI Integration
 
-### Gemini 2.5 Flash
+### Latest Gemini Flash Model
 
 Used for:
 - Product configuration suggestions
