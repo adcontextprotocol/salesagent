@@ -48,7 +48,7 @@ async def test_ai_provider_bug():
 
     try:
         # Test the AI provider
-        config = {"model": "gemini-1.5-flash", "max_products": 5}
+        config = {"model": "gemini-flash-latest", "max_products": 5}
         provider = AIProductCatalog(config)
 
         products = await provider.get_products(

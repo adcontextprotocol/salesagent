@@ -24,7 +24,7 @@ class AIProductCatalog(ProductCatalogProvider):
     3. Returns the most relevant products based on the AI's analysis
 
     Configuration:
-        model: Gemini model to use (default: "gemini-1.5-flash")
+        model: Gemini model to use (default: "gemini-flash-latest")
         max_products: Maximum number of products to return (default: 5)
         temperature: Model temperature for creativity (default: 0.3)
         include_reasoning: Include AI reasoning in response (default: false)
@@ -32,7 +32,7 @@ class AIProductCatalog(ProductCatalogProvider):
 
     def __init__(self, config: dict[str, Any]):
         super().__init__(config)
-        self.model_name = config.get("model", "gemini-1.5-flash")
+        self.model_name = config.get("model", "gemini-flash-latest")
         self.max_products = config.get("max_products", 5)
         self.temperature = config.get("temperature", 0.3)
         self.include_reasoning = config.get("include_reasoning", False)

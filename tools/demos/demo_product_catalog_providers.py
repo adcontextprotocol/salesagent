@@ -10,7 +10,7 @@ from typing import Any
 # Test with different provider configurations
 TEST_CONFIGS = {
     "database": {"provider": "database", "config": {}},
-    "ai": {"provider": "ai", "config": {"model": "gemini-1.5-flash", "max_products": 3, "temperature": 0.3}},
+    "ai": {"provider": "ai", "config": {"model": "gemini-flash-latest", "max_products": 3, "temperature": 0.3}},
     "mcp": {
         "provider": "mcp",
         "config": {"upstream_url": "http://localhost:9000/mcp/", "tool_name": "get_products", "timeout": 10},
@@ -90,7 +90,7 @@ async def test_direct_providers():
         try:
             from product_catalog_providers.ai import AIProductCatalog
 
-            ai_provider = AIProductCatalog({"model": "gemini-1.5-flash", "max_products": 2})
+            ai_provider = AIProductCatalog({"model": "gemini-flash-latest", "max_products": 2})
             products = await ai_provider.get_products(brief="I need sports advertising", tenant_id="default")
             print(f"\n✅ AI provider: {len(products)} products")
         except Exception as e:

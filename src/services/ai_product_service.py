@@ -54,8 +54,8 @@ class AIProductConfigurationService:
             raise ValueError("GEMINI_API_KEY environment variable is required")
 
         genai.configure(api_key=api_key)
-        # Using Gemini 2.5 Flash for improved performance and capabilities
-        self.model = genai.GenerativeModel("gemini-2.5-flash")
+        # Using latest Gemini Flash model for improved performance and capabilities
+        self.model = genai.GenerativeModel("gemini-flash-latest")
 
     async def create_product_from_description(
         self, tenant_id: str, description: ProductDescription, adapter_type: str

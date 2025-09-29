@@ -54,7 +54,7 @@ async def test_all_providers():
             "name": "AI Provider",
             "config": {
                 "provider": "ai",
-                "config": {"model": "gemini-1.5-flash", "max_products": 5, "temperature": 0.3},
+                "config": {"model": "gemini-flash-latest", "max_products": 5, "temperature": 0.3},
             },
         },
     ]

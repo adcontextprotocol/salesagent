@@ -45,7 +45,7 @@ class PolicyCheckService:
             self.ai_enabled = False
         else:
             genai.configure(api_key=self.api_key)
-            self.model = genai.GenerativeModel("gemini-2.0-flash-exp")
+            self.model = genai.GenerativeModel("gemini-flash-latest")
             self.ai_enabled = True
 
     async def check_brief_compliance(
