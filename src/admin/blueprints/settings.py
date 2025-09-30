@@ -187,13 +187,19 @@ def update_adapter(tenant_id):
                         request.json.get("gam_network_code", "").strip() if request.json.get("gam_network_code") else ""
                     )
                     manual_approval = request.json.get("gam_manual_approval", False)
+                    sync_audience_segments = request.json.get("gam_sync_audience_segments", True)
+                    sync_custom_targeting = request.json.get("gam_sync_custom_targeting", True)
                 else:
                     network_code = request.form.get("gam_network_code", "").strip()
                     manual_approval = request.form.get("gam_manual_approval") == "on"
+                    sync_audience_segments = request.form.get("gam_sync_audience_segments") == "on"
+                    sync_custom_targeting = request.form.get("gam_sync_custom_targeting") == "on"
 
                 if network_code:
                     adapter_config_obj.gam_network_code = network_code
                 adapter_config_obj.gam_manual_approval_required = manual_approval
+                adapter_config_obj.gam_sync_audience_segments = sync_audience_segments
+                adapter_config_obj.gam_sync_custom_targeting = sync_custom_targeting
             elif new_adapter == "mock":
                 if request.is_json:
                     dry_run = request.json.get("mock_dry_run", False)

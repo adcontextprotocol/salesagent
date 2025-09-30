@@ -21,7 +21,7 @@ from src.adapters.gam_inventory_discovery import (
     GAMInventoryDiscovery,
 )
 from src.core.database.db_config import DatabaseConfig
-from src.core.database.models import GAMInventory, Product, ProductInventoryMapping
+from src.core.database.models import AdapterConfig, GAMInventory, Product, ProductInventoryMapping
 
 # Create database session factory
 engine = create_engine(DatabaseConfig.get_connection_string())
@@ -51,14 +51,25 @@ class GAMInventoryService:
         """
         logger.info(f"Starting inventory sync for tenant {tenant_id}")
 
+        # Get sync settings from adapter config
+        adapter_config = self.db.query(AdapterConfig).filter_by(tenant_id=tenant_id).first()
+        sync_audience_segments = True  # Default value
+        sync_custom_targeting = True   # Default value
+
+        if adapter_config:
+            sync_audience_segments = adapter_config.gam_sync_audience_segments if adapter_config.gam_sync_audience_segments is not None else True
+            sync_custom_targeting = adapter_config.gam_sync_custom_targeting if adapter_config.gam_sync_custom_targeting is not None else True
+
+        logger.info(f"Sync settings for tenant {tenant_id}: audience_segments={sync_audience_segments}, custom_targeting={sync_custom_targeting}")
+
         # Create client manager from existing client
         client_manager = GAMClientManager.from_existing_client(gam_client)
 
         # Create inventory manager
         inventory_manager = GAMInventoryManager(client_manager, tenant_id, dry_run=False)
 
-        # Perform discovery using the manager
-        sync_summary = inventory_manager.sync_all_inventory()
+        # Perform discovery using the manager with sync settings
+        sync_summary = inventory_manager.sync_all_inventory(sync_audience_segments, sync_custom_targeting)
 
         # Get the discovery instance to save to database
         discovery = inventory_manager._get_discovery()

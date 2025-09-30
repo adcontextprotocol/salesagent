@@ -663,6 +663,29 @@
                         <small class="form-text text-muted">The GAM user ID who will create line items. Auto-detected when you click "Auto-detect Network" above.</small>
                     </div>
 
+                    <div class="form-section" style="margin-top: 2rem;">
+                        <h4>Sync Preferences</h4>
+                        <p class="text-muted">Control which GAM data to synchronize for improved performance</p>
+
+                        <div class="form-check" style="margin-bottom: 1rem;">
+                            <input type="checkbox" class="form-check-input" id="gam_sync_audience_segments"
+                                   {% if not adapter_config or adapter_config.get('gam_sync_audience_segments', True) %}checked{% endif %}>
+                            <label class="form-check-label" for="gam_sync_audience_segments">
+                                <strong>Sync Audience Segments</strong>
+                            </label>
+                            <small class="form-text text-muted">Discover first-party and third-party audience segments (may be slow for large inventories)</small>
+                        </div>
+
+                        <div class="form-check" style="margin-bottom: 1rem;">
+                            <input type="checkbox" class="form-check-input" id="gam_sync_custom_targeting"
+                                   {% if not adapter_config or adapter_config.get('gam_sync_custom_targeting', True) %}checked{% endif %}>
+                            <label class="form-check-label" for="gam_sync_custom_targeting">
+                                <strong>Sync Custom Targeting</strong>
+                            </label>
+                            <small class="form-text text-muted">Discover custom targeting keys and values (may be slow for large inventories)</small>
+                        </div>
+                    </div>
+
                     <div class="form-group">
                         <button onclick="saveGAMConfig()" class="btn btn-primary">Save GAM Configuration</button>
                         {% if adapter_config and adapter_config.get('refresh_token') %}
@@ -1469,6 +1492,8 @@ function saveGAMConfig() {
     const networkCode = document.getElementById('gam_network_code').value;
     const refreshToken = document.getElementById('gam_refresh_token').value;
     const traffickerId = document.getElementById('gam_trafficker_id').value;
+    const syncAudienceSegments = document.getElementById('gam_sync_audience_segments').checked;
+    const syncCustomTargeting = document.getElementById('gam_sync_custom_targeting').checked;
 
     if (!refreshToken) {
         alert('Please provide a Refresh Token');
@@ -1497,7 +1522,9 @@ function saveGAMConfig() {
         body: JSON.stringify({
             network_code: networkCode,
             refresh_token: refreshToken,
-            trafficker_id: traffickerId
+            trafficker_id: traffickerId,
+            sync_audience_segments: syncAudienceSegments,
+            sync_custom_targeting: syncCustomTargeting
         })
     })
     .then(response => {

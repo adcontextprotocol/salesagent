@@ -138,8 +138,12 @@ class GAMInventoryManager:
         discovery = self._get_discovery()
         return discovery.discover_labels()
 
-    def sync_all_inventory(self) -> dict[str, Any]:
+    def sync_all_inventory(self, sync_audience_segments: bool = True, sync_custom_targeting: bool = True) -> dict[str, Any]:
         """Perform full inventory sync from GAM.
+
+        Args:
+            sync_audience_segments: Whether to sync audience segments (default True)
+            sync_custom_targeting: Whether to sync custom targeting (default True)
 
         Returns:
             Summary of synced data
@@ -160,7 +164,7 @@ class GAMInventoryManager:
             }
 
         discovery = self._get_discovery()
-        return discovery.sync_all()
+        return discovery.sync_all(sync_audience_segments, sync_custom_targeting)
 
     def build_ad_unit_tree(self) -> dict[str, Any]:
         """Build hierarchical tree structure of ad units.
