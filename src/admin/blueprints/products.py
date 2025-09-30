@@ -208,11 +208,11 @@ def add_product(tenant_id):
 
                 flash(
                     f"Product '{product.name}' created with default GAM configuration. "
-                    f"Please configure inventory targeting before using.",
+                    f"Click 'GAM Config' to configure inventory targeting.",
                     "success",
                 )
-                # Redirect to GAM configuration to complete setup
-                return redirect(url_for("gam_product_config", tenant_id=tenant_id, product_id=product.product_id))
+                # Redirect to products list - user can click GAM Config button when ready
+                return redirect(url_for("products.list_products", tenant_id=tenant_id))
 
         except Exception as e:
             logger.error(f"Error creating product: {e}", exc_info=True)
