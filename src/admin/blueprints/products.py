@@ -844,7 +844,11 @@ def gam_product_config(tenant_id, product_id):
                     )
 
                 # Update product with new configuration
+                # Use flag_modified to ensure SQLAlchemy detects JSONB mutations
+                from sqlalchemy.orm import attributes
+
                 product.implementation_config = impl_config
+                attributes.flag_modified(product, "implementation_config")
                 db_session.commit()
 
                 flash(f"GAM configuration saved for '{product.name}'", "success")
