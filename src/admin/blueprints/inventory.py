@@ -366,3 +366,74 @@ def analyze_ad_server_inventory(tenant_id):
     except Exception as e:
         logger.error(f"Error analyzing ad server: {e}")
         return jsonify({"error": str(e)}), 500
+
+
+@inventory_bp.route("/api/tenant/<tenant_id>/inventory-list", methods=["GET"])
+@require_tenant_access(api_mode=True)
+def get_inventory_list(tenant_id):
+    """Get list of ad units and placements for picker UI.
+
+    Query Parameters:
+        type: Filter by inventory_type ('ad_unit' or 'placement', defaults to both)
+        search: Filter by name (case-insensitive partial match)
+        status: Filter by status (default: 'ACTIVE')
+
+    Returns:
+        JSON array of inventory items with id, name, type, path, status
+    """
+    try:
+        inventory_type = request.args.get("type")  # 'ad_unit' or 'placement' or None for both
+        search = request.args.get("search", "").strip()
+        status = request.args.get("status", "ACTIVE")
+
+        with get_db_session() as db_session:
+            # Build query
+            query = db_session.query(GAMInventory).filter(GAMInventory.tenant_id == tenant_id)
+
+            # Filter by type if specified
+            if inventory_type:
+                query = query.filter(GAMInventory.inventory_type == inventory_type)
+            else:
+                # Default to ad_unit and placement only
+                query = query.filter(GAMInventory.inventory_type.in_(["ad_unit", "placement"]))
+
+            # Filter by status
+            if status:
+                query = query.filter(GAMInventory.status == status)
+
+            # Filter by search term
+            if search:
+                query = query.filter(
+                    or_(
+                        GAMInventory.name.ilike(f"%{search}%"),
+                        func.cast(GAMInventory.path, String).ilike(f"%{search}%"),
+                    )
+                )
+
+            # Order by path/name for better organization
+            query = query.order_by(GAMInventory.inventory_type, GAMInventory.name)
+
+            # Limit results to prevent overwhelming the UI
+            query = query.limit(500)
+
+            items = query.all()
+
+            # Format response
+            result = []
+            for item in items:
+                result.append(
+                    {
+                        "id": item.inventory_id,
+                        "name": item.name,
+                        "type": item.inventory_type,
+                        "path": item.path if item.path else [item.name],
+                        "status": item.status,
+                        "metadata": item.inventory_metadata or {},
+                    }
+                )
+
+            return jsonify({"items": result, "count": len(result), "has_more": len(result) >= 500})
+
+    except Exception as e:
+        logger.error(f"Error fetching inventory list: {e}", exc_info=True)
+        return jsonify({"error": str(e)}), 500
