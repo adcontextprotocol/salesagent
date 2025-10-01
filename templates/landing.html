@@ -1,0 +1,166 @@
+{% extends "base.html" %}
+
+{% block title %}Get Started - AdCP Sales Agent{% endblock %}
+
+{% block content %}
+<div style="max-width: 900px; margin: 0 auto; padding: 2rem 1rem;">
+    <!-- Hero Section -->
+    <div style="text-align: center; padding: 3rem 0;">
+        <h1 style="font-size: 2.5rem; margin-bottom: 1rem; color: #1a1a1a;">
+            Connect Your Ad Inventory to AI Buyers
+        </h1>
+        <p style="font-size: 1.25rem; color: #666; margin-bottom: 2rem; max-width: 700px; margin-left: auto; margin-right: auto;">
+            Enable AI agents to discover and purchase your advertising inventory through the
+            <strong>Advertising Context Protocol (AdCP)</strong>
+        </p>
+
+        <a href="{{ url_for('public.signup_start') }}" class="btn" style="font-size: 1.125rem; padding: 1rem 2rem; display: inline-flex; align-items: center; gap: 0.5rem;">
+            <svg width="20" height="20" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48">
+                <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/>
+                <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/>
+                <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/>
+                <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/>
+            </svg>
+            Get Started with Google
+        </a>
+
+        <p style="margin-top: 1rem; font-size: 0.875rem; color: #999;">
+            Free to get started • No credit card required
+        </p>
+    </div>
+
+    <!-- How It Works Section -->
+    <div style="padding: 3rem 0; border-top: 1px solid #eee;">
+        <h2 style="text-align: center; margin-bottom: 2rem; color: #1a1a1a;">How It Works</h2>
+
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 2rem;">
+            <!-- Step 1 -->
+            <div style="text-align: center; padding: 1.5rem;">
+                <div style="width: 60px; height: 60px; background: #4285F4; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto 1rem; color: white; font-size: 1.5rem; font-weight: bold;">
+                    1
+                </div>
+                <h3 style="margin-bottom: 0.5rem; color: #1a1a1a;">Sign In with Google</h3>
+                <p style="color: #666; font-size: 0.9rem;">
+                    Authenticate securely with your Google account. No passwords to manage.
+                </p>
+            </div>
+
+            <!-- Step 2 -->
+            <div style="text-align: center; padding: 1.5rem;">
+                <div style="width: 60px; height: 60px; background: #34A853; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto 1rem; color: white; font-size: 1.5rem; font-weight: bold;">
+                    2
+                </div>
+                <h3 style="margin-bottom: 0.5rem; color: #1a1a1a;">Connect Your Ad Server</h3>
+                <p style="color: #666; font-size: 0.9rem;">
+                    Link Google Ad Manager, Kevel, or use our mock adapter for testing.
+                </p>
+            </div>
+
+            <!-- Step 3 -->
+            <div style="text-align: center; padding: 1.5rem;">
+                <div style="width: 60px; height: 60px; background: #FBBC05; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto 1rem; color: white; font-size: 1.5rem; font-weight: bold;">
+                    3
+                </div>
+                <h3 style="margin-bottom: 0.5rem; color: #1a1a1a;">Start Selling</h3>
+                <p style="color: #666; font-size: 0.9rem;">
+                    Configure your inventory and let AI buyers discover your ad products.
+                </p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Features Section -->
+    <div style="padding: 3rem 0; border-top: 1px solid #eee;">
+        <h2 style="text-align: center; margin-bottom: 2rem; color: #1a1a1a;">What You Get</h2>
+
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 2rem;">
+            <!-- Feature 1 -->
+            <div style="padding: 1.5rem; background: #f8f9fa; border-radius: 8px;">
+                <h3 style="margin-bottom: 0.5rem; color: #1a1a1a; font-size: 1.1rem;">🤖 AI-Native Protocol</h3>
+                <p style="color: #666; font-size: 0.9rem; margin: 0;">
+                    Built on the AdCP standard, enabling seamless discovery and purchasing by AI agents
+                </p>
+            </div>
+
+            <!-- Feature 2 -->
+            <div style="padding: 1.5rem; background: #f8f9fa; border-radius: 8px;">
+                <h3 style="margin-bottom: 0.5rem; color: #1a1a1a; font-size: 1.1rem;">🔌 Multiple Ad Servers</h3>
+                <p style="color: #666; font-size: 0.9rem; margin: 0;">
+                    Support for Google Ad Manager, Kevel, Triton Digital, and more
+                </p>
+            </div>
+
+            <!-- Feature 3 -->
+            <div style="padding: 1.5rem; background: #f8f9fa; border-radius: 8px;">
+                <h3 style="margin-bottom: 0.5rem; color: #1a1a1a; font-size: 1.1rem;">🎯 Advanced Targeting</h3>
+                <p style="color: #666; font-size: 0.9rem; margin: 0;">
+                    Rich targeting capabilities including contextual, geographic, and demographic options
+                </p>
+            </div>
+
+            <!-- Feature 4 -->
+            <div style="padding: 1.5rem; background: #f8f9fa; border-radius: 8px;">
+                <h3 style="margin-bottom: 0.5rem; color: #1a1a1a; font-size: 1.1rem;">🛡️ Built-in Safety</h3>
+                <p style="color: #666; font-size: 0.9rem; margin: 0;">
+                    Policy enforcement, creative review, and human-in-the-loop approval workflows
+                </p>
+            </div>
+
+            <!-- Feature 5 -->
+            <div style="padding: 1.5rem; background: #f8f9fa; border-radius: 8px;">
+                <h3 style="margin-bottom: 0.5rem; color: #1a1a1a; font-size: 1.1rem;">📊 Real-time Dashboard</h3>
+                <p style="color: #666; font-size: 0.9rem; margin: 0;">
+                    Monitor campaigns, approvals, and activity with comprehensive admin interface
+                </p>
+            </div>
+
+            <!-- Feature 6 -->
+            <div style="padding: 1.5rem; background: #f8f9fa; border-radius: 8px;">
+                <h3 style="margin-bottom: 0.5rem; color: #1a1a1a; font-size: 1.1rem;">🚀 Self-Service Setup</h3>
+                <p style="color: #666; font-size: 0.9rem; margin: 0;">
+                    Get up and running in minutes with our guided onboarding process
+                </p>
+            </div>
+        </div>
+    </div>
+
+    <!-- CTA Section -->
+    <div style="text-align: center; padding: 3rem 0; border-top: 1px solid #eee;">
+        <h2 style="margin-bottom: 1rem; color: #1a1a1a;">Ready to Get Started?</h2>
+        <p style="color: #666; margin-bottom: 2rem; font-size: 1.1rem;">
+            Join the future of programmatic advertising with AI-native protocols
+        </p>
+
+        <a href="{{ url_for('public.signup_start') }}" class="btn" style="font-size: 1.125rem; padding: 1rem 2rem; display: inline-flex; align-items: center; gap: 0.5rem;">
+            <svg width="20" height="20" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48">
+                <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/>
+                <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/>
+                <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/>
+                <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/>
+            </svg>
+            Get Started with Google
+        </a>
+    </div>
+
+    <!-- Footer Info -->
+    <div style="text-align: center; padding: 2rem 0; border-top: 1px solid #eee; color: #999; font-size: 0.875rem;">
+        <p style="margin-bottom: 0.5rem;">
+            <strong>AdCP Sales Agent</strong> is an open-source reference implementation
+        </p>
+        <p style="margin: 0;">
+            Learn more about the <a href="https://adcontextprotocol.org" target="_blank" style="color: #4285F4; text-decoration: none;">Advertising Context Protocol</a>
+        </p>
+    </div>
+</div>
+
+<style>
+.btn {
+    transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 12px rgba(0,0,0,0.15);
+}
+</style>
+{% endblock %}

@@ -254,6 +254,12 @@ def google_callback():
         session["user_name"] = user.get("name", email)
         session["user_picture"] = user.get("picture", "")
 
+        # Check if this is a signup flow
+        if session.get("signup_flow"):
+            logger.info(f"OAuth callback - signup flow detected for {email}")
+            # Redirect to onboarding wizard
+            return redirect(url_for("public.signup_onboarding"))
+
         # Debug session state before popping values
         logger.info(f"OAuth callback - full session: {dict(session)}")
 
@@ -542,6 +548,7 @@ def gam_authorize(tenant_id):
     try:
         # Get GAM OAuth configuration
         from src.core.config import get_gam_oauth_config
+
         gam_config = get_gam_oauth_config()
 
         # Store tenant context for callback
@@ -610,6 +617,7 @@ def gam_callback():
 
         # Get GAM OAuth configuration
         from src.core.config import get_gam_oauth_config
+
         gam_config = get_gam_oauth_config()
 
         # Determine callback URI (must match the one used in authorization)
@@ -620,13 +628,17 @@ def gam_callback():
 
         # Exchange authorization code for tokens
         import requests
-        token_response = requests.post("https://oauth2.googleapis.com/token", data={
-            "client_id": gam_config.client_id,
-            "client_secret": gam_config.client_secret,
-            "code": code,
-            "grant_type": "authorization_code",
-            "redirect_uri": callback_uri
-        })
+
+        token_response = requests.post(
+            "https://oauth2.googleapis.com/token",
+            data={
+                "client_id": gam_config.client_id,
+                "client_secret": gam_config.client_secret,
+                "code": code,
+                "grant_type": "authorization_code",
+                "redirect_uri": callback_uri,
+            },
+        )
 
         if not token_response.ok:
             logger.error(f"Token exchange failed: {token_response.text}")
@@ -670,7 +682,7 @@ def gam_callback():
         # Try to auto-detect network information
         try:
             # Import the detect network logic from GAM blueprint
-            from src.admin.blueprints.gam import detect_gam_network
+
             # Note: We can't directly call detect_gam_network here as it expects a POST request
             # The user will need to use the "Auto-detect Network" button in the UI
             flash("Next step: Use the 'Auto-detect Network' button to complete your GAM configuration.", "info")
