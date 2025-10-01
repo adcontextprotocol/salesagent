@@ -134,44 +134,104 @@
     }
 
     .activity-item {
-        margin-bottom: 0.5rem;
-        border-radius: 4px;
+        margin-bottom: 0.75rem;
+        border-radius: 8px;
         transition: all 0.2s;
         animation: slideIn 0.3s ease-out;
         border: 1px solid #e5e7eb;
         overflow: hidden;
+        background: white;
     }
 
     .activity-item.action-required {
         border-left: 4px solid #f59e0b;
+        background: #fffbeb;
     }
 
     .activity-header {
-        padding: 0.75rem;
+        padding: 1rem;
         cursor: pointer;
         display: flex;
         justify-content: space-between;
-        align-items: flex-start;
+        align-items: center;
+        gap: 1rem;
     }
 
     .activity-header:hover {
-        background: #f9fafb;
+        background: rgba(0, 0, 0, 0.02);
     }
 
     .activity-icon {
-        font-size: 1.25rem;
-        margin-right: 0.75rem;
+        font-size: 1.5rem;
+        margin-right: 0;
+        flex-shrink: 0;
     }
 
     .activity-main {
         display: flex;
-        align-items: flex-start;
+        align-items: center;
+        gap: 0.75rem;
+        flex: 1;
+        min-width: 0;
+    }
+
+    .activity-content-text {
+        flex: 1;
+        min-width: 0;
+    }
+
+    .activity-summary {
+        font-size: 0.9rem;
+        color: #111827;
+        font-weight: 500;
+        margin-bottom: 0.25rem;
+        line-height: 1.4;
+    }
+
+    .activity-meta {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        font-size: 0.8rem;
+        color: #6b7280;
+        flex-wrap: wrap;
+    }
+
+    .activity-badge {
+        display: inline-flex;
+        align-items: center;
+        padding: 0.125rem 0.5rem;
+        border-radius: 4px;
+        font-size: 0.75rem;
+        font-weight: 500;
+        white-space: nowrap;
+    }
+
+    .activity-badge.success {
+        background: #d1fae5;
+        color: #065f46;
+    }
+
+    .activity-badge.error {
+        background: #fee2e2;
+        color: #991b1b;
+    }
+
+    .activity-badge.a2a {
+        background: #dbeafe;
+        color: #1e40af;
+    }
+
+    .activity-badge.mcp {
+        background: #e0e7ff;
+        color: #3730a3;
     }
 
     .expand-indicator {
         font-size: 0.75rem;
-        color: #6b7280;
+        color: #9ca3af;
         transition: transform 0.2s;
+        flex-shrink: 0;
     }
 
     .expand-indicator.expanded {
@@ -233,46 +293,6 @@
         }
     }
 
-    .activity-item:hover {
-        background: #f9fafb;
-    }
-
-    .activity-item.api-call { background: #eff6ff; }
-    .activity-item.product-query { background: #f0f9ff; }
-    .activity-item.human-task { background: #fffbeb; }
-    .activity-item.media-buy { background: #f0fdf4; }
-    .activity-item.creative { background: #faf5ff; }
-    .activity-item.error { background: #fef2f2; }
-
-    .activity-time {
-        font-size: 0.75rem;
-        color: #9ca3af;
-        margin-bottom: 0.25rem;
-    }
-
-    .activity-content {
-        display: flex;
-        justify-content: space-between;
-        align-items: start;
-    }
-
-    .activity-principal {
-        font-weight: 600;
-        color: #111827;
-        font-size: 0.875rem;
-    }
-
-    .activity-action {
-        color: #6b7280;
-        font-size: 0.875rem;
-        margin-top: 0.25rem;
-    }
-
-    .activity-details {
-        font-size: 0.75rem;
-        color: #9ca3af;
-        text-align: right;
-    }
 
     .quick-actions {
         background: white;
@@ -705,6 +725,7 @@
 let pollingInterval = null;
 let activityBuffer = [];
 const MAX_ACTIVITIES = 50;
+const expandedStates = new Set(); // Track which activities are expanded
 
 // HTML escaping functions to prevent XSS
 function escapeHtml(text) {
@@ -807,17 +828,42 @@ async function pollActivities() {
 function updateActivities(activities) {
     const list = document.getElementById('activity-list');
 
-    // Clear existing activities
-    list.innerHTML = '';
-
     if (activities.length === 0) {
         list.innerHTML = '<div class="activity-item">No recent activities</div>';
         return;
     }
 
+    // Store existing activity IDs and their expanded states
+    const existingIds = new Set();
+    Array.from(list.children).forEach(child => {
+        const activityId = child.dataset.activityId;
+        if (activityId) {
+            existingIds.add(activityId);
+            // Preserve expanded state
+            const expanded = document.getElementById(`expanded-${activityId}`);
+            if (expanded && expanded.style.display !== 'none') {
+                expandedStates.add(activityId);
+            }
+        }
+    });
+
+    // Clear and rebuild
+    list.innerHTML = '';
+
     // Add all activities (they come in newest-first order)
     activities.forEach(activity => {
         addActivity(activity, false); // false = initial load, don't insert at top
+
+        // Restore expanded state if it was previously expanded
+        const activityId = activity.id || Date.now();
+        if (expandedStates.has(activityId)) {
+            const expanded = document.getElementById(`expanded-${activityId}`);
+            const indicator = document.getElementById(`indicator-${activityId}`);
+            if (expanded) {
+                expanded.style.display = 'block';
+                if (indicator) indicator.classList.add('expanded');
+            }
+        }
     });
 }
 
@@ -899,27 +945,60 @@ function addActivity(activity, isNewActivity = true) {
     };
     const icon = iconMap[activity.type] || '📌';
 
+    // Build a clear summary line
+    let summaryText = '';
+    const operation = escapeHtml(activity.operation || 'Unknown operation');
+
+    if (operation.includes('get_products')) {
+        summaryText = `${safePrincipalName} searched for products`;
+        if (safePrimary) {
+            summaryText += ` - ${safePrimary}`;
+        }
+    } else if (operation.includes('create_media_buy')) {
+        summaryText = `${safePrincipalName} created a media buy`;
+        if (safePrimary) {
+            summaryText += ` - ${safePrimary}`;
+        }
+    } else if (operation.includes('upload_creative')) {
+        summaryText = `${safePrincipalName} uploaded a creative`;
+        if (safePrimary) {
+            summaryText += ` - ${safePrimary}`;
+        }
+    } else if (operation.startsWith('A2A.')) {
+        summaryText = `${safePrincipalName} via A2A: ${operation.replace('A2A.', '')}`;
+    } else {
+        summaryText = `${safePrincipalName} called ${operation}`;
+    }
+
+    // Determine badge type
+    let badgeClass = 'mcp';
+    let badgeText = 'MCP';
+    if (operation.startsWith('A2A.')) {
+        badgeClass = 'a2a';
+        badgeText = 'A2A';
+    }
+    if (!activity.success) {
+        badgeClass = 'error';
+        badgeText = 'Failed';
+    } else if (activity.success) {
+        badgeClass = 'success';
+        badgeText = 'Success';
+    }
+
     item.innerHTML = `
         <div class="activity-header" onclick="toggleActivityDetails('${safeActivityId}')">
-            <div class="activity-content" style="flex: 1;">
-                <div class="activity-main">
-                    <span class="activity-icon">${icon}</span>
-                    <div style="flex: 1;">
-                        <div class="activity-principal">${safePrincipalName}</div>
-                        <div class="activity-action">${safeAction}</div>
-                        <div class="activity-details" style="margin-top: 0.25rem;">
-                            ${activity.details ? `
-                                <div style="font-weight: 500;">${safePrimary}</div>
-                                ${safeSecondary ? `<div style="font-size: 0.875rem; color: #6b7280;">${safeSecondary}</div>` : ''}
-                            ` : ''}
-                        </div>
+            <div class="activity-main">
+                <span class="activity-icon">${icon}</span>
+                <div class="activity-content-text">
+                    <div class="activity-summary">${summaryText}</div>
+                    <div class="activity-meta">
+                        <span class="activity-badge ${badgeClass}">${badgeText}</span>
+                        ${safeSecondary ? `<span>${safeSecondary}</span>` : ''}
+                        <span style="margin-left: auto; white-space: nowrap;">${safeTimeRelative}</span>
                     </div>
                 </div>
             </div>
-            <div style="display: flex; align-items: center; gap: 1rem;">
-                <div class="activity-time">${safeTimeRelative}</div>
-                <div class="expand-indicator" id="indicator-${safeActivityId}">▼</div>
-            </div>
+            <div class="expand-indicator" id="indicator-${safeActivityId}">▼</div>
         </div>
 
         <div class="activity-expanded" id="expanded-${safeActivityId}" style="display: none;">
@@ -1051,9 +1130,11 @@ function toggleActivityDetails(activityId) {
         if (expanded.style.display === 'none') {
             expanded.style.display = 'block';
             if (indicator) indicator.classList.add('expanded');
+            expandedStates.add(activityId); // Remember this is expanded
         } else {
             expanded.style.display = 'none';
             if (indicator) indicator.classList.remove('expanded');
+            expandedStates.delete(activityId); // Remember this is collapsed
         }
     }
 }
