@@ -550,50 +550,46 @@
         </div>
 
         <div class="activity-list" id="activity-list">
-            <!-- Show recent workflow activity -->
+            <!-- Show recent BUSINESS activity -->
             {% if metrics.recent_activity %}
                 {% for activity in metrics.recent_activity %}
-                    <div class="activity-item {{ activity.type if activity.type else 'info' }} {{ 'action-required' if activity.action_required else '' }}">
-                        <div style="padding: 0.75rem; display: flex; justify-content: space-between; align-items: center;">
-                            <div style="flex: 1;">
-                                <div style="font-weight: 600; margin-bottom: 0.25rem;">
-                                    {% if activity.success == false %}
-                                        <i class="fas fa-times-circle" style="color: #ef4444; margin-right: 0.5rem;"></i>
-                                    {% elif activity.operation.startswith('A2A.') %}
-                                        <i class="fas fa-exchange-alt" style="color: #3b82f6; margin-right: 0.5rem;"></i>
-                                    {% elif activity.operation in ['get_products', 'create_media_buy', 'check_media_buy_status'] %}
-                                        <i class="fas fa-shopping-cart" style="color: #10b981; margin-right: 0.5rem;"></i>
-                                    {% elif activity.operation == 'policy_check' %}
-                                        <i class="fas fa-shield-alt" style="color: #f59e0b; margin-right: 0.5rem;"></i>
-                                    {% else %}
-                                        <i class="fas fa-cog" style="color: #6b7280; margin-right: 0.5rem;"></i>
-                                    {% endif %}
-                                    {{ activity.operation }}
+                    <div class="activity-item {{ activity.type }} {{ 'action-required' if activity.action_required else '' }}">
+                        <div class="activity-header" style="cursor: default; padding: 1rem;">
+                            <div class="activity-main">
+                                <span class="activity-icon">
+                                    {% if activity.type == 'product_search' %}🔍
+                                    {% elif activity.type == 'media_buy' %}💰
+                                    {% elif activity.type == 'action_needed' %}⚠️
+                                    {% elif activity.type == 'creative_review' %}🎨
+                                    {% else %}📌{% endif %}
+                                </span>
+                                <div class="activity-content-text">
+                                    <div class="activity-summary">{{ activity.title }}</div>
+                                    <div class="activity-meta">
+                                        {% if activity.action_required %}
+                                            <span class="activity-badge error">Action Needed</span>
+                                        {% else %}
+                                            <span class="activity-badge success">{{ activity.type|replace('_', ' ')|title }}</span>
+                                        {% endif %}
+                                        <span>{{ activity.description }}</span>
+                                        <span style="margin-left: auto; white-space: nowrap;">{{ activity.time_relative }}</span>
+                                    </div>
                                 </div>
-                                <div style="color: #6b7280; font-size: 0.875rem;">
-                                    by {{ activity.principal_name or 'System' }}
-                                    {% if activity.success == false %}
-                                        <span style="color: #ef4444;">• Failed</span>
-                                    {% endif %}
-                                </div>
-                            </div>
-                            <div style="color: #9ca3af; font-size: 0.75rem; text-align: right;">
-                                {{ activity.time_relative }}
                             </div>
                         </div>
                     </div>
                 {% endfor %}
             {% else %}
                 <div class="activity-item info" style="text-align: center; padding: 2rem; color: #6b7280;">
-                    <i class="fas fa-stream" style="font-size: 2rem; margin-bottom: 1rem; opacity: 0.5;"></i>
-                    <p>Loading recent activities...</p>
-                    <p style="font-size: 0.875rem;">API calls and operations will appear here</p>
+                    <i class="fas fa-chart-line" style="font-size: 2rem; margin-bottom: 1rem; opacity: 0.5;"></i>
+                    <p>No recent business activity</p>
+                    <p style="font-size: 0.875rem;">Activity will appear as advertisers search for products and create campaigns</p>
                 </div>
             {% endif %}
         </div>
 
         <div style="text-align: center; padding: 1rem; border-top: 1px solid #e5e7eb;">
-            <small style="color: #6b7280;">Showing recent activity • Live updates every 5 seconds</small>
+            <small style="color: #6b7280;">Showing business activity from last 7 days</small>
         </div>
     </div>
 
@@ -1174,17 +1170,10 @@ function viewTaskDetails(activityId) {
     }
 }
 
-// Initialize activity polling
+// No longer polling - business activity is server-rendered
+// User can refresh page to see latest activity
 document.addEventListener('DOMContentLoaded', function() {
-    connectActivityStream();
-});
-
-// Clean up polling on page unload
-window.addEventListener('beforeunload', function() {
-    if (pollingInterval) {
-        clearInterval(pollingInterval);
-        pollingInterval = null;
-    }
+    console.log('Business activity dashboard loaded');
 });
 </script>
 {% endblock %}

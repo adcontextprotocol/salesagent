@@ -10,7 +10,7 @@ from datetime import UTC, datetime, timedelta
 
 from sqlalchemy.orm import joinedload
 
-from src.admin.blueprints.activity_stream import get_recent_activities
+from src.admin.services.business_activity_service import get_business_activities
 from src.core.database.database_session import get_db_session
 from src.core.database.models import MediaBuy, Principal, Product, Tenant
 
@@ -76,8 +76,8 @@ class DashboardService:
                 # Calculate revenue change (last 7 vs previous 7 days)
                 revenue_change = self._calculate_revenue_change(revenue_data)
 
-                # Get recent activities using SINGLE DATA SOURCE (audit_logs only)
-                recent_activity = get_recent_activities(self.tenant_id, limit=10)
+                # Get recent BUSINESS activities (not raw audit logs)
+                recent_activity = get_business_activities(self.tenant_id, limit=10)
 
                 # SINGLE DATA SOURCE PATTERN: All workflow metrics hardcoded to 0
                 # This eliminates dependency on workflow_steps/tasks tables that cause crashes
