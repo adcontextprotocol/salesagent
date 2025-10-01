@@ -16,6 +16,8 @@ import pytest
 from pydantic import ValidationError
 
 from src.core.schemas import (
+    DeliveryType,
+    FormatType,
     GetProductsRequest,
     ProductFilters,
 )
