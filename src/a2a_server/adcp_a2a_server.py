@@ -217,16 +217,24 @@ class AdCPRequestHandler(RequestHandler):
 
                 # Handle structured data parts (explicit skill invocation)
                 elif hasattr(part, "data") and isinstance(part.data, dict):
-                    if "skill" in part.data and "parameters" in part.data:
-                        skill_invocations.append({"skill": part.data["skill"], "parameters": part.data["parameters"]})
-                        logger.info(f"Found explicit skill invocation: {part.data['skill']}")
+                    # Support both "input" (A2A spec) and "parameters" (legacy) for skill params
+                    if "skill" in part.data:
+                        params_data = part.data.get("input") or part.data.get("parameters", {})
+                        skill_invocations.append({"skill": part.data["skill"], "parameters": params_data})
+                        logger.info(
+                            f"Found explicit skill invocation: {part.data['skill']} with params: {list(params_data.keys())}"
+                        )
 
                 # Handle nested data structure (some A2A clients use this format)
                 elif hasattr(part, "root") and hasattr(part.root, "data"):
                     data = part.root.data
-                    if isinstance(data, dict) and "skill" in data and "parameters" in data:
-                        skill_invocations.append({"skill": data["skill"], "parameters": data["parameters"]})
-                        logger.info(f"Found explicit skill invocation (nested): {data['skill']}")
+                    if isinstance(data, dict) and "skill" in data:
+                        # Support both "input" (A2A spec) and "parameters" (legacy) for skill params
+                        params_data = data.get("input") or data.get("parameters", {})
+                        skill_invocations.append({"skill": data["skill"], "parameters": params_data})
+                        logger.info(
+                            f"Found explicit skill invocation (nested): {data['skill']} with params: {list(params_data.keys())}"
+                        )
 
         # Combine text for natural language fallback
         combined_text = " ".join(text_parts).strip().lower()
