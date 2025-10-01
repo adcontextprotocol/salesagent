@@ -2,10 +2,24 @@
 
 ## Overview
 
-The AdCP Sales Agent can be deployed in multiple ways:
+The AdCP Sales Agent reference implementation is designed to be hosted anywhere. This guide covers several deployment options.
+
+**Deployment Flexibility:**
+- This is a **standard Python application** that can run on any infrastructure
+- **Docker recommended** but not required
+- **Database agnostic** - works with PostgreSQL (production) or SQLite (dev/testing)
+- We'll support your deployment approach as best we can
+
+**Common Deployment Options:**
 - **Docker Compose** (recommended for most deployments)
-- **Fly.io** (managed cloud deployment)
-- **Standalone** (development only)
+- **Kubernetes** (for enterprise/scale deployments)
+- **Cloud Platforms** (AWS, GCP, Azure, DigitalOcean, etc.)
+- **Platform Services** (Fly.io, Heroku, Railway, Render, etc.)
+- **Bare Metal** (direct Python deployment)
+- **Standalone** (development/testing only)
+
+**Reference Implementation:**
+The reference implementation at https://adcp-sales-agent.fly.dev is hosted on Fly.io, but this is just one option.
 
 ## Docker Deployment (Recommended)
 
@@ -84,11 +98,19 @@ docker exec adcp-buy-server-postgres-1 \
   pg_dump -U adcp_user adcp > backup.sql
 ```
 
-## Fly.io Deployment
+## Fly.io Deployment (Reference Implementation)
 
 ### Overview
 
-Deploy to Fly.io for a managed cloud solution with automatic SSL, global distribution, and integrated PostgreSQL.
+This section documents the Fly.io deployment used for the **reference implementation** at https://adcp-sales-agent.fly.dev.
+
+**Note**: Fly.io is just one hosting option. You can deploy to any platform that supports Docker containers.
+
+Fly.io provides:
+- Managed cloud solution with automatic SSL
+- Global distribution with edge locations
+- Integrated PostgreSQL clusters
+- Built-in monitoring and logging
 
 ### Architecture
 
@@ -624,3 +646,182 @@ sqlite3 adcp_local.db ".backup backup.db"
 - Load balancer for multiple app instances
 - Consider CDN for static assets
 - Queue system for async tasks
+
+## Other Deployment Options
+
+### Kubernetes Deployment
+
+**Benefits:**
+- Enterprise-grade orchestration
+- Auto-scaling and self-healing
+- Advanced networking and service mesh
+- Multi-cloud portability
+
+**Basic Setup:**
+1. Create Docker image: `docker build -t adcp-sales-agent:latest .`
+2. Push to registry: `docker push your-registry/adcp-sales-agent:latest`
+3. Apply k8s manifests (see `k8s/` directory for examples)
+4. Configure ingress for external access
+
+**Minimal k8s resources needed:**
+- Deployment (for app pods)
+- Service (for internal networking)
+- Ingress (for external access)
+- ConfigMap (for configuration)
+- Secret (for sensitive data)
+- PersistentVolumeClaim (for PostgreSQL)
+
+### AWS Deployment
+
+**Option 1: ECS with Fargate**
+- Use Docker container from this repo
+- Deploy to ECS with Fargate (serverless)
+- RDS PostgreSQL for database
+- Application Load Balancer for traffic
+
+**Option 2: EKS (Kubernetes)**
+- Deploy using k8s manifests
+- Managed Kubernetes service
+- Integrate with AWS services (RDS, Secrets Manager, etc.)
+
+**Option 3: EC2 with Docker**
+- Launch EC2 instance
+- Install Docker and Docker Compose
+- Deploy using docker-compose.yml
+- Manage SSL with certbot/Let's Encrypt
+
+### GCP Deployment
+
+**Option 1: Cloud Run**
+- Deploy Docker container directly
+- Serverless, auto-scaling
+- Cloud SQL for PostgreSQL
+- Cloud Load Balancing
+
+**Option 2: GKE (Kubernetes)**
+- Deploy using k8s manifests
+- Managed Kubernetes service
+- Integrate with GCP services
+
+**Option 3: Compute Engine**
+- Similar to EC2 approach
+- Deploy with Docker Compose
+- Cloud SQL or self-hosted PostgreSQL
+
+### Azure Deployment
+
+**Option 1: Azure Container Instances**
+- Deploy Docker container
+- Serverless container service
+- Azure Database for PostgreSQL
+
+**Option 2: AKS (Kubernetes)**
+- Deploy using k8s manifests
+- Managed Kubernetes service
+- Integrate with Azure services
+
+**Option 3: Virtual Machines**
+- Similar to EC2/Compute Engine
+- Deploy with Docker Compose
+- Azure Database for PostgreSQL
+
+### DigitalOcean Deployment
+
+**Option 1: App Platform**
+- Deploy from GitHub repo
+- Managed platform (like Heroku)
+- Managed PostgreSQL database
+
+**Option 2: Kubernetes**
+- Deploy using k8s manifests
+- DigitalOcean Kubernetes (DOKS)
+
+**Option 3: Droplets**
+- Deploy with Docker Compose
+- Managed PostgreSQL database
+
+### Bare Metal Deployment
+
+**For direct Python deployment without Docker:**
+
+1. **System requirements:**
+   ```bash
+   # Ubuntu/Debian
+   sudo apt install python3.11 python3-pip postgresql nginx
+
+   # Install uv (Python package manager)
+   curl -LsSf https://astral.sh/uv/install.sh | sh
+   ```
+
+2. **Application setup:**
+   ```bash
+   git clone https://github.com/adcontextprotocol/salesagent.git
+   cd salesagent
+   uv sync
+   uv run python migrate.py
+   ```
+
+3. **Systemd services:**
+   - Create service files for MCP server, Admin UI, and A2A server
+   - Use gunicorn or uvicorn for production serving
+   - Configure nginx as reverse proxy
+
+4. **Database:**
+   - Install and configure PostgreSQL
+   - Create database and user
+   - Run migrations
+
+**Example systemd service:**
+```ini
+[Unit]
+Description=AdCP Sales Agent MCP Server
+After=network.target postgresql.service
+
+[Service]
+Type=simple
+User=adcp
+WorkingDirectory=/opt/salesagent
+Environment="DATABASE_URL=postgresql://user:pass@localhost/adcp"
+ExecStart=/home/adcp/.local/bin/uv run python -m src.core.main
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
+```
+
+### Platform Services
+
+**Heroku:**
+- Deploy using Heroku's buildpacks
+- Add Heroku Postgres addon
+- Configure environment variables via Heroku CLI
+
+**Railway:**
+- Deploy from GitHub repo
+- Auto-detects Docker or Python
+- Managed PostgreSQL available
+
+**Render:**
+- Deploy Docker container or Python app
+- Managed PostgreSQL database
+- Auto SSL and global CDN
+
+## Deployment Support
+
+**Need help deploying to your platform?**
+
+We're here to support your deployment approach:
+
+1. **Check existing docs** - This guide covers common platforms
+2. **Docker is universal** - If you can run Docker, you can deploy this
+3. **Open an issue** - Share your deployment target and any challenges
+4. **Contribute back** - Add deployment guides for your platform
+
+**Common requirements across all platforms:**
+- Python 3.11+ (if not using Docker)
+- PostgreSQL (production) or SQLite (dev/testing)
+- Environment variables for configuration
+- HTTPS/SSL for production
+- Health check endpoint at `/health`
+
+**We aim to support your chosen infrastructure - don't hesitate to reach out!**
