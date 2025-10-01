@@ -149,6 +149,8 @@ def get_principal_from_token(token: str, tenant_id: str | None = None) -> str | 
 
     If tenant_id is provided, only looks in that specific tenant.
     If not provided, searches globally by token and sets the tenant context.
+
+    Note: tenant_id parameter may be either a tenant_id or a subdomain.
     """
 
     # Use standardized session management
@@ -156,13 +158,28 @@ def get_principal_from_token(token: str, tenant_id: str | None = None) -> str | 
         # Use explicit transaction for consistency
         with session.begin():
             if tenant_id:
+                # First, resolve tenant_id - it might be a subdomain
+                # Try to find tenant by tenant_id first
+                tenant = session.query(Tenant).filter_by(tenant_id=tenant_id, is_active=True).first()
+
+                # If not found, try subdomain lookup
+                if not tenant:
+                    tenant = session.query(Tenant).filter_by(subdomain=tenant_id, is_active=True).first()
+
+                if not tenant:
+                    return None
+
+                # Use the actual tenant_id for principal lookup
+                actual_tenant_id = tenant.tenant_id
+
                 # If tenant_id specified, ONLY look in that tenant
-                principal = session.query(ModelPrincipal).filter_by(access_token=token, tenant_id=tenant_id).first()
+                principal = (
+                    session.query(ModelPrincipal).filter_by(access_token=token, tenant_id=actual_tenant_id).first()
+                )
 
                 if not principal:
                     # Also check if it's the admin token for this specific tenant
-                    tenant = session.query(Tenant).filter_by(tenant_id=tenant_id, is_active=True).first()
-                    if tenant and token == tenant.admin_token:
+                    if token == tenant.admin_token:
                         # Set tenant context for admin token
                         tenant_dict = {
                             "tenant_id": tenant.tenant_id,
@@ -182,7 +199,7 @@ def get_principal_from_token(token: str, tenant_id: str | None = None) -> str | 
                             "policy_settings": tenant.policy_settings,
                         }
                         set_current_tenant(tenant_dict)
-                        return f"{tenant_id}_admin"
+                        return f"{actual_tenant_id}_admin"
                     return None
             else:
                 # No tenant specified - search globally by token
