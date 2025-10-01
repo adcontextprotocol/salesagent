@@ -60,8 +60,8 @@ class GoogleAdManager(AdServerAdapter):
         principal,
         *,
         network_code: str,
-        advertiser_id: str,
-        trafficker_id: str,
+        advertiser_id: str | None = None,
+        trafficker_id: str | None = None,
         dry_run: bool = False,
         audit_logger: AuditLogger = None,
         tenant_id: str = None,
@@ -72,8 +72,8 @@ class GoogleAdManager(AdServerAdapter):
             config: Configuration dictionary
             principal: Principal object for authentication
             network_code: GAM network code
-            advertiser_id: GAM advertiser ID
-            trafficker_id: GAM trafficker ID
+            advertiser_id: GAM advertiser ID (optional, required only for order/campaign operations)
+            trafficker_id: GAM trafficker ID (optional, required only for order/campaign operations)
             dry_run: Whether to run in dry-run mode
             audit_logger: Audit logging instance
             tenant_id: Tenant identifier
@@ -91,8 +91,7 @@ class GoogleAdManager(AdServerAdapter):
         if not self.network_code:
             raise ValueError("GAM config requires 'network_code'")
 
-        if not self.advertiser_id:
-            raise ValueError("GAM config requires 'advertiser_id'")
+        # advertiser_id is only required for order/campaign operations, not inventory sync
 
         if not self.key_file and not self.refresh_token:
             raise ValueError("GAM config requires either 'service_account_key_file' or 'refresh_token'")
@@ -109,9 +108,19 @@ class GoogleAdManager(AdServerAdapter):
 
         # Initialize manager components
         self.targeting_manager = GAMTargetingManager()
-        self.orders_manager = GAMOrdersManager(self.client_manager, self.advertiser_id, self.trafficker_id, dry_run)
-        self.creatives_manager = GAMCreativesManager(self.client_manager, self.advertiser_id, dry_run, self.log, self)
+
+        # Only initialize order/creative managers if we have advertiser_id and trafficker_id
+        if self.advertiser_id and self.trafficker_id:
+            self.orders_manager = GAMOrdersManager(self.client_manager, self.advertiser_id, self.trafficker_id, dry_run)
+            self.creatives_manager = GAMCreativesManager(self.client_manager, self.advertiser_id, dry_run, self.log, self)
+        else:
+            self.orders_manager = None
+            self.creatives_manager = None
+
+        # Inventory manager doesn't need advertiser_id
         self.inventory_manager = GAMInventoryManager(self.client_manager, tenant_id, dry_run)
+
+        # Sync manager only needs inventory manager for inventory sync
         self.sync_manager = GAMSyncManager(
             self.client_manager, self.inventory_manager, self.orders_manager, tenant_id, dry_run
         )
