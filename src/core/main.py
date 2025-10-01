@@ -881,7 +881,7 @@ async def get_products(promoted_offering: str, brief: str = "", context: Context
     audit_logger = get_audit_logger("AdCP", tenant["tenant_id"])
     audit_logger.log_operation(
         operation="get_products",
-        principal_name=principal.principal_name if principal else "anonymous",
+        principal_name=principal.name if principal else "anonymous",
         principal_id=principal_id or "anonymous",
         adapter_id="mcp_server",
         success=True,
@@ -1014,7 +1014,7 @@ def list_creative_formats(context: Context) -> ListCreativeFormatsResponse:
         principal_id=principal_id or "anonymous",
         adapter_id="mcp_server",
         success=True,
-        details={"format_count": len(formats), "tenant_formats": len([f for f in formats if not f.standard])},
+        details={"format_count": len(formats)},
     )
 
     # Add schema validation metadata for client validation
@@ -1361,9 +1361,10 @@ def sync_creatives(
 
     # Log to audit logs for business activity feed
     audit_logger = get_audit_logger("AdCP", tenant["tenant_id"])
+    principal = get_principal_object(principal_id) if principal_id else None
     audit_logger.log_operation(
         operation="sync_creatives",
-        principal_name=principal.principal_name if principal else "anonymous",
+        principal_name=principal.name if principal else "anonymous",
         principal_id=principal_id or "anonymous",
         adapter_id="mcp_server",
         success=True,
@@ -1605,9 +1606,10 @@ def list_creatives(
 
     # Log to audit logs for business activity feed
     audit_logger = get_audit_logger("AdCP", tenant["tenant_id"])
+    principal = get_principal_object(principal_id) if principal_id else None
     audit_logger.log_operation(
         operation="list_creatives",
-        principal_name=principal.principal_name if principal else "anonymous",
+        principal_name=principal.name if principal else "anonymous",
         principal_id=principal_id or "anonymous",
         adapter_id="mcp_server",
         success=True,
@@ -1884,7 +1886,7 @@ async def activate_signal(
         audit_logger = get_audit_logger("AdCP", tenant["tenant_id"])
         audit_logger.log_operation(
             operation="activate_signal",
-            principal_name=principal.principal_name if principal else "anonymous",
+            principal_name=principal.name if principal else "anonymous",
             principal_id=principal_id or "anonymous",
             adapter_id="mcp_server",
             success=(status != TaskStatus.FAILED),
@@ -2909,7 +2911,7 @@ def update_media_buy(
     audit_logger = get_audit_logger("AdCP", tenant["tenant_id"])
     audit_logger.log_operation(
         operation="update_media_buy",
-        principal_name=principal.principal_name if principal else "anonymous",
+        principal_name=principal.name if principal else "anonymous",
         principal_id=principal_id or "anonymous",
         adapter_id="mcp_server",
         success=True,
