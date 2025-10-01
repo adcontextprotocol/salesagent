@@ -240,6 +240,10 @@ def configure_gam(tenant_id):
         refresh_token = data.get("refresh_token", "").strip()
         trafficker_id = str(data.get("trafficker_id", "")).strip() if data.get("trafficker_id") else None
 
+        # Get sync preferences (default to True if not specified)
+        sync_audience_segments = data.get("sync_audience_segments", True)
+        sync_custom_targeting = data.get("sync_custom_targeting", True)
+
         # Log what we received (without exposing sensitive token)
         logger.info(
             f"GAM config save - network_code: {network_code}, trafficker_id: {trafficker_id}, token_length: {len(refresh_token)}"
@@ -269,6 +273,8 @@ def configure_gam(tenant_id):
             adapter_config.gam_network_code = network_code
             adapter_config.gam_refresh_token = refresh_token
             adapter_config.gam_trafficker_id = trafficker_id
+            adapter_config.gam_sync_audience_segments = sync_audience_segments
+            adapter_config.gam_sync_custom_targeting = sync_custom_targeting
 
             # Also update tenant's ad_server field
             tenant.ad_server = "google_ad_manager"

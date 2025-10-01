@@ -374,6 +374,8 @@ class AdapterConfig(Base):
     gam_company_id = Column(String(50))
     gam_trafficker_id = Column(String(50))
     gam_manual_approval_required = Column(Boolean, default=False)
+    gam_sync_audience_segments = Column(Boolean, default=True)
+    gam_sync_custom_targeting = Column(Boolean, default=True)
 
     # Kevel
     kevel_network_id = Column(String(50))
