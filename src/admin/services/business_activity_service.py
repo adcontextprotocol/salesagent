@@ -126,9 +126,12 @@ def get_business_activities(tenant_id: str, limit: int = 50) -> list[dict]:
                 )
 
             # 3. Workflow Steps Requiring Action
+            from src.core.database.models import Context
+
             pending_workflows = (
                 db.query(WorkflowStep)
-                .filter(WorkflowStep.tenant_id == tenant_id, WorkflowStep.status == "requires_approval")
+                .join(Context, WorkflowStep.context_id == Context.context_id)
+                .filter(Context.tenant_id == tenant_id, WorkflowStep.status == "requires_approval")
                 .order_by(WorkflowStep.created_at.desc())
                 .limit(10)
                 .all()

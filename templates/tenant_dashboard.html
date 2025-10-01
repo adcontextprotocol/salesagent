@@ -553,8 +553,8 @@
             <!-- Show recent BUSINESS activity -->
             {% if metrics.recent_activity %}
                 {% for activity in metrics.recent_activity %}
-                    <div class="activity-item {{ activity.type }} {{ 'action-required' if activity.action_required else '' }}">
-                        <div class="activity-header" style="cursor: default; padding: 1rem;">
+                    <div class="activity-item {{ activity.type }} {{ 'action-required' if activity.action_required else '' }}" data-activity-id="activity-{{ loop.index }}">
+                        <div class="activity-header" style="cursor: pointer; padding: 1rem;" onclick="toggleActivityDetails('activity-{{ loop.index }}')">
                             <div class="activity-main">
                                 <span class="activity-icon">
                                     {% if activity.type == 'product_search' %}🔍
@@ -575,6 +575,46 @@
                                         <span style="margin-left: auto; white-space: nowrap;">{{ activity.time_relative }}</span>
                                     </div>
                                 </div>
+                                <span class="expand-indicator">▼</span>
+                            </div>
+                        </div>
+                        <div class="activity-expanded" id="details-activity-{{ loop.index }}" style="display: none;">
+                            <div class="expanded-content">
+                                <h4 style="margin-top: 0; font-size: 0.875rem; font-weight: 600;">Details</h4>
+                                <dl style="margin: 0.5rem 0; display: grid; grid-template-columns: auto 1fr; gap: 0.5rem; font-size: 0.875rem;">
+                                    <dt style="font-weight: 600;">Principal:</dt>
+                                    <dd style="margin: 0;">{{ activity.principal_name }}</dd>
+
+                                    <dt style="font-weight: 600;">Timestamp:</dt>
+                                    <dd style="margin: 0;">{{ activity.timestamp }}</dd>
+
+                                    {% if activity.metadata %}
+                                        {% for key, value in activity.metadata.items() %}
+                                            <dt style="font-weight: 600;">{{ key|replace('_', ' ')|title }}:</dt>
+                                            <dd style="margin: 0;">{{ value }}</dd>
+                                        {% endfor %}
+                                    {% endif %}
+                                </dl>
+
+                                {% if activity.action_required %}
+                                    <div class="action-buttons">
+                                        {% if activity.type == 'action_needed' %}
+                                            <button class="btn btn-primary" onclick="approveWorkflow('{{ activity.metadata.workflow_id }}', '{{ activity.metadata.step_id }}')">
+                                                ✓ Approve
+                                            </button>
+                                            <button class="btn btn-secondary" onclick="rejectWorkflow('{{ activity.metadata.workflow_id }}', '{{ activity.metadata.step_id }}')">
+                                                ✗ Reject
+                                            </button>
+                                        {% elif activity.type == 'creative_review' %}
+                                            <button class="btn btn-primary" onclick="approveCreative('{{ activity.metadata.creative_id }}')">
+                                                ✓ Approve Creative
+                                            </button>
+                                            <button class="btn btn-secondary" onclick="rejectCreative('{{ activity.metadata.creative_id }}')">
+                                                ✗ Reject Creative
+                                            </button>
+                                        {% endif %}
+                                    </div>
+                                {% endif %}
                             </div>
                         </div>
                     </div>
@@ -1136,8 +1176,9 @@ function refreshDashboard() {
 
 // Toggle activity details expansion
 function toggleActivityDetails(activityId) {
-    const expanded = document.getElementById(`expanded-${activityId}`);
-    const indicator = document.getElementById(`indicator-${activityId}`);
+    const expanded = document.getElementById(`details-${activityId}`);
+    const activityItem = document.querySelector(`[data-activity-id="${activityId}"]`);
+    const indicator = activityItem ? activityItem.querySelector('.expand-indicator') : null;
 
     if (expanded) {
         if (expanded.style.display === 'none') {
@@ -1149,6 +1190,114 @@ function toggleActivityDetails(activityId) {
             if (indicator) indicator.classList.remove('expanded');
             expandedStates.delete(activityId); // Remember this is collapsed
         }
+    }
+}
+
+// Approve workflow step
+async function approveWorkflow(workflowId, stepId) {
+    if (!confirm('Are you sure you want to approve this workflow step?')) {
+        return;
+    }
+
+    try {
+        const response = await fetch(`{{ script_name }}/tenant/{{ tenant.tenant_id }}/workflows/${workflowId}/steps/${stepId}/approve`, {
+            method: 'POST',
+            credentials: 'same-origin',
+            headers: {
+                'Content-Type': 'application/json'
+            }
+        });
+
+        if (response.ok) {
+            alert('Workflow step approved successfully!');
+            window.location.reload();
+        } else {
+            const error = await response.text();
+            alert(`Failed to approve: ${error}`);
+        }
+    } catch (err) {
+        alert(`Error: ${err.message}`);
+    }
+}
+
+// Reject workflow step
+async function rejectWorkflow(workflowId, stepId) {
+    const reason = prompt('Please provide a reason for rejection:');
+    if (!reason) return;
+
+    try {
+        const response = await fetch(`{{ script_name }}/tenant/{{ tenant.tenant_id }}/workflows/${workflowId}/steps/${stepId}/reject`, {
+            method: 'POST',
+            credentials: 'same-origin',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ reason })
+        });
+
+        if (response.ok) {
+            alert('Workflow step rejected successfully!');
+            window.location.reload();
+        } else {
+            const error = await response.text();
+            alert(`Failed to reject: ${error}`);
+        }
+    } catch (err) {
+        alert(`Error: ${err.message}`);
+    }
+}
+
+// Approve creative
+async function approveCreative(creativeId) {
+    if (!confirm('Are you sure you want to approve this creative?')) {
+        return;
+    }
+
+    try {
+        const response = await fetch(`{{ script_name }}/tenant/{{ tenant.tenant_id }}/creatives/${creativeId}/approve`, {
+            method: 'POST',
+            credentials: 'same-origin',
+            headers: {
+                'Content-Type': 'application/json'
+            }
+        });
+
+        if (response.ok) {
+            alert('Creative approved successfully!');
+            window.location.reload();
+        } else {
+            const error = await response.text();
+            alert(`Failed to approve: ${error}`);
+        }
+    } catch (err) {
+        alert(`Error: ${err.message}`);
+    }
+}
+
+// Reject creative
+async function rejectCreative(creativeId) {
+    const reason = prompt('Please provide a reason for rejection:');
+    if (!reason) return;
+
+    try {
+        const response = await fetch(`{{ script_name }}/tenant/{{ tenant.tenant_id }}/creatives/${creativeId}/reject`, {
+            method: 'POST',
+            credentials: 'same-origin',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ reason })
+        });
+
+        if (response.ok) {
+            alert('Creative rejected successfully!');
+            window.location.reload();
+        } else {
+            const error = await response.text();
+            alert(`Failed to reject: ${error}`);
+        }
+    } catch (err) {
+        alert(`Error: ${err.message}`);
     }
 }
 
