@@ -2209,6 +2209,42 @@ def create_media_buy(
         catalog = get_product_catalog()
         product_ids = req.get_product_ids()
         products_in_buy = [p for p in catalog if p.product_id in product_ids]
+
+        # Validate GAM implementation_config for each product
+        if adapter.__class__.__name__ == "GoogleAdManager":
+            from src.services.gam_product_config_service import GAMProductConfigService
+
+            gam_validator = GAMProductConfigService()
+            config_errors = []
+
+            for product in products_in_buy:
+                if not product.implementation_config:
+                    config_errors.append(
+                        f"Product '{product.name}' ({product.product_id}) is missing GAM configuration. "
+                        f"Please configure it in the Admin UI."
+                    )
+                    continue
+
+                is_valid, error_msg = gam_validator.validate_config(product.implementation_config)
+                if not is_valid:
+                    config_errors.append(
+                        f"Product '{product.name}' ({product.product_id}) has invalid GAM configuration: {error_msg}"
+                    )
+
+            if config_errors:
+                error_detail = "GAM configuration validation failed:\n" + "\n".join(
+                    f"  • {err}" for err in config_errors
+                )
+                ctx_manager.update_workflow_step(step.step_id, status="failed", error_message=error_detail)
+                return CreateMediaBuyResponse(
+                    media_buy_id="",
+                    status=TaskStatus.FAILED,
+                    detail=error_detail,
+                    creative_deadline=None,
+                    message="Media buy creation failed due to invalid product configuration. Please fix the configuration in Admin UI and try again.",
+                    errors=[{"code": "invalid_configuration", "message": err} for err in config_errors],
+                )
+
         product_auto_create = all(
             p.implementation_config.get("auto_create_enabled", True) if p.implementation_config else True
             for p in products_in_buy

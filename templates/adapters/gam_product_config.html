@@ -145,17 +145,31 @@
         <h4 style="margin-top: 2rem; border-bottom: 1px solid #ddd; padding-bottom: 0.5rem;">Ad Unit & Placement Targeting</h4>
 
         <div class="form-group">
-            <label for="targeted_ad_unit_ids">Targeted Ad Unit IDs</label>
-            <textarea id="targeted_ad_unit_ids" name="targeted_ad_unit_ids" rows="3"
-                      placeholder="One ad unit ID per line">{{ '\n'.join(config.targeted_ad_unit_ids) if config.targeted_ad_unit_ids else '' }}</textarea>
-            <small style="color: #666;">Specific GAM ad unit IDs to target (one per line)</small>
+            <label for="ad-unit-search">Targeted Ad Units</label>
+            <div style="display: flex; gap: 0.5rem; margin-bottom: 0.5rem;">
+                <input type="text" id="ad-unit-search" placeholder="Search ad units..." style="flex: 1;">
+                <button type="button" onclick="openInventoryPicker('ad_unit')" class="btn btn-secondary">Browse Ad Units</button>
+            </div>
+            <div id="selected-ad-units" style="min-height: 60px; border: 1px solid #ddd; border-radius: 4px; padding: 0.5rem; background: #f9f9f9;">
+                <!-- Selected ad units will appear here as badges -->
+            </div>
+            <small style="color: #666;">Click "Browse Ad Units" to select from your GAM inventory</small>
+            <!-- Hidden textarea to submit values -->
+            <textarea id="targeted_ad_unit_ids" name="targeted_ad_unit_ids" style="display: none;">{{ '\n'.join(config.targeted_ad_unit_ids) if config.targeted_ad_unit_ids else '' }}</textarea>
         </div>
 
         <div class="form-group">
-            <label for="targeted_placement_ids">Targeted Placement IDs</label>
-            <textarea id="targeted_placement_ids" name="targeted_placement_ids" rows="2"
-                      placeholder="One placement ID per line">{{ '\n'.join(config.targeted_placement_ids) if config.targeted_placement_ids else '' }}</textarea>
-            <small style="color: #666;">GAM placement IDs to target (one per line)</small>
+            <label for="placement-search">Targeted Placements</label>
+            <div style="display: flex; gap: 0.5rem; margin-bottom: 0.5rem;">
+                <input type="text" id="placement-search" placeholder="Search placements..." style="flex: 1;">
+                <button type="button" onclick="openInventoryPicker('placement')" class="btn btn-secondary">Browse Placements</button>
+            </div>
+            <div id="selected-placements" style="min-height: 60px; border: 1px solid #ddd; border-radius: 4px; padding: 0.5rem; background: #f9f9f9;">
+                <!-- Selected placements will appear here as badges -->
+            </div>
+            <small style="color: #666;">Click "Browse Placements" to select from your GAM inventory</small>
+            <!-- Hidden textarea to submit values -->
+            <textarea id="targeted_placement_ids" name="targeted_placement_ids" style="display: none;">{{ '\n'.join(config.targeted_placement_ids) if config.targeted_placement_ids else '' }}</textarea>
         </div>
 
         <div class="form-group">
@@ -792,6 +806,209 @@ document.getElementById('non_guaranteed_automation').addEventListener('change', 
 // Initialize automation display on page load
 document.addEventListener('DOMContentLoaded', function() {
     updateAutomationDisplay();
+    initializeInventoryPickers();
 });
+
+// ===== Inventory Picker Functions =====
+let inventoryCache = {}; // Cache loaded inventory
+
+function initializeInventoryPickers() {
+    // Load existing selected ad units
+    const existingAdUnits = document.getElementById('targeted_ad_unit_ids').value;
+    if (existingAdUnits) {
+        const ids = existingAdUnits.split('\n').filter(id => id.trim());
+        ids.forEach(id => addSelectedItem('ad_unit', id, `Ad Unit ${id}`));
+    }
+
+    // Load existing selected placements
+    const existingPlacements = document.getElementById('targeted_placement_ids').value;
+    if (existingPlacements) {
+        const ids = existingPlacements.split('\n').filter(id => id.trim());
+        ids.forEach(id => addSelectedItem('placement', id, `Placement ${id}`));
+    }
+
+    // Setup search inputs
+    let searchTimeout;
+    document.getElementById('ad-unit-search').addEventListener('input', (e) => {
+        clearTimeout(searchTimeout);
+        searchTimeout = setTimeout(() => searchInventory('ad_unit', e.target.value), 300);
+    });
+
+    document.getElementById('placement-search').addEventListener('input', (e) => {
+        clearTimeout(searchTimeout);
+        searchTimeout = setTimeout(() => searchInventory('placement', e.target.value), 300);
+    });
+}
+
+async function searchInventory(type, query) {
+    const tenantId = '{{ tenant_id }}';
+    const url = `/inventory/api/tenant/${tenantId}/inventory-list?type=${type}&search=${encodeURIComponent(query)}`;
+
+    try {
+        const response = await fetch(url);
+        if (!response.ok) throw new Error('Failed to fetch inventory');
+        const data = await response.json();
+
+        // Show results in a dropdown below the search input
+        showSearchResults(type, data.items);
+    } catch (error) {
+        console.error('Error searching inventory:', error);
+    }
+}
+
+function showSearchResults(type, items) {
+    const searchInput = type === 'ad_unit' ? document.getElementById('ad-unit-search') : document.getElementById('placement-search');
+    const containerId = type === 'ad_unit' ? 'ad-unit-results' : 'placement-results';
+
+    // Remove existing results dropdown
+    const existingDropdown = document.getElementById(containerId);
+    if (existingDropdown) existingDropdown.remove();
+
+    if (items.length === 0) return;
+
+    // Create results dropdown
+    const dropdown = document.createElement('div');
+    dropdown.id = containerId;
+    dropdown.style.cssText = 'position: absolute; background: white; border: 1px solid #ddd; border-radius: 4px; max-height: 300px; overflow-y: auto; z-index: 1000; box-shadow: 0 4px 6px rgba(0,0,0,0.1); width: calc(100% - 140px);';
+
+    items.forEach(item => {
+        const resultItem = document.createElement('div');
+        resultItem.style.cssText = 'padding: 0.5rem; cursor: pointer; border-bottom: 1px solid #eee;';
+        resultItem.innerHTML = `
+            <strong>${item.name}</strong>
+            <div style="font-size: 0.85em; color: #666;">${(item.path || []).join(' > ')}</div>
+        `;
+        resultItem.addEventListener('mouseover', () => resultItem.style.background = '#f5f5f5');
+        resultItem.addEventListener('mouseout', () => resultItem.style.background = 'white');
+        resultItem.addEventListener('click', () => {
+            addSelectedItem(type, item.id, item.name);
+            searchInput.value = '';
+            dropdown.remove();
+        });
+        dropdown.appendChild(resultItem);
+    });
+
+    searchInput.parentElement.style.position = 'relative';
+    searchInput.parentElement.appendChild(dropdown);
+}
+
+function openInventoryPicker(type) {
+    // Create modal
+    const modal = document.createElement('div');
+    modal.style.cssText = 'position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 9999; display: flex; align-items: center; justify-content: center;';
+
+    const modalContent = document.createElement('div');
+    modalContent.style.cssText = 'background: white; padding: 2rem; border-radius: 8px; max-width: 600px; width: 90%; max-height: 80vh; overflow-y: auto;';
+
+    modalContent.innerHTML = `
+        <h3 style="margin-top: 0;">Select ${type === 'ad_unit' ? 'Ad Units' : 'Placements'}</h3>
+        <input type="text" id="modal-search" placeholder="Search..." style="width: 100%; padding: 0.5rem; margin-bottom: 1rem;">
+        <div id="modal-results" style="max-height: 400px; overflow-y: auto; border: 1px solid #ddd; border-radius: 4px; padding: 0.5rem;">
+            <div style="text-align: center; color: #666;">Loading...</div>
+        </div>
+        <div style="margin-top: 1rem; display: flex; justify-content: flex-end;">
+            <button type="button" onclick="closeInventoryModal()" class="btn btn-secondary">Close</button>
+        </div>
+    `;
+
+    modal.appendChild(modalContent);
+    document.body.appendChild(modal);
+
+    // Load inventory
+    loadInventoryForModal(type);
+
+    // Setup search
+    setTimeout(() => {
+        document.getElementById('modal-search').addEventListener('input', (e) => {
+            loadInventoryForModal(type, e.target.value);
+        });
+    }, 100);
+
+    window.closeInventoryModal = () => modal.remove();
+}
+
+async function loadInventoryForModal(type, query = '') {
+    const tenantId = '{{ tenant_id }}';
+    const url = `/inventory/api/tenant/${tenantId}/inventory-list?type=${type}&search=${encodeURIComponent(query)}`;
+
+    const resultsDiv = document.getElementById('modal-results');
+    resultsDiv.innerHTML = '<div style="text-align: center; color: #666;">Loading...</div>';
+
+    try {
+        const response = await fetch(url);
+        if (!response.ok) throw new Error('Failed to fetch inventory');
+        const data = await response.json();
+
+        if (data.items.length === 0) {
+            resultsDiv.innerHTML = '<div style="text-align: center; color: #666; padding: 2rem;">No inventory found. Try syncing your GAM inventory first.</div>';
+            return;
+        }
+
+        resultsDiv.innerHTML = '';
+        data.items.forEach(item => {
+            const itemDiv = document.createElement('div');
+            itemDiv.style.cssText = 'padding: 0.75rem; border-bottom: 1px solid #eee; cursor: pointer;';
+            itemDiv.innerHTML = `
+                <strong>${item.name}</strong>
+                <div style="font-size: 0.85em; color: #666;">${(item.path || []).join(' > ')}</div>
+                <div style="font-size: 0.8em; color: #999;">ID: ${item.id}</div>
+            `;
+            itemDiv.addEventListener('mouseover', () => itemDiv.style.background = '#f5f5f5');
+            itemDiv.addEventListener('mouseout', () => itemDiv.style.background = 'white');
+            itemDiv.addEventListener('click', () => {
+                addSelectedItem(type, item.id, item.name);
+                closeInventoryModal();
+            });
+            resultsDiv.appendChild(itemDiv);
+        });
+
+    } catch (error) {
+        console.error('Error loading inventory:', error);
+        resultsDiv.innerHTML = '<div style="text-align: center; color: #d32f2f; padding: 2rem;">Error loading inventory. Please try again.</div>';
+    }
+}
+
+function addSelectedItem(type, id, name) {
+    const containerId = type === 'ad_unit' ? 'selected-ad-units' : 'selected-placements';
+    const textareaId = type === 'ad_unit' ? 'targeted_ad_unit_ids' : 'targeted_placement_ids';
+    const container = document.getElementById(containerId);
+    const textarea = document.getElementById(textareaId);
+
+    // Check if already added
+    const existing = container.querySelector(`[data-id="${id}"]`);
+    if (existing) return;
+
+    // Create badge
+    const badge = document.createElement('span');
+    badge.setAttribute('data-id', id);
+    badge.style.cssText = 'display: inline-flex; align-items: center; gap: 0.5rem; background: #2196F3; color: white; padding: 0.25rem 0.75rem; border-radius: 16px; margin: 0.25rem; font-size: 0.9rem;';
+    badge.innerHTML = `
+        ${name}
+        <button type="button" onclick="removeSelectedItem('${type}', '${id}')" style="background: none; border: none; color: white; cursor: pointer; padding: 0; font-size: 1.2rem; line-height: 1;">×</button>
+    `;
+    container.appendChild(badge);
+
+    // Update hidden textarea
+    const currentIds = textarea.value.split('\n').filter(i => i.trim());
+    if (!currentIds.includes(id)) {
+        currentIds.push(id);
+        textarea.value = currentIds.join('\n');
+    }
+}
+
+function removeSelectedItem(type, id) {
+    const containerId = type === 'ad_unit' ? 'selected-ad-units' : 'selected-placements';
+    const textareaId = type === 'ad_unit' ? 'targeted_ad_unit_ids' : 'targeted_placement_ids';
+    const container = document.getElementById(containerId);
+    const textarea = document.getElementById(textareaId);
+
+    // Remove badge
+    const badge = container.querySelector(`[data-id="${id}"]`);
+    if (badge) badge.remove();
+
+    // Update hidden textarea
+    const currentIds = textarea.value.split('\n').filter(i => i.trim() && i !== id);
+    textarea.value = currentIds.join('\n');
+}
 </script>
 {% endblock %}
