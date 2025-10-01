@@ -926,7 +926,9 @@ function addActivity(activity, isNewActivity = true) {
 
     // Safely escape all user-provided content to prevent XSS
     const safeActivityId = escapeHtmlAttr(activityId);
-    const safePrincipalName = escapeHtml(activity.principal_name);
+    // Show "System" instead of "anonymous" for better UX
+    const principalName = activity.principal_name || 'System';
+    const safePrincipalName = escapeHtml(principalName === 'anonymous' ? 'System' : principalName);
     const safeAction = escapeHtml(activity.action);
     const safePrimary = activity.details ? escapeHtml(activity.details.primary) : '';
     const safeSecondary = activity.details && activity.details.secondary ? escapeHtml(activity.details.secondary) : '';
@@ -949,6 +951,9 @@ function addActivity(activity, isNewActivity = true) {
     let summaryText = '';
     const operation = escapeHtml(activity.operation || 'Unknown operation');
 
+    // Remove common prefixes for cleaner display
+    const cleanOperation = operation.replace(/^(AdCP\.|MCP\.|A2A\.)/, '');
+
     if (operation.includes('get_products')) {
         summaryText = `${safePrincipalName} searched for products`;
         if (safePrimary) {
@@ -964,10 +969,22 @@ function addActivity(activity, isNewActivity = true) {
         if (safePrimary) {
             summaryText += ` - ${safePrimary}`;
         }
+    } else if (operation.includes('policy_check')) {
+        summaryText = `${safePrincipalName} ran policy check`;
+        if (safePrimary) {
+            summaryText += ` - ${safePrimary}`;
+        }
     } else if (operation.startsWith('A2A.')) {
-        summaryText = `${safePrincipalName} via A2A: ${operation.replace('A2A.', '')}`;
+        summaryText = `${safePrincipalName} via A2A: ${cleanOperation}`;
+        if (safeSecondary) {
+            summaryText += ` - ${safeSecondary}`;
+        }
     } else {
-        summaryText = `${safePrincipalName} called ${operation}`;
+        // For other operations, show clean operation name
+        summaryText = `${safePrincipalName}: ${cleanOperation}`;
+        if (safePrimary) {
+            summaryText += ` - ${safePrimary}`;
+        }
     }
 
     // Determine badge type
