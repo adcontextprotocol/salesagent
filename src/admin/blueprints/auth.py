@@ -695,7 +695,7 @@ def gam_callback():
         elif originating_host and os.environ.get("PRODUCTION") == "true":
             return redirect(f"https://{originating_host}/admin/tenant/{tenant_id}/settings")
         else:
-            return redirect(url_for("tenants.settings", tenant_id=tenant_id))
+            return redirect(url_for("tenants.tenant_settings", tenant_id=tenant_id))
 
     except Exception as e:
         logger.error(f"Error in GAM OAuth callback: {e}", exc_info=True)
