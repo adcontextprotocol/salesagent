@@ -846,6 +846,50 @@ async def get_products(promoted_offering: str, brief: str = "", context: Context
         context=context_data,
     )
 
+    # Apply AdCP filters if provided
+    if req.filters:
+        filtered_products = []
+        for product in products:
+            # Filter by delivery_type
+            if req.filters.delivery_type and product.delivery_type != req.filters.delivery_type:
+                continue
+
+            # Filter by is_fixed_price
+            if req.filters.is_fixed_price is not None and product.is_fixed_price != req.filters.is_fixed_price:
+                continue
+
+            # Filter by format_types
+            if req.filters.format_types:
+                # Check if any product format matches requested types
+                product_format_types = {fmt.type for fmt in product.formats if hasattr(fmt, "type")}
+                if not any(fmt_type in product_format_types for fmt_type in req.filters.format_types):
+                    continue
+
+            # Filter by format_ids
+            if req.filters.format_ids:
+                # Check if any product format ID matches requested IDs
+                product_format_ids = {fmt.format_id for fmt in product.formats if hasattr(fmt, "format_id")}
+                if not any(fmt_id in product_format_ids for fmt_id in req.filters.format_ids):
+                    continue
+
+            # Filter by standard_formats_only
+            if req.filters.standard_formats_only:
+                # Check if all formats are IAB standard formats
+                # IAB standard formats typically follow patterns like "display_300x250", "video_30s"
+                has_only_standard = all(
+                    fmt.format_id.startswith(("display_", "video_", "audio_", "native_"))
+                    for fmt in product.formats
+                    if hasattr(fmt, "format_id")
+                )
+                if not has_only_standard:
+                    continue
+
+            # Product passed all filters
+            filtered_products.append(product)
+
+        products = filtered_products
+        logger.info(f"Applied filters: {req.filters.model_dump(exclude_none=True)}. {len(products)} products remain.")
+
     # Filter products based on policy compliance
     eligible_products = []
     for product in products:
