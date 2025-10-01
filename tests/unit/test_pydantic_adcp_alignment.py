@@ -16,8 +16,6 @@ import pytest
 from pydantic import ValidationError
 
 from src.core.schemas import (
-    DeliveryType,
-    FormatType,
     GetProductsRequest,
     ProductFilters,
 )
@@ -101,7 +99,8 @@ class TestGetProductsRequestAlignment:
 
     def test_filters_format_types_enum(self):
         """Test that format_types accepts valid enum values per AdCP spec."""
-        valid_types = ["video", "display", "audio", "native"]
+        # AdCP spec only supports: video, display, audio (no native)
+        valid_types = ["video", "display", "audio"]
 
         for format_type in valid_types:
             req = GetProductsRequest(

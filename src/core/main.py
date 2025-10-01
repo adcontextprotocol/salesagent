@@ -860,27 +860,51 @@ async def get_products(promoted_offering: str, brief: str = "", context: Context
 
             # Filter by format_types
             if req.filters.format_types:
-                # Check if any product format matches requested types
-                product_format_types = {fmt.type for fmt in product.formats if hasattr(fmt, "type")}
+                # Product.formats is list[str] (format IDs), need to look up types from FORMAT_REGISTRY
+                from src.core.schemas import get_format_by_id
+
+                product_format_types = set()
+                for format_id in product.formats:
+                    if isinstance(format_id, str):
+                        format_obj = get_format_by_id(format_id)
+                        if format_obj:
+                            product_format_types.add(format_obj.type)
+                    elif hasattr(format_id, "type"):
+                        # Already a Format object
+                        product_format_types.add(format_id.type)
+
                 if not any(fmt_type in product_format_types for fmt_type in req.filters.format_types):
                     continue
 
             # Filter by format_ids
             if req.filters.format_ids:
-                # Check if any product format ID matches requested IDs
-                product_format_ids = {fmt.format_id for fmt in product.formats if hasattr(fmt, "format_id")}
+                # Product.formats is list[str] (format IDs)
+                product_format_ids = set()
+                for format_id in product.formats:
+                    if isinstance(format_id, str):
+                        product_format_ids.add(format_id)
+                    elif hasattr(format_id, "format_id"):
+                        # Already a Format object
+                        product_format_ids.add(format_id.format_id)
+
                 if not any(fmt_id in product_format_ids for fmt_id in req.filters.format_ids):
                     continue
 
             # Filter by standard_formats_only
             if req.filters.standard_formats_only:
                 # Check if all formats are IAB standard formats
-                # IAB standard formats typically follow patterns like "display_300x250", "video_30s"
-                has_only_standard = all(
-                    fmt.format_id.startswith(("display_", "video_", "audio_", "native_"))
-                    for fmt in product.formats
-                    if hasattr(fmt, "format_id")
-                )
+                # IAB standard formats typically follow patterns like "display_", "video_", "audio_", "native_"
+                has_only_standard = True
+                for format_id in product.formats:
+                    if isinstance(format_id, str):
+                        if not format_id.startswith(("display_", "video_", "audio_", "native_")):
+                            has_only_standard = False
+                            break
+                    elif hasattr(format_id, "format_id"):
+                        if not format_id.format_id.startswith(("display_", "video_", "audio_", "native_")):
+                            has_only_standard = False
+                            break
+
                 if not has_only_standard:
                     continue
 
