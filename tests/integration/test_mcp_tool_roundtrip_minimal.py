@@ -16,8 +16,13 @@ from fastmcp.client.transports import StreamableHttpTransport
 
 @pytest.mark.integration
 @pytest.mark.asyncio
+@pytest.mark.skip_ci  # Requires running MCP server
 class TestMCPToolRoundtripMinimal:
-    """Test MCP tools with minimal parameters to catch schema construction bugs."""
+    """Test MCP tools with minimal parameters to catch schema construction bugs.
+
+    Note: These tests require a running MCP server and are skipped in CI.
+    Run manually with: pytest tests/integration/test_mcp_tool_roundtrip_minimal.py::TestMCPToolRoundtripMinimal
+    """
 
     @pytest.fixture
     async def mcp_client(self):
