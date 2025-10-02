@@ -4,7 +4,8 @@ import json
 import logging
 from datetime import UTC, datetime
 
-from flask import Blueprint, flash, jsonify, redirect, render_template, request, url_for
+from flask import Blueprint, flash, jsonify, redirect, render_template, request, session, url_for
+from sqlalchemy.orm import attributes
 
 from src.admin.utils import require_tenant_access
 from src.core.database.database_session import get_db_session
@@ -82,12 +83,16 @@ def approve_workflow_step(tenant_id, workflow_id, step_id):
             step.status = "approved"
             step.updated_at = datetime.now(UTC)
 
-            # Add approval comment
+            # Add approval comment with authenticated user
+            user_info = session.get("user", {})
+            user_email = user_info.get("email", "system") if isinstance(user_info, dict) else str(user_info)
+
             if not step.comments:
                 step.comments = []
             step.comments.append(
-                {"user": "admin", "timestamp": datetime.now(UTC).isoformat(), "comment": "Approved via admin UI"}
+                {"user": user_email, "timestamp": datetime.now(UTC).isoformat(), "comment": "Approved via admin UI"}
             )
+            attributes.flag_modified(step, "comments")
 
             db.commit()
 
@@ -96,7 +101,7 @@ def approve_workflow_step(tenant_id, workflow_id, step_id):
 
     except Exception as e:
         logger.error(f"Error approving workflow step {step_id}: {e}", exc_info=True)
-        return jsonify({"error": str(e)}), 500
+        return jsonify({"error": "Internal server error"}), 500
 
 
 @workflows_bp.route("/<tenant_id>/workflows/<workflow_id>/steps/<step_id>/reject", methods=["POST"])
@@ -123,12 +128,16 @@ def reject_workflow_step(tenant_id, workflow_id, step_id):
             step.status = "rejected"
             step.updated_at = datetime.now(UTC)
 
-            # Add rejection comment
+            # Add rejection comment with authenticated user
+            user_info = session.get("user", {})
+            user_email = user_info.get("email", "system") if isinstance(user_info, dict) else str(user_info)
+
             if not step.comments:
                 step.comments = []
             step.comments.append(
-                {"user": "admin", "timestamp": datetime.now(UTC).isoformat(), "comment": f"Rejected: {reason}"}
+                {"user": user_email, "timestamp": datetime.now(UTC).isoformat(), "comment": f"Rejected: {reason}"}
             )
+            attributes.flag_modified(step, "comments")
 
             db.commit()
 
@@ -137,4 +146,4 @@ def reject_workflow_step(tenant_id, workflow_id, step_id):
 
     except Exception as e:
         logger.error(f"Error rejecting workflow step {step_id}: {e}", exc_info=True)
-        return jsonify({"error": str(e)}), 500
+        return jsonify({"error": "Internal server error"}), 500
