@@ -962,6 +962,21 @@ async def get_products(promoted_offering: str, brief: str = "", context: Context
     # Log activity
     log_tool_activity(context, "get_products", start_time)
 
+    # Log to audit logs for business activity feed
+    audit_logger = get_audit_logger("AdCP", tenant["tenant_id"])
+    audit_logger.log_operation(
+        operation="get_products",
+        principal_name=principal.name if principal else "anonymous",
+        principal_id=principal_id or "anonymous",
+        adapter_id="mcp_server",
+        success=True,
+        details={
+            "brief": req.brief[:100] if req.brief else "",
+            "promoted_offering": req.promoted_offering[:100] if req.promoted_offering else "",
+            "product_count": len(modified_products),
+        },
+    )
+
     # Create response with pricing message if anonymous
     base_message = f"Found {len(modified_products)} matching products"
     final_message = f"{base_message}. {pricing_message}" if pricing_message else base_message
@@ -1074,6 +1089,17 @@ def list_creative_formats(context: Context) -> ListCreativeFormatsResponse:
     # Create response with schema validation metadata
     response = ListCreativeFormatsResponse(
         formats=formats, message=message, specification_version="AdCP v2.4", status=status
+    )
+
+    # Log to audit logs for business activity feed
+    audit_logger = get_audit_logger("AdCP", tenant["tenant_id"])
+    audit_logger.log_operation(
+        operation="list_creative_formats",
+        principal_name="anonymous" if principal_id is None else principal_id,
+        principal_id=principal_id or "anonymous",
+        adapter_id="mcp_server",
+        success=True,
+        details={"format_count": len(formats)},
     )
 
     # Add schema validation metadata for client validation
@@ -1418,6 +1444,23 @@ def sync_creatives(
                 creative_schema = Creative(**schema_data)
                 synced_creative_schemas.append(creative_schema)
 
+    # Log to audit logs for business activity feed
+    audit_logger = get_audit_logger("AdCP", tenant["tenant_id"])
+    principal = get_principal_object(principal_id) if principal_id else None
+    audit_logger.log_operation(
+        operation="sync_creatives",
+        principal_name=principal.name if principal else "anonymous",
+        principal_id=principal_id or "anonymous",
+        adapter_id="mcp_server",
+        success=True,
+        details={
+            "synced_count": len(synced_creative_schemas),
+            "failed_count": len(failed_creatives),
+            "media_buy_id": media_buy_id or "unassigned",
+            "assignments_count": len(assignments),
+        },
+    )
+
     return SyncCreativesResponse(
         synced_creatives=synced_creative_schemas,
         failed_creatives=failed_creatives,
@@ -1646,6 +1689,24 @@ def list_creatives(
     # Log activity
     log_tool_activity(context, "list_creatives", start_time)
 
+    # Log to audit logs for business activity feed
+    audit_logger = get_audit_logger("AdCP", tenant["tenant_id"])
+    principal = get_principal_object(principal_id) if principal_id else None
+    audit_logger.log_operation(
+        operation="list_creatives",
+        principal_name=principal.name if principal else "anonymous",
+        principal_id=principal_id or "anonymous",
+        adapter_id="mcp_server",
+        success=True,
+        details={
+            "creative_count": len(creatives),
+            "total_count": total_count,
+            "media_buy_id": req.media_buy_id or "all",
+            "status_filter": req.status or "all",
+            "format_filter": req.format or "all",
+        },
+    )
+
     message = f"Found {len(creatives)} creatives"
     if total_count > len(creatives):
         message += f" (page {req.page} of {total_count} total)"
@@ -1816,6 +1877,21 @@ async def get_signals(req: GetSignalsRequest, context: Context = None) -> GetSig
         operation_type="discovery", has_errors=False, requires_approval=False, requires_auth=False
     )
 
+    # Log to audit logs for business activity feed
+    audit_logger = get_audit_logger("AdCP", tenant["tenant_id"])
+    audit_logger.log_operation(
+        operation="get_signals",
+        principal_name="anonymous" if not principal_id else principal_id,
+        principal_id=principal_id or "anonymous",
+        adapter_id="mcp_server",
+        success=True,
+        details={
+            "signal_count": len(signals),
+            "query": req.query or "all",
+            "max_results": req.max_results or "unlimited",
+        },
+    )
+
     return GetSignalsResponse(signals=signals, status=status)
 
 
@@ -1891,12 +1967,41 @@ async def activate_signal(
         # Log activity
         log_tool_activity(context, "activate_signal", start_time)
 
+        # Log to audit logs for business activity feed
+        audit_logger = get_audit_logger("AdCP", tenant["tenant_id"])
+        audit_logger.log_operation(
+            operation="activate_signal",
+            principal_name=principal.name if principal else "anonymous",
+            principal_id=principal_id or "anonymous",
+            adapter_id="mcp_server",
+            success=(status != TaskStatus.FAILED),
+            details={
+                "signal_id": signal_id,
+                "campaign_id": campaign_id or "none",
+                "media_buy_id": media_buy_id or "none",
+                "status": str(status),
+            },
+        )
+
         return ActivateSignalResponse(
             signal_id=signal_id, status=status, message=message, activation_details=activation_details
         )
 
     except Exception as e:
         logger.error(f"Error activating signal {signal_id}: {e}")
+
+        # Log failure to audit logs
+        audit_logger = get_audit_logger("AdCP", tenant["tenant_id"])
+        audit_logger.log_operation(
+            operation="activate_signal",
+            principal_name="unknown",
+            principal_id=principal_id or "anonymous",
+            adapter_id="mcp_server",
+            success=False,
+            error_message=str(e),
+            details={"signal_id": signal_id},
+        )
+
         return ActivateSignalResponse(
             signal_id=signal_id,
             status=TaskStatus.FAILED,
@@ -2592,6 +2697,24 @@ def create_media_buy(
         except Exception as e:
             console.print(f"[yellow]⚠️ Failed to send success Slack notification: {e}[/yellow]")
 
+        # Log to audit logs for business activity feed
+        audit_logger = get_audit_logger("AdCP", tenant["tenant_id"])
+        audit_logger.log_operation(
+            operation="create_media_buy",
+            principal_name=principal_name,
+            principal_id=principal_id or "anonymous",
+            adapter_id="mcp_server",
+            success=True,
+            details={
+                "media_buy_id": response.media_buy_id,
+                "total_budget": total_budget,
+                "po_number": req.po_number,
+                "duration_days": (req.end_time - req.start_time).days + 1 if req.end_time and req.start_time else 0,
+                "product_count": len(req.get_product_ids()),
+                "packages_count": len(response_packages) if response_packages else 0,
+            },
+        )
+
         return modified_response
 
     except Exception as e:
@@ -2902,6 +3025,23 @@ def update_media_buy(
                 "total_budget": req.total_budget is not None,
                 "targeting": req.targeting_overlay is not None,
             },
+        },
+    )
+
+    # Log to audit logs for business activity feed
+    audit_logger = get_audit_logger("AdCP", tenant["tenant_id"])
+    audit_logger.log_operation(
+        operation="update_media_buy",
+        principal_name=principal.name if principal else "anonymous",
+        principal_id=principal_id or "anonymous",
+        adapter_id="mcp_server",
+        success=True,
+        details={
+            "media_buy_id": req.media_buy_id,
+            "buyer_ref": req.buyer_ref or "none",
+            "has_budget_update": req.total_budget is not None or req.budget is not None,
+            "has_targeting_update": req.targeting_overlay is not None,
+            "has_packages_update": req.packages is not None,
         },
     )
 

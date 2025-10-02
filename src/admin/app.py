@@ -30,6 +30,7 @@ from src.admin.blueprints.settings import settings_bp, tenant_management_setting
 # from src.admin.blueprints.tasks import tasks_bp  # Disabled - tasks eliminated in favor of workflow system
 from src.admin.blueprints.tenants import tenants_bp
 from src.admin.blueprints.users import users_bp
+from src.admin.blueprints.workflows import workflows_bp
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -205,6 +206,7 @@ def create_app(config=None):
     app.register_blueprint(activity_stream_bp)  # SSE endpoints - Flask handles /admin via script_name from nginx proxy
     app.register_blueprint(mcp_test_bp)
     app.register_blueprint(schemas_bp)  # JSON Schema validation service
+    app.register_blueprint(workflows_bp, url_prefix="/tenant")  # Workflow approval and review
     # app.register_blueprint(tasks_bp)  # Tasks management - Disabled, tasks eliminated in favor of workflow system
 
     # Import and register existing blueprints

@@ -1,0 +1,180 @@
+{% extends "base.html" %}
+
+{% block title %}Review Workflow Step - {{ tenant_id }}{% endblock %}
+
+{% block content %}
+<div class="container" style="max-width: 1200px; margin: 2rem auto; padding: 0 1rem;">
+    <div style="margin-bottom: 2rem;">
+        <a href="{{ script_name }}/tenant/{{ tenant_id }}" style="text-decoration: none; color: #6b7280;">
+            ← Back to Dashboard
+        </a>
+    </div>
+
+    <h1 style="margin-bottom: 2rem;">Workflow Step Review</h1>
+
+    <!-- Status Badge -->
+    <div style="margin-bottom: 2rem;">
+        {% if step.status == 'requires_approval' %}
+            <span style="background: #fef3c7; color: #92400e; padding: 0.5rem 1rem; border-radius: 6px; font-weight: 600;">
+                ⚠️ Requires Your Approval
+            </span>
+        {% elif step.status == 'approved' %}
+            <span style="background: #d1fae5; color: #065f46; padding: 0.5rem 1rem; border-radius: 6px; font-weight: 600;">
+                ✓ Approved
+            </span>
+        {% elif step.status == 'rejected' %}
+            <span style="background: #fee2e2; color: #991b1b; padding: 0.5rem 1rem; border-radius: 6px; font-weight: 600;">
+                ✗ Rejected
+            </span>
+        {% else %}
+            <span style="background: #e5e7eb; color: #374151; padding: 0.5rem 1rem; border-radius: 6px; font-weight: 600;">
+                {{ step.status }}
+            </span>
+        {% endif %}
+    </div>
+
+    <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 2rem;">
+        <!-- Main Content -->
+        <div>
+            <!-- Request Details -->
+            <div style="background: white; border-radius: 12px; padding: 1.5rem; margin-bottom: 1.5rem; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
+                <h2 style="margin-top: 0; font-size: 1.25rem;">Request Details</h2>
+
+                <dl style="display: grid; grid-template-columns: auto 1fr; gap: 1rem; margin: 1rem 0;">
+                    <dt style="font-weight: 600; color: #6b7280;">Tool:</dt>
+                    <dd style="margin: 0;">{{ step.tool_name or 'N/A' }}</dd>
+
+                    <dt style="font-weight: 600; color: #6b7280;">Step Type:</dt>
+                    <dd style="margin: 0;">{{ step.step_type }}</dd>
+
+                    <dt style="font-weight: 600; color: #6b7280;">Created:</dt>
+                    <dd style="margin: 0;">{{ step.created_at.strftime('%Y-%m-%d %H:%M:%S UTC') if step.created_at else 'N/A' }}</dd>
+
+                    {% if principal %}
+                    <dt style="font-weight: 600; color: #6b7280;">Requested By:</dt>
+                    <dd style="margin: 0;">{{ principal.name }} ({{ principal.principal_id }})</dd>
+                    {% endif %}
+                </dl>
+
+                <h3 style="font-size: 1rem; margin-top: 1.5rem; margin-bottom: 0.5rem;">Request Payload</h3>
+                <pre style="background: #f9fafb; padding: 1rem; border-radius: 6px; overflow-x: auto; font-size: 0.875rem; max-height: 400px;">{{ formatted_request }}</pre>
+            </div>
+
+            <!-- Response Data (if available) -->
+            {% if step.response_data %}
+            <div style="background: white; border-radius: 12px; padding: 1.5rem; margin-bottom: 1.5rem; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
+                <h2 style="margin-top: 0; font-size: 1.25rem;">Response Data</h2>
+                <pre style="background: #f9fafb; padding: 1rem; border-radius: 6px; overflow-x: auto; font-size: 0.875rem; max-height: 400px;">{{ step.response_data | tojson(indent=2) }}</pre>
+            </div>
+            {% endif %}
+
+            <!-- Comments -->
+            {% if step.comments %}
+            <div style="background: white; border-radius: 12px; padding: 1.5rem; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
+                <h2 style="margin-top: 0; font-size: 1.25rem;">Comments</h2>
+                {% for comment in step.comments %}
+                <div style="border-left: 3px solid #e5e7eb; padding-left: 1rem; margin-bottom: 1rem;">
+                    <div style="font-size: 0.875rem; color: #6b7280;">
+                        {{ comment.user }} • {{ comment.timestamp }}
+                    </div>
+                    <div>{{ comment.comment }}</div>
+                </div>
+                {% endfor %}
+            </div>
+            {% endif %}
+        </div>
+
+        <!-- Sidebar -->
+        <div>
+            <!-- Action Panel -->
+            {% if step.status == 'requires_approval' %}
+            <div style="background: white; border-radius: 12px; padding: 1.5rem; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
+                <h3 style="margin-top: 0;">Take Action</h3>
+
+                <button onclick="approveStep()" style="width: 100%; background: #16a34a; color: white; padding: 0.75rem; border: none; border-radius: 6px; font-weight: 600; cursor: pointer; margin-bottom: 0.5rem;">
+                    ✓ Approve This Step
+                </button>
+
+                <button onclick="showRejectDialog()" style="width: 100%; background: #dc2626; color: white; padding: 0.75rem; border: none; border-radius: 6px; font-weight: 600; cursor: pointer;">
+                    ✗ Reject This Step
+                </button>
+            </div>
+            {% endif %}
+
+            <!-- Workflow Context -->
+            <div style="background: white; border-radius: 12px; padding: 1.5rem; margin-top: 1.5rem; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
+                <h3 style="margin-top: 0;">Workflow Context</h3>
+
+                <dl style="font-size: 0.875rem;">
+                    <dt style="font-weight: 600; color: #6b7280; margin-top: 0.5rem;">Workflow ID:</dt>
+                    <dd style="margin: 0 0 0.5rem 0; font-family: monospace; font-size: 0.75rem;">{{ workflow_id }}</dd>
+
+                    <dt style="font-weight: 600; color: #6b7280; margin-top: 0.5rem;">Step ID:</dt>
+                    <dd style="margin: 0 0 0.5rem 0; font-family: monospace; font-size: 0.75rem;">{{ step.step_id }}</dd>
+
+                    <dt style="font-weight: 600; color: #6b7280; margin-top: 0.5rem;">Context ID:</dt>
+                    <dd style="margin: 0 0 0.5rem 0; font-family: monospace; font-size: 0.75rem;">{{ step.context_id }}</dd>
+                </dl>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+async function approveStep() {
+    if (!confirm('Are you sure you want to approve this workflow step?')) {
+        return;
+    }
+
+    try {
+        const response = await fetch('{{ script_name }}/tenant/{{ tenant_id }}/workflows/{{ workflow_id }}/steps/{{ step.step_id }}/approve', {
+            method: 'POST',
+            credentials: 'same-origin',
+            headers: {
+                'Content-Type': 'application/json'
+            }
+        });
+
+        if (response.ok) {
+            alert('Workflow step approved successfully!');
+            window.location.href = '{{ script_name }}/tenant/{{ tenant_id }}';
+        } else {
+            const error = await response.text();
+            alert(`Failed to approve: ${error}`);
+        }
+    } catch (err) {
+        alert(`Error: ${err.message}`);
+    }
+}
+
+function showRejectDialog() {
+    const reason = prompt('Please provide a reason for rejection:');
+    if (!reason) return;
+
+    rejectStep(reason);
+}
+
+async function rejectStep(reason) {
+    try {
+        const response = await fetch('{{ script_name }}/tenant/{{ tenant_id }}/workflows/{{ workflow_id }}/steps/{{ step.step_id }}/reject', {
+            method: 'POST',
+            credentials: 'same-origin',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ reason })
+        });
+
+        if (response.ok) {
+            alert('Workflow step rejected successfully!');
+            window.location.href = '{{ script_name }}/tenant/{{ tenant_id }}';
+        } else {
+            const error = await response.text();
+            alert(`Failed to reject: ${error}`);
+        }
+    } catch (err) {
+        alert(`Error: ${err.message}`);
+    }
+}
+</script>
+{% endblock %}
