@@ -275,7 +275,7 @@ class DashboardService:
                 db_session.execute("SELECT 1").scalar()
 
             # Test audit logs table (our single data source)
-            test_activities = get_recent_activities("health_check", limit=1)
+            test_activities = get_business_activities("health_check", limit=1)
 
             return {
                 "status": "healthy",
