@@ -1061,6 +1061,47 @@ class UpdatePerformanceIndexResponse(BaseModel):
 
 
 # --- Discovery ---
+class FormatType(str, Enum):
+    """Valid format types per AdCP spec."""
+
+    VIDEO = "video"
+    DISPLAY = "display"
+    AUDIO = "audio"
+    # Note: "native" is not in cached AdCP schema v1.6.0, only video/display/audio
+
+
+class DeliveryType(str, Enum):
+    """Valid delivery types per AdCP spec."""
+
+    GUARANTEED = "guaranteed"
+    NON_GUARANTEED = "non_guaranteed"
+
+
+class ProductFilters(BaseModel):
+    """Structured filters for product discovery per AdCP spec."""
+
+    delivery_type: DeliveryType | None = Field(
+        None,
+        description="Filter by delivery type",
+    )
+    is_fixed_price: bool | None = Field(
+        None,
+        description="Filter for fixed price vs auction products",
+    )
+    format_types: list[FormatType] | None = Field(
+        None,
+        description="Filter by format types",
+    )
+    format_ids: list[str] | None = Field(
+        None,
+        description="Filter by specific format IDs",
+    )
+    standard_formats_only: bool | None = Field(
+        None,
+        description="Only return products accepting IAB standard formats",
+    )
+
+
 class GetProductsRequest(BaseModel):
     brief: str = Field(
         "",
@@ -1069,6 +1110,15 @@ class GetProductsRequest(BaseModel):
     promoted_offering: str = Field(
         ...,
         description="Description of the advertiser and the product or service being promoted (REQUIRED per AdCP spec)",
+    )
+    adcp_version: str = Field(
+        "1.0.0",
+        description="AdCP schema version for this request",
+        pattern=r"^\d+\.\d+\.\d+$",
+    )
+    filters: ProductFilters | None = Field(
+        None,
+        description="Structured filters for product discovery",
     )
     strategy_id: str | None = Field(
         None,

@@ -83,6 +83,14 @@ repos:
         pass_filenames: false
         always_run: true
 
+      # Check Pydantic-AdCP schema alignment (prevents client validation errors)
+      - id: pydantic-adcp-alignment
+        name: Pydantic model alignment with AdCP schemas
+        entry: python3 scripts/check_pydantic_adcp_alignment.py
+        language: system
+        files: '^(src/core/schemas\.py|tests/e2e/schemas/v1/.*\.json)$'
+        pass_filenames: false
+
       # Prevent A2A regression issues (URL format, function calls)
       - id: a2a-regression-check
         name: A2A regression prevention
