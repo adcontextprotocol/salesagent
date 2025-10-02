@@ -43,9 +43,13 @@ def get_tenant_from_hostname():
 
 
 @core_bp.route("/")
-@require_auth()
 def index():
-    """Main index page - redirects based on user role."""
+    """Main index page - redirects based on authentication and user role."""
+    # Check if user is authenticated
+    if "user" not in session:
+        # Not authenticated - redirect to landing page for signup
+        return redirect(url_for("public.landing"))
+
     # Check if we're on a tenant-specific subdomain
     tenant = get_tenant_from_hostname()
     if tenant:

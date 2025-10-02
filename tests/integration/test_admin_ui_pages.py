@@ -35,10 +35,8 @@ def authenticated_session(client):
 def test_tenant(integration_db):
     """Create a test tenant in the database."""
     import json
-    from datetime import UTC, datetime
 
     from src.core.database.database_session import get_db_session
-    from src.core.database.models import Tenant
 
     tenant_data = TenantFactory.create()
 
@@ -51,7 +49,7 @@ def test_tenant(integration_db):
             ad_server="mock",
             auto_approve_formats=json.dumps([]),
             human_review_required=False,
-            policy_settings=json.dumps({})
+            policy_settings=json.dumps({}),
         )
         session.add(tenant)
         session.commit()
@@ -97,10 +95,10 @@ class TestAdminUIPages:
         assert response.status_code == 200
 
     def test_admin_index_redirects(self, client):
-        """Test that the admin index redirects to login when not authenticated."""
+        """Test that the admin index redirects to signup landing page when not authenticated."""
         response = client.get("/")
         assert response.status_code == 302
-        assert "/login" in response.location
+        assert "/signup" in response.location
 
     def test_login_page_renders(self, client):
         """Test that the login page renders successfully."""
