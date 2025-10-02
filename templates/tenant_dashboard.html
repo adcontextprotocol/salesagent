@@ -599,18 +599,18 @@
                                 {% if activity.action_required %}
                                     <div class="action-buttons">
                                         {% if activity.type == 'action_needed' %}
-                                            <button class="btn btn-primary" onclick="approveWorkflow('{{ activity.metadata.workflow_id }}', '{{ activity.metadata.step_id }}')">
-                                                ✓ Approve
-                                            </button>
-                                            <button class="btn btn-secondary" onclick="rejectWorkflow('{{ activity.metadata.workflow_id }}', '{{ activity.metadata.step_id }}')">
-                                                ✗ Reject
+                                            <a href="{{ script_name }}/tenant/{{ tenant.tenant_id }}/workflows/{{ activity.metadata.workflow_id }}/steps/{{ activity.metadata.step_id }}/review" class="btn btn-primary" style="text-decoration: none;">
+                                                → View Full Details & Approve
+                                            </a>
+                                            <button class="btn btn-secondary" onclick="event.stopPropagation(); quickRejectWorkflow('{{ activity.metadata.workflow_id }}', '{{ activity.metadata.step_id }}')">
+                                                ✗ Quick Reject
                                             </button>
                                         {% elif activity.type == 'creative_review' %}
-                                            <button class="btn btn-primary" onclick="approveCreative('{{ activity.metadata.creative_id }}')">
-                                                ✓ Approve Creative
-                                            </button>
-                                            <button class="btn btn-secondary" onclick="rejectCreative('{{ activity.metadata.creative_id }}')">
-                                                ✗ Reject Creative
+                                            <a href="{{ script_name }}/tenant/{{ tenant.tenant_id }}/creatives/{{ activity.metadata.creative_id }}/review" class="btn btn-primary" style="text-decoration: none;">
+                                                → View Creative & Approve
+                                            </a>
+                                            <button class="btn btn-secondary" onclick="event.stopPropagation(); quickRejectCreative('{{ activity.metadata.creative_id }}')">
+                                                ✗ Quick Reject
                                             </button>
                                         {% endif %}
                                     </div>
@@ -1193,35 +1193,8 @@ function toggleActivityDetails(activityId) {
     }
 }
 
-// Approve workflow step
-async function approveWorkflow(workflowId, stepId) {
-    if (!confirm('Are you sure you want to approve this workflow step?')) {
-        return;
-    }
-
-    try {
-        const response = await fetch(`{{ script_name }}/tenant/{{ tenant.tenant_id }}/workflows/${workflowId}/steps/${stepId}/approve`, {
-            method: 'POST',
-            credentials: 'same-origin',
-            headers: {
-                'Content-Type': 'application/json'
-            }
-        });
-
-        if (response.ok) {
-            alert('Workflow step approved successfully!');
-            window.location.reload();
-        } else {
-            const error = await response.text();
-            alert(`Failed to approve: ${error}`);
-        }
-    } catch (err) {
-        alert(`Error: ${err.message}`);
-    }
-}
-
-// Reject workflow step
-async function rejectWorkflow(workflowId, stepId) {
+// Quick reject workflow step (from dashboard without viewing details)
+async function quickRejectWorkflow(workflowId, stepId) {
     const reason = prompt('Please provide a reason for rejection:');
     if (!reason) return;
 
@@ -1247,35 +1220,8 @@ async function rejectWorkflow(workflowId, stepId) {
     }
 }
 
-// Approve creative
-async function approveCreative(creativeId) {
-    if (!confirm('Are you sure you want to approve this creative?')) {
-        return;
-    }
-
-    try {
-        const response = await fetch(`{{ script_name }}/tenant/{{ tenant.tenant_id }}/creatives/${creativeId}/approve`, {
-            method: 'POST',
-            credentials: 'same-origin',
-            headers: {
-                'Content-Type': 'application/json'
-            }
-        });
-
-        if (response.ok) {
-            alert('Creative approved successfully!');
-            window.location.reload();
-        } else {
-            const error = await response.text();
-            alert(`Failed to approve: ${error}`);
-        }
-    } catch (err) {
-        alert(`Error: ${err.message}`);
-    }
-}
-
-// Reject creative
-async function rejectCreative(creativeId) {
+// Quick reject creative (from dashboard without viewing details)
+async function quickRejectCreative(creativeId) {
     const reason = prompt('Please provide a reason for rejection:');
     if (!reason) return;
 
