@@ -2530,6 +2530,18 @@ def create_media_buy(
             )
 
         # Create the media buy using the adapter (SYNCHRONOUS operation)
+        # Defensive null check: ensure start_time and end_time are set
+        if not req.start_time or not req.end_time:
+            error_msg = "start_time and end_time are required but were not properly set"
+            ctx_manager.update_workflow_step(step.step_id, status="failed", error_message=error_msg)
+            return CreateMediaBuyResponse(
+                media_buy_id="",
+                status=TaskStatus.FAILED,
+                detail=error_msg,
+                creative_deadline=None,
+                message="Media buy creation failed: missing required datetime fields",
+                errors=[{"code": "invalid_datetime", "message": error_msg}],
+            )
         response = adapter.create_media_buy(req, packages, req.start_time, req.end_time)
 
         # Store the media buy in memory (for backward compatibility)
