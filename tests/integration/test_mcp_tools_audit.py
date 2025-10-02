@@ -92,8 +92,8 @@ class TestMCPToolsAudit:
             "advertiser_name": "Test Advertiser",
             "start_date": date(2025, 1, 1),
             "end_date": date(2025, 1, 31),
-            "start_time": datetime(2025, 1, 1),
-            "end_time": datetime(2025, 1, 31),
+            "start_time": datetime(2025, 1, 1, tzinfo=UTC),
+            "end_time": datetime(2025, 1, 31, 23, 59, 59, tzinfo=UTC),
             "budget": Decimal("10000.00"),
             "raw_request": {"targeting": {"geo_country": ["US"]}, "product_ids": ["audit_test_product"]},
         }

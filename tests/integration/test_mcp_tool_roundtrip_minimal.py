@@ -157,7 +157,7 @@ class TestMCPToolRoundtripMinimal:
         # May return error if media_buy doesn't exist, but should not crash
 
 
-@pytest.mark.integration
+@pytest.mark.unit  # Changed from integration - these don't require server
 class TestSchemaConstructionValidation:
     """Test that schemas are constructed correctly from tool parameters."""
 
@@ -215,7 +215,7 @@ class TestSchemaConstructionValidation:
                 pytest.fail(f"{schema_class.__name__} raised {type(e).__name__}: {e}")
 
 
-@pytest.mark.integration
+@pytest.mark.unit  # Changed from integration - these don't require server
 class TestParameterToSchemaMapping:
     """Test that tool parameters map correctly to schema fields."""
 

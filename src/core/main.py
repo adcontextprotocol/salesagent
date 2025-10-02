@@ -2253,6 +2253,11 @@ def create_media_buy(
 
         now = datetime.now(UTC)
 
+        # Validate start_time
+        if req.start_time is None:
+            error_msg = "start_time is required"
+            raise ValueError(error_msg)
+
         # Ensure start_time is timezone-aware for comparison
         start_time = req.start_time
         if start_time.tzinfo is None:
@@ -2260,6 +2265,11 @@ def create_media_buy(
 
         if start_time < now:
             error_msg = f"Invalid start time: {req.start_time}. Start time cannot be in the past."
+            raise ValueError(error_msg)
+
+        # Validate end_time
+        if req.end_time is None:
+            error_msg = "end_time is required"
             raise ValueError(error_msg)
 
         # Ensure end_time is timezone-aware for comparison

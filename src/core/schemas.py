@@ -1857,6 +1857,19 @@ class CreateMediaBuyRequest(BaseModel):
 
         return values
 
+    @model_validator(mode="after")
+    def validate_timezone_aware(self):
+        """Validate that datetime fields are timezone-aware.
+
+        AdCP spec requires ISO 8601 datetime strings with timezone information.
+        This validator ensures all datetime fields have timezone info.
+        """
+        if self.start_time and self.start_time.tzinfo is None:
+            raise ValueError("start_time must be timezone-aware (ISO 8601 with timezone)")
+        if self.end_time and self.end_time.tzinfo is None:
+            raise ValueError("end_time must be timezone-aware (ISO 8601 with timezone)")
+        return self
+
     # Backward compatibility properties for old field names
     @property
     def flight_start_date(self) -> date:
@@ -2207,6 +2220,19 @@ class UpdateMediaBuyRequest(BaseModel):
             raise ValueError("Either media_buy_id or buyer_ref must be provided")
         if self.media_buy_id and self.buyer_ref:
             raise ValueError("Cannot provide both media_buy_id and buyer_ref (AdCP oneOf constraint)")
+        return self
+
+    @model_validator(mode="after")
+    def validate_timezone_aware(self):
+        """Validate that datetime fields are timezone-aware.
+
+        AdCP spec requires ISO 8601 datetime strings with timezone information.
+        This validator ensures all datetime fields have timezone info.
+        """
+        if self.start_time and self.start_time.tzinfo is None:
+            raise ValueError("start_time must be timezone-aware (ISO 8601 with timezone)")
+        if self.end_time and self.end_time.tzinfo is None:
+            raise ValueError("end_time must be timezone-aware (ISO 8601 with timezone)")
         return self
 
     # Backward compatibility properties (deprecated)
