@@ -72,6 +72,33 @@ class TestMCPContractValidation:
         assert request.packages is None
         assert request.pacing == "even"  # Should have default
 
+    def test_create_media_buy_with_packages_products_none(self):
+        """Test that packages with products=None don't crash get_product_ids().
+
+        Regression test for bug where Package(products=None) caused:
+        'NoneType' object is not iterable in get_product_ids()
+        """
+        from src.core.schemas import Package
+
+        # Test 1: Package with products=None
+        request = CreateMediaBuyRequest(po_number="PO-12345", packages=[Package(buyer_ref="pkg1", products=None)])
+        assert request.get_product_ids() == []  # Should return empty list, not crash
+
+        # Test 2: Package with empty products list
+        request = CreateMediaBuyRequest(po_number="PO-12346", packages=[Package(buyer_ref="pkg2", products=[])])
+        assert request.get_product_ids() == []
+
+        # Test 3: Mixed packages (some None, some with products)
+        request = CreateMediaBuyRequest(
+            po_number="PO-12347",
+            packages=[
+                Package(buyer_ref="pkg_none", products=None),
+                Package(buyer_ref="pkg_with_products", products=["prod1", "prod2"]),
+                Package(buyer_ref="pkg_empty", products=[]),
+            ],
+        )
+        assert request.get_product_ids() == ["prod1", "prod2"]
+
     def test_get_signals_minimal_now_works(self):
         """Test get_signals with minimal parameters - now fixed!"""
         # This now works with sensible defaults
