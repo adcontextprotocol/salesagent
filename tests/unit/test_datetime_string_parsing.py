@@ -249,3 +249,116 @@ class TestDateTimeParsingEdgeCases:
         assert req.start_time is not None
         assert req.start_time.tzinfo is not None
         # end_time might be None or might have a default
+
+
+class TestAdditionalDateTimeValidation:
+    """Test timezone validation for additional request models."""
+
+    def test_list_creatives_with_timezone_aware_filters(self):
+        """Test ListCreativesRequest with timezone-aware datetime filters."""
+        from src.core.schemas import ListCreativesRequest
+
+        req = ListCreativesRequest(
+            created_after="2025-02-15T00:00:00Z",
+            created_before="2025-02-28T23:59:59Z",
+        )
+
+        assert req.created_after is not None
+        assert req.created_after.tzinfo is not None
+        assert req.created_before is not None
+        assert req.created_before.tzinfo is not None
+
+    def test_list_creatives_rejects_naive_created_after(self):
+        """Test ListCreativesRequest rejects naive datetime for created_after."""
+        from src.core.schemas import ListCreativesRequest
+
+        with pytest.raises(ValueError, match="created_after.*timezone-aware"):
+            ListCreativesRequest(
+                created_after="2025-02-15T00:00:00",  # No timezone
+                created_before="2025-02-28T23:59:59Z",
+            )
+
+    def test_list_creatives_rejects_naive_created_before(self):
+        """Test ListCreativesRequest rejects naive datetime for created_before."""
+        from src.core.schemas import ListCreativesRequest
+
+        with pytest.raises(ValueError, match="created_before.*timezone-aware"):
+            ListCreativesRequest(
+                created_after="2025-02-15T00:00:00Z",
+                created_before="2025-02-28T23:59:59",  # No timezone
+            )
+
+    def test_assign_creative_with_timezone_aware_overrides(self):
+        """Test AssignCreativeRequest with timezone-aware override dates."""
+        from src.core.schemas import AssignCreativeRequest
+
+        req = AssignCreativeRequest(
+            media_buy_id="mb_123",
+            package_id="pkg_1",
+            creative_id="cr_1",
+            override_start_date="2025-02-15T00:00:00Z",
+            override_end_date="2025-02-28T23:59:59Z",
+        )
+
+        assert req.override_start_date is not None
+        assert req.override_start_date.tzinfo is not None
+        assert req.override_end_date is not None
+        assert req.override_end_date.tzinfo is not None
+
+    def test_assign_creative_rejects_naive_override_start_date(self):
+        """Test AssignCreativeRequest rejects naive datetime for override_start_date."""
+        from src.core.schemas import AssignCreativeRequest
+
+        with pytest.raises(ValueError, match="override_start_date.*timezone-aware"):
+            AssignCreativeRequest(
+                media_buy_id="mb_123",
+                package_id="pkg_1",
+                creative_id="cr_1",
+                override_start_date="2025-02-15T00:00:00",  # No timezone
+                override_end_date="2025-02-28T23:59:59Z",
+            )
+
+    def test_assign_creative_rejects_naive_override_end_date(self):
+        """Test AssignCreativeRequest rejects naive datetime for override_end_date."""
+        from src.core.schemas import AssignCreativeRequest
+
+        with pytest.raises(ValueError, match="override_end_date.*timezone-aware"):
+            AssignCreativeRequest(
+                media_buy_id="mb_123",
+                package_id="pkg_1",
+                creative_id="cr_1",
+                override_start_date="2025-02-15T00:00:00Z",
+                override_end_date="2025-02-28T23:59:59",  # No timezone
+            )
+
+    def test_creative_assignment_with_timezone_aware_overrides(self):
+        """Test CreativeAssignment with timezone-aware override dates."""
+        from src.core.schemas import CreativeAssignment
+
+        assignment = CreativeAssignment(
+            assignment_id="assign_1",
+            media_buy_id="mb_123",
+            package_id="pkg_1",
+            creative_id="cr_1",
+            override_start_date="2025-02-15T00:00:00Z",
+            override_end_date="2025-02-28T23:59:59Z",
+        )
+
+        assert assignment.override_start_date is not None
+        assert assignment.override_start_date.tzinfo is not None
+        assert assignment.override_end_date is not None
+        assert assignment.override_end_date.tzinfo is not None
+
+    def test_creative_assignment_rejects_naive_override_start_date(self):
+        """Test CreativeAssignment rejects naive datetime for override_start_date."""
+        from src.core.schemas import CreativeAssignment
+
+        with pytest.raises(ValueError, match="override_start_date.*timezone-aware"):
+            CreativeAssignment(
+                assignment_id="assign_1",
+                media_buy_id="mb_123",
+                package_id="pkg_1",
+                creative_id="cr_1",
+                override_start_date="2025-02-15T00:00:00",  # No timezone
+                override_end_date="2025-02-28T23:59:59Z",
+            )

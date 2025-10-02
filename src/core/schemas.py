@@ -1513,6 +1513,18 @@ class CreativeAssignment(BaseModel):
 
     is_active: bool = True
 
+    @model_validator(mode="after")
+    def validate_timezone_aware(self):
+        """Validate that datetime override fields are timezone-aware.
+
+        AdCP spec requires ISO 8601 datetime strings with timezone information.
+        """
+        if self.override_start_date and self.override_start_date.tzinfo is None:
+            raise ValueError("override_start_date must be timezone-aware (ISO 8601 with timezone)")
+        if self.override_end_date and self.override_end_date.tzinfo is None:
+            raise ValueError("override_end_date must be timezone-aware (ISO 8601 with timezone)")
+        return self
+
 
 class AddCreativeAssetsRequest(BaseModel):
     """Request to add creative assets to a media buy (AdCP spec compliant)."""
@@ -1589,6 +1601,18 @@ class ListCreativesRequest(BaseModel):
     sort_by: str | None = Field("created_date", description="Sort field (created_date, name, status)")
     sort_order: Literal["asc", "desc"] = Field("desc", description="Sort order")
 
+    @model_validator(mode="after")
+    def validate_timezone_aware(self):
+        """Validate that datetime fields are timezone-aware.
+
+        AdCP spec requires ISO 8601 datetime strings with timezone information.
+        """
+        if self.created_after and self.created_after.tzinfo is None:
+            raise ValueError("created_after must be timezone-aware (ISO 8601 with timezone)")
+        if self.created_before and self.created_before.tzinfo is None:
+            raise ValueError("created_before must be timezone-aware (ISO 8601 with timezone)")
+        return self
+
 
 class ListCreativesResponse(BaseModel):
     """Response from listing creative assets (AdCP spec compliant)."""
@@ -1650,6 +1674,18 @@ class AssignCreativeRequest(BaseModel):
     override_start_date: datetime | None = None
     override_end_date: datetime | None = None
     targeting_overlay: Targeting | None = None
+
+    @model_validator(mode="after")
+    def validate_timezone_aware(self):
+        """Validate that datetime override fields are timezone-aware.
+
+        AdCP spec requires ISO 8601 datetime strings with timezone information.
+        """
+        if self.override_start_date and self.override_start_date.tzinfo is None:
+            raise ValueError("override_start_date must be timezone-aware (ISO 8601 with timezone)")
+        if self.override_end_date and self.override_end_date.tzinfo is None:
+            raise ValueError("override_end_date must be timezone-aware (ISO 8601 with timezone)")
+        return self
 
 
 class AssignCreativeResponse(BaseModel):
