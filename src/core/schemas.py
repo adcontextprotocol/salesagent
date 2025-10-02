@@ -1821,18 +1821,28 @@ class CreateMediaBuyRequest(BaseModel):
                 )
             values["packages"] = packages
 
-        # Convert dates to datetimes
-        if "start_date" in values and not values.get("start_time"):
-            start_date = values["start_date"]
-            if isinstance(start_date, str):
-                start_date = date.fromisoformat(start_date)
-            values["start_time"] = datetime.combine(start_date, time.min, tzinfo=UTC)
+        # Convert dates to datetimes with defensive handling
+        # Handle start_date -> start_time conversion
+        if "start_date" in values:
+            start_time_value = values.get("start_time")
+            # Only use start_time if it's already a datetime object
+            # If it's a string (invalid time-only format), ignore it and use start_date
+            if not isinstance(start_time_value, datetime):
+                start_date = values["start_date"]
+                if isinstance(start_date, str):
+                    start_date = date.fromisoformat(start_date)
+                values["start_time"] = datetime.combine(start_date, time.min, tzinfo=UTC)
 
-        if "end_date" in values and not values.get("end_time"):
-            end_date = values["end_date"]
-            if isinstance(end_date, str):
-                end_date = date.fromisoformat(end_date)
-            values["end_time"] = datetime.combine(end_date, time.max, tzinfo=UTC)
+        # Handle end_date -> end_time conversion
+        if "end_date" in values:
+            end_time_value = values.get("end_time")
+            # Only use end_time if it's already a datetime object
+            # If it's a string (invalid time-only format), ignore it and use end_date
+            if not isinstance(end_time_value, datetime):
+                end_date = values["end_date"]
+                if isinstance(end_date, str):
+                    end_date = date.fromisoformat(end_date)
+                values["end_time"] = datetime.combine(end_date, time.max, tzinfo=UTC)
 
         # Convert total_budget to Budget object
         if "total_budget" in values and not values.get("budget"):
