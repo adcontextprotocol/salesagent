@@ -19,7 +19,7 @@ Critical Insights:
 - Testing hooks can modify data, requiring careful field handling
 """
 
-from datetime import date, datetime
+from datetime import UTC, date, datetime
 from decimal import Decimal
 
 import pytest

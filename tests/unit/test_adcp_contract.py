@@ -8,7 +8,7 @@ These tests verify that:
 """
 
 import warnings
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 
 import pytest
@@ -827,8 +827,8 @@ class TestAdCPContract:
             percentage_goal=60.0,
             rotation_type="weighted",
             override_click_url="https://example.com/override",
-            override_start_date=datetime.now(),
-            override_end_date=datetime.now() + timedelta(days=7),
+            override_start_date=datetime.now(UTC),
+            override_end_date=datetime.now(UTC) + timedelta(days=7),
         )
 
         # Test model_dump (CreativeAssignment may have internal fields)
@@ -985,8 +985,8 @@ class TestAdCPContract:
             status="approved",
             format="display_300x250",  # Uses format, not format_id
             tags=["sports", "premium"],
-            created_after=datetime.now() - timedelta(days=30),
-            created_before=datetime.now(),
+            created_after=datetime.now(UTC) - timedelta(days=30),
+            created_before=datetime.now(UTC),
             limit=50,
             # Note: ListCreativesRequest uses page, not offset
             page=1,
