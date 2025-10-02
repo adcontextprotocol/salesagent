@@ -45,7 +45,7 @@ class ToolSchemaValidator:
         }
 
     def get_schema_fields(self, schema_class) -> dict[str, Any]:
-        """Extract field names and types from a Pydantic schema."""
+        """Extract field names and field_info from a Pydantic schema."""
         if not hasattr(schema_class, "model_fields"):
             return {}
 
@@ -54,7 +54,8 @@ class ToolSchemaValidator:
             # Skip fields marked as exclude=True
             if hasattr(field_info, "exclude") and field_info.exclude:
                 continue
-            fields[field_name] = field_info.annotation
+            # Return the field_info object so we can check is_required()
+            fields[field_name] = field_info
         return fields
 
     def parse_main_py_for_tools(self, main_py_path: Path) -> dict[str, list[str]]:
@@ -162,13 +163,13 @@ class ToolSchemaValidator:
                     pass
 
         # Check for missing required schema fields in tool parameters
-        for field_name, field_type in schema_fields.items():
+        for field_name, field_info in schema_fields.items():
             if field_name not in tool_param_set:
-                # Check if field is optional (has None in type annotation)
-                type_str = str(field_type)
-                is_optional = "None" in type_str or "Optional" in type_str or " | None" in type_str
+                # Check if field is required using Pydantic's is_required() method
+                # This properly handles fields with defaults, not just None types
+                is_required = field_info.is_required()
 
-                if not is_optional and field_name not in ["buyer_ref", "media_buy_id"]:  # OneOf fields
+                if is_required and field_name not in ["buyer_ref", "media_buy_id"]:  # OneOf fields
                     self.errors.append(
                         f"❌ {tool_name}: required field '{field_name}' from {schema_class.__name__} "
                         f"missing in tool parameters"

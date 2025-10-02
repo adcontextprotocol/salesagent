@@ -1928,7 +1928,8 @@ class CreateMediaBuyRequest(BaseModel):
         if self.packages:
             product_ids = []
             for package in self.packages:
-                product_ids.extend(package.products)
+                if package.products:  # Handle None case
+                    product_ids.extend(package.products)
             return product_ids
         return self.product_ids or []
 
