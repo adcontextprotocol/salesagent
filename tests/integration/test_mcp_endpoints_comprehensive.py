@@ -11,7 +11,7 @@ from fastmcp.client import Client
 from fastmcp.client.transports import StreamableHttpTransport
 
 from src.core.database.database_session import get_db_session
-from src.core.database.models import Principal, Product, Tenant
+from src.core.database.models import Principal, Product
 from tests.utils.database_helpers import create_tenant_with_timestamps, get_utc_now
 
 
@@ -32,7 +32,6 @@ class TestMCPEndpointsComprehensive:
     @pytest.fixture(autouse=True)
     def setup_test_data(self, integration_db):
         """Create test data for MCP tests."""
-        from datetime import datetime
 
         with get_db_session() as session:
             # Create test tenant
@@ -237,8 +236,8 @@ class TestMCPEndpointsComprehensive:
                 Package(buyer_ref="pkg_1", products=["prod_1", "prod_3"], budget=Budget(total=6000.0, currency="EUR")),
                 Package(buyer_ref="pkg_2", products=["prod_2"], budget=Budget(total=4000.0, currency="EUR")),
             ],
-            start_time=datetime.now(),
-            end_time=datetime.now() + timedelta(days=30),
+            start_time=datetime.now(UTC),
+            end_time=datetime.now(UTC) + timedelta(days=30),
         )
 
         assert new_request.buyer_ref == "custom_ref_123"
