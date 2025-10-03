@@ -184,6 +184,38 @@ def create_principal(tenant_id):
         return redirect(request.url)
 
 
+@principals_bp.route("/principal/<principal_id>", methods=["GET"])
+@require_tenant_access()
+def get_principal(tenant_id, principal_id):
+    """Get principal details including platform mappings."""
+    try:
+        with get_db_session() as db_session:
+            principal = db_session.query(Principal).filter_by(tenant_id=tenant_id, principal_id=principal_id).first()
+
+            if not principal:
+                return jsonify({"error": "Principal not found"}), 404
+
+            # Parse platform mappings
+            mappings = json.loads(principal.platform_mappings) if principal.platform_mappings else {}
+
+            return jsonify(
+                {
+                    "success": True,
+                    "principal": {
+                        "principal_id": principal.principal_id,
+                        "name": principal.name,
+                        "access_token": principal.access_token,
+                        "platform_mappings": mappings,
+                        "created_at": principal.created_at.isoformat() if principal.created_at else None,
+                    },
+                }
+            )
+
+    except Exception as e:
+        logger.error(f"Error getting principal {principal_id}: {e}", exc_info=True)
+        return jsonify({"error": "Failed to get principal"}), 500
+
+
 @principals_bp.route("/principal/<principal_id>/update_mappings", methods=["POST"])
 @require_tenant_access()
 def update_mappings(tenant_id, principal_id):

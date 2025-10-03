@@ -878,6 +878,11 @@
                                                     title="Copy A2A Configuration">
                                                 📋 A2A
                                             </button>
+                                            <button class="btn btn-outline-secondary btn-sm"
+                                                    onclick="editPrincipalMappings('{{ principal.principal_id }}', '{{ principal.name }}')"
+                                                    title="Edit Platform Mappings">
+                                                ✏️ Edit
+                                            </button>
                                             <button class="btn btn-outline-danger btn-sm"
                                                     onclick="deletePrincipal('{{ principal.principal_id }}', '{{ principal.name }}')"
                                                     title="Delete Advertiser">
@@ -1803,5 +1808,195 @@ console.log('Current URL params:', window.location.search);
 // No widget integration needed
 
 // JavaScript widget functions removed - virtual host now uses simple manual input
+
+// ========== Principal Mappings Editor ==========
+let currentPrincipalId = null;
+let currentPrincipalName = null;
+
+function editPrincipalMappings(principalId, principalName) {
+    currentPrincipalId = principalId;
+    currentPrincipalName = principalName;
+
+    // Show loading state
+    document.getElementById('editPrincipalModalTitle').textContent = `Edit ${principalName}`;
+    document.getElementById('editPrincipalForm').innerHTML = '<p class="text-center">Loading...</p>';
+
+    // Show modal
+    const modal = new bootstrap.Modal(document.getElementById('editPrincipalModal'));
+    modal.show();
+
+    // Fetch principal data
+    fetch(`{{ script_name }}/tenant/{{ tenant.tenant_id }}/principal/${principalId}`, {
+        method: 'GET',
+        headers: {
+            'Content-Type': 'application/json',
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            renderPrincipalEditor(data.principal);
+        } else {
+            document.getElementById('editPrincipalForm').innerHTML =
+                `<div class="alert alert-danger">${data.error || 'Failed to load principal'}</div>`;
+        }
+    })
+    .catch(error => {
+        console.error('Error loading principal:', error);
+        document.getElementById('editPrincipalForm').innerHTML =
+            `<div class="alert alert-danger">Error: ${error.message}</div>`;
+    });
+}
+
+function renderPrincipalEditor(principal) {
+    const mappings = principal.platform_mappings || {};
+    const gamMapping = mappings.google_ad_manager || {};
+    const mockMapping = mappings.mock || {};
+
+    const html = `
+        <form id="mappingsForm">
+            <div class="mb-3">
+                <label class="form-label"><strong>Principal ID:</strong> <code>${principal.principal_id}</code></label>
+            </div>
+
+            <h5 class="mt-4 mb-3">Google Ad Manager</h5>
+            <div class="mb-3">
+                <label for="gam_company_id" class="form-label">Company ID / Advertiser ID</label>
+                <input type="text" class="form-control" id="gam_company_id"
+                       value="${gamMapping.company_id || gamMapping.advertiser_id || ''}"
+                       placeholder="e.g., 1234567890">
+                <small class="form-text text-muted">The GAM company/advertiser ID this principal should use</small>
+            </div>
+
+            <div class="mb-3">
+                <label for="gam_trafficker_id" class="form-label">Trafficker ID</label>
+                <input type="text" class="form-control" id="gam_trafficker_id"
+                       value="${gamMapping.trafficker_id || ''}"
+                       placeholder="e.g., 9876543210">
+                <small class="form-text text-muted">The GAM user ID for trafficking operations</small>
+            </div>
+
+            <div class="mb-3 form-check">
+                <input type="checkbox" class="form-check-input" id="gam_enabled"
+                       ${gamMapping.enabled !== false ? 'checked' : ''}>
+                <label class="form-check-label" for="gam_enabled">Enable GAM for this advertiser</label>
+            </div>
+
+            <h5 class="mt-4 mb-3">Mock Adapter (Testing)</h5>
+            <div class="mb-3">
+                <label for="mock_advertiser_id" class="form-label">Mock Advertiser ID</label>
+                <input type="text" class="form-control" id="mock_advertiser_id"
+                       value="${mockMapping.advertiser_id || ''}"
+                       placeholder="e.g., mock_123">
+                <small class="form-text text-muted">ID for testing with mock adapter</small>
+            </div>
+
+            <div class="mb-3 form-check">
+                <input type="checkbox" class="form-check-input" id="mock_enabled"
+                       ${mockMapping.enabled !== false ? 'checked' : ''}>
+                <label class="form-check-label" for="mock_enabled">Enable Mock for this advertiser</label>
+            </div>
+
+            <div class="alert alert-info mt-4">
+                <strong>💡 Tip:</strong> To find GAM Company IDs, check other working advertisers or use the GAM UI (Admin → Companies).
+            </div>
+        </form>
+    `;
+
+    document.getElementById('editPrincipalForm').innerHTML = html;
+}
+
+function savePrincipalMappings() {
+    const gamCompanyId = document.getElementById('gam_company_id').value.trim();
+    const gamTraffickerId = document.getElementById('gam_trafficker_id').value.trim();
+    const gamEnabled = document.getElementById('gam_enabled').checked;
+    const mockAdvertiserId = document.getElementById('mock_advertiser_id').value.trim();
+    const mockEnabled = document.getElementById('mock_enabled').checked;
+
+    // Build platform mappings object
+    const platformMappings = {};
+
+    // Add GAM if enabled or has values
+    if (gamEnabled || gamCompanyId || gamTraffickerId) {
+        platformMappings.google_ad_manager = {
+            enabled: gamEnabled
+        };
+        if (gamCompanyId) {
+            platformMappings.google_ad_manager.advertiser_id = gamCompanyId;
+            platformMappings.google_ad_manager.company_id = gamCompanyId; // Both for compatibility
+        }
+        if (gamTraffickerId) {
+            platformMappings.google_ad_manager.trafficker_id = gamTraffickerId;
+        }
+    }
+
+    // Add mock if enabled or has values
+    if (mockEnabled || mockAdvertiserId) {
+        platformMappings.mock = {
+            enabled: mockEnabled,
+            advertiser_id: mockAdvertiserId || 'default'
+        };
+    }
+
+    // Show saving state
+    const saveBtn = document.getElementById('saveMappingsBtn');
+    const originalText = saveBtn.textContent;
+    saveBtn.disabled = true;
+    saveBtn.textContent = 'Saving...';
+
+    // Send update request
+    fetch(`{{ script_name }}/tenant/{{ tenant.tenant_id }}/principal/${currentPrincipalId}/update_mappings`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+            platform_mappings: platformMappings
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            alert(`✅ Platform mappings updated successfully for ${currentPrincipalName}`);
+            // Close modal
+            const modal = bootstrap.Modal.getInstance(document.getElementById('editPrincipalModal'));
+            modal.hide();
+            // Reload page to show updated data
+            window.location.reload();
+        } else {
+            alert('❌ Failed to update mappings: ' + (data.error || 'Unknown error'));
+            saveBtn.disabled = false;
+            saveBtn.textContent = originalText;
+        }
+    })
+    .catch(error => {
+        console.error('Error updating mappings:', error);
+        alert('❌ Error: ' + error.message);
+        saveBtn.disabled = false;
+        saveBtn.textContent = originalText;
+    });
+}
 </script>
+
+<!-- Edit Principal Mappings Modal -->
+<div class="modal fade" id="editPrincipalModal" tabindex="-1" aria-labelledby="editPrincipalModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="editPrincipalModalTitle">Edit Platform Mappings</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div id="editPrincipalForm">
+                    <!-- Content loaded dynamically -->
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" id="saveMappingsBtn" onclick="savePrincipalMappings()">Save Changes</button>
+            </div>
+        </div>
+    </div>
+</div>
+
 {% endblock %}
