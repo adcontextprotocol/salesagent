@@ -7,20 +7,21 @@ Fly.io deployments fail with Docker Hub rate limit errors:
 ```
 
 ## Implemented Solution ✅
-**Use GitHub Container Registry (GHCR) instead of Docker Hub.**
+**Use AWS Public ECR instead of Docker Hub.**
 
 The `Dockerfile.fly` now uses:
 ```dockerfile
-FROM ghcr.io/docker/library/python:3.12-slim
+FROM public.ecr.aws/docker/library/python:3.12-slim
 ```
 
 **Benefits:**
-- No rate limits for public images
-- No authentication required
-- Mirrors official Docker images
-- No configuration needed in Fly.io
+- ✅ No rate limits for public images
+- ✅ No authentication required
+- ✅ Mirrors official Docker images (same SHA)
+- ✅ No configuration needed in Fly.io
+- ✅ High availability and fast pulls
 
-This is the simplest and most reliable solution for avoiding Docker Hub rate limits on Fly.io.
+AWS Public ECR provides a mirror of Docker's official images without rate limiting or authentication requirements. This is the simplest and most reliable solution for Fly.io deployments.
 
 ## Alternative: Docker Hub Authentication (Advanced)
 If you specifically need Docker Hub, you can configure authentication (note: this is more complex and requires additional setup).
