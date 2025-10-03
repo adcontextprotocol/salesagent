@@ -1,4 +1,7 @@
 # Fly.io Dockerfile for AdCP Sales Agent with A2A Server
+# syntax=docker/dockerfile:1.4
+
+# Use BuildKit secrets for Docker Hub authentication (avoids rate limits)
 FROM python:3.12-slim
 
 # Install dependencies including nginx
