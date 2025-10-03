@@ -305,10 +305,8 @@ def get_gam_advertisers(tenant_id):
                 # Create a mock principal for GAM initialization
                 # Need dummy advertiser_id for GAM adapter validation, even though get_advertisers() doesn't use it
                 mock_principal = Principal(
-                    tenant_id=tenant_id,
                     principal_id="system",
                     name="System",
-                    access_token="mock_token",
                     platform_mappings={
                         "google_ad_manager": {
                             "advertiser_id": "system_temp_advertiser_id",  # Dummy ID for validation only
