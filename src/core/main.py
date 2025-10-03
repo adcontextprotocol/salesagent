@@ -390,7 +390,15 @@ def get_adapter(principal: Principal, dry_run: bool = False, testing_context=Non
             adapter_config, principal, dry_run, tenant_id=tenant_id, strategy_context=testing_context
         )
     elif selected_adapter == "google_ad_manager":
-        return GoogleAdManager(adapter_config, principal, dry_run, tenant_id=tenant_id)
+        return GoogleAdManager(
+            config=adapter_config,
+            principal=principal,
+            network_code=adapter_config.get("network_code", ""),
+            advertiser_id=adapter_config.get("company_id"),
+            trafficker_id=adapter_config.get("trafficker_id"),
+            dry_run=dry_run,
+            tenant_id=tenant_id,
+        )
     elif selected_adapter == "kevel":
         return Kevel(adapter_config, principal, dry_run, tenant_id=tenant_id)
     elif selected_adapter in ["triton", "triton_digital"]:
