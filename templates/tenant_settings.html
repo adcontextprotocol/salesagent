@@ -1413,7 +1413,7 @@ function checkOAuthConfig() {
 function startGAMOAuth() {
     // Open OAuth flow in a new window/tab
     const tenantId = '{{ tenant.tenant_id }}';
-    const oauthUrl = '{{ script_name }}/gam/authorize/' + tenantId;
+    const oauthUrl = '{{ script_name }}/auth/gam/authorize/' + tenantId;
 
     // Show loading state
     const button = event.target;

@@ -529,7 +529,7 @@ def test_login_form():
 
 
 # GAM OAuth Flow endpoints
-@auth_bp.route("/gam/authorize/<tenant_id>")
+@auth_bp.route("/auth/gam/authorize/<tenant_id>")
 def gam_authorize(tenant_id):
     """Initiate GAM OAuth flow for tenant."""
     # Verify tenant exists and user has access
@@ -588,7 +588,7 @@ def gam_authorize(tenant_id):
         return redirect(url_for("tenants.settings", tenant_id=tenant_id))
 
 
-@auth_bp.route("/gam/callback")
+@auth_bp.route("/auth/gam/callback")
 def gam_callback():
     """Handle GAM OAuth callback and store refresh token."""
     try:
