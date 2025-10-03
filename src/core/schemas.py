@@ -1566,12 +1566,23 @@ class SyncCreativesRequest(BaseModel):
     assign_to_packages: list[str] | None = Field(None, description="Package IDs to assign creatives to")
     upsert: bool = Field(True, description="Whether to update existing creatives or create new ones")
 
-    @model_validator(mode="before")
-    def validate_media_buy_reference(cls, values):
-        """Ensure at least one of media_buy_id or buyer_ref is provided."""
-        if not values.get("media_buy_id") and not values.get("buyer_ref"):
-            raise ValueError("Either media_buy_id or buyer_ref must be provided")
-        return values
+    # AdCP spec fields
+    patch: bool = Field(
+        False, description="When true, only provided fields are updated. When false, entire creative is replaced."
+    )
+    assignments: dict[str, list[str]] | None = Field(
+        None, description="Optional bulk assignment of creatives to packages"
+    )
+    dry_run: bool = Field(False, description="Preview changes without applying them")
+    delete_missing: bool = Field(False, description="Delete creatives not present in the request (use with caution)")
+    validation_mode: Literal["strict", "lenient"] = Field(
+        "strict",
+        description="Validation strictness. 'strict' fails entire sync on any error. 'lenient' processes valid creatives.",
+    )
+
+    # Note: media_buy_id and buyer_ref are OPTIONAL per AdCP spec
+    # Creatives can be synced to a central library and used across multiple media buys
+    # If provided, they associate creatives with a specific media buy
 
 
 class SyncCreativesResponse(BaseModel):
@@ -1596,6 +1607,15 @@ class ListCreativesRequest(BaseModel):
     created_after: datetime | None = Field(None, description="Filter by creation date")
     created_before: datetime | None = Field(None, description="Filter by creation date")
     search: str | None = Field(None, description="Search in creative names and descriptions")
+
+    # AdCP spec fields
+    filters: dict[str, Any] | None = Field(None, description="Advanced filtering options")
+    pagination: dict[str, Any] | None = Field(None, description="Pagination parameters (page, limit)")
+    sort: dict[str, Any] | None = Field(None, description="Sort configuration (field, direction)")
+    fields: list[str] | None = Field(None, description="Specific fields to return")
+    include_performance: bool = Field(False, description="Include performance metrics")
+    include_assignments: bool = Field(False, description="Include package assignments")
+    include_sub_assets: bool = Field(False, description="Include sub-assets (e.g., video thumbnails)")
     page: int = Field(1, ge=1, description="Page number for pagination")
     limit: int = Field(50, ge=1, le=1000, description="Number of results per page")
     sort_by: str | None = Field("created_date", description="Sort field (created_date, name, status)")
@@ -1799,6 +1819,11 @@ class Package(BaseModel):
 
 # --- Media Buy Lifecycle ---
 class CreateMediaBuyRequest(BaseModel):
+    # Required AdCP fields
+    promoted_offering: str = Field(
+        ..., description="Description of advertiser and what is being promoted (REQUIRED per AdCP spec)"
+    )
+
     # New AdCP v2.4 fields (optional for backward compatibility)
     buyer_ref: str | None = Field(None, description="Buyer reference for tracking")
     packages: list[Package] | None = Field(None, description="Array of packages with products and budgets")
@@ -1815,10 +1840,13 @@ class CreateMediaBuyRequest(BaseModel):
     # Common fields
     campaign_name: str | None = Field(None, description="Campaign name for display purposes")
     targeting_overlay: Targeting | None = None
-    po_number: str = Field(..., description="Purchase order number for tracking (REQUIRED per AdCP spec)")
+    po_number: str | None = Field(None, description="Purchase order number for tracking")
     pacing: Literal["even", "asap", "daily_budget"] = "even"  # Legacy field
     daily_budget: float | None = None  # Legacy field
     creatives: list[Creative] | None = None
+    reporting_webhook: dict[str, Any] | None = Field(
+        None, description="Optional webhook configuration for automated reporting delivery"
+    )
     # AXE signal requirements
     required_axe_signals: list[str] | None = None  # Required targeting signals
     enable_creative_macro: bool | None = False  # Enable AXE to provide creative_macro signal

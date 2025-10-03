@@ -83,13 +83,14 @@ repos:
         pass_filenames: false
         always_run: true
 
-      # Check Pydantic-AdCP schema alignment (prevents client validation errors)
+      # Check Pydantic-AdCP schema alignment (prevents client validation errors like missing promoted_offering)
       - id: pydantic-adcp-alignment
-        name: Pydantic model alignment with AdCP schemas
-        entry: python3 scripts/check_pydantic_adcp_alignment.py
+        name: Pydantic model alignment with AdCP schemas (REGRESSION PREVENTION)
+        entry: uv run pytest tests/unit/test_pydantic_schema_alignment.py::TestSpecificFieldValidation -v --tb=short
         language: system
         files: '^(src/core/schemas\.py|tests/e2e/schemas/v1/.*\.json)$'
         pass_filenames: false
+        always_run: true
 
       # Prevent A2A regression issues (URL format, function calls)
       - id: a2a-regression-check

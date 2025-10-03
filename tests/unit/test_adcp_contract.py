@@ -197,6 +197,7 @@ class TestAdCPContract:
         end_date = datetime.now() + timedelta(days=30)
 
         request = CreateMediaBuyRequest(
+            promoted_offering="Nike Air Jordan 2025 basketball shoes",  # Required per AdCP spec
             product_ids=["product_1", "product_2"],
             total_budget=5000.0,
             start_date=start_date.date(),
@@ -335,6 +336,7 @@ class TestAdCPContract:
     def test_adcp_signal_support(self):
         """Test AdCP v2.4 signal support in targeting."""
         request = CreateMediaBuyRequest(
+            promoted_offering="Luxury automotive vehicles and premium accessories",
             product_ids=["test_product"],
             total_budget=1000.0,
             start_date=datetime.now().date(),

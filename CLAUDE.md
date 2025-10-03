@@ -236,6 +236,9 @@ tests/
 2. **AdCP Compliance**: Every client model needs contract test
 3. **Integration over Mocking**: Use real DB, mock only external services
 4. **Test What You Import**: If imported, test it's callable
+5. **Never Skip or Weaken Tests**: Fix the underlying issue, never bypass with `skip_ci` or `--no-verify`
+
+**🚨 MANDATORY**: When CI tests fail, FIX THE TESTS PROPERLY. Skipping or weakening tests to make CI pass is NEVER acceptable. The tests exist to catch real issues - if they fail, there's a problem that needs fixing, not hiding.
 
 See `docs/testing/` for detailed patterns and case studies.
 
