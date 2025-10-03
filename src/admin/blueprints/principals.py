@@ -195,8 +195,14 @@ def get_principal(tenant_id, principal_id):
             if not principal:
                 return jsonify({"error": "Principal not found"}), 404
 
-            # Parse platform mappings
-            mappings = json.loads(principal.platform_mappings) if principal.platform_mappings else {}
+            # Parse platform mappings (handle both string and dict formats)
+            if principal.platform_mappings:
+                if isinstance(principal.platform_mappings, str):
+                    mappings = json.loads(principal.platform_mappings)
+                else:
+                    mappings = principal.platform_mappings
+            else:
+                mappings = {}
 
             return jsonify(
                 {
@@ -235,7 +241,6 @@ def update_mappings(tenant_id, principal_id):
 
             # Update mappings
             principal.platform_mappings = json.dumps(platform_mappings)
-            principal.updated_at = datetime.now(UTC)
             db_session.commit()
 
             return jsonify(
