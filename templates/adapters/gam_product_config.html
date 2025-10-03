@@ -857,7 +857,7 @@ function initializeInventoryPickers() {
 
 async function searchInventory(type, query) {
     const tenantId = '{{ tenant_id }}';
-    const url = `/inventory/api/tenant/${tenantId}/inventory-list?type=${type}&search=${encodeURIComponent(query)}`;
+    const url = `{{ script_name }}/api/tenant/${tenantId}/inventory-list?type=${type}&search=${encodeURIComponent(query)}`;
 
     try {
         const response = await fetch(url);
@@ -944,7 +944,7 @@ function openInventoryPicker(type) {
 
 async function loadInventoryForModal(type, query = '') {
     const tenantId = '{{ tenant_id }}';
-    const url = `/inventory/api/tenant/${tenantId}/inventory-list?type=${type}&search=${encodeURIComponent(query)}`;
+    const url = `{{ script_name }}/api/tenant/${tenantId}/inventory-list?type=${type}&search=${encodeURIComponent(query)}`;
 
     const resultsDiv = document.getElementById('modal-results');
     resultsDiv.innerHTML = '<div style="text-align: center; color: #666;">Loading...</div>';
@@ -1035,7 +1035,7 @@ async function syncInventory() {
     statusDiv.innerHTML = '<p style="color: #666;">Syncing inventory from GAM... This may take a minute.</p>';
 
     try {
-        const response = await fetch('{{ script_name }}/inventory/api/tenant/{{ tenant_id }}/inventory/sync', {
+        const response = await fetch('{{ script_name }}/api/tenant/{{ tenant_id }}/inventory/sync', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'
