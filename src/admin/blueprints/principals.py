@@ -42,11 +42,18 @@ def list_principals(tenant_id):
                     .count()
                 )
 
+                # Handle both string (SQLite) and dict (PostgreSQL JSONB) formats
+                mappings = principal.platform_mappings
+                if mappings and isinstance(mappings, str):
+                    mappings = json.loads(mappings)
+                elif not mappings:
+                    mappings = {}
+
                 principal_dict = {
                     "principal_id": principal.principal_id,
                     "name": principal.name,
                     "access_token": principal.access_token,
-                    "platform_mappings": json.loads(principal.platform_mappings) if principal.platform_mappings else {},
+                    "platform_mappings": mappings,
                     "media_buy_count": media_buy_count,
                     "created_at": principal.created_at,
                 }

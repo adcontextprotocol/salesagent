@@ -327,11 +327,12 @@ def analyze_ad_server_inventory(tenant_id):
             # Create principal object
             from src.core.schemas import Principal as PrincipalSchema
 
-            mappings = (
-                principal_obj.platform_mappings
-                if isinstance(principal_obj.platform_mappings, dict)
-                else json.loads(principal_obj.platform_mappings)
-            )
+            # Handle both string (SQLite) and dict (PostgreSQL JSONB) formats
+            mappings = principal_obj.platform_mappings
+            if mappings and isinstance(mappings, str):
+                mappings = json.loads(mappings)
+            elif not mappings:
+                mappings = {}
             principal = PrincipalSchema(
                 tenant_id=tenant_id,
                 principal_id=principal_obj.principal_id,
