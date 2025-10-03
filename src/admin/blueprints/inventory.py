@@ -4,7 +4,7 @@ import json
 import logging
 
 from flask import Blueprint, jsonify, render_template, request, session
-from sqlalchemy import func
+from sqlalchemy import String, func, or_
 
 from src.admin.utils import get_tenant_config_from_db, require_auth, require_tenant_access
 from src.core.database.database_session import get_db_session
