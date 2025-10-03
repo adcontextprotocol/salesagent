@@ -316,19 +316,22 @@ def get_gam_advertisers(tenant_id):
                 )
 
                 # Build GAM config from AdapterConfig
-                gam_config = (
-                    {
-                        "network_code": tenant.adapter_config.gam_network_code,
-                        "refresh_token": tenant.adapter_config.gam_refresh_token,
-                        "trafficker_id": tenant.adapter_config.gam_trafficker_id,
-                        "manual_approval_required": tenant.adapter_config.gam_manual_approval_required or False,
-                    }
-                    if tenant.adapter_config
-                    else {}
-                )
+                if not tenant.adapter_config or not tenant.adapter_config.gam_network_code:
+                    return jsonify({"error": "GAM network code not configured for this tenant"}), 400
+
+                gam_config = {
+                    "refresh_token": tenant.adapter_config.gam_refresh_token,
+                    "manual_approval_required": tenant.adapter_config.gam_manual_approval_required or False,
+                }
 
                 adapter = GoogleAdManager(
-                    config=gam_config, principal=mock_principal, dry_run=False, tenant_id=tenant_id
+                    config=gam_config,
+                    principal=mock_principal,
+                    network_code=tenant.adapter_config.gam_network_code,
+                    advertiser_id=None,
+                    trafficker_id=tenant.adapter_config.gam_trafficker_id,
+                    dry_run=False,
+                    tenant_id=tenant_id,
                 )
 
                 # Get advertisers (companies) from GAM
