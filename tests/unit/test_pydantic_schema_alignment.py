@@ -108,6 +108,21 @@ def generate_example_value(field_type: str, field_name: str = "", field_spec: di
         if field_spec and "items" in field_spec:
             items_spec = field_spec["items"]
             if isinstance(items_spec, dict):
+                # Check if items have $ref (e.g., Creative objects)
+                if "$ref" in items_spec:
+                    ref = items_spec["$ref"]
+                    if "creative" in ref.lower():
+                        # Generate minimal Creative object
+                        return [
+                            {
+                                "creative_id": "test_creative_1",
+                                "name": "Test Creative",
+                                "format": "display_300x250",
+                            }
+                        ]
+                    # For other refs, return minimal object
+                    return [{}]
+
                 item_type = items_spec.get("type", "string")
                 if item_type == "object":
                     # Generate a proper object with required fields

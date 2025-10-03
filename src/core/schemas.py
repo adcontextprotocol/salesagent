@@ -1580,12 +1580,9 @@ class SyncCreativesRequest(BaseModel):
         description="Validation strictness. 'strict' fails entire sync on any error. 'lenient' processes valid creatives.",
     )
 
-    @model_validator(mode="before")
-    def validate_media_buy_reference(cls, values):
-        """Ensure at least one of media_buy_id or buyer_ref is provided."""
-        if not values.get("media_buy_id") and not values.get("buyer_ref"):
-            raise ValueError("Either media_buy_id or buyer_ref must be provided")
-        return values
+    # Note: media_buy_id and buyer_ref are OPTIONAL per AdCP spec
+    # Creatives can be synced to a central library and used across multiple media buys
+    # If provided, they associate creatives with a specific media buy
 
 
 class SyncCreativesResponse(BaseModel):
@@ -1843,7 +1840,7 @@ class CreateMediaBuyRequest(BaseModel):
     # Common fields
     campaign_name: str | None = Field(None, description="Campaign name for display purposes")
     targeting_overlay: Targeting | None = None
-    po_number: str = Field(..., description="Purchase order number for tracking (REQUIRED per AdCP spec)")
+    po_number: str | None = Field(None, description="Purchase order number for tracking")
     pacing: Literal["even", "asap", "daily_budget"] = "even"  # Legacy field
     daily_budget: float | None = None  # Legacy field
     creatives: list[Creative] | None = None

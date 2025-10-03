@@ -2141,7 +2141,7 @@ def list_authorized_properties(
 @mcp.tool
 def create_media_buy(
     promoted_offering: str,
-    po_number: str,
+    po_number: str = None,
     buyer_ref: str = None,
     packages: list = None,
     start_time: str = None,
@@ -2164,7 +2164,7 @@ def create_media_buy(
 
     Args:
         promoted_offering: Description of advertiser and what is being promoted (required per AdCP spec)
-        po_number: Purchase order number (required)
+        po_number: Purchase order number (optional)
         buyer_ref: Buyer reference for tracking
         packages: Array of packages with products and budgets
         start_time: Campaign start time (ISO 8601)
