@@ -7,6 +7,17 @@
     <h2>Google Ad Manager Configuration</h2>
     <h3>{{ product.name }}</h3>
 
+    {% if not inventory_synced %}
+    <div class="alert alert-warning" style="margin-bottom: 2rem; padding: 1rem; background: #fff3cd; border: 1px solid #ffc107; border-radius: 4px;">
+        <h4 style="margin-top: 0; color: #856404;">⚠️ Inventory Not Synced</h4>
+        <p style="margin-bottom: 1rem;">GAM inventory has not been synced yet. The "Browse Inventory" buttons below will not work until inventory is synced.</p>
+        <button type="button" class="btn btn-primary" onclick="syncInventory()" id="syncBtn">
+            <i class="bi bi-arrow-clockwise"></i> Sync Inventory Now
+        </button>
+        <div id="syncStatus" style="margin-top: 0.5rem;"></div>
+    </div>
+    {% endif %}
+
     <form id="gam-config-form" method="POST">
         <!-- Order Settings -->
         <h4 style="margin-top: 2rem; border-bottom: 1px solid #ddd; padding-bottom: 0.5rem;">Order Settings</h4>
@@ -1013,6 +1024,42 @@ function removeSelectedItem(type, id) {
     // Update hidden textarea
     const currentIds = textarea.value.split('\n').filter(i => i.trim() && i !== id);
     textarea.value = currentIds.join('\n');
+}
+
+async function syncInventory() {
+    const btn = document.getElementById('syncBtn');
+    const statusDiv = document.getElementById('syncStatus');
+
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Syncing...';
+    statusDiv.innerHTML = '<p style="color: #666;">Syncing inventory from GAM... This may take a minute.</p>';
+
+    try {
+        const response = await fetch('{{ script_name }}/inventory/api/tenant/{{ tenant_id }}/inventory/sync', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            }
+        });
+
+        if (!response.ok) {
+            throw new Error('Sync failed');
+        }
+
+        const data = await response.json();
+        statusDiv.innerHTML = `<p style="color: #28a745;">✅ Sync completed! Found ${data.ad_units?.total || 0} ad units and ${data.placements?.total || 0} placements. Reloading page...</p>`;
+
+        // Reload page after 2 seconds to update the UI
+        setTimeout(() => {
+            window.location.reload();
+        }, 2000);
+
+    } catch (error) {
+        console.error('Sync error:', error);
+        statusDiv.innerHTML = '<p style="color: #d32f2f;">❌ Sync failed. Please try again or contact support.</p>';
+        btn.disabled = false;
+        btn.innerHTML = '<i class="bi bi-arrow-clockwise"></i> Retry Sync';
+    }
 }
 </script>
 {% endblock %}

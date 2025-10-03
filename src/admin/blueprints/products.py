@@ -829,14 +829,7 @@ def gam_product_config(tenant_id, product_id):
             from src.core.database.models import GAMInventory
 
             inventory_count = db_session.query(GAMInventory).filter_by(tenant_id=tenant_id).count()
-
-            if inventory_count == 0:
-                flash(
-                    "GAM inventory must be synced before configuring products. "
-                    "Please go to Inventory Browser and click 'Sync Now'.",
-                    "warning",
-                )
-                return redirect(url_for("inventory.inventory_browser", tenant_id=tenant_id))
+            inventory_synced = inventory_count > 0
 
             if request.method == "POST":
                 # Parse form data into GAM configuration
@@ -854,6 +847,7 @@ def gam_product_config(tenant_id, product_id):
                         tenant_id=tenant_id,
                         product=product,
                         config=impl_config,
+                        inventory_synced=inventory_synced,
                     )
 
                 # Update product with new configuration
@@ -876,6 +870,7 @@ def gam_product_config(tenant_id, product_id):
                 tenant_id=tenant_id,
                 product=product,
                 config=config,
+                inventory_synced=inventory_synced,
             )
 
     except Exception as e:
