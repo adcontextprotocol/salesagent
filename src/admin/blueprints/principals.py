@@ -15,8 +15,8 @@ from src.core.database.models import MediaBuy, Principal, Tenant
 
 logger = logging.getLogger(__name__)
 
-# Create Blueprint
-principals_bp = Blueprint("principals", __name__, url_prefix="/tenant/<tenant_id>")
+# Create Blueprint (url_prefix is set during registration in app.py)
+principals_bp = Blueprint("principals", __name__)
 
 
 @principals_bp.route("/principals")
