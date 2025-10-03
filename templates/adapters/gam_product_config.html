@@ -1035,7 +1035,7 @@ async function syncInventory() {
     statusDiv.innerHTML = '<p style="color: #666;">Syncing inventory from GAM... This may take a minute.</p>';
 
     try {
-        const response = await fetch('{{ script_name }}/inventory/api/tenant/{{ tenant_id }}/inventory/sync', {
+        const response = await fetch('{{ script_name }}/api/tenant/{{ tenant_id }}/inventory/sync', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'
