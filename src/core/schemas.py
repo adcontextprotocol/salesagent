@@ -1799,6 +1799,11 @@ class Package(BaseModel):
 
 # --- Media Buy Lifecycle ---
 class CreateMediaBuyRequest(BaseModel):
+    # Required AdCP fields
+    promoted_offering: str = Field(
+        ..., description="Description of advertiser and what is being promoted (REQUIRED per AdCP spec)"
+    )
+
     # New AdCP v2.4 fields (optional for backward compatibility)
     buyer_ref: str | None = Field(None, description="Buyer reference for tracking")
     packages: list[Package] | None = Field(None, description="Array of packages with products and budgets")

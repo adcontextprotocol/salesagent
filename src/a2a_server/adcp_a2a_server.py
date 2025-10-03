@@ -58,7 +58,6 @@ from src.core.audit_logger import get_audit_logger
 from src.core.auth_utils import get_principal_from_token
 from src.core.config_loader import get_current_tenant
 from src.core.schemas import (
-    CreateMediaBuyRequest,
     GetSignalsRequest,
     ListAuthorizedPropertiesRequest,
 )
@@ -745,8 +744,14 @@ class AdCPRequestHandler(RequestHandler):
             )
 
             # Map A2A parameters to CreateMediaBuyRequest
-            # Required parameters
-            required_params = ["product_ids", "total_budget", "flight_start_date", "flight_end_date"]
+            # Required parameters per AdCP spec
+            required_params = [
+                "promoted_offering",
+                "product_ids",
+                "total_budget",
+                "flight_start_date",
+                "flight_end_date",
+            ]
             missing_params = [param for param in required_params if param not in parameters]
 
             if missing_params:
@@ -757,27 +762,15 @@ class AdCPRequestHandler(RequestHandler):
                     "received_parameters": list(parameters.keys()),
                 }
 
-            # Create request object with parameter mapping
-            request = CreateMediaBuyRequest(
+            # Call core function directly with AdCP-compliant parameters
+            response = core_create_media_buy_tool(
+                promoted_offering=parameters["promoted_offering"],
+                po_number=f"A2A-{uuid.uuid4().hex[:8]}",  # Generate PO number
                 product_ids=parameters["product_ids"],
                 total_budget=float(parameters["total_budget"]),
-                flight_start_date=parameters["flight_start_date"],
-                flight_end_date=parameters["flight_end_date"],
-                # Optional parameters with defaults
-                preferred_deal_ids=parameters.get("preferred_deal_ids", []),
-                custom_targeting=parameters.get("custom_targeting", {}),
-                creative_requirements=parameters.get("creative_requirements", {}),
-                optimization_goal=parameters.get("optimization_goal", "impressions"),
-            )
-
-            # Call core function directly - map request parameters to function parameters
-            response = core_create_media_buy_tool(
-                po_number=f"A2A-{uuid.uuid4().hex[:8]}",  # Generate PO number
-                product_ids=request.product_ids,
-                total_budget=request.total_budget,
-                start_date=request.flight_start_date,
-                end_date=request.flight_end_date,
-                targeting_overlay=request.custom_targeting,
+                start_date=parameters["flight_start_date"],
+                end_date=parameters["flight_end_date"],
+                targeting_overlay=parameters.get("custom_targeting", {}),
                 buyer_ref=f"A2A-{tool_context.principal_id}",
                 context=tool_context,
             )

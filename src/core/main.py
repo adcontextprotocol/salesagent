@@ -2140,6 +2140,7 @@ def list_authorized_properties(
 
 @mcp.tool
 def create_media_buy(
+    promoted_offering: str,
     po_number: str,
     buyer_ref: str = None,
     packages: list = None,
@@ -2162,6 +2163,7 @@ def create_media_buy(
     """Create a media buy with the specified parameters.
 
     Args:
+        promoted_offering: Description of advertiser and what is being promoted (required per AdCP spec)
         po_number: Purchase order number (required)
         buyer_ref: Buyer reference for tracking
         packages: Array of packages with products and budgets
@@ -2188,6 +2190,7 @@ def create_media_buy(
 
     # Create request object from individual parameters (MCP-compliant)
     req = CreateMediaBuyRequest(
+        promoted_offering=promoted_offering,
         po_number=po_number,
         buyer_ref=buyer_ref,
         packages=packages,

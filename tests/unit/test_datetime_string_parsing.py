@@ -17,6 +17,7 @@ class TestDateTimeStringParsing:
     def test_create_media_buy_with_utc_z_format(self):
         """Test parsing ISO 8601 with Z timezone (most common format)."""
         req = CreateMediaBuyRequest(
+            promoted_offering="Nike Air Jordan 2025 basketball shoes",
             po_number="TEST-001",
             packages=[
                 {
@@ -42,6 +43,7 @@ class TestDateTimeStringParsing:
     def test_create_media_buy_with_offset_format(self):
         """Test parsing ISO 8601 with +00:00 offset."""
         req = CreateMediaBuyRequest(
+            promoted_offering="Adidas UltraBoost 2025 running shoes",
             po_number="TEST-002",
             packages=[
                 {
@@ -62,6 +64,7 @@ class TestDateTimeStringParsing:
     def test_create_media_buy_with_pst_timezone(self):
         """Test parsing ISO 8601 with PST offset."""
         req = CreateMediaBuyRequest(
+            promoted_offering="Puma RS-X 2025 training shoes",
             po_number="TEST-003",
             packages=[
                 {
@@ -82,6 +85,7 @@ class TestDateTimeStringParsing:
     def test_legacy_start_date_string_conversion(self):
         """Test that legacy start_date strings are converted properly."""
         req = CreateMediaBuyRequest(
+            promoted_offering="New Balance 990v6 premium sneakers",
             po_number="TEST-004",
             product_ids=["prod_1"],
             start_date="2025-02-15",  # String date (no time)
@@ -99,6 +103,7 @@ class TestDateTimeStringParsing:
     def test_mixed_legacy_and_new_fields(self):
         """Test that mixing legacy date strings with new datetime strings works."""
         req = CreateMediaBuyRequest(
+            promoted_offering="Reebok Classic leather shoes",
             po_number="TEST-005",
             product_ids=["prod_1"],
             start_date="2025-02-15",  # Legacy: date string
@@ -130,6 +135,7 @@ class TestDateTimeStringParsing:
         # This should fail validation (no timezone)
         with pytest.raises(ValueError, match="timezone-aware"):
             CreateMediaBuyRequest(
+                promoted_offering="Converse Chuck Taylor All Star sneakers",
                 po_number="TEST-006",
                 packages=[
                     {
@@ -150,6 +156,7 @@ class TestDateTimeStringParsing:
 
         with pytest.raises(ValidationError):
             CreateMediaBuyRequest(
+                promoted_offering="Vans Old Skool skateboard shoes",
                 po_number="TEST-007",
                 packages=[
                     {
@@ -167,6 +174,7 @@ class TestDateTimeStringParsing:
     def test_create_media_buy_roundtrip_serialization(self):
         """Test that parsed datetimes can be serialized back to ISO 8601."""
         req = CreateMediaBuyRequest(
+            promoted_offering="Asics Gel-Kayano 29 running shoes",
             po_number="TEST-008",
             packages=[
                 {
@@ -201,6 +209,7 @@ class TestDateTimeParsingEdgeCases:
         code that tries to access .tzinfo would crash.
         """
         req = CreateMediaBuyRequest(
+            promoted_offering="Brooks Ghost 15 running shoes",
             po_number="TEST-009",
             packages=[
                 {
@@ -225,6 +234,7 @@ class TestDateTimeParsingEdgeCases:
     def test_legacy_date_none_conversion(self):
         """Test that None legacy dates don't break datetime conversion."""
         req = CreateMediaBuyRequest(
+            promoted_offering="Saucony Triumph 20 running shoes",
             po_number="TEST-010",
             product_ids=["prod_1"],
             start_date=None,  # Explicitly None
@@ -239,6 +249,7 @@ class TestDateTimeParsingEdgeCases:
     def test_partial_legacy_fields(self):
         """Test that providing only start_date without end_date works."""
         req = CreateMediaBuyRequest(
+            promoted_offering="Hoka One One Clifton 9 running shoes",
             po_number="TEST-011",
             product_ids=["prod_1"],
             start_date="2025-02-15",

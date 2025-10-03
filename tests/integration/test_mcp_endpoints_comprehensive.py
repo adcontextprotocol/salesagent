@@ -201,6 +201,7 @@ class TestMCPEndpointsComprehensive:
 
         # Test 1: Legacy format should work
         legacy_request = CreateMediaBuyRequest(
+            promoted_offering="Nike Air Jordan 2025 basketball shoes",
             product_ids=["prod_1", "prod_2"],
             total_budget=5000.0,
             start_date=date.today(),
@@ -229,6 +230,7 @@ class TestMCPEndpointsComprehensive:
 
         # Test 2: New v2.4 format should work
         new_request = CreateMediaBuyRequest(
+            promoted_offering="Adidas UltraBoost 2025 running shoes",
             buyer_ref="custom_ref_123",
             po_number="PO-V24-67890",  # Required per AdCP spec
             budget=Budget(total=10000.0, currency="EUR", pacing="asap"),
@@ -247,6 +249,7 @@ class TestMCPEndpointsComprehensive:
 
         # Test 3: Mixed format should work (legacy with some new fields)
         mixed_request = CreateMediaBuyRequest(
+            promoted_offering="Puma RS-X 2025 training shoes",
             buyer_ref="mixed_ref",
             po_number="PO-MIXED-99999",  # Required per AdCP spec
             product_ids=["prod_1"],
