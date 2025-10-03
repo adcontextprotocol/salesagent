@@ -2423,7 +2423,6 @@ def create_media_buy(
 
         # Validate and auto-generate GAM implementation_config for each product if needed
         if adapter.__class__.__name__ == "GoogleAdManager":
-            from src.core.database.models import Product
             from src.services.gam_product_config_service import GAMProductConfigService
 
             gam_validator = GAMProductConfigService()
@@ -2445,7 +2444,7 @@ def create_media_buy(
 
                     # Persist the auto-generated config to database
                     with get_db_session() as db_session:
-                        db_product = db_session.query(Product).filter_by(product_id=product.product_id).first()
+                        db_product = db_session.query(ModelProduct).filter_by(product_id=product.product_id).first()
                         if db_product:
                             db_product.implementation_config = product.implementation_config
                             db_session.commit()
