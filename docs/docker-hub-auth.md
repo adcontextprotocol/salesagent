@@ -1,4 +1,4 @@
-# Docker Hub Authentication for Fly.io Deployment
+# Docker Hub Rate Limit Solution for Fly.io Deployment
 
 ## Problem
 Fly.io deployments fail with Docker Hub rate limit errors:
@@ -6,8 +6,24 @@ Fly.io deployments fail with Docker Hub rate limit errors:
 429 Too Many Requests - Server message: toomanyrequests: You have reached your unauthenticated pull rate limit.
 ```
 
-## Solution
-Configure Docker Hub authentication credentials in Fly.io.
+## Implemented Solution ✅
+**Use GitHub Container Registry (GHCR) instead of Docker Hub.**
+
+The `Dockerfile.fly` now uses:
+```dockerfile
+FROM ghcr.io/docker/library/python:3.12-slim
+```
+
+**Benefits:**
+- No rate limits for public images
+- No authentication required
+- Mirrors official Docker images
+- No configuration needed in Fly.io
+
+This is the simplest and most reliable solution for avoiding Docker Hub rate limits on Fly.io.
+
+## Alternative: Docker Hub Authentication (Advanced)
+If you specifically need Docker Hub, you can configure authentication (note: this is more complex and requires additional setup).
 
 ## Setup Steps
 
