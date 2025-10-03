@@ -1566,6 +1566,20 @@ class SyncCreativesRequest(BaseModel):
     assign_to_packages: list[str] | None = Field(None, description="Package IDs to assign creatives to")
     upsert: bool = Field(True, description="Whether to update existing creatives or create new ones")
 
+    # AdCP spec fields
+    patch: bool = Field(
+        False, description="When true, only provided fields are updated. When false, entire creative is replaced."
+    )
+    assignments: dict[str, list[str]] | None = Field(
+        None, description="Optional bulk assignment of creatives to packages"
+    )
+    dry_run: bool = Field(False, description="Preview changes without applying them")
+    delete_missing: bool = Field(False, description="Delete creatives not present in the request (use with caution)")
+    validation_mode: Literal["strict", "lenient"] = Field(
+        "strict",
+        description="Validation strictness. 'strict' fails entire sync on any error. 'lenient' processes valid creatives.",
+    )
+
     @model_validator(mode="before")
     def validate_media_buy_reference(cls, values):
         """Ensure at least one of media_buy_id or buyer_ref is provided."""
@@ -1596,6 +1610,15 @@ class ListCreativesRequest(BaseModel):
     created_after: datetime | None = Field(None, description="Filter by creation date")
     created_before: datetime | None = Field(None, description="Filter by creation date")
     search: str | None = Field(None, description="Search in creative names and descriptions")
+
+    # AdCP spec fields
+    filters: dict[str, Any] | None = Field(None, description="Advanced filtering options")
+    pagination: dict[str, Any] | None = Field(None, description="Pagination parameters (page, limit)")
+    sort: dict[str, Any] | None = Field(None, description="Sort configuration (field, direction)")
+    fields: list[str] | None = Field(None, description="Specific fields to return")
+    include_performance: bool = Field(False, description="Include performance metrics")
+    include_assignments: bool = Field(False, description="Include package assignments")
+    include_sub_assets: bool = Field(False, description="Include sub-assets (e.g., video thumbnails)")
     page: int = Field(1, ge=1, description="Page number for pagination")
     limit: int = Field(50, ge=1, le=1000, description="Number of results per page")
     sort_by: str | None = Field("created_date", description="Sort field (created_date, name, status)")
@@ -1824,6 +1847,9 @@ class CreateMediaBuyRequest(BaseModel):
     pacing: Literal["even", "asap", "daily_budget"] = "even"  # Legacy field
     daily_budget: float | None = None  # Legacy field
     creatives: list[Creative] | None = None
+    reporting_webhook: dict[str, Any] | None = Field(
+        None, description="Optional webhook configuration for automated reporting delivery"
+    )
     # AXE signal requirements
     required_axe_signals: list[str] | None = None  # Required targeting signals
     enable_creative_macro: bool | None = False  # Enable AXE to provide creative_macro signal
