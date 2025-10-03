@@ -2421,21 +2421,37 @@ def create_media_buy(
         product_ids = req.get_product_ids()
         products_in_buy = [p for p in catalog if p.product_id in product_ids]
 
-        # Validate GAM implementation_config for each product
+        # Validate and auto-generate GAM implementation_config for each product if needed
         if adapter.__class__.__name__ == "GoogleAdManager":
+            from src.core.database.models import Product
             from src.services.gam_product_config_service import GAMProductConfigService
 
             gam_validator = GAMProductConfigService()
             config_errors = []
 
             for product in products_in_buy:
+                # Auto-generate default config if missing
                 if not product.implementation_config:
-                    config_errors.append(
+                    logger.info(
                         f"Product '{product.name}' ({product.product_id}) is missing GAM configuration. "
-                        f"Please configure it in the Admin UI."
+                        f"Auto-generating defaults based on product type."
                     )
-                    continue
+                    # Generate defaults based on product delivery type and formats
+                    delivery_type = product.delivery_type if hasattr(product, "delivery_type") else "non_guaranteed"
+                    formats = product.formats if hasattr(product, "formats") else None
+                    product.implementation_config = gam_validator.generate_default_config(
+                        delivery_type=delivery_type, formats=formats
+                    )
 
+                    # Persist the auto-generated config to database
+                    with get_db_session() as db_session:
+                        db_product = db_session.query(Product).filter_by(product_id=product.product_id).first()
+                        if db_product:
+                            db_product.implementation_config = product.implementation_config
+                            db_session.commit()
+                            logger.info(f"Saved auto-generated GAM config for product {product.product_id}")
+
+                # Validate the config (whether existing or auto-generated)
                 is_valid, error_msg = gam_validator.validate_config(product.implementation_config)
                 if not is_valid:
                     config_errors.append(
