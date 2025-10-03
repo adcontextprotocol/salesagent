@@ -112,7 +112,9 @@ class GoogleAdManager(AdServerAdapter):
         # Only initialize order/creative managers if we have advertiser_id and trafficker_id
         if self.advertiser_id and self.trafficker_id:
             self.orders_manager = GAMOrdersManager(self.client_manager, self.advertiser_id, self.trafficker_id, dry_run)
-            self.creatives_manager = GAMCreativesManager(self.client_manager, self.advertiser_id, dry_run, self.log, self)
+            self.creatives_manager = GAMCreativesManager(
+                self.client_manager, self.advertiser_id, dry_run, self.log, self
+            )
         else:
             self.orders_manager = None
             self.creatives_manager = None
@@ -176,18 +178,26 @@ class GoogleAdManager(AdServerAdapter):
 
     def _validate_creative_for_gam(self, asset):
         """Validate creative asset for GAM requirements (delegated to creatives manager)."""
+        if not self.creatives_manager:
+            raise ValueError("GAM adapter not configured for creative operations")
         return self.creatives_manager._validate_creative_for_gam(asset)
 
     def _get_creative_type(self, asset):
         """Determine creative type from asset (delegated to creatives manager)."""
+        if not self.creatives_manager:
+            raise ValueError("GAM adapter not configured for creative operations")
         return self.creatives_manager._get_creative_type(asset)
 
     def _create_gam_creative(self, asset, creative_type, asset_placeholders):
         """Create a GAM creative (delegated to creatives manager)."""
+        if not self.creatives_manager:
+            raise ValueError("GAM adapter not configured for creative operations")
         return self.creatives_manager._create_gam_creative(asset, creative_type, asset_placeholders)
 
     def _check_order_has_guaranteed_items(self, order_id):
         """Check if order has guaranteed line items (delegated to orders manager)."""
+        if not self.orders_manager:
+            raise ValueError("GAM adapter not configured for order operations")
         return self.orders_manager.check_order_has_guaranteed_items(order_id)
 
     # Legacy properties for backward compatibility
@@ -216,6 +226,19 @@ class GoogleAdManager(AdServerAdapter):
     ) -> CreateMediaBuyResponse:
         """Create a new media buy (order) in GAM - main orchestration method."""
         self.log("[bold]GoogleAdManager.create_media_buy[/bold] - Creating GAM order")
+
+        # Validate that orders manager is initialized
+        if not self.orders_manager:
+            error_msg = "GAM adapter is not fully configured for order operations. " "Missing required configuration: "
+            missing = []
+            if not self.advertiser_id:
+                missing.append("advertiser_id (company_id)")
+            if not self.trafficker_id:
+                missing.append("trafficker_id")
+            error_msg += ", ".join(missing)
+
+            self.log(f"[red]Error: {error_msg}[/red]")
+            return CreateMediaBuyResponse(media_buy_id="", status="failed", message=error_msg)
 
         # Check if manual approval is required for media buy creation
         if self._requires_manual_approval("create_media_buy"):
@@ -277,16 +300,45 @@ class GoogleAdManager(AdServerAdapter):
 
     def archive_order(self, order_id: str) -> bool:
         """Archive a GAM order for cleanup purposes (delegated to orders manager)."""
+        if not self.orders_manager:
+            self.log("[red]Error: GAM adapter not configured for order operations[/red]")
+            return False
         return self.orders_manager.archive_order(order_id)
 
     def get_advertisers(self) -> list[dict[str, Any]]:
         """Get list of advertisers from GAM (delegated to orders manager)."""
+        if not self.orders_manager:
+            self.log("[red]Error: GAM adapter not configured for order operations[/red]")
+            return []
         return self.orders_manager.get_advertisers()
 
     def add_creative_assets(
         self, media_buy_id: str, assets: list[dict[str, Any]], today: datetime
     ) -> list[AssetStatus]:
         """Create and associate creatives with line items (delegated to creatives manager)."""
+
+        # Validate that creatives manager is initialized
+        if not self.creatives_manager:
+            error_msg = (
+                "GAM adapter is not fully configured for creative operations. " "Missing required configuration: "
+            )
+            missing = []
+            if not self.advertiser_id:
+                missing.append("advertiser_id (company_id)")
+            if not self.trafficker_id:
+                missing.append("trafficker_id")
+            error_msg += ", ".join(missing)
+
+            self.log(f"[red]Error: {error_msg}[/red]")
+            return [
+                AssetStatus(
+                    asset_id=asset.get("asset_id", f"failed_{i}"),
+                    status="failed",
+                    message=error_msg,
+                    creative_id=None,
+                )
+                for i, asset in enumerate(assets)
+            ]
 
         # Check if manual approval is required for creative assets
         if self._requires_manual_approval("add_creative_assets"):
