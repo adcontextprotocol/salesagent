@@ -7,6 +7,17 @@
     <h2>Google Ad Manager Configuration</h2>
     <h3>{{ product.name }}</h3>
 
+    {% if not inventory_synced %}
+    <div class="alert alert-warning" style="margin-bottom: 2rem; padding: 1rem; background: #fff3cd; border: 1px solid #ffc107; border-radius: 4px;">
+        <h4 style="margin-top: 0; color: #856404;">⚠️ Inventory Not Synced</h4>
+        <p style="margin-bottom: 1rem;">GAM inventory has not been synced yet. The "Browse Inventory" buttons below will not work until inventory is synced.</p>
+        <button type="button" class="btn btn-primary" onclick="syncInventory()" id="syncBtn">
+            <i class="bi bi-arrow-clockwise"></i> Sync Inventory Now
+        </button>
+        <div id="syncStatus" style="margin-top: 0.5rem;"></div>
+    </div>
+    {% endif %}
+
     <form id="gam-config-form" method="POST">
         <!-- Order Settings -->
         <h4 style="margin-top: 2rem; border-bottom: 1px solid #ddd; padding-bottom: 0.5rem;">Order Settings</h4>
@@ -65,8 +76,9 @@
 
         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
             <div class="form-group">
-                <label for="creative_rotation_type">Creative Rotation *</label>
-                <select id="creative_rotation_type" name="creative_rotation_type" required>
+                <label for="creative_rotation_type">Creative Rotation (optional - will use defaults)</label>
+                <select id="creative_rotation_type" name="creative_rotation_type">
+                    <option value="">Use Default</option>
                     <option value="EVEN" {% if config.creative_rotation_type == 'EVEN' %}selected{% endif %}>Even</option>
                     <option value="OPTIMIZED" {% if config.creative_rotation_type == 'OPTIMIZED' %}selected{% endif %}>Optimized</option>
                     <option value="MANUAL" {% if config.creative_rotation_type == 'MANUAL' %}selected{% endif %}>Manual</option>
@@ -75,8 +87,9 @@
             </div>
 
             <div class="form-group">
-                <label for="delivery_rate_type">Delivery Pacing *</label>
-                <select id="delivery_rate_type" name="delivery_rate_type" required>
+                <label for="delivery_rate_type">Delivery Pacing (optional - will use defaults)</label>
+                <select id="delivery_rate_type" name="delivery_rate_type">
+                    <option value="">Use Default</option>
                     <option value="EVENLY" {% if config.delivery_rate_type == 'EVENLY' %}selected{% endif %}>Evenly</option>
                     <option value="FRONTLOADED" {% if config.delivery_rate_type == 'FRONTLOADED' %}selected{% endif %}>Frontloaded</option>
                     <option value="AS_FAST_AS_POSSIBLE" {% if config.delivery_rate_type == 'AS_FAST_AS_POSSIBLE' %}selected{% endif %}>As Fast As Possible</option>
@@ -86,8 +99,9 @@
 
         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
             <div class="form-group">
-                <label for="primary_goal_type">Primary Goal Type *</label>
-                <select id="primary_goal_type" name="primary_goal_type" required>
+                <label for="primary_goal_type">Primary Goal Type (optional - will use defaults)</label>
+                <select id="primary_goal_type" name="primary_goal_type">
+                    <option value="">Use Default</option>
                     <option value="LIFETIME" {% if config.primary_goal_type == 'LIFETIME' %}selected{% endif %}>Lifetime</option>
                     <option value="DAILY" {% if config.primary_goal_type == 'DAILY' %}selected{% endif %}>Daily</option>
                     <option value="NONE" {% if config.primary_goal_type == 'NONE' %}selected{% endif %}>None</option>
@@ -95,8 +109,9 @@
             </div>
 
             <div class="form-group">
-                <label for="primary_goal_unit_type">Goal Unit Type *</label>
-                <select id="primary_goal_unit_type" name="primary_goal_unit_type" required>
+                <label for="primary_goal_unit_type">Goal Unit Type (optional - will use defaults)</label>
+                <select id="primary_goal_unit_type" name="primary_goal_unit_type">
+                    <option value="">Use Default</option>
                     <option value="IMPRESSIONS" {% if config.primary_goal_unit_type == 'IMPRESSIONS' %}selected{% endif %}>Impressions</option>
                     <option value="CLICKS" {% if config.primary_goal_unit_type == 'CLICKS' %}selected{% endif %}>Clicks</option>
                     <option value="VIEWABLE_IMPRESSIONS" {% if config.primary_goal_unit_type == 'VIEWABLE_IMPRESSIONS' %}selected{% endif %}>Viewable Impressions</option>
@@ -109,8 +124,8 @@
 
         <div id="automation-settings">
             <div class="form-group">
-                <label for="non_guaranteed_automation">Non-Guaranteed Order Automation *</label>
-                <select id="non_guaranteed_automation" name="non_guaranteed_automation" required>
+                <label for="non_guaranteed_automation">Non-Guaranteed Order Automation (optional - will use defaults)</label>
+                <select id="non_guaranteed_automation" name="non_guaranteed_automation">
                     <option value="manual" {% if config.non_guaranteed_automation == 'manual' %}selected{% endif %}>Manual - Human handles all activation steps</option>
                     <option value="confirmation_required" {% if config.non_guaranteed_automation == 'confirmation_required' %}selected{% endif %}>Confirmation Required - Human approval then auto-activation</option>
                     <option value="automatic" {% if config.non_guaranteed_automation == 'automatic' %}selected{% endif %}>Automatic - Instant activation after creation</option>
@@ -1009,6 +1024,42 @@ function removeSelectedItem(type, id) {
     // Update hidden textarea
     const currentIds = textarea.value.split('\n').filter(i => i.trim() && i !== id);
     textarea.value = currentIds.join('\n');
+}
+
+async function syncInventory() {
+    const btn = document.getElementById('syncBtn');
+    const statusDiv = document.getElementById('syncStatus');
+
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Syncing...';
+    statusDiv.innerHTML = '<p style="color: #666;">Syncing inventory from GAM... This may take a minute.</p>';
+
+    try {
+        const response = await fetch('{{ script_name }}/inventory/api/tenant/{{ tenant_id }}/inventory/sync', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            }
+        });
+
+        if (!response.ok) {
+            throw new Error('Sync failed');
+        }
+
+        const data = await response.json();
+        statusDiv.innerHTML = `<p style="color: #28a745;">✅ Sync completed! Found ${data.ad_units?.total || 0} ad units and ${data.placements?.total || 0} placements. Reloading page...</p>`;
+
+        // Reload page after 2 seconds to update the UI
+        setTimeout(() => {
+            window.location.reload();
+        }, 2000);
+
+    } catch (error) {
+        console.error('Sync error:', error);
+        statusDiv.innerHTML = '<p style="color: #d32f2f;">❌ Sync failed. Please try again or contact support.</p>';
+        btn.disabled = false;
+        btn.innerHTML = '<i class="bi bi-arrow-clockwise"></i> Retry Sync';
+    }
 }
 </script>
 {% endblock %}

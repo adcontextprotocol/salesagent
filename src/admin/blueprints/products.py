@@ -825,6 +825,12 @@ def gam_product_config(tenant_id, product_id):
                 flash("Product not found", "error")
                 return redirect(url_for("products.list_products", tenant_id=tenant_id))
 
+            # Check if inventory has been synced for this tenant
+            from src.core.database.models import GAMInventory
+
+            inventory_count = db_session.query(GAMInventory).filter_by(tenant_id=tenant_id).count()
+            inventory_synced = inventory_count > 0
+
             if request.method == "POST":
                 # Parse form data into GAM configuration
                 gam_config_service = GAMProductConfigService()
@@ -841,6 +847,7 @@ def gam_product_config(tenant_id, product_id):
                         tenant_id=tenant_id,
                         product=product,
                         config=impl_config,
+                        inventory_synced=inventory_synced,
                     )
 
                 # Update product with new configuration
@@ -863,6 +870,7 @@ def gam_product_config(tenant_id, product_id):
                 tenant_id=tenant_id,
                 product=product,
                 config=config,
+                inventory_synced=inventory_synced,
             )
 
     except Exception as e:
