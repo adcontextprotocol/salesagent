@@ -1200,6 +1200,23 @@ class GetProductsResponse(BaseModel):
         return data
 
 
+class ListCreativeFormatsRequest(BaseModel):
+    """Request for list_creative_formats tool.
+
+    All parameters are optional filters per AdCP spec.
+    """
+
+    adcp_version: str = Field(
+        default="1.0.0",
+        pattern=r"^\d+\.\d+\.\d+$",
+        description="AdCP schema version for this request (e.g., '1.0.0')",
+    )
+    type: str | None = Field(None, description="Filter by format type (audio, video, display)")
+    standard_only: bool | None = Field(None, description="Only return IAB standard formats")
+    category: str | None = Field(None, description="Filter by format category (standard, custom)")
+    format_ids: list[str] | None = Field(None, description="Filter by specific format IDs")
+
+
 class ListCreativeFormatsResponse(BaseModel):
     """Response for list_creative_formats tool.
 
