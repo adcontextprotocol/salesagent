@@ -997,8 +997,7 @@ async def get_products(promoted_offering: str, brief: str = "", context: Context
     return GetProductsResponse(products=modified_products, message=final_message, status=status)
 
 
-@mcp.tool
-def list_creative_formats(context: Context) -> ListCreativeFormatsResponse:
+def _list_creative_formats_impl(context: Context) -> ListCreativeFormatsResponse:
     """List all available creative formats (AdCP spec endpoint).
 
     Returns comprehensive standard formats from AdCP registry plus any custom tenant formats.
@@ -1127,8 +1126,22 @@ def list_creative_formats(context: Context) -> ListCreativeFormatsResponse:
     return response
 
 
-@mcp.tool
-def sync_creatives(
+@mcp.tool()
+def list_creative_formats(context: Context) -> ListCreativeFormatsResponse:
+    """List all available creative formats (AdCP spec endpoint).
+
+    MCP tool wrapper that delegates to the shared implementation.
+
+    Args:
+        context: FastMCP context (automatically provided)
+
+    Returns:
+        ListCreativeFormatsResponse with all available formats
+    """
+    return _list_creative_formats_impl(context)
+
+
+def _sync_creatives_impl(
     creatives: list[dict],
     media_buy_id: str = None,
     buyer_ref: str = None,
@@ -1477,8 +1490,34 @@ def sync_creatives(
     )
 
 
-@mcp.tool
-def list_creatives(
+@mcp.tool()
+def sync_creatives(
+    creatives: list[dict],
+    media_buy_id: str = None,
+    buyer_ref: str = None,
+    assign_to_packages: list[str] = None,
+    upsert: bool = True,
+    context: Context = None,
+) -> SyncCreativesResponse:
+    """Sync creative assets to centralized library (AdCP spec endpoint).
+
+    MCP tool wrapper that delegates to the shared implementation.
+
+    Args:
+        creatives: List of creative objects to sync
+        media_buy_id: Optional media buy ID to associate creatives with
+        buyer_ref: Optional buyer reference for filtering
+        assign_to_packages: List of package IDs to assign creatives to
+        upsert: If True, update existing creatives; if False, only create new ones
+        context: FastMCP context (automatically provided)
+
+    Returns:
+        SyncCreativesResponse with sync results
+    """
+    return _sync_creatives_impl(creatives, media_buy_id, buyer_ref, assign_to_packages, upsert, context)
+
+
+def _list_creatives_impl(
     media_buy_id: str = None,
     buyer_ref: str = None,
     status: str = None,
@@ -1721,6 +1760,43 @@ def list_creatives(
 
     return ListCreativesResponse(
         creatives=creatives, total_count=total_count, page=req.page, limit=req.limit, has_more=has_more, message=message
+    )
+
+
+@mcp.tool()
+def list_creatives(
+    media_buy_id: str = None,
+    buyer_ref: str = None,
+    status: str = None,
+    format: str = None,
+    tags: list[str] = None,
+    created_after: str = None,
+    created_before: str = None,
+    search: str = None,
+    page: int = 1,
+    limit: int = 50,
+    sort_by: str = "created_date",
+    sort_order: str = "desc",
+    context: Context = None,
+) -> ListCreativesResponse:
+    """List and filter creative assets from the centralized library.
+
+    MCP tool wrapper that delegates to the shared implementation.
+    """
+    return _list_creatives_impl(
+        media_buy_id,
+        buyer_ref,
+        status,
+        format,
+        tags,
+        created_after,
+        created_before,
+        search,
+        page,
+        limit,
+        sort_by,
+        sort_order,
+        context,
     )
 
 
@@ -2018,11 +2094,10 @@ async def activate_signal(
         )
 
 
-@mcp.tool
-def list_authorized_properties(
+def _list_authorized_properties_impl(
     req: ListAuthorizedPropertiesRequest = None, context: Context = None
 ) -> ListAuthorizedPropertiesResponse:
-    """List all properties this agent is authorized to represent (AdCP spec endpoint).
+    """List all properties this agent is authorized to represent (shared implementation).
 
     Discovers advertising properties (websites, apps, podcasts, etc.) that this
     sales agent is authorized to sell advertising on behalf of publishers.
@@ -2146,8 +2221,18 @@ def list_authorized_properties(
         raise ToolError("PROPERTIES_ERROR", f"Failed to list authorized properties: {str(e)}")
 
 
-@mcp.tool
-def create_media_buy(
+@mcp.tool()
+def list_authorized_properties(
+    req: ListAuthorizedPropertiesRequest = None, context: Context = None
+) -> ListAuthorizedPropertiesResponse:
+    """List all properties this agent is authorized to represent (AdCP spec endpoint).
+
+    MCP tool wrapper that delegates to shared implementation.
+    """
+    return _list_authorized_properties_impl(req, context)
+
+
+def _create_media_buy_impl(
     promoted_offering: str,
     po_number: str = None,
     buyer_ref: str = None,
@@ -2822,9 +2907,81 @@ def create_media_buy(
         )
 
 
+@mcp.tool()
+def create_media_buy(
+    promoted_offering: str,
+    po_number: str = None,
+    buyer_ref: str = None,
+    packages: list = None,
+    start_time: str = None,
+    end_time: str = None,
+    budget: dict = None,
+    product_ids: list = None,
+    start_date: str = None,
+    end_date: str = None,
+    total_budget: float = None,
+    targeting_overlay: dict = None,
+    pacing: str = "even",
+    daily_budget: float = None,
+    creatives: list = None,
+    required_axe_signals: list = None,
+    enable_creative_macro: bool = False,
+    strategy_id: str = None,
+    context: Context = None,
+) -> CreateMediaBuyResponse:
+    """Create a media buy with the specified parameters.
+
+    MCP tool wrapper that delegates to the shared implementation.
+
+    Args:
+        promoted_offering: Description of advertiser and what is being promoted (required per AdCP spec)
+        po_number: Purchase order number (optional)
+        buyer_ref: Buyer reference for tracking
+        packages: Array of packages with products and budgets
+        start_time: Campaign start time (ISO 8601)
+        end_time: Campaign end time (ISO 8601)
+        budget: Overall campaign budget
+        product_ids: Legacy: Product IDs (converted to packages)
+        start_date: Legacy: Start date (converted to start_time)
+        end_date: Legacy: End date (converted to end_time)
+        total_budget: Legacy: Total budget (converted to Budget object)
+        targeting_overlay: Targeting overlay configuration
+        pacing: Pacing strategy (even, asap, daily_budget)
+        daily_budget: Daily budget limit
+        creatives: Creative assets for the campaign
+        required_axe_signals: Required targeting signals
+        enable_creative_macro: Enable AXE to provide creative_macro signal
+        strategy_id: Optional strategy ID for linking operations
+        context: FastMCP context (automatically provided)
+
+    Returns:
+        CreateMediaBuyResponse with media buy details
+    """
+    return _create_media_buy_impl(
+        promoted_offering=promoted_offering,
+        po_number=po_number,
+        buyer_ref=buyer_ref,
+        packages=packages,
+        start_time=start_time,
+        end_time=end_time,
+        budget=budget,
+        product_ids=product_ids,
+        start_date=start_date,
+        end_date=end_date,
+        total_budget=total_budget,
+        targeting_overlay=targeting_overlay,
+        pacing=pacing,
+        daily_budget=daily_budget,
+        creatives=creatives,
+        required_axe_signals=required_axe_signals,
+        enable_creative_macro=enable_creative_macro,
+        strategy_id=strategy_id,
+        context=context,
+    )
+
+
 # Unified update tools
-@mcp.tool
-def update_media_buy(
+def _update_media_buy_impl(
     media_buy_id: str,
     buyer_ref: str = None,
     active: bool = None,
@@ -3097,6 +3254,67 @@ def update_media_buy(
         status="accepted",
         implementation_date=datetime.combine(today, datetime.min.time()),
         detail="Media buy updated successfully",
+    )
+
+
+@mcp.tool()
+def update_media_buy(
+    media_buy_id: str,
+    buyer_ref: str = None,
+    active: bool = None,
+    flight_start_date: str = None,
+    flight_end_date: str = None,
+    budget: float = None,
+    currency: str = None,
+    targeting_overlay: dict = None,
+    start_time: str = None,
+    end_time: str = None,
+    pacing: str = None,
+    daily_budget: float = None,
+    packages: list = None,
+    creatives: list = None,
+    context: Context = None,
+) -> UpdateMediaBuyResponse:
+    """Update a media buy with campaign-level and/or package-level changes.
+
+    MCP tool wrapper that delegates to the shared implementation.
+
+    Args:
+        media_buy_id: Media buy ID to update (required)
+        buyer_ref: Update buyer reference
+        active: True to activate, False to pause entire campaign
+        flight_start_date: Change start date (if not started)
+        flight_end_date: Extend or shorten campaign
+        budget: Update total budget
+        currency: Update currency (ISO 4217)
+        targeting_overlay: Update global targeting
+        start_time: Update start datetime
+        end_time: Update end datetime
+        pacing: Pacing strategy (even, asap, daily_budget)
+        daily_budget: Daily spend cap across all packages
+        packages: Package-specific updates
+        creatives: Add new creatives
+        context: FastMCP context (automatically provided)
+
+    Returns:
+        UpdateMediaBuyResponse with updated media buy details
+    """
+    return _update_media_buy_impl(
+        media_buy_id=media_buy_id,
+        buyer_ref=buyer_ref,
+        active=active,
+        flight_start_date=flight_start_date,
+        flight_end_date=flight_end_date,
+        budget=budget,
+        currency=currency,
+        targeting_overlay=targeting_overlay,
+        start_time=start_time,
+        end_time=end_time,
+        pacing=pacing,
+        daily_budget=daily_budget,
+        packages=packages,
+        creatives=creatives,
+        context=context,
     )
 
 
@@ -3380,8 +3598,7 @@ def _require_admin(context: Context) -> None:
         raise PermissionError("This operation requires admin privileges")
 
 
-@mcp.tool
-def update_performance_index(
+def _update_performance_index_impl(
     media_buy_id: str, performance_data: list[dict[str, Any]], context: Context = None
 ) -> UpdatePerformanceIndexResponse:
     """Update performance index data for a media buy.
@@ -3441,6 +3658,25 @@ def update_performance_index(
         status="success" if success else "failed",
         detail=f"Performance index updated for {len(req.performance_data)} products",
     )
+
+
+@mcp.tool()
+def update_performance_index(
+    media_buy_id: str, performance_data: list[dict[str, Any]], context: Context = None
+) -> UpdatePerformanceIndexResponse:
+    """Update performance index data for a media buy.
+
+    MCP tool wrapper that delegates to the shared implementation.
+
+    Args:
+        media_buy_id: ID of the media buy to update
+        performance_data: List of performance data objects
+        context: FastMCP context (automatically provided)
+
+    Returns:
+        UpdatePerformanceIndexResponse with operation status
+    """
+    return _update_performance_index_impl(media_buy_id, performance_data, context)
 
 
 # --- Human-in-the-Loop Task Queue Tools ---

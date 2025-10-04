@@ -1239,12 +1239,12 @@ class AdCPRequestHandler(RequestHandler):
 
             # Call core function directly
             response = core_get_media_buy_delivery_tool(
-                media_buy_id=parameters["media_buy_id"],
+                media_buy_ids=[parameters["media_buy_id"]],
                 context=tool_context,
             )
 
-            # Convert response to A2A format
-            return response  # Raw function already returns dict format
+            # Convert response to dict for A2A format
+            return response.model_dump() if hasattr(response, "model_dump") else response
 
         except Exception as e:
             logger.error(f"Error in get_media_buy_delivery skill: {e}")
