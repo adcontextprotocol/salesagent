@@ -21,13 +21,32 @@ from tests.fixtures import TenantFactory
 
 @pytest.fixture(scope="function")  # Changed to function scope for better isolation
 def integration_db():
-    """Provide an isolated database for each integration test."""
+    """Provide an isolated database for each integration test.
+
+    In CI with PostgreSQL, uses the existing database (already migrated).
+    Locally with SQLite, creates an isolated temporary database per test.
+    """
     import tempfile
 
     # Save original DATABASE_URL
     original_url = os.environ.get("DATABASE_URL")
     original_db_type = os.environ.get("DB_TYPE")
 
+    # Check if we're using PostgreSQL (CI environment)
+    # If so, use the existing database instead of trying to swap engines at runtime
+    if original_url and "postgresql" in original_url:
+        # CI environment: Use existing PostgreSQL database that's already migrated
+        # Just ensure models are imported so they're available
+        import src.core.database.models as all_models  # noqa: F401
+        from src.core.database.models import Context, ObjectWorkflowMapping, WorkflowStep  # noqa: F401
+
+        _ = (Context, WorkflowStep, ObjectWorkflowMapping)
+
+        # Yield None to indicate we're using the existing DB
+        yield None
+        return
+
+    # Local development: Create isolated SQLite database per test
     # Create a temporary database file for this test
     with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as f:
         db_path = f.name
@@ -41,18 +60,17 @@ def integration_db():
     from sqlalchemy import create_engine
     from sqlalchemy.orm import scoped_session, sessionmaker
 
-    # Import ALL models first, BEFORE using Base
+    # Import ALL models first, BEFORE creating engine or Base operations
     # This ensures all tables are registered in Base.metadata
     import src.core.database.models as all_models  # noqa: F401
-    from src.core.database.models import Base
+    from src.core.database.models import Base, Context, ObjectWorkflowMapping, WorkflowStep  # noqa: F401
 
-    engine = create_engine(f"sqlite:///{db_path}")
+    # Explicitly ensure Context and workflow models are registered
+    # (in case the module import doesn't trigger class definition)
+    _ = (Context, WorkflowStep, ObjectWorkflowMapping)
 
-    # Create all tables directly (no migrations)
-    Base.metadata.create_all(bind=engine)
-
-    # Update the global database session to point to the test database
-    # This is necessary because many parts of the code use the global db_session
+    # IMPORTANT: Update global database session BEFORE creating tables
+    # This ensures any code that creates sessions during table creation uses the test DB
     from src.core.database import database_session
 
     # Save the original values
@@ -60,10 +78,20 @@ def integration_db():
     original_session_local = database_session.SessionLocal
     original_db_session = database_session.db_session
 
-    # Replace with test database
+    # Remove any existing sessions from the scoped_session registry
+    # This is critical because scoped_session caches sessions per thread
+    database_session.db_session.remove()
+
+    # Create test engine
+    engine = create_engine(f"sqlite:///{db_path}")
+
+    # Replace with test database BEFORE creating tables
     database_session.engine = engine
     database_session.SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
     database_session.db_session = scoped_session(database_session.SessionLocal)
+
+    # Now create all tables (any session created will use test DB)
+    Base.metadata.create_all(bind=engine)
 
     yield db_path
 
@@ -79,7 +107,8 @@ def integration_db():
     if original_url:
         os.environ["DATABASE_URL"] = original_url
     else:
-        del os.environ["DATABASE_URL"]
+        if "DATABASE_URL" in os.environ:
+            del os.environ["DATABASE_URL"]
 
     if original_db_type:
         os.environ["DB_TYPE"] = original_db_type
