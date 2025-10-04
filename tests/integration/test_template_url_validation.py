@@ -74,6 +74,8 @@ class TestTemplateUrlValidation:
                             test_params["task_id"] = "test_task"
                         if "property_id" in params:
                             test_params["property_id"] = "test_property"
+                        if "config_id" in params:
+                            test_params["config_id"] = "test_config"
 
                         # Try to build the URL
                         url = url_for(endpoint, **test_params)
