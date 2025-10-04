@@ -44,7 +44,11 @@ def integration_db():
     # Import ALL models first, BEFORE using Base
     # This ensures all tables are registered in Base.metadata
     import src.core.database.models as all_models  # noqa: F401
-    from src.core.database.models import Base
+    from src.core.database.models import Base, Context, ObjectWorkflowMapping, WorkflowStep  # noqa: F401
+
+    # Explicitly ensure Context and workflow models are registered
+    # (in case the module import doesn't trigger class definition)
+    _ = (Context, WorkflowStep, ObjectWorkflowMapping)
 
     engine = create_engine(f"sqlite:///{db_path}")
 

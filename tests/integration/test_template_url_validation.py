@@ -163,6 +163,12 @@ class TestTemplateUrlValidation:
                             if "authorized_properties" in endpoint and "property" in endpoint:
                                 test_params["property_id"] = "test_property"
 
+                            # Add principal_id and config_id for webhook endpoints
+                            if "webhook" in endpoint:
+                                test_params["principal_id"] = "test_principal"
+                                if "delete" in endpoint or "toggle" in endpoint:
+                                    test_params["config_id"] = "test_config"
+
                             url_for(endpoint, **test_params)
                         except BuildError as e:
                             form_errors.append({"template": str(relative_path), "endpoint": endpoint, "error": str(e)})
@@ -247,6 +253,13 @@ class TestTemplateUrlValidation:
                                 )
                                 if needs_tenant:
                                     test_params["tenant_id"] = "test"
+
+                                # Add principal_id and config_id for webhook endpoints
+                                if "webhook" in endpoint:
+                                    test_params["principal_id"] = "test_principal"
+                                    if "delete" in endpoint or "toggle" in endpoint:
+                                        test_params["config_id"] = "test_config"
+
                                 url_for(endpoint, **test_params)
                             except BuildError as e:
                                 ajax_errors.append(
