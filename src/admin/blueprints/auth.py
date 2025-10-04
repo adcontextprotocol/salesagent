@@ -378,7 +378,15 @@ def google_callback():
         tenant_access = get_user_tenant_access(email)
 
         if tenant_access["total_access"] == 0:
-            # No access
+            # No access - check if this was from an external domain (should trigger signup)
+            if external_domain and not external_domain.endswith(".sales-agent.scope3.com"):
+                logger.info(
+                    f"User {email} has no access but came from external domain {external_domain}, redirecting to signup"
+                )
+                session["signup_flow"] = True
+                return redirect(url_for("public.signup_onboarding"))
+
+            # Regular flow - no access
             flash("You don't have access to any tenants. Please contact your administrator.", "error")
             session.clear()
             return redirect(url_for("auth.login"))
