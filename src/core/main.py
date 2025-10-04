@@ -680,21 +680,35 @@ def log_tool_activity(context: Context, tool_name: str, start_time: float = None
 
 
 @mcp.tool
-async def get_products(promoted_offering: str, brief: str = "", context: Context = None) -> GetProductsResponse:
+async def get_products(
+    promoted_offering: str,
+    brief: str = "",
+    filters: dict | None = None,
+    strategy_id: str | None = None,
+    context: Context = None,
+) -> GetProductsResponse:
     """Get available products matching the brief.
 
     Args:
         promoted_offering: What is being promoted/advertised (required per AdCP spec)
         brief: Brief description of the advertising campaign or requirements (optional)
+        filters: Structured filters for product discovery (optional)
+        strategy_id: Optional strategy ID for linking operations (optional)
         context: FastMCP context (automatically provided)
 
     Returns:
         GetProductsResponse containing matching products
     """
+    from src.core.schemas import ProductFilters
     from src.core.tool_context import ToolContext
 
+    # Convert filters dict to ProductFilters if provided
+    filters_obj = ProductFilters(**filters) if filters else None
+
     # Create request object from individual parameters (MCP-compliant)
-    req = GetProductsRequest(brief=brief or "", promoted_offering=promoted_offering)
+    req = GetProductsRequest(
+        brief=brief or "", promoted_offering=promoted_offering, filters=filters_obj, strategy_id=strategy_id
+    )
 
     start_time = time.time()
 
@@ -2308,6 +2322,7 @@ def _create_media_buy_impl(
     pacing: str = "even",
     daily_budget: float = None,
     creatives: list = None,
+    reporting_webhook: dict = None,
     required_axe_signals: list = None,
     enable_creative_macro: bool = False,
     strategy_id: str = None,
@@ -2331,6 +2346,7 @@ def _create_media_buy_impl(
         pacing: Pacing strategy (even, asap, daily_budget)
         daily_budget: Daily budget limit
         creatives: Creative assets for the campaign
+        reporting_webhook: Webhook configuration for automated reporting delivery
         required_axe_signals: Required targeting signals
         enable_creative_macro: Enable AXE to provide creative_macro signal
         strategy_id: Optional strategy ID for linking operations
@@ -2358,6 +2374,7 @@ def _create_media_buy_impl(
         pacing=pacing,
         daily_budget=daily_budget,
         creatives=creatives,
+        reporting_webhook=reporting_webhook,
         required_axe_signals=required_axe_signals,
         enable_creative_macro=enable_creative_macro,
         strategy_id=strategy_id,
@@ -3023,6 +3040,7 @@ def create_media_buy(
     pacing: str = "even",
     daily_budget: float = None,
     creatives: list = None,
+    reporting_webhook: dict = None,
     required_axe_signals: list = None,
     enable_creative_macro: bool = False,
     strategy_id: str = None,
@@ -3048,6 +3066,7 @@ def create_media_buy(
         pacing: Pacing strategy (even, asap, daily_budget)
         daily_budget: Daily budget limit
         creatives: Creative assets for the campaign
+        reporting_webhook: Webhook configuration for automated reporting delivery
         required_axe_signals: Required targeting signals
         enable_creative_macro: Enable AXE to provide creative_macro signal
         strategy_id: Optional strategy ID for linking operations
@@ -3072,6 +3091,7 @@ def create_media_buy(
         pacing=pacing,
         daily_budget=daily_budget,
         creatives=creatives,
+        reporting_webhook=reporting_webhook,
         required_axe_signals=required_axe_signals,
         enable_creative_macro=enable_creative_macro,
         strategy_id=strategy_id,
