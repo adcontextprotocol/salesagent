@@ -1861,11 +1861,12 @@ function renderPrincipalEditor(principal) {
 
             <h5 class="mt-4 mb-3">Google Ad Manager</h5>
             <div class="mb-3">
-                <label for="gam_company_id" class="form-label">Company ID / Advertiser ID</label>
-                <input type="text" class="form-control" id="gam_company_id"
-                       value="${gamMapping.company_id || gamMapping.advertiser_id || ''}"
-                       placeholder="e.g., 1234567890">
-                <small class="form-text text-muted">The GAM company/advertiser ID this principal should use</small>
+                <label for="gam_company_id" class="form-label">GAM Advertiser <span style="color: red;">*</span></label>
+                <select class="form-control" id="gam_company_id">
+                    <option value="">Loading advertisers...</option>
+                </select>
+                <small class="form-text text-muted">Select which advertiser company this represents in Google Ad Manager</small>
+                <div id="edit-advertiser-loading-error" style="display: none; color: red; margin-top: 0.5rem;"></div>
             </div>
 
             <div class="mb-3">
@@ -1883,12 +1884,17 @@ function renderPrincipalEditor(principal) {
             </div>
 
             <h5 class="mt-4 mb-3">Mock Adapter (Testing)</h5>
+            <div class="alert alert-warning">
+                <strong>⚠️ About Mock vs GAM:</strong> The Mock adapter simulates ad server behavior for testing without making real API calls.
+                You can enable both Mock (for testing) and GAM (for production) on the same advertiser. When both are enabled,
+                the system will use whichever adapter is configured in your products.
+            </div>
             <div class="mb-3">
                 <label for="mock_advertiser_id" class="form-label">Mock Advertiser ID</label>
                 <input type="text" class="form-control" id="mock_advertiser_id"
                        value="${mockMapping.advertiser_id || ''}"
                        placeholder="e.g., mock_123">
-                <small class="form-text text-muted">ID for testing with mock adapter</small>
+                <small class="form-text text-muted">ID for testing with mock adapter (used when products are configured for mock adapter)</small>
             </div>
 
             <div class="mb-3 form-check">
@@ -1896,14 +1902,94 @@ function renderPrincipalEditor(principal) {
                        ${mockMapping.enabled !== false ? 'checked' : ''}>
                 <label class="form-check-label" for="mock_enabled">Enable Mock for this advertiser</label>
             </div>
-
-            <div class="alert alert-info mt-4">
-                <strong>💡 Tip:</strong> To find GAM Company IDs, check other working advertisers or use the GAM UI (Admin → Companies).
-            </div>
         </form>
     `;
 
     document.getElementById('editPrincipalForm').innerHTML = html;
+
+    // Load GAM advertisers into dropdown
+    loadGAMAdvertisersForEdit(gamMapping.company_id || gamMapping.advertiser_id || '');
+}
+
+function loadGAMAdvertisersForEdit(currentAdvertiserId) {
+    const selectElement = document.getElementById('gam_company_id');
+    const errorDiv = document.getElementById('edit-advertiser-loading-error');
+
+    if (!selectElement) {
+        return; // Element not found, probably not a GAM tenant
+    }
+
+    // Show loading state
+    selectElement.innerHTML = '<option value="">Loading advertisers...</option>';
+    selectElement.disabled = true;
+    errorDiv.style.display = 'none';
+
+    // Fetch advertisers from API (same endpoint as create form)
+    fetch('{{ script_name }}/tenant/{{ tenant.tenant_id }}/api/gam/get-advertisers', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+            tenant_id: '{{ tenant.tenant_id }}'
+        }),
+        credentials: 'same-origin'
+    })
+    .then(response => {
+        if (!response.ok) {
+            return response.text().then(text => {
+                throw new Error(`HTTP ${response.status}: ${text.substring(0, 200)}`);
+            });
+        }
+        return response.json();
+    })
+    .then(data => {
+        if (data.error) {
+            throw new Error(data.error);
+        }
+
+        // Clear loading state
+        selectElement.innerHTML = '';
+        selectElement.disabled = false;
+
+        // Add default option
+        const defaultOption = document.createElement('option');
+        defaultOption.value = '';
+        defaultOption.textContent = 'Select an advertiser...';
+        selectElement.appendChild(defaultOption);
+
+        // Add advertiser options
+        if (data.advertisers && data.advertisers.length > 0) {
+            data.advertisers.forEach(advertiser => {
+                const option = document.createElement('option');
+                option.value = advertiser.id;
+                option.textContent = advertiser.name;
+                selectElement.appendChild(option);
+            });
+
+            // Restore current selection if provided
+            if (currentAdvertiserId) {
+                selectElement.value = currentAdvertiserId;
+            }
+        } else {
+            // No advertisers found
+            const noAdvertisersOption = document.createElement('option');
+            noAdvertisersOption.value = '';
+            noAdvertisersOption.textContent = 'No advertisers found in GAM';
+            noAdvertisersOption.disabled = true;
+            selectElement.appendChild(noAdvertisersOption);
+
+            errorDiv.textContent = 'No advertisers found. Please create an advertiser in Google Ad Manager first.';
+            errorDiv.style.display = 'block';
+        }
+    })
+    .catch(error => {
+        console.error('Error loading advertisers for edit:', error);
+        selectElement.innerHTML = '<option value="">Failed to load advertisers</option>';
+        selectElement.disabled = false;
+        errorDiv.textContent = 'Error loading advertisers: ' + error.message;
+        errorDiv.style.display = 'block';
+    });
 }
 
 function savePrincipalMappings() {
