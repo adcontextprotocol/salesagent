@@ -373,9 +373,9 @@ class AdapterConfig(Base):
     # Google Ad Manager
     gam_network_code = Column(String(50))
     gam_refresh_token = Column(Text)
-    gam_company_id = Column(String(50))
-    gam_trafficker_id = Column(String(50))
+    gam_trafficker_id = Column(String(50))  # Tenant-level: publisher's trafficker (defaults to authenticated user)
     gam_manual_approval_required = Column(Boolean, default=False)
+    # NOTE: gam_company_id (advertiser_id) is per-principal, stored in Principal.platform_mappings
 
     # Kevel
     kevel_network_id = Column(String(50))

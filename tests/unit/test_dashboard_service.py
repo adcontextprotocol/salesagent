@@ -54,7 +54,7 @@ class TestDashboardService:
         mock_session.query.assert_called_once()
 
     @patch("src.admin.services.dashboard_service.get_db_session")
-    @patch("src.admin.services.dashboard_service.get_recent_activities")
+    @patch("src.admin.services.dashboard_service.get_business_activities")
     def test_get_dashboard_metrics_single_data_source(self, mock_get_activities, mock_get_db):
         """Test that dashboard metrics use single data source pattern."""
         # Mock database session
@@ -133,7 +133,7 @@ class TestDashboardService:
             assert chart_data["data"] == [100, 150]
 
     @patch("src.admin.services.dashboard_service.get_db_session")
-    @patch("src.admin.services.dashboard_service.get_recent_activities")
+    @patch("src.admin.services.dashboard_service.get_business_activities")
     def test_health_check_healthy(self, mock_get_activities, mock_get_db):
         """Test health check when system is healthy."""
         # Mock successful database connection

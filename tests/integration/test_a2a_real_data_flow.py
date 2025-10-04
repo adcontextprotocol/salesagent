@@ -322,6 +322,101 @@ class TestA2ARealDataFlow:
             pytest.fail(f"Agent card creation failed: {e}")
 
     @pytest.mark.asyncio
+    async def test_a2a_explicit_skill_with_input_field(self, test_tenant_setup):
+        """Test explicit skill invocation using A2A spec 'input' field (REGRESSION TEST).
+
+        This test would have caught the bug where the server only looked for 'parameters'
+        field but the A2A spec uses 'input' field for skill parameters.
+        """
+        handler = AdCPRequestHandler()
+
+        # Mock authentication
+        with patch.object(handler, "_get_auth_token", return_value=test_tenant_setup["access_token"]):
+            with patch(
+                "src.core.config_loader.get_current_tenant",
+                return_value={"tenant_id": test_tenant_setup["tenant_id"], "name": "A2A Test Tenant"},
+            ):
+                with patch("src.core.main.get_principal_from_context", return_value=test_tenant_setup["principal_id"]):
+                    with patch("src.core.main.get_principal_object") as mock_get_principal:
+                        from src.core.schemas import Principal as PrincipalSchema
+
+                        mock_principal = PrincipalSchema(
+                            principal_id=test_tenant_setup["principal_id"],
+                            name="Test Principal",
+                            platform_mappings={"mock": {"advertiser_id": "test_advertiser"}},
+                        )
+                        mock_get_principal.return_value = mock_principal
+
+                        # Create A2A message with 'input' field (A2A spec format)
+                        from a2a.types import Message, MessageSendParams, Part, Role
+
+                        params = MessageSendParams(
+                            message=Message(
+                                message_id="test_msg_input",
+                                context_id="test_ctx_input",
+                                role=Role.user,
+                                parts=[
+                                    Part(
+                                        data={
+                                            "skill": "get_products",
+                                            "input": {  # A2A spec uses 'input', not 'parameters'
+                                                "brief": "Premium coffee brands",
+                                                "promoted_offering": "Wonderstruck Video Ads",
+                                            },
+                                        }
+                                    )
+                                ],
+                            )
+                        )
+
+                        # Process the message - this exercises the full parsing logic
+                        result = await handler.on_message_send(params)
+
+                        # Verify skill was recognized and executed
+                        assert result is not None
+                        assert hasattr(result, "metadata")
+                        assert result.metadata["invocation_type"] == "explicit_skill"
+                        assert "get_products" in result.metadata["skills_requested"]
+
+                        # Verify we got real products from database, not capabilities
+                        assert result.artifacts is not None
+                        assert len(result.artifacts) >= 1
+
+                        # Extract the response data
+                        artifact = result.artifacts[0]
+                        assert artifact.parts is not None
+
+                        # Get the actual data from the artifact
+                        response_data = None
+                        for part in artifact.parts:
+                            if hasattr(part, "data") and isinstance(part.data, dict):
+                                response_data = part.data
+                                break
+                            elif hasattr(part, "root") and hasattr(part.root, "data"):
+                                response_data = part.root.data
+                                break
+
+                        assert response_data is not None, "No data found in artifact"
+                        assert "products" in response_data, "Response should contain products array"
+
+                        # CRITICAL: Should NOT be capabilities response
+                        assert "supported_queries" not in response_data, (
+                            "Got capabilities response instead of products! "
+                            "This means the skill invocation was not recognized."
+                        )
+                        assert "example_queries" not in response_data
+
+                        # Should have actual products from database
+                        products = response_data["products"]
+                        assert isinstance(products, list)
+                        # We should find at least one of our test products
+                        if len(products) > 0:
+                            product = products[0]
+                            assert "product_id" in product
+                            assert "name" in product
+                            assert "format_ids" in product  # AdCP field name
+
+    @pytest.mark.asyncio
     async def test_a2a_complete_request_cycle(self, test_tenant_setup):
         """Test complete A2A request cycle with real data."""
         handler = AdCPRequestHandler()

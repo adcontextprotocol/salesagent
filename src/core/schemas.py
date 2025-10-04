@@ -1070,6 +1070,47 @@ class UpdatePerformanceIndexResponse(BaseModel):
 
 
 # --- Discovery ---
+class FormatType(str, Enum):
+    """Valid format types per AdCP spec."""
+
+    VIDEO = "video"
+    DISPLAY = "display"
+    AUDIO = "audio"
+    # Note: "native" is not in cached AdCP schema v1.6.0, only video/display/audio
+
+
+class DeliveryType(str, Enum):
+    """Valid delivery types per AdCP spec."""
+
+    GUARANTEED = "guaranteed"
+    NON_GUARANTEED = "non_guaranteed"
+
+
+class ProductFilters(BaseModel):
+    """Structured filters for product discovery per AdCP spec."""
+
+    delivery_type: DeliveryType | None = Field(
+        None,
+        description="Filter by delivery type",
+    )
+    is_fixed_price: bool | None = Field(
+        None,
+        description="Filter for fixed price vs auction products",
+    )
+    format_types: list[FormatType] | None = Field(
+        None,
+        description="Filter by format types",
+    )
+    format_ids: list[str] | None = Field(
+        None,
+        description="Filter by specific format IDs",
+    )
+    standard_formats_only: bool | None = Field(
+        None,
+        description="Only return products accepting IAB standard formats",
+    )
+
+
 class GetProductsRequest(BaseModel):
     brief: str = Field(
         "",
@@ -1078,6 +1119,15 @@ class GetProductsRequest(BaseModel):
     promoted_offering: str = Field(
         ...,
         description="Description of the advertiser and the product or service being promoted (REQUIRED per AdCP spec)",
+    )
+    adcp_version: str = Field(
+        "1.0.0",
+        description="AdCP schema version for this request",
+        pattern=r"^\d+\.\d+\.\d+$",
+    )
+    filters: ProductFilters | None = Field(
+        None,
+        description="Structured filters for product discovery",
     )
     strategy_id: str | None = Field(
         None,
@@ -1477,6 +1527,18 @@ class CreativeAssignment(BaseModel):
 
     is_active: bool = True
 
+    @model_validator(mode="after")
+    def validate_timezone_aware(self):
+        """Validate that datetime override fields are timezone-aware.
+
+        AdCP spec requires ISO 8601 datetime strings with timezone information.
+        """
+        if self.override_start_date and self.override_start_date.tzinfo is None:
+            raise ValueError("override_start_date must be timezone-aware (ISO 8601 with timezone)")
+        if self.override_end_date and self.override_end_date.tzinfo is None:
+            raise ValueError("override_end_date must be timezone-aware (ISO 8601 with timezone)")
+        return self
+
 
 class AddCreativeAssetsRequest(BaseModel):
     """Request to add creative assets to a media buy (AdCP spec compliant)."""
@@ -1518,12 +1580,23 @@ class SyncCreativesRequest(BaseModel):
     assign_to_packages: list[str] | None = Field(None, description="Package IDs to assign creatives to")
     upsert: bool = Field(True, description="Whether to update existing creatives or create new ones")
 
-    @model_validator(mode="before")
-    def validate_media_buy_reference(cls, values):
-        """Ensure at least one of media_buy_id or buyer_ref is provided."""
-        if not values.get("media_buy_id") and not values.get("buyer_ref"):
-            raise ValueError("Either media_buy_id or buyer_ref must be provided")
-        return values
+    # AdCP spec fields
+    patch: bool = Field(
+        False, description="When true, only provided fields are updated. When false, entire creative is replaced."
+    )
+    assignments: dict[str, list[str]] | None = Field(
+        None, description="Optional bulk assignment of creatives to packages"
+    )
+    dry_run: bool = Field(False, description="Preview changes without applying them")
+    delete_missing: bool = Field(False, description="Delete creatives not present in the request (use with caution)")
+    validation_mode: Literal["strict", "lenient"] = Field(
+        "strict",
+        description="Validation strictness. 'strict' fails entire sync on any error. 'lenient' processes valid creatives.",
+    )
+
+    # Note: media_buy_id and buyer_ref are OPTIONAL per AdCP spec
+    # Creatives can be synced to a central library and used across multiple media buys
+    # If provided, they associate creatives with a specific media buy
 
 
 class SyncCreativesResponse(BaseModel):
@@ -1548,10 +1621,31 @@ class ListCreativesRequest(BaseModel):
     created_after: datetime | None = Field(None, description="Filter by creation date")
     created_before: datetime | None = Field(None, description="Filter by creation date")
     search: str | None = Field(None, description="Search in creative names and descriptions")
+
+    # AdCP spec fields
+    filters: dict[str, Any] | None = Field(None, description="Advanced filtering options")
+    pagination: dict[str, Any] | None = Field(None, description="Pagination parameters (page, limit)")
+    sort: dict[str, Any] | None = Field(None, description="Sort configuration (field, direction)")
+    fields: list[str] | None = Field(None, description="Specific fields to return")
+    include_performance: bool = Field(False, description="Include performance metrics")
+    include_assignments: bool = Field(False, description="Include package assignments")
+    include_sub_assets: bool = Field(False, description="Include sub-assets (e.g., video thumbnails)")
     page: int = Field(1, ge=1, description="Page number for pagination")
     limit: int = Field(50, ge=1, le=1000, description="Number of results per page")
     sort_by: str | None = Field("created_date", description="Sort field (created_date, name, status)")
     sort_order: Literal["asc", "desc"] = Field("desc", description="Sort order")
+
+    @model_validator(mode="after")
+    def validate_timezone_aware(self):
+        """Validate that datetime fields are timezone-aware.
+
+        AdCP spec requires ISO 8601 datetime strings with timezone information.
+        """
+        if self.created_after and self.created_after.tzinfo is None:
+            raise ValueError("created_after must be timezone-aware (ISO 8601 with timezone)")
+        if self.created_before and self.created_before.tzinfo is None:
+            raise ValueError("created_before must be timezone-aware (ISO 8601 with timezone)")
+        return self
 
 
 class ListCreativesResponse(BaseModel):
@@ -1614,6 +1708,18 @@ class AssignCreativeRequest(BaseModel):
     override_start_date: datetime | None = None
     override_end_date: datetime | None = None
     targeting_overlay: Targeting | None = None
+
+    @model_validator(mode="after")
+    def validate_timezone_aware(self):
+        """Validate that datetime override fields are timezone-aware.
+
+        AdCP spec requires ISO 8601 datetime strings with timezone information.
+        """
+        if self.override_start_date and self.override_start_date.tzinfo is None:
+            raise ValueError("override_start_date must be timezone-aware (ISO 8601 with timezone)")
+        if self.override_end_date and self.override_end_date.tzinfo is None:
+            raise ValueError("override_end_date must be timezone-aware (ISO 8601 with timezone)")
+        return self
 
 
 class AssignCreativeResponse(BaseModel):
@@ -1687,6 +1793,7 @@ class Package(BaseModel):
     budget: Budget | None = Field(None, description="Package-specific budget")
     impressions: float | None = Field(None, description="Impression goal for this package", gt=-1)
     targeting_overlay: Targeting | None = Field(None, description="Package-specific targeting")
+    creative_ids: list[str] | None = Field(None, description="Creative IDs to assign to this package")
     creative_assignments: list[dict[str, Any]] | None = Field(
         None, description="Creative assets assigned to this package"
     )
@@ -1727,6 +1834,11 @@ class Package(BaseModel):
 
 # --- Media Buy Lifecycle ---
 class CreateMediaBuyRequest(BaseModel):
+    # Required AdCP fields
+    promoted_offering: str = Field(
+        ..., description="Description of advertiser and what is being promoted (REQUIRED per AdCP spec)"
+    )
+
     # New AdCP v2.4 fields (optional for backward compatibility)
     buyer_ref: str | None = Field(None, description="Buyer reference for tracking")
     packages: list[Package] | None = Field(None, description="Array of packages with products and budgets")
@@ -1743,10 +1855,13 @@ class CreateMediaBuyRequest(BaseModel):
     # Common fields
     campaign_name: str | None = Field(None, description="Campaign name for display purposes")
     targeting_overlay: Targeting | None = None
-    po_number: str = Field(..., description="Purchase order number for tracking (REQUIRED per AdCP spec)")
+    po_number: str | None = Field(None, description="Purchase order number for tracking")
     pacing: Literal["even", "asap", "daily_budget"] = "even"  # Legacy field
     daily_budget: float | None = None  # Legacy field
     creatives: list[Creative] | None = None
+    reporting_webhook: dict[str, Any] | None = Field(
+        None, description="Optional webhook configuration for automated reporting delivery"
+    )
     # AXE signal requirements
     required_axe_signals: list[str] | None = None  # Required targeting signals
     enable_creative_macro: bool | None = False  # Enable AXE to provide creative_macro signal
@@ -1795,21 +1910,25 @@ class CreateMediaBuyRequest(BaseModel):
                 )
             values["packages"] = packages
 
-        # Convert dates to datetimes
+        # Convert dates to datetimes with defensive handling
+        # Handle start_date -> start_time conversion (only if start_time not provided)
         if "start_date" in values and not values.get("start_time"):
             start_date = values["start_date"]
-            if isinstance(start_date, str):
-                start_date = date.fromisoformat(start_date)
-            values["start_time"] = datetime.combine(start_date, time.min, tzinfo=UTC)
+            if start_date is not None:
+                if isinstance(start_date, str):
+                    start_date = date.fromisoformat(start_date)
+                values["start_time"] = datetime.combine(start_date, time.min, tzinfo=UTC)
 
+        # Handle end_date -> end_time conversion (only if end_time not provided)
         if "end_date" in values and not values.get("end_time"):
             end_date = values["end_date"]
-            if isinstance(end_date, str):
-                end_date = date.fromisoformat(end_date)
-            values["end_time"] = datetime.combine(end_date, time.max, tzinfo=UTC)
+            if end_date is not None:
+                if isinstance(end_date, str):
+                    end_date = date.fromisoformat(end_date)
+                values["end_time"] = datetime.combine(end_date, time.max, tzinfo=UTC)
 
-        # Convert total_budget to Budget object
-        if "total_budget" in values and not values.get("budget"):
+        # Convert total_budget to Budget object (only if not None)
+        if "total_budget" in values and values["total_budget"] is not None and not values.get("budget"):
             total_budget = values["total_budget"]
             pacing = values.get("pacing", "even")
             daily_cap = values.get("daily_budget")
@@ -1826,6 +1945,19 @@ class CreateMediaBuyRequest(BaseModel):
             values["buyer_ref"] = f"buy_{uuid.uuid4().hex[:8]}"
 
         return values
+
+    @model_validator(mode="after")
+    def validate_timezone_aware(self):
+        """Validate that datetime fields are timezone-aware.
+
+        AdCP spec requires ISO 8601 datetime strings with timezone information.
+        This validator ensures all datetime fields have timezone info.
+        """
+        if self.start_time and self.start_time.tzinfo is None:
+            raise ValueError("start_time must be timezone-aware (ISO 8601 with timezone)")
+        if self.end_time and self.end_time.tzinfo is None:
+            raise ValueError("end_time must be timezone-aware (ISO 8601 with timezone)")
+        return self
 
     # Backward compatibility properties for old field names
     @property
@@ -1849,7 +1981,8 @@ class CreateMediaBuyRequest(BaseModel):
         if self.packages:
             product_ids = []
             for package in self.packages:
-                product_ids.extend(package.products)
+                if package.products:  # Handle None case
+                    product_ids.extend(package.products)
             return product_ids
         return self.product_ids or []
 
@@ -2168,6 +2301,7 @@ class UpdateMediaBuyRequest(BaseModel):
     end_time: datetime | None = None  # AdCP uses datetime, not date
     budget: Budget | None = None  # Budget object contains currency/pacing
     packages: list[AdCPPackageUpdate] | None = None
+    today: date | None = Field(None, exclude=True, description="For testing/simulation only - not part of AdCP spec")
 
     @model_validator(mode="after")
     def validate_oneOf_constraint(self):
@@ -2176,6 +2310,19 @@ class UpdateMediaBuyRequest(BaseModel):
             raise ValueError("Either media_buy_id or buyer_ref must be provided")
         if self.media_buy_id and self.buyer_ref:
             raise ValueError("Cannot provide both media_buy_id and buyer_ref (AdCP oneOf constraint)")
+        return self
+
+    @model_validator(mode="after")
+    def validate_timezone_aware(self):
+        """Validate that datetime fields are timezone-aware.
+
+        AdCP spec requires ISO 8601 datetime strings with timezone information.
+        This validator ensures all datetime fields have timezone info.
+        """
+        if self.start_time and self.start_time.tzinfo is None:
+            raise ValueError("start_time must be timezone-aware (ISO 8601 with timezone)")
+        if self.end_time and self.end_time.tzinfo is None:
+            raise ValueError("end_time must be timezone-aware (ISO 8601 with timezone)")
         return self
 
     # Backward compatibility properties (deprecated)

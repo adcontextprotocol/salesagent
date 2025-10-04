@@ -871,6 +871,74 @@ async def get_products(
     except Exception as e:
         logger.warning(f"Failed to enrich products with dynamic pricing: {e}. Using defaults.")
 
+    # Apply AdCP filters if provided
+    if req.filters:
+        filtered_products = []
+        for product in products:
+            # Filter by delivery_type
+            if req.filters.delivery_type and product.delivery_type != req.filters.delivery_type:
+                continue
+
+            # Filter by is_fixed_price
+            if req.filters.is_fixed_price is not None and product.is_fixed_price != req.filters.is_fixed_price:
+                continue
+
+            # Filter by format_types
+            if req.filters.format_types:
+                # Product.formats is list[str] (format IDs), need to look up types from FORMAT_REGISTRY
+                from src.core.schemas import get_format_by_id
+
+                product_format_types = set()
+                for format_id in product.formats:
+                    if isinstance(format_id, str):
+                        format_obj = get_format_by_id(format_id)
+                        if format_obj:
+                            product_format_types.add(format_obj.type)
+                    elif hasattr(format_id, "type"):
+                        # Already a Format object
+                        product_format_types.add(format_id.type)
+
+                if not any(fmt_type in product_format_types for fmt_type in req.filters.format_types):
+                    continue
+
+            # Filter by format_ids
+            if req.filters.format_ids:
+                # Product.formats is list[str] (format IDs)
+                product_format_ids = set()
+                for format_id in product.formats:
+                    if isinstance(format_id, str):
+                        product_format_ids.add(format_id)
+                    elif hasattr(format_id, "format_id"):
+                        # Already a Format object
+                        product_format_ids.add(format_id.format_id)
+
+                if not any(fmt_id in product_format_ids for fmt_id in req.filters.format_ids):
+                    continue
+
+            # Filter by standard_formats_only
+            if req.filters.standard_formats_only:
+                # Check if all formats are IAB standard formats
+                # IAB standard formats typically follow patterns like "display_", "video_", "audio_", "native_"
+                has_only_standard = True
+                for format_id in product.formats:
+                    if isinstance(format_id, str):
+                        if not format_id.startswith(("display_", "video_", "audio_", "native_")):
+                            has_only_standard = False
+                            break
+                    elif hasattr(format_id, "format_id"):
+                        if not format_id.format_id.startswith(("display_", "video_", "audio_", "native_")):
+                            has_only_standard = False
+                            break
+
+                if not has_only_standard:
+                    continue
+
+            # Product passed all filters
+            filtered_products.append(product)
+
+        products = filtered_products
+        logger.info(f"Applied filters: {req.filters.model_dump(exclude_none=True)}. {len(products)} products remain.")
+
     # Filter products based on policy compliance
     eligible_products = []
     for product in products:
@@ -2082,7 +2150,8 @@ def list_authorized_properties(
 
 @mcp.tool
 def create_media_buy(
-    po_number: str,
+    promoted_offering: str,
+    po_number: str = "",
     buyer_ref: str = None,
     packages: list = None,
     start_time: str = None,
@@ -2134,6 +2203,7 @@ def create_media_buy(
 
     # Create request object from individual parameters (MCP-compliant)
     req = CreateMediaBuyRequest(
+        promoted_offering=promoted_offering,
         po_number=po_number,
         buyer_ref=buyer_ref,
         packages=packages,

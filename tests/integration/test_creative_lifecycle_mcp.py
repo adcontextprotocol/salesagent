@@ -700,3 +700,101 @@ class TestCreativeLifecycleMCP:
             assert len(response.creatives) == 0
             assert response.total_count == 0
             assert response.has_more is False
+
+    def test_create_media_buy_with_creative_ids(self, mock_context, sample_creatives):
+        """Test create_media_buy accepts creative_ids in packages."""
+        # First, sync creatives to have IDs to reference
+        core_sync_creatives_tool, _ = self._import_mcp_tools()
+        with (
+            patch("src.core.main._get_principal_id_from_context", return_value=self.test_principal_id),
+            patch("src.core.main.get_current_tenant", return_value={"tenant_id": self.test_tenant_id}),
+        ):
+            sync_response = core_sync_creatives_tool(creatives=sample_creatives, upsert=False, context=mock_context)
+            assert len(sync_response.synced_creatives) == 3
+
+        # Import create_media_buy tool
+        from src.core.main import _create_media_buy_impl
+        from src.core.schemas import Budget, Package
+
+        # Create media buy with creative_ids in packages
+        creative_ids = [c["creative_id"] for c in sample_creatives]
+
+        with (
+            patch("src.core.main._get_principal_id_from_context", return_value=self.test_principal_id),
+            patch("src.core.main.get_current_tenant", return_value={"tenant_id": self.test_tenant_id}),
+            patch("src.core.main.get_principal_object") as mock_principal,
+            patch("src.core.main.get_adapter") as mock_adapter,
+            patch("src.core.main.get_product_catalog") as mock_catalog,
+        ):
+            # Mock principal
+            from src.core.schemas import Principal as SchemaPrincipal
+
+            mock_principal.return_value = SchemaPrincipal(
+                principal_id=self.test_principal_id,
+                name="Test Advertiser",
+                platform_mappings={"mock": {"id": "test"}},
+            )
+
+            # Mock adapter
+            from src.core.schemas import CreateMediaBuyResponse, TaskStatus
+
+            mock_adapter_instance = mock_adapter.return_value
+            mock_adapter_instance.create_media_buy.return_value = CreateMediaBuyResponse(
+                media_buy_id="test_buy_123",
+                status=TaskStatus.WORKING,
+                message="Media buy created",
+            )
+            mock_adapter_instance.manual_approval_required = False
+
+            # Mock product catalog
+            from src.core.schemas import Product as SchemaProduct
+
+            mock_catalog.return_value = [
+                SchemaProduct(
+                    product_id="prod_1",
+                    name="Test Product",
+                    description="Test",
+                    formats=[],
+                    delivery_type="non_guaranteed",
+                    is_fixed_price=False,
+                    price_guidance={"floor": 5.0, "p50": 10.0, "p90": 15.0},
+                )
+            ]
+
+            # Create packages with creative_ids
+            packages = [
+                Package(
+                    buyer_ref="pkg_1",
+                    products=["prod_1"],
+                    creative_ids=creative_ids,  # NEW: Provide creative_ids
+                )
+            ]
+
+            # Call create_media_buy with packages containing creative_ids
+            response = _create_media_buy_impl(
+                promoted_offering="Test Campaign",
+                packages=packages,
+                start_time=datetime.now(UTC) + timedelta(days=1),
+                end_time=datetime.now(UTC) + timedelta(days=30),
+                budget=Budget(total=5000.0, currency="USD"),
+                context=mock_context,
+            )
+
+            # Verify response
+            assert response.media_buy_id == "test_buy_123"
+            assert response.status == TaskStatus.WORKING
+
+            # Verify creative assignments were created in database
+            with get_db_session() as session:
+                assignments = (
+                    session.query(CreativeAssignment)
+                    .filter_by(tenant_id=self.test_tenant_id, media_buy_id="test_buy_123")
+                    .all()
+                )
+
+                # Should have 3 assignments (one per creative)
+                assert len(assignments) == 3
+
+                # Verify all creative IDs are assigned
+                assigned_creative_ids = {a.creative_id for a in assignments}
+                assert assigned_creative_ids == set(creative_ids)

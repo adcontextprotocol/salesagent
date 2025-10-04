@@ -59,11 +59,15 @@ def require_auth(f):
 
     @wraps(f)
     def decorated_function(*args, **kwargs):
-        # Check if user is authenticated (admin_ui style)
-        logger.info(f"Auth check - session keys: {list(session.keys())}, authenticated: {session.get('authenticated')}")
-        if not session.get("authenticated"):
-            logger.warning(f"Authentication failed - session: {dict(session)}")
+        # Check if user is authenticated (align with admin_ui style)
+        # Admin UI sets session["user"] on successful authentication
+        has_user = "user" in session
+        logger.info(f"Auth check - session keys: {list(session.keys())}, has_user: {has_user}")
+
+        if not has_user:
+            logger.warning(f"Authentication failed - no user in session. Session keys: {list(session.keys())}")
             return jsonify({"error": "Authentication required"}), 401
+
         return f(*args, **kwargs)
 
     return decorated_function

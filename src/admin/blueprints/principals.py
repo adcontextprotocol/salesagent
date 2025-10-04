@@ -15,8 +15,8 @@ from src.core.database.models import MediaBuy, Principal, Tenant
 
 logger = logging.getLogger(__name__)
 
-# Create Blueprint
-principals_bp = Blueprint("principals", __name__, url_prefix="/tenant/<tenant_id>")
+# Create Blueprint (url_prefix is set during registration in app.py)
+principals_bp = Blueprint("principals", __name__)
 
 
 @principals_bp.route("/principals")
@@ -42,11 +42,18 @@ def list_principals(tenant_id):
                     .count()
                 )
 
+                # Handle both string (SQLite) and dict (PostgreSQL JSONB) formats
+                mappings = principal.platform_mappings
+                if mappings and isinstance(mappings, str):
+                    mappings = json.loads(mappings)
+                elif not mappings:
+                    mappings = {}
+
                 principal_dict = {
                     "principal_id": principal.principal_id,
                     "name": principal.name,
                     "access_token": principal.access_token,
-                    "platform_mappings": json.loads(principal.platform_mappings) if principal.platform_mappings else {},
+                    "platform_mappings": mappings,
                     "media_buy_count": media_buy_count,
                     "created_at": principal.created_at,
                 }
@@ -184,6 +191,44 @@ def create_principal(tenant_id):
         return redirect(request.url)
 
 
+@principals_bp.route("/principal/<principal_id>", methods=["GET"])
+@require_tenant_access()
+def get_principal(tenant_id, principal_id):
+    """Get principal details including platform mappings."""
+    try:
+        with get_db_session() as db_session:
+            principal = db_session.query(Principal).filter_by(tenant_id=tenant_id, principal_id=principal_id).first()
+
+            if not principal:
+                return jsonify({"error": "Principal not found"}), 404
+
+            # Parse platform mappings (handle both string and dict formats)
+            if principal.platform_mappings:
+                if isinstance(principal.platform_mappings, str):
+                    mappings = json.loads(principal.platform_mappings)
+                else:
+                    mappings = principal.platform_mappings
+            else:
+                mappings = {}
+
+            return jsonify(
+                {
+                    "success": True,
+                    "principal": {
+                        "principal_id": principal.principal_id,
+                        "name": principal.name,
+                        "access_token": principal.access_token,
+                        "platform_mappings": mappings,
+                        "created_at": principal.created_at.isoformat() if principal.created_at else None,
+                    },
+                }
+            )
+
+    except Exception as e:
+        logger.error(f"Error getting principal {principal_id}: {e}", exc_info=True)
+        return jsonify({"error": f"Failed to get principal: {str(e)}"}), 500
+
+
 @principals_bp.route("/principal/<principal_id>/update_mappings", methods=["POST"])
 @require_tenant_access()
 def update_mappings(tenant_id, principal_id):
@@ -203,7 +248,6 @@ def update_mappings(tenant_id, principal_id):
 
             # Update mappings
             principal.platform_mappings = json.dumps(platform_mappings)
-            principal.updated_at = datetime.now(UTC)
             db_session.commit()
 
             return jsonify(
@@ -261,10 +305,8 @@ def get_gam_advertisers(tenant_id):
                 # Create a mock principal for GAM initialization
                 # Need dummy advertiser_id for GAM adapter validation, even though get_advertisers() doesn't use it
                 mock_principal = Principal(
-                    tenant_id=tenant_id,
                     principal_id="system",
                     name="System",
-                    access_token="mock_token",
                     platform_mappings={
                         "google_ad_manager": {
                             "advertiser_id": "system_temp_advertiser_id",  # Dummy ID for validation only
@@ -274,19 +316,22 @@ def get_gam_advertisers(tenant_id):
                 )
 
                 # Build GAM config from AdapterConfig
-                gam_config = (
-                    {
-                        "network_code": tenant.adapter_config.gam_network_code,
-                        "refresh_token": tenant.adapter_config.gam_refresh_token,
-                        "trafficker_id": tenant.adapter_config.gam_trafficker_id,
-                        "manual_approval_required": tenant.adapter_config.gam_manual_approval_required or False,
-                    }
-                    if tenant.adapter_config
-                    else {}
-                )
+                if not tenant.adapter_config or not tenant.adapter_config.gam_network_code:
+                    return jsonify({"error": "GAM network code not configured for this tenant"}), 400
+
+                gam_config = {
+                    "refresh_token": tenant.adapter_config.gam_refresh_token,
+                    "manual_approval_required": tenant.adapter_config.gam_manual_approval_required or False,
+                }
 
                 adapter = GoogleAdManager(
-                    config=gam_config, principal=mock_principal, dry_run=False, tenant_id=tenant_id
+                    config=gam_config,
+                    principal=mock_principal,
+                    network_code=tenant.adapter_config.gam_network_code,
+                    advertiser_id=None,
+                    trafficker_id=tenant.adapter_config.gam_trafficker_id,
+                    dry_run=False,
+                    tenant_id=tenant_id,
                 )
 
                 # Get advertisers (companies) from GAM

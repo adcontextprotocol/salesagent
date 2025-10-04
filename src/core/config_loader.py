@@ -70,6 +70,7 @@ def get_default_tenant() -> dict[str, Any] | None:
                     "slack_audit_webhook_url": tenant.slack_audit_webhook_url,
                     "hitl_webhook_url": tenant.hitl_webhook_url,
                     "policy_settings": safe_json_loads(tenant.policy_settings, None),
+                    "signals_agent_config": safe_json_loads(tenant.signals_agent_config, None),
                 }
             return None
     except Exception as e:
@@ -162,6 +163,7 @@ def get_tenant_by_virtual_host(virtual_host: str) -> dict[str, Any] | None:
                     "slack_audit_webhook_url": tenant.slack_audit_webhook_url,
                     "hitl_webhook_url": tenant.hitl_webhook_url,
                     "policy_settings": safe_json_loads(tenant.policy_settings, None),
+                    "signals_agent_config": safe_json_loads(tenant.signals_agent_config, None),
                 }
             return None
     except Exception as e:

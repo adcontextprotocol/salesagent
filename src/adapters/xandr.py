@@ -276,9 +276,9 @@ class XandrAdapter(AdServerAdapter):
                             "start_date": request.flight_start_date.isoformat(),
                             "end_date": request.flight_end_date.isoformat(),
                             "daily_budget": float(
-                                request.total_budget / (request.flight_end_date - request.flight_start_date).days
+                                request.budget.total / (request.flight_end_date - request.flight_start_date).days
                             ),
-                            "lifetime_budget": float(request.total_budget),
+                            "lifetime_budget": float(request.budget.total),
                         }
                     ],
                     "currency": "USD",
@@ -292,45 +292,46 @@ class XandrAdapter(AdServerAdapter):
             packages = []
 
             # Create line items for each package
-            for package_req in request.packages:
-                li_data = {
-                    "line-item": {
-                        "name": package_req.name,
-                        "insertion_order_id": io_id,
-                        "advertiser_id": int(self.advertiser_id),
-                        "start_date": request.flight_start_date.isoformat(),
-                        "end_date": request.flight_end_date.isoformat(),
-                        "revenue_type": "cpm",
-                        "revenue_value": package_req.budget / package_req.impressions * 1000,
-                        "lifetime_budget": float(package_req.budget),
-                        "daily_budget": float(
-                            package_req.budget / (request.flight_end_date - request.flight_start_date).days
-                        ),
-                        "currency": "USD",
-                        "state": "inactive",  # Start inactive
-                        "inventory_type": self._map_inventory_type(package_req.product_id),
+            if request.packages:
+                for package_req in request.packages:
+                    li_data = {
+                        "line-item": {
+                            "name": package_req.name,
+                            "insertion_order_id": io_id,
+                            "advertiser_id": int(self.advertiser_id),
+                            "start_date": request.flight_start_date.isoformat(),
+                            "end_date": request.flight_end_date.isoformat(),
+                            "revenue_type": "cpm",
+                            "revenue_value": package_req.budget / package_req.impressions * 1000,
+                            "lifetime_budget": float(package_req.budget),
+                            "daily_budget": float(
+                                package_req.budget / (request.flight_end_date - request.flight_start_date).days
+                            ),
+                            "currency": "USD",
+                            "state": "inactive",  # Start inactive
+                            "inventory_type": self._map_inventory_type(package_req.product_id),
+                        }
                     }
-                }
 
-                # Apply targeting
-                if request.targeting_overlay:
-                    li_data["line-item"]["profile_id"] = self._create_targeting_profile(request.targeting_overlay)
+                    # Apply targeting
+                    if request.targeting_overlay:
+                        li_data["line-item"]["profile_id"] = self._create_targeting_profile(request.targeting_overlay)
 
-                li_response = self._make_request("POST", "/line-item", li_data)
-                li_id = li_response["response"]["line-item"]["id"]
+                    li_response = self._make_request("POST", "/line-item", li_data)
+                    li_id = li_response["response"]["line-item"]["id"]
 
-                package = Package(
-                    package_id=f"xandr_li_{li_id}",
-                    platform_id=str(li_id),
-                    name=package_req.name,
-                    product_id=package_req.product_id,
-                    budget=package_req.budget,
-                    impressions=package_req.impressions,
-                    start_date=request.flight_start_date,
-                    end_date=request.flight_end_date,
-                    status=PackageStatus(state="inactive", is_editable=True, delivery_percentage=0.0),
-                )
-                packages.append(package)
+                    package = Package(
+                        package_id=f"xandr_li_{li_id}",
+                        platform_id=str(li_id),
+                        name=package_req.name,
+                        product_id=package_req.product_id,
+                        budget=package_req.budget,
+                        impressions=package_req.impressions,
+                        start_date=request.flight_start_date,
+                        end_date=request.flight_end_date,
+                        status=PackageStatus(state="inactive", is_editable=True, delivery_percentage=0.0),
+                    )
+                    packages.append(package)
 
             media_buy = MediaBuy(
                 media_buy_id=f"xandr_io_{io_id}",

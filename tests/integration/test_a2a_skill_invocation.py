@@ -174,12 +174,21 @@ class TestA2ASkillInvocation:
         return Message(message_id="msg_123", context_id="ctx_123", role=Role.user, parts=[Part(text=text)])
 
     def create_message_with_skill(self, skill: str, parameters: dict) -> Message:
-        """Create a message with explicit skill invocation."""
+        """Create a message with explicit skill invocation (legacy 'parameters' field)."""
         return Message(
             message_id="msg_456",
             context_id="ctx_456",
             role=Role.user,
             parts=[Part(data={"skill": skill, "parameters": parameters})],
+        )
+
+    def create_message_with_skill_a2a_spec(self, skill: str, input_params: dict) -> Message:
+        """Create a message with explicit skill invocation (A2A spec 'input' field)."""
+        return Message(
+            message_id="msg_457",
+            context_id="ctx_457",
+            role=Role.user,
+            parts=[Part(data={"skill": skill, "input": input_params})],
         )
 
     def create_message_hybrid(self, text: str, skill: str, parameters: dict) -> Message:
@@ -291,6 +300,58 @@ class TestA2ASkillInvocation:
             # Validate against AdCP schemas
             validation_result = await validator.validate_a2a_skill_response("get_products", result)
             print(f"Explicit skill get_products validation: {validation_result}")
+
+            # Schema validation should pass or warn (but not fail the test)
+            if validation_result["errors"]:
+                print(f"Schema validation errors: {validation_result['errors']}")
+            if validation_result["warnings"]:
+                print(f"Schema validation warnings: {validation_result['warnings']}")
+
+    @pytest.mark.asyncio
+    async def test_explicit_skill_get_products_a2a_spec(self, handler, mock_principal_context, validator):
+        """Test explicit skill invocation using A2A spec 'input' field instead of 'parameters'."""
+        # Mock authentication token
+        handler._get_auth_token = MagicMock(return_value="test_token")
+
+        # Mock the core function call with AdCP-compliant response
+        with patch.object(handler, "_handle_get_products_skill", new_callable=AsyncMock) as mock_skill:
+            # Return mock AdCP-compliant data structure
+            mock_skill.return_value = {
+                "products": [
+                    {
+                        "id": "prod_a2a",
+                        "name": "A2A Spec Product",
+                        "description": "Product returned via A2A spec 'input' field",
+                        "formats": [{"id": "display_728x90", "name": "728x90 Leaderboard"}],
+                        "pricing": {"base_cpm": 10.0},
+                        "targeting_template": {},
+                    }
+                ],
+                "message": "Products retrieved via A2A spec input field",
+            }
+
+            # Create explicit skill invocation message using A2A spec 'input' field
+            skill_params = {"brief": "Premium coffee brands", "promoted_offering": "Wonderstruck Premium Video Ads"}
+            message = self.create_message_with_skill_a2a_spec("get_products", skill_params)
+            params = MessageSendParams(message=message)
+
+            # Process the message
+            result = await handler.on_message_send(params)
+
+            # Verify the result
+            assert isinstance(result, Task)
+            assert result.metadata["invocation_type"] == "explicit_skill"
+            assert "get_products" in result.metadata["skills_requested"]
+            assert result.artifacts is not None
+            assert len(result.artifacts) == 1
+            assert result.artifacts[0].name == "get_products_result"
+
+            # Verify the mock was called with correct parameters
+            mock_skill.assert_called_once_with(skill_params, "test_token")
+
+            # Validate against AdCP schemas
+            validation_result = await validator.validate_a2a_skill_response("get_products", result)
+            print(f"A2A spec 'input' field get_products validation: {validation_result}")
 
             # Schema validation should pass or warn (but not fail the test)
             if validation_result["errors"]:

@@ -221,7 +221,6 @@ class ContextManager(DatabaseManager):
         error_message: str | None = None,
         transaction_details: dict[str, Any] | None = None,
         add_comment: dict[str, str] | None = None,
-        send_push_notification: bool = True,
     ) -> None:
         """Update a workflow step's status and data.
 
@@ -232,14 +231,11 @@ class ContextManager(DatabaseManager):
             error_message: Error message if failed
             transaction_details: Actual API calls made
             add_comment: Optional comment to add {user, comment}
-            send_push_notification: Whether to send push notification on status change
         """
         session = self.session
         try:
             step = session.query(WorkflowStep).filter_by(step_id=step_id).first()
             if step:
-                old_status = step.status
-
                 if status:
                     step.status = status
                     if status in ["completed", "failed"] and not step.completed_at:
@@ -270,46 +266,9 @@ class ContextManager(DatabaseManager):
                 session.commit()
                 console.print(f"[green]Updated workflow step {step_id}[/green]")
 
-                # Send push notification if status changed and feature is enabled
-                if send_push_notification and status and status != old_status:
-                    import asyncio
-
-                    from src.services.push_notification_service import push_notification_service
-
-                    # Run async notification in background
-                    try:
-                        console.print(
-                            f"[blue]🚀 WEBHOOK TRIGGER: Triggering push notification for step {step_id} status change: {old_status} → {status}[/blue]"
-                        )
-                        console.print(f"[blue]   context_id={step.context_id}, step_type={step.step_type}[/blue]")
-
-                        # Use context_id as workflow_id (WorkflowStep doesn't have workflow_id field)
-                        # IMPORTANT: Always use asyncio.run() to ensure webhook is sent before returning
-                        # Using loop.create_task() doesn't guarantee execution if request completes first
-                        try:
-                            loop = asyncio.get_running_loop()
-                            console.print(
-                                "[blue]   Existing event loop detected, but using asyncio.run() for reliability[/blue]"
-                            )
-                        except RuntimeError:
-                            console.print("[blue]   No event loop running, using asyncio.run()[/blue]")
-
-                        # Always run in new loop to ensure completion before returning
-                        result = asyncio.run(
-                            push_notification_service.send_workflow_step_notification(
-                                workflow_id=step.context_id,
-                                step_id=step_id,
-                                step_status=status,
-                                step_type=step.step_type,
-                            )
-                        )
-                        console.print(f"[blue]   ✅ Notification result: {result}[/blue]")
-                    except Exception as e:
-                        # Don't fail workflow update if push notification fails
-                        console.print(f"[yellow]Warning: Failed to send push notification: {e}[/yellow]")
-                        import traceback
-
-                        console.print(f"[yellow]{traceback.format_exc()}[/yellow]")
+                # Send push notifications if status changed
+                if status and step:
+                    self._send_push_notifications(step, status, session)
         finally:
             session.close()
 
@@ -520,6 +479,98 @@ class ContextManager(DatabaseManager):
             return contexts
         finally:
             session.close()
+
+    def _send_push_notifications(self, step: WorkflowStep, new_status: str, session: Any) -> None:
+        """Send push notifications via registered webhooks for workflow step status changes.
+
+        Args:
+            step: The workflow step that was updated
+            new_status: The new status value
+            session: Active database session
+        """
+        try:
+            import requests
+
+            from src.core.database.models import PushNotificationConfig
+
+            # Get object mappings for this step
+            mappings = session.query(ObjectWorkflowMapping).filter_by(step_id=step.step_id).all()
+
+            if not mappings:
+                console.print(f"[yellow]No object mappings found for step {step.step_id}[/yellow]")
+                return
+
+            # Get context to find tenant_id
+            context = session.query(Context).filter_by(context_id=step.context_id).first()
+            if not context:
+                console.print(f"[yellow]No context found for step {step.step_id}[/yellow]")
+                return
+
+            tenant_id = context.tenant_id
+
+            # Find registered webhooks for these objects
+            for mapping in mappings:
+                webhooks = (
+                    session.query(PushNotificationConfig)
+                    .filter_by(
+                        tenant_id=tenant_id,
+                        object_type=mapping.object_type,
+                        object_id=mapping.object_id,
+                    )
+                    .all()
+                )
+
+                for webhook_config in webhooks:
+                    # Build notification payload
+                    payload = {
+                        "step_id": step.step_id,
+                        "object_type": mapping.object_type,
+                        "object_id": mapping.object_id,
+                        "action": mapping.action,
+                        "status": new_status,
+                        "step_type": step.step_type,
+                        "owner": step.owner,
+                        "timestamp": datetime.now(UTC).isoformat(),
+                    }
+
+                    # Add optional fields if present
+                    if step.error_message:
+                        payload["error_message"] = step.error_message
+                    if step.response_data:
+                        payload["response_data"] = step.response_data
+
+                    console.print(
+                        f"[cyan]📤 Sending webhook to {webhook_config.webhook_url} for {mapping.object_type} {mapping.object_id}[/cyan]"
+                    )
+
+                    try:
+                        response = requests.post(
+                            webhook_config.webhook_url,
+                            json=payload,
+                            timeout=10,
+                            headers={"Content-Type": "application/json"},
+                        )
+
+                        if response.status_code in [200, 201, 202, 204]:
+                            console.print(
+                                f"[green]✅ Webhook sent successfully to {webhook_config.webhook_url}[/green]"
+                            )
+                        else:
+                            console.print(
+                                f"[yellow]⚠️ Webhook returned status {response.status_code}: {response.text[:200]}[/yellow]"
+                            )
+
+                    except requests.exceptions.Timeout:
+                        console.print(f"[red]❌ Webhook timeout for {webhook_config.webhook_url}[/red]")
+                    except requests.exceptions.RequestException as e:
+                        console.print(f"[red]❌ Webhook failed for {webhook_config.webhook_url}: {str(e)}[/red]")
+
+        except Exception as e:
+            console.print(f"[red]Error sending push notifications: {e}[/red]")
+            # Don't fail the workflow update if notifications fail
+            import traceback
+
+            traceback.print_exc()
 
 
 # Singleton instance getter for compatibility

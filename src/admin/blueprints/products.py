@@ -14,6 +14,7 @@ from src.core.database.models import CreativeFormat, Product, Tenant
 from src.core.validation import sanitize_form_data
 from src.services.ai_product_service import AIProductConfigurationService
 from src.services.default_products import get_default_products, get_industry_specific_products
+from src.services.gam_product_config_service import GAMProductConfigService
 
 logger = logging.getLogger(__name__)
 
@@ -183,6 +184,10 @@ def add_product(tenant_id):
                     if price_min and price_max:
                         price_guidance = {"min": price_min, "max": price_max}
 
+                # Generate default GAM implementation config
+                gam_config_service = GAMProductConfigService()
+                default_impl_config = gam_config_service.generate_default_config(delivery_type, formats)
+
                 # Create product with correct fields matching the Product model
                 product = Product(
                     product_id=form_data.get("product_id") or f"prod_{uuid.uuid4().hex[:8]}",
@@ -196,12 +201,17 @@ def add_product(tenant_id):
                     cpm=cpm,
                     price_guidance=price_guidance,
                     targeting_template={},  # Empty targeting template
-                    implementation_config=None,
+                    implementation_config=default_impl_config,  # GAM defaults
                 )
                 db_session.add(product)
                 db_session.commit()
 
-                flash(f"Product '{product.name}' created successfully", "success")
+                flash(
+                    f"Product '{product.name}' created with default GAM configuration. "
+                    f"Click 'GAM Config' to configure inventory targeting.",
+                    "success",
+                )
+                # Redirect to products list - user can click GAM Config button when ready
                 return redirect(url_for("products.list_products", tenant_id=tenant_id))
 
         except Exception as e:
@@ -801,3 +811,69 @@ def create_bulk(tenant_id):
     except Exception as e:
         logger.error(f"Error creating bulk products: {e}", exc_info=True)
         return jsonify({"error": "Failed to create products"}), 500
+
+
+@products_bp.route("/<product_id>/gam-config", methods=["GET", "POST"])
+@require_tenant_access()
+def gam_product_config(tenant_id, product_id):
+    """Configure GAM-specific implementation settings for a product."""
+    try:
+        with get_db_session() as db_session:
+            product = db_session.query(Product).filter_by(tenant_id=tenant_id, product_id=product_id).first()
+
+            if not product:
+                flash("Product not found", "error")
+                return redirect(url_for("products.list_products", tenant_id=tenant_id))
+
+            # Check if inventory has been synced for this tenant
+            from src.core.database.models import GAMInventory
+
+            inventory_count = db_session.query(GAMInventory).filter_by(tenant_id=tenant_id).count()
+            inventory_synced = inventory_count > 0
+
+            if request.method == "POST":
+                # Parse form data into GAM configuration
+                gam_config_service = GAMProductConfigService()
+                # Pass the full request.form (not to_dict) to preserve arrays
+                impl_config = gam_config_service.parse_form_config(request.form)
+
+                # Validate configuration
+                is_valid, error_msg = gam_config_service.validate_config(impl_config)
+                if not is_valid:
+                    flash(f"Configuration validation failed: {error_msg}", "error")
+                    # Re-render form with current data
+                    return render_template(
+                        "adapters/gam_product_config.html",
+                        tenant_id=tenant_id,
+                        product=product,
+                        config=impl_config,
+                        inventory_synced=inventory_synced,
+                    )
+
+                # Update product with new configuration
+                # Use flag_modified to ensure SQLAlchemy detects JSONB mutations
+                from sqlalchemy.orm import attributes
+
+                product.implementation_config = impl_config
+                attributes.flag_modified(product, "implementation_config")
+                db_session.commit()
+
+                flash(f"GAM configuration saved for '{product.name}'", "success")
+                return redirect(url_for("products.list_products", tenant_id=tenant_id))
+
+            # GET request - show configuration form
+            # Load existing config or empty dict
+            config = product.implementation_config or {}
+
+            return render_template(
+                "adapters/gam_product_config.html",
+                tenant_id=tenant_id,
+                product=product,
+                config=config,
+                inventory_synced=inventory_synced,
+            )
+
+    except Exception as e:
+        logger.error(f"Error configuring GAM product: {e}", exc_info=True)
+        flash("Error configuring product", "error")
+        return redirect(url_for("products.list_products", tenant_id=tenant_id))

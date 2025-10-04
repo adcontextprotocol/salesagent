@@ -64,13 +64,49 @@ class TestMCPContractValidation:
 
     def test_create_media_buy_minimal(self):
         """Test create_media_buy with just po_number."""
-        request = CreateMediaBuyRequest(po_number="PO-12345")
+        request = CreateMediaBuyRequest(promoted_offering="Nike Air Jordan 2025 basketball shoes", po_number="PO-12345")
 
         assert request.po_number == "PO-12345"
         # buyer_ref is auto-generated, which is expected behavior
         assert request.buyer_ref is not None
         assert request.packages is None
         assert request.pacing == "even"  # Should have default
+
+    def test_create_media_buy_with_packages_products_none(self):
+        """Test that packages with products=None don't crash get_product_ids().
+
+        Regression test for bug where Package(products=None) caused:
+        'NoneType' object is not iterable in get_product_ids()
+        """
+        from src.core.schemas import Package
+
+        # Test 1: Package with products=None
+        request = CreateMediaBuyRequest(
+            promoted_offering="Nike Air Jordan 2025 basketball shoes",
+            po_number="PO-12345",
+            packages=[Package(buyer_ref="pkg1", products=None)],
+        )
+        assert request.get_product_ids() == []  # Should return empty list, not crash
+
+        # Test 2: Package with empty products list
+        request = CreateMediaBuyRequest(
+            promoted_offering="Adidas UltraBoost 2025 running shoes",
+            po_number="PO-12346",
+            packages=[Package(buyer_ref="pkg2", products=[])],
+        )
+        assert request.get_product_ids() == []
+
+        # Test 3: Mixed packages (some None, some with products)
+        request = CreateMediaBuyRequest(
+            promoted_offering="Puma RS-X 2025 training shoes",
+            po_number="PO-12347",
+            packages=[
+                Package(buyer_ref="pkg_none", products=None),
+                Package(buyer_ref="pkg_with_products", products=["prod1", "prod2"]),
+                Package(buyer_ref="pkg_empty", products=[]),
+            ],
+        )
+        assert request.get_product_ids() == ["prod1", "prod2"]
 
     def test_get_signals_minimal_now_works(self):
         """Test get_signals with minimal parameters - now fixed!"""
@@ -172,7 +208,7 @@ class TestSchemaDefaultValues:
         assert req.brief == ""  # Empty string, not None
 
         # CreateMediaBuyRequest
-        req = CreateMediaBuyRequest(po_number="test")
+        req = CreateMediaBuyRequest(promoted_offering="Nike Air Jordan 2025 basketball shoes", po_number="test")
         assert req.pacing == "even"  # Sensible default
         assert req.enable_creative_macro is False  # Explicit boolean default
 

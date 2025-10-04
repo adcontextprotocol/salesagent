@@ -58,7 +58,6 @@ from src.core.audit_logger import get_audit_logger
 from src.core.auth_utils import get_principal_from_token
 from src.core.config_loader import get_current_tenant
 from src.core.schemas import (
-    CreateMediaBuyRequest,
     GetSignalsRequest,
     ListAuthorizedPropertiesRequest,
 )
@@ -217,16 +216,24 @@ class AdCPRequestHandler(RequestHandler):
 
                 # Handle structured data parts (explicit skill invocation)
                 elif hasattr(part, "data") and isinstance(part.data, dict):
-                    if "skill" in part.data and "parameters" in part.data:
-                        skill_invocations.append({"skill": part.data["skill"], "parameters": part.data["parameters"]})
-                        logger.info(f"Found explicit skill invocation: {part.data['skill']}")
+                    # Support both "input" (A2A spec) and "parameters" (legacy) for skill params
+                    if "skill" in part.data:
+                        params_data = part.data.get("input") or part.data.get("parameters", {})
+                        skill_invocations.append({"skill": part.data["skill"], "parameters": params_data})
+                        logger.info(
+                            f"Found explicit skill invocation: {part.data['skill']} with params: {list(params_data.keys())}"
+                        )
 
                 # Handle nested data structure (some A2A clients use this format)
                 elif hasattr(part, "root") and hasattr(part.root, "data"):
                     data = part.root.data
-                    if isinstance(data, dict) and "skill" in data and "parameters" in data:
-                        skill_invocations.append({"skill": data["skill"], "parameters": data["parameters"]})
-                        logger.info(f"Found explicit skill invocation (nested): {data['skill']}")
+                    if isinstance(data, dict) and "skill" in data:
+                        # Support both "input" (A2A spec) and "parameters" (legacy) for skill params
+                        params_data = data.get("input") or data.get("parameters", {})
+                        skill_invocations.append({"skill": data["skill"], "parameters": params_data})
+                        logger.info(
+                            f"Found explicit skill invocation (nested): {data['skill']} with params: {list(params_data.keys())}"
+                        )
 
         # Combine text for natural language fallback
         combined_text = " ".join(text_parts).strip().lower()
@@ -980,8 +987,14 @@ class AdCPRequestHandler(RequestHandler):
             )
 
             # Map A2A parameters to CreateMediaBuyRequest
-            # Required parameters
-            required_params = ["product_ids", "total_budget", "flight_start_date", "flight_end_date"]
+            # Required parameters per AdCP spec
+            required_params = [
+                "promoted_offering",
+                "product_ids",
+                "total_budget",
+                "flight_start_date",
+                "flight_end_date",
+            ]
             missing_params = [param for param in required_params if param not in parameters]
 
             if missing_params:
@@ -992,27 +1005,15 @@ class AdCPRequestHandler(RequestHandler):
                     "received_parameters": list(parameters.keys()),
                 }
 
-            # Create request object with parameter mapping
-            request = CreateMediaBuyRequest(
+            # Call core function directly with AdCP-compliant parameters
+            response = core_create_media_buy_tool(
+                promoted_offering=parameters["promoted_offering"],
+                po_number=f"A2A-{uuid.uuid4().hex[:8]}",  # Generate PO number
                 product_ids=parameters["product_ids"],
                 total_budget=float(parameters["total_budget"]),
-                flight_start_date=parameters["flight_start_date"],
-                flight_end_date=parameters["flight_end_date"],
-                # Optional parameters with defaults
-                preferred_deal_ids=parameters.get("preferred_deal_ids", []),
-                custom_targeting=parameters.get("custom_targeting", {}),
-                creative_requirements=parameters.get("creative_requirements", {}),
-                optimization_goal=parameters.get("optimization_goal", "impressions"),
-            )
-
-            # Call core function directly - map request parameters to function parameters
-            response = core_create_media_buy_tool(
-                po_number=f"A2A-{uuid.uuid4().hex[:8]}",  # Generate PO number
-                product_ids=request.product_ids,
-                total_budget=request.total_budget,
-                start_date=request.flight_start_date,
-                end_date=request.flight_end_date,
-                targeting_overlay=request.custom_targeting,
+                start_date=parameters["flight_start_date"],
+                end_date=parameters["flight_end_date"],
+                targeting_overlay=parameters.get("custom_targeting", {}),
                 buyer_ref=f"A2A-{tool_context.principal_id}",
                 context=tool_context,
             )
@@ -1481,12 +1482,12 @@ class AdCPRequestHandler(RequestHandler):
 
             # Call core function directly
             response = core_get_media_buy_delivery_tool(
-                media_buy_id=parameters["media_buy_id"],
+                media_buy_ids=[parameters["media_buy_id"]],
                 context=tool_context,
             )
 
-            # Convert response to A2A format
-            return response  # Raw function already returns dict format
+            # Convert response to dict for A2A format
+            return response.model_dump() if hasattr(response, "model_dump") else response
 
         except Exception as e:
             logger.error(f"Error in get_media_buy_delivery skill: {e}")

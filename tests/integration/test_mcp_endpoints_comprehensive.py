@@ -11,7 +11,7 @@ from fastmcp.client import Client
 from fastmcp.client.transports import StreamableHttpTransport
 
 from src.core.database.database_session import get_db_session
-from src.core.database.models import Principal, Product, Tenant
+from src.core.database.models import Principal, Product
 from tests.utils.database_helpers import create_tenant_with_timestamps, get_utc_now
 
 
@@ -32,7 +32,6 @@ class TestMCPEndpointsComprehensive:
     @pytest.fixture(autouse=True)
     def setup_test_data(self, integration_db):
         """Create test data for MCP tests."""
-        from datetime import datetime
 
         with get_db_session() as session:
             # Create test tenant
@@ -202,6 +201,7 @@ class TestMCPEndpointsComprehensive:
 
         # Test 1: Legacy format should work
         legacy_request = CreateMediaBuyRequest(
+            promoted_offering="Nike Air Jordan 2025 basketball shoes",
             product_ids=["prod_1", "prod_2"],
             total_budget=5000.0,
             start_date=date.today(),
@@ -230,6 +230,7 @@ class TestMCPEndpointsComprehensive:
 
         # Test 2: New v2.4 format should work
         new_request = CreateMediaBuyRequest(
+            promoted_offering="Adidas UltraBoost 2025 running shoes",
             buyer_ref="custom_ref_123",
             po_number="PO-V24-67890",  # Required per AdCP spec
             budget=Budget(total=10000.0, currency="EUR", pacing="asap"),
@@ -237,8 +238,8 @@ class TestMCPEndpointsComprehensive:
                 Package(buyer_ref="pkg_1", products=["prod_1", "prod_3"], budget=Budget(total=6000.0, currency="EUR")),
                 Package(buyer_ref="pkg_2", products=["prod_2"], budget=Budget(total=4000.0, currency="EUR")),
             ],
-            start_time=datetime.now(),
-            end_time=datetime.now() + timedelta(days=30),
+            start_time=datetime.now(UTC),
+            end_time=datetime.now(UTC) + timedelta(days=30),
         )
 
         assert new_request.buyer_ref == "custom_ref_123"
@@ -248,6 +249,7 @@ class TestMCPEndpointsComprehensive:
 
         # Test 3: Mixed format should work (legacy with some new fields)
         mixed_request = CreateMediaBuyRequest(
+            promoted_offering="Puma RS-X 2025 training shoes",
             buyer_ref="mixed_ref",
             po_number="PO-MIXED-99999",  # Required per AdCP spec
             product_ids=["prod_1"],
