@@ -64,6 +64,7 @@ from src.core.schemas import (
     GetSignalsResponse,
     ListAuthorizedPropertiesRequest,
     ListAuthorizedPropertiesResponse,
+    ListCreativeFormatsRequest,
     ListCreativeFormatsResponse,
     ListCreativesResponse,
     MediaBuyDeliveryData,
@@ -679,21 +680,35 @@ def log_tool_activity(context: Context, tool_name: str, start_time: float = None
 
 
 @mcp.tool
-async def get_products(promoted_offering: str, brief: str = "", context: Context = None) -> GetProductsResponse:
+async def get_products(
+    promoted_offering: str,
+    brief: str = "",
+    filters: dict | None = None,
+    strategy_id: str | None = None,
+    context: Context = None,
+) -> GetProductsResponse:
     """Get available products matching the brief.
 
     Args:
         promoted_offering: What is being promoted/advertised (required per AdCP spec)
         brief: Brief description of the advertising campaign or requirements (optional)
+        filters: Structured filters for product discovery (optional)
+        strategy_id: Optional strategy ID for linking operations (optional)
         context: FastMCP context (automatically provided)
 
     Returns:
         GetProductsResponse containing matching products
     """
+    from src.core.schemas import ProductFilters
     from src.core.tool_context import ToolContext
 
+    # Convert filters dict to ProductFilters if provided
+    filters_obj = ProductFilters(**filters) if filters else None
+
     # Create request object from individual parameters (MCP-compliant)
-    req = GetProductsRequest(brief=brief or "", promoted_offering=promoted_offering)
+    req = GetProductsRequest(
+        brief=brief or "", promoted_offering=promoted_offering, filters=filters_obj, strategy_id=strategy_id
+    )
 
     start_time = time.time()
 
@@ -1011,13 +1026,20 @@ async def get_products(promoted_offering: str, brief: str = "", context: Context
     return GetProductsResponse(products=modified_products, message=final_message, status=status)
 
 
-def _list_creative_formats_impl(context: Context) -> ListCreativeFormatsResponse:
+def _list_creative_formats_impl(
+    req: ListCreativeFormatsRequest | None, context: Context
+) -> ListCreativeFormatsResponse:
     """List all available creative formats (AdCP spec endpoint).
 
     Returns comprehensive standard formats from AdCP registry plus any custom tenant formats.
     Prioritizes database formats over registry formats when format_id conflicts exist.
+    Supports optional filtering by type, standard_only, category, and format_ids.
     """
     start_time = time.time()
+
+    # Use default request if none provided
+    if req is None:
+        req = ListCreativeFormatsRequest()
 
     # For discovery endpoints, authentication is optional
     principal_id = get_principal_from_context(context)  # Returns None if no auth
@@ -1077,6 +1099,25 @@ def _list_creative_formats_impl(context: Context) -> ListCreativeFormatsResponse
         if format_id not in format_ids_seen:
             formats.append(standard_format)
             format_ids_seen.add(format_id)
+
+    # Apply filters from request
+    if req.type:
+        formats = [f for f in formats if f.type == req.type]
+
+    if req.standard_only:
+        formats = [f for f in formats if f.is_standard]
+
+    if req.category:
+        # Category maps to is_standard: "standard" -> True, "custom" -> False
+        if req.category == "standard":
+            formats = [f for f in formats if f.is_standard]
+        elif req.category == "custom":
+            formats = [f for f in formats if not f.is_standard]
+
+    if req.format_ids:
+        # Filter to only the specified format IDs
+        format_ids_set = set(req.format_ids)
+        formats = [f for f in formats if f.format_id in format_ids_set]
 
     # Sort formats by type and name for consistent ordering
     formats.sort(key=lambda f: (f.type, f.name))
@@ -1141,18 +1182,37 @@ def _list_creative_formats_impl(context: Context) -> ListCreativeFormatsResponse
 
 
 @mcp.tool()
-def list_creative_formats(context: Context) -> ListCreativeFormatsResponse:
+def list_creative_formats(
+    adcp_version: str = "1.0.0",
+    type: str | None = None,
+    standard_only: bool | None = None,
+    category: str | None = None,
+    format_ids: list[str] | None = None,
+    context: Context = None,
+) -> ListCreativeFormatsResponse:
     """List all available creative formats (AdCP spec endpoint).
 
     MCP tool wrapper that delegates to the shared implementation.
 
     Args:
+        adcp_version: AdCP schema version for this request (default: "1.0.0")
+        type: Filter by format type (audio, video, display)
+        standard_only: Only return IAB standard formats
+        category: Filter by format category (standard, custom)
+        format_ids: Filter by specific format IDs
         context: FastMCP context (automatically provided)
 
     Returns:
         ListCreativeFormatsResponse with all available formats
     """
-    return _list_creative_formats_impl(context)
+    req = ListCreativeFormatsRequest(
+        adcp_version=adcp_version,
+        type=type,
+        standard_only=standard_only,
+        category=category,
+        format_ids=format_ids,
+    )
+    return _list_creative_formats_impl(req, context)
 
 
 def _sync_creatives_impl(
@@ -1161,6 +1221,11 @@ def _sync_creatives_impl(
     buyer_ref: str = None,
     assign_to_packages: list[str] = None,
     upsert: bool = True,
+    patch: bool = False,
+    assignments: dict = None,
+    dry_run: bool = False,
+    delete_missing: bool = False,
+    validation_mode: str = "strict",
     context: Context = None,
 ) -> SyncCreativesResponse:
     """Sync creative assets to centralized library (AdCP spec endpoint).
@@ -1169,6 +1234,7 @@ def _sync_creatives_impl(
     - Bulk creative upload/update with upsert semantics
     - Creative assignment to media buy packages
     - Support for both hosted assets (media_url) and third-party tags (snippet)
+    - Patch updates, dry-run mode, and validation options
 
     Args:
         creatives: Array of creative assets to sync
@@ -1176,6 +1242,11 @@ def _sync_creatives_impl(
         buyer_ref: Buyer's reference for the media buy (optional)
         assign_to_packages: Package IDs to assign creatives to (optional)
         upsert: Whether to update existing creatives or create new ones
+        patch: When true, only update provided fields (partial update)
+        assignments: Bulk assignment map of creative_id to package_ids
+        dry_run: Preview changes without applying them
+        delete_missing: Delete creatives not in sync payload (use with caution)
+        validation_mode: Validation strictness (strict or lenient)
         context: FastMCP context (automatically provided)
 
     Returns:
@@ -1511,6 +1582,11 @@ def sync_creatives(
     buyer_ref: str = None,
     assign_to_packages: list[str] = None,
     upsert: bool = True,
+    patch: bool = False,
+    assignments: dict = None,
+    dry_run: bool = False,
+    delete_missing: bool = False,
+    validation_mode: str = "strict",
     context: Context = None,
 ) -> SyncCreativesResponse:
     """Sync creative assets to centralized library (AdCP spec endpoint).
@@ -1523,12 +1599,29 @@ def sync_creatives(
         buyer_ref: Optional buyer reference for filtering
         assign_to_packages: List of package IDs to assign creatives to
         upsert: If True, update existing creatives; if False, only create new ones
+        patch: When true, only update provided fields (partial update)
+        assignments: Bulk assignment map of creative_id to package_ids
+        dry_run: Preview changes without applying them
+        delete_missing: Delete creatives not in sync payload (use with caution)
+        validation_mode: Validation strictness (strict or lenient)
         context: FastMCP context (automatically provided)
 
     Returns:
         SyncCreativesResponse with sync results
     """
-    return _sync_creatives_impl(creatives, media_buy_id, buyer_ref, assign_to_packages, upsert, context)
+    return _sync_creatives_impl(
+        creatives,
+        media_buy_id,
+        buyer_ref,
+        assign_to_packages,
+        upsert,
+        patch,
+        assignments,
+        dry_run,
+        delete_missing,
+        validation_mode,
+        context,
+    )
 
 
 def _list_creatives_impl(
@@ -1540,6 +1633,13 @@ def _list_creatives_impl(
     created_after: str = None,
     created_before: str = None,
     search: str = None,
+    filters: dict = None,
+    sort: dict = None,
+    pagination: dict = None,
+    fields: list[str] = None,
+    include_performance: bool = False,
+    include_assignments: bool = False,
+    include_sub_assets: bool = False,
     page: int = 1,
     limit: int = 50,
     sort_by: str = "created_date",
@@ -1560,6 +1660,13 @@ def _list_creatives_impl(
         created_after: Filter by creation date (ISO string) (optional)
         created_before: Filter by creation date (ISO string) (optional)
         search: Search in creative names and descriptions (optional)
+        filters: Advanced filtering options (nested object, optional)
+        sort: Sort configuration (nested object, optional)
+        pagination: Pagination parameters (nested object, optional)
+        fields: Specific fields to return (optional)
+        include_performance: Include performance metrics (optional)
+        include_assignments: Include package assignments (optional)
+        include_sub_assets: Include sub-assets (optional)
         page: Page number for pagination (default: 1)
         limit: Number of results per page (default: 50, max: 1000)
         sort_by: Sort field (created_date, name, status) (default: created_date)
@@ -1595,6 +1702,13 @@ def _list_creatives_impl(
         created_after=created_after_dt,
         created_before=created_before_dt,
         search=search,
+        filters=filters,
+        sort=sort,
+        pagination=pagination,
+        fields=fields,
+        include_performance=include_performance,
+        include_assignments=include_assignments,
+        include_sub_assets=include_sub_assets,
         page=page,
         limit=min(limit, 1000),  # Enforce max limit
         sort_by=sort_by,
@@ -1787,6 +1901,13 @@ def list_creatives(
     created_after: str = None,
     created_before: str = None,
     search: str = None,
+    filters: dict = None,
+    sort: dict = None,
+    pagination: dict = None,
+    fields: list[str] = None,
+    include_performance: bool = False,
+    include_assignments: bool = False,
+    include_sub_assets: bool = False,
     page: int = 1,
     limit: int = 50,
     sort_by: str = "created_date",
@@ -1796,6 +1917,8 @@ def list_creatives(
     """List and filter creative assets from the centralized library.
 
     MCP tool wrapper that delegates to the shared implementation.
+    Supports both flat parameters (status, format, etc.) and nested objects (filters, sort, pagination)
+    for maximum flexibility.
     """
     return _list_creatives_impl(
         media_buy_id,
@@ -1806,6 +1929,13 @@ def list_creatives(
         created_after,
         created_before,
         search,
+        filters,
+        sort,
+        pagination,
+        fields,
+        include_performance,
+        include_assignments,
+        include_sub_assets,
         page,
         limit,
         sort_by,
@@ -2262,6 +2392,7 @@ def _create_media_buy_impl(
     pacing: str = "even",
     daily_budget: float = None,
     creatives: list = None,
+    reporting_webhook: dict = None,
     required_axe_signals: list = None,
     enable_creative_macro: bool = False,
     strategy_id: str = None,
@@ -2285,6 +2416,7 @@ def _create_media_buy_impl(
         pacing: Pacing strategy (even, asap, daily_budget)
         daily_budget: Daily budget limit
         creatives: Creative assets for the campaign
+        reporting_webhook: Webhook configuration for automated reporting delivery
         required_axe_signals: Required targeting signals
         enable_creative_macro: Enable AXE to provide creative_macro signal
         strategy_id: Optional strategy ID for linking operations
@@ -2312,6 +2444,7 @@ def _create_media_buy_impl(
         pacing=pacing,
         daily_budget=daily_budget,
         creatives=creatives,
+        reporting_webhook=reporting_webhook,
         required_axe_signals=required_axe_signals,
         enable_creative_macro=enable_creative_macro,
         strategy_id=strategy_id,
@@ -2977,6 +3110,7 @@ def create_media_buy(
     pacing: str = "even",
     daily_budget: float = None,
     creatives: list = None,
+    reporting_webhook: dict = None,
     required_axe_signals: list = None,
     enable_creative_macro: bool = False,
     strategy_id: str = None,
@@ -3002,6 +3136,7 @@ def create_media_buy(
         pacing: Pacing strategy (even, asap, daily_budget)
         daily_budget: Daily budget limit
         creatives: Creative assets for the campaign
+        reporting_webhook: Webhook configuration for automated reporting delivery
         required_axe_signals: Required targeting signals
         enable_creative_macro: Enable AXE to provide creative_macro signal
         strategy_id: Optional strategy ID for linking operations
@@ -3026,6 +3161,7 @@ def create_media_buy(
         pacing=pacing,
         daily_budget=daily_budget,
         creatives=creatives,
+        reporting_webhook=reporting_webhook,
         required_axe_signals=required_axe_signals,
         enable_creative_macro=enable_creative_macro,
         strategy_id=strategy_id,

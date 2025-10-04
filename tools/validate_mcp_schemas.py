@@ -38,6 +38,7 @@ class ToolSchemaValidator:
             "get_media_buy_delivery": schemas.GetMediaBuyDeliveryRequest,
             "sync_creatives": schemas.SyncCreativesRequest,
             "list_creatives": schemas.ListCreativesRequest,
+            "list_creative_formats": schemas.ListCreativeFormatsRequest,
             "get_signals": schemas.GetSignalsRequest,
             "activate_signal": schemas.ActivateSignalRequest,
             "list_authorized_properties": schemas.ListAuthorizedPropertiesRequest,
