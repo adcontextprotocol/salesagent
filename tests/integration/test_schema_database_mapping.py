@@ -38,6 +38,11 @@ class TestSchemaFieldMapping:
         computed_fields = {
             "brief_relevance",  # Populated dynamically when brief is provided
             "expires_at",  # Optional field that may not be in all database versions
+            # PR#79 fields - calculated dynamically from product_performance_metrics table
+            "currency",  # ISO 4217 currency code, defaults to "USD"
+            "estimated_exposures",  # Calculated from historical performance data
+            "floor_cpm",  # Minimum CPM calculated from market data
+            "recommended_cpm",  # Suggested CPM based on goals and historical data
         }
 
         # Fields that exist in database but should NOT be in external schema (internal only)

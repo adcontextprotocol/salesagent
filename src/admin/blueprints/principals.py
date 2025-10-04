@@ -11,7 +11,7 @@ from flask import Blueprint, flash, jsonify, redirect, render_template, request,
 from src.admin.services import DashboardService
 from src.admin.utils import require_tenant_access
 from src.core.database.database_session import get_db_session
-from src.core.database.models import MediaBuy, Principal, Tenant
+from src.core.database.models import MediaBuy, Principal, PushNotificationConfig, Tenant
 
 logger = logging.getLogger(__name__)
 
@@ -382,3 +382,230 @@ def get_gam_advertisers(tenant_id):
     except Exception as e:
         logger.error(f"Error getting GAM advertisers: {e}", exc_info=True)
         return jsonify({"error": "Internal server error"}), 500
+
+
+@principals_bp.route("/api/principal/<principal_id>/config", methods=["GET"])
+@require_tenant_access()
+def get_principal_config(tenant_id, principal_id):
+    """Get principal configuration including platform mappings for testing UI."""
+    try:
+        with get_db_session() as db_session:
+            principal = db_session.query(Principal).filter_by(tenant_id=tenant_id, principal_id=principal_id).first()
+
+            if not principal:
+                return jsonify({"error": "Principal not found"}), 404
+
+            # Parse platform mappings
+            platform_mappings = (
+                json.loads(principal.platform_mappings)
+                if isinstance(principal.platform_mappings, str)
+                else principal.platform_mappings
+            )
+
+            return jsonify(
+                {
+                    "principal_id": principal.principal_id,
+                    "name": principal.name,
+                    "platform_mappings": platform_mappings,
+                }
+            )
+
+    except Exception as e:
+        logger.error(f"Error getting principal config: {e}", exc_info=True)
+        return jsonify({"error": "Internal server error"}), 500
+
+
+@principals_bp.route("/api/principal/<principal_id>/testing-config", methods=["POST"])
+@require_tenant_access()
+def save_testing_config(tenant_id, principal_id):
+    """Save testing configuration (HITL settings) for a mock adapter principal."""
+    try:
+        data = request.get_json()
+        if not data or "hitl_config" not in data:
+            return jsonify({"error": "Missing hitl_config in request"}), 400
+
+        hitl_config = data["hitl_config"]
+
+        with get_db_session() as db_session:
+            principal = db_session.query(Principal).filter_by(tenant_id=tenant_id, principal_id=principal_id).first()
+
+            if not principal:
+                return jsonify({"error": "Principal not found"}), 404
+
+            # Parse existing platform mappings
+            platform_mappings = (
+                json.loads(principal.platform_mappings)
+                if isinstance(principal.platform_mappings, str)
+                else principal.platform_mappings or {}
+            )
+
+            # Ensure mock adapter exists
+            if "mock" not in platform_mappings:
+                platform_mappings["mock"] = {"advertiser_id": f"mock_{principal_id}", "enabled": True}
+
+            # Update hitl_config
+            platform_mappings["mock"]["hitl_config"] = hitl_config
+
+            # Save back to database
+            principal.platform_mappings = json.dumps(platform_mappings)
+            principal.updated_at = datetime.now(UTC)
+            db_session.commit()
+
+            logger.info(f"Updated testing config for principal {principal_id} in tenant {tenant_id}")
+
+            return jsonify({"success": True, "message": "Testing configuration saved successfully"})
+
+    except Exception as e:
+        logger.error(f"Error saving testing config: {e}", exc_info=True)
+        return jsonify({"error": "Failed to save testing configuration"}), 500
+
+
+@principals_bp.route("/principals/<principal_id>/webhooks", methods=["GET"])
+@require_tenant_access()
+def manage_webhooks(tenant_id, principal_id):
+    """Manage webhook configurations for a principal."""
+    try:
+        with get_db_session() as db_session:
+            principal = db_session.query(Principal).filter_by(tenant_id=tenant_id, principal_id=principal_id).first()
+            if not principal:
+                flash("Principal not found", "error")
+                return redirect(url_for("principals.list_principals", tenant_id=tenant_id))
+
+            # Get all webhooks for this principal
+            webhooks = (
+                db_session.query(PushNotificationConfig).filter_by(tenant_id=tenant_id, principal_id=principal_id).all()
+            )
+
+            return render_template(
+                "webhook_management.html",
+                tenant_id=tenant_id,
+                principal=principal,
+                webhooks=webhooks,
+            )
+
+    except Exception as e:
+        logger.error(f"Error loading webhook management: {e}", exc_info=True)
+        flash(f"Error loading webhooks: {str(e)}", "error")
+        return redirect(url_for("principals.list_principals", tenant_id=tenant_id))
+
+
+@principals_bp.route("/principals/<principal_id>/webhooks/register", methods=["POST"])
+@require_tenant_access()
+def register_webhook(tenant_id, principal_id):
+    """Register a new webhook for a principal."""
+    try:
+        from src.core.webhook_validator import WebhookURLValidator
+
+        url = request.form.get("url")
+        auth_type = request.form.get("auth_type", "none")
+
+        # Validate URL for SSRF protection
+        is_valid, error_msg = WebhookURLValidator.validate_webhook_url(url)
+        if not is_valid:
+            flash(f"Invalid webhook URL: {error_msg}", "error")
+            return redirect(url_for("principals.manage_webhooks", tenant_id=tenant_id, principal_id=principal_id))
+
+        # Build auth config based on type
+        auth_config = {}
+        if auth_type == "hmac_sha256":
+            secret = request.form.get("hmac_secret")
+            if not secret:
+                flash("HMAC secret is required for HMAC authentication", "error")
+                return redirect(url_for("principals.manage_webhooks", tenant_id=tenant_id, principal_id=principal_id))
+            auth_config = {"secret": secret}
+
+        with get_db_session() as db_session:
+            # Check if webhook already exists
+            existing = (
+                db_session.query(PushNotificationConfig)
+                .filter_by(tenant_id=tenant_id, principal_id=principal_id, url=url)
+                .first()
+            )
+
+            if existing:
+                flash("Webhook URL already registered for this principal", "warning")
+                return redirect(url_for("principals.manage_webhooks", tenant_id=tenant_id, principal_id=principal_id))
+
+            # Create new webhook
+            webhook = PushNotificationConfig(
+                config_id=str(uuid.uuid4()),
+                tenant_id=tenant_id,
+                principal_id=principal_id,
+                url=url,
+                auth_type=auth_type if auth_type != "none" else None,
+                auth_config=auth_config if auth_config else None,
+                is_active=True,
+                created_at=datetime.now(UTC),
+            )
+
+            db_session.add(webhook)
+            db_session.commit()
+
+            logger.info(f"Registered webhook {url} for principal {principal_id} in tenant {tenant_id}")
+            flash("Webhook registered successfully", "success")
+
+        return redirect(url_for("principals.manage_webhooks", tenant_id=tenant_id, principal_id=principal_id))
+
+    except Exception as e:
+        logger.error(f"Error registering webhook: {e}", exc_info=True)
+        flash(f"Error registering webhook: {str(e)}", "error")
+        return redirect(url_for("principals.manage_webhooks", tenant_id=tenant_id, principal_id=principal_id))
+
+
+@principals_bp.route("/principals/<principal_id>/webhooks/<config_id>/delete", methods=["POST"])
+@require_tenant_access()
+def delete_webhook(tenant_id, principal_id, config_id):
+    """Delete a webhook configuration."""
+    try:
+        with get_db_session() as db_session:
+            webhook = (
+                db_session.query(PushNotificationConfig)
+                .filter_by(tenant_id=tenant_id, principal_id=principal_id, config_id=config_id)
+                .first()
+            )
+
+            if not webhook:
+                flash("Webhook not found", "error")
+                return redirect(url_for("principals.manage_webhooks", tenant_id=tenant_id, principal_id=principal_id))
+
+            db_session.delete(webhook)
+            db_session.commit()
+
+            logger.info(f"Deleted webhook {config_id} for principal {principal_id} in tenant {tenant_id}")
+            flash("Webhook deleted successfully", "success")
+
+        return redirect(url_for("principals.manage_webhooks", tenant_id=tenant_id, principal_id=principal_id))
+
+    except Exception as e:
+        logger.error(f"Error deleting webhook: {e}", exc_info=True)
+        flash(f"Error deleting webhook: {str(e)}", "error")
+        return redirect(url_for("principals.manage_webhooks", tenant_id=tenant_id, principal_id=principal_id))
+
+
+@principals_bp.route("/principals/<principal_id>/webhooks/<config_id>/toggle", methods=["POST"])
+@require_tenant_access()
+def toggle_webhook(tenant_id, principal_id, config_id):
+    """Toggle webhook active status."""
+    try:
+        with get_db_session() as db_session:
+            webhook = (
+                db_session.query(PushNotificationConfig)
+                .filter_by(tenant_id=tenant_id, principal_id=principal_id, config_id=config_id)
+                .first()
+            )
+
+            if not webhook:
+                return jsonify({"error": "Webhook not found"}), 404
+
+            webhook.is_active = not webhook.is_active
+            db_session.commit()
+
+            logger.info(
+                f"Toggled webhook {config_id} to {'active' if webhook.is_active else 'inactive'} for principal {principal_id}"
+            )
+
+            return jsonify({"success": True, "is_active": webhook.is_active})
+
+    except Exception as e:
+        logger.error(f"Error toggling webhook: {e}", exc_info=True)
+        return jsonify({"error": str(e)}), 500

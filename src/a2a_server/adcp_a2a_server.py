@@ -592,44 +592,287 @@ class AdCPRequestHandler(RequestHandler):
         params: Any,
         context: ServerCallContext | None = None,
     ) -> Any:
-        """Handle get push notification config requests."""
-        # Not implemented for now
-        from a2a.types import UnsupportedOperationError
+        """Handle get push notification config requests.
 
-        raise UnsupportedOperationError("Push notifications not supported")
+        Retrieves the push notification configuration for a specific config ID.
+        """
+        from a2a.types import InvalidParamsError, NotFoundError
+
+        from src.core.database.database_session import get_db_session
+        from src.core.database.models import PushNotificationConfig as DBPushNotificationConfig
+
+        try:
+            # Get authentication token
+            auth_token = self._get_auth_token()
+            if not auth_token:
+                raise ServerError(InvalidRequestError(message="Missing authentication token"))
+
+            # Resolve tenant and principal from auth token
+            tool_context = self._create_tool_context_from_a2a(auth_token, "get_push_notification_config")
+
+            # Extract config_id from params
+            config_id = params.get("id") if isinstance(params, dict) else getattr(params, "id", None)
+            if not config_id:
+                raise ServerError(InvalidParamsError(message="Missing required parameter: id"))
+
+            # Query database for config
+            with get_db_session() as db:
+                config = (
+                    db.query(DBPushNotificationConfig)
+                    .filter_by(
+                        id=config_id,
+                        tenant_id=tool_context.tenant_id,
+                        principal_id=tool_context.principal_id,
+                        is_active=True,
+                    )
+                    .first()
+                )
+
+                if not config:
+                    raise ServerError(NotFoundError(message=f"Push notification config not found: {config_id}"))
+
+                # Return A2A PushNotificationConfig format
+                return {
+                    "id": config.id,
+                    "url": config.url,
+                    "authentication": (
+                        {"type": config.authentication_type or "none", "token": config.authentication_token}
+                        if config.authentication_type
+                        else None
+                    ),
+                    "token": config.validation_token,
+                }
+
+        except ServerError:
+            raise
+        except Exception as e:
+            logger.error(f"Error getting push notification config: {e}")
+            raise ServerError(InternalError(message=f"Failed to get push notification config: {str(e)}"))
 
     async def on_set_task_push_notification_config(
         self,
         params: Any,
         context: ServerCallContext | None = None,
     ) -> Any:
-        """Handle set push notification config requests."""
-        # Not implemented for now
-        from a2a.types import UnsupportedOperationError
+        """Handle set push notification config requests.
 
-        raise UnsupportedOperationError("Push notifications not supported")
+        Creates or updates a push notification configuration for async operation callbacks.
+        Buyers use this to register webhook URLs where they want to receive status updates.
+        """
+        import uuid
+        from datetime import UTC, datetime
+
+        from a2a.types import InvalidParamsError
+
+        from src.core.database.database_session import get_db_session
+        from src.core.database.models import PushNotificationConfig as DBPushNotificationConfig
+
+        try:
+            # Get authentication token
+            auth_token = self._get_auth_token()
+            if not auth_token:
+                raise ServerError(InvalidRequestError(message="Missing authentication token"))
+
+            # Resolve tenant and principal from auth token
+            tool_context = self._create_tool_context_from_a2a(auth_token, "set_push_notification_config")
+
+            # Extract parameters
+            if isinstance(params, dict):
+                url = params.get("url")
+                authentication = params.get("authentication")
+                config_id = params.get("id") or f"pnc_{uuid.uuid4().hex[:16]}"
+                validation_token = params.get("token")
+                session_id = params.get("session_id")
+            else:
+                url = getattr(params, "url", None)
+                authentication = getattr(params, "authentication", None)
+                config_id = getattr(params, "id", None) or f"pnc_{uuid.uuid4().hex[:16]}"
+                validation_token = getattr(params, "token", None)
+                session_id = getattr(params, "session_id", None)
+
+            if not url:
+                raise ServerError(InvalidParamsError(message="Missing required parameter: url"))
+
+            # Extract authentication details
+            auth_type = None
+            auth_token_value = None
+            if authentication:
+                if isinstance(authentication, dict):
+                    auth_type = authentication.get("type")
+                    auth_token_value = authentication.get("token")
+                else:
+                    auth_type = getattr(authentication, "type", None)
+                    auth_token_value = getattr(authentication, "token", None)
+
+            # Create or update configuration
+            with get_db_session() as db:
+                # Check if config exists
+                existing_config = (
+                    db.query(DBPushNotificationConfig)
+                    .filter_by(id=config_id, tenant_id=tool_context.tenant_id, principal_id=tool_context.principal_id)
+                    .first()
+                )
+
+                if existing_config:
+                    # Update existing config
+                    existing_config.url = url
+                    existing_config.authentication_type = auth_type
+                    existing_config.authentication_token = auth_token_value
+                    existing_config.validation_token = validation_token
+                    existing_config.session_id = session_id
+                    existing_config.updated_at = datetime.now(UTC)
+                    existing_config.is_active = True
+                else:
+                    # Create new config
+                    new_config = DBPushNotificationConfig(
+                        id=config_id,
+                        tenant_id=tool_context.tenant_id,
+                        principal_id=tool_context.principal_id,
+                        session_id=session_id,
+                        url=url,
+                        authentication_type=auth_type,
+                        authentication_token=auth_token_value,
+                        validation_token=validation_token,
+                        is_active=True,
+                    )
+                    db.add(new_config)
+
+                db.commit()
+
+                logger.info(
+                    f"Push notification config {'updated' if existing_config else 'created'}: {config_id} for tenant {tool_context.tenant_id}"
+                )
+
+                # Return A2A response
+                return {
+                    "id": config_id,
+                    "url": url,
+                    "authentication": {"type": auth_type or "none", "token": auth_token_value} if auth_type else None,
+                    "token": validation_token,
+                    "status": "active",
+                }
+
+        except ServerError:
+            raise
+        except Exception as e:
+            logger.error(f"Error setting push notification config: {e}")
+            raise ServerError(InternalError(message=f"Failed to set push notification config: {str(e)}"))
 
     async def on_list_task_push_notification_config(
         self,
         params: Any,
         context: ServerCallContext | None = None,
     ) -> Any:
-        """Handle list push notification config requests."""
-        # Not implemented for now
-        from a2a.types import UnsupportedOperationError
+        """Handle list push notification config requests.
 
-        raise UnsupportedOperationError("Push notifications not supported")
+        Returns all active push notification configurations for the authenticated principal.
+        """
+        from src.core.database.database_session import get_db_session
+        from src.core.database.models import PushNotificationConfig as DBPushNotificationConfig
+
+        try:
+            # Get authentication token
+            auth_token = self._get_auth_token()
+            if not auth_token:
+                raise ServerError(InvalidRequestError(message="Missing authentication token"))
+
+            # Resolve tenant and principal from auth token
+            tool_context = self._create_tool_context_from_a2a(auth_token, "list_push_notification_configs")
+
+            # Query database for all active configs
+            with get_db_session() as db:
+                configs = (
+                    db.query(DBPushNotificationConfig)
+                    .filter_by(tenant_id=tool_context.tenant_id, principal_id=tool_context.principal_id, is_active=True)
+                    .all()
+                )
+
+                # Convert to A2A format
+                configs_list = []
+                for config in configs:
+                    configs_list.append(
+                        {
+                            "id": config.id,
+                            "url": config.url,
+                            "authentication": (
+                                {"type": config.authentication_type or "none", "token": config.authentication_token}
+                                if config.authentication_type
+                                else None
+                            ),
+                            "token": config.validation_token,
+                            "created_at": config.created_at.isoformat() if config.created_at else None,
+                        }
+                    )
+
+                logger.info(f"Listed {len(configs_list)} push notification configs for tenant {tool_context.tenant_id}")
+
+                return {"configs": configs_list, "total_count": len(configs_list)}
+
+        except ServerError:
+            raise
+        except Exception as e:
+            logger.error(f"Error listing push notification configs: {e}")
+            raise ServerError(InternalError(message=f"Failed to list push notification configs: {str(e)}"))
 
     async def on_delete_task_push_notification_config(
         self,
         params: Any,
         context: ServerCallContext | None = None,
     ) -> Any:
-        """Handle delete push notification config requests."""
-        # Not implemented for now
-        from a2a.types import UnsupportedOperationError
+        """Handle delete push notification config requests.
 
-        raise UnsupportedOperationError("Push notifications not supported")
+        Marks a push notification configuration as inactive (soft delete).
+        """
+        from datetime import UTC, datetime
+
+        from a2a.types import InvalidParamsError, NotFoundError
+
+        from src.core.database.database_session import get_db_session
+        from src.core.database.models import PushNotificationConfig as DBPushNotificationConfig
+
+        try:
+            # Get authentication token
+            auth_token = self._get_auth_token()
+            if not auth_token:
+                raise ServerError(InvalidRequestError(message="Missing authentication token"))
+
+            # Resolve tenant and principal from auth token
+            tool_context = self._create_tool_context_from_a2a(auth_token, "delete_push_notification_config")
+
+            # Extract config_id from params
+            config_id = params.get("id") if isinstance(params, dict) else getattr(params, "id", None)
+            if not config_id:
+                raise ServerError(InvalidParamsError(message="Missing required parameter: id"))
+
+            # Query database and mark as inactive
+            with get_db_session() as db:
+                config = (
+                    db.query(DBPushNotificationConfig)
+                    .filter_by(id=config_id, tenant_id=tool_context.tenant_id, principal_id=tool_context.principal_id)
+                    .first()
+                )
+
+                if not config:
+                    raise ServerError(NotFoundError(message=f"Push notification config not found: {config_id}"))
+
+                # Soft delete by marking as inactive
+                config.is_active = False
+                config.updated_at = datetime.now(UTC)
+                db.commit()
+
+                logger.info(f"Deleted push notification config: {config_id} for tenant {tool_context.tenant_id}")
+
+                return {
+                    "id": config_id,
+                    "status": "deleted",
+                    "message": "Push notification configuration deleted successfully",
+                }
+
+        except ServerError:
+            raise
+        except Exception as e:
+            logger.error(f"Error deleting push notification config: {e}")
+            raise ServerError(InternalError(message=f"Failed to delete push notification config: {str(e)}"))
 
     async def _handle_explicit_skill(self, skill_name: str, parameters: dict, auth_token: str) -> dict:
         """Handle explicit AdCP skill invocations.
@@ -1156,8 +1399,19 @@ class AdCPRequestHandler(RequestHandler):
                 tool_name="list_creative_formats",
             )
 
-            # Call core function directly - no parameters needed for this endpoint
-            response = core_list_creative_formats_tool(context=tool_context)
+            # Build request from parameters (all optional)
+            from src.core.schemas import ListCreativeFormatsRequest
+
+            req = ListCreativeFormatsRequest(
+                adcp_version=parameters.get("adcp_version", "1.0.0"),
+                type=parameters.get("type"),
+                standard_only=parameters.get("standard_only"),
+                category=parameters.get("category"),
+                format_ids=parameters.get("format_ids"),
+            )
+
+            # Call core function with request
+            response = core_list_creative_formats_tool(req=req, context=tool_context)
 
             # Handle both dict and object responses (core function may return either based on INCLUDE_SCHEMAS_IN_RESPONSES)
             if isinstance(response, dict):

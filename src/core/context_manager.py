@@ -236,6 +236,8 @@ class ContextManager(DatabaseManager):
         try:
             step = session.query(WorkflowStep).filter_by(step_id=step_id).first()
             if step:
+                old_status = step.status  # Capture old status before changing
+
                 if status:
                     step.status = status
                     if status in ["completed", "failed"] and not step.completed_at:
@@ -263,12 +265,35 @@ class ContextManager(DatabaseManager):
                     )
                     step.comments = new_comments
 
+                # DEBUG: Log the condition check values BEFORE commit
+                console.print("[magenta]🔍 PRE-COMMIT WEBHOOK DEBUG:[/magenta]")
+                console.print("[magenta]   update_workflow_step called with:[/magenta]")
+                console.print(f"[magenta]     step_id={step_id}[/magenta]")
+                console.print(f"[magenta]     status parameter={status}[/magenta]")
+                console.print("[magenta]   Database state BEFORE commit:[/magenta]")
+                console.print(f"[magenta]     old_status={old_status}[/magenta]")
+                console.print(f"[magenta]     new step.status={step.status}[/magenta]")
+                console.print("[magenta]   Condition evaluation:[/magenta]")
+                console.print(f"[magenta]     status parameter truthy? {bool(status)}[/magenta]")
+                console.print(f"[magenta]     step object exists? {step is not None}[/magenta]")
+                console.print(f"[magenta]     Will trigger webhook? {status and step}[/magenta]")
+
                 session.commit()
-                console.print(f"[green]Updated workflow step {step_id}[/green]")
+                console.print(f"[green]✅ Updated workflow step {step_id} (committed to database)[/green]")
+
+                # DEBUG: Log the condition check values AFTER commit
+                console.print("[yellow]🔍 POST-COMMIT WEBHOOK DEBUG:[/yellow]")
+                console.print(f"[yellow]   status={status}[/yellow]")
+                console.print(f"[yellow]   old_status={old_status}[/yellow]")
+                console.print(f"[yellow]   step exists={step is not None}[/yellow]")
+                console.print(f"[yellow]   Webhook trigger condition (status and step): {status and step}[/yellow]")
 
                 # Send push notifications if status changed
                 if status and step:
+                    console.print(f"[blue]🚀 WEBHOOK: Calling _send_push_notifications for step {step_id}[/blue]")
                     self._send_push_notifications(step, status, session)
+                else:
+                    console.print(f"[yellow]⚠️ WEBHOOK SKIPPED: status={status}, step={step is not None}[/yellow]")
         finally:
             session.close()
 
@@ -507,17 +532,27 @@ class ContextManager(DatabaseManager):
                 return
 
             tenant_id = context.tenant_id
+            principal_id = context.principal_id
 
-            # Find registered webhooks for these objects
+            # Find registered webhooks for this principal
+            # NOTE: PushNotificationConfig doesn't have object_type/object_id columns
+            # Those are in ObjectWorkflowMapping which we already have via 'mappings'
+            webhooks = (
+                session.query(PushNotificationConfig)
+                .filter_by(
+                    tenant_id=tenant_id,
+                    principal_id=principal_id,
+                    is_active=True,
+                )
+                .all()
+            )
+
+            console.print(f"[cyan]🔍 Found {len(webhooks)} active webhook configs for principal {principal_id}[/cyan]")
+
+            # Send notifications for each mapping (media buy, creative, etc.)
             for mapping in mappings:
-                webhooks = (
-                    session.query(PushNotificationConfig)
-                    .filter_by(
-                        tenant_id=tenant_id,
-                        object_type=mapping.object_type,
-                        object_id=mapping.object_id,
-                    )
-                    .all()
+                console.print(
+                    f"[cyan]📦 Processing mapping: {mapping.object_type} {mapping.object_id} action={mapping.action}[/cyan]"
                 )
 
                 for webhook_config in webhooks:
@@ -540,30 +575,41 @@ class ContextManager(DatabaseManager):
                         payload["response_data"] = step.response_data
 
                     console.print(
-                        f"[cyan]📤 Sending webhook to {webhook_config.webhook_url} for {mapping.object_type} {mapping.object_id}[/cyan]"
+                        f"[cyan]📤 Sending webhook to {webhook_config.url} for {mapping.object_type} {mapping.object_id}[/cyan]"
                     )
 
                     try:
+                        # Build headers with authentication
+                        headers = {"Content-Type": "application/json"}
+
+                        # Add HMAC signature if configured
+                        if webhook_config.auth_type == "hmac_sha256" and webhook_config.auth_config:
+                            secret = webhook_config.auth_config.get("secret")
+                            if secret:
+                                from src.core.webhook_authenticator import WebhookAuthenticator
+
+                                auth_headers = WebhookAuthenticator.sign_payload(payload, secret)
+                                headers.update(auth_headers)
+                                console.print("[cyan]🔐 Added HMAC signature to webhook[/cyan]")
+
                         response = requests.post(
-                            webhook_config.webhook_url,
+                            webhook_config.url,
                             json=payload,
                             timeout=10,
-                            headers={"Content-Type": "application/json"},
+                            headers=headers,
                         )
 
                         if response.status_code in [200, 201, 202, 204]:
-                            console.print(
-                                f"[green]✅ Webhook sent successfully to {webhook_config.webhook_url}[/green]"
-                            )
+                            console.print(f"[green]✅ Webhook sent successfully to {webhook_config.url}[/green]")
                         else:
                             console.print(
                                 f"[yellow]⚠️ Webhook returned status {response.status_code}: {response.text[:200]}[/yellow]"
                             )
 
                     except requests.exceptions.Timeout:
-                        console.print(f"[red]❌ Webhook timeout for {webhook_config.webhook_url}[/red]")
+                        console.print(f"[red]❌ Webhook timeout for {webhook_config.url}[/red]")
                     except requests.exceptions.RequestException as e:
-                        console.print(f"[red]❌ Webhook failed for {webhook_config.webhook_url}: {str(e)}[/red]")
+                        console.print(f"[red]❌ Webhook failed for {webhook_config.url}: {str(e)}[/red]")
 
         except Exception as e:
             console.print(f"[red]Error sending push notifications: {e}[/red]")

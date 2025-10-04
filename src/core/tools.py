@@ -40,6 +40,7 @@ from src.core.schemas import (
     GetSignalsResponse,
     ListAuthorizedPropertiesRequest,
     ListAuthorizedPropertiesResponse,
+    ListCreativeFormatsRequest,
     ListCreativeFormatsResponse,
     ListCreativesResponse,
     Product,
@@ -422,14 +423,23 @@ def list_creatives_raw(
     )
 
 
-def list_creative_formats_raw(context: Context = None) -> ListCreativeFormatsResponse:
+def list_creative_formats_raw(
+    req: ListCreativeFormatsRequest | None = None, context: Context = None
+) -> ListCreativeFormatsResponse:
     """List all available creative formats (raw function for A2A server use).
 
     Delegates to shared implementation in main.py.
+
+    Args:
+        req: Optional request with filter parameters
+        context: FastMCP context
+
+    Returns:
+        ListCreativeFormatsResponse with all available formats
     """
     from src.core.main import _list_creative_formats_impl
 
-    return _list_creative_formats_impl(context)
+    return _list_creative_formats_impl(req, context)
 
 
 def list_authorized_properties_raw(

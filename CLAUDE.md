@@ -111,6 +111,26 @@ Python-based AdCP V2.3 sales agent reference implementation with:
 3. Test with minimal and full field sets
 4. Verify no internal fields leak
 
+**🚨 NEVER ADD FIELDS TO REQUEST/RESPONSE SCHEMAS WITHOUT SPEC VERIFICATION:**
+- **Before adding ANY field to a Request/Response model**, verify it exists in the AdCP spec
+- **Do NOT bypass pre-commit hooks with `--no-verify`** unless absolutely necessary
+- **If you must use `--no-verify`**, manually run schema validation checks:
+  ```bash
+  # Run schema validation manually
+  .git/hooks/pre-commit
+  # Or specific checks:
+  pre-commit run verify-adcp-schema-sync --all-files
+  pre-commit run audit-required-fields --all-files
+  ```
+- **Example of WRONG approach**: Adding `creative_ids` to `CreateMediaBuyRequest` top-level
+  - ❌ NOT in AdCP spec - belongs in `Package.creative_ids`
+  - ✅ Correct: Use existing spec-compliant `Package.creative_ids`
+
+**Common mistakes:**
+- Adding "convenience" fields that seem useful but aren't in spec
+- Assuming client's usage pattern means we should add fields
+- Using `--no-verify` and not checking schema compliance manually
+
 See `docs/testing/adcp-compliance.md` for detailed test patterns.
 
 ### 2. Admin UI Route Architecture
