@@ -227,6 +227,29 @@ def get_principal_from_token(token: str, tenant_id: str | None = None) -> str | 
             return principal.principal_id
 
 
+def _get_header_case_insensitive(headers: dict, header_name: str) -> str | None:
+    """Get a header value with case-insensitive lookup.
+
+    HTTP headers are case-insensitive, but Python dicts are case-sensitive.
+    This helper function performs case-insensitive header lookup.
+
+    Args:
+        headers: Dictionary of headers
+        header_name: Header name to look up (will be compared case-insensitively)
+
+    Returns:
+        Header value if found, None otherwise
+    """
+    if not headers:
+        return None
+
+    header_name_lower = header_name.lower()
+    for key, value in headers.items():
+        if key.lower() == header_name_lower:
+            return value
+    return None
+
+
 def get_principal_from_context(context: Context | None) -> str | None:
     """Extract principal ID from the FastMCP context using x-adcp-auth header.
 
@@ -253,8 +276,8 @@ def get_principal_from_context(context: Context | None) -> str | None:
     if not headers:
         return None
 
-    # Get the x-adcp-auth header
-    auth_token = headers.get("x-adcp-auth")
+    # Get the x-adcp-auth header (case-insensitive lookup)
+    auth_token = _get_header_case_insensitive(headers, "x-adcp-auth")
     if not auth_token:
         return None
 
@@ -263,7 +286,7 @@ def get_principal_from_context(context: Context | None) -> str | None:
     tenant_context = None
 
     # 1. Check Apx-Incoming-Host header (for Approximated.app virtual hosts)
-    apx_host = headers.get("apx-incoming-host")
+    apx_host = _get_header_case_insensitive(headers, "apx-incoming-host")
     if apx_host:
         tenant_context = get_tenant_by_virtual_host(apx_host)
         if tenant_context:
@@ -273,11 +296,11 @@ def get_principal_from_context(context: Context | None) -> str | None:
 
     # 2. Check x-adcp-tenant header (set by middleware for path-based routing)
     if not requested_tenant_id:
-        requested_tenant_id = headers.get("x-adcp-tenant")
+        requested_tenant_id = _get_header_case_insensitive(headers, "x-adcp-tenant")
 
     # 3. If not found, check host header for subdomain
     if not requested_tenant_id:
-        host = headers.get("host", "")
+        host = _get_header_case_insensitive(headers, "host") or ""
         subdomain = host.split(".")[0] if "." in host else None
         if subdomain and subdomain not in ["localhost", "adcp-sales-agent", "www"]:
             requested_tenant_id = subdomain
