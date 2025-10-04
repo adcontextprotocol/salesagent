@@ -25,6 +25,14 @@ repos:
         pass_filenames: false
         always_run: true
 
+      # Detect testing anti-patterns (over-mocking, missing coverage)
+      - id: detect-test-antipatterns
+        name: Detect testing anti-patterns
+        entry: uv run python scripts/detect_test_antipatterns.py
+        language: system
+        files: '^(tests/.*\.py|src/a2a_server/adcp_a2a_server\.py)$'
+        pass_filenames: true
+
       # Ensure smoke tests pass
       - id: smoke-tests
         name: Run smoke tests (critical paths)
