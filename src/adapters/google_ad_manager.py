@@ -109,14 +109,15 @@ class GoogleAdManager(AdServerAdapter):
         # Initialize manager components
         self.targeting_manager = GAMTargetingManager()
 
-        # Only initialize order/creative managers if we have advertiser_id and trafficker_id
+        # Initialize orders manager (advertiser_id/trafficker_id optional for query operations)
+        self.orders_manager = GAMOrdersManager(self.client_manager, self.advertiser_id, self.trafficker_id, dry_run)
+
+        # Only initialize creative manager if we have advertiser_id (required for creative operations)
         if self.advertiser_id and self.trafficker_id:
-            self.orders_manager = GAMOrdersManager(self.client_manager, self.advertiser_id, self.trafficker_id, dry_run)
             self.creatives_manager = GAMCreativesManager(
                 self.client_manager, self.advertiser_id, dry_run, self.log, self
             )
         else:
-            self.orders_manager = None
             self.creatives_manager = None
 
         # Inventory manager doesn't need advertiser_id
@@ -227,9 +228,9 @@ class GoogleAdManager(AdServerAdapter):
         """Create a new media buy (order) in GAM - main orchestration method."""
         self.log("[bold]GoogleAdManager.create_media_buy[/bold] - Creating GAM order")
 
-        # Validate that orders manager is initialized
-        if not self.orders_manager:
-            error_msg = "GAM adapter is not fully configured for order operations. " "Missing required configuration: "
+        # Validate that advertiser_id and trafficker_id are configured
+        if not self.advertiser_id or not self.trafficker_id:
+            error_msg = "GAM adapter is not fully configured for order creation. " "Missing required configuration: "
             missing = []
             if not self.advertiser_id:
                 missing.append("advertiser_id (company_id)")
@@ -300,16 +301,15 @@ class GoogleAdManager(AdServerAdapter):
 
     def archive_order(self, order_id: str) -> bool:
         """Archive a GAM order for cleanup purposes (delegated to orders manager)."""
-        if not self.orders_manager:
-            self.log("[red]Error: GAM adapter not configured for order operations[/red]")
+        if not self.advertiser_id or not self.trafficker_id:
+            self.log(
+                "[red]Error: GAM adapter not configured for order operations (missing advertiser_id or trafficker_id)[/red]"
+            )
             return False
         return self.orders_manager.archive_order(order_id)
 
     def get_advertisers(self) -> list[dict[str, Any]]:
         """Get list of advertisers from GAM (delegated to orders manager)."""
-        if not self.orders_manager:
-            self.log("[red]Error: GAM adapter not configured for order operations[/red]")
-            return []
         return self.orders_manager.get_advertisers()
 
     def add_creative_assets(
