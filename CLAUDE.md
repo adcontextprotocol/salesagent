@@ -1,5 +1,66 @@
 # AdCP Sales Agent Server - Development Guide
 
+## 🚨 CRITICAL ARCHITECTURE PATTERNS
+
+### MCP/A2A Shared Implementation Pattern
+**🚨 MANDATORY**: All tools MUST use shared implementation to avoid code duplication.
+
+```
+CORRECT ARCHITECTURE:
+  MCP Tool (main.py)  → _tool_name_impl() → [real implementation]
+  A2A Raw (tools.py) → _tool_name_impl() → [real implementation]
+
+WRONG - DO NOT DO THIS:
+  MCP Tool → [implementation A]
+  A2A Raw → [implementation B]  ❌ DUPLICATED CODE!
+```
+
+**Pattern for ALL tools:**
+1. **Implementation** in `main.py`: `def _tool_name_impl(...) -> ResponseType`
+   - Contains ALL business logic
+   - No `@mcp.tool` decorator
+   - Called by both MCP and A2A paths
+
+2. **MCP Wrapper** in `main.py`: `@mcp.tool() def tool_name(...) -> ResponseType`
+   - Thin wrapper with decorator
+   - Just calls `_tool_name_impl()`
+
+3. **A2A Raw Function** in `tools.py`: `def tool_name_raw(...) -> ResponseType`
+   - Imports and calls `_tool_name_impl()` from main.py
+   - Uses lazy import to avoid circular dependencies: `from src.core.main import _tool_name_impl`
+
+**Example:**
+```python
+# src/core/main.py
+def _create_media_buy_impl(promoted_offering: str, ...) -> CreateMediaBuyResponse:
+    """Real implementation with all business logic."""
+    # 600+ lines of actual implementation
+    return response
+
+@mcp.tool()
+def create_media_buy(promoted_offering: str, ...) -> CreateMediaBuyResponse:
+    """MCP tool wrapper."""
+    return _create_media_buy_impl(promoted_offering, ...)
+
+# src/core/tools.py
+def create_media_buy_raw(promoted_offering: str, ...) -> CreateMediaBuyResponse:
+    """A2A raw function."""
+    from src.core.main import _create_media_buy_impl  # Lazy import
+    return _create_media_buy_impl(promoted_offering, ...)
+```
+
+**Status of Current Tools:**
+- ✅ `create_media_buy` - Uses shared `_create_media_buy_impl`
+- ✅ `get_media_buy_delivery` - Uses shared `_get_media_buy_delivery_impl`
+- ✅ `sync_creatives` - Uses shared `_sync_creatives_impl`
+- ✅ `list_creatives` - Uses shared `_list_creatives_impl`
+- ✅ `update_media_buy` - Uses shared `_update_media_buy_impl`
+- ✅ `update_performance_index` - Uses shared `_update_performance_index_impl`
+- ✅ `list_creative_formats` - Uses shared `_list_creative_formats_impl`
+- ✅ `list_authorized_properties` - Uses shared `_list_authorized_properties_impl`
+
+**All 8 AdCP tools now use shared implementations - NO code duplication!**
+
 ## 🚨 CRITICAL REMINDERS
 
 ### Deployment Architecture (Reference Implementation)
