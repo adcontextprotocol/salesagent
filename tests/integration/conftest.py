@@ -41,7 +41,7 @@ def integration_db():
     from sqlalchemy import create_engine
     from sqlalchemy.orm import scoped_session, sessionmaker
 
-    from src.core.database.models import Base
+    from src.core.database.models import Base  # Import Context to register it with Base
 
     engine = create_engine(f"sqlite:///{db_path}")
 
