@@ -135,12 +135,12 @@ class TestTenantManagementAPIIntegration:
             "ad_server": "google_ad_manager",
             "gam_refresh_token": "1//test-refresh-token-full",
             "gam_network_code": "123456789",
-            "gam_company_id": "company_123",
             "gam_trafficker_id": "trafficker_456",
             "authorized_emails": ["admin@testnews.com"],
             "authorized_domains": ["testnews.com"],
             "billing_plan": "premium",
         }
+        # NOTE: gam_company_id removed - advertiser_id is per-principal in platform_mappings
 
         response = client.post(
             "/api/v1/tenant-management/tenants", headers={"X-Tenant-Management-API-Key": api_key}, json=tenant_data
@@ -235,8 +235,9 @@ class TestTenantManagementAPIIntegration:
         update_data = {
             "billing_plan": "enterprise",
             "max_daily_budget": 50000,
-            "adapter_config": {"gam_network_code": "987654321", "gam_company_id": "updated_company"},
+            "adapter_config": {"gam_network_code": "987654321", "gam_trafficker_id": "trafficker_999"},
         }
+        # NOTE: gam_company_id removed - advertiser_id is per-principal in platform_mappings
 
         response = client.put(
             f"/api/v1/tenant-management/tenants/{tenant_id}",
@@ -255,7 +256,7 @@ class TestTenantManagementAPIIntegration:
         assert updated_data["billing_plan"] == "enterprise"
         assert updated_data["settings"]["max_daily_budget"] == 50000
         assert updated_data["adapter_config"]["gam_network_code"] == "987654321"
-        assert updated_data["adapter_config"]["gam_company_id"] == "updated_company"
+        assert updated_data["adapter_config"]["gam_trafficker_id"] == "trafficker_999"
 
     def test_soft_delete_tenant(self, client, api_key, test_tenant):
         """Test soft deleting a tenant."""

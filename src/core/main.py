@@ -367,9 +367,14 @@ def get_adapter(principal: Principal, dry_run: bool = False, testing_context=Non
             elif adapter_type == "google_ad_manager":
                 adapter_config["network_code"] = config_row.gam_network_code
                 adapter_config["refresh_token"] = config_row.gam_refresh_token
-                adapter_config["company_id"] = config_row.gam_company_id
-                adapter_config["trafficker_id"] = config_row.gam_trafficker_id
+                adapter_config["trafficker_id"] = config_row.gam_trafficker_id  # Tenant-level (publisher's trafficker)
                 adapter_config["manual_approval_required"] = config_row.gam_manual_approval_required
+
+                # Get advertiser_id from principal's platform_mappings (per-principal, not tenant-level)
+                gam_mappings = (
+                    principal.platform_mappings.get("google_ad_manager", {}) if principal.platform_mappings else {}
+                )
+                adapter_config["company_id"] = gam_mappings.get("advertiser_id")
             elif adapter_type == "kevel":
                 adapter_config["network_id"] = config_row.kevel_network_id
                 adapter_config["api_key"] = config_row.kevel_api_key

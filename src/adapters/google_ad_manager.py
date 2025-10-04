@@ -101,6 +101,18 @@ class GoogleAdManager(AdServerAdapter):
             self.client_manager = GAMClientManager(self.config, self.network_code)
             # Legacy client property for backward compatibility
             self.client = self.client_manager.get_client()
+
+            # Auto-detect trafficker_id if not provided
+            if not self.trafficker_id:
+                try:
+                    user_service = self.client.GetService("UserService", version="v202411")
+                    current_user = user_service.getCurrentUser()
+                    self.trafficker_id = str(current_user["id"])
+                    logger.info(
+                        f"Auto-detected trafficker_id: {self.trafficker_id} ({current_user.get('name', 'Unknown')})"
+                    )
+                except Exception as e:
+                    logger.warning(f"Could not auto-detect trafficker_id: {e}")
         else:
             self.client_manager = None
             self.client = None
