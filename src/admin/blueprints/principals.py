@@ -149,6 +149,17 @@ def create_principal(tenant_id):
         # GAM advertiser mapping
         gam_advertiser_id = request.form.get("gam_advertiser_id", "").strip()
         if gam_advertiser_id:
+            # Validate it's numeric (GAM expects integer company IDs)
+            try:
+                int(gam_advertiser_id)
+            except (ValueError, TypeError):
+                flash(
+                    f"GAM Advertiser ID must be numeric (got: '{gam_advertiser_id}'). "
+                    "Please select a valid advertiser from the dropdown.",
+                    "error",
+                )
+                return redirect(request.url)
+
             platform_mappings["google_ad_manager"] = {
                 "advertiser_id": gam_advertiser_id,
                 "enabled": True,
@@ -239,6 +250,26 @@ def update_mappings(tenant_id, principal_id):
             return jsonify({"error": "Invalid request"}), 400
 
         platform_mappings = data.get("platform_mappings", {})
+
+        # Validate GAM advertiser_id if present
+        if "google_ad_manager" in platform_mappings:
+            gam_config = platform_mappings["google_ad_manager"]
+            advertiser_id = gam_config.get("advertiser_id") or gam_config.get("company_id")
+
+            if advertiser_id:
+                # Validate it's numeric (GAM expects integer company IDs)
+                try:
+                    int(advertiser_id)
+                except (ValueError, TypeError):
+                    return (
+                        jsonify(
+                            {
+                                "error": f"GAM Advertiser ID must be numeric (got: '{advertiser_id}'). "
+                                "Please select a valid advertiser from the dropdown."
+                            }
+                        ),
+                        400,
+                    )
 
         with get_db_session() as db_session:
             principal = db_session.query(Principal).filter_by(tenant_id=tenant_id, principal_id=principal_id).first()

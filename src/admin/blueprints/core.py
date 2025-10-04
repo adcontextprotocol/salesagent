@@ -55,10 +55,16 @@ def index():
         if (approximated_host and approximated_host.startswith("admin.")) or host.startswith("admin."):
             return redirect(url_for("auth.login"))
 
-        # Check if we're on a tenant-specific subdomain (not main domain)
+        # Check if we're on an external virtual host (via Approximated)
+        # External domains should always show landing page for signup
+        if approximated_host and not approximated_host.endswith(".sales-agent.scope3.com"):
+            logger.info(f"External domain detected: {approximated_host}, showing landing page")
+            return render_template("landing.html")
+
+        # Check if we're on a tenant-specific subdomain (*.sales-agent.scope3.com)
         tenant = get_tenant_from_hostname()
         if tenant:
-            # Tenant subdomain - go to login (no signup on tenant domains)
+            # Subdomain tenants redirect to login
             return redirect(url_for("auth.login"))
 
         # Main domain (sales-agent.scope3.com) - show signup landing

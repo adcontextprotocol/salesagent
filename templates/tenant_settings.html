@@ -2009,6 +2009,15 @@ function savePrincipalMappings() {
         const gamCompanyId = gamCompanyIdEl ? gamCompanyIdEl.value.trim() : '';
         const gamTraffickerId = gamTraffickerIdEl ? gamTraffickerIdEl.value.trim() : '';
 
+        // Client-side validation for GAM advertiser ID
+        if (gamCompanyId) {
+            // Check if it's numeric
+            if (!/^\d+$/.test(gamCompanyId)) {
+                alert(`❌ GAM Advertiser ID must be numeric (got: '${gamCompanyId}'). Please select a valid advertiser from the dropdown.`);
+                return;
+            }
+        }
+
         if (gamCompanyId || gamTraffickerId) {
             platformMappings.google_ad_manager = {
                 enabled: true  // Always enabled for GAM tenants
