@@ -1221,6 +1221,11 @@ def _sync_creatives_impl(
     buyer_ref: str = None,
     assign_to_packages: list[str] = None,
     upsert: bool = True,
+    patch: bool = False,
+    assignments: dict = None,
+    dry_run: bool = False,
+    delete_missing: bool = False,
+    validation_mode: str = "strict",
     context: Context = None,
 ) -> SyncCreativesResponse:
     """Sync creative assets to centralized library (AdCP spec endpoint).
@@ -1229,6 +1234,7 @@ def _sync_creatives_impl(
     - Bulk creative upload/update with upsert semantics
     - Creative assignment to media buy packages
     - Support for both hosted assets (media_url) and third-party tags (snippet)
+    - Patch updates, dry-run mode, and validation options
 
     Args:
         creatives: Array of creative assets to sync
@@ -1236,6 +1242,11 @@ def _sync_creatives_impl(
         buyer_ref: Buyer's reference for the media buy (optional)
         assign_to_packages: Package IDs to assign creatives to (optional)
         upsert: Whether to update existing creatives or create new ones
+        patch: When true, only update provided fields (partial update)
+        assignments: Bulk assignment map of creative_id to package_ids
+        dry_run: Preview changes without applying them
+        delete_missing: Delete creatives not in sync payload (use with caution)
+        validation_mode: Validation strictness (strict or lenient)
         context: FastMCP context (automatically provided)
 
     Returns:
@@ -1571,6 +1582,11 @@ def sync_creatives(
     buyer_ref: str = None,
     assign_to_packages: list[str] = None,
     upsert: bool = True,
+    patch: bool = False,
+    assignments: dict = None,
+    dry_run: bool = False,
+    delete_missing: bool = False,
+    validation_mode: str = "strict",
     context: Context = None,
 ) -> SyncCreativesResponse:
     """Sync creative assets to centralized library (AdCP spec endpoint).
@@ -1583,12 +1599,29 @@ def sync_creatives(
         buyer_ref: Optional buyer reference for filtering
         assign_to_packages: List of package IDs to assign creatives to
         upsert: If True, update existing creatives; if False, only create new ones
+        patch: When true, only update provided fields (partial update)
+        assignments: Bulk assignment map of creative_id to package_ids
+        dry_run: Preview changes without applying them
+        delete_missing: Delete creatives not in sync payload (use with caution)
+        validation_mode: Validation strictness (strict or lenient)
         context: FastMCP context (automatically provided)
 
     Returns:
         SyncCreativesResponse with sync results
     """
-    return _sync_creatives_impl(creatives, media_buy_id, buyer_ref, assign_to_packages, upsert, context)
+    return _sync_creatives_impl(
+        creatives,
+        media_buy_id,
+        buyer_ref,
+        assign_to_packages,
+        upsert,
+        patch,
+        assignments,
+        dry_run,
+        delete_missing,
+        validation_mode,
+        context,
+    )
 
 
 def _list_creatives_impl(
@@ -1600,6 +1633,13 @@ def _list_creatives_impl(
     created_after: str = None,
     created_before: str = None,
     search: str = None,
+    filters: dict = None,
+    sort: dict = None,
+    pagination: dict = None,
+    fields: list[str] = None,
+    include_performance: bool = False,
+    include_assignments: bool = False,
+    include_sub_assets: bool = False,
     page: int = 1,
     limit: int = 50,
     sort_by: str = "created_date",
@@ -1620,6 +1660,13 @@ def _list_creatives_impl(
         created_after: Filter by creation date (ISO string) (optional)
         created_before: Filter by creation date (ISO string) (optional)
         search: Search in creative names and descriptions (optional)
+        filters: Advanced filtering options (nested object, optional)
+        sort: Sort configuration (nested object, optional)
+        pagination: Pagination parameters (nested object, optional)
+        fields: Specific fields to return (optional)
+        include_performance: Include performance metrics (optional)
+        include_assignments: Include package assignments (optional)
+        include_sub_assets: Include sub-assets (optional)
         page: Page number for pagination (default: 1)
         limit: Number of results per page (default: 50, max: 1000)
         sort_by: Sort field (created_date, name, status) (default: created_date)
@@ -1655,6 +1702,13 @@ def _list_creatives_impl(
         created_after=created_after_dt,
         created_before=created_before_dt,
         search=search,
+        filters=filters,
+        sort=sort,
+        pagination=pagination,
+        fields=fields,
+        include_performance=include_performance,
+        include_assignments=include_assignments,
+        include_sub_assets=include_sub_assets,
         page=page,
         limit=min(limit, 1000),  # Enforce max limit
         sort_by=sort_by,
@@ -1847,6 +1901,13 @@ def list_creatives(
     created_after: str = None,
     created_before: str = None,
     search: str = None,
+    filters: dict = None,
+    sort: dict = None,
+    pagination: dict = None,
+    fields: list[str] = None,
+    include_performance: bool = False,
+    include_assignments: bool = False,
+    include_sub_assets: bool = False,
     page: int = 1,
     limit: int = 50,
     sort_by: str = "created_date",
@@ -1856,6 +1917,8 @@ def list_creatives(
     """List and filter creative assets from the centralized library.
 
     MCP tool wrapper that delegates to the shared implementation.
+    Supports both flat parameters (status, format, etc.) and nested objects (filters, sort, pagination)
+    for maximum flexibility.
     """
     return _list_creatives_impl(
         media_buy_id,
@@ -1866,6 +1929,13 @@ def list_creatives(
         created_after,
         created_before,
         search,
+        filters,
+        sort,
+        pagination,
+        fields,
+        include_performance,
+        include_assignments,
+        include_sub_assets,
         page,
         limit,
         sort_by,
