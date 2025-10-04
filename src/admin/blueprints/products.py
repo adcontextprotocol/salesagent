@@ -406,8 +406,7 @@ def bulk_upload(tenant_id):
                             ),
                             cpm=float(row.get("cpm", 0)) if row.get("cpm") else None,
                             price_guidance=None,
-                            countries=None,
-                            implementation_config=None,
+                            # Don't set countries/implementation_config to None - let them default to NULL
                         )
                         db_session.add(product)
                         created_count += 1
@@ -446,20 +445,35 @@ def bulk_upload(tenant_id):
                             except:
                                 countries = None
 
-                        product = Product(
-                            product_id=item.get("product_id") or f"prod_{uuid.uuid4().hex[:8]}",
-                            tenant_id=tenant_id,
-                            name=item.get("name", ""),
-                            description=item.get("description", ""),
-                            formats=formats,
-                            targeting_template=targeting,
-                            delivery_type=item.get("delivery_type", "standard"),
-                            is_fixed_price=item.get("is_fixed_price", True),
-                            cpm=float(item.get("cpm", 0)) if item.get("cpm") else None,
-                            price_guidance=item.get("price_guidance"),
-                            countries=countries,
-                            implementation_config=item.get("implementation_config"),
-                        )
+                        # Parse implementation_config
+                        implementation_config = item.get("implementation_config")
+                        if isinstance(implementation_config, str):
+                            try:
+                                implementation_config = json.loads(implementation_config)
+                            except:
+                                implementation_config = None
+
+                        # Build product kwargs - only include nullable fields if they have values
+                        product_kwargs = {
+                            "product_id": item.get("product_id") or f"prod_{uuid.uuid4().hex[:8]}",
+                            "tenant_id": tenant_id,
+                            "name": item.get("name", ""),
+                            "description": item.get("description", ""),
+                            "formats": formats,
+                            "targeting_template": targeting,
+                            "delivery_type": item.get("delivery_type", "standard"),
+                            "is_fixed_price": item.get("is_fixed_price", True),
+                            "cpm": float(item.get("cpm", 0)) if item.get("cpm") else None,
+                            "price_guidance": item.get("price_guidance"),
+                        }
+
+                        # Only set countries/implementation_config if not None
+                        if countries is not None:
+                            product_kwargs["countries"] = countries
+                        if implementation_config is not None:
+                            product_kwargs["implementation_config"] = implementation_config
+
+                        product = Product(**product_kwargs)
                         db_session.add(product)
                         created_count += 1
                     except Exception as e:

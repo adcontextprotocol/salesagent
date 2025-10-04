@@ -13,7 +13,7 @@ import pytest
 
 from src.core.database.database_session import get_db_session
 from src.core.database.models import Creative as DBCreative
-from src.core.database.models import CreativeAssignment
+from src.core.database.models import CreativeAssignment, MediaBuy, Principal
 from src.core.schemas import ListCreativesResponse, SyncCreativesResponse
 from tests.utils.database_helpers import create_tenant_with_timestamps, get_utc_now
 
