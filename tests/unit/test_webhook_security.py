@@ -161,9 +161,7 @@ class TestWebhookAuthenticator:
 
         # Sign with one secret
         signed_payload = f"{timestamp}.{payload_str}"
-        signature = (
-            "sha256=" + hmac.new(b"secret1", signed_payload.encode("utf-8"), hashlib.sha256).hexdigest()
-        )
+        signature = "sha256=" + hmac.new(b"secret1", signed_payload.encode("utf-8"), hashlib.sha256).hexdigest()
 
         # Verify with different secret
         is_valid = WebhookAuthenticator.verify_signature(payload_str, signature, timestamp, "secret2")
