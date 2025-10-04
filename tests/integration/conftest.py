@@ -44,7 +44,7 @@ def integration_db():
     # Import ALL models first, BEFORE using Base
     # This ensures all tables are registered in Base.metadata
     import src.core.database.models as all_models  # noqa: F401
-    from src.core.database.models import Base
+    from src.core.database.models import Base  # Explicitly import Context to ensure registration
 
     engine = create_engine(f"sqlite:///{db_path}")
 
@@ -64,6 +64,11 @@ def integration_db():
     database_session.engine = engine
     database_session.SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
     database_session.db_session = scoped_session(database_session.SessionLocal)
+
+    # Reset context manager singleton to use new database session
+    import src.core.context_manager as context_manager_module
+
+    context_manager_module._context_manager_instance = None
 
     yield db_path
 
