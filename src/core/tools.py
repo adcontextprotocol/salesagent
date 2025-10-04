@@ -59,8 +59,14 @@ def get_principal_from_context(context: Context | None) -> str | None:
         if not headers:
             return None
 
-        # Get the x-adcp-auth header (FastMCP forwards this in context.meta)
-        auth_token = headers.get("x-adcp-auth")
+        # Get the x-adcp-auth header (case-insensitive lookup)
+        # HTTP headers are case-insensitive, but dict.get() is case-sensitive
+        auth_token = None
+        for key, value in headers.items():
+            if key.lower() == "x-adcp-auth":
+                auth_token = value
+                break
+
         if not auth_token:
             return None
 
