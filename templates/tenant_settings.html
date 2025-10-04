@@ -2003,8 +2003,11 @@ function savePrincipalMappings() {
 
     if (activeAdapter === 'google_ad_manager') {
         // GAM tenant - save GAM fields
-        const gamCompanyId = document.getElementById('gam_company_id')?.value.trim();
-        const gamTraffickerId = document.getElementById('gam_trafficker_id')?.value.trim();
+        const gamCompanyIdEl = document.getElementById('gam_company_id');
+        const gamTraffickerIdEl = document.getElementById('gam_trafficker_id');
+
+        const gamCompanyId = gamCompanyIdEl ? gamCompanyIdEl.value.trim() : '';
+        const gamTraffickerId = gamTraffickerIdEl ? gamTraffickerIdEl.value.trim() : '';
 
         if (gamCompanyId || gamTraffickerId) {
             platformMappings.google_ad_manager = {
@@ -2020,7 +2023,8 @@ function savePrincipalMappings() {
         }
     } else {
         // Mock tenant - save mock fields
-        const mockAdvertiserId = document.getElementById('mock_advertiser_id')?.value.trim();
+        const mockAdvertiserIdEl = document.getElementById('mock_advertiser_id');
+        const mockAdvertiserId = mockAdvertiserIdEl ? mockAdvertiserIdEl.value.trim() : '';
 
         if (mockAdvertiserId) {
             platformMappings.mock = {
