@@ -1,307 +1,111 @@
-# 🧪 AdCP Testing Guide
+# 🧪 Testing Guide
 
-This guide explains the different types of testing available in the AdCP Sales Agent project.
+Quick reference for running tests and maintaining quality.
 
-## 📋 Testing Overview
+## 🚀 Quick Commands
 
-| Type | Purpose | When to Use | Location |
-|------|---------|-------------|----------|
-| **E2E Tests** | Automated protocol validation | CI/CD, regression testing | `tests/e2e/` |
-| **Simulations** | Developer tools & demos | Manual testing, debugging | `tools/simulations/` |
-| **Unit Tests** | Individual component testing | Development, fast feedback | `tests/unit/` |
-| **Integration Tests** | Database & service integration | Database changes, API testing, field access validation | `tests/integration/` |
-
-## 🚀 Quick Start
-
-### For Developers (Manual Testing)
 ```bash
-# 1. Start services
+# Run all tests
+uv run pytest
+
+# By category
+uv run pytest tests/unit/           # Fast, isolated
+uv run pytest tests/integration/    # Database + services
+uv run pytest tests/e2e/            # Full system
+
+# With coverage
+uv run pytest --cov=. --cov-report=html
+
+# Check test quality
+uv run python scripts/analyze_test_coverage.py       # What's not tested
+uv run python scripts/detect_test_antipatterns.py    # Anti-patterns
+
+# Pre-commit hooks (runs automatically)
+pre-commit run --all-files
+```
+
+## 📊 Test Coverage Tracking
+
+**Check current state**:
+```bash
+uv run python scripts/analyze_test_coverage.py
+```
+
+Shows:
+- Coverage percentage for A2A skills
+- List of untested functionality
+- Over-mocking violations
+
+**Track progress**: See GitHub issue #248
+
+## 🛡️ Pre-Commit Hooks
+
+Automatically enforced on every commit:
+
+| Hook | What It Catches |
+|------|----------------|
+| `no-excessive-mocking` | More than 10 mocks in one test file |
+| `detect-test-antipatterns` | Mocking internal handlers/implementations |
+| `adcp-contract-tests` | Missing AdCP compliance tests |
+| `mcp-contract-validation` | MCP tool parameter validation |
+
+## 📚 Detailed Guides
+
+### Protocol Compliance
+- **[adcp-compliance.md](adcp-compliance.md)** - AdCP spec compliance testing (mandatory)
+
+### Postmortems
+- **[postmortems/2025-10-04-test-agent-auth-bug.md](postmortems/2025-10-04-test-agent-auth-bug.md)** - Authentication bug incident
+
+### Tools
+- **[tools/README.md](tools/README.md)** - Coverage and anti-pattern detection tools
+
+## 🐛 Troubleshooting
+
+**"Connection refused"**
+```bash
 docker-compose up -d
-
-# 2. Run debug simulation to see protocol in action
-uv run python tools/simulations/debug_e2e.py
-
-# 3. Run debug with options
-uv run python tools/simulations/debug_e2e.py --verbose              # Full stack traces
-uv run python tools/simulations/debug_e2e.py --skip-a2a             # MCP only
-uv run python tools/simulations/debug_e2e.py --server-url http://remote:8166  # External server
-
-# 4. Run full business scenario simulation
-uv run python tools/simulations/run_simulation.py
+curl http://localhost:8166/health  # MCP server
+curl http://localhost:8091/        # A2A server
 ```
 
-### For CI/CD (Automated Testing)
-```bash
-# Run all E2E tests (comprehensive protocol validation)
-uv run pytest tests/e2e/ -v
+**"Tests skipping"**
+- Tests with `@pytest.mark.skip_ci` are skipped in CI
+- Check markers with: `pytest --markers`
 
-# Run specific E2E test
-uv run pytest tests/e2e/test_adcp_full_lifecycle.py::TestAdCPFullLifecycle::test_product_discovery -v
-```
+**"Schema validation errors"**
+- E2E tests validate exact AdCP spec compliance
+- Check field names, types, and required fields
 
-## 🔍 E2E Tests vs Simulations
-
-### **E2E Tests** (`tests/e2e/`)
-- **Purpose**: Automated validation that the AdCP protocol implementation is correct
-- **Characteristics**:
-  - ✅ **Pytest framework** with fixtures and assertions
-  - ✅ **Protocol compliance** - validates every field against AdCP spec
-  - ✅ **Multiple modes** - can run against any AdCP-compliant server
-  - ✅ **Testing hooks** - uses X-Dry-Run, X-Mock-Time, X-Test-Session-ID
-  - ✅ **CI/CD integration** - runs on PRs and main branch (catch issues early!)
-  - ✅ **Comprehensive assertions** - catches regressions and spec violations
-- **Example**: Validates that `get_products` returns required fields with correct data types
-
-### **Simulations** (`tools/simulations/`)
-- **Purpose**: Developer tools for manual testing and business scenario demos
-- **Characteristics**:
-  - 🎨 **Rich console output** - visual feedback with colors and tables
-  - 🏢 **Business scenarios** - realistic campaigns (Purina pet food, Acme Corp)
-  - ⏰ **Timeline progression** - shows campaign lifecycle over time
-  - 🧪 **Educational** - demonstrates real-world usage patterns
-  - 🔧 **Debugging** - shows exactly what APIs would be called in production
-  - 🎯 **Interactive** - can be run manually to explore functionality
-- **Example**: Shows a complete campaign from planning → buying → creatives → delivery
-
-## 🗃️ Database Field Access Testing
-
-### **Integration Tests** (`tests/integration/test_*database*`, `test_*schema*`)
-- **Purpose**: Prevent database field access bugs like `'Product' object has no attribute 'pricing'`
-- **Characteristics**:
-  - 🗃️ **Real database connections** - tests actual ORM to schema conversion
-  - 🔍 **Field alignment validation** - ensures schema fields map to database columns
-  - 🛡️ **AttributeError prevention** - catches field access bugs in development
-  - ⚡ **Pre-commit hook validation** - automated prevention of field misalignment
-- **Key files**:
-  - `test_get_products_database_integration.py` - Real database conversion testing
-  - `test_schema_database_mapping.py` - Field alignment validation
-  - `test_a2a_real_data_flow.py` - End-to-end data flow testing
-
-**Learn more**: [Testing Guide - Database Field Access Testing](../testing.md#database-field-access-testing)
-
-## 📂 Directory Structure
+## 📂 Test Organization
 
 ```
 tests/
-├── e2e/                           # End-to-end protocol tests
-│   ├── test_adcp_full_lifecycle.py   # Main E2E test suite
-│   └── conftest.py                   # Test fixtures
-├── integration/                   # Database & service integration
-├── unit/                         # Fast unit tests
-└── smoke/                        # Quick smoke tests
+├── unit/          # Fast, isolated (mock external deps only)
+├── integration/   # Database + services (real DB, mock external APIs)
+├── e2e/          # Full system tests
+└── ui/           # Admin UI tests
 
-tools/
-├── simulations/                  # Developer simulation tools
-│   ├── debug_e2e.py                # Debug with request/response logging
-│   ├── run_simulation.py           # Automated simulation runner
-│   └── simulation_full.py          # Full business lifecycle demo
-└── demos/                        # Feature-specific demos
-
-docs/
-└── testing/                     # Testing documentation
-    ├── README.md                   # This file
-    ├── TEST_DEBUGGING_GUIDE.md     # Detailed debugging guide
-    └── README_E2E_TESTING.md       # E2E testing specifics
+scripts/
+├── analyze_test_coverage.py      # Coverage analysis
+└── detect_test_antipatterns.py   # Anti-pattern detection
 ```
 
-## 🔧 Development Workflow
+## 🎯 What to Mock
 
-### 1. **Making Changes**
-- Write/modify code
-- Run relevant unit tests: `uv run pytest tests/unit/ -k "your_feature"`
-- Test manually with simulations: `uv run python tools/simulations/debug_e2e.py`
+✅ **Always mock**:
+- External APIs (Google Ad Manager, payment processors)
+- Time-dependent functions (`datetime.now()`)
+- Network calls (`requests.post()`)
 
-### 2. **Before Committing**
-- Run E2E tests: `uv run pytest tests/e2e/ -v`
-- Ensure no regressions in protocol behavior
-- Check that both MCP and A2A protocols work
+❌ **Never mock**:
+- Database operations (use real test DB)
+- Internal business logic
+- Internal function calls (tests won't catch bugs!)
 
-### 3. **For New Features**
-- Add unit tests for new functions/classes
-- Add E2E test scenarios if they affect the AdCP protocol
-- Create simulation demos if they showcase new capabilities
+## 🔍 Need More Help?
 
-## 🐳 Docker Services
-
-All testing requires the following services:
-```yaml
-# Started with: docker-compose up -d
-services:
-  postgres: 5518      # Database
-  adcp-server: 8166   # MCP server (AdCP protocol)
-  a2a-server: 8091    # A2A server (natural language)
-  admin-ui: 8087      # Admin interface
-```
-
-**Health Checks**: All services have health endpoints and startup validation.
-
-## 🧪 Testing Hooks (AdCP Spec)
-
-The E2E tests implement [testing hooks from the AdCP specification](https://github.com/adcontextprotocol/adcp/pull/34):
-
-| Hook | Purpose | Usage |
-|------|---------|--------|
-| `X-Dry-Run: true` | Validate without executing | Test requests without side effects |
-| `X-Mock-Time: 2025-08-15T10:00:00Z` | Control time | Deterministic date progression |
-| `X-Test-Session-ID: uuid` | Isolate test runs | Parallel test execution |
-| `X-Jump-To-Event: campaign_start` | Skip to events | Test specific campaign phases |
-
-## 📊 Test Results & Coverage
-
-### E2E Test Coverage
-- ✅ **Core Protocol**: `get_products`, `create_media_buy`, `add_creative_assets`, `get_delivery`
-- ✅ **Both Protocols**: MCP (structured) and A2A (natural language)
-- ✅ **Field Validation**: Every required field validated against spec
-- ✅ **Error Handling**: Invalid inputs, missing data, malformed requests
-- ✅ **Business Logic**: Budget limits, date validation, targeting rules
-
-### Future Work (GitHub Issues)
-- **#89**: Creative Format Management E2E
-- **#90**: Advanced Targeting Capabilities E2E
-- **#91**: Multi-Tenant Isolation E2E
-- **#92**: Performance Optimization Features E2E
-- **#93**: Error Handling & Recovery E2E
-- **#94**: Manual Approval Workflows E2E
-- **#95**: Bulk Operations E2E
-- **#96**: Performance & Scale Testing E2E
-
-## 🛠️ Troubleshooting
-
-### Common Issues
-
-**"Connection refused"**
-- Ensure Docker services are running: `docker-compose ps`
-- Check health endpoints: `curl http://localhost:8166/health`
-
-**"Authentication failed"**
-- Token generation requires running Docker container
-- Debug script will auto-generate valid tokens
-
-**"Tests skipping"**
-- E2E tests run on PRs and main branch (changed from main-only)
-- Check pytest markers: tests with `@pytest.mark.skip_ci` are skipped in CI
-
-**"Schema validation errors"**
-- E2E tests validate against exact AdCP specification
-- Check field names, data types, and required fields match the spec
-
-### Debug Commands
-```bash
-# View service logs
-docker-compose logs -f adcp-server
-
-# Check service health
-curl http://localhost:8166/health
-curl http://localhost:8091/
-
-# Run debug with verbose output
-uv run python tools/simulations/debug_e2e.py
-
-# Run E2E tests with debug output
-uv run pytest tests/e2e/ -v -s --tb=short
-```
-
-## 📚 Learn More
-
-- **[TEST_DEBUGGING_GUIDE.md](./TEST_DEBUGGING_GUIDE.md)** - Detailed debugging instructions
-- **[README_E2E_TESTING.md](./README_E2E_TESTING.md)** - E2E testing specifics
-- **AdCP Specification** - Protocol requirements and testing hooks
-- **GitHub Issues #89-96** - Future testing improvements planned
-
-## 🔍 Test Coverage & Quality
-
-### Coverage Analysis
-
-We track A2A skill test coverage and detect anti-patterns to prevent bugs from reaching production.
-
-**Quick Check**:
-```bash
-# Analyze current coverage
-uv run python scripts/analyze_test_coverage.py
-
-# Expected output:
-# - Coverage percentage (currently 17%)
-# - List of untested skills (15/18)
-# - Over-mocking violations (6 locations)
-```
-
-**Learn More**: [coverage-analysis.md](coverage-analysis.md)
-
-### Anti-Pattern Prevention
-
-Our pre-commit hooks automatically detect testing anti-patterns:
-
-```bash
-# Runs automatically on commit
-git commit
-
-# Or check manually
-uv run python scripts/detect_test_antipatterns.py tests/integration/test_foo.py
-```
-
-**Detects**:
-- ❌ Mocking internal handlers (`patch.object(handler, "_handle_*")`)
-- ❌ Mocking internal implementations (`patch("src.core.main._*_impl")`)
-- ⚠️  Missing tests for new skill handlers
-
-**Learn More**: [preventing-over-mocking.md](preventing-over-mocking.md)
-
-### Remediation Plan
-
-We're actively improving test coverage. Current status:
-
-- **Phase 1**: Fix 6 over-mocking violations (Week 1)
-- **Phase 2**: Add tests for 15 untested skills (Week 2)
-- **Phase 3**: CI enforcement (Week 3)
-
-**Learn More**: [remediation-plan.md](remediation-plan.md)
-
-## 📖 Additional Documentation
-
-### Guides & Best Practices
-- **[preventing-over-mocking.md](preventing-over-mocking.md)** - Complete guide to proper integration testing
-  - What to mock vs what not to mock
-  - Test templates with correct patterns
-  - Common mistakes and fixes
-
-### Analysis & Tools
-- **[coverage-analysis.md](coverage-analysis.md)** - Why tests missed bugs
-  - Production bug post-mortem
-  - Root cause analysis
-  - Prevention measures
-
-- **[remediation-plan.md](remediation-plan.md)** - Action plan
-  - Phase-by-phase steps
-  - Timeline and owners
-  - Success criteria
-
-- **[tools/README.md](tools/README.md)** - Tool documentation
-  - Coverage analysis tool usage
-  - Anti-pattern detection
-  - Pre-commit hook configuration
-
-### Postmortems
-- **[postmortems/2025-10-04-test-agent-auth-bug.md](postmortems/2025-10-04-test-agent-auth-bug.md)** - Test agent authentication failure
-  - Detailed incident report
-  - How over-mocking hid the bug
-  - Fixes implemented
-
-## 🎯 Quick Reference
-
-| Task | Command |
-|------|---------|
-| Run all tests | `uv run pytest` |
-| Run unit tests | `uv run pytest tests/unit/` |
-| Run integration tests | `uv run pytest tests/integration/` |
-| Run E2E tests | `uv run pytest tests/e2e/` |
-| Check coverage | `uv run pytest --cov=. --cov-report=html` |
-| Analyze A2A coverage | `uv run python scripts/analyze_test_coverage.py` |
-| Check for anti-patterns | `uv run python scripts/detect_test_antipatterns.py <file>` |
-| Run pre-commit hooks | `pre-commit run --all-files` |
-
----
-
-**Need Help?**
-- Check [preventing-over-mocking.md](preventing-over-mocking.md) for testing guidance
-- Run `uv run python scripts/analyze_test_coverage.py` to see what needs tests
-- Ask in #engineering Slack channel
+1. Check the scripts: They're self-documenting
+2. Look at existing tests: Patterns are established
+3. Pre-commit hooks: They'll tell you what's wrong
+4. GitHub issue #248: Tracks ongoing test coverage work
