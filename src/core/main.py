@@ -370,6 +370,16 @@ def get_adapter(principal: Principal, dry_run: bool = False, testing_context=Non
                 adapter_config["company_id"] = config_row.gam_company_id
                 adapter_config["trafficker_id"] = config_row.gam_trafficker_id
                 adapter_config["manual_approval_required"] = config_row.gam_manual_approval_required
+
+                # Fallback: Check principal's platform_mappings if company_id/trafficker_id not in adapter config
+                if not adapter_config.get("company_id") or not adapter_config.get("trafficker_id"):
+                    gam_mappings = (
+                        principal.platform_mappings.get("google_ad_manager", {}) if principal.platform_mappings else {}
+                    )
+                    if not adapter_config.get("company_id"):
+                        adapter_config["company_id"] = gam_mappings.get("advertiser_id")
+                    if not adapter_config.get("trafficker_id"):
+                        adapter_config["trafficker_id"] = gam_mappings.get("trafficker_id")
             elif adapter_type == "kevel":
                 adapter_config["network_id"] = config_row.kevel_network_id
                 adapter_config["api_key"] = config_row.kevel_api_key
