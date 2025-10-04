@@ -41,7 +41,7 @@ def integration_db():
     from sqlalchemy import create_engine
     from sqlalchemy.orm import scoped_session, sessionmaker
 
-    # Import ALL models first, BEFORE using Base
+    # Import ALL models first, BEFORE creating engine or Base operations
     # This ensures all tables are registered in Base.metadata
     import src.core.database.models as all_models  # noqa: F401
     from src.core.database.models import Base, Context, ObjectWorkflowMapping, WorkflowStep  # noqa: F401
@@ -50,13 +50,8 @@ def integration_db():
     # (in case the module import doesn't trigger class definition)
     _ = (Context, WorkflowStep, ObjectWorkflowMapping)
 
-    engine = create_engine(f"sqlite:///{db_path}")
-
-    # Create all tables directly (no migrations)
-    Base.metadata.create_all(bind=engine)
-
-    # Update the global database session to point to the test database
-    # This is necessary because many parts of the code use the global db_session
+    # IMPORTANT: Update global database session BEFORE creating tables
+    # This ensures any code that creates sessions during table creation uses the test DB
     from src.core.database import database_session
 
     # Save the original values
@@ -64,10 +59,16 @@ def integration_db():
     original_session_local = database_session.SessionLocal
     original_db_session = database_session.db_session
 
-    # Replace with test database
+    # Create test engine
+    engine = create_engine(f"sqlite:///{db_path}")
+
+    # Replace with test database BEFORE creating tables
     database_session.engine = engine
     database_session.SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
     database_session.db_session = scoped_session(database_session.SessionLocal)
+
+    # Now create all tables (any session created will use test DB)
+    Base.metadata.create_all(bind=engine)
 
     yield db_path
 
