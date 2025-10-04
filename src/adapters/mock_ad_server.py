@@ -467,10 +467,12 @@ class MockAdServer(AdServerAdapter):
                 )
 
         # Budget validation
-        if request.total_budget <= 0:
+        # Use budget.total (v2.4) if available, fallback to total_budget (legacy)
+        total_budget = request.budget.total if request.budget else request.total_budget
+        if total_budget and total_budget <= 0:
             errors.append("InvalidArgumentError @ order.totalBudget")
 
-        if request.total_budget > 1000000:  # Mock limit
+        if total_budget and total_budget > 1000000:  # Mock limit
             errors.append("InvalidArgumentError.VALUE_TOO_LARGE @ order.totalBudget")
 
         # If we have errors, format them like GAM does
