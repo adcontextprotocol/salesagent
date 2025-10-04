@@ -1432,8 +1432,9 @@ def sync_creatives(
         ctx_manager = get_context_manager()
 
         # Get or create persistent context for this operation
+        # is_async=True because we're creating workflow steps that need tracking
         persistent_ctx = ctx_manager.get_or_create_context(
-            principal_id=principal_id, tenant_id=tenant["tenant_id"], context_type="creative_sync"
+            principal_id=principal_id, tenant_id=tenant["tenant_id"], is_async=True
         )
 
         with get_db_session() as session:
@@ -1441,7 +1442,6 @@ def sync_creatives(
                 # Create workflow step for creative approval
                 step = ctx_manager.create_workflow_step(
                     context_id=persistent_ctx.context_id,
-                    is_async=True,
                     step_type="creative_approval",
                     owner="publisher",
                     status="requires_approval",

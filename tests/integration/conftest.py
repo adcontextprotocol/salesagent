@@ -41,6 +41,9 @@ def integration_db():
     from sqlalchemy import create_engine
     from sqlalchemy.orm import scoped_session, sessionmaker
 
+    # Import ALL models first, BEFORE using Base
+    # This ensures all tables are registered in Base.metadata
+    import src.core.database.models as all_models  # noqa: F401
     from src.core.database.models import Base
 
     engine = create_engine(f"sqlite:///{db_path}")
