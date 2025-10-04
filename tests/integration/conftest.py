@@ -21,13 +21,32 @@ from tests.fixtures import TenantFactory
 
 @pytest.fixture(scope="function")  # Changed to function scope for better isolation
 def integration_db():
-    """Provide an isolated database for each integration test."""
+    """Provide an isolated database for each integration test.
+
+    In CI with PostgreSQL, uses the existing database (already migrated).
+    Locally with SQLite, creates an isolated temporary database per test.
+    """
     import tempfile
 
     # Save original DATABASE_URL
     original_url = os.environ.get("DATABASE_URL")
     original_db_type = os.environ.get("DB_TYPE")
 
+    # Check if we're using PostgreSQL (CI environment)
+    # If so, use the existing database instead of trying to swap engines at runtime
+    if original_url and "postgresql" in original_url:
+        # CI environment: Use existing PostgreSQL database that's already migrated
+        # Just ensure models are imported so they're available
+        import src.core.database.models as all_models  # noqa: F401
+        from src.core.database.models import Context, ObjectWorkflowMapping, WorkflowStep  # noqa: F401
+
+        _ = (Context, WorkflowStep, ObjectWorkflowMapping)
+
+        # Yield None to indicate we're using the existing DB
+        yield None
+        return
+
+    # Local development: Create isolated SQLite database per test
     # Create a temporary database file for this test
     with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as f:
         db_path = f.name
@@ -59,6 +78,10 @@ def integration_db():
     original_session_local = database_session.SessionLocal
     original_db_session = database_session.db_session
 
+    # Remove any existing sessions from the scoped_session registry
+    # This is critical because scoped_session caches sessions per thread
+    database_session.db_session.remove()
+
     # Create test engine
     engine = create_engine(f"sqlite:///{db_path}")
 
@@ -84,7 +107,8 @@ def integration_db():
     if original_url:
         os.environ["DATABASE_URL"] = original_url
     else:
-        del os.environ["DATABASE_URL"]
+        if "DATABASE_URL" in os.environ:
+            del os.environ["DATABASE_URL"]
 
     if original_db_type:
         os.environ["DB_TYPE"] = original_db_type
