@@ -60,8 +60,11 @@ class TestCreativeLifecycleMCP:
                 if tenant:
                     session.delete(tenant)
                     session.commit()
-            except Exception:
-                # Ignore errors (expected for fresh SQLite DB where table might not exist)
+            except Exception as e:
+                # Log the error for debugging but don't fail setup
+                import logging
+
+                logging.error(f"Failed to cleanup tenant {self.test_tenant_id}: {e}")
                 session.rollback()
 
         # Create fresh test data

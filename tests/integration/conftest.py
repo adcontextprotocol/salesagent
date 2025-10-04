@@ -19,6 +19,32 @@ from src.core.database.models import Principal, Tenant
 from tests.fixtures import TenantFactory
 
 
+@pytest.fixture(scope="session", autouse=True)
+def cleanup_test_tenants():
+    """Clean up test tenants at the start of the test session (PostgreSQL only)."""
+    original_url = os.environ.get("DATABASE_URL")
+
+    if original_url and "postgresql" in original_url:
+        # Only run cleanup in PostgreSQL (CI) environment
+        from src.core.database.database_session import get_db_session
+        from src.core.database.models import Tenant
+
+        # Clean up known test tenant IDs that persist across test runs
+        test_tenant_ids = ["creative_test", "a2a_creative_test"]
+
+        with get_db_session() as session:
+            for tenant_id in test_tenant_ids:
+                try:
+                    tenant = session.query(Tenant).filter_by(tenant_id=tenant_id).first()
+                    if tenant:
+                        session.delete(tenant)
+                        session.commit()
+                except Exception:
+                    session.rollback()
+
+    yield
+
+
 @pytest.fixture(scope="function")  # Changed to function scope for better isolation
 def integration_db():
     """Provide an isolated database for each integration test.
