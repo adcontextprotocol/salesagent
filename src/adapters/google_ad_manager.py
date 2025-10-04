@@ -91,6 +91,17 @@ class GoogleAdManager(AdServerAdapter):
         if not self.network_code:
             raise ValueError("GAM config requires 'network_code'")
 
+        # Validate advertiser_id is numeric if provided (GAM expects integer company IDs)
+        if advertiser_id is not None and advertiser_id != "":
+            # Check if it's numeric (as string or int)
+            try:
+                int(advertiser_id)
+            except (ValueError, TypeError):
+                raise ValueError(
+                    f"GAM advertiser_id must be numeric (got: '{advertiser_id}'). "
+                    f"Check principal platform_mappings configuration."
+                )
+
         # advertiser_id is only required for order/campaign operations, not inventory sync
 
         if not self.key_file and not self.refresh_token:
