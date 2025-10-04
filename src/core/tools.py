@@ -48,12 +48,21 @@ from src.core.schemas import (
 
 
 def get_principal_from_context(context: Context | None) -> str | None:
-    """Extract principal ID from the FastMCP context using x-adcp-auth header."""
+    """Extract principal ID from the FastMCP context or ToolContext.
+
+    Supports both:
+    - FastMCP Context: Extracts from meta.headers['x-adcp-auth']
+    - ToolContext: Uses direct principal_id attribute
+    """
     if not context:
         return None
 
     try:
-        # Get headers from FastMCP context metadata
+        # Check if this is a ToolContext with direct principal_id attribute
+        if hasattr(context, "principal_id"):
+            return context.principal_id
+
+        # Otherwise, extract from FastMCP context metadata
         headers = context.meta.get("headers", {}) if hasattr(context, "meta") else {}
         if not headers:
             return None
