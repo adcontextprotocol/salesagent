@@ -1156,8 +1156,19 @@ class AdCPRequestHandler(RequestHandler):
                 tool_name="list_creative_formats",
             )
 
-            # Call core function directly - no parameters needed for this endpoint
-            response = core_list_creative_formats_tool(context=tool_context)
+            # Build request from parameters (all optional)
+            from src.core.schemas import ListCreativeFormatsRequest
+
+            req = ListCreativeFormatsRequest(
+                adcp_version=parameters.get("adcp_version", "1.0.0"),
+                type=parameters.get("type"),
+                standard_only=parameters.get("standard_only"),
+                category=parameters.get("category"),
+                format_ids=parameters.get("format_ids"),
+            )
+
+            # Call core function with request
+            response = core_list_creative_formats_tool(req=req, context=tool_context)
 
             # Handle both dict and object responses (core function may return either based on INCLUDE_SCHEMAS_IN_RESPONSES)
             if isinstance(response, dict):

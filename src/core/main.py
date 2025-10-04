@@ -64,6 +64,7 @@ from src.core.schemas import (
     GetSignalsResponse,
     ListAuthorizedPropertiesRequest,
     ListAuthorizedPropertiesResponse,
+    ListCreativeFormatsRequest,
     ListCreativeFormatsResponse,
     ListCreativesResponse,
     MediaBuyDeliveryData,
@@ -1011,13 +1012,20 @@ async def get_products(promoted_offering: str, brief: str = "", context: Context
     return GetProductsResponse(products=modified_products, message=final_message, status=status)
 
 
-def _list_creative_formats_impl(context: Context) -> ListCreativeFormatsResponse:
+def _list_creative_formats_impl(
+    req: ListCreativeFormatsRequest | None, context: Context
+) -> ListCreativeFormatsResponse:
     """List all available creative formats (AdCP spec endpoint).
 
     Returns comprehensive standard formats from AdCP registry plus any custom tenant formats.
     Prioritizes database formats over registry formats when format_id conflicts exist.
+    Supports optional filtering by type, standard_only, category, and format_ids.
     """
     start_time = time.time()
+
+    # Use default request if none provided
+    if req is None:
+        req = ListCreativeFormatsRequest()
 
     # For discovery endpoints, authentication is optional
     principal_id = get_principal_from_context(context)  # Returns None if no auth
@@ -1077,6 +1085,25 @@ def _list_creative_formats_impl(context: Context) -> ListCreativeFormatsResponse
         if format_id not in format_ids_seen:
             formats.append(standard_format)
             format_ids_seen.add(format_id)
+
+    # Apply filters from request
+    if req.type:
+        formats = [f for f in formats if f.type == req.type]
+
+    if req.standard_only:
+        formats = [f for f in formats if f.is_standard]
+
+    if req.category:
+        # Category maps to is_standard: "standard" -> True, "custom" -> False
+        if req.category == "standard":
+            formats = [f for f in formats if f.is_standard]
+        elif req.category == "custom":
+            formats = [f for f in formats if not f.is_standard]
+
+    if req.format_ids:
+        # Filter to only the specified format IDs
+        format_ids_set = set(req.format_ids)
+        formats = [f for f in formats if f.format_id in format_ids_set]
 
     # Sort formats by type and name for consistent ordering
     formats.sort(key=lambda f: (f.type, f.name))
@@ -1141,18 +1168,37 @@ def _list_creative_formats_impl(context: Context) -> ListCreativeFormatsResponse
 
 
 @mcp.tool()
-def list_creative_formats(context: Context) -> ListCreativeFormatsResponse:
+def list_creative_formats(
+    adcp_version: str = "1.0.0",
+    type: str | None = None,
+    standard_only: bool | None = None,
+    category: str | None = None,
+    format_ids: list[str] | None = None,
+    context: Context = None,
+) -> ListCreativeFormatsResponse:
     """List all available creative formats (AdCP spec endpoint).
 
     MCP tool wrapper that delegates to the shared implementation.
 
     Args:
+        adcp_version: AdCP schema version for this request (default: "1.0.0")
+        type: Filter by format type (audio, video, display)
+        standard_only: Only return IAB standard formats
+        category: Filter by format category (standard, custom)
+        format_ids: Filter by specific format IDs
         context: FastMCP context (automatically provided)
 
     Returns:
         ListCreativeFormatsResponse with all available formats
     """
-    return _list_creative_formats_impl(context)
+    req = ListCreativeFormatsRequest(
+        adcp_version=adcp_version,
+        type=type,
+        standard_only=standard_only,
+        category=category,
+        format_ids=format_ids,
+    )
+    return _list_creative_formats_impl(req, context)
 
 
 def _sync_creatives_impl(
