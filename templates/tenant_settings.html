@@ -1878,12 +1878,6 @@ function renderPrincipalEditor(principal) {
                        value="${gamMapping.trafficker_id || ''}"
                        placeholder="e.g., 9876543210">
                 <small class="form-text text-muted">The GAM user ID for trafficking operations</small>
-            </div>
-
-            <div class="mb-3 form-check">
-                <input type="checkbox" class="form-check-input" id="gam_enabled"
-                       ${gamMapping.enabled !== false ? 'checked' : ''}>
-                <label class="form-check-label" for="gam_enabled">Enable GAM for this advertiser</label>
             </div>`;
     } else {
         // Mock tenant - only show mock fields
@@ -1899,12 +1893,6 @@ function renderPrincipalEditor(principal) {
                        value="${mockMapping.advertiser_id || principal.principal_id}"
                        placeholder="e.g., mock_${principal.principal_id}">
                 <small class="form-text text-muted">Mock ID for testing (auto-populated with principal ID)</small>
-            </div>
-
-            <div class="mb-3 form-check">
-                <input type="checkbox" class="form-check-input" id="mock_enabled"
-                       ${mockMapping.enabled !== false ? 'checked' : ''}>
-                <label class="form-check-label" for="mock_enabled">Enable Mock for this advertiser</label>
             </div>`;
     }
 
@@ -2008,35 +1996,42 @@ function loadGAMAdvertisersForEdit(currentAdvertiserId) {
 }
 
 function savePrincipalMappings() {
-    const gamCompanyId = document.getElementById('gam_company_id').value.trim();
-    const gamTraffickerId = document.getElementById('gam_trafficker_id').value.trim();
-    const gamEnabled = document.getElementById('gam_enabled').checked;
-    const mockAdvertiserId = document.getElementById('mock_advertiser_id').value.trim();
-    const mockEnabled = document.getElementById('mock_enabled').checked;
+    const activeAdapter = '{{ active_adapter }}';
 
     // Build platform mappings object
     const platformMappings = {};
 
-    // Add GAM if enabled or has values
-    if (gamEnabled || gamCompanyId || gamTraffickerId) {
-        platformMappings.google_ad_manager = {
-            enabled: gamEnabled
-        };
-        if (gamCompanyId) {
-            platformMappings.google_ad_manager.advertiser_id = gamCompanyId;
-            platformMappings.google_ad_manager.company_id = gamCompanyId; // Both for compatibility
-        }
-        if (gamTraffickerId) {
-            platformMappings.google_ad_manager.trafficker_id = gamTraffickerId;
-        }
-    }
+    if (activeAdapter === 'google_ad_manager') {
+        // GAM tenant - save GAM fields
+        const gamCompanyIdEl = document.getElementById('gam_company_id');
+        const gamTraffickerIdEl = document.getElementById('gam_trafficker_id');
 
-    // Add mock if enabled or has values
-    if (mockEnabled || mockAdvertiserId) {
-        platformMappings.mock = {
-            enabled: mockEnabled,
-            advertiser_id: mockAdvertiserId || 'default'
-        };
+        const gamCompanyId = gamCompanyIdEl ? gamCompanyIdEl.value.trim() : '';
+        const gamTraffickerId = gamTraffickerIdEl ? gamTraffickerIdEl.value.trim() : '';
+
+        if (gamCompanyId || gamTraffickerId) {
+            platformMappings.google_ad_manager = {
+                enabled: true  // Always enabled for GAM tenants
+            };
+            if (gamCompanyId) {
+                platformMappings.google_ad_manager.advertiser_id = gamCompanyId;
+                platformMappings.google_ad_manager.company_id = gamCompanyId; // Both for compatibility
+            }
+            if (gamTraffickerId) {
+                platformMappings.google_ad_manager.trafficker_id = gamTraffickerId;
+            }
+        }
+    } else {
+        // Mock tenant - save mock fields
+        const mockAdvertiserIdEl = document.getElementById('mock_advertiser_id');
+        const mockAdvertiserId = mockAdvertiserIdEl ? mockAdvertiserIdEl.value.trim() : '';
+
+        if (mockAdvertiserId) {
+            platformMappings.mock = {
+                enabled: true,  // Always enabled for mock tenants
+                advertiser_id: mockAdvertiserId
+            };
+        }
     }
 
     // Show saving state
