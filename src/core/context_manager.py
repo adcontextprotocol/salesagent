@@ -236,6 +236,8 @@ class ContextManager(DatabaseManager):
         try:
             step = session.query(WorkflowStep).filter_by(step_id=step_id).first()
             if step:
+                old_status = step.status  # Capture old status before changing
+
                 if status:
                     step.status = status
                     if status in ["completed", "failed"] and not step.completed_at:
@@ -263,12 +265,35 @@ class ContextManager(DatabaseManager):
                     )
                     step.comments = new_comments
 
+                # DEBUG: Log the condition check values BEFORE commit
+                console.print(f"[magenta]🔍 PRE-COMMIT WEBHOOK DEBUG:[/magenta]")
+                console.print(f"[magenta]   update_workflow_step called with:[/magenta]")
+                console.print(f"[magenta]     step_id={step_id}[/magenta]")
+                console.print(f"[magenta]     status parameter={status}[/magenta]")
+                console.print(f"[magenta]   Database state BEFORE commit:[/magenta]")
+                console.print(f"[magenta]     old_status={old_status}[/magenta]")
+                console.print(f"[magenta]     new step.status={step.status}[/magenta]")
+                console.print(f"[magenta]   Condition evaluation:[/magenta]")
+                console.print(f"[magenta]     status parameter truthy? {bool(status)}[/magenta]")
+                console.print(f"[magenta]     step object exists? {step is not None}[/magenta]")
+                console.print(f"[magenta]     Will trigger webhook? {status and step}[/magenta]")
+
                 session.commit()
-                console.print(f"[green]Updated workflow step {step_id}[/green]")
+                console.print(f"[green]✅ Updated workflow step {step_id} (committed to database)[/green]")
+
+                # DEBUG: Log the condition check values AFTER commit
+                console.print(f"[yellow]🔍 POST-COMMIT WEBHOOK DEBUG:[/yellow]")
+                console.print(f"[yellow]   status={status}[/yellow]")
+                console.print(f"[yellow]   old_status={old_status}[/yellow]")
+                console.print(f"[yellow]   step exists={step is not None}[/yellow]")
+                console.print(f"[yellow]   Webhook trigger condition (status and step): {status and step}[/yellow]")
 
                 # Send push notifications if status changed
                 if status and step:
+                    console.print(f"[blue]🚀 WEBHOOK: Calling _send_push_notifications for step {step_id}[/blue]")
                     self._send_push_notifications(step, status, session)
+                else:
+                    console.print(f"[yellow]⚠️ WEBHOOK SKIPPED: status={status}, step={step is not None}[/yellow]")
         finally:
             session.close()
 
