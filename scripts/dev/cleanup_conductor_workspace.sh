@@ -16,7 +16,7 @@ PORT_MANAGER="$BASE_DIR/manage_conductor_ports.py"
 # Stop any running containers
 if [ -f "docker-compose.yml" ]; then
     echo "Stopping Docker containers..."
-    docker-compose down -v 2>/dev/null || true
+    timeout 5 docker-compose down -v 2>/dev/null || true
 fi
 
 # Release reserved ports
