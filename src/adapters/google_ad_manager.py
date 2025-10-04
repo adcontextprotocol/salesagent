@@ -283,11 +283,9 @@ class GoogleAdManager(AdServerAdapter):
                 )
 
         # Automatic mode - create order directly
-        # Use budget.total (v2.4) if available, fallback to total_budget (legacy)
-        total_budget = request.budget.total if request.budget else request.total_budget
         order_id = self.orders_manager.create_order(
             order_name=f"{request.campaign_name} - {len(packages)} packages",
-            total_budget=total_budget,
+            total_budget=request.budget.total,
             start_time=start_time,
             end_time=end_time,
         )
