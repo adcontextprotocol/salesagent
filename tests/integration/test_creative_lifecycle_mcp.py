@@ -42,10 +42,30 @@ class TestCreativeLifecycleMCP:
     @pytest.fixture(autouse=True)
     def setup_test_data(self, integration_db):
         """Create test tenant, principal, and media buy for creative tests."""
+        # Store test data for easy access
+        self.test_tenant_id = "creative_test"
+        self.test_principal_id = "test_advertiser"
+        self.test_media_buy_id = "test_media_buy_1"
+        self.test_buyer_ref = "buyer_ref_123"
+
+        # Clean up any existing test data (for PostgreSQL shared database)
+        # In SQLite mode, integration_db creates a fresh DB so this is a no-op
+        with get_db_session() as session:
+            # Delete in correct order due to foreign keys
+            from src.core.database.models import Tenant
+
+            try:
+                session.query(Tenant).filter_by(tenant_id=self.test_tenant_id).delete()
+                session.commit()
+            except Exception:
+                # Ignore errors (table might not exist in fresh SQLite DB)
+                session.rollback()
+
+        # Create fresh test data
         with get_db_session() as session:
             # Create test tenant
             tenant = create_tenant_with_timestamps(
-                tenant_id="creative_test",
+                tenant_id=self.test_tenant_id,
                 name="Creative Test Tenant",
                 subdomain="creative-test",
                 is_active=True,
@@ -61,8 +81,8 @@ class TestCreativeLifecycleMCP:
 
             # Create test principal
             principal = Principal(
-                tenant_id="creative_test",
-                principal_id="test_advertiser",
+                tenant_id=self.test_tenant_id,
+                principal_id=self.test_principal_id,
                 name="Test Advertiser",
                 access_token="test-token-123",
                 platform_mappings={"mock": {"id": "test_advertiser"}},
@@ -71,27 +91,21 @@ class TestCreativeLifecycleMCP:
 
             # Create test media buy
             media_buy = MediaBuy(
-                tenant_id="creative_test",
-                media_buy_id="test_media_buy_1",
-                principal_id="test_advertiser",
+                tenant_id=self.test_tenant_id,
+                media_buy_id=self.test_media_buy_id,
+                principal_id=self.test_principal_id,
                 order_name="Test Order",
                 advertiser_name="Test Advertiser",
                 status="active",
                 budget=5000.0,
                 start_date=get_utc_now().date(),
                 end_date=(get_utc_now() + timedelta(days=30)).date(),
-                buyer_ref="buyer_ref_123",
+                buyer_ref=self.test_buyer_ref,
                 raw_request={"test": True},
             )
             session.add(media_buy)
 
             session.commit()
-
-        # Store test data for easy access
-        self.test_tenant_id = "creative_test"
-        self.test_principal_id = "test_advertiser"
-        self.test_media_buy_id = "test_media_buy_1"
-        self.test_buyer_ref = "buyer_ref_123"
 
     @pytest.fixture
     def mock_context(self):
