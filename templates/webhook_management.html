@@ -1,0 +1,478 @@
+{% extends "base.html" %}
+
+{% block title %}Webhook Management - {{ principal.name }}{% endblock %}
+
+{% block content %}
+<div class="container">
+    <div class="page-header">
+        <h1>📡 Webhook Management</h1>
+        <p class="subtitle">Configure webhooks for <strong>{{ principal.name }}</strong> ({{ principal.principal_id }})</p>
+        <a href="{{ url_for('principals.list_principals', tenant_id=tenant_id) }}" class="btn btn-secondary">
+            ← Back to Principals
+        </a>
+    </div>
+
+    <!-- Register New Webhook -->
+    <div class="card">
+        <div class="card-header">
+            <h2>Register New Webhook</h2>
+            <p class="help-text">Webhooks notify your system when events occur (creative approved, media buy status changes, etc.)</p>
+        </div>
+        <div class="card-body">
+            <form method="POST" action="{{ url_for('principals.register_webhook', tenant_id=tenant_id, principal_id=principal.principal_id) }}" id="webhookForm">
+                <div class="form-group">
+                    <label for="url">Webhook URL *</label>
+                    <input
+                        type="url"
+                        id="url"
+                        name="url"
+                        required
+                        placeholder="https://your-domain.com/webhooks/adcp"
+                        class="form-control"
+                    >
+                    <small class="help-text">Must be a public HTTPS endpoint (HTTP allowed for testing)</small>
+                </div>
+
+                <div class="form-group">
+                    <label for="auth_type">Authentication Type *</label>
+                    <select id="auth_type" name="auth_type" class="form-control" onchange="toggleAuthFields()">
+                        <option value="none">None (Testing Only - Not Secure)</option>
+                        <option value="hmac_sha256" selected>HMAC-SHA256 (Recommended)</option>
+                    </select>
+                    <small class="help-text">HMAC signatures let you verify webhooks are genuinely from us</small>
+                </div>
+
+                <!-- HMAC Fields -->
+                <div id="hmac_fields" style="display: block;">
+                    <div class="form-group">
+                        <label for="hmac_secret">HMAC Secret *</label>
+                        <input
+                            type="password"
+                            id="hmac_secret"
+                            name="hmac_secret"
+                            class="form-control"
+                            placeholder="Enter a strong secret key"
+                        >
+                        <small class="help-text">
+                            Generate a secure random string (32+ characters). We'll use this to sign all webhook payloads.
+                            <button type="button" onclick="generateSecret()" class="btn-link">Generate Random Secret</button>
+                        </small>
+                    </div>
+                </div>
+
+                <div class="alert alert-info">
+                    <strong>🔒 Security:</strong>
+                    <ul>
+                        <li>Webhooks are validated against private networks (SSRF protection)</li>
+                        <li>HMAC signatures include timestamps to prevent replay attacks</li>
+                        <li>Keep your secret key secure - treat it like a password</li>
+                    </ul>
+                </div>
+
+                <button type="submit" class="btn btn-primary">Register Webhook</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Existing Webhooks -->
+    <div class="card">
+        <div class="card-header">
+            <h2>Registered Webhooks ({{ webhooks|length }})</h2>
+        </div>
+        <div class="card-body">
+            {% if webhooks %}
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th>URL</th>
+                        <th>Auth Type</th>
+                        <th>Status</th>
+                        <th>Created</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for webhook in webhooks %}
+                    <tr>
+                        <td>
+                            <code>{{ webhook.url }}</code>
+                        </td>
+                        <td>
+                            {% if webhook.auth_type == 'hmac_sha256' %}
+                            <span class="badge badge-success">🔐 HMAC-SHA256</span>
+                            {% else %}
+                            <span class="badge badge-warning">⚠️ None</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            <span class="status-indicator" id="status-{{ webhook.config_id }}">
+                                {% if webhook.is_active %}
+                                <span class="badge badge-success">✓ Active</span>
+                                {% else %}
+                                <span class="badge badge-secondary">✕ Inactive</span>
+                                {% endif %}
+                            </span>
+                        </td>
+                        <td>{{ webhook.created_at.strftime('%Y-%m-%d %H:%M') if webhook.created_at else 'N/A' }}</td>
+                        <td>
+                            <button
+                                onclick="toggleWebhook('{{ webhook.config_id }}')"
+                                class="btn btn-sm btn-secondary"
+                                id="toggle-btn-{{ webhook.config_id }}"
+                            >
+                                {% if webhook.is_active %}Disable{% else %}Enable{% endif %}
+                            </button>
+                            <form
+                                method="POST"
+                                action="{{ url_for('principals.delete_webhook', tenant_id=tenant_id, principal_id=principal.principal_id, config_id=webhook.config_id) }}"
+                                style="display: inline;"
+                                onsubmit="return confirm('Are you sure you want to delete this webhook?')"
+                            >
+                                <button type="submit" class="btn btn-sm btn-danger">Delete</button>
+                            </form>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            {% else %}
+            <p class="empty-state">No webhooks registered yet. Add one above to start receiving notifications.</p>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- Webhook Documentation -->
+    <div class="card">
+        <div class="card-header">
+            <h2>📚 Webhook Documentation</h2>
+        </div>
+        <div class="card-body">
+            <h3>Payload Format</h3>
+            <p>Webhooks send JSON payloads with the following structure:</p>
+            <pre><code>{
+  "step_id": "step_abc123",
+  "object_type": "creative",
+  "object_id": "creative_xyz789",
+  "action": "approval_required",
+  "status": "completed",
+  "step_type": "creative_approval",
+  "owner": "publisher",
+  "timestamp": "2025-10-04T14:30:00Z"
+}</code></pre>
+
+            <h3>HMAC Verification (Python)</h3>
+            <p>Verify webhook signatures in your endpoint:</p>
+            <pre><code>import hmac
+import hashlib
+import time
+from flask import request
+
+@app.route("/webhooks/adcp", methods=["POST"])
+def handle_webhook():
+    # Get signature from headers
+    signature = request.headers.get("X-Webhook-Signature", "").replace("sha256=", "")
+    timestamp = request.headers.get("X-Webhook-Timestamp")
+
+    # Replay attack prevention (5 minute window)
+    if abs(time.time() - int(timestamp)) > 300:
+        return {"error": "Webhook too old"}, 400
+
+    # Verify signature
+    payload = request.get_data(as_text=True)
+    expected_signature = hmac.new(
+        WEBHOOK_SECRET.encode('utf-8'),
+        f"{timestamp}.{payload}".encode('utf-8'),
+        hashlib.sha256
+    ).hexdigest()
+
+    if not hmac.compare_digest(signature, expected_signature):
+        return {"error": "Invalid signature"}, 401
+
+    # Process webhook
+    data = request.json
+    # ... your business logic ...
+
+    return {"status": "ok"}, 200
+</code></pre>
+
+            <h3>Event Types</h3>
+            <ul>
+                <li><code>creative_approval</code> - Creative requires review</li>
+                <li><code>media_buy_status</code> - Media buy status changed</li>
+                <li><code>workflow_status_update</code> - Any workflow step status change</li>
+            </ul>
+
+            <h3>Best Practices</h3>
+            <ul>
+                <li>Always verify HMAC signatures in production</li>
+                <li>Implement idempotency (webhooks may be retried)</li>
+                <li>Respond quickly (within 10 seconds) to avoid timeouts</li>
+                <li>Use HTTPS endpoints to protect data in transit</li>
+                <li>Log failed signature verifications (potential security issue)</li>
+            </ul>
+        </div>
+    </div>
+</div>
+
+<style>
+.container {
+    max-width: 1200px;
+    margin: 2rem auto;
+    padding: 0 1rem;
+}
+
+.page-header {
+    margin-bottom: 2rem;
+}
+
+.page-header h1 {
+    font-size: 2rem;
+    margin-bottom: 0.5rem;
+}
+
+.subtitle {
+    color: #666;
+    margin-bottom: 1rem;
+}
+
+.card {
+    background: white;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    margin-bottom: 2rem;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.card-header {
+    padding: 1.5rem;
+    border-bottom: 1px solid #ddd;
+}
+
+.card-header h2 {
+    font-size: 1.5rem;
+    margin: 0 0 0.5rem 0;
+}
+
+.help-text {
+    color: #666;
+    font-size: 0.9rem;
+    margin-top: 0.25rem;
+}
+
+.card-body {
+    padding: 1.5rem;
+}
+
+.form-group {
+    margin-bottom: 1.5rem;
+}
+
+.form-group label {
+    display: block;
+    font-weight: 600;
+    margin-bottom: 0.5rem;
+}
+
+.form-control {
+    width: 100%;
+    padding: 0.5rem;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    font-size: 1rem;
+}
+
+.form-control:focus {
+    outline: none;
+    border-color: #007bff;
+    box-shadow: 0 0 0 3px rgba(0,123,255,0.1);
+}
+
+.btn {
+    padding: 0.5rem 1rem;
+    border: none;
+    border-radius: 4px;
+    font-size: 1rem;
+    cursor: pointer;
+    text-decoration: none;
+    display: inline-block;
+}
+
+.btn-primary {
+    background: #007bff;
+    color: white;
+}
+
+.btn-primary:hover {
+    background: #0056b3;
+}
+
+.btn-secondary {
+    background: #6c757d;
+    color: white;
+}
+
+.btn-secondary:hover {
+    background: #545b62;
+}
+
+.btn-sm {
+    padding: 0.25rem 0.5rem;
+    font-size: 0.875rem;
+}
+
+.btn-danger {
+    background: #dc3545;
+    color: white;
+}
+
+.btn-danger:hover {
+    background: #c82333;
+}
+
+.btn-link {
+    background: none;
+    border: none;
+    color: #007bff;
+    text-decoration: underline;
+    cursor: pointer;
+    padding: 0;
+    font-size: inherit;
+}
+
+.alert {
+    padding: 1rem;
+    border-radius: 4px;
+    margin-bottom: 1rem;
+}
+
+.alert-info {
+    background: #d1ecf1;
+    border: 1px solid #bee5eb;
+    color: #0c5460;
+}
+
+.table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.table th,
+.table td {
+    padding: 0.75rem;
+    text-align: left;
+    border-bottom: 1px solid #ddd;
+}
+
+.table th {
+    font-weight: 600;
+    background: #f8f9fa;
+}
+
+.badge {
+    display: inline-block;
+    padding: 0.25rem 0.5rem;
+    border-radius: 4px;
+    font-size: 0.875rem;
+    font-weight: 600;
+}
+
+.badge-success {
+    background: #d4edda;
+    color: #155724;
+}
+
+.badge-warning {
+    background: #fff3cd;
+    color: #856404;
+}
+
+.badge-secondary {
+    background: #e2e3e5;
+    color: #383d41;
+}
+
+.empty-state {
+    text-align: center;
+    color: #666;
+    padding: 2rem;
+}
+
+pre {
+    background: #f8f9fa;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    padding: 1rem;
+    overflow-x: auto;
+}
+
+code {
+    font-family: 'Monaco', 'Courier New', monospace;
+    font-size: 0.9rem;
+}
+</style>
+
+<script>
+function toggleAuthFields() {
+    const authType = document.getElementById('auth_type').value;
+    const hmacFields = document.getElementById('hmac_fields');
+
+    if (authType === 'hmac_sha256') {
+        hmacFields.style.display = 'block';
+        document.getElementById('hmac_secret').required = true;
+    } else {
+        hmacFields.style.display = 'none';
+        document.getElementById('hmac_secret').required = false;
+    }
+}
+
+function generateSecret() {
+    // Generate a random 32-character hex string
+    const array = new Uint8Array(32);
+    window.crypto.getRandomValues(array);
+    const secret = Array.from(array, byte => byte.toString(16).padStart(2, '0')).join('');
+
+    const input = document.getElementById('hmac_secret');
+    input.type = 'text';  // Show the generated value
+    input.value = secret;
+
+    // Copy to clipboard
+    navigator.clipboard.writeText(secret).then(() => {
+        alert('Secret generated and copied to clipboard!\n\nSave this secret securely - you\'ll need it to verify webhooks.');
+    });
+}
+
+function toggleWebhook(configId) {
+    fetch(`{{ url_for('principals.toggle_webhook', tenant_id=tenant_id, principal_id=principal.principal_id, config_id='CONFIG_ID') }}`.replace('CONFIG_ID', configId), {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            const statusEl = document.getElementById(`status-${configId}`);
+            const btnEl = document.getElementById(`toggle-btn-${configId}`);
+
+            if (data.is_active) {
+                statusEl.innerHTML = '<span class="badge badge-success">✓ Active</span>';
+                btnEl.textContent = 'Disable';
+            } else {
+                statusEl.innerHTML = '<span class="badge badge-secondary">✕ Inactive</span>';
+                btnEl.textContent = 'Enable';
+            }
+        } else {
+            alert('Error toggling webhook: ' + data.error);
+        }
+    })
+    .catch(error => {
+        alert('Error toggling webhook: ' + error);
+    });
+}
+
+// Initialize form state
+document.addEventListener('DOMContentLoaded', function() {
+    toggleAuthFields();
+});
+</script>
+{% endblock %}

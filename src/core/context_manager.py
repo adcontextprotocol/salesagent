@@ -579,11 +579,24 @@ class ContextManager(DatabaseManager):
                     )
 
                     try:
+                        # Build headers with authentication
+                        headers = {"Content-Type": "application/json"}
+
+                        # Add HMAC signature if configured
+                        if webhook_config.auth_type == "hmac_sha256" and webhook_config.auth_config:
+                            secret = webhook_config.auth_config.get("secret")
+                            if secret:
+                                from src.core.webhook_authenticator import WebhookAuthenticator
+
+                                auth_headers = WebhookAuthenticator.sign_payload(payload, secret)
+                                headers.update(auth_headers)
+                                console.print("[cyan]🔐 Added HMAC signature to webhook[/cyan]")
+
                         response = requests.post(
                             webhook_config.url,
                             json=payload,
                             timeout=10,
-                            headers={"Content-Type": "application/json"},
+                            headers=headers,
                         )
 
                         if response.status_code in [200, 201, 202, 204]:
