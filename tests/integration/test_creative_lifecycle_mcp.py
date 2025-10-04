@@ -13,7 +13,7 @@ import pytest
 
 from src.core.database.database_session import get_db_session
 from src.core.database.models import Creative as DBCreative
-from src.core.database.models import CreativeAssignment, MediaBuy, Principal
+from src.core.database.models import CreativeAssignment
 from src.core.schemas import ListCreativesResponse, SyncCreativesResponse
 from tests.utils.database_helpers import create_tenant_with_timestamps, get_utc_now
 
@@ -52,12 +52,23 @@ class TestCreativeLifecycleMCP:
         # In SQLite mode, integration_db creates a fresh DB so this is a no-op
         with get_db_session() as session:
             # Delete in correct order due to foreign keys
-            from src.core.database.models import Tenant
+            from src.core.database.models import (
+                Creative,
+                MediaBuy,
+                Principal,
+                Product,
+                Tenant,
+            )
 
             try:
+                # Delete child records first to avoid foreign key constraints
+                session.query(Creative).filter_by(tenant_id=self.test_tenant_id).delete()
+                session.query(MediaBuy).filter_by(tenant_id=self.test_tenant_id).delete()
+                session.query(Principal).filter_by(tenant_id=self.test_tenant_id).delete()
+                session.query(Product).filter_by(tenant_id=self.test_tenant_id).delete()
                 session.query(Tenant).filter_by(tenant_id=self.test_tenant_id).delete()
                 session.commit()
-            except Exception:
+            except Exception as e:
                 # Ignore errors (table might not exist in fresh SQLite DB)
                 session.rollback()
 
