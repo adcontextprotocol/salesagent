@@ -15,7 +15,7 @@ from src.admin.app import create_app
 
 admin_app, _ = create_app()
 from src.core.database.database_session import get_db_session
-from src.core.database.models import Tenant
+from src.core.database.models import Principal, Tenant
 from tests.fixtures import TenantFactory
 
 
@@ -234,7 +234,6 @@ def sample_tenant(integration_db):
 def sample_principal(integration_db, sample_tenant):
     """Create a sample principal with valid platform mappings."""
     from src.core.database.database_session import get_db_session
-    from src.core.database.models import Principal
 
     with get_db_session() as session:
         from datetime import UTC, datetime

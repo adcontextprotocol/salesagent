@@ -299,6 +299,38 @@ class JSONValidatorMixin:
         validated = DeliveryDataModel(**value)
         return validated.model_dump(mode="json")
 
+    @validates("countries", "implementation_config")
+    def validate_nullable_json_fields(self, key, value):
+        """Validate fields that can be None, empty array/dict, or valid JSON."""
+        if value is None:
+            return None
+
+        if isinstance(value, str):
+            if value == "null":
+                return None  # Convert string 'null' to actual None
+            try:
+                value = json.loads(value)
+            except json.JSONDecodeError:
+                raise ValueError(f"{key} must be valid JSON")
+
+        # For countries, allow None or list
+        if key == "countries":
+            if value is None:
+                return None
+            if not isinstance(value, list):
+                raise ValueError("countries must be a list or None")
+            return value
+
+        # For implementation_config, allow None or dict
+        if key == "implementation_config":
+            if value is None:
+                return None
+            if not isinstance(value, dict):
+                raise ValueError("implementation_config must be a dict or None")
+            return value
+
+        return value
+
 
 # Utility functions for JSON handling
 

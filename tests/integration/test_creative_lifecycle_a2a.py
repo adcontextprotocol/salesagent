@@ -13,7 +13,7 @@ from a2a.types import InternalError
 from a2a.utils.errors import ServerError
 
 from src.core.database.database_session import get_db_session
-from src.core.database.models import MediaBuy, Principal, Tenant
+from src.core.database.models import MediaBuy, Principal
 from tests.utils.database_helpers import create_tenant_with_timestamps
 
 
@@ -51,6 +51,22 @@ class TestCreativeLifecycleA2A:
     @pytest.fixture(autouse=True)
     def setup_test_data(self, integration_db):
         """Create test tenant, principal, and media buy for A2A tests."""
+        # Clean up any existing test data (for PostgreSQL shared database)
+        # In SQLite mode, integration_db creates a fresh DB so this is a no-op
+        with get_db_session() as session:
+            from src.core.database.models import Tenant
+
+            try:
+                # Fetch and delete the tenant object (triggers ORM cascade)
+                # This is more reliable than bulk delete for cascade operations
+                tenant = session.query(Tenant).filter_by(tenant_id="a2a_creative_test").first()
+                if tenant:
+                    session.delete(tenant)
+                    session.commit()
+            except Exception:
+                # Ignore errors (expected for fresh SQLite DB where table might not exist)
+                session.rollback()
+
         with get_db_session() as session:
             # Create test tenant
             tenant = create_tenant_with_timestamps(
@@ -147,6 +163,7 @@ class TestCreativeLifecycleA2A:
 
             # Test 1: Successful sync with assignments
             from tests.utils.database_helpers import get_utc_now
+
             now = get_utc_now()
             synced_creatives = [
                 Creative(
@@ -289,6 +306,7 @@ class TestCreativeLifecycleA2A:
 
             # Test 1: Successful list with all parameters
             from tests.utils.database_helpers import get_utc_now
+
             now = get_utc_now()
             sample_creatives = [
                 Creative(
