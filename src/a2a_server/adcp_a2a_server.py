@@ -1123,14 +1123,28 @@ class AdCPRequestHandler(RequestHandler):
             # Call core function directly - no parameters needed for this endpoint
             response = core_list_creative_formats_tool(context=tool_context)
 
+            # Handle both dict and object responses (core function may return either based on INCLUDE_SCHEMAS_IN_RESPONSES)
+            if isinstance(response, dict):
+                # Response is already a dict (schema enhancement enabled)
+                formats = response.get("formats", [])
+                message = response.get("message", "Creative formats retrieved successfully")
+                # Formats in dict are already serialized
+                formats_list = formats
+            else:
+                # Response is ListCreativeFormatsResponse object
+                formats = response.formats
+                message = response.message or "Creative formats retrieved successfully"
+                # Serialize Format objects to dicts
+                formats_list = [format_obj.model_dump() for format_obj in formats]
+
             # Convert response to A2A format with schema validation
             from src.core.schema_validation import INCLUDE_SCHEMAS_IN_RESPONSES, enhance_a2a_response_with_schema
 
             a2a_response = {
                 "success": True,
-                "formats": [format_obj.model_dump() for format_obj in response.formats],
-                "message": response.message or "Creative formats retrieved successfully",
-                "total_count": len(response.formats),
+                "formats": formats_list,
+                "message": message,
+                "total_count": len(formats_list),
                 "specification_version": "AdCP v2.4",
             }
 
