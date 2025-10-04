@@ -221,6 +221,7 @@ class ContextManager(DatabaseManager):
         error_message: str | None = None,
         transaction_details: dict[str, Any] | None = None,
         add_comment: dict[str, str] | None = None,
+        send_push_notification: bool = True,
     ) -> None:
         """Update a workflow step's status and data.
 
@@ -231,11 +232,14 @@ class ContextManager(DatabaseManager):
             error_message: Error message if failed
             transaction_details: Actual API calls made
             add_comment: Optional comment to add {user, comment}
+            send_push_notification: Whether to send push notification on status change
         """
         session = self.session
         try:
             step = session.query(WorkflowStep).filter_by(step_id=step_id).first()
             if step:
+                old_status = step.status
+
                 if status:
                     step.status = status
                     if status in ["completed", "failed"] and not step.completed_at:
@@ -265,6 +269,55 @@ class ContextManager(DatabaseManager):
 
                 session.commit()
                 console.print(f"[green]Updated workflow step {step_id}[/green]")
+
+                # Send push notification if status changed and feature is enabled
+                if send_push_notification and status and status != old_status:
+                    import asyncio
+
+                    from src.services.push_notification_service import push_notification_service
+
+                    # Run async notification in background
+                    try:
+                        console.print(
+                            f"[blue]🚀 WEBHOOK TRIGGER: Triggering push notification for step {step_id} status change: {old_status} → {status}[/blue]"
+                        )
+                        console.print(f"[blue]   context_id={step.context_id}, step_type={step.step_type}[/blue]")
+
+                        # Use context_id as workflow_id (WorkflowStep doesn't have workflow_id field)
+                        # Handle both sync and async contexts
+                        try:
+                            loop = asyncio.get_running_loop()
+                            console.print("[blue]   Using existing event loop[/blue]")
+                            # We're in an async context, create task
+                            task = loop.create_task(
+                                push_notification_service.send_workflow_step_notification(
+                                    workflow_id=step.context_id,
+                                    step_id=step_id,
+                                    step_status=status,
+                                    step_type=step.step_type,
+                                )
+                            )
+                            console.print(f"[blue]   ✅ Task created: {task}[/blue]")
+                        except RuntimeError as e:
+                            # No running loop, we're in sync context - run in new loop
+                            console.print(
+                                f"[blue]   No event loop running (RuntimeError: {e}), creating new loop for notification[/blue]"
+                            )
+                            result = asyncio.run(
+                                push_notification_service.send_workflow_step_notification(
+                                    workflow_id=step.context_id,
+                                    step_id=step_id,
+                                    step_status=status,
+                                    step_type=step.step_type,
+                                )
+                            )
+                            console.print(f"[blue]   ✅ Notification result: {result}[/blue]")
+                    except Exception as e:
+                        # Don't fail workflow update if push notification fails
+                        console.print(f"[yellow]Warning: Failed to send push notification: {e}[/yellow]")
+                        import traceback
+
+                        console.print(f"[yellow]{traceback.format_exc()}[/yellow]")
         finally:
             session.close()
 

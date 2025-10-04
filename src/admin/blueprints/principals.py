@@ -306,3 +306,79 @@ def get_gam_advertisers(tenant_id):
     except Exception as e:
         logger.error(f"Error getting GAM advertisers: {e}", exc_info=True)
         return jsonify({"error": "Internal server error"}), 500
+
+
+@principals_bp.route("/api/principal/<principal_id>/config", methods=["GET"])
+@require_tenant_access()
+def get_principal_config(tenant_id, principal_id):
+    """Get principal configuration including platform mappings for testing UI."""
+    try:
+        with get_db_session() as db_session:
+            principal = db_session.query(Principal).filter_by(tenant_id=tenant_id, principal_id=principal_id).first()
+
+            if not principal:
+                return jsonify({"error": "Principal not found"}), 404
+
+            # Parse platform mappings
+            platform_mappings = (
+                json.loads(principal.platform_mappings)
+                if isinstance(principal.platform_mappings, str)
+                else principal.platform_mappings
+            )
+
+            return jsonify(
+                {
+                    "principal_id": principal.principal_id,
+                    "name": principal.name,
+                    "platform_mappings": platform_mappings,
+                }
+            )
+
+    except Exception as e:
+        logger.error(f"Error getting principal config: {e}", exc_info=True)
+        return jsonify({"error": "Internal server error"}), 500
+
+
+@principals_bp.route("/api/principal/<principal_id>/testing-config", methods=["POST"])
+@require_tenant_access()
+def save_testing_config(tenant_id, principal_id):
+    """Save testing configuration (HITL settings) for a mock adapter principal."""
+    try:
+        data = request.get_json()
+        if not data or "hitl_config" not in data:
+            return jsonify({"error": "Missing hitl_config in request"}), 400
+
+        hitl_config = data["hitl_config"]
+
+        with get_db_session() as db_session:
+            principal = db_session.query(Principal).filter_by(tenant_id=tenant_id, principal_id=principal_id).first()
+
+            if not principal:
+                return jsonify({"error": "Principal not found"}), 404
+
+            # Parse existing platform mappings
+            platform_mappings = (
+                json.loads(principal.platform_mappings)
+                if isinstance(principal.platform_mappings, str)
+                else principal.platform_mappings or {}
+            )
+
+            # Ensure mock adapter exists
+            if "mock" not in platform_mappings:
+                platform_mappings["mock"] = {"advertiser_id": f"mock_{principal_id}", "enabled": True}
+
+            # Update hitl_config
+            platform_mappings["mock"]["hitl_config"] = hitl_config
+
+            # Save back to database
+            principal.platform_mappings = json.dumps(platform_mappings)
+            principal.updated_at = datetime.now(UTC)
+            db_session.commit()
+
+            logger.info(f"Updated testing config for principal {principal_id} in tenant {tenant_id}")
+
+            return jsonify({"success": True, "message": "Testing configuration saved successfully"})
+
+    except Exception as e:
+        logger.error(f"Error saving testing config: {e}", exc_info=True)
+        return jsonify({"error": "Failed to save testing configuration"}), 500

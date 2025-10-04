@@ -943,6 +943,14 @@ class Product(BaseModel):
         default=None,
         description="Ad server-specific configuration for implementing this product (placements, line item settings, etc.)",
     )
+    # AdCP PR #79 fields - populated dynamically from historical reporting data
+    # These are NOT stored in database, calculated on-demand from product_performance_metrics
+    currency: str = Field(default="USD", description="ISO 4217 currency code for pricing")
+    estimated_exposures: int | None = Field(None, description="Estimated impressions (calculated dynamically)", gt=0)
+    floor_cpm: float | None = Field(None, description="Minimum acceptable CPM (calculated dynamically)", gt=0)
+    recommended_cpm: float | None = Field(
+        None, description="Suggested CPM to meet exposure goals (calculated dynamically)", gt=0
+    )
 
     @property
     def format_ids(self) -> list[str]:
@@ -974,6 +982,7 @@ class Product(BaseModel):
             "delivery_type",
             "is_fixed_price",
             "is_custom",
+            "currency",  # PR #79: Always include currency
         }
 
         adcp_data = {}
@@ -1073,6 +1082,11 @@ class GetProductsRequest(BaseModel):
     strategy_id: str | None = Field(
         None,
         description="Optional strategy ID for linking operations and enabling simulation/testing modes",
+    )
+    min_exposures: int | None = Field(
+        None,
+        description="Minimum number of impressions needed for measurement validity (AdCP PR #79)",
+        gt=0,
     )
 
 
@@ -1739,6 +1753,16 @@ class CreateMediaBuyRequest(BaseModel):
     strategy_id: str | None = Field(
         None,
         description="Optional strategy ID for linking operations and enabling simulation/testing modes",
+    )
+
+    # Webhook/callback support for MCP protocol (AdCP spec naming)
+    webhook_url: str | None = Field(
+        None,
+        description="Optional webhook URL for status notifications (MCP protocol). For A2A, use A2A push notification methods instead.",
+    )
+    webhook_auth_token: str | None = Field(
+        None,
+        description="Optional authentication token for webhook callbacks (MCP protocol). Used as Bearer token in Authorization header.",
     )
 
     @model_validator(mode="before")

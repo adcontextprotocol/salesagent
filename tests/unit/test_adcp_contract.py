@@ -187,6 +187,72 @@ class TestAdCPContract:
         assert request.brief is not None
         assert request.promoted_offering is not None
 
+    def test_product_pr79_fields(self):
+        """Test Product schema compliance with AdCP PR #79 (filtering and pricing enhancements).
+
+        PR #79 adds:
+        - min_exposures filter in get_products request
+        - currency field (ISO 4217)
+        - estimated_exposures for guaranteed products
+        - floor_cpm and recommended_cpm for non-guaranteed products
+        """
+        # Test guaranteed product with estimated_exposures
+        guaranteed_product = ProductSchema(
+            product_id="test_guaranteed",
+            name="Guaranteed Product",
+            description="Test product with exposure estimates",
+            formats=["display_300x250"],
+            delivery_type="guaranteed",
+            is_fixed_price=True,
+            cpm=15.0,
+            currency="USD",
+            estimated_exposures=50000,
+        )
+
+        # Verify AdCP-compliant response includes PR #79 fields
+        adcp_response = guaranteed_product.model_dump()
+        assert "currency" in adcp_response
+        assert adcp_response["currency"] == "USD"
+        assert "estimated_exposures" in adcp_response
+        assert adcp_response["estimated_exposures"] == 50000
+
+        # Test non-guaranteed product with floor_cpm and recommended_cpm
+        non_guaranteed_product = ProductSchema(
+            product_id="test_non_guaranteed",
+            name="Non-Guaranteed Product",
+            description="Test product with CPM guidance",
+            formats=["video_15s"],
+            delivery_type="non_guaranteed",
+            is_fixed_price=False,
+            currency="EUR",
+            floor_cpm=5.0,
+            recommended_cpm=8.5,
+        )
+
+        adcp_response = non_guaranteed_product.model_dump()
+        assert adcp_response["currency"] == "EUR"
+        assert "floor_cpm" in adcp_response
+        assert adcp_response["floor_cpm"] == 5.0
+        assert "recommended_cpm" in adcp_response
+        assert adcp_response["recommended_cpm"] == 8.5
+
+        # Test min_exposures in GetProductsRequest
+        request = GetProductsRequest(
+            brief="Looking for high-volume campaigns",
+            promoted_offering="Nike Air Max 2024",
+            min_exposures=10000,
+        )
+
+        assert request.min_exposures == 10000
+
+        # Test validation: min_exposures must be positive
+        with pytest.raises(Exception):  # Pydantic validation error
+            GetProductsRequest(
+                brief="test",
+                promoted_offering="test",
+                min_exposures=-1000,  # Invalid: must be > 0
+            )
+
         # Should fail without promoted_offering (AdCP requirement)
         with pytest.raises(ValueError):
             GetProductsRequest(brief="Just a brief")

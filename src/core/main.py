@@ -640,12 +640,15 @@ def log_tool_activity(context: Context, tool_name: str, start_time: float = None
 
 
 @mcp.tool
-async def get_products(promoted_offering: str, brief: str = "", context: Context = None) -> GetProductsResponse:
+async def get_products(
+    promoted_offering: str, brief: str = "", min_exposures: int | None = None, context: Context = None
+) -> GetProductsResponse:
     """Get available products matching the brief.
 
     Args:
         promoted_offering: What is being promoted/advertised (required per AdCP spec)
         brief: Brief description of the advertising campaign or requirements (optional)
+        min_exposures: Minimum impressions needed for measurement validity (AdCP PR #79, optional)
         context: FastMCP context (automatically provided)
 
     Returns:
@@ -654,7 +657,7 @@ async def get_products(promoted_offering: str, brief: str = "", context: Context
     from src.core.tool_context import ToolContext
 
     # Create request object from individual parameters (MCP-compliant)
-    req = GetProductsRequest(brief=brief or "", promoted_offering=promoted_offering)
+    req = GetProductsRequest(brief=brief or "", promoted_offering=promoted_offering, min_exposures=min_exposures)
 
     start_time = time.time()
 
@@ -846,6 +849,26 @@ async def get_products(promoted_offering: str, brief: str = "", context: Context
         context=context_data,
     )
 
+    # Enrich products with dynamic pricing (AdCP PR #79)
+    # Calculate floor_cpm, recommended_cpm, estimated_exposures from cached metrics
+    try:
+        from src.core.database.database_session import get_db_session
+        from src.services.dynamic_pricing_service import DynamicPricingService
+
+        # Extract country from request if available (future enhancement: parse from targeting)
+        country_code = None  # TODO: Extract from targeting if provided
+
+        with get_db_session() as pricing_session:
+            pricing_service = DynamicPricingService(pricing_session)
+            products = pricing_service.enrich_products_with_pricing(
+                products,
+                tenant_id=tenant["tenant_id"],
+                country_code=country_code,
+                min_exposures=req.min_exposures,
+            )
+    except Exception as e:
+        logger.warning(f"Failed to enrich products with dynamic pricing: {e}. Using defaults.")
+
     # Filter products based on policy compliance
     eligible_products = []
     for product in products:
@@ -857,6 +880,29 @@ async def get_products(promoted_offering: str, brief: str = "", context: Context
             eligible_products.append(product)
         else:
             logger.info(f"Product {product.product_id} excluded: {reason}")
+
+    # Apply min_exposures filtering (AdCP PR #79)
+    if req.min_exposures is not None:
+        filtered_products = []
+        for product in eligible_products:
+            # For guaranteed products, check estimated_exposures
+            if product.delivery_type == "guaranteed":
+                if product.estimated_exposures is not None and product.estimated_exposures >= req.min_exposures:
+                    filtered_products.append(product)
+                else:
+                    logger.info(
+                        f"Product {product.product_id} excluded: estimated_exposures "
+                        f"({product.estimated_exposures}) < min_exposures ({req.min_exposures})"
+                    )
+            else:
+                # For non-guaranteed, include if recommended_cpm is set (indicates it can meet min_exposures)
+                # or if no recommended_cpm is set (product doesn't provide exposure estimates)
+                if product.recommended_cpm is not None:
+                    filtered_products.append(product)
+                else:
+                    # Include non-guaranteed products without recommended_cpm (can't filter by exposure estimates)
+                    filtered_products.append(product)
+        eligible_products = filtered_products
 
     # Apply testing hooks to response
     response_data = {"products": [p.model_dump_internal() for p in eligible_products]}
@@ -1058,6 +1104,13 @@ def sync_creatives(
     failed_creatives = []
     assignments = []
 
+    # Track creatives requiring approval for workflow creation
+    creatives_needing_approval = []
+
+    # Get tenant creative approval settings
+    auto_approve_formats = tenant.get("auto_approve_formats", [])
+    human_review_required = tenant.get("human_review_required", True)
+
     with get_db_session() as session:
         # Resolve media buy
         media_buy = None
@@ -1152,6 +1205,11 @@ def sync_creatives(
                         existing_creative.format = creative.get("format")
                         existing_creative.updated_at = datetime.now(UTC)
 
+                        # Determine if creative needs approval (same logic as create)
+                        creative_format = creative.get("format")
+                        needs_approval = human_review_required and creative_format not in auto_approve_formats
+                        existing_creative.status = "pending" if needs_approval else "approved"
+
                         # Store creative properties in data field
                         data = existing_creative.data or {}
                         data.update(
@@ -1179,6 +1237,16 @@ def sync_creatives(
 
                         attributes.flag_modified(existing_creative, "data")
 
+                        # Track creatives needing approval for workflow creation
+                        if needs_approval:
+                            creatives_needing_approval.append(
+                                {
+                                    "creative_id": existing_creative.creative_id,
+                                    "format": creative_format,
+                                    "name": creative.get("name"),
+                                }
+                            )
+
                     else:
                         # Create new creative
                         from src.core.database.models import Creative as DBCreative
@@ -1200,13 +1268,18 @@ def sync_creatives(
                         if creative.get("template_variables"):
                             data["template_variables"] = creative.get("template_variables")
 
+                        # Determine if creative needs approval
+                        creative_format = creative.get("format")
+                        needs_approval = human_review_required and creative_format not in auto_approve_formats
+                        creative_status = "pending" if needs_approval else "approved"
+
                         db_creative = DBCreative(
                             tenant_id=tenant["tenant_id"],
                             creative_id=creative.get("creative_id") or str(uuid.uuid4()),
                             name=creative.get("name"),
                             format=creative.get("format"),
                             principal_id=principal_id,
-                            status="pending",
+                            status=creative_status,
                             created_at=datetime.now(UTC),
                             data=data,
                         )
@@ -1217,6 +1290,16 @@ def sync_creatives(
                         # Update creative_id if it was generated
                         if not creative.get("creative_id"):
                             creative["creative_id"] = db_creative.creative_id
+
+                        # Track creatives needing approval for workflow creation
+                        if needs_approval:
+                            creatives_needing_approval.append(
+                                {
+                                    "creative_id": db_creative.creative_id,
+                                    "format": creative_format,
+                                    "name": creative.get("name"),
+                                }
+                            )
 
                     # Handle package assignments
                     if assign_to_packages and media_buy:
@@ -1257,6 +1340,51 @@ def sync_creatives(
         # Commit all successful creative operations
         session.commit()
 
+    # Create workflow steps for creatives requiring approval
+    if creatives_needing_approval:
+        from src.core.context_manager import get_context_manager
+        from src.core.database.models import ObjectWorkflowMapping
+
+        ctx_manager = get_context_manager()
+
+        # Get or create persistent context for this operation
+        persistent_ctx = ctx_manager.get_or_create_context(
+            principal_id=principal_id, tenant_id=tenant["tenant_id"], context_type="creative_sync"
+        )
+
+        with get_db_session() as session:
+            for creative_info in creatives_needing_approval:
+                # Create workflow step for creative approval
+                step = ctx_manager.create_workflow_step(
+                    context_id=persistent_ctx.context_id,
+                    is_async=True,
+                    step_type="creative_approval",
+                    owner="publisher",
+                    status="requires_approval",
+                    tool_name="sync_creatives",
+                    request_data={
+                        "creative_id": creative_info["creative_id"],
+                        "format": creative_info["format"],
+                        "name": creative_info["name"],
+                    },
+                    initial_comment=f"Creative '{creative_info['name']}' (format: {creative_info['format']}) requires manual approval",
+                )
+
+                # Create ObjectWorkflowMapping to link creative to workflow step
+                # This is CRITICAL for webhook delivery when creative is approved
+                mapping = ObjectWorkflowMapping(
+                    step_id=step.step_id,
+                    object_type="creative",
+                    object_id=creative_info["creative_id"],
+                    action="approval_required",
+                )
+                session.add(mapping)
+
+            session.commit()
+            console.print(
+                f"[blue]📋 Created {len(creatives_needing_approval)} workflow steps for creative approval[/blue]"
+            )
+
     # Audit logging
     audit_logger = get_audit_logger("AdCP", tenant["tenant_id"])
     audit_logger.log_operation(
@@ -1281,6 +1409,8 @@ def sync_creatives(
         message += f", {len(failed_creatives)} failed"
     if assignments:
         message += f", {len(assignments)} assignments created"
+    if creatives_needing_approval:
+        message += f", {len(creatives_needing_approval)} require approval"
 
     # Convert synced creative dictionaries to schema objects for AdCP-compliant response
     synced_creative_schemas = []
@@ -1967,6 +2097,8 @@ def create_media_buy(
     required_axe_signals: list = None,
     enable_creative_macro: bool = False,
     strategy_id: str = None,
+    webhook_url: str = None,
+    webhook_auth_token: str = None,
     context: Context = None,
 ) -> CreateMediaBuyResponse:
     """Create a media buy with the specified parameters.
@@ -1989,6 +2121,8 @@ def create_media_buy(
         required_axe_signals: Required targeting signals
         enable_creative_macro: Enable AXE to provide creative_macro signal
         strategy_id: Optional strategy ID for linking operations
+        webhook_url: Optional webhook URL for status notifications (MCP protocol)
+        webhook_auth_token: Optional Bearer token for webhook authentication (MCP protocol)
         context: FastMCP context (automatically provided)
 
     Returns:
@@ -2015,6 +2149,8 @@ def create_media_buy(
         required_axe_signals=required_axe_signals,
         enable_creative_macro=enable_creative_macro,
         strategy_id=strategy_id,
+        webhook_url=webhook_url,
+        webhook_auth_token=webhook_auth_token,
     )
 
     # Extract testing context first
@@ -2332,6 +2468,45 @@ def create_media_buy(
             )
             session.add(new_media_buy)
             session.commit()
+
+            # Create ObjectWorkflowMapping to link media buy to workflow step
+            # This is CRITICAL for webhook delivery - the push notification service
+            # uses this mapping to find which media_buy is associated with a workflow step
+            from src.core.database.models import ObjectWorkflowMapping
+
+            mapping = ObjectWorkflowMapping(
+                step_id=step.step_id,
+                object_type="media_buy",
+                object_id=response.media_buy_id,
+                action="create",  # Required NOT NULL field
+            )
+            session.add(mapping)
+            session.commit()
+            console.print(
+                f"[green]✅ Created ObjectWorkflowMapping: step={step.step_id} → media_buy={response.media_buy_id} [action=create][/green]"
+            )
+
+            # Store webhook_url in push_notification_configs if provided (MCP webhook support)
+            if req.webhook_url:
+                import uuid
+
+                from src.core.database.models import PushNotificationConfig as DBPushNotificationConfig
+
+                config_id = f"mcp_{uuid.uuid4().hex[:16]}"
+
+                push_config = DBPushNotificationConfig(
+                    id=config_id,
+                    tenant_id=tenant["tenant_id"],
+                    principal_id=principal_id,
+                    url=req.webhook_url,
+                    authentication_type="bearer" if req.webhook_auth_token else None,
+                    authentication_token=req.webhook_auth_token if req.webhook_auth_token else None,
+                    is_active=True,
+                )
+                session.add(push_config)
+                session.commit()
+
+                console.print(f"[green]Registered MCP webhook: {req.webhook_url}[/green]")
 
         # Handle creatives if provided
         if req.creatives:
@@ -2768,6 +2943,21 @@ def update_media_buy(
         buy_request.targeting_overlay = req.targeting_overlay
     if req.creative_assignments:
         creative_assignments[req.media_buy_id] = req.creative_assignments
+
+    # Create ObjectWorkflowMapping to link media buy update to workflow step
+    # This enables webhook delivery when the update completes
+    from src.core.database.database_session import get_db_session
+    from src.core.database.models import ObjectWorkflowMapping
+
+    with get_db_session() as session:
+        mapping = ObjectWorkflowMapping(
+            step_id=step.step_id,
+            object_type="media_buy",
+            object_id=req.media_buy_id,
+            action="update",
+        )
+        session.add(mapping)
+        session.commit()
 
     # Update workflow step with success
     ctx_manager.update_workflow_step(

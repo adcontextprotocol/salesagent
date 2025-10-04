@@ -537,11 +537,12 @@ def gam_authorize(tenant_id):
     oauth = current_app.oauth if hasattr(current_app, "oauth") else None
     if not oauth:
         flash("OAuth not configured. Please contact your administrator.", "error")
-        return redirect(url_for("tenants.settings", tenant_id=tenant_id))
+        return redirect(url_for("tenants.tenant_settings", tenant_id=tenant_id))
 
     try:
         # Get GAM OAuth configuration
         from src.core.config import get_gam_oauth_config
+
         gam_config = get_gam_oauth_config()
 
         # Store tenant context for callback
@@ -578,7 +579,7 @@ def gam_authorize(tenant_id):
     except Exception as e:
         logger.error(f"Error initiating GAM OAuth for tenant {tenant_id}: {e}")
         flash(f"Error starting OAuth flow: {str(e)}", "error")
-        return redirect(url_for("tenants.settings", tenant_id=tenant_id))
+        return redirect(url_for("tenants.tenant_settings", tenant_id=tenant_id))
 
 
 @auth_bp.route("/gam/callback")
@@ -610,6 +611,7 @@ def gam_callback():
 
         # Get GAM OAuth configuration
         from src.core.config import get_gam_oauth_config
+
         gam_config = get_gam_oauth_config()
 
         # Determine callback URI (must match the one used in authorization)
@@ -620,18 +622,22 @@ def gam_callback():
 
         # Exchange authorization code for tokens
         import requests
-        token_response = requests.post("https://oauth2.googleapis.com/token", data={
-            "client_id": gam_config.client_id,
-            "client_secret": gam_config.client_secret,
-            "code": code,
-            "grant_type": "authorization_code",
-            "redirect_uri": callback_uri
-        })
+
+        token_response = requests.post(
+            "https://oauth2.googleapis.com/token",
+            data={
+                "client_id": gam_config.client_id,
+                "client_secret": gam_config.client_secret,
+                "code": code,
+                "grant_type": "authorization_code",
+                "redirect_uri": callback_uri,
+            },
+        )
 
         if not token_response.ok:
             logger.error(f"Token exchange failed: {token_response.text}")
             flash("Failed to exchange authorization code for tokens", "error")
-            return redirect(url_for("tenants.settings", tenant_id=tenant_id))
+            return redirect(url_for("tenants.tenant_settings", tenant_id=tenant_id))
 
         token_data = token_response.json()
         refresh_token = token_data.get("refresh_token")
@@ -639,7 +645,7 @@ def gam_callback():
         if not refresh_token:
             logger.error("No refresh token in OAuth response")
             flash("No refresh token received. Please try again or contact support.", "error")
-            return redirect(url_for("tenants.settings", tenant_id=tenant_id))
+            return redirect(url_for("tenants.tenant_settings", tenant_id=tenant_id))
 
         # Store refresh token in tenant's adapter config
         with get_db_session() as db_session:
@@ -670,7 +676,7 @@ def gam_callback():
         # Try to auto-detect network information
         try:
             # Import the detect network logic from GAM blueprint
-            from src.admin.blueprints.gam import detect_gam_network
+
             # Note: We can't directly call detect_gam_network here as it expects a POST request
             # The user will need to use the "Auto-detect Network" button in the UI
             flash("Next step: Use the 'Auto-detect Network' button to complete your GAM configuration.", "info")
@@ -683,7 +689,7 @@ def gam_callback():
         elif originating_host and os.environ.get("PRODUCTION") == "true":
             return redirect(f"https://{originating_host}/admin/tenant/{tenant_id}/settings")
         else:
-            return redirect(url_for("tenants.settings", tenant_id=tenant_id))
+            return redirect(url_for("tenants.tenant_settings", tenant_id=tenant_id))
 
     except Exception as e:
         logger.error(f"Error in GAM OAuth callback: {e}", exc_info=True)

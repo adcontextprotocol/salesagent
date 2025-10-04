@@ -135,6 +135,8 @@ class Product(Base, JSONValidatorMixin):
     expires_at = Column(DateTime)
     countries = Column(JSON)  # JSONB in PostgreSQL
     implementation_config = Column(JSON)  # JSONB in PostgreSQL
+    # Note: PR #79 fields (currency, estimated_exposures, floor_cpm, recommended_cpm) are NOT stored in database
+    # They are calculated dynamically from product_performance_metrics table
 
     # Relationships
     tenant = relationship("Tenant", back_populates="products")
@@ -447,6 +449,60 @@ class ProductInventoryMapping(Base):
             "inventory_id",
             name="uq_product_inventory",
         ),
+    )
+
+
+class FormatPerformanceMetrics(Base):
+    """Cached historical reporting metrics for dynamic pricing (AdCP PR #79).
+
+    Stores aggregated GAM reporting data by country + creative format.
+    Much simpler than product-level: GAM naturally reports COUNTRY_CODE + CREATIVE_SIZE.
+    Populated by scheduled job that queries GAM ReportService.
+    Used to calculate floor_cpm, recommended_cpm, and estimated_exposures dynamically.
+    """
+
+    __tablename__ = "format_performance_metrics"
+
+    id = Column(Integer, primary_key=True)
+    tenant_id = Column(String(50), ForeignKey("tenants.tenant_id", ondelete="CASCADE"), nullable=False)
+    country_code = Column(String(3), nullable=True)  # ISO-3166-1 alpha-3, NULL = all countries
+    creative_size = Column(String(20), nullable=False)  # "300x250", "728x90", "1920x1080", etc.
+
+    # Time period for these metrics
+    period_start = Column(Date, nullable=False)
+    period_end = Column(Date, nullable=False)
+
+    # Volume metrics from GAM reporting (COUNTRY_CODE + CREATIVE_SIZE dimensions)
+    total_impressions = Column(BigInteger, nullable=False, default=0)
+    total_clicks = Column(BigInteger, nullable=False, default=0)
+    total_revenue_micros = Column(BigInteger, nullable=False, default=0)
+
+    # Calculated pricing metrics (in USD)
+    average_cpm = Column(DECIMAL(10, 2), nullable=True)
+    median_cpm = Column(DECIMAL(10, 2), nullable=True)
+    p75_cpm = Column(DECIMAL(10, 2), nullable=True)  # 75th percentile
+    p90_cpm = Column(DECIMAL(10, 2), nullable=True)  # 90th percentile
+
+    # Metadata
+    line_item_count = Column(Integer, nullable=False, default=0)  # Number of line items in aggregate
+    last_updated = Column(DateTime, nullable=False, default=func.now())
+    created_at = Column(DateTime, nullable=False, default=func.now())
+
+    # Relationships
+    tenant = relationship("Tenant")
+
+    __table_args__ = (
+        UniqueConstraint(
+            "tenant_id",
+            "country_code",
+            "creative_size",
+            "period_start",
+            "period_end",
+            name="uq_format_perf_metrics",
+        ),
+        Index("idx_format_perf_tenant", "tenant_id"),
+        Index("idx_format_perf_country_size", "country_code", "creative_size"),
+        Index("idx_format_perf_period", "period_start", "period_end"),
     )
 
 
@@ -856,4 +912,40 @@ class PropertyTag(Base, JSONValidatorMixin):
     __table_args__ = (
         ForeignKeyConstraint(["tenant_id"], ["tenants.tenant_id"], ondelete="CASCADE"),
         Index("idx_property_tags_tenant", "tenant_id"),
+    )
+
+
+class PushNotificationConfig(Base, JSONValidatorMixin):
+    """A2A push notification configuration for async operation callbacks.
+
+    Stores buyer-provided webhook URLs where the server should POST
+    notifications when task status changes (e.g., submitted → completed).
+    Supports multiple authentication methods (bearer, basic, none).
+    """
+
+    __tablename__ = "push_notification_configs"
+
+    id = Column(String(50), primary_key=True)
+    tenant_id = Column(String(50), nullable=False)
+    principal_id = Column(String(50), nullable=False)
+    session_id = Column(String(100), nullable=True)  # Optional A2A session tracking
+    url = Column(Text, nullable=False)
+    authentication_type = Column(String(50), nullable=True)  # bearer, basic, none
+    authentication_token = Column(Text, nullable=True)
+    validation_token = Column(Text, nullable=True)  # For validating webhook ownership
+    created_at = Column(DateTime, nullable=False, server_default=func.now())
+    updated_at = Column(DateTime, nullable=False, server_default=func.now(), onupdate=func.now())
+    is_active = Column(Boolean, default=True)
+
+    # Relationships
+    tenant = relationship("Tenant", backref="push_notification_configs")
+    principal = relationship("Principal", backref="push_notification_configs", overlaps="push_notification_configs")
+
+    __table_args__ = (
+        ForeignKeyConstraint(["tenant_id"], ["tenants.tenant_id"], ondelete="CASCADE"),
+        ForeignKeyConstraint(
+            ["tenant_id", "principal_id"], ["principals.tenant_id", "principals.principal_id"], ondelete="CASCADE"
+        ),
+        Index("idx_push_notification_configs_tenant", "tenant_id"),
+        Index("idx_push_notification_configs_principal", "tenant_id", "principal_id"),
     )

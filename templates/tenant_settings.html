@@ -536,7 +536,7 @@
                         </p>
                     </div>
                     {% if active_adapter == 'google_ad_manager' %}
-                    <button onclick="syncInventory()" class="btn btn-small">Sync Now</button>
+                    <button id="sync-inventory-btn" onclick="syncInventory()" class="btn btn-small">Sync Now</button>
                     {% endif %}
                 </div>
             </div>
@@ -873,6 +873,14 @@
                                     </td>
                                     <td>
                                         <div class="btn-group btn-group-sm">
+                                            {% set mappings = principal.platform_mappings | from_json %}
+                                            {% if 'mock' in mappings %}
+                                            <button class="btn btn-outline-secondary btn-sm"
+                                                    onclick="configureTestingBehavior('{{ principal.principal_id }}', '{{ principal.name }}')"
+                                                    title="Configure Testing Behavior (Mock Adapter)">
+                                                ⚙️ Testing
+                                            </button>
+                                            {% endif %}
                                             <button class="btn btn-outline-primary btn-sm"
                                                     onclick="copyA2AConfig('{{ principal.principal_id }}', '{{ principal.name }}', '{{ principal.access_token }}')"
                                                     title="Copy A2A Configuration">
@@ -1618,9 +1626,84 @@ function loadTemplate(templateType) {
 }
 
 // Sync inventory
-function syncInventory() {
-    // Would trigger inventory sync
-    console.log('Syncing inventory...');
+let syncInProgress = false;
+
+async function syncInventory() {
+    // Prevent multiple simultaneous syncs
+    if (syncInProgress) {
+        console.log('Sync already in progress, ignoring click');
+        return;
+    }
+
+    const btn = document.getElementById('sync-inventory-btn');
+    if (!btn) return;
+
+    // Start sync - disable button and show loading state
+    syncInProgress = true;
+    const originalText = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = 'Syncing...';
+    btn.classList.add('loading');
+
+    try {
+        const response = await fetch('{{ script_name }}/api/tenant/{{ tenant_id }}/sync/orders', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            }
+        });
+
+        const data = await response.json();
+
+        if (response.ok) {
+            // Success - show success message and update last sync time
+            showMessage('Inventory sync completed successfully', 'success');
+
+            // Reload page to show updated sync time
+            setTimeout(() => {
+                window.location.reload();
+            }, 1500);
+        } else {
+            // Error response from server
+            showMessage(data.error || 'Sync failed. Please try again.', 'error');
+
+            // Re-enable button on error
+            btn.disabled = false;
+            btn.textContent = originalText;
+            btn.classList.remove('loading');
+            syncInProgress = false;
+        }
+    } catch (error) {
+        // Network or other error
+        console.error('Sync error:', error);
+        showMessage('Network error during sync. Please try again.', 'error');
+
+        // Re-enable button on error
+        btn.disabled = false;
+        btn.textContent = originalText;
+        btn.classList.remove('loading');
+        syncInProgress = false;
+    }
+}
+
+// Helper function to show messages
+function showMessage(message, type) {
+    // Create message element
+    const messageDiv = document.createElement('div');
+    messageDiv.className = `status-card ${type === 'success' ? 'success' : 'error'}`;
+    messageDiv.style.marginTop = '1rem';
+    messageDiv.innerHTML = `<strong>${type === 'success' ? '✅' : '❌'} ${message}</strong>`;
+
+    // Insert after the connected status card
+    const statusCard = document.querySelector('.status-card');
+    if (statusCard && statusCard.parentNode) {
+        statusCard.parentNode.insertBefore(messageDiv, statusCard.nextSibling);
+
+        // Auto-remove after 5 seconds
+        setTimeout(() => {
+            messageDiv.remove();
+        }, 5000);
+    }
 }
 
 // Check OAuth status for adapter selection (runs on page load)
@@ -1803,5 +1886,228 @@ console.log('Current URL params:', window.location.search);
 // No widget integration needed
 
 // JavaScript widget functions removed - virtual host now uses simple manual input
+
+// Configure Testing Behavior for Mock Adapter Principals
+async function configureTestingBehavior(principalId, principalName) {
+    // Load current configuration
+    const response = await fetch(`{{ script_name }}/tenant/{{ tenant.tenant_id }}/api/principal/${principalId}/config`);
+    const data = await response.json();
+
+    const hitlConfig = data.platform_mappings?.mock?.hitl_config || {};
+
+    // Build modal HTML
+    const modalHtml = `
+        <div class="modal fade" id="testingConfigModal" tabindex="-1">
+            <div class="modal-dialog modal-lg">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title">⚙️ Testing Configuration: ${principalName}</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                    </div>
+                    <div class="modal-body">
+                        <form id="testingConfigForm">
+                            <!-- HITL Mode -->
+                            <div class="mb-3">
+                                <label class="form-label"><strong>Human-in-the-Loop Mode</strong></label>
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" id="hitlEnabled" name="enabled"
+                                           ${hitlConfig.enabled ? 'checked' : ''}>
+                                    <label class="form-check-label" for="hitlEnabled">
+                                        Enable HITL Testing
+                                    </label>
+                                </div>
+                                <small class="form-text text-muted">Simulate human review delays and approvals</small>
+                            </div>
+
+                            <div id="hitlSettings" style="display: ${hitlConfig.enabled ? 'block' : 'none'};">
+                                <!-- Mode Selection -->
+                                <div class="mb-3">
+                                    <label for="hitlMode" class="form-label">HITL Mode</label>
+                                    <select class="form-select" id="hitlMode" name="mode">
+                                        <option value="sync" ${hitlConfig.mode === 'sync' ? 'selected' : ''}>Synchronous (with delay)</option>
+                                        <option value="async" ${hitlConfig.mode === 'async' ? 'selected' : ''}>Asynchronous (webhook callback)</option>
+                                        <option value="mixed" ${hitlConfig.mode === 'mixed' ? 'selected' : ''}>Mixed (per-operation)</option>
+                                    </select>
+                                    <small class="form-text text-muted">How should operations wait for human approval?</small>
+                                </div>
+
+                                <!-- Sync Settings -->
+                                <div id="syncSettings" class="card mb-3" style="display: none;">
+                                    <div class="card-body">
+                                        <h6 class="card-title">Synchronous Mode Settings</h6>
+                                        <div class="mb-2">
+                                            <label for="syncDelayMs" class="form-label">Response Delay (ms)</label>
+                                            <input type="number" class="form-control" id="syncDelayMs" name="sync_delay_ms"
+                                                   value="${hitlConfig.sync_settings?.delay_ms || 2000}" min="0" step="100">
+                                            <small class="form-text text-muted">Simulated approval time in milliseconds</small>
+                                        </div>
+                                        <div class="form-check mb-2">
+                                            <input class="form-check-input" type="checkbox" id="streamingUpdates" name="streaming_updates"
+                                                   ${hitlConfig.sync_settings?.streaming_updates !== false ? 'checked' : ''}>
+                                            <label class="form-check-label" for="streamingUpdates">
+                                                Send streaming progress updates
+                                            </label>
+                                        </div>
+                                        <div class="mb-2">
+                                            <label for="updateIntervalMs" class="form-label">Update Interval (ms)</label>
+                                            <input type="number" class="form-control" id="updateIntervalMs" name="update_interval_ms"
+                                                   value="${hitlConfig.sync_settings?.update_interval_ms || 500}" min="100" step="100">
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- Async Settings -->
+                                <div id="asyncSettings" class="card mb-3" style="display: none;">
+                                    <div class="card-body">
+                                        <h6 class="card-title">Asynchronous Mode Settings</h6>
+                                        <div class="mb-2">
+                                            <label for="webhookUrl" class="form-label">Webhook URL</label>
+                                            <input type="url" class="form-control" id="webhookUrl" name="webhook_url"
+                                                   value="${hitlConfig.async_settings?.webhook_url || ''}"
+                                                   placeholder="https://your-server.com/webhook">
+                                            <small class="form-text text-muted">Callback URL for completion notifications</small>
+                                        </div>
+                                        <div class="form-check mb-2">
+                                            <input class="form-check-input" type="checkbox" id="autoComplete" name="auto_complete"
+                                                   ${hitlConfig.async_settings?.auto_complete ? 'checked' : ''}>
+                                            <label class="form-check-label" for="autoComplete">
+                                                Auto-complete after delay
+                                            </label>
+                                        </div>
+                                        <div class="mb-2">
+                                            <label for="autoCompleteDelayMs" class="form-label">Auto-Complete Delay (ms)</label>
+                                            <input type="number" class="form-control" id="autoCompleteDelayMs" name="auto_complete_delay_ms"
+                                                   value="${hitlConfig.async_settings?.auto_complete_delay_ms || 10000}" min="1000" step="1000">
+                                        </div>
+                                        <div class="form-check">
+                                            <input class="form-check-input" type="checkbox" id="webhookOnComplete" name="webhook_on_complete"
+                                                   ${hitlConfig.async_settings?.webhook_on_complete !== false ? 'checked' : ''}>
+                                            <label class="form-check-label" for="webhookOnComplete">
+                                                Send webhook on completion
+                                            </label>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- Approval Simulation -->
+                                <div class="card mb-3">
+                                    <div class="card-body">
+                                        <h6 class="card-title">Approval Simulation</h6>
+                                        <div class="form-check mb-2">
+                                            <input class="form-check-input" type="checkbox" id="approvalSimEnabled" name="approval_sim_enabled"
+                                                   ${hitlConfig.approval_simulation?.enabled ? 'checked' : ''}>
+                                            <label class="form-check-label" for="approvalSimEnabled">
+                                                Enable approval simulation
+                                            </label>
+                                        </div>
+                                        <div class="mb-2">
+                                            <label for="approvalProbability" class="form-label">Approval Probability</label>
+                                            <input type="range" class="form-range" id="approvalProbability" name="approval_probability"
+                                                   value="${hitlConfig.approval_simulation?.approval_probability || 0.8}"
+                                                   min="0" max="1" step="0.1">
+                                            <small class="form-text text-muted">Probability: <span id="approvalProbValue">${hitlConfig.approval_simulation?.approval_probability || 0.8}</span></small>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </form>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                        <button type="button" class="btn btn-primary" onclick="saveTestingConfig('${principalId}')">Save Configuration</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
+
+    // Remove old modal if exists
+    const oldModal = document.getElementById('testingConfigModal');
+    if (oldModal) oldModal.remove();
+
+    // Add new modal to page
+    document.body.insertAdjacentHTML('beforeend', modalHtml);
+
+    // Show/hide settings based on mode
+    const modal = new bootstrap.Modal(document.getElementById('testingConfigModal'));
+
+    // Setup event listeners
+    document.getElementById('hitlEnabled').addEventListener('change', (e) => {
+        document.getElementById('hitlSettings').style.display = e.target.checked ? 'block' : 'none';
+    });
+
+    document.getElementById('hitlMode').addEventListener('change', (e) => {
+        const mode = e.target.value;
+        document.getElementById('syncSettings').style.display = mode === 'sync' || mode === 'mixed' ? 'block' : 'none';
+        document.getElementById('asyncSettings').style.display = mode === 'async' || mode === 'mixed' ? 'block' : 'none';
+    });
+
+    // Update probability display
+    document.getElementById('approvalProbability').addEventListener('input', (e) => {
+        document.getElementById('approvalProbValue').textContent = e.target.value;
+    });
+
+    // Trigger initial display
+    const currentMode = document.getElementById('hitlMode').value;
+    document.getElementById('syncSettings').style.display = currentMode === 'sync' || currentMode === 'mixed' ? 'block' : 'none';
+    document.getElementById('asyncSettings').style.display = currentMode === 'async' || currentMode === 'mixed' ? 'block' : 'none';
+
+    modal.show();
+}
+
+async function saveTestingConfig(principalId) {
+    const form = document.getElementById('testingConfigForm');
+    const formData = new FormData(form);
+
+    // Build hitl_config object
+    const hitlConfig = {
+        enabled: formData.get('enabled') === 'on',
+        mode: formData.get('mode'),
+        sync_settings: {
+            delay_ms: parseInt(formData.get('sync_delay_ms')),
+            streaming_updates: formData.get('streaming_updates') === 'on',
+            update_interval_ms: parseInt(formData.get('update_interval_ms'))
+        },
+        async_settings: {
+            webhook_url: formData.get('webhook_url'),
+            auto_complete: formData.get('auto_complete') === 'on',
+            auto_complete_delay_ms: parseInt(formData.get('auto_complete_delay_ms')),
+            webhook_on_complete: formData.get('webhook_on_complete') === 'on'
+        },
+        approval_simulation: {
+            enabled: formData.get('approval_sim_enabled') === 'on',
+            approval_probability: parseFloat(formData.get('approval_probability'))
+        }
+    };
+
+    // Save to backend
+    try {
+        const response = await fetch(`{{ script_name }}/tenant/{{ tenant.tenant_id }}/api/principal/${principalId}/testing-config`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ hitl_config: hitlConfig })
+        });
+
+        if (response.ok) {
+            // Close modal
+            const modal = bootstrap.Modal.getInstance(document.getElementById('testingConfigModal'));
+            modal.hide();
+
+            // Show success message
+            alert('Testing configuration saved successfully!');
+
+            // Reload page to show updated config
+            window.location.reload();
+        } else {
+            const error = await response.json();
+            alert(`Failed to save configuration: ${error.error || 'Unknown error'}`);
+        }
+    } catch (error) {
+        console.error('Error saving testing config:', error);
+        alert(`Network error: ${error.message}`);
+    }
+}
 </script>
 {% endblock %}
