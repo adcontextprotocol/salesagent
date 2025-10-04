@@ -284,34 +284,26 @@ class ContextManager(DatabaseManager):
                         console.print(f"[blue]   context_id={step.context_id}, step_type={step.step_type}[/blue]")
 
                         # Use context_id as workflow_id (WorkflowStep doesn't have workflow_id field)
-                        # Handle both sync and async contexts
+                        # IMPORTANT: Always use asyncio.run() to ensure webhook is sent before returning
+                        # Using loop.create_task() doesn't guarantee execution if request completes first
                         try:
                             loop = asyncio.get_running_loop()
-                            console.print("[blue]   Using existing event loop[/blue]")
-                            # We're in an async context, create task
-                            task = loop.create_task(
-                                push_notification_service.send_workflow_step_notification(
-                                    workflow_id=step.context_id,
-                                    step_id=step_id,
-                                    step_status=status,
-                                    step_type=step.step_type,
-                                )
-                            )
-                            console.print(f"[blue]   ✅ Task created: {task}[/blue]")
-                        except RuntimeError as e:
-                            # No running loop, we're in sync context - run in new loop
                             console.print(
-                                f"[blue]   No event loop running (RuntimeError: {e}), creating new loop for notification[/blue]"
+                                "[blue]   Existing event loop detected, but using asyncio.run() for reliability[/blue]"
                             )
-                            result = asyncio.run(
-                                push_notification_service.send_workflow_step_notification(
-                                    workflow_id=step.context_id,
-                                    step_id=step_id,
-                                    step_status=status,
-                                    step_type=step.step_type,
-                                )
+                        except RuntimeError:
+                            console.print("[blue]   No event loop running, using asyncio.run()[/blue]")
+
+                        # Always run in new loop to ensure completion before returning
+                        result = asyncio.run(
+                            push_notification_service.send_workflow_step_notification(
+                                workflow_id=step.context_id,
+                                step_id=step_id,
+                                step_status=status,
+                                step_type=step.step_type,
                             )
-                            console.print(f"[blue]   ✅ Notification result: {result}[/blue]")
+                        )
+                        console.print(f"[blue]   ✅ Notification result: {result}[/blue]")
                     except Exception as e:
                         # Don't fail workflow update if push notification fails
                         console.print(f"[yellow]Warning: Failed to send push notification: {e}[/yellow]")
