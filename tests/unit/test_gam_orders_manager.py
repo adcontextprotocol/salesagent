@@ -4,6 +4,8 @@ Ultra-minimal unit tests for GAMOrdersManager class to ensure CI passes.
 This file ensures we have some test coverage without any import dependencies.
 """
 
+import pytest
+
 
 def test_basic_functionality():
     """Test basic functionality."""
