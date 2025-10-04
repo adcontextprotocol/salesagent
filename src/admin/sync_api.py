@@ -139,12 +139,12 @@ def trigger_sync(tenant_id: str):
             # Initialize GAM adapter with sync manager
             from src.core.schemas import Principal
 
-            # Create dummy principal for sync
+            # Create dummy principal for sync (no advertiser needed for inventory sync)
             principal = Principal(
                 principal_id="system",
                 name="System",
                 access_token="system_sync_token",  # Required field for sync operations
-                platform_mappings={"gam_advertiser_id": adapter_config.gam_company_id or "system"},
+                platform_mappings={},  # No advertiser_id needed for inventory sync
             )
 
             # Build GAM config
@@ -152,18 +152,18 @@ def trigger_sync(tenant_id: str):
                 "enabled": True,
                 "network_code": adapter_config.gam_network_code,
                 "refresh_token": adapter_config.gam_refresh_token,
-                "company_id": adapter_config.gam_company_id,
                 "trafficker_id": adapter_config.gam_trafficker_id,
                 "manual_approval_required": adapter_config.gam_manual_approval_required,
             }
 
             # Create GAM adapter with new modular architecture
+            # NOTE: advertiser_id=None is fine for inventory sync operations
             adapter = GoogleAdManager(
                 config=gam_config,
                 principal=principal,
                 network_code=adapter_config.gam_network_code,
-                advertiser_id=adapter_config.gam_company_id or "system",
-                trafficker_id=adapter_config.gam_trafficker_id or "system",
+                advertiser_id=None,  # Not needed for inventory sync
+                trafficker_id=adapter_config.gam_trafficker_id or None,
                 dry_run=False,
                 audit_logger=None,
                 tenant_id=tenant_id,
@@ -349,7 +349,7 @@ def list_tenants():
 
             if adapter_config:
                 tenant_info["gam_network_code"] = adapter_config.gam_network_code
-                tenant_info["gam_company_id"] = adapter_config.gam_company_id
+                # NOTE: gam_company_id removed - advertiser_id is per-principal
 
             results.append(tenant_info)
 
@@ -480,12 +480,12 @@ def sync_tenant_orders(tenant_id):
             from src.adapters.google_ad_manager import GoogleAdManager
             from src.core.schemas import Principal
 
-            # Create dummy principal for sync
+            # Create dummy principal for sync (no advertiser needed for order discovery)
             principal = Principal(
                 principal_id="system",
                 name="System",
                 access_token="system_sync_token",  # Required field for sync operations
-                platform_mappings={"gam_advertiser_id": adapter_config.gam_company_id or "system"},
+                platform_mappings={},  # No advertiser_id needed for order discovery
             )
 
             # Build GAM config
@@ -493,7 +493,6 @@ def sync_tenant_orders(tenant_id):
                 "enabled": True,
                 "network_code": adapter_config.gam_network_code,
                 "refresh_token": adapter_config.gam_refresh_token,
-                "company_id": adapter_config.gam_company_id,
                 "trafficker_id": adapter_config.gam_trafficker_id,
                 "manual_approval_required": adapter_config.gam_manual_approval_required,
             }

@@ -135,12 +135,12 @@ class TestTenantManagementAPIIntegration:
             "ad_server": "google_ad_manager",
             "gam_refresh_token": "1//test-refresh-token-full",
             "gam_network_code": "123456789",
-            "gam_company_id": "company_123",
             "gam_trafficker_id": "trafficker_456",
             "authorized_emails": ["admin@testnews.com"],
             "authorized_domains": ["testnews.com"],
             "billing_plan": "premium",
         }
+        # NOTE: gam_company_id removed - advertiser_id is per-principal in platform_mappings
 
         response = client.post(
             "/api/v1/tenant-management/tenants", headers={"X-Tenant-Management-API-Key": api_key}, json=tenant_data
