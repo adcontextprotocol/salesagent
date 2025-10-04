@@ -246,7 +246,7 @@ class TestAdCPContract:
         assert request.min_exposures == 10000
 
         # Test validation: min_exposures must be positive
-        with pytest.raises(Exception):  # Pydantic validation error
+        with pytest.raises((ValueError, Exception)):  # Pydantic validation error
             GetProductsRequest(
                 brief="test",
                 promoted_offering="test",

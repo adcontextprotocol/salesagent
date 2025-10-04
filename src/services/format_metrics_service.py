@@ -280,7 +280,7 @@ def aggregate_all_tenants(period_days: int = 30) -> dict[str, Any]:
             .join(AdapterConfig, Tenant.tenant_id == AdapterConfig.tenant_id)
             .filter(
                 Tenant.ad_server == "google_ad_manager",
-                Tenant.is_active == True,
+                Tenant.is_active,
                 AdapterConfig.gam_network_code.isnot(None),
                 AdapterConfig.gam_refresh_token.isnot(None),
             )

@@ -764,6 +764,8 @@ async def get_products(
     # If restricted and manual review is required, create a task
     if policy_result.status == PolicyStatus.RESTRICTED and policy_settings.get("require_manual_review", False):
         # Create a manual review task
+        from src.core.database.database_session import get_db_session
+
         with get_db_session() as session:
             task_id = f"policy_review_{tenant['tenant_id']}_{int(datetime.now(UTC).timestamp())}"
 
@@ -2289,6 +2291,8 @@ def create_media_buy(
             )
 
             # Workflow step already created above - no need for separate task
+            import uuid
+
             pending_media_buy_id = f"pending_{uuid.uuid4().hex[:8]}"
 
             response_msg = (
@@ -2360,6 +2364,8 @@ def create_media_buy(
             )
 
             # Workflow step already created above - no need for separate task
+            import uuid
+
             pending_media_buy_id = f"pending_{uuid.uuid4().hex[:8]}"
 
             response_msg = f"Media buy requires approval due to {reason.lower()}. Workflow Step ID: {step.step_id}. Context ID: {persistent_ctx.context_id}"
