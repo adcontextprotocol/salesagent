@@ -1779,6 +1779,7 @@ class Package(BaseModel):
     budget: Budget | None = Field(None, description="Package-specific budget")
     impressions: float | None = Field(None, description="Impression goal for this package", gt=-1)
     targeting_overlay: Targeting | None = Field(None, description="Package-specific targeting")
+    creative_ids: list[str] | None = Field(None, description="Creative IDs to assign to this package")
     creative_assignments: list[dict[str, Any]] | None = Field(
         None, description="Creative assets assigned to this package"
     )
