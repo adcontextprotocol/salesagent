@@ -591,12 +591,25 @@ def _detect_snippet_type(snippet: str) -> str:
 
 # --- Security Helper ---
 def _get_principal_id_from_context(context: Context) -> str:
-    """Extracts the token from the header and returns a principal_id."""
+    """Extracts the token from the header and returns a principal_id.
+
+    Handles both FastMCP Context (with HTTP headers) and ToolContext (with principal_id already set).
+    This allows the same implementation function to work from both MCP and A2A paths.
+    """
+    # Import here to avoid circular dependency
+    from src.core.tool_context import ToolContext
+
+    # If this is a ToolContext (from A2A), principal_id is already set
+    if isinstance(context, ToolContext):
+        console.print(f"[bold green]Authenticated principal '{context.principal_id}' (from ToolContext)[/bold green]")
+        return context.principal_id
+
+    # Otherwise, extract from FastMCP Context headers
     principal_id = get_principal_from_context(context)
     if not principal_id:
         raise ToolError("Missing or invalid x-adcp-auth header for authentication.")
 
-    console.print(f"[bold green]Authenticated principal '{principal_id}'[/bold green]")
+    console.print(f"[bold green]Authenticated principal '{principal_id}' (from FastMCP Context)[/bold green]")
     return principal_id
 
 
@@ -1289,7 +1302,23 @@ def _sync_creatives_impl(
     principal_id = _get_principal_id_from_context(context)
 
     # Get tenant information
-    tenant = get_current_tenant()
+    # If context is ToolContext (A2A), tenant is already set, but verify it matches
+    from src.core.tool_context import ToolContext
+
+    if isinstance(context, ToolContext):
+        # Tenant context should already be set by A2A handler, but verify
+        tenant = get_current_tenant()
+        if not tenant or tenant.get("tenant_id") != context.tenant_id:
+            # Tenant context wasn't set properly - this shouldn't happen but handle it
+            console.print(
+                f"[yellow]Warning: Tenant context mismatch, setting from ToolContext: {context.tenant_id}[/yellow]"
+            )
+            # We need to load the tenant properly - for now use the ID from context
+            tenant = {"tenant_id": context.tenant_id}
+    else:
+        # FastMCP path - tenant should be set by get_principal_from_context
+        tenant = get_current_tenant()
+
     if not tenant:
         raise ToolError("No tenant context available")
 
