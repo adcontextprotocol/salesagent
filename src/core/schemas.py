@@ -1859,6 +1859,7 @@ class CreateMediaBuyRequest(BaseModel):
     pacing: Literal["even", "asap", "daily_budget"] = "even"  # Legacy field
     daily_budget: float | None = None  # Legacy field
     creatives: list[Creative] | None = None
+    creative_ids: list[str] | None = Field(None, description="List of creative IDs to assign to the media buy")
     reporting_webhook: dict[str, Any] | None = Field(
         None, description="Optional webhook configuration for automated reporting delivery"
     )
