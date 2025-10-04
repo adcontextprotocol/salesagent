@@ -162,10 +162,14 @@ class TestA2ASkillInvocation:
         with (
             patch("src.a2a_server.adcp_a2a_server.get_principal_from_token") as mock_get_principal,
             patch("src.a2a_server.adcp_a2a_server.get_current_tenant") as mock_get_tenant,
+            patch("src.a2a_server.adcp_a2a_server.get_audit_logger") as mock_audit,
         ):
 
             mock_get_principal.return_value = "test_principal_id"
             mock_get_tenant.return_value = {"tenant_id": "test_tenant_id", "name": "Test Publisher"}
+            # Mock audit logger to prevent FK violations in tests
+            mock_audit_instance = MagicMock()
+            mock_audit.return_value = mock_audit_instance
 
             yield {"tenant_id": "test_tenant_id", "principal_id": "test_principal_id"}
 

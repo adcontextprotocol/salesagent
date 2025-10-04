@@ -207,3 +207,101 @@ uv run pytest tests/e2e/ -v -s --tb=short
 - **[README_E2E_TESTING.md](./README_E2E_TESTING.md)** - E2E testing specifics
 - **AdCP Specification** - Protocol requirements and testing hooks
 - **GitHub Issues #89-96** - Future testing improvements planned
+
+## 🔍 Test Coverage & Quality
+
+### Coverage Analysis
+
+We track A2A skill test coverage and detect anti-patterns to prevent bugs from reaching production.
+
+**Quick Check**:
+```bash
+# Analyze current coverage
+uv run python scripts/analyze_test_coverage.py
+
+# Expected output:
+# - Coverage percentage (currently 17%)
+# - List of untested skills (15/18)
+# - Over-mocking violations (6 locations)
+```
+
+**Learn More**: [coverage-analysis.md](coverage-analysis.md)
+
+### Anti-Pattern Prevention
+
+Our pre-commit hooks automatically detect testing anti-patterns:
+
+```bash
+# Runs automatically on commit
+git commit
+
+# Or check manually
+uv run python scripts/detect_test_antipatterns.py tests/integration/test_foo.py
+```
+
+**Detects**:
+- ❌ Mocking internal handlers (`patch.object(handler, "_handle_*")`)
+- ❌ Mocking internal implementations (`patch("src.core.main._*_impl")`)
+- ⚠️  Missing tests for new skill handlers
+
+**Learn More**: [preventing-over-mocking.md](preventing-over-mocking.md)
+
+### Remediation Plan
+
+We're actively improving test coverage. Current status:
+
+- **Phase 1**: Fix 6 over-mocking violations (Week 1)
+- **Phase 2**: Add tests for 15 untested skills (Week 2)
+- **Phase 3**: CI enforcement (Week 3)
+
+**Learn More**: [remediation-plan.md](remediation-plan.md)
+
+## 📖 Additional Documentation
+
+### Guides & Best Practices
+- **[preventing-over-mocking.md](preventing-over-mocking.md)** - Complete guide to proper integration testing
+  - What to mock vs what not to mock
+  - Test templates with correct patterns
+  - Common mistakes and fixes
+
+### Analysis & Tools
+- **[coverage-analysis.md](coverage-analysis.md)** - Why tests missed bugs
+  - Production bug post-mortem
+  - Root cause analysis
+  - Prevention measures
+
+- **[remediation-plan.md](remediation-plan.md)** - Action plan
+  - Phase-by-phase steps
+  - Timeline and owners
+  - Success criteria
+
+- **[tools/README.md](tools/README.md)** - Tool documentation
+  - Coverage analysis tool usage
+  - Anti-pattern detection
+  - Pre-commit hook configuration
+
+### Postmortems
+- **[postmortems/2025-10-04-test-agent-auth-bug.md](postmortems/2025-10-04-test-agent-auth-bug.md)** - Test agent authentication failure
+  - Detailed incident report
+  - How over-mocking hid the bug
+  - Fixes implemented
+
+## 🎯 Quick Reference
+
+| Task | Command |
+|------|---------|
+| Run all tests | `uv run pytest` |
+| Run unit tests | `uv run pytest tests/unit/` |
+| Run integration tests | `uv run pytest tests/integration/` |
+| Run E2E tests | `uv run pytest tests/e2e/` |
+| Check coverage | `uv run pytest --cov=. --cov-report=html` |
+| Analyze A2A coverage | `uv run python scripts/analyze_test_coverage.py` |
+| Check for anti-patterns | `uv run python scripts/detect_test_antipatterns.py <file>` |
+| Run pre-commit hooks | `pre-commit run --all-files` |
+
+---
+
+**Need Help?**
+- Check [preventing-over-mocking.md](preventing-over-mocking.md) for testing guidance
+- Run `uv run python scripts/analyze_test_coverage.py` to see what needs tests
+- Ask in #engineering Slack channel

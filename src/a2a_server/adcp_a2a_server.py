@@ -1536,7 +1536,10 @@ class AdCPRequestHandler(RequestHandler):
             raise ServerError(InternalError(message=f"Unable to update media buy: {str(e)}"))
 
     async def _handle_get_media_buy_delivery_skill(self, parameters: dict, auth_token: str) -> dict:
-        """Handle explicit get_media_buy_delivery skill invocation (CRITICAL for monitoring)."""
+        """Handle explicit get_media_buy_delivery skill invocation (CRITICAL for monitoring).
+
+        Accepts media_buy_ids (plural, per AdCP v1.6.0 spec) or media_buy_id (singular, legacy).
+        """
         try:
             # Create ToolContext from A2A auth info
             tool_context = self._create_tool_context_from_a2a(
@@ -1544,18 +1547,26 @@ class AdCPRequestHandler(RequestHandler):
                 tool_name="get_media_buy_delivery",
             )
 
-            # Validate required parameters
-            if "media_buy_id" not in parameters:
+            # Extract media_buy_ids - support both plural (spec) and singular (legacy)
+            media_buy_ids = parameters.get("media_buy_ids")
+            if not media_buy_ids:
+                # Fallback to singular form for backward compatibility
+                media_buy_id = parameters.get("media_buy_id")
+                if media_buy_id:
+                    media_buy_ids = [media_buy_id]
+
+            # Validate that we have at least one ID
+            if not media_buy_ids:
                 return {
                     "success": False,
-                    "message": "Missing required parameter: 'media_buy_id'",
-                    "required_parameters": ["media_buy_id"],
+                    "message": "Missing required parameter: 'media_buy_ids' (or 'media_buy_id' for single buy)",
+                    "required_parameters": ["media_buy_ids"],
                     "received_parameters": list(parameters.keys()),
                 }
 
-            # Call core function directly
+            # Call core function directly with spec-compliant plural parameter
             response = core_get_media_buy_delivery_tool(
-                media_buy_ids=[parameters["media_buy_id"]],
+                media_buy_ids=media_buy_ids,
                 context=tool_context,
             )
 
