@@ -51,23 +51,30 @@ def index():
         host = request.headers.get("Host", "")
         approximated_host = request.headers.get("Apx-Incoming-Host")
 
+        # Debug logging for troubleshooting
+        logger.info(f"[LANDING DEBUG] Host: {host}, Apx-Incoming-Host: {approximated_host}, Path: {request.path}")
+        logger.info(f"[LANDING DEBUG] All headers: {dict(request.headers)}")
+
         # admin.sales-agent.scope3.com should go to login
         if (approximated_host and approximated_host.startswith("admin.")) or host.startswith("admin."):
+            logger.info("[LANDING DEBUG] Detected admin domain, redirecting to login")
             return redirect(url_for("auth.login"))
 
         # Check if we're on an external virtual host (via Approximated)
         # External domains should always show landing page for signup
         if approximated_host and not approximated_host.endswith(".sales-agent.scope3.com"):
-            logger.info(f"External domain detected: {approximated_host}, showing landing page")
+            logger.info(f"[LANDING DEBUG] External domain detected: {approximated_host}, showing landing page")
             return render_template("landing.html")
 
         # Check if we're on a tenant-specific subdomain (*.sales-agent.scope3.com)
         tenant = get_tenant_from_hostname()
         if tenant:
             # Subdomain tenants redirect to login
+            logger.info(f"[LANDING DEBUG] Tenant subdomain detected: {tenant.tenant_id}, redirecting to login")
             return redirect(url_for("auth.login"))
 
         # Main domain (sales-agent.scope3.com) - show signup landing
+        logger.info("[LANDING DEBUG] Main domain detected, redirecting to /signup")
         return redirect(url_for("public.landing"))
 
     # Check if we're on a tenant-specific subdomain
