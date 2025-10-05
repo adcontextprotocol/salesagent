@@ -5,14 +5,28 @@ Complete reference for how requests are routed through nginx to our backend serv
 ## Architecture Overview
 
 ```
-[Client] → [Approximated CDN] → [Fly.io nginx] → [Backend Services]
-                ↓
-         Sets headers:
-         - Host: sales-agent.scope3.com (always)
-         - Apx-Incoming-Host: <original-domain>
+                    ┌─── Tenant Subdomains (Direct) ───┐
+                    │  wonderstruck.sales-agent.scope3  │
+                    │  Host: wonderstruck.sales-agent.. │
+                    │  Apx-Incoming-Host: (not set)     │
+                    └────────────────┬──────────────────┘
+                                     │
+[Client] ──────────────────────────► [Fly.io nginx] → [Backend Services]
+   │                                      ▲
+   │                                      │
+   └─► [Approximated CDN] ────────────────┘
+          ↓                    ┌─── Main Domain ─────────┐
+       Sets headers:           │  sales-agent.scope3.com  │
+       - Host: sales-agent..   │                          │
+       - Apx-Incoming-Host:    └─── External Domains ────┘
+         <original-domain>     │  test-agent.adcontext..  │
+                               └──────────────────────────┘
 ```
 
-**Key Insight**: Approximated **always** rewrites `Host` to `sales-agent.scope3.com`, so nginx must use `Apx-Incoming-Host` to determine the original domain.
+**Key Insights**:
+- **Tenant subdomains** (`*.sales-agent.scope3.com`) go **directly to Fly** with the full hostname in the `Host` header
+- **Main domain** and **external domains** route through **Approximated**, which rewrites `Host` to `sales-agent.scope3.com` and sets `Apx-Incoming-Host` to the original domain
+- Nginx checks `Host` first (for subdomains), then falls back to `Apx-Incoming-Host` (for main/external)
 
 ## Backend Services
 
@@ -33,7 +47,8 @@ Complete reference for how requests are routed through nginx to our backend serv
 - **Pattern**: `<tenant>.sales-agent.scope3.com`
 - **Examples**: `wonderstruck.sales-agent.scope3.com`
 - **Purpose**: Tenant-specific access (MCP/A2A endpoints)
-- **Approximated**: Sets `Apx-Incoming-Host: wonderstruck.sales-agent.scope3.com`
+- **Traffic Path**: **Direct to Fly** (does NOT go through Approximated)
+- **Headers**: `Host: wonderstruck.sales-agent.scope3.com` (subdomain preserved)
 
 ### 3. External Virtual Hosts
 - **Pattern**: `<any-domain-not-ending-in>.sales-agent.scope3.com`
