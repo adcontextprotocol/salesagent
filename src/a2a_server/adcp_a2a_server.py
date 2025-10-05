@@ -1333,10 +1333,20 @@ class AdCPRequestHandler(RequestHandler):
                 tool_name="get_signals",
             )
 
-            # Map A2A parameters to GetSignalsRequest (no required parameters)
+            # Map A2A parameters to GetSignalsRequest (per AdCP spec: signal_spec and deliver_to required)
+            if "signal_spec" not in parameters or "deliver_to" not in parameters:
+                return {
+                    "success": False,
+                    "message": "Missing required parameters: 'signal_spec' and 'deliver_to'",
+                    "required_parameters": ["signal_spec", "deliver_to"],
+                    "received_parameters": list(parameters.keys()),
+                }
+
             request = GetSignalsRequest(
-                signal_types=parameters.get("signal_types", []),
-                categories=parameters.get("categories", []),
+                signal_spec=parameters["signal_spec"],
+                deliver_to=parameters["deliver_to"],
+                filters=parameters.get("filters"),
+                max_results=parameters.get("max_results"),
             )
 
             # Call core function directly
@@ -1345,17 +1355,15 @@ class AdCPRequestHandler(RequestHandler):
             # Handle both dict and object responses (defensive pattern)
             if isinstance(response, dict):
                 signals = response.get("signals", [])
-                message = response.get("message", "Signals retrieved successfully")
                 signals_list = signals
             else:
                 signals = response.signals
-                message = response.message or "Signals retrieved successfully"
                 signals_list = [signal.model_dump() for signal in signals]
 
             # Convert response to A2A format
             return {
                 "signals": signals_list,
-                "message": message,
+                "message": "Signals retrieved successfully",
                 "total_count": len(signals_list),
             }
 
@@ -1473,21 +1481,19 @@ class AdCPRequestHandler(RequestHandler):
             # Handle both dict and object responses (defensive pattern)
             if isinstance(response, dict):
                 properties = response.get("properties", [])
-                tag_definitions = response.get("tag_definitions", {})
-                message = response.get("message", "Authorized properties retrieved successfully")
+                tags = response.get("tags", {})
                 properties_list = properties
             else:
                 properties = response.properties
-                tag_definitions = response.tag_definitions
-                message = response.message or "Authorized properties retrieved successfully"
+                tags = response.tags
                 properties_list = [prop.model_dump() for prop in properties]
 
             # Convert response to A2A format
             return {
                 "success": True,
                 "properties": properties_list,
-                "tag_definitions": tag_definitions,
-                "message": message,
+                "tags": tags,
+                "message": "Authorized properties retrieved successfully",
                 "total_count": len(properties_list),
             }
 

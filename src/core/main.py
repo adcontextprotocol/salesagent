@@ -50,6 +50,7 @@ from src.core.database.models import Product as ModelProduct
 # Schema models (explicit imports to avoid collisions)
 from src.core.schemas import (
     ActivateSignalResponse,
+    AggregatedTotals,
     CreateMediaBuyRequest,
     CreateMediaBuyResponse,
     Creative,
@@ -1361,8 +1362,8 @@ def _sync_creatives_impl(
                     schema_data = {
                         "creative_id": creative.get("creative_id") or str(uuid.uuid4()),
                         "name": creative.get("name", ""),  # Ensure name is never None
-                        "format_id": creative.get("format"),  # Use alias name
-                        "click_through_url": creative.get("click_url"),
+                        "format_id": creative.get("format_id") or creative.get("format"),  # Support both field names
+                        "click_through_url": creative.get("click_url") or creative.get("click_through_url"),
                         "width": creative.get("width"),
                         "height": creative.get("height"),
                         "duration": creative.get("duration"),
@@ -1399,7 +1400,7 @@ def _sync_creatives_impl(
                     if not creative.get("name") or str(creative.get("name")).strip() == "":
                         raise ValueError("Creative name cannot be empty")
 
-                    if not creative.get("format"):
+                    if not creative.get("format_id") and not creative.get("format"):
                         raise ValueError("Creative format is required")
 
                 except (ValidationError, ValueError) as validation_error:
@@ -1425,11 +1426,11 @@ def _sync_creatives_impl(
                     if existing_creative and upsert:
                         # Update existing creative
                         existing_creative.name = creative.get("name")
-                        existing_creative.format = creative.get("format")
+                        existing_creative.format = creative.get("format_id") or creative.get("format")
                         existing_creative.updated_at = datetime.now(UTC)
 
                         # Determine if creative needs approval (same logic as create)
-                        creative_format = creative.get("format")
+                        creative_format = creative.get("format_id") or creative.get("format")
                         needs_approval = human_review_required and creative_format not in auto_approve_formats
                         existing_creative.status = "pending" if needs_approval else "approved"
 
@@ -1492,7 +1493,7 @@ def _sync_creatives_impl(
                             data["template_variables"] = creative.get("template_variables")
 
                         # Determine if creative needs approval
-                        creative_format = creative.get("format")
+                        creative_format = creative.get("format_id") or creative.get("format")
                         needs_approval = human_review_required and creative_format not in auto_approve_formats
                         creative_status = "pending" if needs_approval else "approved"
 
@@ -1500,7 +1501,7 @@ def _sync_creatives_impl(
                             tenant_id=tenant["tenant_id"],
                             creative_id=creative.get("creative_id") or str(uuid.uuid4()),
                             name=creative.get("name"),
-                            format=creative.get("format"),
+                            format=creative.get("format_id") or creative.get("format"),
                             principal_id=principal_id,
                             status=creative_status,
                             created_at=datetime.now(UTC),
@@ -2295,8 +2296,7 @@ async def activate_signal(
         )
 
 
-@mcp.tool
-def list_authorized_properties(
+def _list_authorized_properties_impl(
     req: ListAuthorizedPropertiesRequest = None, context: Context = None
 ) -> ListAuthorizedPropertiesResponse:
     """List all properties this agent is authorized to represent (AdCP spec endpoint).
@@ -2326,10 +2326,21 @@ def list_authorized_properties(
     principal_id = _get_principal_id_from_context(context)
 
     # Apply testing hooks
-    headers = context.meta.get("headers", {}) if context and context.meta else {}
-    testing_context = get_testing_context(headers)
-    campaign_info = {"endpoint": "list_authorized_properties", "tenant_id": tenant_id}
-    apply_testing_hooks(testing_context, campaign_info, headers)
+    from src.core.testing_hooks import TestingContext
+    from src.core.tool_context import ToolContext
+
+    if isinstance(context, ToolContext):
+        # ToolContext has testing_context field directly
+        testing_context = TestingContext(**context.testing_context) if context.testing_context else TestingContext()
+        headers = {}
+    else:
+        # FastMCP Context has meta.headers
+        headers = context.meta.get("headers", {}) if context and context.meta else {}
+        testing_context = get_testing_context(headers)
+
+    # Note: apply_testing_hooks signature is (data, testing_ctx, operation, campaign_info)
+    # For list_authorized_properties, we don't modify data, so we can skip this call
+    # The testing_context is used later if needed
 
     log_tool_activity(context, "list_authorized_properties", start_time)
 
@@ -2392,11 +2403,12 @@ def list_authorized_properties(
             )
 
             # Log audit
-            audit_logger = get_audit_logger()
+            audit_logger = get_audit_logger("AdCP", tenant_id)
             audit_logger.log_operation(
                 operation="list_authorized_properties",
-                tenant_id=tenant_id,
+                principal_name=principal_id,
                 principal_id=principal_id,
+                adapter_id="mcp_server",
                 success=True,
                 details={
                     "properties_count": len(properties),
@@ -2411,16 +2423,722 @@ def list_authorized_properties(
         logger.error(f"Error listing authorized properties: {str(e)}")
 
         # Log audit for failure
-        audit_logger = get_audit_logger()
+        audit_logger = get_audit_logger("AdCP", tenant_id)
         audit_logger.log_operation(
             operation="list_authorized_properties",
-            tenant_id=tenant_id,
+            principal_name=principal_id,
             principal_id=principal_id,
+            adapter_id="mcp_server",
             success=False,
             error_message=str(e),
         )
 
         raise ToolError("PROPERTIES_ERROR", f"Failed to list authorized properties: {str(e)}")
+
+
+@mcp.tool
+def list_authorized_properties(
+    req: ListAuthorizedPropertiesRequest = None, context: Context = None
+) -> ListAuthorizedPropertiesResponse:
+    """List all properties this agent is authorized to represent (AdCP spec endpoint).
+
+    MCP tool wrapper that delegates to the shared implementation.
+
+    Args:
+        req: Request parameters including optional tag filters
+        context: FastMCP context for authentication
+
+    Returns:
+        ListAuthorizedPropertiesResponse with properties and tag metadata
+    """
+    return _list_authorized_properties_impl(req, context)
+
+
+def _create_media_buy_impl(
+    promoted_offering: str,
+    po_number: str = None,
+    buyer_ref: str = None,
+    packages: list = None,
+    start_time: str = None,
+    end_time: str = None,
+    budget: dict = None,
+    product_ids: list = None,
+    start_date: str = None,
+    end_date: str = None,
+    total_budget: float = None,
+    targeting_overlay: dict = None,
+    pacing: str = "even",
+    daily_budget: float = None,
+    creatives: list = None,
+    required_axe_signals: list = None,
+    enable_creative_macro: bool = False,
+    strategy_id: str = None,
+    context: Context = None,
+) -> CreateMediaBuyResponse:
+    """Create a media buy with the specified parameters.
+
+    Args:
+        promoted_offering: Description of advertiser and what is being promoted (required per AdCP spec)
+        po_number: Purchase order number (optional)
+        buyer_ref: Buyer reference for tracking
+        packages: Array of packages with products and budgets
+        start_time: Campaign start time (ISO 8601)
+        end_time: Campaign end time (ISO 8601)
+        budget: Overall campaign budget
+        product_ids: Legacy: Product IDs (converted to packages)
+        start_date: Legacy: Start date (converted to start_time)
+        end_date: Legacy: End date (converted to end_time)
+        total_budget: Legacy: Total budget (converted to Budget object)
+        targeting_overlay: Targeting overlay configuration
+        pacing: Pacing strategy (even, asap, daily_budget)
+        daily_budget: Daily budget limit
+        creatives: Creative assets for the campaign
+        required_axe_signals: Required targeting signals
+        enable_creative_macro: Enable AXE to provide creative_macro signal
+        strategy_id: Optional strategy ID for linking operations
+        context: FastMCP context (automatically provided)
+
+    Returns:
+        CreateMediaBuyResponse with media buy details
+    """
+    request_start_time = time.time()
+
+    # Create request object from individual parameters (MCP-compliant)
+    req = CreateMediaBuyRequest(
+        promoted_offering=promoted_offering,
+        po_number=po_number,
+        buyer_ref=buyer_ref,
+        packages=packages,
+        start_time=start_time,
+        end_time=end_time,
+        budget=budget,
+        product_ids=product_ids,
+        start_date=start_date,
+        end_date=end_date,
+        total_budget=total_budget,
+        targeting_overlay=targeting_overlay,
+        pacing=pacing,
+        daily_budget=daily_budget,
+        creatives=creatives,
+        required_axe_signals=required_axe_signals,
+        enable_creative_macro=enable_creative_macro,
+        strategy_id=strategy_id,
+    )
+
+    # Extract testing context first
+    testing_ctx = get_testing_context(context)
+
+    # Authentication and tenant setup
+    principal_id = _get_principal_id_from_context(context)
+    tenant = get_current_tenant()
+
+    # Context management and workflow step creation - create workflow step FIRST
+    ctx_manager = get_context_manager()
+    ctx_id = context.headers.get("x-context-id") if hasattr(context, "headers") else None
+    persistent_ctx = None
+    step = None
+
+    # Create workflow step immediately for tracking all operations
+    if not persistent_ctx:
+        # Check if we have an existing context ID
+        if ctx_id:
+            persistent_ctx = ctx_manager.get_context(ctx_id)
+
+        # Create new context if needed
+        if not persistent_ctx:
+            persistent_ctx = ctx_manager.create_context(tenant_id=tenant["tenant_id"], principal_id=principal_id)
+
+    # Create workflow step for tracking this operation
+    step = ctx_manager.create_workflow_step(
+        context_id=persistent_ctx.context_id,
+        step_type="media_buy_creation",
+        owner="system",
+        status="in_progress",
+        tool_name="create_media_buy",
+        request_data=req.model_dump(mode="json"),
+    )
+
+    try:
+        # Validate input parameters
+        # 1. Budget validation
+        total_budget = req.get_total_budget()
+        if total_budget <= 0:
+            error_msg = f"Invalid budget: {total_budget}. Budget must be positive."
+            raise ValueError(error_msg)
+
+        # 2. DateTime validation
+        from datetime import datetime
+
+        now = datetime.now(UTC)
+
+        # Validate start_time
+        if req.start_time is None:
+            error_msg = "start_time is required"
+            raise ValueError(error_msg)
+
+        # Ensure start_time is timezone-aware for comparison
+        start_time = req.start_time
+        if start_time.tzinfo is None:
+            start_time = start_time.replace(tzinfo=UTC)
+
+        if start_time < now:
+            error_msg = f"Invalid start time: {req.start_time}. Start time cannot be in the past."
+            raise ValueError(error_msg)
+
+        # Validate end_time
+        if req.end_time is None:
+            error_msg = "end_time is required"
+            raise ValueError(error_msg)
+
+        # Ensure end_time is timezone-aware for comparison
+        end_time = req.end_time
+        if end_time.tzinfo is None:
+            end_time = end_time.replace(tzinfo=UTC)
+
+        if end_time <= start_time:
+            error_msg = f"Invalid time range: end time ({req.end_time}) must be after start time ({req.start_time})."
+            raise ValueError(error_msg)
+
+        # 3. Package/Product validation
+        product_ids = req.get_product_ids()
+        if not product_ids:
+            error_msg = "At least one product is required."
+            raise ValueError(error_msg)
+
+        if req.packages:
+            for package in req.packages:
+                if not package.products:
+                    error_msg = f"Package {package.buyer_ref} must contain at least one product."
+                    raise ValueError(error_msg)
+
+        # Validate targeting doesn't use managed-only dimensions
+        if req.targeting_overlay:
+            from src.services.targeting_capabilities import validate_overlay_targeting
+
+            violations = validate_overlay_targeting(req.targeting_overlay.model_dump(exclude_none=True))
+            if violations:
+                error_msg = f"Targeting validation failed: {'; '.join(violations)}"
+                raise ValueError(error_msg)
+
+    except (ValueError, PermissionError) as e:
+        # Update workflow step as failed
+        ctx_manager.update_workflow_step(step.step_id, status="failed", error_message=str(e))
+
+        # Return proper error response instead of raising ToolError
+        return CreateMediaBuyResponse(
+            media_buy_id="",
+            status=TaskStatus.FAILED,
+            detail=str(e),
+            creative_deadline=None,
+            message=f"Media buy creation failed: {str(e)}",
+            errors=[{"code": "validation_error", "message": str(e)}],
+        )
+
+    # Get the Principal object (needed for adapter)
+    principal = get_principal_object(principal_id)
+    if not principal:
+        error_msg = f"Principal {principal_id} not found"
+        ctx_manager.update_workflow_step(step.step_id, status="failed", error_message=error_msg)
+        return CreateMediaBuyResponse(
+            media_buy_id="",
+            status=TaskStatus.FAILED,
+            detail=error_msg,
+            creative_deadline=None,
+            message=f"Media buy creation failed: {error_msg}",
+            errors=[{"code": "authentication_error", "message": error_msg}],
+        )
+
+    try:
+        # Get the appropriate adapter with testing context
+        adapter = get_adapter(principal, dry_run=DRY_RUN_MODE or testing_ctx.dry_run, testing_context=testing_ctx)
+
+        # Check if manual approval is required
+        manual_approval_required = (
+            adapter.manual_approval_required if hasattr(adapter, "manual_approval_required") else False
+        )
+        manual_approval_operations = (
+            adapter.manual_approval_operations if hasattr(adapter, "manual_approval_operations") else []
+        )
+
+        # Check if auto-creation is disabled in tenant config
+        auto_create_enabled = tenant.get("auto_create_media_buys", True)
+        product_auto_create = True  # Will be set correctly when we get products later
+
+        if manual_approval_required and "create_media_buy" in manual_approval_operations:
+            # Update existing workflow step to require approval
+            ctx_manager.update_workflow_step(
+                step.step_id, status="requires_approval", step_type="approval", owner="publisher"
+            )
+
+            # Workflow step already created above - no need for separate task
+            pending_media_buy_id = f"pending_{uuid.uuid4().hex[:8]}"
+
+            response_msg = (
+                f"Manual approval required. Workflow Step ID: {step.step_id}. Context ID: {persistent_ctx.context_id}"
+            )
+            ctx_manager.add_message(persistent_ctx.context_id, "assistant", response_msg)
+
+            # Send Slack notification for manual approval requirement
+            try:
+                # Get principal name for notification
+                principal_name = principal.name if principal else principal_id
+
+                # Build notifier config from tenant fields
+                notifier_config = {
+                    "features": {
+                        "slack_webhook_url": tenant.get("slack_webhook_url"),
+                        "slack_audit_webhook_url": tenant.get("slack_audit_webhook_url"),
+                    }
+                }
+                slack_notifier = get_slack_notifier(notifier_config)
+
+                # Create notification details
+                notification_details = {
+                    "total_budget": total_budget,
+                    "po_number": req.po_number,
+                    "start_time": req.start_time.isoformat() if req.start_time else None,
+                    "end_time": req.end_time.isoformat() if req.end_time else None,
+                    "product_ids": req.get_product_ids(),
+                    "workflow_step_id": step.step_id,
+                    "context_id": persistent_ctx.context_id,
+                }
+
+                slack_notifier.notify_media_buy_event(
+                    event_type="approval_required",
+                    media_buy_id=pending_media_buy_id,
+                    principal_name=principal_name,
+                    details=notification_details,
+                    tenant_name=tenant.get("name", "Unknown"),
+                    success=True,
+                )
+                console.print("[green]📧 Sent manual approval notification to Slack[/green]")
+            except Exception as e:
+                console.print(f"[yellow]⚠️ Failed to send manual approval Slack notification: {e}[/yellow]")
+
+            return CreateMediaBuyResponse(
+                media_buy_id=pending_media_buy_id,
+                status=TaskStatus.INPUT_REQUIRED,
+                detail=response_msg,
+                creative_deadline=None,
+                message="Your media buy request requires manual approval from the publisher. The request has been queued and will be reviewed shortly.",
+            )
+
+        # Get products for the media buy to check product-level auto-creation settings
+        catalog = get_product_catalog()
+        product_ids = req.get_product_ids()
+        products_in_buy = [p for p in catalog if p.product_id in product_ids]
+
+        # Validate and auto-generate GAM implementation_config for each product if needed
+        if adapter.__class__.__name__ == "GoogleAdManager":
+            from src.services.gam_product_config_service import GAMProductConfigService
+
+            gam_validator = GAMProductConfigService()
+            config_errors = []
+
+            for product in products_in_buy:
+                # Auto-generate default config if missing
+                if not product.implementation_config:
+                    logger.info(
+                        f"Product '{product.name}' ({product.product_id}) is missing GAM configuration. "
+                        f"Auto-generating defaults based on product type."
+                    )
+                    # Generate defaults based on product delivery type and formats
+                    delivery_type = product.delivery_type if hasattr(product, "delivery_type") else "non_guaranteed"
+                    formats = product.formats if hasattr(product, "formats") else None
+                    product.implementation_config = gam_validator.generate_default_config(
+                        delivery_type=delivery_type, formats=formats
+                    )
+
+                    # Persist the auto-generated config to database
+                    with get_db_session() as db_session:
+                        db_product = db_session.query(ModelProduct).filter_by(product_id=product.product_id).first()
+                        if db_product:
+                            db_product.implementation_config = product.implementation_config
+                            db_session.commit()
+                            logger.info(f"Saved auto-generated GAM config for product {product.product_id}")
+
+                # Validate the config (whether existing or auto-generated)
+                is_valid, error_msg = gam_validator.validate_config(product.implementation_config)
+                if not is_valid:
+                    config_errors.append(
+                        f"Product '{product.name}' ({product.product_id}) has invalid GAM configuration: {error_msg}"
+                    )
+
+            if config_errors:
+                error_detail = "GAM configuration validation failed:\n" + "\n".join(
+                    f"  • {err}" for err in config_errors
+                )
+                ctx_manager.update_workflow_step(step.step_id, status="failed", error_message=error_detail)
+                return CreateMediaBuyResponse(
+                    media_buy_id="",
+                    status=TaskStatus.FAILED,
+                    detail=error_detail,
+                    creative_deadline=None,
+                    message="Media buy creation failed due to invalid product configuration. Please fix the configuration in Admin UI and try again.",
+                    errors=[{"code": "invalid_configuration", "message": err} for err in config_errors],
+                )
+
+        product_auto_create = all(
+            p.implementation_config.get("auto_create_enabled", True) if p.implementation_config else True
+            for p in products_in_buy
+        )
+
+        # Check if either tenant or product disables auto-creation
+        if not auto_create_enabled or not product_auto_create:
+            reason = "Tenant configuration" if not auto_create_enabled else "Product configuration"
+
+            # Update existing workflow step to require approval
+            ctx_manager.update_workflow_step(
+                step.step_id, status="requires_approval", step_type="approval", owner="publisher"
+            )
+
+            # Workflow step already created above - no need for separate task
+            pending_media_buy_id = f"pending_{uuid.uuid4().hex[:8]}"
+
+            response_msg = f"Media buy requires approval due to {reason.lower()}. Workflow Step ID: {step.step_id}. Context ID: {persistent_ctx.context_id}"
+            ctx_manager.add_message(persistent_ctx.context_id, "assistant", response_msg)
+
+            # Send Slack notification for configuration-based approval requirement
+            try:
+                # Get principal name for notification
+                principal_name = principal.name if principal else principal_id
+
+                # Build notifier config from tenant fields
+                notifier_config = {
+                    "features": {
+                        "slack_webhook_url": tenant.get("slack_webhook_url"),
+                        "slack_audit_webhook_url": tenant.get("slack_audit_webhook_url"),
+                    }
+                }
+                slack_notifier = get_slack_notifier(notifier_config)
+
+                # Create notification details including configuration reason
+                notification_details = {
+                    "total_budget": total_budget,
+                    "po_number": req.po_number,
+                    "start_time": req.start_time.isoformat() if req.start_time else None,
+                    "end_time": req.end_time.isoformat() if req.end_time else None,
+                    "product_ids": req.get_product_ids(),
+                    "approval_reason": reason,
+                    "workflow_step_id": step.step_id,
+                    "context_id": persistent_ctx.context_id,
+                    "auto_create_enabled": auto_create_enabled,
+                    "product_auto_create": product_auto_create,
+                }
+
+                slack_notifier.notify_media_buy_event(
+                    event_type="config_approval_required",
+                    media_buy_id=pending_media_buy_id,
+                    principal_name=principal_name,
+                    details=notification_details,
+                    tenant_name=tenant.get("name", "Unknown"),
+                    success=True,
+                )
+                console.print(f"[green]📧 Sent {reason.lower()} approval notification to Slack[/green]")
+            except Exception as e:
+                console.print(f"[yellow]⚠️ Failed to send configuration approval Slack notification: {e}[/yellow]")
+
+            return CreateMediaBuyResponse(
+                media_buy_id=pending_media_buy_id,
+                status=TaskStatus.INPUT_REQUIRED,
+                detail=response_msg,
+                creative_deadline=None,
+                message=f"This media buy requires manual approval due to {reason.lower()}. Your request has been submitted for review.",
+            )
+
+        # Continue with synchronized media buy creation
+
+        # Note: products_in_buy was already calculated above for product_auto_create check
+        # No need to recalculate
+
+        # Note: Key-value pairs are NOT aggregated here anymore.
+        # Each product maintains its own custom_targeting_keys in implementation_config
+        # which will be applied separately to its corresponding line item in GAM.
+        # The adapter (google_ad_manager.py) handles this per-product targeting at line 491-494
+
+        # Convert products to MediaPackages (simplified for now)
+        packages = []
+        for product in products_in_buy:
+            # Use the first format for now
+            first_format_id = product.formats[0] if product.formats else None
+            packages.append(
+                MediaPackage(
+                    package_id=product.product_id,
+                    name=product.name,
+                    delivery_type=product.delivery_type,
+                    cpm=product.cpm if product.cpm else 10.0,  # Default CPM
+                    impressions=int(total_budget / (product.cpm if product.cpm else 10.0) * 1000),
+                    format_ids=[first_format_id] if first_format_id else [],
+                )
+            )
+
+        # Create the media buy using the adapter (SYNCHRONOUS operation)
+        # Defensive null check: ensure start_time and end_time are set
+        if not req.start_time or not req.end_time:
+            error_msg = "start_time and end_time are required but were not properly set"
+            ctx_manager.update_workflow_step(step.step_id, status="failed", error_message=error_msg)
+            return CreateMediaBuyResponse(
+                media_buy_id="",
+                status=TaskStatus.FAILED,
+                detail=error_msg,
+                creative_deadline=None,
+                message="Media buy creation failed: missing required datetime fields",
+                errors=[{"code": "invalid_datetime", "message": error_msg}],
+            )
+        response = adapter.create_media_buy(req, packages, req.start_time, req.end_time)
+
+        # Store the media buy in memory (for backward compatibility)
+        media_buys[response.media_buy_id] = (req, principal_id)
+
+        # Store the media buy in database (context_id is NULL for synchronous operations)
+        tenant = get_current_tenant()
+        with get_db_session() as session:
+            new_media_buy = MediaBuy(
+                media_buy_id=response.media_buy_id,
+                tenant_id=tenant["tenant_id"],
+                principal_id=principal_id,
+                buyer_ref=req.buyer_ref,  # AdCP v2.4 buyer reference
+                order_name=req.po_number or f"Order-{response.media_buy_id}",
+                advertiser_name=principal.name,
+                campaign_objective=getattr(req, "campaign_objective", ""),  # Optional field
+                kpi_goal=getattr(req, "kpi_goal", ""),  # Optional field
+                budget=total_budget,  # Extract total budget
+                currency=req.budget.currency if req.budget else "USD",  # AdCP v2.4 currency field
+                start_date=req.start_time.date(),  # Legacy field for compatibility
+                end_date=req.end_time.date(),  # Legacy field for compatibility
+                start_time=req.start_time,  # AdCP v2.4 datetime scheduling
+                end_time=req.end_time,  # AdCP v2.4 datetime scheduling
+                status=response.status or TaskStatus.WORKING,
+                raw_request=req.model_dump(mode="json"),
+            )
+            session.add(new_media_buy)
+            session.commit()
+
+        # Handle creatives if provided
+        if req.creatives:
+            # Convert Creative objects to format expected by adapter
+            assets = []
+            for creative in req.creatives:
+                try:
+                    asset = _convert_creative_to_adapter_asset(creative, req.product_ids)
+                    assets.append(asset)
+                except Exception as e:
+                    console.print(f"[red]Error converting creative {creative.creative_id}: {e}[/red]")
+                    # Add a failed status for this creative
+                    creative_statuses[creative.creative_id] = CreativeStatus(
+                        creative_id=creative.creative_id, status="rejected", detail=f"Conversion error: {str(e)}"
+                    )
+                    continue
+            statuses = adapter.add_creative_assets(response.media_buy_id, assets, datetime.now())
+            for status in statuses:
+                creative_statuses[status.creative_id] = CreativeStatus(
+                    creative_id=status.creative_id,
+                    status="approved" if status.status == "approved" else "pending_review",
+                    detail="Creative submitted to ad server",
+                )
+
+        # Build packages list for response (AdCP v2.4 format)
+        response_packages = []
+        for i, package in enumerate(req.packages):
+            response_packages.append(
+                {
+                    "package_id": f"{response.media_buy_id}_pkg_{i+1}",
+                    "buyer_ref": package.buyer_ref,
+                    "products": package.products,
+                    "status": TaskStatus.WORKING,
+                }
+            )
+
+        # Create AdCP v2.4 compliant response
+        adcp_response = CreateMediaBuyResponse(
+            media_buy_id=response.media_buy_id,
+            buyer_ref=req.buyer_ref,
+            status=TaskStatus.WORKING,  # Media buy creation in progress (async operation)
+            packages=response_packages,
+            creative_deadline=response.creative_deadline,
+            message="Media buy created successfully and is being activated",
+        )
+
+        # Log activity
+        log_tool_activity(context, "create_media_buy", request_start_time)
+
+        # Also log specific media buy activity
+        try:
+            principal_name = "Unknown"
+            with get_db_session() as session:
+                principal_db = (
+                    session.query(ModelPrincipal)
+                    .filter_by(principal_id=principal_id, tenant_id=tenant["tenant_id"])
+                    .first()
+                )
+                if principal_db:
+                    principal_name = principal_db.name
+
+            # Calculate duration using new datetime fields
+            duration_days = (req.end_time - req.start_time).days + 1
+
+            activity_feed.log_media_buy(
+                tenant_id=tenant["tenant_id"],
+                principal_name=principal_name,
+                media_buy_id=response.media_buy_id,
+                budget=total_budget,  # Extract total budget
+                duration_days=duration_days,
+                action="created",
+            )
+        except:
+            pass
+
+        # Apply testing hooks to response with campaign information
+        campaign_info = {"start_date": req.start_time, "end_date": req.end_time, "total_budget": total_budget}
+
+        response_data = (
+            adcp_response.model_dump_internal()
+            if hasattr(adcp_response, "model_dump_internal")
+            else adcp_response.model_dump()
+        )
+        response_data = apply_testing_hooks(response_data, testing_ctx, "create_media_buy", campaign_info)
+
+        # Reconstruct response from modified data
+        modified_response = CreateMediaBuyResponse(**response_data)
+
+        # Mark workflow step as completed on success
+        ctx_manager.update_workflow_step(step.step_id, status="completed")
+
+        # Send Slack notification for successful media buy creation
+        try:
+            # Get principal name for notification (reuse from activity logging above)
+            principal_name = "Unknown"
+            with get_db_session() as session:
+                principal_db = (
+                    session.query(ModelPrincipal)
+                    .filter_by(principal_id=principal_id, tenant_id=tenant["tenant_id"])
+                    .first()
+                )
+                if principal_db:
+                    principal_name = principal_db.name
+
+            # Build notifier config from tenant fields
+            notifier_config = {
+                "features": {
+                    "slack_webhook_url": tenant.get("slack_webhook_url"),
+                    "slack_audit_webhook_url": tenant.get("slack_audit_webhook_url"),
+                }
+            }
+            slack_notifier = get_slack_notifier(notifier_config)
+
+            # Create success notification details
+            success_details = {
+                "total_budget": total_budget,
+                "po_number": req.po_number,
+                "start_time": req.start_time.isoformat() if req.start_time else None,
+                "end_time": req.end_time.isoformat() if req.end_time else None,
+                "product_ids": req.get_product_ids(),
+                "duration_days": (req.end_time - req.start_time).days + 1,
+                "packages_count": len(response_packages) if response_packages else 0,
+                "creatives_count": len(req.creatives) if req.creatives else 0,
+                "workflow_step_id": step.step_id,
+            }
+
+            slack_notifier.notify_media_buy_event(
+                event_type="created",
+                media_buy_id=response.media_buy_id,
+                principal_name=principal_name,
+                details=success_details,
+                tenant_name=tenant.get("name", "Unknown"),
+                success=True,
+            )
+
+            console.print(f"[green]🎉 Sent success notification to Slack for media buy {response.media_buy_id}[/green]")
+        except Exception as e:
+            console.print(f"[yellow]⚠️ Failed to send success Slack notification: {e}[/yellow]")
+
+        # Log to audit logs for business activity feed
+        audit_logger = get_audit_logger("AdCP", tenant["tenant_id"])
+        audit_logger.log_operation(
+            operation="create_media_buy",
+            principal_name=principal_name,
+            principal_id=principal_id or "anonymous",
+            adapter_id="mcp_server",
+            success=True,
+            details={
+                "media_buy_id": response.media_buy_id,
+                "total_budget": total_budget,
+                "po_number": req.po_number,
+                "duration_days": (req.end_time - req.start_time).days + 1 if req.end_time and req.start_time else 0,
+                "product_count": len(req.get_product_ids()),
+                "packages_count": len(response_packages) if response_packages else 0,
+            },
+        )
+
+        return modified_response
+
+    except Exception as e:
+        # Update workflow step as failed on any error during execution
+        if step:
+            ctx_manager.update_workflow_step(step.step_id, status="failed", error_message=str(e))
+
+        # Send Slack notification for failed media buy creation
+        try:
+            # Get principal name for notification
+            principal_name = "Unknown"
+            if principal:
+                principal_name = principal.name
+
+            # Build notifier config from tenant fields
+            notifier_config = {
+                "features": {
+                    "slack_webhook_url": tenant.get("slack_webhook_url"),
+                    "slack_audit_webhook_url": tenant.get("slack_audit_webhook_url"),
+                }
+            }
+            slack_notifier = get_slack_notifier(notifier_config)
+
+            # Create failure notification details
+            failure_details = {
+                "total_budget": total_budget if "total_budget" in locals() else 0,
+                "po_number": req.po_number,
+                "start_time": req.start_time.isoformat() if req.start_time else None,
+                "end_time": req.end_time.isoformat() if req.end_time else None,
+                "product_ids": req.get_product_ids(),
+                "error_message": str(e),
+                "workflow_step_id": step.step_id if step else "unknown",
+            }
+
+            slack_notifier.notify_media_buy_event(
+                event_type="failed",
+                media_buy_id=None,
+                principal_name=principal_name,
+                details=failure_details,
+                tenant_name=tenant.get("name", "Unknown"),
+                success=False,
+                error_message=str(e),
+            )
+
+            console.print(f"[red]❌ Sent failure notification to Slack: {str(e)}[/red]")
+        except Exception as notify_error:
+            console.print(f"[yellow]⚠️ Failed to send failure Slack notification: {notify_error}[/yellow]")
+
+        # Log to audit logs for failed operation
+        try:
+            audit_logger = get_audit_logger("AdCP", tenant["tenant_id"])
+            audit_logger.log_operation(
+                operation="create_media_buy",
+                principal_name=principal.name if principal else "unknown",
+                principal_id=principal_id or "anonymous",
+                adapter_id="mcp_server",
+                success=False,
+                error_message=str(e),
+                details={
+                    "error_type": type(e).__name__,
+                    "error_message": str(e),
+                    "po_number": req.po_number if req else None,
+                    "total_budget": total_budget if "total_budget" in locals() else 0,
+                },
+            )
+        except:
+            pass
+
+        raise ToolError("MEDIA_BUY_CREATION_ERROR", f"Failed to create media buy: {str(e)}")
 
 
 @mcp.tool()

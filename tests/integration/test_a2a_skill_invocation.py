@@ -12,7 +12,7 @@ import sys
 from unittest.mock import MagicMock, patch
 
 import pytest
-from a2a.types import Message, MessageSendParams, Part, Role, Task, TaskStatus
+from a2a.types import DataPart, Message, MessageSendParams, Part, Role, Task, TaskStatus
 from a2a.utils.errors import ServerError
 
 # Add parent directories to path for imports
@@ -477,19 +477,25 @@ class TestA2ASkillInvocation:
                 role=Role.user,
                 parts=[
                     Part(
-                        data={
-                            "skill": "get_products",
-                            "parameters": {"brief": "video ads", "promoted_offering": "Test"},
-                        }
+                        root=DataPart(
+                            kind="data",
+                            data={
+                                "skill": "get_products",
+                                "parameters": {"brief": "video ads", "promoted_offering": "Test"},
+                            },
+                        )
                     ),
                     Part(
-                        data={
-                            "skill": "get_signals",
-                            "parameters": {
-                                "signal_spec": "audience signals for targeting",
-                                "deliver_to": {"platforms": ["mock"], "formats": ["display_300x250"]},
+                        root=DataPart(
+                            kind="data",
+                            data={
+                                "skill": "get_signals",
+                                "parameters": {
+                                    "signal_spec": "audience signals for targeting",
+                                    "deliver_to": {"platforms": ["mock"], "formats": ["display_300x250"]},
+                                },
                             },
-                        }
+                        )
                     ),
                 ],
             )
@@ -508,7 +514,7 @@ class TestA2ASkillInvocation:
 
             # Verify both artifacts have data
             for artifact in result.artifacts:
-                assert artifact.parts[0].data is not None
+                assert artifact.parts[0].root.data is not None
 
     @pytest.mark.asyncio
     async def test_missing_authentication(self, handler):
@@ -770,7 +776,7 @@ class TestA2ASkillInvocation:
 
             # Extract response
             artifact_data = validator.extract_adcp_payload_from_a2a_artifact(result.artifacts[0])
-            assert "synced" in artifact_data or "creatives" in artifact_data
+            assert "synced_creatives" in artifact_data or "failed_creatives" in artifact_data
 
     @pytest.mark.asyncio
     async def test_list_creatives_skill(self, handler, sample_tenant, sample_principal, validator):

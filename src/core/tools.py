@@ -217,46 +217,44 @@ async def get_signals_raw(req: GetSignalsRequest, context: Context = None) -> Ge
 
     basic_signals = [
         {
-            "signal_id": "age_18_24",
+            "signal_agent_segment_id": "age_18_24",
             "name": "Age 18-24",
             "description": "Audience aged 18-24 years",
-            "category": "demographics",
-            "signal_type": "audience",
+            "signal_type": "marketplace",
+            "data_provider": "Internal Data",
+            "coverage_percentage": 75.0,
             "deployments": [
                 SignalDeployment(
-                    provider="internal",
-                    provider_signal_id="age_18_24",
-                    supported_platforms=["gam", "kevel"],
-                    availability="available",
+                    platform="gam",
+                    is_live=True,
+                    scope="platform-wide",
+                    decisioning_platform_segment_id="age_18_24",
                 )
             ],
-            "pricing": [SignalPricing(provider="internal", cost_type="cpm_multiplier", cost_value=1.2, currency="USD")],
+            "pricing": SignalPricing(cpm=1.2, currency="USD"),
         },
         {
-            "signal_id": "sports_interest",
+            "signal_agent_segment_id": "sports_interest",
             "name": "Sports Interest",
             "description": "Users interested in sports content",
-            "category": "interests",
-            "signal_type": "audience",
+            "signal_type": "marketplace",
+            "data_provider": "Internal Data",
+            "coverage_percentage": 60.0,
             "deployments": [
                 SignalDeployment(
-                    provider="internal",
-                    provider_signal_id="sports_interest",
-                    supported_platforms=["gam"],
-                    availability="available",
+                    platform="gam",
+                    is_live=True,
+                    scope="platform-wide",
+                    decisioning_platform_segment_id="sports_interest",
                 )
             ],
-            "pricing": [SignalPricing(provider="internal", cost_type="cpm_multiplier", cost_value=1.1, currency="USD")],
+            "pricing": SignalPricing(cpm=1.1, currency="USD"),
         },
     ]
 
-    # Filter by signal types if specified
-    if req.signal_types:
-        basic_signals = [s for s in basic_signals if s["signal_type"] in req.signal_types]
-
-    # Filter by categories if specified
-    if req.categories:
-        basic_signals = [s for s in basic_signals if s["category"] in req.categories]
+    # Filter by spec/filters if specified (AdCP v2.4)
+    # For now, return all signals - proper AI-based filtering would go here
+    # using req.signal_spec and req.deliver_to to intelligently match signals
 
     # Convert to Signal objects
     for signal_data in basic_signals:
@@ -369,7 +367,14 @@ def sync_creatives_raw(
     # Import here to avoid circular imports
     from src.core.main import _sync_creatives_impl
 
-    return _sync_creatives_impl(creatives, media_buy_id, buyer_ref, assign_to_packages, upsert, context)
+    return _sync_creatives_impl(
+        creatives=creatives,
+        media_buy_id=media_buy_id,
+        buyer_ref=buyer_ref,
+        assign_to_packages=assign_to_packages,
+        upsert=upsert,
+        context=context,
+    )
 
 
 def list_creatives_raw(
@@ -413,19 +418,19 @@ def list_creatives_raw(
     from src.core.main import _list_creatives_impl
 
     return _list_creatives_impl(
-        media_buy_id,
-        buyer_ref,
-        status,
-        format,
-        tags,
-        created_after,
-        created_before,
-        search,
-        page,
-        limit,
-        sort_by,
-        sort_order,
-        context,
+        media_buy_id=media_buy_id,
+        buyer_ref=buyer_ref,
+        status=status,
+        format=format,
+        tags=tags,
+        created_after=created_after,
+        created_before=created_before,
+        search=search,
+        page=page,
+        limit=limit,
+        sort_by=sort_by,
+        sort_order=sort_order,
+        context=context,
     )
 
 
