@@ -359,20 +359,31 @@ def quick_create_products(tenant_id):
                         template.get("delivery_type", "guaranteed") == "guaranteed" and template.get("cpm") is not None
                     )
 
-                    new_product = Product(
-                        product_id=template["product_id"],
-                        tenant_id=tenant_id,
-                        name=template["name"],
-                        description=template.get("description", ""),
-                        formats=format_objects,  # Use converted format objects
-                        delivery_type=template.get("delivery_type", "guaranteed"),
-                        is_fixed_price=is_fixed_price,
-                        cpm=template.get("cpm"),
-                        price_guidance=template.get("price_guidance"),  # Use price_guidance, not separate min/max
-                        countries=template.get("countries"),  # Pass as Python object, not JSON string
-                        targeting_template=template.get("targeting_template", {}),  # Pass as Python object
-                        implementation_config=template.get("implementation_config", {}),  # Pass as Python object
-                    )
+                    # Build product kwargs - only include nullable fields if they have values
+                    product_kwargs = {
+                        "product_id": template["product_id"],
+                        "tenant_id": tenant_id,
+                        "name": template["name"],
+                        "description": template.get("description", ""),
+                        "formats": format_objects,  # Use converted format objects
+                        "delivery_type": template.get("delivery_type", "guaranteed"),
+                        "is_fixed_price": is_fixed_price,
+                        "cpm": template.get("cpm"),
+                        "price_guidance": template.get("price_guidance"),  # Use price_guidance, not separate min/max
+                        "targeting_template": template.get("targeting_template", {}),  # Pass as Python object
+                    }
+
+                    # Only set countries/implementation_config if not None
+                    # This avoids SQLAlchemy serializing None to JSON "null" string
+                    countries = template.get("countries")
+                    if countries is not None:
+                        product_kwargs["countries"] = countries
+
+                    implementation_config = template.get("implementation_config")
+                    if implementation_config is not None:
+                        product_kwargs["implementation_config"] = implementation_config
+
+                    new_product = Product(**product_kwargs)
                     db_session.add(new_product)
                     created.append(product_id)
 
