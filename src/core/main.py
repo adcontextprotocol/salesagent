@@ -4479,6 +4479,51 @@ async def health(request: Request):
     return JSONResponse({"status": "healthy", "service": "mcp"})
 
 
+@mcp.custom_route("/debug/tenant", methods=["GET"])
+async def debug_tenant(request: Request):
+    """Debug endpoint to check tenant detection from headers."""
+    headers = dict(request.headers)
+
+    # Check for Apx-Incoming-Host header
+    apx_host = headers.get("apx-incoming-host") or headers.get("Apx-Incoming-Host")
+    host_header = headers.get("host") or headers.get("Host")
+
+    # Resolve tenant using same logic as auth
+    tenant_id = None
+    tenant_name = None
+    detection_method = None
+
+    # Try Apx-Incoming-Host first
+    if apx_host:
+        tenant = get_tenant_by_virtual_host(apx_host)
+        if tenant:
+            tenant_id = tenant.get("tenant_id")
+            tenant_name = tenant.get("name")
+            detection_method = "apx-incoming-host"
+
+    # Try Host header subdomain
+    if not tenant_id and host_header:
+        subdomain = host_header.split(".")[0] if "." in host_header else None
+        if subdomain and subdomain not in ["localhost", "adcp-sales-agent", "www", "sales-agent"]:
+            tenant_id = subdomain
+            detection_method = "host-subdomain"
+
+    response_data = {
+        "tenant_id": tenant_id,
+        "tenant_name": tenant_name,
+        "detection_method": detection_method,
+        "apx_incoming_host": apx_host,
+        "host": host_header,
+    }
+
+    # Add X-Tenant-Id header to response
+    response = JSONResponse(response_data)
+    if tenant_id:
+        response.headers["X-Tenant-Id"] = tenant_id
+
+    return response
+
+
 @mcp.custom_route("/debug/root", methods=["GET"])
 async def debug_root(request: Request):
     """Debug endpoint to test root route logic without redirects."""
