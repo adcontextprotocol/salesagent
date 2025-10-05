@@ -5,28 +5,37 @@ Complete reference for how requests are routed through nginx to our backend serv
 ## Architecture Overview
 
 ```
-                    ┌─── Tenant Subdomains (Direct) ───┐
-                    │  wonderstruck.sales-agent.scope3  │
-                    │  Host: wonderstruck.sales-agent.. │
-                    │  Apx-Incoming-Host: (not set)     │
-                    └────────────────┬──────────────────┘
-                                     │
-[Client] ──────────────────────────► [Fly.io nginx] → [Backend Services]
-   │                                      ▲
-   │                                      │
-   └─► [Approximated CDN] ────────────────┘
-          ↓                    ┌─── Main Domain ─────────┐
-       Sets headers:           │  sales-agent.scope3.com  │
-       - Host: sales-agent..   │                          │
-       - Apx-Incoming-Host:    └─── External Domains ────┘
-         <original-domain>     │  test-agent.adcontext..  │
-                               └──────────────────────────┘
+┌─── Main Domain (Direct) ──────┐   ┌─── Tenant Subdomains (Direct) ───┐
+│  sales-agent.scope3.com        │   │  wonderstruck.sales-agent.scope3  │
+│  Host: sales-agent.scope3.com  │   │  Host: wonderstruck.sales-agent.. │
+│  Apx-Incoming-Host: (not set)  │   │  Apx-Incoming-Host: (not set)     │
+└────────────────┬───────────────┘   └────────────────┬──────────────────┘
+                 │                                     │
+                 └──────────► [Fly.io nginx] ◄─────────┘
+                                      │
+                                      └─► [Backend Services]
+
+
+┌─── External Domains (Via Approximated) ────┐
+│  test-agent.adcontextprotocol.org           │
+└─────────────────┬───────────────────────────┘
+                  │
+                  ▼
+         [Approximated CDN]
+                  │
+           Sets headers:
+           - Host: sales-agent.scope3.com
+           - Apx-Incoming-Host: test-agent.adcontextprotocol.org
+                  │
+                  ▼
+         [Fly.io nginx] → [Backend Services]
 ```
 
 **Key Insights**:
-- **Tenant subdomains** (`*.sales-agent.scope3.com`) go **directly to Fly** with the full hostname in the `Host` header
-- **Main domain** and **external domains** route through **Approximated**, which rewrites `Host` to `sales-agent.scope3.com` and sets `Apx-Incoming-Host` to the original domain
-- Nginx checks `Host` first (for subdomains), then falls back to `Apx-Incoming-Host` (for main/external)
+- **Main domain** (`sales-agent.scope3.com`) goes **directly to Fly** - Host header is `sales-agent.scope3.com`, no `Apx-Incoming-Host`
+- **Tenant subdomains** (`*.sales-agent.scope3.com`) go **directly to Fly** - Host header has full subdomain, no `Apx-Incoming-Host`
+- **ONLY external domains** route through **Approximated** - Host is rewritten to `sales-agent.scope3.com` and `Apx-Incoming-Host` is set to original domain
+- Nginx routing logic: If `Apx-Incoming-Host` is NOT set → use `Host` header. If `Apx-Incoming-Host` IS set → it's an external domain
 
 ## Backend Services
 
@@ -41,7 +50,8 @@ Complete reference for how requests are routed through nginx to our backend serv
 ### 1. Main Domain
 - **Domain**: `sales-agent.scope3.com`
 - **Purpose**: Publisher self-service signup
-- **Approximated**: Sets `Apx-Incoming-Host: sales-agent.scope3.com`
+- **Traffic Path**: **Direct to Fly** (does NOT go through Approximated)
+- **Headers**: `Host: sales-agent.scope3.com`, no `Apx-Incoming-Host` header
 
 ### 2. Tenant Subdomains
 - **Pattern**: `<tenant>.sales-agent.scope3.com`

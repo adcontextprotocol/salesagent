@@ -15,34 +15,34 @@
          │  (Main Domain)      │ │ (Tenant Sub)   │ │ (External Domain)     │
          └──────────┬──────────┘ └───┬────────────┘ └─┬─────────────────────┘
                     │                │                 │
-         ┌──────────┘      (Direct) │                 └──────────┐
-         │ (via Approximated)       │                   (via Approximated)
-         │                           │                            │
-         │  ┌──────────────────┐     │                            │
-         └─►│  APPROXIMATED    │     │     ┌──────────────────┐   │
-            │  Sets headers:   │     │     │  APPROXIMATED    │   │
-            │  Host: sales..   │     │    ◄┤  Sets headers:   │◄──┘
-            │  Apx-Incoming-   │     │     │  Host: sales..   │
-            │  Host: original  │     │     │  Apx-Incoming-   │
-            └────────┬─────────┘     │     │  Host: original  │
-                     │                │     └──────────────────┘
-                     └────────────────┼──────────┘
-                                      │
-                          ┌───────────▼───────────┐
-                          │    FLY.IO NGINX        │
-                          │                        │
-                          │  For subdomains:       │
-                          │    Host has subdomain  │
-                          │  For others:           │
-                          │    Check Apx-Incoming  │
-                          └───────────┬────────────┘
-                                      │
-         ┌────────────────────────────┼────────────────────────────┐
-         │                            │                            │
-   ┌─────▼─────┐              ┌───────▼──────┐           ┌────────▼───────┐
-   │ Admin UI  │              │ MCP Server   │           │  A2A Server    │
-   │  :8001    │              │   :8080      │           │    :8091       │
-   └───────────┘              └──────────────┘           └────────────────┘
+                    │ (Direct)       │ (Direct)        │ (via Approximated)
+                    │                │                 │
+                    │                │                 │  ┌──────────────────┐
+                    │                │                 └─►│  APPROXIMATED    │
+                    │                │                    │  Sets headers:   │
+                    │                │                    │  Host: sales..   │
+                    │                │                    │  Apx-Incoming-   │
+                    │                │                    │  Host: test-ag.. │
+                    │                │                    └────────┬─────────┘
+                    │                │                             │
+                    └────────────────┼─────────────────────────────┘
+                                     │
+                          ┌──────────▼──────────┐
+                          │    FLY.IO NGINX      │
+                          │                      │
+                          │  If Apx-Incoming-    │
+                          │  Host is set:        │
+                          │    → External domain │
+                          │  Else:               │
+                          │    → Use Host header │
+                          └──────────┬───────────┘
+                                     │
+         ┌───────────────────────────┼───────────────────────────┐
+         │                           │                           │
+   ┌─────▼─────┐              ┌──────▼──────┐           ┌───────▼────────┐
+   │ Admin UI  │              │ MCP Server  │           │  A2A Server    │
+   │  :8001    │              │   :8080     │           │    :8091       │
+   └───────────┘              └─────────────┘           └────────────────┘
 ```
 
 ## Routing Decision Matrix
@@ -53,13 +53,17 @@
 │                                                                             │
 │  Headers depend on traffic path:                                           │
 │                                                                             │
+│  Main domain (Direct to Fly):                                              │
+│    Host: sales-agent.scope3.com                                            │
+│    Apx-Incoming-Host: (not set)                                            │
+│                                                                             │
 │  Tenant subdomains (Direct to Fly):                                        │
 │    Host: wonderstruck.sales-agent.scope3.com  ◄─── Use Host header!       │
 │    Apx-Incoming-Host: (not set)                                            │
 │                                                                             │
-│  Main domain & External (Via Approximated):                                │
+│  External domains (Via Approximated):                                      │
 │    Host: sales-agent.scope3.com (rewritten by Approximated)               │
-│    Apx-Incoming-Host: <original-domain>  ◄─── Use this for routing!       │
+│    Apx-Incoming-Host: test-agent.adcontext...  ◄─── Detects external!     │
 └─────────────────────────────────┬──────────────────────────────────────────┘
                                   │
                     ┌─────────────▼─────────────┐
