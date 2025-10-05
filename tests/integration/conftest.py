@@ -50,10 +50,66 @@ def integration_db():
     # (in case the module import doesn't trigger class definition)
     _ = (Context, WorkflowStep, ObjectWorkflowMapping)
 
-    engine = create_engine(f"sqlite:///{db_path}")
+    engine = create_engine(f"sqlite:///{db_path}", echo=False)
+
+    # Ensure all model classes are imported and registered with Base.metadata
+    # Import order matters - some models may not be registered if imported too early
+    from src.core.database.models import (
+        AdapterConfig,
+        AuditLog,
+        AuthorizedProperty,
+        Creative,
+        CreativeAssignment,
+        CreativeFormat,
+        FormatPerformanceMetrics,
+        GAMInventory,
+        GAMLineItem,
+        GAMOrder,
+        MediaBuy,
+        Principal,
+        Product,
+        ProductInventoryMapping,
+        PropertyTag,
+        PushNotificationConfig,
+        Strategy,
+        StrategyState,
+        SyncJob,
+        Tenant,
+        TenantManagementConfig,
+        User,
+    )
+
+    # Ensure workflow models are loaded (force evaluation)
+    _ = (
+        Context,
+        WorkflowStep,
+        ObjectWorkflowMapping,
+        Tenant,
+        Principal,
+        Product,
+        MediaBuy,
+        Creative,
+        AuthorizedProperty,
+        Strategy,
+        AuditLog,
+        CreativeAssignment,
+        TenantManagementConfig,
+        PushNotificationConfig,
+        User,
+        CreativeFormat,
+        AdapterConfig,
+        GAMInventory,
+        ProductInventoryMapping,
+        FormatPerformanceMetrics,
+        GAMOrder,
+        GAMLineItem,
+        SyncJob,
+        StrategyState,
+        PropertyTag,
+    )
 
     # Create all tables directly (no migrations)
-    Base.metadata.create_all(bind=engine)
+    Base.metadata.create_all(bind=engine, checkfirst=True)
 
     # Update the global database session to point to the test database
     # This is necessary because many parts of the code use the global db_session
@@ -69,12 +125,21 @@ def integration_db():
     database_session.SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
     database_session.db_session = scoped_session(database_session.SessionLocal)
 
+    # Reset context manager singleton so it uses the new database session
+    # This is critical because ContextManager caches a session reference
+    import src.core.context_manager
+
+    src.core.context_manager._context_manager_instance = None
+
     yield db_path
 
     # Restore original database session
     database_session.engine = original_engine
     database_session.SessionLocal = original_session_local
     database_session.db_session = original_db_session
+
+    # Reset context manager singleton again to avoid stale references
+    src.core.context_manager._context_manager_instance = None
 
     # Cleanup
     engine.dispose()
