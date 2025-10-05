@@ -27,7 +27,7 @@ def cleanup_test_tenants():
     if original_url and "postgresql" in original_url:
         # Only run cleanup in PostgreSQL (CI) environment
         from src.core.database.database_session import get_db_session
-        from src.core.database.models import Tenant
+        from src.core.database.models import Creative, Tenant
 
         # Clean up known test tenant IDs that persist across test runs
         test_tenant_ids = ["creative_test", "a2a_creative_test"]
@@ -35,6 +35,12 @@ def cleanup_test_tenants():
         with get_db_session() as session:
             for tenant_id in test_tenant_ids:
                 try:
+                    # First, delete any creatives for this tenant using bulk delete
+                    # This avoids CASCADE issues and handles orphaned records
+                    session.query(Creative).filter_by(tenant_id=tenant_id).delete(synchronize_session=False)
+                    session.commit()
+
+                    # Now delete the tenant (CASCADE will handle remaining child records)
                     tenant = session.query(Tenant).filter_by(tenant_id=tenant_id).first()
                     if tenant:
                         session.delete(tenant)

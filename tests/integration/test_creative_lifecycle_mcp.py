@@ -54,8 +54,12 @@ class TestCreativeLifecycleMCP:
             from src.core.database.models import Tenant
 
             try:
-                # Fetch and delete the tenant object (triggers ORM cascade)
-                # This is more reliable than bulk delete for cascade operations
+                # First, delete any creatives for this tenant using bulk delete
+                # This avoids CASCADE issues with orphaned records
+                session.query(DBCreative).filter_by(tenant_id=self.test_tenant_id).delete(synchronize_session=False)
+                session.commit()
+
+                # Now delete the tenant (CASCADE will handle remaining child records)
                 tenant = session.query(Tenant).filter_by(tenant_id=self.test_tenant_id).first()
                 if tenant:
                     session.delete(tenant)

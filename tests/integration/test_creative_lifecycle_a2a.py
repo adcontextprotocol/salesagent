@@ -54,11 +54,15 @@ class TestCreativeLifecycleA2A:
         # Clean up any existing test data (for PostgreSQL shared database)
         # In SQLite mode, integration_db creates a fresh DB so this is a no-op
         with get_db_session() as session:
-            from src.core.database.models import Tenant
+            from src.core.database.models import Creative, Tenant
 
             try:
-                # Fetch and delete the tenant object (triggers ORM cascade)
-                # This is more reliable than bulk delete for cascade operations
+                # First, delete any creatives for this tenant using bulk delete
+                # This avoids CASCADE issues with orphaned records
+                session.query(Creative).filter_by(tenant_id="a2a_creative_test").delete(synchronize_session=False)
+                session.commit()
+
+                # Now delete the tenant (CASCADE will handle remaining child records)
                 tenant = session.query(Tenant).filter_by(tenant_id="a2a_creative_test").first()
                 if tenant:
                     session.delete(tenant)
