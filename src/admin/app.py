@@ -200,14 +200,17 @@ def create_app(config=None):
             return None  # No subdomain configured, let normal routing handle it
 
         # Build redirect URL to tenant subdomain
+        # Note: request.full_path is relative to script_root, so we need to add /admin back
+        path_with_admin = f"/admin{request.full_path}" if not request.full_path.startswith("/admin") else request.full_path
+
         if os.environ.get("PRODUCTION") == "true":
-            redirect_url = f"https://{tenant_subdomain}.sales-agent.scope3.com{request.full_path}"
+            redirect_url = f"https://{tenant_subdomain}.sales-agent.scope3.com{path_with_admin}"
         else:
             # Local dev: Use localhost with port
             port = os.environ.get("ADMIN_UI_PORT", "8001")
-            redirect_url = f"http://{tenant_subdomain}.localhost:{port}{request.full_path}"
+            redirect_url = f"http://{tenant_subdomain}.localhost:{port}{path_with_admin}"
 
-        logger.info(f"Redirecting external domain /admin to subdomain: {redirect_url}")
+        logger.info(f"Redirecting external domain {apx_host}/admin to subdomain: {redirect_url}")
         return redirect(redirect_url, code=302)
 
     # Add context processor to make script_name available in templates
