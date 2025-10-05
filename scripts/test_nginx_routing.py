@@ -281,13 +281,13 @@ def get_test_cases() -> list[TestCase]:
         # (Via Approximated - Host rewritten + Apx-Incoming-Host set)
         # ============================================================
         TestCase(
-            name="External domain root → redirect to subdomain",
+            name="External domain root → landing page",
             domain="test-agent.adcontextprotocol.org",
             path="/",
             headers={},
-            expected_status=302,
-            expected_redirect=".sales-agent.scope3.com",  # Redirects to tenant subdomain
-            description="External domain root redirects to subdomain (admin catchall)",
+            expected_status=200,
+            expected_content=None,  # Landing page content
+            description="External domain root shows tenant landing page",
             via_approximated=True,
         ),
         TestCase(
