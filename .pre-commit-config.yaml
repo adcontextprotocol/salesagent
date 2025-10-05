@@ -17,10 +17,18 @@ repos:
         pass_filenames: false
         always_run: true
 
-      # Prevent excessive mocking
+      # Prevent over-mocking (mocking internal implementation instead of external I/O)
       - id: no-excessive-mocking
         name: Prevent excessive mocking in tests
-        entry: sh -c 'for f in $(find tests -name "test_*.py" 2>/dev/null); do if [ -f "$f" ]; then count=$(grep -o "@patch\|MagicMock\|Mock()" "$f" 2>/dev/null | wc -l | tr -d " "); if [ "$count" -gt 10 ]; then echo "❌ Excessive mocking in $f ($count mocks). Consider integration tests instead."; exit 1; fi; fi; done'
+        entry: uv run python scripts/check_test_mocking.py
+        language: system
+        pass_filenames: false
+        always_run: true
+
+      # Check A2A skill test coverage
+      - id: a2a-skill-coverage
+        name: Verify 100% A2A skill coverage
+        entry: uv run python scripts/check_a2a_skill_coverage.py
         language: system
         pass_filenames: false
         always_run: true
