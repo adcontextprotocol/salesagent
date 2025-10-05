@@ -67,62 +67,45 @@
 └─────────────────────────────────┬──────────────────────────────────────────┘
                                   │
                     ┌─────────────▼─────────────┐
-                    │ Check Apx-Incoming-Host   │
-                    │ Does it end with          │
-                    │ .sales-agent.scope3.com?  │
+                    │ Extract tenant identifier │
+                    │                           │
+                    │ If Apx-Incoming-Host set: │
+                    │   tenant = from mapping   │
+                    │ Else if Host has subdomain│
+                    │   tenant = subdomain      │
+                    │ Else:                     │
+                    │   No tenant (main domain) │
                     └─────────────┬─────────────┘
                                   │
                 ┌─────────────────┼─────────────────┐
                 │                 │                 │
-              YES               NO                 │
+          No tenant           Has tenant            │
                 │                 │                 │
-    ┌───────────▼──────────┐  ┌──▼────────────────▼─────────┐
-    │ Extract subdomain    │  │ External Virtual Host        │
-    └───────────┬──────────┘  │                              │
-                │              │ Examples:                    │
-    ┌───────────▼──────────┐  │ - test-agent.adcontext...   │
-    │ Subdomain empty?     │  │ - custom-domain.com         │
-    └───────────┬──────────┘  │                              │
-                │              │ Route: Landing page only     │
-          ┌─────┴─────┐       │ Paths: /, /health            │
-         YES          NO       │ Block: /admin, /mcp, /a2a   │
-          │            │       └──────────────────────────────┘
-          │            │
-    ┌─────▼─────┐  ┌──▼─────────────┐
-    │ MAIN      │  │ TENANT         │
-    │ DOMAIN    │  │ SUBDOMAIN      │
-    └─────┬─────┘  └──┬─────────────┘
-          │           │
-          │           │
-┌─────────▼─────────┐ │
-│ sales-agent.scope3│ │
-│       .com        │ │
-│                   │ │
-│ Routes:           │ │
-│ /      → /signup  │ │
-│ /signup → OAuth   │ │
-│ /login  → form    │ │
-│ /admin/* → UI     │ │
-│ /mcp/   → 404     │ │
-│ /a2a/   → 404     │ │
-│ /health → 200     │ │
-└───────────────────┘ │
-                      │
-        ┌─────────────▼──────────────┐
-        │ <tenant>.sales-agent.scope3│
-        │           .com              │
-        │                             │
-        │ Routes:                     │
-        │ /           → landing       │
-        │ /admin/*    → UI + auth     │
-        │ /mcp/       → MCP + auth    │
-        │ /a2a/       → A2A + auth    │
-        │ /.well-known → agent card   │
-        │ /health     → 200           │
-        │                             │
-        │ Headers added:              │
-        │ X-Tenant-Id: <tenant>       │
-        └─────────────────────────────┘
+    ┌───────────▼──────────┐  ┌──▼─────────────────▼─────────┐
+    │ MAIN DOMAIN          │  │ TENANT ACCESS                 │
+    │                      │  │                               │
+    │ sales-agent.scope3   │  │ Two ways to access same tenant│
+    │                      │  │                               │
+    │ Routes:              │  │ 1. Subdomain:                 │
+    │ /      → /signup     │  │    wonderstruck.sales-agent.. │
+    │ /signup → OAuth      │  │    Host has subdomain         │
+    │ /login  → form       │  │                               │
+    │ /admin/* → UI        │  │ 2. External domain:           │
+    │ /mcp/   → 404        │  │    test-agent.adcontext...    │
+    │ /a2a/   → 404        │  │    Apx-Incoming-Host set      │
+    │ /health → 200        │  │    Maps to tenant ID          │
+    └──────────────────────┘  │                               │
+                              │ Both route to same backend:   │
+                              │ /           → landing         │
+                              │ /admin/*    → UI + auth       │
+                              │ /mcp/       → MCP + auth      │
+                              │ /a2a/       → A2A + auth      │
+                              │ /.well-known → agent card     │
+                              │ /health     → 200             │
+                              │                               │
+                              │ Headers added:                │
+                              │ X-Tenant-Id: <tenant>         │
+                              └───────────────────────────────┘
 ```
 
 ## Path-Based Routing Detail
@@ -143,8 +126,11 @@ https://sales-agent.scope3.com
 │
 ├── /auth/google/callback
 │   └─► nginx: proxy_pass → admin_ui:8001/auth/google/callback
-│       └─► Admin UI: Processes OAuth, creates tenant
-│           └─► Redirects to /admin/tenant/<id>
+│       └─► Admin UI: Processes OAuth
+│           1. Exchange code for user info
+│           2. Create session with credentials
+│           3. Redirect back to originating domain
+│           (If from external domain, must redirect there with auth)
 │
 ├── /login
 │   └─► nginx: proxy_pass → admin_ui:8001/login
@@ -211,34 +197,57 @@ https://wonderstruck.sales-agent.scope3.com
 
 ### External Domain: `test-agent.adcontextprotocol.org`
 
+**Note**: External domains are white-labeled tenant access - they work **identically** to tenant subdomains!
+
 ```
 https://test-agent.adcontextprotocol.org
 │
+├── nginx receives:
+│   Host: sales-agent.scope3.com (rewritten by Approximated)
+│   Apx-Incoming-Host: test-agent.adcontextprotocol.org
+│
+│   └─► nginx maps to tenant_id (e.g., "wonderstruck")
+│       └─► Sets X-Tenant-Id: wonderstruck
+│           └─► Routes identically to subdomain
+│
 ├── /
 │   └─► nginx: proxy_pass → admin_ui:8001/
-│       └─► Admin UI: Renders marketing landing page
-│           (NOT tenant-specific, public marketing)
-│
-├── /signup
-│   └─► nginx: redirect → https://sales-agent.scope3.com/signup
-│       (Force users to sign up on main domain)
+│       │       X-Tenant-Id: wonderstruck
+│       └─► Admin UI: Renders tenant landing page
+│           (Exact same page as wonderstruck.sales-agent.scope3.com/)
 │
 ├── /admin/*
-│   └─► nginx: return 403
-│       (Security: no admin access on external domains)
+│   └─► nginx: proxy_pass → admin_ui:8001/admin/*
+│       │       X-Tenant-Id: wonderstruck
+│       └─► Admin UI: Check auth, show tenant dashboard
+│           (Same as subdomain - not blocked!)
 │
 ├── /mcp/
-│   └─► nginx: return 404
-│       (No agent access on external domains)
+│   └─► nginx: proxy_pass → mcp_server:8080/mcp/
+│       │       X-Tenant-Id: wonderstruck
+│       │       x-adcp-auth: <token>
+│       └─► MCP Server: Serve tenant's MCP endpoints
+│           (External domain = white label, MCP works!)
 │
 ├── /a2a/
-│   └─► nginx: return 404
-│       (No agent communication on external domains)
+│   └─► nginx: proxy_pass → a2a_server:8091/a2a/
+│       │       X-Tenant-Id: wonderstruck
+│       │       Authorization: Bearer <token>
+│       └─► A2A Server: Serve tenant's A2A endpoints
+│           (External domain = white label, A2A works!)
 │
-└── /.well-known/agent.json
-    └─► nginx: return 404
-        (External domains don't serve agents)
+├── /.well-known/agent.json
+│   └─► nginx: proxy_pass → a2a_server:8091/.well-known/agent.json
+│       │       X-Tenant-Id: wonderstruck
+│       └─► A2A Server: Return tenant's agent card
+│           (External domain serves same agent as subdomain!)
+│
+└── /health
+    └─► nginx: proxy_pass → admin_ui:8001/health
+        └─► Admin UI: {"status": "healthy"}
 ```
+
+**Key Point**: The ONLY difference between `test-agent.adcontextprotocol.org` and `wonderstruck.sales-agent.scope3.com` is the domain name shown to users. All functionality is identical!
 
 ## Authentication Flow Detail
 

@@ -60,13 +60,15 @@ Complete reference for how requests are routed through nginx to our backend serv
 - **Traffic Path**: **Direct to Fly** (does NOT go through Approximated)
 - **Headers**: `Host: wonderstruck.sales-agent.scope3.com` (subdomain preserved)
 
-### 3. External Virtual Hosts
+### 3. External Virtual Hosts (White-Labeled Tenant Access)
 - **Pattern**: `<any-domain-not-ending-in>.sales-agent.scope3.com`
 - **Examples**:
   - `test-agent.adcontextprotocol.org`
   - `custom-domain.example.com`
-- **Purpose**: White-labeled landing pages
-- **Approximated**: Sets `Apx-Incoming-Host: test-agent.adcontextprotocol.org`
+- **Purpose**: White-labeled tenant access - **works identically to tenant subdomains**
+- **Traffic Path**: Through Approximated (which sets `Apx-Incoming-Host` header)
+- **Functionality**: Full tenant access (MCP, A2A, admin, landing page) - same as subdomain
+- **Mapping**: External domain maps to tenant ID (configured in database)
 
 ## Routing Decision Tree
 
@@ -187,44 +189,45 @@ After login:
 
 ### 3. External Virtual Host: `test-agent.adcontextprotocol.org`
 
-**Shows**: White-labeled landing page (potential customer view)
+**Shows**: White-labeled tenant access - **identical to tenant subdomain!**
 
-| Path | Backend | Purpose | Response |
-|------|---------|---------|----------|
-| `/` | Admin UI `/` | Landing page | Marketing page with "Sign up" CTA |
-| `/signup` | Main domain signup | Redirects | 302 → `https://sales-agent.scope3.com/signup` |
-| `/admin/*` | ❌ 403 or redirect | Not accessible | Security boundary |
-| `/mcp/*` | ❌ 404 | Not tenant-specific | Not available on external domains |
-| `/a2a/*` | ❌ 404 | Not tenant-specific | Not available on external domains |
-| `/.well-known/agent.json` | ❌ 404 | No agent on external domain | External domains don't serve agents |
+| Path | Backend | Purpose | Auth Required |
+|------|---------|---------|---------------|
+| `/` | Admin UI `/` | Tenant landing page | No |
+| `/admin/*` | Admin UI `/admin/*` | Admin interface | Yes (OAuth) |
+| `/mcp/` | MCP Server `:8080` | MCP protocol | Yes (`x-adcp-auth` header) |
+| `/a2a/` | A2A Server `:8091` | A2A protocol | Yes (`Authorization` header) |
+| `/.well-known/agent.json` | A2A Server | Agent discovery | No |
+| `/health` | Admin UI `/health` | Health check | No |
 
 **Visual Flow**:
 ```
-https://test-agent.adcontextprotocol.org/
+https://test-agent.adcontextprotocol.org/mcp/
 Headers:
-  Host: sales-agent.scope3.com
+  Host: sales-agent.scope3.com (rewritten by Approximated)
   Apx-Incoming-Host: test-agent.adcontextprotocol.org
+  x-adcp-auth: <principal-token>
   ↓
-nginx detects: NOT ending in .sales-agent.scope3.com
+nginx looks up tenant_id from domain mapping
+  Example: test-agent.adcontextprotocol.org → "wonderstruck"
   ↓
-Sets: $backend_path = / (landing page)
+Sets header: X-Tenant-Id: wonderstruck
   ↓
-Proxies to: http://admin_ui:8001/
+Proxies to: http://mcp_server:8080
   ↓
-Admin UI renders landing page
+MCP server reads X-Tenant-Id header
   ↓
-Shows: Product features, pricing, "Sign up" button
+Resolves tenant + principal from token
   ↓
-"Sign up" button links to:
-  https://sales-agent.scope3.com/signup
-  (NOT test-agent.adcontextprotocol.org/signup)
+Returns MCP response for that tenant
+  (EXACT SAME as wonderstruck.sales-agent.scope3.com/mcp/)
 ```
 
-**Why external domains show landing page**:
-- External domains are for **potential customers** to learn about the product
-- They are NOT tenant-specific (no data access)
-- They are NOT for agent communication (MCP/A2A)
-- Purpose: Marketing → Drive signups to main domain
+**Why external domains work like subdomains**:
+- External domains are **white-labeled tenant access** for branding
+- They provide **full functionality**: MCP, A2A, admin, landing page
+- The ONLY difference is the domain name shown to users
+- Purpose: Allow tenants to use their own domain instead of `*.sales-agent.scope3.com`
 
 ## Nginx Configuration Patterns
 
