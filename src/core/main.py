@@ -2914,6 +2914,43 @@ def _create_media_buy_impl(
             session.add(new_media_buy)
             session.commit()
 
+        # Handle creative_ids in packages if provided
+        if req.packages:
+            with get_db_session() as session:
+                from src.core.database.models import CreativeAssignment as DBAssignment
+
+                for i, package in enumerate(req.packages):
+                    if package.creative_ids:
+                        package_id = f"{response.media_buy_id}_pkg_{i+1}"
+                        for creative_id in package.creative_ids:
+                            # Verify the creative exists
+                            from src.core.database.models import Creative as DBCreative
+
+                            creative = (
+                                session.query(DBCreative)
+                                .filter_by(tenant_id=tenant["tenant_id"], creative_id=creative_id)
+                                .first()
+                            )
+
+                            if not creative:
+                                logger.warning(
+                                    f"Creative {creative_id} not found for package {package_id}, skipping assignment"
+                                )
+                                continue
+
+                            # Create assignment with generated assignment_id
+                            assignment_id = f"assign_{uuid.uuid4().hex[:12]}"
+                            assignment = DBAssignment(
+                                assignment_id=assignment_id,
+                                tenant_id=tenant["tenant_id"],
+                                media_buy_id=response.media_buy_id,
+                                package_id=package_id,
+                                creative_id=creative_id,
+                            )
+                            session.add(assignment)
+
+                session.commit()
+
         # Handle creatives if provided
         if req.creatives:
             # Convert Creative objects to format expected by adapter
