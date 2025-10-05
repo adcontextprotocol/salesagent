@@ -157,6 +157,50 @@ def create_app(config=None):
     socketio = SocketIO(app, cors_allowed_origins="*", async_mode="threading")
     app.socketio = socketio
 
+    # Redirect external domain /admin requests to tenant subdomain
+    @app.before_request
+    def redirect_external_domain_admin():
+        """Redirect /admin/* requests from external domains to tenant subdomain.
+
+        External domains (via Approximated) should not serve admin UI due to OAuth cookie issues.
+        Instead, redirect to the tenant's subdomain where OAuth works correctly.
+        """
+        from flask import redirect, request
+
+        from src.core.config_loader import get_tenant_by_virtual_host
+
+        # Check if this is an /admin request
+        if not request.path.startswith("/admin"):
+            return None
+
+        # Check for Apx-Incoming-Host header (indicates request from Approximated)
+        apx_host = request.headers.get("Apx-Incoming-Host") or request.headers.get("apx-incoming-host")
+        if not apx_host:
+            return None  # Not from Approximated, allow normal routing
+
+        # Check if it's an external domain (not ending in .sales-agent.scope3.com)
+        if apx_host.endswith(".sales-agent.scope3.com"):
+            return None  # Subdomain request, allow normal routing
+
+        # External domain detected - redirect to tenant subdomain
+        tenant = get_tenant_by_virtual_host(apx_host)
+        if not tenant:
+            return None  # Can't determine tenant, let normal routing handle it
+
+        tenant_subdomain = tenant.get("subdomain")
+        if not tenant_subdomain:
+            return None  # No subdomain configured, let normal routing handle it
+
+        # Build redirect URL to tenant subdomain
+        if os.environ.get("PRODUCTION") == "true":
+            redirect_url = f"https://{tenant_subdomain}.sales-agent.scope3.com{request.full_path}"
+        else:
+            # Local dev: Use localhost with port
+            port = os.environ.get("ADMIN_UI_PORT", "8001")
+            redirect_url = f"http://{tenant_subdomain}.localhost:{port}{request.full_path}"
+
+        return redirect(redirect_url, code=302)
+
     # Add context processor to make script_name available in templates
     @app.context_processor
     def inject_script_name():
