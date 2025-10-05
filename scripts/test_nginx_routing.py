@@ -20,7 +20,6 @@ Usage:
 import argparse
 import sys
 from dataclasses import dataclass
-from typing import Optional
 
 import requests
 
@@ -34,8 +33,8 @@ class TestCase:
     path: str
     headers: dict
     expected_status: int
-    expected_content: Optional[str] = None  # Substring that should be in response
-    expected_redirect: Optional[str] = None
+    expected_content: str | None = None  # Substring that should be in response
+    expected_redirect: str | None = None
     description: str = ""
 
 
@@ -279,31 +278,41 @@ def get_test_cases() -> list[TestCase]:
             headers={},
             expected_status=200,
             expected_content=None,  # Landing page content
-            description="External domain should show landing page",
+            description="External domain should show tenant landing page (same as subdomain)",
         ),
         TestCase(
-            name="External domain /mcp/ → 404",
+            name="External domain /mcp/ → requires auth",
             domain="test-agent.adcontextprotocol.org",
             path="/mcp/",
             headers={},
-            expected_status=404,
-            description="MCP not available on external domains",
+            expected_status=401,  # No auth header provided
+            description="MCP endpoint works on external domains (same as subdomain), requires auth",
         ),
         TestCase(
-            name="External domain /a2a/ → 404",
+            name="External domain /a2a/ → accessible",
             domain="test-agent.adcontextprotocol.org",
             path="/a2a/",
             headers={},
-            expected_status=404,
-            description="A2A not available on external domains",
+            expected_status=200,  # A2A discovery might not require auth
+            description="A2A endpoint works on external domains (same as subdomain)",
         ),
         TestCase(
-            name="External domain /.well-known/agent.json → 404",
+            name="External domain /.well-known/agent.json → agent card",
             domain="test-agent.adcontextprotocol.org",
             path="/.well-known/agent.json",
             headers={},
-            expected_status=404,
-            description="No agent discovery on external domains",
+            expected_status=200,
+            expected_content='"name"',  # Should contain JSON with name field
+            description="Agent discovery works on external domains (same as subdomain)",
+        ),
+        TestCase(
+            name="External domain /admin/* → redirect to subdomain",
+            domain="test-agent.adcontextprotocol.org",
+            path="/admin/products",
+            headers={},
+            expected_status=302,
+            expected_redirect=".sales-agent.scope3.com/admin/products",
+            description="Admin UI not supported on external domains, redirect to tenant subdomain",
         ),
     ]
 
