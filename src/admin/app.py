@@ -176,19 +176,24 @@ def create_app(config=None):
         # Check for Apx-Incoming-Host header (indicates request from Approximated)
         apx_host = request.headers.get("Apx-Incoming-Host") or request.headers.get("apx-incoming-host")
         if not apx_host:
+            logger.debug(f"No Apx-Incoming-Host header for /admin request: {request.path}")
             return None  # Not from Approximated, allow normal routing
 
         # Check if it's an external domain (not ending in .sales-agent.scope3.com)
         if apx_host.endswith(".sales-agent.scope3.com"):
+            logger.debug(f"Subdomain request to /admin, allowing: {apx_host}")
             return None  # Subdomain request, allow normal routing
 
         # External domain detected - redirect to tenant subdomain
+        logger.info(f"External domain /admin request detected: {apx_host} -> {request.path}")
         tenant = get_tenant_by_virtual_host(apx_host)
         if not tenant:
+            logger.warning(f"No tenant found for external domain: {apx_host}")
             return None  # Can't determine tenant, let normal routing handle it
 
         tenant_subdomain = tenant.get("subdomain")
         if not tenant_subdomain:
+            logger.warning(f"Tenant {tenant.get('tenant_id')} has no subdomain configured")
             return None  # No subdomain configured, let normal routing handle it
 
         # Build redirect URL to tenant subdomain
@@ -199,6 +204,7 @@ def create_app(config=None):
             port = os.environ.get("ADMIN_UI_PORT", "8001")
             redirect_url = f"http://{tenant_subdomain}.localhost:{port}{request.full_path}"
 
+        logger.info(f"Redirecting external domain /admin to subdomain: {redirect_url}")
         return redirect(redirect_url, code=302)
 
     # Add context processor to make script_name available in templates
