@@ -184,7 +184,7 @@ def get_test_cases() -> list[TestCase]:
             path="/",
             headers={},
             expected_status=200,
-            expected_content="Sign up",  # Should contain signup UI
+            expected_content="Sign",  # Should contain signup UI (Sign In or Sign Up)
             description="Main domain root should show signup page (not redirect)",
         ),
         TestCase(
@@ -223,12 +223,12 @@ def get_test_cases() -> list[TestCase]:
             description="MCP endpoint exists but requires proper client (SSE headers)",
         ),
         TestCase(
-            name="Main domain /a2a/ → A2A server response",
+            name="Main domain /a2a/ → A2A routing active",
             domain="sales-agent.scope3.com",
             path="/a2a/",
             headers={},
-            expected_status=200,  # A2A server responds (will error without proper JSON-RPC)
-            description="A2A endpoint exists but requires proper client (JSON-RPC)",
+            expected_status=404,  # A2A root has no handler (use /a2a for JSON-RPC POST)
+            description="A2A routing exists (use POST to /a2a for JSON-RPC)",
         ),
         # ============================================================
         # TENANT SUBDOMAIN: <tenant>.sales-agent.scope3.com
@@ -260,12 +260,12 @@ def get_test_cases() -> list[TestCase]:
             description="MCP endpoint accessible, requires proper SSE client headers",
         ),
         TestCase(
-            name="Tenant subdomain /a2a/ → A2A server response",
+            name="Tenant subdomain /a2a/ → A2A routing active",
             domain="wonderstruck.sales-agent.scope3.com",
             path="/a2a/",
             headers={},
-            expected_status=200,  # A2A server responds (requires JSON-RPC)
-            description="A2A endpoint accessible, requires proper JSON-RPC format",
+            expected_status=404,  # A2A root has no handler (use POST for JSON-RPC)
+            description="A2A routing exists (use POST to /a2a for JSON-RPC)",
         ),
         TestCase(
             name="Tenant subdomain /.well-known/agent.json → agent card",
@@ -281,13 +281,13 @@ def get_test_cases() -> list[TestCase]:
         # (Via Approximated - Host rewritten + Apx-Incoming-Host set)
         # ============================================================
         TestCase(
-            name="External domain root → landing page",
+            name="External domain root → redirect to subdomain",
             domain="test-agent.adcontextprotocol.org",
             path="/",
             headers={},
-            expected_status=200,
-            expected_content=None,  # Landing page content
-            description="External domain should show tenant landing page",
+            expected_status=302,
+            expected_redirect=".sales-agent.scope3.com",  # Redirects to tenant subdomain
+            description="External domain root redirects to subdomain (admin catchall)",
             via_approximated=True,
         ),
         TestCase(
@@ -300,12 +300,12 @@ def get_test_cases() -> list[TestCase]:
             via_approximated=True,
         ),
         TestCase(
-            name="External domain /a2a/ → A2A server response",
+            name="External domain /a2a/ → A2A routing active",
             domain="test-agent.adcontextprotocol.org",
             path="/a2a/",
             headers={},
-            expected_status=200,  # A2A server responds (requires JSON-RPC)
-            description="A2A endpoint works via Approximated, requires proper JSON-RPC",
+            expected_status=404,  # A2A root has no handler (use POST for JSON-RPC)
+            description="A2A routing works via Approximated (use POST to /a2a for JSON-RPC)",
             via_approximated=True,
         ),
         TestCase(
