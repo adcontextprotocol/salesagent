@@ -2029,6 +2029,59 @@ def main():
     # Update the app's router with new routes
     app.router.routes = new_routes
 
+    # Add debug endpoint for tenant detection
+    from starlette.responses import JSONResponse
+    from starlette.routing import Route
+
+    from src.core.config_loader import get_tenant_by_virtual_host
+
+    async def debug_tenant_endpoint(request):
+        """Debug endpoint to check tenant detection from headers."""
+        headers = dict(request.headers)
+
+        # Check for Apx-Incoming-Host header
+        apx_host = headers.get("apx-incoming-host") or headers.get("Apx-Incoming-Host")
+        host_header = headers.get("host") or headers.get("Host")
+
+        # Resolve tenant using same logic as auth
+        tenant_id = None
+        tenant_name = None
+        detection_method = None
+
+        # Try Apx-Incoming-Host first
+        if apx_host:
+            tenant = get_tenant_by_virtual_host(apx_host)
+            if tenant:
+                tenant_id = tenant.get("tenant_id")
+                tenant_name = tenant.get("name")
+                detection_method = "apx-incoming-host"
+
+        # Try Host header subdomain
+        if not tenant_id and host_header:
+            subdomain = host_header.split(".")[0] if "." in host_header else None
+            if subdomain and subdomain not in ["localhost", "adcp-sales-agent", "www", "sales-agent"]:
+                tenant_id = subdomain
+                detection_method = "host-subdomain"
+
+        response_data = {
+            "tenant_id": tenant_id,
+            "tenant_name": tenant_name,
+            "detection_method": detection_method,
+            "apx_incoming_host": apx_host,
+            "host": host_header,
+            "service": "a2a",
+        }
+
+        # Add X-Tenant-Id header to response
+        response = JSONResponse(response_data)
+        if tenant_id:
+            response.headers["X-Tenant-Id"] = tenant_id
+
+        return response
+
+    # Add debug route
+    app.router.routes.append(Route("/debug/tenant", debug_tenant_endpoint, methods=["GET"]))
+
     # Add middleware for backward compatibility with numeric messageId
     @app.middleware("http")
     async def messageId_compatibility_middleware(request, call_next):
