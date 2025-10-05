@@ -87,15 +87,20 @@ def get_principal_from_context(context: Context | None) -> str | None:
 
         if hasattr(context, "meta") and isinstance(context.meta, dict):
             headers_found = context.meta.get("headers", {})
-            token = headers_found.get("x-adcp-auth")
             console.print(f"[blue]Headers from context.meta: {list(headers_found.keys())}[/blue]")
         elif hasattr(context, "headers"):
             headers_found = context.headers
-            token = headers_found.get("x-adcp-auth")
             console.print(f"[blue]Headers from context.headers: {list(headers_found.keys())}[/blue]")
         else:
             console.print("[red]No headers found in context![/red]")
             return None
+
+        # Case-insensitive header lookup (HTTP headers are case-insensitive)
+        token = None
+        for key, value in headers_found.items():
+            if key.lower() == "x-adcp-auth":
+                token = value
+                break
 
         if not token:
             console.print(f"[red]No x-adcp-auth token found. Available headers: {list(headers_found.keys())}[/red]")

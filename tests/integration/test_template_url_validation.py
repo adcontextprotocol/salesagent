@@ -163,7 +163,7 @@ class TestTemplateUrlValidation:
                             if "authorized_properties" in endpoint and "property" in endpoint:
                                 test_params["property_id"] = "test_property"
 
-                            # Add parameters for webhook endpoints
+                            # Add principal_id and config_id for webhook endpoints
                             if "webhook" in endpoint:
                                 test_params["principal_id"] = "test_principal"
                                 if "delete" in endpoint or "toggle" in endpoint:
@@ -254,7 +254,7 @@ class TestTemplateUrlValidation:
                                 if needs_tenant:
                                     test_params["tenant_id"] = "test"
 
-                                # Add parameters for webhook endpoints
+                                # Add principal_id and config_id for webhook endpoints
                                 if "webhook" in endpoint:
                                     test_params["principal_id"] = "test_principal"
                                     if "delete" in endpoint or "toggle" in endpoint:

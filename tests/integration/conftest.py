@@ -95,11 +95,66 @@ def integration_db():
     # Import ALL models first, BEFORE creating engine or Base operations
     # This ensures all tables are registered in Base.metadata
     import src.core.database.models as all_models  # noqa: F401
-    from src.core.database.models import Base, Context, ObjectWorkflowMapping, WorkflowStep  # noqa: F401
 
-    # Explicitly ensure Context and workflow models are registered
-    # (in case the module import doesn't trigger class definition)
-    _ = (Context, WorkflowStep, ObjectWorkflowMapping)
+    # Ensure all model classes are imported and registered with Base.metadata
+    # Import order matters - some models may not be registered if imported too early
+    from src.core.database.models import (  # noqa: F401
+        AdapterConfig,
+        AuditLog,
+        AuthorizedProperty,
+        Base,
+        Context,
+        Creative,
+        CreativeAssignment,
+        CreativeFormat,
+        FormatPerformanceMetrics,
+        GAMInventory,
+        GAMLineItem,
+        GAMOrder,
+        MediaBuy,
+        ObjectWorkflowMapping,
+        Principal,
+        Product,
+        ProductInventoryMapping,
+        PropertyTag,
+        PushNotificationConfig,
+        Strategy,
+        StrategyState,
+        SyncJob,
+        Tenant,
+        TenantManagementConfig,
+        User,
+        WorkflowStep,
+    )
+
+    # Ensure workflow models are loaded (force evaluation)
+    _ = (
+        Context,
+        WorkflowStep,
+        ObjectWorkflowMapping,
+        Tenant,
+        Principal,
+        Product,
+        MediaBuy,
+        Creative,
+        AuthorizedProperty,
+        Strategy,
+        AuditLog,
+        CreativeAssignment,
+        TenantManagementConfig,
+        PushNotificationConfig,
+        User,
+        CreativeFormat,
+        AdapterConfig,
+        GAMInventory,
+        ProductInventoryMapping,
+        FormatPerformanceMetrics,
+        GAMOrder,
+        GAMLineItem,
+        SyncJob,
+        StrategyState,
+        PropertyTag,
+    )
 
     # IMPORTANT: Update global database session BEFORE creating tables
     # This ensures any code that creates sessions during table creation uses the test DB
@@ -125,12 +180,21 @@ def integration_db():
     # Now create all tables (any session created will use test DB)
     Base.metadata.create_all(bind=engine)
 
+    # Reset context manager singleton so it uses the new database session
+    # This is critical because ContextManager caches a session reference
+    import src.core.context_manager
+
+    src.core.context_manager._context_manager_instance = None
+
     yield db_path
 
     # Restore original database session
     database_session.engine = original_engine
     database_session.SessionLocal = original_session_local
     database_session.db_session = original_db_session
+
+    # Reset context manager singleton again to avoid stale references
+    src.core.context_manager._context_manager_instance = None
 
     # Cleanup
     engine.dispose()
