@@ -197,7 +197,7 @@ https://wonderstruck.sales-agent.scope3.com
 
 ### External Domain: `test-agent.adcontextprotocol.org`
 
-**Note**: External domains are white-labeled tenant access - they work **identically** to tenant subdomains!
+**Note**: External domains provide white-labeled **agent access** - **admin UI uses subdomain**
 
 ```
 https://test-agent.adcontextprotocol.org
@@ -208,7 +208,6 @@ https://test-agent.adcontextprotocol.org
 │
 │   └─► nginx maps to tenant_id (e.g., "wonderstruck")
 │       └─► Sets X-Tenant-Id: wonderstruck
-│           └─► Routes identically to subdomain
 │
 ├── /
 │   └─► nginx: proxy_pass → admin_ui:8001/
@@ -217,37 +216,41 @@ https://test-agent.adcontextprotocol.org
 │           (Exact same page as wonderstruck.sales-agent.scope3.com/)
 │
 ├── /admin/*
-│   └─► nginx: proxy_pass → admin_ui:8001/admin/*
-│       │       X-Tenant-Id: wonderstruck
-│       └─► Admin UI: Check auth, show tenant dashboard
-│           (Same as subdomain - not blocked!)
+│   └─► nginx: return 302
+│       │       Location: https://wonderstruck.sales-agent.scope3.com/admin/*
+│       └─► Redirect to subdomain (where OAuth works)
+│           Reason: OAuth callback can't set cookies for external domain
 │
 ├── /mcp/
 │   └─► nginx: proxy_pass → mcp_server:8080/mcp/
 │       │       X-Tenant-Id: wonderstruck
 │       │       x-adcp-auth: <token>
 │       └─► MCP Server: Serve tenant's MCP endpoints
-│           (External domain = white label, MCP works!)
+│           ✅ Works! (Header-based auth, no cookies needed)
 │
 ├── /a2a/
 │   └─► nginx: proxy_pass → a2a_server:8091/a2a/
 │       │       X-Tenant-Id: wonderstruck
 │       │       Authorization: Bearer <token>
 │       └─► A2A Server: Serve tenant's A2A endpoints
-│           (External domain = white label, A2A works!)
+│           ✅ Works! (Header-based auth, no cookies needed)
 │
 ├── /.well-known/agent.json
 │   └─► nginx: proxy_pass → a2a_server:8091/.well-known/agent.json
 │       │       X-Tenant-Id: wonderstruck
 │       └─► A2A Server: Return tenant's agent card
-│           (External domain serves same agent as subdomain!)
+│           ✅ Works! (Public endpoint, no auth needed)
 │
 └── /health
     └─► nginx: proxy_pass → admin_ui:8001/health
         └─► Admin UI: {"status": "healthy"}
 ```
 
-**Key Point**: The ONLY difference between `test-agent.adcontextprotocol.org` and `wonderstruck.sales-agent.scope3.com` is the domain name shown to users. All functionality is identical!
+**Key Points**:
+- **Agent access** (MCP/A2A): Works on external domain ✅ (header-based auth)
+- **Admin UI**: Redirects to subdomain ✅ (OAuth cookies work there)
+- **Landing page**: Works on external domain ✅ (no auth needed)
+- **Result**: Clean architecture, no cross-domain OAuth complexity!
 
 ## Authentication Flow Detail
 

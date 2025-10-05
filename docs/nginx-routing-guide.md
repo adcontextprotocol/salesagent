@@ -60,15 +60,16 @@ Complete reference for how requests are routed through nginx to our backend serv
 - **Traffic Path**: **Direct to Fly** (does NOT go through Approximated)
 - **Headers**: `Host: wonderstruck.sales-agent.scope3.com` (subdomain preserved)
 
-### 3. External Virtual Hosts (White-Labeled Tenant Access)
+### 3. External Virtual Hosts (White-Labeled Agent Access)
 - **Pattern**: `<any-domain-not-ending-in>.sales-agent.scope3.com`
 - **Examples**:
   - `test-agent.adcontextprotocol.org`
   - `custom-domain.example.com`
-- **Purpose**: White-labeled tenant access - **works identically to tenant subdomains**
+- **Purpose**: White-labeled **agent access** (MCP/A2A) - **admin uses subdomain**
 - **Traffic Path**: Through Approximated (which sets `Apx-Incoming-Host` header)
-- **Functionality**: Full tenant access (MCP, A2A, admin, landing page) - same as subdomain
+- **Functionality**: Agent endpoints (MCP, A2A, landing page) - **no admin UI**
 - **Mapping**: External domain maps to tenant ID (configured in database)
+- **Admin Access**: Use subdomain `<tenant>.sales-agent.scope3.com/admin` (OAuth works there)
 
 ## Routing Decision Tree
 
@@ -189,18 +190,18 @@ After login:
 
 ### 3. External Virtual Host: `test-agent.adcontextprotocol.org`
 
-**Shows**: White-labeled tenant access - **identical to tenant subdomain!**
+**Shows**: White-labeled **agent access** - **admin UI NOT supported** (use subdomain)
 
-| Path | Backend | Purpose | Auth Required |
-|------|---------|---------|---------------|
-| `/` | Admin UI `/` | Tenant landing page | No |
-| `/admin/*` | Admin UI `/admin/*` | Admin interface | Yes (OAuth) |
-| `/mcp/` | MCP Server `:8080` | MCP protocol | Yes (`x-adcp-auth` header) |
-| `/a2a/` | A2A Server `:8091` | A2A protocol | Yes (`Authorization` header) |
-| `/.well-known/agent.json` | A2A Server | Agent discovery | No |
-| `/health` | Admin UI `/health` | Health check | No |
+| Path | Backend | Purpose | Response |
+|------|---------|---------|----------|
+| `/` | Admin UI `/` | Tenant landing page | Tenant's public landing page |
+| `/admin/*` | ❌ Redirect | Not supported on external | 302 → `https://<tenant>.sales-agent.scope3.com/admin/*` |
+| `/mcp/` | MCP Server `:8080` | MCP protocol | ✅ Works (auth required) |
+| `/a2a/` | A2A Server `:8091` | A2A protocol | ✅ Works (auth required) |
+| `/.well-known/agent.json` | A2A Server | Agent discovery | ✅ Works (public) |
+| `/health` | Admin UI `/health` | Health check | ✅ Works |
 
-**Visual Flow**:
+**Visual Flow - Agent Access**:
 ```
 https://test-agent.adcontextprotocol.org/mcp/
 Headers:
@@ -220,14 +221,26 @@ MCP server reads X-Tenant-Id header
 Resolves tenant + principal from token
   ↓
 Returns MCP response for that tenant
-  (EXACT SAME as wonderstruck.sales-agent.scope3.com/mcp/)
+  (SAME DATA as wonderstruck.sales-agent.scope3.com/mcp/)
 ```
 
-**Why external domains work like subdomains**:
-- External domains are **white-labeled tenant access** for branding
-- They provide **full functionality**: MCP, A2A, admin, landing page
-- The ONLY difference is the domain name shown to users
-- Purpose: Allow tenants to use their own domain instead of `*.sales-agent.scope3.com`
+**Visual Flow - Admin Redirect**:
+```
+https://test-agent.adcontextprotocol.org/admin/products
+  ↓
+nginx detects /admin/* on external domain
+  ↓
+302 Redirect → https://wonderstruck.sales-agent.scope3.com/admin/products
+  ↓
+User lands on subdomain where OAuth works properly
+```
+
+**Why admin is NOT supported on external domains**:
+- **OAuth problem**: Callback goes to `sales-agent.scope3.com`, can't set cookies for external domain
+- **Simple solution**: Admin UI only works on subdomain
+- **User flow**: External domain redirects `/admin/*` to subdomain
+- **Agent access**: Still works perfectly on external domain (header-based auth, no cookies)
+- **Result**: Clean architecture, no cross-domain OAuth complexity
 
 ## Nginx Configuration Patterns
 
