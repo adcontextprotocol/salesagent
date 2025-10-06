@@ -95,27 +95,31 @@ class ToolSchemaValidator:
         return tools
 
     def find_schema_constructions(self, main_py_path: Path, tool_name: str) -> list[str]:
-        """Find which schema classes are constructed in a tool function."""
+        """Find which schema classes are constructed in a tool function or its _impl."""
         with open(main_py_path) as f:
             tree = ast.parse(f.read())
 
         schemas_used = []
 
-        # Find the tool function
+        # Check both the tool function and potential _toolname_impl function
+        function_names_to_check = [tool_name, f"_{tool_name}_impl"]
+
+        # Find the tool function(s)
         for node in ast.walk(tree):
-            if isinstance(node, ast.FunctionDef) and node.name == tool_name:
-                # Look for schema constructions within this function
-                for child in ast.walk(node):
-                    if isinstance(child, ast.Call):
-                        if isinstance(child.func, ast.Name):
-                            # Direct call like UpdateMediaBuyRequest(...)
-                            func_name = child.func.id
-                            if func_name.endswith("Request"):
-                                schemas_used.append(func_name)
-                        elif isinstance(child.func, ast.Attribute):
-                            # Attribute call like schemas.UpdateMediaBuyRequest(...)
-                            if child.func.attr.endswith("Request"):
-                                schemas_used.append(child.func.attr)
+            if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef):
+                if node.name in function_names_to_check:
+                    # Look for schema constructions within this function
+                    for child in ast.walk(node):
+                        if isinstance(child, ast.Call):
+                            if isinstance(child.func, ast.Name):
+                                # Direct call like UpdateMediaBuyRequest(...)
+                                func_name = child.func.id
+                                if func_name.endswith("Request"):
+                                    schemas_used.append(func_name)
+                            elif isinstance(child.func, ast.Attribute):
+                                # Attribute call like schemas.UpdateMediaBuyRequest(...)
+                                if child.func.attr.endswith("Request"):
+                                    schemas_used.append(child.func.attr)
 
         return schemas_used
 
@@ -163,18 +167,28 @@ class ToolSchemaValidator:
                     # May be used for other purposes
                     pass
 
-        # Check for missing required schema fields in tool parameters
+        # Check for missing schema fields in tool parameters
+        # We check ALL fields (required and optional) because if a client passes an optional
+        # field but the tool doesn't accept it, that's a parameter mismatch bug
         for field_name, field_info in schema_fields.items():
             if field_name not in tool_param_set:
                 # Check if field is required using Pydantic's is_required() method
-                # This properly handles fields with defaults, not just None types
                 is_required = field_info.is_required()
 
-                if is_required and field_name not in ["buyer_ref", "media_buy_id"]:  # OneOf fields
-                    self.errors.append(
-                        f"❌ {tool_name}: required field '{field_name}' from {schema_class.__name__} "
-                        f"missing in tool parameters"
-                    )
+                # Only check if tool constructs this schema directly
+                if schema_class.__name__ in constructed_schemas:
+                    if is_required and field_name not in ["buyer_ref", "media_buy_id"]:  # OneOf fields
+                        self.errors.append(
+                            f"❌ {tool_name}: required field '{field_name}' from {schema_class.__name__} "
+                            f"missing in tool parameters"
+                        )
+                    elif not is_required:
+                        # Optional field missing - this is a BUG!
+                        # Clients can pass this field but tool will reject it with "Unexpected keyword argument"
+                        self.errors.append(
+                            f"❌ {tool_name}: optional field '{field_name}' from {schema_class.__name__} "
+                            f"missing in tool parameters (clients can pass it but tool will reject it)"
+                        )
 
     def validate_all(self) -> bool:
         """Validate all registered tool-schema mappings."""
