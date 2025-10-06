@@ -73,11 +73,6 @@
 
         <div style="margin-top: 2rem;">
             <button type="submit" class="btn">Save Changes</button>
-            <a href="{{ url_for('products.gam_product_config', tenant_id=tenant_id, product_id=product.product_id) }}"
-               class="btn"
-               title="Configure GAM trafficking settings (priority, inventory targeting, etc.)">
-                Configure GAM Settings
-            </a>
             <a href="{{ url_for('products.list_products', tenant_id=tenant_id) }}" class="btn btn-secondary">Cancel</a>
         </div>
     </form>
