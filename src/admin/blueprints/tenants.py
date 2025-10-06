@@ -58,7 +58,7 @@ def dashboard(tenant_id):
             tenant=tenant,
             tenant_id=tenant_id,
             # Legacy template variables (calculated by service)
-            active_campaigns=metrics["active_buys"],
+            active_campaigns=metrics["live_buys"],
             total_spend=metrics["total_revenue"],
             principals_count=metrics["total_advertisers"],
             products_count=metrics["products_count"],

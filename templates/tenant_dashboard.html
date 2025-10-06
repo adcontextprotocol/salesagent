@@ -437,6 +437,11 @@
         border-bottom: 1px solid #f3f4f6;
     }
 
+    .mini-table tbody tr:hover {
+        background-color: #f9fafb;
+        transition: background-color 0.15s ease;
+    }
+
     .advertiser-name {
         font-weight: 600;
         color: #111827;
@@ -450,9 +455,14 @@
         font-weight: 600;
     }
 
-    .buy-status.active { background: #d1fae5; color: #065f46; }
-    .buy-status.pending { background: #fef3c7; color: #92400e; }
+    .buy-status.live { background: #d1fae5; color: #065f46; }
+    .buy-status.scheduled { background: #dbeafe; color: #1e40af; }
+    .buy-status.needs_creatives { background: #fef3c7; color: #92400e; }
+    .buy-status.needs_approval { background: #fed7aa; color: #9a3412; }
     .buy-status.completed { background: #e5e7eb; color: #374151; }
+    .buy-status.failed { background: #fee2e2; color: #991b1b; }
+    .buy-status.paused { background: #e0e7ff; color: #3730a3; }
+    .buy-status.draft { background: #f3f4f6; color: #6b7280; }
 
     .spend-amount {
         font-weight: 600;
@@ -507,23 +517,31 @@
     </div>
 
     <div class="metric-card buys">
-        <div class="metric-label">Active Media Buys</div>
-        <div class="metric-value">{{ metrics.active_buys }}</div>
+        <div class="metric-label">Live Campaigns</div>
+        <div class="metric-value">{{ metrics.live_buys }}</div>
         <div class="metric-change neutral">
-            {{ metrics.pending_buys }} pending approval
+            {% if metrics.scheduled_buys > 0 %}
+                <i class="fas fa-calendar-check"></i>
+                {{ metrics.scheduled_buys }} scheduled to start
+            {% else %}
+                No campaigns scheduled
+            {% endif %}
         </div>
     </div>
 
     <div class="metric-card workflows">
-        <div class="metric-label">Active Workflows</div>
-        <div class="metric-value">{{ metrics.pending_workflows }}</div>
-        <div class="metric-change {{ 'negative' if metrics.approval_needed > 0 else 'neutral' }}">
-            {% if metrics.approval_needed > 0 %}
+        <div class="metric-label">Needs Attention</div>
+        <div class="metric-value">{{ metrics.needs_attention }}</div>
+        <div class="metric-change {{ 'negative' if metrics.needs_attention > 0 else 'positive' }}">
+            {% if metrics.needs_creatives > 0 %}
+                <i class="fas fa-image"></i>
+                {{ metrics.needs_creatives }} need creatives
+            {% elif metrics.needs_approval > 0 %}
                 <i class="fas fa-hand-paper"></i>
-                {{ metrics.approval_needed }} need approval
+                {{ metrics.needs_approval }} need approval
             {% else %}
                 <i class="fas fa-check-circle"></i>
-                All workflows running smoothly
+                All campaigns ready
             {% endif %}
         </div>
     </div>
@@ -669,6 +687,13 @@
                         <div style="font-size: 0.75rem; color: #6b7280;">View & sync</div>
                     </div>
                 </a>
+                <a href="{{ script_name }}/tenant/{{ tenant.tenant_id }}/orders" class="action-button">
+                    <div class="action-icon reports">📋</div>
+                    <div>
+                        <div style="font-weight: 600;">GAM Orders & Line Items</div>
+                        <div style="font-size: 0.75rem; color: #6b7280;">Browse & sync</div>
+                    </div>
+                </a>
                 {% endif %}
 
                 <a href="{{ script_name }}/tenant/{{ tenant.tenant_id }}/reporting" class="action-button">
@@ -739,12 +764,16 @@
         </thead>
         <tbody>
             {% for buy in recent_media_buys[:5] %}
-            <tr>
+            <tr style="cursor: pointer;" onclick="window.location='{{ script_name }}/tenant/{{ tenant.tenant_id }}/media-buy/{{ buy.media_buy_id }}'">
                 <td class="advertiser-name">{{ buy.advertiser_name }}</td>
                 <td><code style="font-size: 0.75rem;">{{ buy.media_buy_id }}</code></td>
                 <td><code style="font-size: 0.75rem;">{{ buy.buyer_ref or '-' }}</code></td>
                 <td>
-                    <span class="buy-status {{ buy.status }}">{{ buy.status|upper }}</span>
+                    <span class="buy-status {{ buy.readiness_state }}" title="{% if buy.readiness_details.gam_order_status %}GAM: {{ buy.readiness_details.gam_order_status }}{% if buy.readiness_details.gam_line_items_total > 0 %} ({{ buy.readiness_details.gam_line_items_ready }}/{{ buy.readiness_details.gam_line_items_total }} line items ready){% endif %}&#10;{% endif %}{{ buy.readiness_details.blocking_issues|join(', ') if buy.readiness_details.blocking_issues else 'Ready' }}{% if buy.readiness_details.warnings %}&#10;{{ buy.readiness_details.warnings|join(', ') }}{% endif %}">
+                        {{ buy.readiness_state|upper|replace('_', ' ') }}
+                        {% if buy.is_ready %}✓{% endif %}
+                        {% if buy.readiness_details.gam_order_status %}<span style="font-size: 0.7em; opacity: 0.7;">📋</span>{% endif %}
+                    </span>
                 </td>
                 <td class="spend-amount">${{ "{:,.0f}".format(buy.budget) }} {{ buy.currency or 'USD' }}</td>
                 <td>${{ "{:,.0f}".format(buy.spend) }}</td>
