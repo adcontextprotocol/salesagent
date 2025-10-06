@@ -78,10 +78,27 @@
                     {% endif %}
                 </td>
                 <td>
-                    {% if product.is_fixed_price %}
-                    <span class="badge">Guaranteed</span>
+                    {% if product.implementation_config and product.implementation_config.line_item_type %}
+                        {# Show GAM line item type if available #}
+                        {% set line_item_type = product.implementation_config.line_item_type %}
+                        {% if line_item_type == "STANDARD" %}
+                            <span class="badge" style="background: #4285f4;">Standard</span>
+                        {% elif line_item_type == "SPONSORSHIP" %}
+                            <span class="badge" style="background: #ea4335;">Sponsorship</span>
+                        {% elif line_item_type == "PRICE_PRIORITY" %}
+                            <span class="badge" style="background: #fbbc04; color: #333;">Price Priority</span>
+                        {% elif line_item_type == "HOUSE" %}
+                            <span class="badge badge-secondary">House</span>
+                        {% else %}
+                            <span class="badge">{{ line_item_type }}</span>
+                        {% endif %}
                     {% else %}
-                    <span class="badge badge-secondary">Non-guaranteed</span>
+                        {# Fallback to generic delivery type for non-GAM products #}
+                        {% if product.is_fixed_price %}
+                        <span class="badge">Guaranteed</span>
+                        {% else %}
+                        <span class="badge badge-secondary">Non-guaranteed</span>
+                        {% endif %}
                     {% endif %}
                 </td>
                 <td>
