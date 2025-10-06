@@ -202,6 +202,8 @@ document.getElementById('line_item_type').addEventListener('change', function() 
     } else {
         // Price Priority & House: Hide priority section (handled automatically)
         prioritySection.style.display = 'none';
+        // Remove any existing priority field to prevent validation issues
+        priorityContainer.innerHTML = '';
     }
 });
 
