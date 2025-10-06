@@ -319,7 +319,7 @@ class AIProductConfigurationService:
                         {
                             "network_code": adapter_config_row.gam_network_code,
                             "refresh_token": adapter_config_row.gam_refresh_token,
-                            "company_id": adapter_config_row.gam_company_id,
+                            # NOTE: company_id (advertiser_id) is per-principal, not per-tenant
                             "trafficker_id": adapter_config_row.gam_trafficker_id,
                             "manual_approval_required": adapter_config_row.gam_manual_approval_required or False,
                         }

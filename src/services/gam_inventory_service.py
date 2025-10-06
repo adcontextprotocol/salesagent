@@ -811,7 +811,7 @@ def create_inventory_endpoints(app):
                 principal_id="system",
                 name="System",
                 access_token="system_token",  # Required field
-                platform_mappings={"gam_advertiser_id": adapter_config.gam_company_id or "system"},
+                platform_mappings={},  # No advertiser_id needed for inventory sync
             )
 
             # Validate required fields for inventory sync (only network code is required)
