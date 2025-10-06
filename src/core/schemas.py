@@ -1989,6 +1989,24 @@ class CreateMediaBuyRequest(BaseModel):
 
     def get_total_budget(self) -> float:
         """Get total budget, handling both new and legacy formats."""
+        # AdCP v2.4: Sum budgets from all packages
+        if self.packages:
+            total = 0.0
+            for package in self.packages:
+                # Handle both Package objects and dicts
+                if isinstance(package, dict):
+                    budget = package.get("budget")
+                    if budget:
+                        # Budget might be a dict or Budget object
+                        total += budget.get("total", 0.0) if isinstance(budget, dict) else budget.total
+                else:
+                    # Package object
+                    if package.budget:
+                        total += package.budget.total
+            if total > 0:
+                return total
+
+        # Legacy format: top-level budget
         if self.budget:
             return self.budget.total
         return self.total_budget or 0.0
