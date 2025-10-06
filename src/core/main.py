@@ -265,7 +265,11 @@ def get_principal_from_context(context: Context | None) -> str | None:
     try:
         headers = get_http_headers()
     except Exception:
-        # Fallback to context.meta approach for sync tools
+        pass  # Will try fallback below
+
+    # If get_http_headers() returned empty dict or None, try context.meta fallback
+    # This is necessary for sync tools where get_http_headers() may not work
+    if not headers:
         if hasattr(context, "meta") and context.meta and "headers" in context.meta:
             headers = context.meta["headers"]
         # Try other possible attributes
