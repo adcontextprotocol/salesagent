@@ -190,13 +190,14 @@ class TestGAMOrderLifecycleIntegration:
                 assert response.status == "accepted"
                 assert "activate_order" in response.detail
 
-            # Test activation with guaranteed items (should fail)
+            # Test activation with guaranteed items (should submit for workflow)
             with patch.object(adapter, "_check_order_has_guaranteed_items", return_value=(True, ["STANDARD"])):
                 response = adapter.update_media_buy(
                     media_buy_id="12345", action="activate_order", package_id=None, budget=None, today=datetime.now()
                 )
-                assert response.status == "failed"
+                assert response.status == "submitted"
                 assert "Cannot auto-activate order with guaranteed line items" in response.reason
+                assert response.workflow_step_id is not None
 
     # Helper method for line item classification (no external dependencies)
     def _classify_line_items(self, line_items):
