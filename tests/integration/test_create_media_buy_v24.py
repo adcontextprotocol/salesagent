@@ -73,6 +73,7 @@ class TestCreateMediaBuyV24Format:
                 delivery_type="guaranteed",
                 cpm=10.0,
                 min_spend=1000.0,
+                targeting_template={},  # Required field
             )
             session.add(product)
 
