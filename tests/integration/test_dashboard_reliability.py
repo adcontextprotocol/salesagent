@@ -205,15 +205,17 @@ class TestDashboardTemplateIntegration:
         service = DashboardService(test_tenant.tenant_id)
         metrics = service.get_dashboard_metrics()
 
-        # Required metrics for template
+        # Required metrics for template (updated for readiness system)
         required_metrics = [
             "total_revenue",
-            "active_buys",
-            "pending_buys",
+            "live_buys",
+            "scheduled_buys",
+            "needs_attention",
             "active_advertisers",
             "recent_activity",
             "pending_workflows",
             "approval_needed",
+            "readiness_summary",
         ]
 
         for metric in required_metrics:

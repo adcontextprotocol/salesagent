@@ -131,6 +131,12 @@ def create_tenant():
             tenant_id = f"tenant_{uuid.uuid4().hex[:8]}"
             admin_token = secrets.token_urlsafe(32)
 
+            # Handle authorized emails - automatically add creator's email
+            email_list = data.get("authorized_emails", [])
+            creator_email = data.get("creator_email")
+            if creator_email and creator_email not in email_list:
+                email_list.append(creator_email)
+
             # Create tenant
             new_tenant = Tenant(
                 tenant_id=tenant_id,
@@ -142,7 +148,7 @@ def create_tenant():
                 billing_contact=data.get("billing_contact"),
                 max_daily_budget=data.get("max_daily_budget", 10000),
                 enable_axe_signals=data.get("enable_axe_signals", True),
-                authorized_emails=json.dumps(data.get("authorized_emails", [])),
+                authorized_emails=json.dumps(email_list),
                 authorized_domains=json.dumps(data.get("authorized_domains", [])),
                 slack_webhook_url=data.get("slack_webhook_url"),
                 slack_audit_webhook_url=data.get("slack_audit_webhook_url"),

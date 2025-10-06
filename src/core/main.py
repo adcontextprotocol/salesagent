@@ -607,8 +607,30 @@ def _get_principal_id_from_context(context: Context) -> str:
 
     # Otherwise, extract from FastMCP Context headers
     principal_id = get_principal_from_context(context)
+
+    # Extract headers for debugging
+    headers = {}
+    if hasattr(context, "meta"):
+        headers = context.meta.get("headers", {})
+    auth_header = headers.get("x-adcp-auth", "NOT_PRESENT")
+    apx_host = headers.get("apx-incoming-host", "NOT_PRESENT")
+
     if not principal_id:
-        raise ToolError("Missing or invalid x-adcp-auth header for authentication.")
+        # Determine if header is missing or just invalid
+        if auth_header == "NOT_PRESENT":
+            raise ToolError(
+                f"Missing x-adcp-auth header. "
+                f"Apx-Incoming-Host: {apx_host}, "
+                f"Tenant: {get_current_tenant().get('tenant_id') if get_current_tenant() else 'NONE'}"
+            )
+        else:
+            # Header present but invalid (token not found in DB)
+            raise ToolError(
+                f"Invalid x-adcp-auth token (not found in database). "
+                f"Token: {auth_header[:20]}..., "
+                f"Apx-Incoming-Host: {apx_host}, "
+                f"Tenant: {get_current_tenant().get('tenant_id') if get_current_tenant() else 'NONE'}"
+            )
 
     console.print(f"[bold green]Authenticated principal '{principal_id}' (from FastMCP Context)[/bold green]")
     return principal_id
@@ -2890,6 +2912,15 @@ def _create_media_buy_impl(
         # Store the media buy in memory (for backward compatibility)
         media_buys[response.media_buy_id] = (req, principal_id)
 
+        # Determine initial status based on flight dates
+        now = datetime.now(UTC)
+        if now < req.start_time:
+            media_buy_status = "pending"
+        elif now > req.end_time:
+            media_buy_status = "completed"
+        else:
+            media_buy_status = "active"
+
         # Store the media buy in database (context_id is NULL for synchronous operations)
         tenant = get_current_tenant()
         with get_db_session() as session:
@@ -2908,7 +2939,7 @@ def _create_media_buy_impl(
                 end_date=req.end_time.date(),  # Legacy field for compatibility
                 start_time=req.start_time,  # AdCP v2.4 datetime scheduling
                 end_time=req.end_time,  # AdCP v2.4 datetime scheduling
-                status=response.status or TaskStatus.WORKING,
+                status=media_buy_status,
                 raw_request=req.model_dump(mode="json"),
             )
             session.add(new_media_buy)

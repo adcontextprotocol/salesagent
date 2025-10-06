@@ -254,10 +254,15 @@ def create_tenant():
 
             # Set authorization settings
             authorized_emails = request.form.get("authorized_emails", "")
-            if authorized_emails:
-                new_tenant.authorized_emails = json.dumps(
-                    [e.strip() for e in authorized_emails.split(",") if e.strip()]
-                )
+            email_list = [e.strip() for e in authorized_emails.split(",") if e.strip()]
+
+            # Automatically add the creator's email to authorized list
+            creator_email = session.get("user")
+            if creator_email and creator_email not in email_list:
+                email_list.append(creator_email)
+
+            if email_list:
+                new_tenant.authorized_emails = json.dumps(email_list)
 
             authorized_domains = request.form.get("authorized_domains", "")
             if authorized_domains:
