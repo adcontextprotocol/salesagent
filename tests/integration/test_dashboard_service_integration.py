@@ -121,6 +121,7 @@ class TestDashboardServiceIntegration:
         tenant2 = service.get_tenant()
         assert tenant2 is tenant  # Same object reference (cached)
 
+    @pytest.mark.requires_db
     def test_dashboard_service_field_access_safety(self, test_tenant_data):
         """Test that dashboard service safely accesses all database fields without AttributeError."""
         tenant_id = test_tenant_data["tenant_id"]
