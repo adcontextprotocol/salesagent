@@ -1056,13 +1056,24 @@ class AdCPRequestHandler(RequestHandler):
                     "next_steps": response.get("next_steps", []),
                 }
             else:
-                # Response is a Pydantic object
+                # Response is a Pydantic object - but packages might be dicts or objects
+                # Handle packages list safely - check first element to determine type
+                packages_list = []
+                if response.packages:
+                    first_package = response.packages[0]
+                    if isinstance(first_package, dict):
+                        # Packages are already dicts
+                        packages_list = response.packages
+                    else:
+                        # Packages are Pydantic objects - serialize them
+                        packages_list = [pkg.model_dump() for pkg in response.packages]
+
                 return {
                     "success": True,
                     "media_buy_id": response.media_buy_id,
                     "status": response.status,
                     "message": response.message or "Media buy created successfully",
-                    "packages": [package.model_dump() for package in response.packages] if response.packages else [],
+                    "packages": packages_list,
                     "next_steps": response.next_steps if hasattr(response, "next_steps") else [],
                 }
 
