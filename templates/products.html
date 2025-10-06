@@ -18,23 +18,17 @@
 
 <div class="card">
     {% if products|length == 0 %}
-    <!-- No products - show welcome message and wizard -->
+    <!-- No products - show welcome message -->
     <div class="empty-state">
         <h2>Welcome to AdCP Product Management</h2>
         <div class="empty-state-icon">📦</div>
         <p class="empty-state-message">
-            You haven't created any products yet. Let's set up your first products based on your ad server configuration and target markets.
+            You haven't created any products yet. Create your first product to start offering inventory to buyers.
         </p>
         <div class="empty-state-actions">
-            <a href="{{ url_for('products.setup_wizard', tenant_id=tenant_id) }}" class="btn btn-primary btn-large">
-                Start Product Setup Wizard
+            <a href="{{ url_for('products.add_product', tenant_id=tenant_id) }}" class="btn btn-primary btn-large">
+                Create Your First Product
             </a>
-            <p class="alternative-options">
-                Or you can:
-                <a href="{{ url_for('products.browse_templates', tenant_id=tenant_id) }}">browse templates</a> |
-                <a href="{{ url_for('products.bulk_upload_form', tenant_id=tenant_id) }}">bulk upload</a> |
-                <a href="{{ url_for('products.add_product', tenant_id=tenant_id) }}">create manually</a>
-            </p>
         </div>
     </div>
     {% else %}
@@ -43,10 +37,7 @@
         <h2>Products - {{ tenant_name }}</h2>
         <div style="display: flex; gap: 0.5rem;">
             <a href="{{ url_for('tenants.dashboard', tenant_id=tenant_id) }}" class="btn btn-secondary">← Back to Home</a>
-            <a href="{{ url_for('products.browse_templates', tenant_id=tenant_id) }}" class="btn btn-primary">Browse Templates</a>
-            <a href="{{ url_for('products.bulk_upload_form', tenant_id=tenant_id) }}" class="btn btn-secondary">Bulk Upload</a>
-            <a href="{{ url_for('products.add_product_ai_form', tenant_id=tenant_id) }}" class="btn btn-secondary">Add with AI</a>
-            <a href="{{ url_for('products.add_product', tenant_id=tenant_id) }}" class="btn btn-secondary">Add Manually</a>
+            <a href="{{ url_for('products.add_product', tenant_id=tenant_id) }}" class="btn btn-primary">Add Product</a>
         </div>
     </div>
 
