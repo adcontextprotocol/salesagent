@@ -83,9 +83,71 @@ def reporting(tenant_id):
 @operations_bp.route("/workflows", methods=["GET"])
 @require_tenant_access()
 def workflows(tenant_id, **kwargs):
-    """TODO: Extract implementation from admin_ui.py."""
-    # Placeholder implementation
-    return jsonify({"error": "Not yet implemented"}), 501
+    """List all workflows and pending approvals."""
+    from flask import render_template
+
+    from src.core.database.database_session import get_db_session
+    from src.core.database.models import Context, MediaBuy, Tenant, WorkflowStep
+    from src.core.database.models import Principal as ModelPrincipal
+
+    with get_db_session() as db:
+        # Get tenant
+        tenant = db.query(Tenant).filter_by(tenant_id=tenant_id).first()
+        if not tenant:
+            return "Tenant not found", 404
+
+        # Get all workflow steps that need attention
+        pending_steps = (
+            db.query(WorkflowStep)
+            .join(Context, WorkflowStep.context_id == Context.context_id)
+            .filter(Context.tenant_id == tenant_id, WorkflowStep.status == "pending_approval")
+            .order_by(WorkflowStep.created_at.desc())
+            .all()
+        )
+
+        # Get media buys for context
+        media_buys = db.query(MediaBuy).filter_by(tenant_id=tenant_id).order_by(MediaBuy.created_at.desc()).all()
+
+        # Build summary stats
+        summary = {
+            "active_buys": len([mb for mb in media_buys if mb.status == "active"]),
+            "pending_tasks": len(pending_steps),
+            "completed_today": 0,  # TODO: Calculate from workflow history
+            "total_spend": sum(mb.budget or 0 for mb in media_buys if mb.status == "active"),
+        }
+
+        # Format workflow steps for display
+        workflows_list = []
+        for step in pending_steps:
+            context = db.query(Context).filter_by(context_id=step.context_id).first()
+            principal = None
+            if context and context.principal_id:
+                principal = (
+                    db.query(ModelPrincipal).filter_by(principal_id=context.principal_id, tenant_id=tenant_id).first()
+                )
+
+            workflows_list.append(
+                {
+                    "step_id": step.step_id,
+                    "workflow_id": step.workflow_id,
+                    "step_name": step.step_name,
+                    "status": step.status,
+                    "created_at": step.created_at,
+                    "principal_name": principal.name if principal else "Unknown",
+                    "request_data": step.request_data,
+                }
+            )
+
+        return render_template(
+            "workflows.html",
+            tenant=tenant,
+            tenant_id=tenant_id,
+            summary=summary,
+            workflows=workflows_list,
+            media_buys=media_buys,
+            tasks=[],  # Deprecated - using workflow_steps now
+            audit_logs=[],  # Will be populated if needed
+        )
 
 
 @operations_bp.route("/media-buy/<media_buy_id>", methods=["GET"])

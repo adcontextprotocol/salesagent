@@ -344,6 +344,9 @@
 
     .action-icon.settings { background: #ede9fe; color: #7c3aed; }
     .action-icon.products { background: #dbeafe; color: #2563eb; }
+    .action-icon.properties { background: #fef3c7; color: #d97706; }
+    .action-icon.creatives { background: #fce7f3; color: #db2777; }
+    .action-icon.workflows { background: #dbeafe; color: #1e40af; }
     .action-icon.inventory { background: #d1fae5; color: #059669; }
     .action-icon.reports { background: #fed7aa; color: #ea580c; }
 
@@ -517,14 +520,14 @@
     </div>
 
     <div class="metric-card buys">
-        <div class="metric-label">Live Campaigns</div>
+        <div class="metric-label">Live Media Buys</div>
         <div class="metric-value">{{ metrics.live_buys }}</div>
         <div class="metric-change neutral">
             {% if metrics.scheduled_buys > 0 %}
                 <i class="fas fa-calendar-check"></i>
                 {{ metrics.scheduled_buys }} scheduled to start
             {% else %}
-                No campaigns scheduled
+                No media buys scheduled
             {% endif %}
         </div>
     </div>
@@ -541,7 +544,7 @@
                 {{ metrics.needs_approval }} need approval
             {% else %}
                 <i class="fas fa-check-circle"></i>
-                All campaigns ready
+                All media buys ready
             {% endif %}
         </div>
     </div>
@@ -654,53 +657,37 @@
     <!-- Quick Actions -->
     <div>
         <div class="quick-actions">
-            <h3>Quick Actions</h3>
+            <h3>Operations</h3>
             <div class="action-grid">
-                <a href="{{ script_name }}/tenant/{{ tenant.tenant_id }}/settings" class="action-button">
-                    <div class="action-icon settings">⚙️</div>
+                <a href="{{ script_name }}/tenant/{{ tenant.tenant_id }}/creative-formats/list" class="action-button">
+                    <div class="action-icon creatives">🎨</div>
                     <div>
-                        <div style="font-weight: 600;">Configuration</div>
-                        <div style="font-size: 0.75rem; color: #6b7280;">Ad server, products, formats</div>
+                        <div style="font-weight: 600;">Uploaded Creatives</div>
+                        <div style="font-size: 0.75rem; color: #6b7280;">View all creatives & media buys</div>
                     </div>
                 </a>
-
-                <a href="{{ script_name }}/tenant/{{ tenant.tenant_id }}/products" class="action-button">
-                    <div class="action-icon products">📦</div>
-                    <div>
-                        <div style="font-weight: 600;">Products</div>
-                        <div style="font-size: 0.75rem; color: #6b7280;">{{ product_count }} configured</div>
-                    </div>
-                </a>
-                <a href="{{ script_name }}/tenant/{{ tenant.tenant_id }}/authorized-properties" class="action-button">
-                    <div class="action-icon properties">🏠</div>
-                    <div>
-                        <div style="font-weight: 600;">Authorized Properties</div>
-                        <div style="font-size: 0.75rem; color: #6b7280;">Properties this agent represents</div>
-                    </div>
-                </a>
-
-                {% if tenant.ad_server == 'google_ad_manager' %}
-                <a href="{{ script_name }}/tenant/{{ tenant.tenant_id }}/inventory" class="action-button">
-                    <div class="action-icon inventory">📊</div>
-                    <div>
-                        <div style="font-weight: 600;">GAM Inventory</div>
-                        <div style="font-size: 0.75rem; color: #6b7280;">View & sync</div>
-                    </div>
-                </a>
-                <a href="{{ script_name }}/tenant/{{ tenant.tenant_id }}/orders" class="action-button">
-                    <div class="action-icon reports">📋</div>
-                    <div>
-                        <div style="font-weight: 600;">GAM Orders & Line Items</div>
-                        <div style="font-size: 0.75rem; color: #6b7280;">Browse & sync</div>
-                    </div>
-                </a>
-                {% endif %}
 
                 <a href="{{ script_name }}/tenant/{{ tenant.tenant_id }}/reporting" class="action-button">
                     <div class="action-icon reports">📈</div>
                     <div>
                         <div style="font-weight: 600;">Reports</div>
-                        <div style="font-size: 0.75rem; color: #6b7280;">Performance data</div>
+                        <div style="font-size: 0.75rem; color: #6b7280;">Performance & delivery data</div>
+                    </div>
+                </a>
+
+                <a href="{{ script_name }}/tenant/{{ tenant.tenant_id }}/workflows" class="action-button">
+                    <div class="action-icon workflows">📋</div>
+                    <div>
+                        <div style="font-weight: 600;">Workflows</div>
+                        <div style="font-size: 0.75rem; color: #6b7280;">Approvals & reviews</div>
+                    </div>
+                </a>
+
+                <a href="{{ script_name }}/tenant/{{ tenant.tenant_id }}/settings" class="action-button">
+                    <div class="action-icon settings">⚙️</div>
+                    <div>
+                        <div style="font-weight: 600;">Settings</div>
+                        <div style="font-size: 0.75rem; color: #6b7280;">Products, properties, configuration</div>
                     </div>
                 </a>
             </div>
