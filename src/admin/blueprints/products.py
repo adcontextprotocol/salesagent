@@ -111,7 +111,16 @@ def list_products(tenant_id):
 @products_bp.route("/add", methods=["GET", "POST"])
 @require_tenant_access()
 def add_product(tenant_id):
-    """Add a new product."""
+    """Add a new product - adapter-specific form."""
+    # Get tenant's adapter type
+    with get_db_session() as db_session:
+        tenant = db_session.query(Tenant).filter_by(tenant_id=tenant_id).first()
+        if not tenant:
+            flash("Tenant not found", "error")
+            return redirect(url_for("products.list_products", tenant_id=tenant_id))
+
+        adapter_type = tenant.ad_server or "mock"
+
     if request.method == "POST":
         try:
             # Sanitize form data
@@ -151,9 +160,43 @@ def add_product(tenant_id):
                     if price_min and price_max:
                         price_guidance = {"min": price_min, "max": price_max}
 
-                # Generate default GAM implementation config
-                gam_config_service = GAMProductConfigService()
-                default_impl_config = gam_config_service.generate_default_config(delivery_type, formats)
+                # Build implementation config based on adapter type
+                implementation_config = {}
+                if adapter_type == "google_ad_manager":
+                    # Parse GAM-specific fields from unified form
+                    gam_config_service = GAMProductConfigService()
+                    base_config = gam_config_service.generate_default_config(delivery_type, formats)
+
+                    # Add ad unit/placement targeting if provided
+                    ad_unit_ids = form_data.get("targeted_ad_unit_ids", "").strip()
+                    if ad_unit_ids:
+                        base_config["targeted_ad_unit_ids"] = [id.strip() for id in ad_unit_ids.split("\n") if id.strip()]
+
+                    placement_ids = form_data.get("targeted_placement_ids", "").strip()
+                    if placement_ids:
+                        base_config["targeted_placement_ids"] = [
+                            id.strip() for id in placement_ids.split("\n") if id.strip()
+                        ]
+
+                    base_config["include_descendants"] = form_data.get("include_descendants") == "on"
+
+                    # Add advanced GAM settings if provided
+                    if form_data.get("line_item_type"):
+                        base_config["line_item_type"] = form_data["line_item_type"]
+                    if form_data.get("priority"):
+                        base_config["priority"] = int(form_data["priority"])
+                    if form_data.get("cost_type"):
+                        base_config["cost_type"] = form_data["cost_type"]
+                    if form_data.get("creative_rotation_type"):
+                        base_config["creative_rotation_type"] = form_data["creative_rotation_type"]
+                    if form_data.get("delivery_rate_type"):
+                        base_config["delivery_rate_type"] = form_data["delivery_rate_type"]
+
+                    implementation_config = base_config
+                else:
+                    # For other adapters, use simple config
+                    gam_config_service = GAMProductConfigService()
+                    implementation_config = gam_config_service.generate_default_config(delivery_type, formats)
 
                 # Create product with correct fields matching the Product model
                 product = Product(
@@ -168,17 +211,13 @@ def add_product(tenant_id):
                     cpm=cpm,
                     price_guidance=price_guidance,
                     targeting_template={},  # Empty targeting template
-                    implementation_config=default_impl_config,  # GAM defaults
+                    implementation_config=implementation_config
                 )
                 db_session.add(product)
                 db_session.commit()
 
-                flash(
-                    f"Product '{product.name}' created with default GAM configuration. "
-                    f"Click 'GAM Config' to configure inventory targeting.",
-                    "success",
-                )
-                # Redirect to products list - user can click GAM Config button when ready
+                flash(f"Product '{product.name}' created successfully!", "success")
+                # Redirect to products list
                 return redirect(url_for("products.list_products", tenant_id=tenant_id))
 
         except Exception as e:
@@ -186,9 +225,23 @@ def add_product(tenant_id):
             flash("Error creating product", "error")
             return redirect(url_for("products.add_product", tenant_id=tenant_id))
 
-    # GET request - show form
-    formats = get_creative_formats()
-    return render_template("add_product.html", tenant_id=tenant_id, formats=formats)
+    # GET request - show adapter-specific form
+    if adapter_type == "google_ad_manager":
+        # For GAM: unified form with inventory selection
+        # Check if inventory has been synced
+        from src.core.database.models import GAMInventory
+
+        with get_db_session() as db_session:
+            inventory_count = db_session.query(GAMInventory).filter_by(tenant_id=tenant_id).count()
+            inventory_synced = inventory_count > 0
+
+        return render_template(
+            "add_product_gam.html", tenant_id=tenant_id, inventory_synced=inventory_synced, formats=get_creative_formats()
+        )
+    else:
+        # For Mock and other adapters: simple form
+        formats = get_creative_formats()
+        return render_template("add_product.html", tenant_id=tenant_id, formats=formats)
 
 
 @products_bp.route("/<product_id>/edit", methods=["GET", "POST"])
