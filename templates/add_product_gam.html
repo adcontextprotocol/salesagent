@@ -33,15 +33,22 @@
 
         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
             <div class="form-group">
-                <label for="delivery_type">Delivery Type *</label>
-                <select id="delivery_type" name="delivery_type" required>
-                    <option value="guaranteed">Guaranteed</option>
-                    <option value="non_guaranteed">Non-Guaranteed</option>
+                <label for="line_item_type">Line Item Type *</label>
+                <select id="line_item_type" name="line_item_type" required>
+                    <option value="STANDARD">Standard (Fixed CPM + Priority)</option>
+                    <option value="SPONSORSHIP">Sponsorship (Fixed CPM + Roadblock)</option>
+                    <option value="PRICE_PRIORITY">Price Priority (Floor CPM)</option>
+                    <option value="HOUSE">House (No Price)</option>
                 </select>
+                <small style="color: #666; display: block; margin-top: 0.25rem;">
+                    Standard/Sponsorship: Fixed price + priority<br>
+                    Price Priority: Floor price, priority 12<br>
+                    House: Free, priority 16
+                </small>
             </div>
 
             <div class="form-group" id="pricing-container">
-                <!-- Pricing fields populated by JavaScript based on delivery type -->
+                <!-- Pricing fields populated by JavaScript based on line item type -->
             </div>
         </div>
 
@@ -120,34 +127,13 @@
                 Advanced GAM Settings (Optional)
             </summary>
 
-            <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 1rem; margin-top: 1rem;">
-                <div class="form-group">
-                    <label for="line_item_type">Line Item Type</label>
-                    <select id="line_item_type" name="line_item_type">
-                        <option value="">Use Default</option>
-                        <option value="STANDARD">Standard</option>
-                        <option value="SPONSORSHIP">Sponsorship</option>
-                        <option value="NETWORK">Network</option>
-                        <option value="HOUSE">House</option>
-                        <option value="PRICE_PRIORITY">Price Priority</option>
-                    </select>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-top: 1rem;">
+                <div class="form-group" id="priority-container">
+                    <!-- Priority field shown/hidden based on line item type -->
                 </div>
 
                 <div class="form-group">
-                    <label for="priority">Priority (1-16)</label>
-                    <input type="number" id="priority" name="priority" min="1" max="16" placeholder="Auto">
-                    <small style="color: #666;">Lower = higher priority</small>
-                </div>
-
-                <div class="form-group">
-                    <label for="cost_type">Cost Type</label>
-                    <select id="cost_type" name="cost_type">
-                        <option value="">Use Default</option>
-                        <option value="CPM">CPM</option>
-                        <option value="CPC">CPC</option>
-                        <option value="CPD">CPD</option>
-                        <option value="CPA">CPA</option>
-                    </select>
+                    <!-- Placeholder for alignment -->
                 </div>
             </div>
 
@@ -200,34 +186,66 @@
 </style>
 
 <script>
-// Dynamic pricing fields based on delivery type
-document.getElementById('delivery_type').addEventListener('change', function() {
-    const container = document.getElementById('pricing-container');
-    const isGuaranteed = this.value === 'guaranteed';
+// Dynamic pricing and priority fields based on line item type
+document.getElementById('line_item_type').addEventListener('change', function() {
+    const pricingContainer = document.getElementById('pricing-container');
+    const priorityContainer = document.getElementById('priority-container');
+    const lineItemType = this.value;
 
-    if (isGuaranteed) {
-        container.innerHTML = `
+    // Update pricing fields
+    if (lineItemType === 'HOUSE') {
+        // House: No pricing
+        pricingContainer.innerHTML = `
             <div class="form-group" style="margin: 0;">
-                <label for="cpm">CPM ($)</label>
-                <input type="number" id="cpm" name="cpm" step="0.01" min="0" placeholder="e.g., 15.00">
+                <label>Price</label>
+                <p style="color: #666; margin: 0.5rem 0 0 0; font-style: italic;">No price (house line item)</p>
+            </div>
+        `;
+    } else if (lineItemType === 'PRICE_PRIORITY') {
+        // Price Priority: Floor price
+        pricingContainer.innerHTML = `
+            <div class="form-group" style="margin: 0;">
+                <label for="floor_cpm">Floor CPM ($) *</label>
+                <input type="number" id="floor_cpm" name="floor_cpm" step="0.01" min="0" placeholder="e.g., 5.00" required>
+                <small style="color: #666; display: block; margin-top: 0.25rem;">Minimum CPM for this inventory</small>
             </div>
         `;
     } else {
-        container.innerHTML = `
+        // Standard/Sponsorship: Fixed price
+        pricingContainer.innerHTML = `
             <div class="form-group" style="margin: 0;">
-                <label>Price Guidance Range ($)</label>
-                <div style="display: flex; gap: 0.5rem; align-items: center;">
-                    <input type="number" id="price_guidance_min" name="price_guidance_min" step="0.01" min="0" placeholder="Min" style="flex: 1;">
-                    <span>-</span>
-                    <input type="number" id="price_guidance_max" name="price_guidance_max" step="0.01" min="0" placeholder="Max" style="flex: 1;">
-                </div>
+                <label for="cpm">CPM ($) *</label>
+                <input type="number" id="cpm" name="cpm" step="0.01" min="0" placeholder="e.g., 15.00" required>
+                <small style="color: #666; display: block; margin-top: 0.25rem;">Fixed CPM price</small>
             </div>
+        `;
+    }
+
+    // Update priority field
+    if (lineItemType === 'STANDARD' || lineItemType === 'SPONSORSHIP') {
+        // Standard/Sponsorship: Custom priority (1-10)
+        priorityContainer.innerHTML = `
+            <label for="priority">Priority (1-10) *</label>
+            <input type="number" id="priority" name="priority" min="1" max="10" placeholder="e.g., 5" required>
+            <small style="color: #666; display: block; margin-top: 0.25rem;">Lower number = higher priority</small>
+        `;
+    } else if (lineItemType === 'PRICE_PRIORITY') {
+        // Price Priority: Fixed at 12
+        priorityContainer.innerHTML = `
+            <label>Priority</label>
+            <p style="color: #666; margin: 0.5rem 0 0 0; font-style: italic;">Priority 12 (automatic for price priority)</p>
+        `;
+    } else {
+        // House: Fixed at 16
+        priorityContainer.innerHTML = `
+            <label>Priority</label>
+            <p style="color: #666; margin: 0.5rem 0 0 0; font-style: italic;">Priority 16 (automatic for house)</p>
         `;
     }
 });
 
 // Trigger on page load
-document.getElementById('delivery_type').dispatchEvent(new Event('change'));
+document.getElementById('line_item_type').dispatchEvent(new Event('change'));
 
 // Inventory picker functionality (placeholder - will integrate with existing inventory picker)
 function openInventoryPicker(type) {
