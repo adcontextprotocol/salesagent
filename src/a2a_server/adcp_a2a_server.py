@@ -1050,7 +1050,7 @@ class AdCPRequestHandler(RequestHandler):
                 "media_buy_id": response.media_buy_id,
                 "status": response.status,
                 "message": response.message or "Media buy created successfully",
-                "packages": [package.model_dump() for package in response.packages] if response.packages else [],
+                "packages": response.packages if response.packages else [],  # Already list of dicts
                 "next_steps": response.next_steps if hasattr(response, "next_steps") else [],
             }
 
