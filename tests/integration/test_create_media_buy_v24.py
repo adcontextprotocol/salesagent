@@ -21,7 +21,7 @@ from datetime import UTC, datetime, timedelta
 import pytest
 
 from src.core.database.database_session import get_db_session
-from src.core.schemas import Budget, CreateMediaBuyRequest, Package, Targeting
+from src.core.schemas import Budget, Package, Targeting
 
 
 @pytest.mark.integration
@@ -112,31 +112,33 @@ class TestCreateMediaBuyV24Format:
         from src.core.main import _create_media_buy_impl
         from src.core.tool_context import ToolContext
 
-        # Create request with nested Budget object
-        req = CreateMediaBuyRequest(
-            promoted_offering="Nike Air Jordan 2025 basketball shoes",
-            po_number="TEST-V24-001",
-            packages=[
-                Package(
-                    buyer_ref="pkg_budget_test",
-                    products=[setup_test_tenant["product_id"]],
-                    budget=Budget(total=5000.0, currency="USD", pacing="even"),
-                )
-            ],
-            start_time=datetime.now(UTC) + timedelta(days=1),
-            end_time=datetime.now(UTC) + timedelta(days=31),
-        )
+        # Create Package with nested Budget object
+        packages = [
+            Package(
+                buyer_ref="pkg_budget_test",
+                products=[setup_test_tenant["product_id"]],
+                budget=Budget(total=5000.0, currency="USD", pacing="even"),
+            )
+        ]
 
         context = ToolContext(
-            context_id=f"test_ctx_v24_{id(req)}",
+            context_id="test_ctx_v24_budget",
             tenant_id=setup_test_tenant["tenant_id"],
             principal_id=setup_test_tenant["principal_id"],
             tool_name="create_media_buy",
             request_timestamp=datetime.now(UTC),
         )
 
+        # Call _impl with individual parameters (not a request object)
         # This exercises the FULL serialization path including response_packages construction
-        response = _create_media_buy_impl(req, context)
+        response = _create_media_buy_impl(
+            promoted_offering="Nike Air Jordan 2025 basketball shoes",
+            po_number="TEST-V24-001",
+            packages=[p.model_dump() for p in packages],  # Convert to dicts for _impl
+            start_time=datetime.now(UTC) + timedelta(days=1),
+            end_time=datetime.now(UTC) + timedelta(days=31),
+            context=context,
+        )
 
         # Verify response structure
         assert response.media_buy_id
@@ -159,34 +161,35 @@ class TestCreateMediaBuyV24Format:
         from src.core.main import _create_media_buy_impl
         from src.core.tool_context import ToolContext
 
-        # Create request with nested Targeting object
-        req = CreateMediaBuyRequest(
-            promoted_offering="Adidas UltraBoost 2025 running shoes",
-            po_number="TEST-V24-002",
-            packages=[
-                Package(
-                    buyer_ref="pkg_targeting_test",
-                    products=[setup_test_tenant["product_id"]],
-                    budget=Budget(total=8000.0, currency="EUR"),
-                    targeting_overlay=Targeting(
-                        geo_country_any_of=["US", "CA"],
-                        device_type_any_of=["mobile", "tablet"],
-                    ),
-                )
-            ],
-            start_time=datetime.now(UTC) + timedelta(days=1),
-            end_time=datetime.now(UTC) + timedelta(days=31),
-        )
+        # Create Package with nested Targeting object
+        packages = [
+            Package(
+                buyer_ref="pkg_targeting_test",
+                products=[setup_test_tenant["product_id"]],
+                budget=Budget(total=8000.0, currency="EUR"),
+                targeting_overlay=Targeting(
+                    geo_country_any_of=["US", "CA"],
+                    device_type_any_of=["mobile", "tablet"],
+                ),
+            )
+        ]
 
         context = ToolContext(
-            context_id=f"test_ctx_v24_{id(req)}",
+            context_id="test_ctx_v24_targeting",
             tenant_id=setup_test_tenant["tenant_id"],
             principal_id=setup_test_tenant["principal_id"],
             tool_name="create_media_buy",
             request_timestamp=datetime.now(UTC),
         )
 
-        response = _create_media_buy_impl(req, context)
+        response = _create_media_buy_impl(
+            promoted_offering="Adidas UltraBoost 2025 running shoes",
+            po_number="TEST-V24-002",
+            packages=[p.model_dump() for p in packages],
+            start_time=datetime.now(UTC) + timedelta(days=1),
+            end_time=datetime.now(UTC) + timedelta(days=31),
+            context=context,
+        )
 
         # Verify response structure
         assert response.media_buy_id
@@ -208,39 +211,40 @@ class TestCreateMediaBuyV24Format:
         from src.core.main import _create_media_buy_impl
         from src.core.tool_context import ToolContext
 
-        req = CreateMediaBuyRequest(
-            promoted_offering="Puma RS-X 2025 training shoes",
-            po_number="TEST-V24-003",
-            packages=[
-                Package(
-                    buyer_ref="pkg_usd",
-                    products=[setup_test_tenant["product_id"]],
-                    budget=Budget(total=3000.0, currency="USD"),
-                ),
-                Package(
-                    buyer_ref="pkg_eur",
-                    products=[setup_test_tenant["product_id"]],
-                    budget=Budget(total=2500.0, currency="EUR"),
-                ),
-                Package(
-                    buyer_ref="pkg_gbp",
-                    products=[setup_test_tenant["product_id"]],
-                    budget=Budget(total=2000.0, currency="GBP"),
-                ),
-            ],
-            start_time=datetime.now(UTC) + timedelta(days=1),
-            end_time=datetime.now(UTC) + timedelta(days=31),
-        )
+        packages = [
+            Package(
+                buyer_ref="pkg_usd",
+                products=[setup_test_tenant["product_id"]],
+                budget=Budget(total=3000.0, currency="USD"),
+            ),
+            Package(
+                buyer_ref="pkg_eur",
+                products=[setup_test_tenant["product_id"]],
+                budget=Budget(total=2500.0, currency="EUR"),
+            ),
+            Package(
+                buyer_ref="pkg_gbp",
+                products=[setup_test_tenant["product_id"]],
+                budget=Budget(total=2000.0, currency="GBP"),
+            ),
+        ]
 
         context = ToolContext(
-            context_id=f"test_ctx_v24_{id(req)}",
+            context_id="test_ctx_v24_multi",
             tenant_id=setup_test_tenant["tenant_id"],
             principal_id=setup_test_tenant["principal_id"],
             tool_name="create_media_buy",
             request_timestamp=datetime.now(UTC),
         )
 
-        response = _create_media_buy_impl(req, context)
+        response = _create_media_buy_impl(
+            promoted_offering="Puma RS-X 2025 training shoes",
+            po_number="TEST-V24-003",
+            packages=[p.model_dump() for p in packages],
+            start_time=datetime.now(UTC) + timedelta(days=1),
+            end_time=datetime.now(UTC) + timedelta(days=31),
+            context=context,
+        )
 
         # Verify all packages serialized correctly
         assert response.media_buy_id
@@ -259,31 +263,32 @@ class TestCreateMediaBuyV24Format:
         from src.core.main import _create_media_buy_impl
         from src.core.tool_context import ToolContext
 
-        # Create request with nested Budget object
-        req = CreateMediaBuyRequest(
-            promoted_offering="Reebok Nano 2025 cross-training shoes",
-            po_number="TEST-V24-A2A-001",
-            packages=[
-                Package(
-                    buyer_ref="pkg_a2a_test",
-                    products=[setup_test_tenant["product_id"]],
-                    budget=Budget(total=6000.0, currency="USD"),
-                )
-            ],
-            start_time=datetime.now(UTC) + timedelta(days=1),
-            end_time=datetime.now(UTC) + timedelta(days=31),
-        )
+        # Create Package with nested Budget object
+        packages = [
+            Package(
+                buyer_ref="pkg_a2a_test",
+                products=[setup_test_tenant["product_id"]],
+                budget=Budget(total=6000.0, currency="USD"),
+            )
+        ]
 
         # A2A path also goes through _impl with ToolContext
         context = ToolContext(
-            context_id=f"test_ctx_v24_{id(req)}",
+            context_id="test_ctx_v24_a2a",
             tenant_id=setup_test_tenant["tenant_id"],
             principal_id=setup_test_tenant["principal_id"],
             tool_name="create_media_buy",
             request_timestamp=datetime.now(UTC),
         )
 
-        response = _create_media_buy_impl(req, context)
+        response = _create_media_buy_impl(
+            promoted_offering="Reebok Nano 2025 cross-training shoes",
+            po_number="TEST-V24-A2A-001",
+            packages=[p.model_dump() for p in packages],
+            start_time=datetime.now(UTC) + timedelta(days=1),
+            end_time=datetime.now(UTC) + timedelta(days=31),
+            context=context,
+        )
 
         # Verify response structure (same as MCP)
         assert response.media_buy_id
@@ -302,25 +307,24 @@ class TestCreateMediaBuyV24Format:
         from src.core.main import _create_media_buy_impl
         from src.core.tool_context import ToolContext
 
-        # Legacy format request
-        req = CreateMediaBuyRequest(
-            promoted_offering="Under Armour HOVR 2025 running shoes",
-            po_number="TEST-LEGACY-001",
-            product_ids=[setup_test_tenant["product_id"]],
-            total_budget=4000.0,
-            start_date=(datetime.now(UTC) + timedelta(days=1)).date(),
-            end_date=(datetime.now(UTC) + timedelta(days=31)).date(),
-        )
-
         context = ToolContext(
-            context_id=f"test_ctx_v24_{id(req)}",
+            context_id="test_ctx_v24_legacy",
             tenant_id=setup_test_tenant["tenant_id"],
             principal_id=setup_test_tenant["principal_id"],
             tool_name="create_media_buy",
             request_timestamp=datetime.now(UTC),
         )
 
-        response = _create_media_buy_impl(req, context)
+        # Legacy format using individual parameters
+        response = _create_media_buy_impl(
+            promoted_offering="Under Armour HOVR 2025 running shoes",
+            po_number="TEST-LEGACY-001",
+            product_ids=[setup_test_tenant["product_id"]],
+            total_budget=4000.0,
+            start_date=(datetime.now(UTC) + timedelta(days=1)).date(),
+            end_date=(datetime.now(UTC) + timedelta(days=31)).date(),
+            context=context,
+        )
 
         # Verify response
         assert response.media_buy_id
