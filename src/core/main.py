@@ -255,6 +255,7 @@ def get_principal_from_context(context: Context | None) -> str | None:
     """Extract principal ID from the FastMCP context using x-adcp-auth header.
 
     Uses the current recommended FastMCP pattern with get_http_headers().
+    Falls back to context.meta["headers"] for sync tools where get_http_headers() may return empty dict.
     Requires FastMCP >= 2.11.0.
     """
     if not context:
