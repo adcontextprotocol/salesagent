@@ -177,10 +177,14 @@ def add_product(tenant_id):
                     else:
                         # Non-guaranteed - use price guidance
                         price_min = (
-                            float(form_data.get("price_guidance_min", 0)) if form_data.get("price_guidance_min") else None
+                            float(form_data.get("price_guidance_min", 0))
+                            if form_data.get("price_guidance_min")
+                            else None
                         )
                         price_max = (
-                            float(form_data.get("price_guidance_max", 0)) if form_data.get("price_guidance_max") else None
+                            float(form_data.get("price_guidance_max", 0))
+                            if form_data.get("price_guidance_max")
+                            else None
                         )
                         if price_min and price_max:
                             price_guidance = {"min": price_min, "max": price_max}
@@ -195,7 +199,9 @@ def add_product(tenant_id):
                     # Add ad unit/placement targeting if provided
                     ad_unit_ids = form_data.get("targeted_ad_unit_ids", "").strip()
                     if ad_unit_ids:
-                        base_config["targeted_ad_unit_ids"] = [id.strip() for id in ad_unit_ids.split(",") if id.strip()]
+                        base_config["targeted_ad_unit_ids"] = [
+                            id.strip() for id in ad_unit_ids.split(",") if id.strip()
+                        ]
 
                     placement_ids = form_data.get("targeted_placement_ids", "").strip()
                     if placement_ids:
@@ -267,7 +273,10 @@ def add_product(tenant_id):
             inventory_synced = inventory_count > 0
 
         return render_template(
-            "add_product_gam.html", tenant_id=tenant_id, inventory_synced=inventory_synced, formats=get_creative_formats()
+            "add_product_gam.html",
+            tenant_id=tenant_id,
+            inventory_synced=inventory_synced,
+            formats=get_creative_formats(),
         )
     else:
         # For Mock and other adapters: simple form
@@ -348,7 +357,9 @@ def edit_product(tenant_id, product_id):
                         # Add ad unit/placement targeting if provided
                         ad_unit_ids = form_data.get("targeted_ad_unit_ids", "").strip()
                         if ad_unit_ids:
-                            base_config["targeted_ad_unit_ids"] = [id.strip() for id in ad_unit_ids.split(",") if id.strip()]
+                            base_config["targeted_ad_unit_ids"] = [
+                                id.strip() for id in ad_unit_ids.split(",") if id.strip()
+                            ]
 
                         placement_ids = form_data.get("targeted_placement_ids", "").strip()
                         if placement_ids:
@@ -366,6 +377,7 @@ def edit_product(tenant_id, product_id):
 
                         product.implementation_config = base_config
                         from sqlalchemy.orm import attributes
+
                         attributes.flag_modified(product, "implementation_config")
 
                 db_session.commit()
@@ -411,7 +423,7 @@ def edit_product(tenant_id, product_id):
                     tenant_id=tenant_id,
                     product=product_dict,
                     inventory_synced=inventory_synced,
-                    formats=get_creative_formats()
+                    formats=get_creative_formats(),
                 )
             else:
                 return render_template(
@@ -496,5 +508,3 @@ def delete_product(tenant_id, product_id):
 
         logger.error(f"Product deletion failed for {product_id}: {error_message}")
         return jsonify({"error": "Failed to delete product. Please contact support."}), 500
-
-
