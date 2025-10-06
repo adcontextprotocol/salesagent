@@ -102,6 +102,9 @@ class TestCreateMediaBuyV24Format:
             session.query(ModelTenant).filter_by(tenant_id="test_tenant_v24").delete()
             session.commit()
 
+            # Clear global tenant context to avoid polluting other tests
+            set_current_tenant(None)
+
     def test_create_media_buy_with_package_budget_mcp(self, setup_test_tenant):
         """Test MCP path with packages containing Budget objects.
 
