@@ -293,39 +293,10 @@ jobs:
         export PATH="$HOME/.cargo/bin:$PATH"
         uv run python scripts/setup/init_database.py
 
-    - name: Start AdCP server in background
-      env:
-        DATABASE_URL: postgresql://adcp_user:test_password@localhost:5432/adcp_test
-        GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY || 'test_key_for_mocking' }}
-        GOOGLE_CLIENT_ID: test_client_id
-        GOOGLE_CLIENT_SECRET: test_client_secret
-        SUPER_ADMIN_EMAILS: test@example.com
-        ADCP_TESTING: true
-        ADCP_SALES_PORT: 8080
-        A2A_PORT: 8091
+    - name: Install Docker Compose
       run: |
-        export PATH="$HOME/.cargo/bin:$PATH"
-        # Start MCP server in background
-        uv run python scripts/run_server.py &
-        MCP_PID=$!
-        echo "MCP_PID=$MCP_PID" >> $GITHUB_ENV
-
-        # Start A2A server in background
-        uv run python src/a2a_server/adcp_a2a_server.py &
-        A2A_PID=$!
-        echo "A2A_PID=$A2A_PID" >> $GITHUB_ENV
-
-        # Wait for servers to start
-        echo "Waiting for servers to start..."
-        for i in {1..30}; do
-          if curl -s http://localhost:8080/health >/dev/null 2>&1 && \
-             curl -s http://localhost:8091/.well-known/agent.json >/dev/null 2>&1; then
-            echo "✓ Servers are ready"
-            break
-          fi
-          echo "Waiting for servers... ($i/30)"
-          sleep 2
-        done
+        sudo apt-get update
+        sudo apt-get install -y docker-compose
 
     - name: Run E2E tests
       env:
@@ -339,18 +310,14 @@ jobs:
         A2A_PORT: 8091
       run: |
         export PATH="$HOME/.cargo/bin:$PATH"
-        uv run pytest tests/e2e/ -v --tb=short --skip-docker
-      continue-on-error: true  # E2E tests may be flaky
+        # Let pytest manage Docker Compose via conftest.py
+        uv run pytest tests/e2e/ -v --tb=short
+      continue-on-error: true  # E2E tests not yet stable - see docs/testing/e2e-test-stabilization-plan.md
 
-    - name: Stop background servers
+    - name: Cleanup Docker services
       if: always()
       run: |
-        if [ ! -z "$MCP_PID" ]; then
-          kill $MCP_PID 2>/dev/null || true
-        fi
-        if [ ! -z "$A2A_PID" ]; then
-          kill $A2A_PID 2>/dev/null || true
-        fi
+        docker-compose down -v 2>/dev/null || true
   lint:
     name: Lint & Type Check
     runs-on: ubuntu-latest
@@ -395,5 +362,6 @@ jobs:
           echo "❌ Tests failed"
           exit 1
         else
-          echo "✅ All required tests passed"
+          echo "✅ All required tests passed (smoke, unit, integration)"
+          echo "ℹ️  E2E tests run but are not blocking (see docs/testing/case-study-a2a-serialization-bug.md)"
         fi

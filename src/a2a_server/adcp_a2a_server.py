@@ -1044,38 +1044,17 @@ class AdCPRequestHandler(RequestHandler):
                 context=tool_context,
             )
 
-            # Handle both dict and object responses (defensive pattern)
-            if isinstance(response, dict):
-                # Response is already a dict (schema enhancement enabled)
-                return {
-                    "success": True,
-                    "media_buy_id": response.get("media_buy_id"),
-                    "status": response.get("status"),
-                    "message": response.get("message") or "Media buy created successfully",
-                    "packages": response.get("packages", []),
-                    "next_steps": response.get("next_steps", []),
-                }
-            else:
-                # Response is a Pydantic object - but packages might be dicts or objects
-                # Handle packages list safely - check first element to determine type
-                packages_list = []
-                if response.packages:
-                    first_package = response.packages[0]
-                    if isinstance(first_package, dict):
-                        # Packages are already dicts
-                        packages_list = response.packages
-                    else:
-                        # Packages are Pydantic objects - serialize them
-                        packages_list = [pkg.model_dump() for pkg in response.packages]
-
-                return {
-                    "success": True,
-                    "media_buy_id": response.media_buy_id,
-                    "status": response.status,
-                    "message": response.message or "Media buy created successfully",
-                    "packages": packages_list,
-                    "next_steps": response.next_steps if hasattr(response, "next_steps") else [],
-                }
+            # Convert response to A2A format
+            # Note: response.packages is already list[dict] per CreateMediaBuyResponse schema
+            # See src/core/schemas.py:2034 - packages field is list[dict[str, Any]]
+            return {
+                "success": True,
+                "media_buy_id": response.media_buy_id,
+                "status": response.status,
+                "message": response.message or "Media buy created successfully",
+                "packages": response.packages if response.packages else [],  # Already list of dicts
+                "next_steps": response.next_steps if hasattr(response, "next_steps") else [],
+            }
 
         except Exception as e:
             logger.error(f"Error in create_media_buy skill: {e}")
