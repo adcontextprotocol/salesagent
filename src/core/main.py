@@ -1304,35 +1304,27 @@ def list_creative_formats(
 
 def _sync_creatives_impl(
     creatives: list[dict],
-    media_buy_id: str = None,
-    buyer_ref: str = None,
-    assign_to_packages: list[str] = None,
-    upsert: bool = True,
     patch: bool = False,
     assignments: dict = None,
-    dry_run: bool = False,
     delete_missing: bool = False,
+    dry_run: bool = False,
     validation_mode: str = "strict",
     context: Context = None,
 ) -> SyncCreativesResponse:
-    """Sync creative assets to centralized library (AdCP spec endpoint).
+    """Sync creative assets to centralized library (AdCP v2.4 spec compliant endpoint).
 
     Primary creative management endpoint that handles:
     - Bulk creative upload/update with upsert semantics
-    - Creative assignment to media buy packages
+    - Creative assignment to media buy packages via assignments dict
     - Support for both hosted assets (media_url) and third-party tags (snippet)
     - Patch updates, dry-run mode, and validation options
 
     Args:
         creatives: Array of creative assets to sync
-        media_buy_id: Publisher's ID of the media buy (optional)
-        buyer_ref: Buyer's reference for the media buy (optional)
-        assign_to_packages: Package IDs to assign creatives to (optional)
-        upsert: Whether to update existing creatives or create new ones
-        patch: When true, only update provided fields (partial update)
-        assignments: Bulk assignment map of creative_id to package_ids
-        dry_run: Preview changes without applying them
+        patch: When true, only update provided fields (partial update). When false, full upsert.
+        assignments: Bulk assignment map of creative_id to package_ids (spec-compliant)
         delete_missing: Delete creatives not in sync payload (use with caution)
+        dry_run: Preview changes without applying them
         validation_mode: Validation strictness (strict or lenient)
         context: FastMCP context (automatically provided)
 
@@ -1376,7 +1368,8 @@ def _sync_creatives_impl(
     # Track synced and failed creatives
     synced_creatives = []
     failed_creatives = []
-    assignments = []
+    # Note: Don't shadow the assignments parameter - use assignment_list for results
+    # assignments = []  # REMOVED - was shadowing the parameter!
 
     # Track creatives requiring approval for workflow creation
     creatives_needing_approval = []
@@ -1386,22 +1379,6 @@ def _sync_creatives_impl(
     human_review_required = tenant.get("human_review_required", True)
 
     with get_db_session() as session:
-        # Resolve media buy
-        media_buy = None
-        if media_buy_id:
-            from src.core.database.models import MediaBuy
-
-            media_buy = (
-                session.query(MediaBuy).filter_by(tenant_id=tenant["tenant_id"], media_buy_id=media_buy_id).first()
-            )
-        elif buyer_ref:
-            from src.core.database.models import MediaBuy
-
-            media_buy = session.query(MediaBuy).filter_by(tenant_id=tenant["tenant_id"], buyer_ref=buyer_ref).first()
-
-        if not media_buy and (media_buy_id or buyer_ref):
-            raise ToolError(f"Media buy not found: {media_buy_id or buyer_ref}")
-
         # Process each creative with proper transaction isolation
         for creative in raw_creatives:
             try:
@@ -1462,9 +1439,9 @@ def _sync_creatives_impl(
 
                 # Use savepoint for individual creative transaction isolation
                 with session.begin_nested():
-                    # Check if creative already exists (for upsert)
+                    # Check if creative already exists (always check for upsert/patch behavior)
                     existing_creative = None
-                    if upsert and creative.get("creative_id"):
+                    if creative.get("creative_id"):
                         from src.core.database.models import Creative as DBCreative
 
                         existing_creative = (
@@ -1473,36 +1450,63 @@ def _sync_creatives_impl(
                             .first()
                         )
 
-                    if existing_creative and upsert:
-                        # Update existing creative
-                        existing_creative.name = creative.get("name")
-                        existing_creative.format = creative.get("format_id") or creative.get("format")
+                    if existing_creative:
+                        # Update existing creative (respects patch vs full upsert)
                         existing_creative.updated_at = datetime.now(UTC)
 
-                        # Determine if creative needs approval (same logic as create)
+                        # Update fields based on patch mode
+                        if patch:
+                            # Patch mode: only update provided fields
+                            if creative.get("name") is not None:
+                                existing_creative.name = creative.get("name")
+                            if creative.get("format_id") or creative.get("format"):
+                                existing_creative.format = creative.get("format_id") or creative.get("format")
+                        else:
+                            # Full upsert mode: replace all fields
+                            existing_creative.name = creative.get("name")
+                            existing_creative.format = creative.get("format_id") or creative.get("format")
+
+                        # Determine if creative needs approval (when format changes or new creative)
                         creative_format = creative.get("format_id") or creative.get("format")
-                        needs_approval = human_review_required and creative_format not in auto_approve_formats
-                        existing_creative.status = "pending" if needs_approval else "approved"
+                        if creative_format:  # Only update approval status if format is provided
+                            needs_approval = human_review_required and creative_format not in auto_approve_formats
+                            existing_creative.status = "pending" if needs_approval else "approved"
+                        else:
+                            needs_approval = False
 
                         # Store creative properties in data field
-                        data = existing_creative.data or {}
-                        data.update(
-                            {
+                        if patch:
+                            # Patch mode: merge with existing data
+                            data = existing_creative.data or {}
+                            if creative.get("url") is not None:
+                                data["url"] = creative.get("url")
+                            if creative.get("click_url") is not None:
+                                data["click_url"] = creative.get("click_url")
+                            if creative.get("width") is not None:
+                                data["width"] = creative.get("width")
+                            if creative.get("height") is not None:
+                                data["height"] = creative.get("height")
+                            if creative.get("duration") is not None:
+                                data["duration"] = creative.get("duration")
+                            if creative.get("snippet") is not None:
+                                data["snippet"] = creative.get("snippet")
+                                data["snippet_type"] = creative.get("snippet_type")
+                            if creative.get("template_variables") is not None:
+                                data["template_variables"] = creative.get("template_variables")
+                        else:
+                            # Full upsert mode: replace all data
+                            data = {
                                 "url": creative.get("url"),
                                 "click_url": creative.get("click_url"),
                                 "width": creative.get("width"),
                                 "height": creative.get("height"),
                                 "duration": creative.get("duration"),
                             }
-                        )
-
-                        # Update AdCP v1.3+ fields in data
-                        if creative.get("snippet"):
-                            data["snippet"] = creative.get("snippet")
-                            data["snippet_type"] = creative.get("snippet_type")
-
-                        if creative.get("template_variables"):
-                            data["template_variables"] = creative.get("template_variables")
+                            if creative.get("snippet"):
+                                data["snippet"] = creative.get("snippet")
+                                data["snippet_type"] = creative.get("snippet_type")
+                            if creative.get("template_variables"):
+                                data["template_variables"] = creative.get("template_variables")
 
                         existing_creative.data = data
 
@@ -1575,33 +1579,6 @@ def _sync_creatives_impl(
                                 }
                             )
 
-                    # Handle package assignments
-                    if assign_to_packages and media_buy:
-                        for package_id in assign_to_packages:
-                            from src.core.database.models import CreativeAssignment as DBAssignment
-                            from src.core.schemas import CreativeAssignment
-
-                            assignment = DBAssignment(
-                                tenant_id=tenant["tenant_id"],
-                                assignment_id=str(uuid.uuid4()),
-                                media_buy_id=media_buy.media_buy_id,
-                                package_id=package_id,
-                                creative_id=creative.get("creative_id"),
-                                weight=100,
-                                created_at=datetime.now(UTC),
-                            )
-
-                            session.add(assignment)
-                            assignments.append(
-                                CreativeAssignment(
-                                    assignment_id=assignment.assignment_id,
-                                    media_buy_id=assignment.media_buy_id,
-                                    package_id=assignment.package_id,
-                                    creative_id=assignment.creative_id,
-                                    weight=assignment.weight,
-                                )
-                            )
-
                     # If we reach here, creative processing succeeded
                     synced_creatives.append(creative)
 
@@ -1613,6 +1590,60 @@ def _sync_creatives_impl(
 
         # Commit all successful creative operations
         session.commit()
+
+    # Process assignments (spec-compliant: creative_id → package_ids mapping)
+    assignment_list = []
+    # Note: assignments should be a dict, but handle both dict and None
+    if assignments and isinstance(assignments, dict):
+        with get_db_session() as session:
+            from src.core.database.models import CreativeAssignment as DBAssignment
+            from src.core.database.models import MediaBuy
+            from src.core.schemas import CreativeAssignment
+
+            for creative_id, package_ids in assignments.items():
+                for package_id in package_ids:
+                    # Find which media buy this package belongs to
+                    # Packages are stored in media_buy.raw_request["packages"]
+                    media_buys = session.query(MediaBuy).filter_by(tenant_id=tenant["tenant_id"]).all()
+
+                    media_buy_id = None
+                    for mb in media_buys:
+                        packages = mb.raw_request.get("packages", [])
+                        if any(pkg.get("package_id") == package_id for pkg in packages):
+                            media_buy_id = mb.media_buy_id
+                            break
+
+                    if not media_buy_id:
+                        # Package not found - skip if in lenient mode, error if strict
+                        if validation_mode == "strict":
+                            raise ToolError(f"Package not found: {package_id}")
+                        else:
+                            logger.warning(f"Package not found during assignment: {package_id}, skipping")
+                            continue
+
+                    # Create assignment
+                    assignment = DBAssignment(
+                        tenant_id=tenant["tenant_id"],
+                        assignment_id=str(uuid.uuid4()),
+                        media_buy_id=media_buy_id,
+                        package_id=package_id,
+                        creative_id=creative_id,
+                        weight=100,
+                        created_at=datetime.now(UTC),
+                    )
+
+                    session.add(assignment)
+                    assignment_list.append(
+                        CreativeAssignment(
+                            assignment_id=assignment.assignment_id,
+                            media_buy_id=assignment.media_buy_id,
+                            package_id=assignment.package_id,
+                            creative_id=assignment.creative_id,
+                            weight=assignment.weight,
+                        )
+                    )
+
+            session.commit()
 
     # Create workflow steps for creatives requiring approval
     if creatives_needing_approval:
@@ -1670,8 +1701,9 @@ def _sync_creatives_impl(
         details={
             "synced_count": len(synced_creatives),
             "failed_count": len(failed_creatives),
-            "assignment_count": len(assignments),
-            "upsert_mode": upsert,
+            "assignment_count": len(assignment_list),
+            "patch_mode": patch,
+            "dry_run": dry_run,
         },
     )
 
@@ -1681,8 +1713,8 @@ def _sync_creatives_impl(
     message = f"Synced {len(synced_creatives)} creatives"
     if failed_creatives:
         message += f", {len(failed_creatives)} failed"
-    if assignments:
-        message += f", {len(assignments)} assignments created"
+    if assignment_list:
+        message += f", {len(assignment_list)} assignments created"
     if creatives_needing_approval:
         message += f", {len(creatives_needing_approval)} require approval"
 
@@ -1740,7 +1772,7 @@ def _sync_creatives_impl(
     return SyncCreativesResponse(
         synced_creatives=synced_creative_schemas,
         failed_creatives=failed_creatives,
-        assignments=assignments,
+        assignments=assignment_list,
         message=message,
     )
 
@@ -1748,31 +1780,23 @@ def _sync_creatives_impl(
 @mcp.tool()
 def sync_creatives(
     creatives: list[dict],
-    media_buy_id: str = None,
-    buyer_ref: str = None,
-    assign_to_packages: list[str] = None,
-    upsert: bool = True,
     patch: bool = False,
     assignments: dict = None,
-    dry_run: bool = False,
     delete_missing: bool = False,
+    dry_run: bool = False,
     validation_mode: str = "strict",
     context: Context = None,
 ) -> SyncCreativesResponse:
-    """Sync creative assets to centralized library (AdCP spec endpoint).
+    """Sync creative assets to centralized library (AdCP v2.4 spec compliant endpoint).
 
     MCP tool wrapper that delegates to the shared implementation.
 
     Args:
         creatives: List of creative objects to sync
-        media_buy_id: Optional media buy ID to associate creatives with
-        buyer_ref: Optional buyer reference for filtering
-        assign_to_packages: List of package IDs to assign creatives to
-        upsert: If True, update existing creatives; if False, only create new ones
-        patch: When true, only update provided fields (partial update)
-        assignments: Bulk assignment map of creative_id to package_ids
-        dry_run: Preview changes without applying them
+        patch: When true, only update provided fields (partial update). When false, full upsert.
+        assignments: Bulk assignment map of creative_id to package_ids (spec-compliant)
         delete_missing: Delete creatives not in sync payload (use with caution)
+        dry_run: Preview changes without applying them
         validation_mode: Validation strictness (strict or lenient)
         context: FastMCP context (automatically provided)
 
@@ -1780,17 +1804,13 @@ def sync_creatives(
         SyncCreativesResponse with sync results
     """
     return _sync_creatives_impl(
-        creatives,
-        media_buy_id,
-        buyer_ref,
-        assign_to_packages,
-        upsert,
-        patch,
-        assignments,
-        dry_run,
-        delete_missing,
-        validation_mode,
-        context,
+        creatives=creatives,
+        patch=patch,
+        assignments=assignments,
+        delete_missing=delete_missing,
+        dry_run=dry_run,
+        validation_mode=validation_mode,
+        context=context,
     )
 
 

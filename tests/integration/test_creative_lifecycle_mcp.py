@@ -69,7 +69,7 @@ class TestCreativeLifecycleMCP:
             )
             session.add(principal)
 
-            # Create test media buy
+            # Create test media buy with packages in raw_request
             media_buy = MediaBuy(
                 tenant_id="creative_test",
                 media_buy_id="test_media_buy_1",
@@ -81,7 +81,14 @@ class TestCreativeLifecycleMCP:
                 start_date=get_utc_now().date(),
                 end_date=(get_utc_now() + timedelta(days=30)).date(),
                 buyer_ref="buyer_ref_123",
-                raw_request={"test": True},
+                raw_request={
+                    "test": True,
+                    "packages": [
+                        {"package_id": "package_1", "status": "active"},
+                        {"package_id": "package_2", "status": "active"},
+                        {"package_id": "package_buyer_ref", "status": "active"},
+                    ],
+                },
             )
             session.add(media_buy)
 
@@ -141,8 +148,8 @@ class TestCreativeLifecycleMCP:
             patch("src.core.main.get_current_tenant", return_value={"tenant_id": self.test_tenant_id}),
         ):
 
-            # Call sync_creatives tool
-            response = core_sync_creatives_tool(creatives=sample_creatives, upsert=False, context=mock_context)
+            # Call sync_creatives tool (uses default patch=False for full upsert)
+            response = core_sync_creatives_tool(creatives=sample_creatives, context=mock_context)
 
             # Verify response structure
             assert isinstance(response, SyncCreativesResponse)
@@ -181,7 +188,7 @@ class TestCreativeLifecycleMCP:
                 }
 
     def test_sync_creatives_upsert_existing_creative(self, mock_context):
-        """Test sync_creatives updates existing creative when upsert=True."""
+        """Test sync_creatives updates existing creative (default patch=False behavior)."""
         core_sync_creatives_tool, _ = self._import_mcp_tools()
         # First, create an existing creative
         with get_db_session() as session:
@@ -219,7 +226,8 @@ class TestCreativeLifecycleMCP:
             patch("src.core.main.get_current_tenant", return_value={"tenant_id": self.test_tenant_id}),
         ):
 
-            response = core_sync_creatives_tool(creatives=updated_creative_data, upsert=True, context=mock_context)
+            # Upsert with patch=False (default): full replacement
+            response = core_sync_creatives_tool(creatives=updated_creative_data, context=mock_context)
 
             # Verify response
             assert len(response.synced_creatives) == 1
@@ -239,17 +247,22 @@ class TestCreativeLifecycleMCP:
                 assert updated_creative.updated_at is not None
 
     def test_sync_creatives_with_package_assignments(self, mock_context, sample_creatives):
-        """Test sync_creatives assigns creatives to packages."""
+        """Test sync_creatives assigns creatives to packages using spec-compliant assignments dict."""
         core_sync_creatives_tool, _ = self._import_mcp_tools()
+
+        # Get the creative_id from the first sample creative
+        creative_data = sample_creatives[:1]
+        creative_id = creative_data[0]["creative_id"]
+
         with (
             patch("src.core.main._get_principal_id_from_context", return_value=self.test_principal_id),
             patch("src.core.main.get_current_tenant", return_value={"tenant_id": self.test_tenant_id}),
         ):
 
+            # Use spec-compliant assignments dict: creative_id → package_ids
             response = core_sync_creatives_tool(
-                creatives=sample_creatives[:1],  # Just one creative
-                media_buy_id=self.test_media_buy_id,
-                assign_to_packages=["package_1", "package_2"],
+                creatives=creative_data,
+                assignments={creative_id: ["package_1", "package_2"]},
                 context=mock_context,
             )
 
@@ -270,22 +283,27 @@ class TestCreativeLifecycleMCP:
                 assert "package_1" in package_ids
                 assert "package_2" in package_ids
 
-    def test_sync_creatives_with_buyer_ref(self, mock_context, sample_creatives):
-        """Test sync_creatives works with buyer_ref instead of media_buy_id."""
+    def test_sync_creatives_with_assignments_lookup(self, mock_context, sample_creatives):
+        """Test sync_creatives with assignments dict (spec-compliant approach)."""
         core_sync_creatives_tool, _ = self._import_mcp_tools()
+
+        # Get the creative_id from the first sample creative
+        creative_data = sample_creatives[:1]
+        creative_id = creative_data[0]["creative_id"]
+
         with (
             patch("src.core.main._get_principal_id_from_context", return_value=self.test_principal_id),
             patch("src.core.main.get_current_tenant", return_value={"tenant_id": self.test_tenant_id}),
         ):
 
+            # Use spec-compliant assignments dict
             response = core_sync_creatives_tool(
-                creatives=sample_creatives[:1],
-                buyer_ref=self.test_buyer_ref,
-                assign_to_packages=["package_buyer_ref"],
+                creatives=creative_data,
+                assignments={creative_id: ["package_buyer_ref"]},
                 context=mock_context,
             )
 
-            # Verify assignment created using buyer_ref lookup
+            # Verify assignment created
             assert len(response.assignments) == 1
             assert response.assignments[0].media_buy_id == self.test_media_buy_id
 
@@ -709,7 +727,7 @@ class TestCreativeLifecycleMCP:
             patch("src.core.main._get_principal_id_from_context", return_value=self.test_principal_id),
             patch("src.core.main.get_current_tenant", return_value={"tenant_id": self.test_tenant_id}),
         ):
-            sync_response = core_sync_creatives_tool(creatives=sample_creatives, upsert=False, context=mock_context)
+            sync_response = core_sync_creatives_tool(creatives=sample_creatives, context=mock_context)
             assert len(sync_response.synced_creatives) == 3
 
         # Import create_media_buy tool

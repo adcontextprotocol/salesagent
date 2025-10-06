@@ -285,22 +285,24 @@ def create_media_buy_raw(
 
 def sync_creatives_raw(
     creatives: list[dict],
-    media_buy_id: str = None,
-    buyer_ref: str = None,
-    assign_to_packages: list[str] = None,
-    upsert: bool = True,
+    patch: bool = False,
+    assignments: dict = None,
+    delete_missing: bool = False,
+    dry_run: bool = False,
+    validation_mode: str = "strict",
     context: Context = None,
 ) -> SyncCreativesResponse:
-    """Sync creative assets to the centralized creative library (AdCP spec endpoint).
+    """Sync creative assets to the centralized creative library (AdCP v2.4 spec compliant endpoint).
 
     Delegates to the shared implementation in main.py.
 
     Args:
         creatives: List of creative asset objects
-        media_buy_id: Media buy ID for the creatives (optional)
-        buyer_ref: Buyer's reference for the media buy (optional)
-        assign_to_packages: Package IDs to assign creatives to (optional)
-        upsert: Whether to update existing creatives or create new ones
+        patch: When true, only update provided fields (partial update). When false, full upsert.
+        assignments: Bulk assignment map of creative_id to package_ids (spec-compliant)
+        delete_missing: Delete creatives not in sync payload (use with caution)
+        dry_run: Preview changes without applying them
+        validation_mode: Validation strictness (strict or lenient)
         context: FastMCP context (automatically provided)
 
     Returns:
@@ -311,10 +313,11 @@ def sync_creatives_raw(
 
     return _sync_creatives_impl(
         creatives=creatives,
-        media_buy_id=media_buy_id,
-        buyer_ref=buyer_ref,
-        assign_to_packages=assign_to_packages,
-        upsert=upsert,
+        patch=patch,
+        assignments=assignments,
+        delete_missing=delete_missing,
+        dry_run=dry_run,
+        validation_mode=validation_mode,
         context=context,
     )
 

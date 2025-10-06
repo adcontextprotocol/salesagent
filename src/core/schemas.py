@@ -1596,31 +1596,32 @@ SubmitCreativesResponse = AddCreativeAssetsResponse
 
 
 class SyncCreativesRequest(BaseModel):
-    """Request to sync creative assets to centralized library (AdCP spec compliant)."""
+    """Request to sync creative assets to centralized library (AdCP v2.4 spec compliant).
 
-    media_buy_id: str | None = Field(None, description="Publisher's ID of the media buy")
-    buyer_ref: str | None = Field(None, description="Buyer's reference for the media buy")
-    creatives: list[Creative] = Field(..., description="Array of creative assets to sync")
-    assign_to_packages: list[str] | None = Field(None, description="Package IDs to assign creatives to")
-    upsert: bool = Field(True, description="Whether to update existing creatives or create new ones")
+    Supports bulk operations, patch updates, and assignment management.
+    Creatives are synced to a central library and can be used across multiple media buys.
+    """
 
-    # AdCP spec fields
+    creatives: list[Creative] = Field(..., description="Array of creative assets to sync (create or update)")
     patch: bool = Field(
-        False, description="When true, only provided fields are updated. When false, entire creative is replaced."
+        False,
+        description="When true, only provided fields are updated (partial update). When false, entire creative is replaced (full upsert).",
     )
     assignments: dict[str, list[str]] | None = Field(
-        None, description="Optional bulk assignment of creatives to packages"
+        None, description="Optional bulk assignment of creatives to packages. Maps creative_id to array of package IDs."
     )
-    dry_run: bool = Field(False, description="Preview changes without applying them")
-    delete_missing: bool = Field(False, description="Delete creatives not present in the request (use with caution)")
+    delete_missing: bool = Field(
+        False,
+        description="When true, creatives not included in this sync will be archived. Use with caution for full library replacement.",
+    )
+    dry_run: bool = Field(
+        False,
+        description="When true, preview changes without applying them. Returns what would be created/updated/deleted.",
+    )
     validation_mode: Literal["strict", "lenient"] = Field(
         "strict",
-        description="Validation strictness. 'strict' fails entire sync on any error. 'lenient' processes valid creatives.",
+        description="Validation strictness. 'strict' fails entire sync on any validation error. 'lenient' processes valid creatives and reports errors.",
     )
-
-    # Note: media_buy_id and buyer_ref are OPTIONAL per AdCP spec
-    # Creatives can be synced to a central library and used across multiple media buys
-    # If provided, they associate creatives with a specific media buy
 
 
 class SyncCreativesResponse(BaseModel):

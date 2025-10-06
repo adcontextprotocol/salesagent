@@ -941,7 +941,7 @@ class TestAdCPContract:
         ), f"CreativeAssignment response should have at least 4 core fields, got {len(adcp_response)}"
 
     def test_sync_creatives_request_adcp_compliance(self):
-        """Test that SyncCreativesRequest model complies with AdCP sync-creatives schema."""
+        """Test that SyncCreativesRequest model complies with AdCP v2.4 sync-creatives schema."""
         # Create Creative objects with all required fields (using media content, not snippet)
         creative = Creative(
             creative_id="creative_123",
@@ -956,12 +956,14 @@ class TestAdCPContract:
             updated_at=datetime.now(),
         )
 
+        # Test with spec-compliant fields only
         request = SyncCreativesRequest(
             creatives=[creative],
-            media_buy_id="mb_456",
-            buyer_ref="buyer_789",
-            assign_to_packages=["pkg_1", "pkg_2"],
-            upsert=True,
+            patch=False,
+            assignments={"creative_123": ["pkg_1", "pkg_2"]},
+            delete_missing=False,
+            dry_run=False,
+            validation_mode="strict",
         )
 
         # Test model_dump (SyncCreativesRequest doesn't have internal fields)
@@ -973,10 +975,15 @@ class TestAdCPContract:
             assert field in adcp_response, f"Required AdCP field '{field}' missing from response"
             assert adcp_response[field] is not None, f"Required AdCP field '{field}' is None"
 
-        # Verify AdCP optional fields are present
-        adcp_optional_fields = ["media_buy_id", "buyer_ref", "assign_to_packages", "upsert"]
+        # Verify AdCP v2.4 optional fields are present
+        adcp_optional_fields = ["patch", "assignments", "delete_missing", "dry_run", "validation_mode"]
         for field in adcp_optional_fields:
             assert field in adcp_response, f"AdCP optional field '{field}' missing from response"
+
+        # Verify non-spec fields are NOT present
+        non_spec_fields = ["media_buy_id", "buyer_ref", "assign_to_packages", "upsert"]
+        for field in non_spec_fields:
+            assert field not in adcp_response, f"Non-spec field '{field}' should not be in response"
 
         # Verify creatives array structure
         assert isinstance(adcp_response["creatives"], list), "Creatives must be an array"
@@ -988,6 +995,12 @@ class TestAdCPContract:
         for field in creative_required_fields:
             assert field in creative_obj, f"Creative required field '{field}' missing"
             assert creative_obj[field] is not None, f"Creative required field '{field}' is None"
+
+        # Verify assignments structure (dict of creative_id → package_ids)
+        if adcp_response.get("assignments"):
+            assert isinstance(adcp_response["assignments"], dict), "Assignments must be a dict"
+            for creative_id, package_ids in adcp_response["assignments"].items():
+                assert isinstance(package_ids, list), f"Package IDs for {creative_id} must be a list"
 
         # Verify field count (flexible due to optional fields)
         assert len(adcp_response) >= 1, f"SyncCreativesRequest should have at least 1 field, got {len(adcp_response)}"
