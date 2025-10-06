@@ -74,6 +74,7 @@ class TestCreateMediaBuyV24Format:
                 cpm=10.0,
                 min_spend=1000.0,
                 targeting_template={},  # Required field
+                is_fixed_price=True,  # Required field
             )
             session.add(product)
 
