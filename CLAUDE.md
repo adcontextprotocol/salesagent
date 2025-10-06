@@ -321,6 +321,71 @@ tests/
 
 **🚨 MANDATORY**: When CI tests fail, FIX THE TESTS PROPERLY. Skipping or weakening tests to make CI pass is NEVER acceptable. The tests exist to catch real issues - if they fail, there's a problem that needs fixing, not hiding.
 
+### Testing Workflow - MANDATORY for Refactoring
+
+**⚠️ CRITICAL**: Pre-commit hooks can't catch import errors or integration issues. You MUST run the full test suite for refactorings.
+
+#### Before Committing Code Changes
+
+**For ALL changes:**
+```bash
+# 1. Run unit tests (fast, always required)
+uv run pytest tests/unit/ -x
+
+# 2. Verify imports work (catches missing imports)
+python -c "from src.core.tools import get_products_raw"  # Example
+python -c "from src.core.main import _get_products_impl"  # For impl functions
+```
+
+**For refactorings (shared implementation, moving code, import changes):**
+```bash
+# 3. Run integration tests (REQUIRED - catches real bugs)
+uv run pytest tests/integration/ -x
+
+# 4. Run specific A2A/MCP tests if you changed those paths
+uv run pytest tests/integration/test_a2a*.py -x
+uv run pytest tests/integration/test_mcp*.py -x
+```
+
+**For critical changes (protocol changes, schema updates):**
+```bash
+# 5. Run full suite including e2e
+uv run pytest tests/ -x
+```
+
+#### Why This Matters
+
+**Unit tests alone are NOT enough because:**
+- ✅ Unit tests pass with mocked imports (don't catch missing imports)
+- ✅ Unit tests don't execute real code paths (don't catch integration bugs)
+- ✅ Unit tests use fake data (don't catch validation issues)
+
+**Real example from this codebase:**
+```python
+# Refactored get_products_raw to use GetProductsRequest
+# Unit tests: PASSED ✓ (they mock everything)
+# Integration tests: FAILED ✗ (import GetProductsRequest was missing)
+# CI caught it after 2 failed runs
+```
+
+#### Pre-Push Hook (Automatic Validation)
+
+A pre-push hook is configured in `.git/hooks/pre-push` that automatically runs before every `git push`:
+- **Quick Mode**: Runs unit tests + import validation (2-3 minutes)
+- **Blocks Push**: If tests fail, push is aborted (use `--no-verify` to override)
+- **Test Runner**: Uses `./run_all_tests.sh quick` for validation
+
+**Manual Testing**:
+```bash
+# Run the same checks the pre-push hook runs
+./run_all_tests.sh quick
+
+# Run full test suite (unit + integration + e2e)
+./run_all_tests.sh full
+```
+
+The hook is already installed and will run automatically on every push.
+
 See `docs/testing/` for detailed patterns and case studies.
 
 ## Pre-Commit Hooks
