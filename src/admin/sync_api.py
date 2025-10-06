@@ -497,7 +497,14 @@ def sync_tenant_orders(tenant_id):
                 "manual_approval_required": adapter_config.gam_manual_approval_required,
             }
 
-            adapter = GoogleAdManager(gam_config, principal, tenant_id=tenant_id)
+            adapter = GoogleAdManager(
+                gam_config,
+                principal,
+                network_code=adapter_config.gam_network_code,
+                advertiser_id=None,  # Not needed for order discovery
+                trafficker_id=adapter_config.gam_trafficker_id or None,
+                tenant_id=tenant_id,
+            )
 
             # Perform sync
             service = GAMOrdersService(db_session)
