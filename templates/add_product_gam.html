@@ -253,18 +253,28 @@ function loadInventory(type, search = '') {
                 ? new Set((document.getElementById('targeted_ad_unit_ids').value || '').split(',').filter(Boolean))
                 : new Set((document.getElementById('targeted_placement_ids').value || '').split(',').filter(Boolean));
 
-            list.innerHTML = data.items.map(item => `
+            list.innerHTML = data.items.map(item => {
+                // Extract sizes for ad units
+                let sizesHtml = '';
+                if (type === 'ad_unit' && item.metadata && item.metadata.sizes && item.metadata.sizes.length > 0) {
+                    const sizeStrings = item.metadata.sizes.map(s => `${s.width}x${s.height}`).join(', ');
+                    sizesHtml = `<br><small style="color: #28a745; font-weight: 500;">Sizes: ${sizeStrings}</small>`;
+                }
+
+                return `
                 <label class="inventory-item" style="display: flex; align-items: center; padding: 0.75rem; border-bottom: 1px solid #eee; cursor: pointer;">
                     <input type="checkbox"
                            value="${item.id}"
+                           data-sizes='${item.metadata && item.metadata.sizes ? JSON.stringify(item.metadata.sizes) : '[]'}'
                            ${selectedIds.has(item.id) ? 'checked' : ''}
                            style="margin-right: 0.75rem;">
                     <div style="flex: 1;">
                         <strong>${item.name}</strong>
                         ${item.path && item.path.length > 1 ? `<br><small style="color: #666;">${item.path.join(' > ')}</small>` : ''}
+                        ${sizesHtml}
                     </div>
                 </label>
-            `).join('');
+            `}).join('');
         })
         .catch(error => {
             list.innerHTML = `<div style="padding: 2rem; text-align: center; color: #dc3545;">Error loading inventory: ${error.message}</div>`;
@@ -282,6 +292,9 @@ function applyInventorySelection() {
     if (currentPickerType === 'ad_unit') {
         document.getElementById('targeted_ad_unit_ids').value = selectedIds.join(',');
         updateSelectedDisplay('selected-ad-units', selectedNames, selectedIds);
+
+        // Auto-suggest creative formats based on ad unit sizes
+        autoSuggestFormats(checkboxes);
     } else {
         document.getElementById('targeted_placement_ids').value = selectedIds.join(',');
         updateSelectedDisplay('selected-placements', selectedNames, selectedIds);
@@ -301,6 +314,51 @@ function updateSelectedDisplay(containerId, names, ids) {
                 <button type="button" onclick="removeSelectedItem('${containerId}', '${ids[idx]}')" style="border: none; background: none; color: #666; cursor: pointer; margin-left: 0.25rem;">×</button>
             </span>
         `).join('');
+    }
+}
+
+function autoSuggestFormats(selectedCheckboxes) {
+    // Collect all sizes from selected ad units
+    const allSizes = new Set();
+    selectedCheckboxes.forEach(cb => {
+        const sizesData = cb.getAttribute('data-sizes');
+        if (sizesData) {
+            try {
+                const sizes = JSON.parse(sizesData);
+                sizes.forEach(size => {
+                    allSizes.add(`${size.width}x${size.height}`);
+                });
+            } catch (e) {
+                console.warn('Failed to parse size data:', e);
+            }
+        }
+    });
+
+    // If we have sizes, auto-check matching formats
+    if (allSizes.size > 0) {
+        const formatCards = document.querySelectorAll('.format-card');
+        let suggestedCount = 0;
+
+        formatCards.forEach(card => {
+            const dimensions = card.getAttribute('data-dimensions');
+            const checkbox = card.querySelector('input[type="checkbox"]');
+
+            if (dimensions && allSizes.has(dimensions) && !checkbox.checked) {
+                checkbox.checked = true;
+                // Add visual feedback
+                card.style.borderColor = '#28a745';
+                card.style.backgroundColor = '#f0fff4';
+                setTimeout(() => {
+                    card.style.borderColor = '#007bff';
+                    card.style.backgroundColor = '';
+                }, 2000);
+                suggestedCount++;
+            }
+        });
+
+        if (suggestedCount > 0) {
+            console.log(`Auto-suggested ${suggestedCount} format(s) based on ad unit sizes`);
+        }
     }
 }
 
