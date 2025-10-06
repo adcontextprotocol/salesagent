@@ -36,11 +36,51 @@ def test_database(test_database_url):
             pytest.skip(f"Migration failed: {result.stderr}")
     else:
         # For in-memory database, create tables directly
-        from src.core.database.database_session import get_engine
-        from src.core.database.models import Base
+        from sqlalchemy import create_engine
+        from sqlalchemy.orm import scoped_session, sessionmaker
 
-        engine = get_engine()
+        # Import ALL models BEFORE creating tables to ensure all tables are registered
+        # This is critical - if a model isn't imported, its table won't be created
+        from src.core.database.models import (  # noqa: F401
+            AdapterConfig,
+            AuditLog,
+            AuthorizedProperty,
+            Base,
+            Context,
+            Creative,
+            CreativeAssignment,
+            CreativeFormat,
+            FormatPerformanceMetrics,
+            GAMInventory,
+            GAMLineItem,
+            GAMOrder,
+            MediaBuy,
+            ObjectWorkflowMapping,
+            Principal,
+            Product,
+            ProductInventoryMapping,
+            PropertyTag,
+            PushNotificationConfig,
+            Strategy,
+            StrategyState,
+            SyncJob,
+            Tenant,
+            TenantManagementConfig,
+            User,
+            WorkflowStep,
+        )
+
+        # Create a new engine for the test database (don't use get_engine())
+        # This ensures we use the correct DATABASE_URL set above
+        engine = create_engine(test_database_url, echo=False)
         Base.metadata.create_all(engine)
+
+        # Update the global database session to use this engine
+        import src.core.database.database_session as db_session_module
+
+        db_session_module.engine = engine
+        db_session_module.SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+        db_session_module.db_session = scoped_session(db_session_module.SessionLocal)
 
     # Initialize with test data
     from scripts.setup.init_database import init_db
