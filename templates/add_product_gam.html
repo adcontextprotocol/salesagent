@@ -1,10 +1,10 @@
 {% extends "base.html" %}
 
-{% block title %}Create Product - Google Ad Manager{% endblock %}
+{% block title %}{{ 'Edit' if product else 'Create' }} Product - Google Ad Manager{% endblock %}
 
 {% block content %}
 <div class="card">
-    <h2>Create Product (Google Ad Manager)</h2>
+    <h2>{{ 'Edit' if product else 'Create' }} Product (Google Ad Manager)</h2>
 
     {% if not inventory_synced %}
     <div class="alert alert-warning" style="margin-bottom: 2rem; padding: 1rem; background: #fff3cd; border: 1px solid #ffc107; border-radius: 4px;">
@@ -23,12 +23,12 @@
 
         <div class="form-group">
             <label for="name">Product Name *</label>
-            <input type="text" id="name" name="name" required placeholder="e.g., Premium Homepage Package">
+            <input type="text" id="name" name="name" required placeholder="e.g., Premium Homepage Package" value="{{ product.name if product else '' }}">
         </div>
 
         <div class="form-group">
             <label for="description">Description</label>
-            <textarea id="description" name="description" rows="3" placeholder="Describe this product for potential buyers"></textarea>
+            <textarea id="description" name="description" rows="3" placeholder="Describe this product for potential buyers">{{ product.description if product else '' }}</textarea>
         </div>
 
         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
@@ -480,5 +480,72 @@ document.addEventListener('DOMContentLoaded', function() {
         </div>
     </div>
 </div>
+
+{% if product %}
+<script>
+// Pre-populate form for editing
+(function() {
+    const product = {{ product | tojson }};
+    const config = product.implementation_config || {};
+
+    // Set line item type
+    if (config.line_item_type) {
+        document.getElementById('line_item_type').value = config.line_item_type;
+        // Trigger change event to populate pricing fields
+        document.getElementById('line_item_type').dispatchEvent(new Event('change'));
+    }
+
+    // Set pricing values after a brief delay to let the change event populate the fields
+    setTimeout(() => {
+        if (product.cpm) {
+            const cpmField = document.getElementById('cpm');
+            if (cpmField) cpmField.value = product.cpm;
+        }
+        if (product.price_guidance && product.price_guidance.min) {
+            const floorField = document.getElementById('floor_cpm');
+            if (floorField) floorField.value = product.price_guidance.min;
+        }
+        if (config.priority) {
+            const priorityField = document.getElementById('priority');
+            if (priorityField) priorityField.value = config.priority;
+        }
+    }, 100);
+
+    // Set countries
+    if (product.countries && product.countries.length > 0) {
+        const countriesSelect = document.getElementById('countries');
+        Array.from(countriesSelect.options).forEach(option => {
+            if (product.countries.includes(option.value)) {
+                option.selected = true;
+            }
+        });
+    }
+
+    // Set ad units and placements
+    if (config.targeted_ad_unit_ids && config.targeted_ad_unit_ids.length > 0) {
+        document.getElementById('targeted_ad_unit_ids').value = config.targeted_ad_unit_ids.join(',');
+        updateSelectedDisplay('selected-ad-units', config.targeted_ad_unit_ids.map((id, i) => `Ad Unit ${i+1}`), config.targeted_ad_unit_ids);
+    }
+    if (config.targeted_placement_ids && config.targeted_placement_ids.length > 0) {
+        document.getElementById('targeted_placement_ids').value = config.targeted_placement_ids.join(',');
+        updateSelectedDisplay('selected-placements', config.targeted_placement_ids.map((id, i) => `Placement ${i+1}`), config.targeted_placement_ids);
+    }
+
+    // Set include descendants checkbox
+    if (config.include_descendants) {
+        const checkbox = document.querySelector('input[name="include_descendants"]');
+        if (checkbox) checkbox.checked = true;
+    }
+
+    // Set creative formats
+    if (product.formats && product.formats.length > 0) {
+        product.formats.forEach(format => {
+            const checkbox = document.querySelector(`input[name="formats"][value="${format}"]`);
+            if (checkbox) checkbox.checked = true;
+        });
+    }
+})();
+</script>
+{% endif %}
 
 {% endblock %}

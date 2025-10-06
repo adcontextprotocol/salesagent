@@ -279,6 +279,15 @@ def add_product(tenant_id):
 @require_tenant_access()
 def edit_product(tenant_id, product_id):
     """Edit an existing product."""
+    # Get tenant's adapter type
+    with get_db_session() as db_session:
+        tenant = db_session.query(Tenant).filter_by(tenant_id=tenant_id).first()
+        if not tenant:
+            flash("Tenant not found", "error")
+            return redirect(url_for("products.list_products", tenant_id=tenant_id))
+
+        adapter_type = tenant.ad_server or "mock"
+
     try:
         with get_db_session() as db_session:
             product = db_session.query(Product).filter_by(tenant_id=tenant_id, product_id=product_id).first()
@@ -290,35 +299,75 @@ def edit_product(tenant_id, product_id):
                 # Sanitize form data
                 form_data = sanitize_form_data(request.form.to_dict())
 
-                # Update product
+                # Update basic fields
                 product.name = form_data.get("name", product.name)
                 product.description = form_data.get("description", product.description)
-                product.delivery_type = form_data.get("delivery_type", product.delivery_type)
-                product.is_fixed_price = form_data.get("is_fixed_price", "true").lower() == "true"
 
-                # Update pricing based on delivery type
-                if product.is_fixed_price:
-                    product.cpm = float(form_data.get("cpm")) if form_data.get("cpm") else product.cpm
-                    product.price_guidance = None
-                else:
-                    product.cpm = None
-                    price_min = (
-                        float(form_data.get("price_guidance_min")) if form_data.get("price_guidance_min") else None
-                    )
-                    price_max = (
-                        float(form_data.get("price_guidance_max")) if form_data.get("price_guidance_max") else None
-                    )
-                    if price_min and price_max:
-                        product.price_guidance = {"min": price_min, "max": price_max}
-
-                # Update formats and countries
-                if "formats" in form_data:
-                    formats = [f.strip() for f in form_data["formats"].split(",") if f.strip()]
+                # Parse formats - expecting multiple checkbox values
+                formats = request.form.getlist("formats")
+                if formats:
                     product.formats = formats
 
-                if "countries" in form_data:
-                    countries = [c.strip().upper() for c in form_data["countries"].split(",") if c.strip()]
-                    product.countries = countries
+                # Parse countries - from multi-select
+                countries_list = request.form.getlist("countries")
+                if countries_list and "ALL" not in countries_list:
+                    product.countries = countries_list
+                else:
+                    product.countries = None
+
+                # Get pricing based on line item type (GAM form) or delivery type (other adapters)
+                line_item_type = form_data.get("line_item_type")
+
+                if line_item_type:
+                    # GAM form: map line item type to delivery type and pricing
+                    if line_item_type in ["STANDARD", "SPONSORSHIP"]:
+                        product.delivery_type = "guaranteed"
+                        product.is_fixed_price = True
+                        product.cpm = float(form_data.get("cpm", 0)) if form_data.get("cpm") else None
+                        product.price_guidance = None
+                    elif line_item_type == "PRICE_PRIORITY":
+                        product.delivery_type = "non-guaranteed"
+                        product.is_fixed_price = False
+                        product.cpm = None
+                        floor_cpm = float(form_data.get("floor_cpm", 0)) if form_data.get("floor_cpm") else None
+                        if floor_cpm:
+                            product.price_guidance = {"min": floor_cpm, "max": floor_cpm}
+                    elif line_item_type == "HOUSE":
+                        product.delivery_type = "non-guaranteed"
+                        product.is_fixed_price = False
+                        product.cpm = None
+                        product.price_guidance = None
+
+                    # Update implementation_config with GAM-specific fields
+                    if adapter_type == "google_ad_manager":
+                        from src.services.gam_product_config_service import GAMProductConfigService
+
+                        gam_config_service = GAMProductConfigService()
+                        base_config = gam_config_service.generate_default_config(product.delivery_type, formats)
+
+                        # Add ad unit/placement targeting if provided
+                        ad_unit_ids = form_data.get("targeted_ad_unit_ids", "").strip()
+                        if ad_unit_ids:
+                            base_config["targeted_ad_unit_ids"] = [id.strip() for id in ad_unit_ids.split(",") if id.strip()]
+
+                        placement_ids = form_data.get("targeted_placement_ids", "").strip()
+                        if placement_ids:
+                            base_config["targeted_placement_ids"] = [
+                                id.strip() for id in placement_ids.split(",") if id.strip()
+                            ]
+
+                        base_config["include_descendants"] = form_data.get("include_descendants") == "on"
+
+                        # Add GAM settings
+                        if form_data.get("line_item_type"):
+                            base_config["line_item_type"] = form_data["line_item_type"]
+                        if form_data.get("priority"):
+                            base_config["priority"] = int(form_data["priority"])
+
+                        product.implementation_config = base_config
+                        from sqlalchemy.orm import attributes
+                        attributes.flag_modified(product, "implementation_config")
+
                 db_session.commit()
 
                 flash(f"Product '{product.name}' updated successfully", "success")
@@ -343,13 +392,33 @@ def edit_product(tenant_id, product_id):
                     if isinstance(product.countries, list)
                     else json.loads(product.countries) if product.countries else []
                 ),
+                "implementation_config": (
+                    product.implementation_config
+                    if isinstance(product.implementation_config, dict)
+                    else json.loads(product.implementation_config) if product.implementation_config else {}
+                ),
             }
 
-            return render_template(
-                "edit_product.html",
-                tenant_id=tenant_id,
-                product=product_dict,
-            )
+            # Show adapter-specific form
+            if adapter_type == "google_ad_manager":
+                from src.core.database.models import GAMInventory
+
+                inventory_count = db_session.query(GAMInventory).filter_by(tenant_id=tenant_id).count()
+                inventory_synced = inventory_count > 0
+
+                return render_template(
+                    "add_product_gam.html",
+                    tenant_id=tenant_id,
+                    product=product_dict,
+                    inventory_synced=inventory_synced,
+                    formats=get_creative_formats()
+                )
+            else:
+                return render_template(
+                    "edit_product.html",
+                    tenant_id=tenant_id,
+                    product=product_dict,
+                )
 
     except Exception as e:
         logger.error(f"Error editing product: {e}", exc_info=True)
