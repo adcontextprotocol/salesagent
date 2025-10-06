@@ -165,6 +165,8 @@ def tenant_settings(tenant_id, section=None):
                     "refresh_token": adapter_config_obj.gam_refresh_token or "",
                     "trafficker_id": adapter_config_obj.gam_trafficker_id or "",
                     "application_name": getattr(adapter_config_obj, "gam_application_name", "") or "",
+                    "gam_sync_audience_segments": getattr(adapter_config_obj, "gam_sync_audience_segments", True),
+                    "gam_sync_custom_targeting": getattr(adapter_config_obj, "gam_sync_custom_targeting", True),
                 }
 
             # Get environment info for URL generation

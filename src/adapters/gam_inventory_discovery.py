@@ -25,6 +25,27 @@ from src.adapters.gam.utils.error_handler import with_retry
 from src.adapters.gam.utils.logging import logger
 
 
+def get_gam_sync_settings(tenant_id: str) -> tuple[bool, bool]:
+    """Get GAM sync settings for a tenant from adapter config.
+
+    Args:
+        tenant_id: The tenant ID to get settings for
+
+    Returns:
+        Tuple of (sync_audience_segments, sync_custom_targeting)
+    """
+    from src.core.database.database_session import get_db_session
+    from src.core.database.models import AdapterConfig
+
+    with get_db_session() as db_session:
+        adapter_config = db_session.query(AdapterConfig).filter_by(tenant_id=tenant_id).first()
+
+        sync_audience_segments = getattr(adapter_config, 'gam_sync_audience_segments', True) if adapter_config else True
+        sync_custom_targeting = getattr(adapter_config, 'gam_sync_custom_targeting', True) if adapter_config else True
+
+        return sync_audience_segments, sync_custom_targeting
+
+
 class AdUnitStatus(Enum):
     """Ad unit status in GAM."""
 
@@ -606,9 +627,13 @@ class GAMInventoryDiscovery:
 
         return suggestions
 
-    def sync_all(self) -> dict[str, Any]:
+    def sync_all(self, sync_audience_segments: bool = True, sync_custom_targeting: bool = True) -> dict[str, Any]:
         """
         Sync all inventory data from GAM.
+
+        Args:
+            sync_audience_segments: Whether to sync audience segments (default True)
+            sync_custom_targeting: Whether to sync custom targeting (default True)
 
         Returns:
             Summary of synced data
@@ -629,8 +654,12 @@ class GAMInventoryDiscovery:
         ad_units = self.discover_ad_units()
         placements = self.discover_placements()
         labels = self.discover_labels()
-        custom_targeting = self.discover_custom_targeting()
-        audience_segments = self.discover_audience_segments()
+
+        # Conditionally sync custom targeting based on settings
+        custom_targeting = self.discover_custom_targeting() if sync_custom_targeting else {"total_values": 0}
+
+        # Conditionally sync audience segments based on settings
+        audience_segments = self.discover_audience_segments() if sync_audience_segments else []
 
         self.last_sync = datetime.now()
 
@@ -770,8 +799,11 @@ def create_inventory_sync_tool(app, get_gam_client_func):
             if not client:
                 return {"error": "GAM not configured for tenant"}, 404
 
+            # Get sync settings from adapter config
+            sync_audience_segments, sync_custom_targeting = get_gam_sync_settings(tenant_id)
+
             discovery = GAMInventoryDiscovery(client, tenant_id)
-            summary = discovery.sync_all()
+            summary = discovery.sync_all(sync_audience_segments, sync_custom_targeting)
 
             # Save to cache
             discovery.save_to_cache("/tmp/gam_cache")
@@ -794,8 +826,9 @@ def create_inventory_sync_tool(app, get_gam_client_func):
 
             # Try to load from cache first
             if not discovery.load_from_cache("/tmp/gam_cache"):
-                # If no cache, do a sync
-                discovery.sync_all()
+                # If no cache, do a sync using adapter config settings
+                sync_audience_segments, sync_custom_targeting = get_gam_sync_settings(tenant_id)
+                discovery.sync_all(sync_audience_segments, sync_custom_targeting)
                 discovery.save_to_cache("/tmp/gam_cache")
 
             return discovery.build_ad_unit_tree()
@@ -831,7 +864,9 @@ def create_inventory_sync_tool(app, get_gam_client_func):
 
             # Load from cache or sync
             if not discovery.load_from_cache("/tmp/gam_cache"):
-                discovery.sync_all()
+                # Get sync settings from adapter config
+                sync_audience_segments, sync_custom_targeting = get_gam_sync_settings(tenant_id)
+                discovery.sync_all(sync_audience_segments, sync_custom_targeting)
                 discovery.save_to_cache("/tmp/gam_cache")
 
             suggestions = discovery.suggest_ad_units_for_product(parsed_sizes, keywords)

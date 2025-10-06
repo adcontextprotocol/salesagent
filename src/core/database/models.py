@@ -375,6 +375,8 @@ class AdapterConfig(Base):
     gam_refresh_token = Column(Text)
     gam_trafficker_id = Column(String(50))  # Tenant-level: publisher's trafficker (defaults to authenticated user)
     gam_manual_approval_required = Column(Boolean, default=False)
+    gam_sync_audience_segments = Column(Boolean, default=True)
+    gam_sync_custom_targeting = Column(Boolean, default=True)
     # NOTE: gam_company_id (advertiser_id) is per-principal, stored in Principal.platform_mappings
 
     # Kevel
