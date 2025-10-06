@@ -29,7 +29,7 @@ class TestCreateMediaBuyV24Format:
     """Test create_media_buy with AdCP v2.4 packages containing nested objects."""
 
     @pytest.fixture
-    def setup_test_tenant(self, test_database):
+    def setup_test_tenant(self, integration_db):
         """Set up test tenant with product."""
         from datetime import datetime
 

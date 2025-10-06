@@ -29,11 +29,13 @@ ALLOWED_PATTERNS = [
 ]
 
 # Patterns for DISALLOWED internal mocks (implementation details)
-DISALLOWED_PATTERNS = [
-    r"_impl\b",  # Shared implementation functions
-    r"_handle_\w+_skill",  # A2A skill handlers
-    r"_handle_get_products",  # Specific handlers
-    r"_handle_create_media_buy",  # Specific handlers
+# These patterns detect when we're MOCKING internal functions (bad)
+# NOT when we're importing and calling them (good)
+MOCK_PATTERNS = [
+    r"@patch\(['\"].*_impl\b",  # Mocking _impl functions
+    r"@patch\(['\"].*_handle_\w+_skill",  # Mocking A2A skill handlers
+    r"Mock.*_impl\b",  # Creating mock objects for _impl
+    r"MagicMock.*_impl\b",  # Creating MagicMock for _impl
 ]
 
 
@@ -41,14 +43,17 @@ def check_file(filepath: Path) -> tuple[bool, list[str]]:
     """
     Check a test file for over-mocking violations.
 
+    Detects when tests MOCK internal implementation details, which is bad.
+    Allows tests to import and CALL internal functions, which is good.
+
     Returns:
         (is_valid, violations) tuple
     """
     content = filepath.read_text()
     violations = []
 
-    # Check for disallowed patterns
-    for pattern in DISALLOWED_PATTERNS:
+    # Check for disallowed mocking patterns
+    for pattern in MOCK_PATTERNS:
         matches = re.findall(pattern, content)
         if matches:
             # Get line numbers for better error messages (excluding comments and strings)
@@ -63,25 +68,10 @@ def check_file(filepath: Path) -> tuple[bool, list[str]]:
                 # Skip inline comments after code
                 code_part = line.split("#")[0]
 
-                # Skip string literals - check if pattern is inside quotes
+                # Check if pattern appears in actual code
                 if re.search(pattern, code_part):
-                    # Check if this is in a string literal
-                    # Simple heuristic: if the pattern appears in quotes, skip it
-                    in_string = False
-                    for quote in ['"', "'"]:
-                        # Find all quoted strings
-                        quoted_parts = re.findall(rf"{quote}[^{quote}]*{pattern}[^{quote}]*{quote}", code_part)
-                        if quoted_parts:
-                            in_string = True
-                            break
-
-                    # Also check if it's in a list of strings (common pattern in tests)
-                    # e.g., required_methods = ["_handle_get_products_skill", ...]
-                    if re.search(rf'[\[\(]\s*["\'][^"\']*{pattern}', code_part):
-                        in_string = True
-
-                    if not in_string:
-                        line_nums.append(i + 1)
+                    # Skip if in string literals (already filtered by pattern matching @patch strings)
+                    line_nums.append(i + 1)
 
             if line_nums:  # Only add violation if found in actual code
                 violations.append(
