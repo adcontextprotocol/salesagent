@@ -236,14 +236,12 @@ def sync_standard(tenant_id, **kwargs):
     """Sync standard formats from adcontextprotocol.org."""
     try:
         # This would normally fetch from the protocol site
-        # For now, return success
-        flash("Standard formats synced successfully", "success")
-        return redirect(url_for("creatives.index", tenant_id=tenant_id))
+        # For now, return success with count of 0
+        return jsonify({"success": True, "count": 0, "message": "Standard formats sync not yet implemented"})
 
     except Exception as e:
         logger.error(f"Error syncing standard formats: {e}", exc_info=True)
-        flash(f"Error syncing formats: {str(e)}", "error")
-        return redirect(url_for("creatives.index", tenant_id=tenant_id))
+        return jsonify({"success": False, "error": str(e)}), 500
 
 
 @creatives_bp.route("/discover", methods=["POST"])
@@ -478,10 +476,8 @@ def delete_format(tenant_id, format_id, **kwargs):
             db_session.delete(creative_format)
             db_session.commit()
 
-            flash("Creative format deleted successfully", "success")
-            return redirect(url_for("creatives.index", tenant_id=tenant_id))
+            return jsonify({"success": True})
 
     except Exception as e:
         logger.error(f"Error deleting creative format: {e}", exc_info=True)
-        flash(f"Error deleting format: {str(e)}", "error")
-        return redirect(url_for("creatives.index", tenant_id=tenant_id))
+        return jsonify({"error": str(e)}), 500
