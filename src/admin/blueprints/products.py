@@ -138,9 +138,9 @@ def add_product(tenant_id):
                     formats = []
 
                 # Parse countries - from multi-select
-                countries = request.form.getlist("countries")
-                if not countries or "ALL" in countries:
-                    countries = None  # None means all countries
+                countries_list = request.form.getlist("countries")
+                # Only set countries if some were selected; None means all countries
+                countries = countries_list if countries_list and "ALL" not in countries_list else None
 
                 # Get pricing based on delivery type
                 delivery_type = form_data.get("delivery_type", "guaranteed")
@@ -170,12 +170,12 @@ def add_product(tenant_id):
                     # Add ad unit/placement targeting if provided
                     ad_unit_ids = form_data.get("targeted_ad_unit_ids", "").strip()
                     if ad_unit_ids:
-                        base_config["targeted_ad_unit_ids"] = [id.strip() for id in ad_unit_ids.split("\n") if id.strip()]
+                        base_config["targeted_ad_unit_ids"] = [id.strip() for id in ad_unit_ids.split(",") if id.strip()]
 
                     placement_ids = form_data.get("targeted_placement_ids", "").strip()
                     if placement_ids:
                         base_config["targeted_placement_ids"] = [
-                            id.strip() for id in placement_ids.split("\n") if id.strip()
+                            id.strip() for id in placement_ids.split(",") if id.strip()
                         ]
 
                     base_config["include_descendants"] = form_data.get("include_descendants") == "on"
@@ -198,21 +198,27 @@ def add_product(tenant_id):
                     gam_config_service = GAMProductConfigService()
                     implementation_config = gam_config_service.generate_default_config(delivery_type, formats)
 
+                # Build product kwargs, excluding None values for JSON fields that have database constraints
+                product_kwargs = {
+                    "product_id": form_data.get("product_id") or f"prod_{uuid.uuid4().hex[:8]}",
+                    "tenant_id": tenant_id,
+                    "name": form_data["name"],
+                    "description": form_data.get("description", ""),
+                    "formats": formats,
+                    "delivery_type": delivery_type,
+                    "is_fixed_price": (delivery_type == "guaranteed"),
+                    "cpm": cpm,
+                    "price_guidance": price_guidance,
+                    "targeting_template": {},
+                    "implementation_config": implementation_config,
+                }
+
+                # Only add countries if explicitly set
+                if countries is not None:
+                    product_kwargs["countries"] = countries
+
                 # Create product with correct fields matching the Product model
-                product = Product(
-                    product_id=form_data.get("product_id") or f"prod_{uuid.uuid4().hex[:8]}",
-                    tenant_id=tenant_id,
-                    name=form_data["name"],
-                    description=form_data.get("description", ""),
-                    formats=formats,  # List, not JSON string
-                    countries=countries,  # List or None
-                    delivery_type=delivery_type,
-                    is_fixed_price=(delivery_type == "guaranteed"),
-                    cpm=cpm,
-                    price_guidance=price_guidance,
-                    targeting_template={},  # Empty targeting template
-                    implementation_config=implementation_config
-                )
+                product = Product(**product_kwargs)
                 db_session.add(product)
                 db_session.commit()
 
