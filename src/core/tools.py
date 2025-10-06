@@ -84,6 +84,9 @@ async def get_products_raw(
     brief: str,
     promoted_offering: str,
     adcp_version: str = "1.0.0",
+    min_exposures: int | None = None,
+    filters: dict | None = None,
+    strategy_id: str | None = None,
     context: Context = None,
 ) -> GetProductsResponse:
     """Get available products matching the brief.
@@ -94,6 +97,9 @@ async def get_products_raw(
         brief: Brief description of the advertising campaign or requirements
         promoted_offering: What is being promoted/advertised (required per AdCP spec)
         adcp_version: AdCP schema version for this request (default: 1.0.0)
+        min_exposures: Minimum impressions needed for measurement validity (optional)
+        filters: Structured filters for product discovery (optional)
+        strategy_id: Optional strategy ID for linking operations (optional)
         context: FastMCP context (automatically provided)
 
     Returns:
@@ -101,12 +107,19 @@ async def get_products_raw(
     """
     # Use lazy import to avoid circular dependencies
     from src.core.main import _get_products_impl
+    from src.core.schemas import ProductFilters
+
+    # Convert filters dict to ProductFilters if provided
+    filters_obj = ProductFilters(**filters) if filters else None
 
     # Create request object
     req = GetProductsRequest(
         brief=brief or "",
         promoted_offering=promoted_offering,
         adcp_version=adcp_version,
+        min_exposures=min_exposures,
+        filters=filters_obj,
+        strategy_id=strategy_id,
     )
 
     # Call shared implementation
