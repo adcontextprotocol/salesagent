@@ -130,7 +130,7 @@
 
         <!-- Submit Buttons -->
         <div style="margin-top: 2rem; display: flex; gap: 1rem;">
-            <button type="submit" class="btn btn-primary">Create Product</button>
+            <button type="submit" class="btn btn-primary">{{ 'Update Product' if product else 'Create Product' }}</button>
             <a href="{{ url_for('products.list_products', tenant_id=tenant_id) }}" class="btn btn-secondary">Cancel</a>
         </div>
     </form>
@@ -499,17 +499,28 @@ document.addEventListener('DOMContentLoaded', function() {
     setTimeout(() => {
         if (product.cpm) {
             const cpmField = document.getElementById('cpm');
-            if (cpmField) cpmField.value = product.cpm;
+            if (cpmField) {
+                cpmField.value = product.cpm;
+                console.log('Set CPM to:', product.cpm);
+            }
         }
-        if (product.price_guidance && product.price_guidance.min) {
+        if (product.price_guidance && product.price_guidance.min !== undefined) {
             const floorField = document.getElementById('floor_cpm');
-            if (floorField) floorField.value = product.price_guidance.min;
+            if (floorField) {
+                floorField.value = product.price_guidance.min;
+                console.log('Set floor_cpm to:', product.price_guidance.min);
+            } else {
+                console.warn('floor_cpm field not found!');
+            }
         }
         if (config.priority) {
             const priorityField = document.getElementById('priority');
-            if (priorityField) priorityField.value = config.priority;
+            if (priorityField) {
+                priorityField.value = config.priority;
+                console.log('Set priority to:', config.priority);
+            }
         }
-    }, 100);
+    }, 200);
 
     // Set countries
     if (product.countries && product.countries.length > 0) {
