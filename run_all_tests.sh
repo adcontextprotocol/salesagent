@@ -4,9 +4,9 @@
 
 set -e  # Exit on first error
 
-# Get the directory of the git repository
-GIT_DIR=$(git rev-parse --show-toplevel)
-cd "$GIT_DIR"
+# Get the directory of the script (works even when called from git hooks)
+SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+cd "$SCRIPT_DIR"
 
 # Color codes for output
 RED='\033[0;31m'
