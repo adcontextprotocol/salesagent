@@ -1155,6 +1155,9 @@ class GetProductsResponse(BaseModel):
     automatically by the MCP wrapper at the protocol layer.
     """
 
+    adcp_version: str = Field(
+        default="1.0.0", pattern=r"^\d+\.\d+\.\d+$", description="AdCP schema version used for this response"
+    )
     products: list[Product]
     message: str | None = None  # Optional human-readable message
     errors: list[Error] | None = None  # Optional error reporting
@@ -1164,6 +1167,9 @@ class GetProductsResponse(BaseModel):
         """Override to ensure products use AdCP-compliant serialization."""
         # Get basic structure
         data = {}
+
+        # Add required adcp_version field
+        data["adcp_version"] = self.adcp_version
 
         # Serialize products using their custom model_dump method
         if self.products:
@@ -1184,6 +1190,9 @@ class GetProductsResponse(BaseModel):
     def model_dump_internal(self, **kwargs):
         """Override to ensure products use internal field names for reconstruction."""
         data = {}
+
+        # Add required adcp_version field
+        data["adcp_version"] = self.adcp_version
 
         # Serialize products using their internal model_dump method
         if self.products:
