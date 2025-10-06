@@ -436,6 +436,9 @@ def test_admin_app(integration_db):
 @pytest.fixture
 def authenticated_admin_client(test_admin_app):
     """Provide authenticated admin client with database."""
+    # Enable test mode for authentication
+    os.environ["ADCP_AUTH_TEST_MODE"] = "true"
+
     client = test_admin_app.test_client()
 
     with client.session_transaction() as sess:
@@ -449,6 +452,10 @@ def authenticated_admin_client(test_admin_app):
         sess["test_user_name"] = "Admin User"
 
     yield client
+
+    # Clean up test mode
+    if "ADCP_AUTH_TEST_MODE" in os.environ:
+        del os.environ["ADCP_AUTH_TEST_MODE"]
 
 
 @pytest.fixture
