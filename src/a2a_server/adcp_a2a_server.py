@@ -1088,13 +1088,14 @@ class AdCPRequestHandler(RequestHandler):
                     "received_parameters": list(parameters.keys()),
                 }
 
-            # Call core function with individual parameters (fixing original validation bug)
+            # Call core function with spec-compliant parameters (AdCP v2.4)
             response = core_sync_creatives_tool(
                 creatives=parameters["creatives"],
-                media_buy_id=parameters.get("media_buy_id"),
-                buyer_ref=parameters.get("buyer_ref"),
-                assign_to_packages=parameters.get("assign_to_packages", []),
-                upsert=parameters.get("upsert", True),
+                patch=parameters.get("patch", False),
+                assignments=parameters.get("assignments"),
+                delete_missing=parameters.get("delete_missing", False),
+                dry_run=parameters.get("dry_run", False),
+                validation_mode=parameters.get("validation_mode", "strict"),
                 context=tool_context,
             )
 
