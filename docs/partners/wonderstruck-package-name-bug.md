@@ -1,8 +1,68 @@
-# Wonderstruck Package Name Generation - Root Cause Analysis
+# GAM Order Name Generation - Using Optional Field Bug
 
-## Summary
+## Current Status (2025-10-06) - FIXED
 
-Wonderstruck generates generic package names like "None - 1 packages" because **we weren't sending `buyer_ref` values**. This was OUR bug - we were incorrectly auto-generating `buyer_ref` when clients used the legacy format, which violated the AdCP principle that `buyer_ref` is the **buyer's identifier**, not ours to create.
+**✅ OUR BUG - NOW FIXED**: GAM adapter was using optional `campaign_name` field instead of required `promoted_offering` field for order names.
+
+**What Was Happening**:
+- ❌ GAM adapter used `request.campaign_name` which is optional (can be None)
+- ❌ When None, created order names like: `"None - 1 packages"`
+- ✅ `promoted_offering` is required by AdCP spec and always present
+
+**Root Cause**: Code was using wrong field for order name generation.
+
+**The Fix**: Use `promoted_offering` (required) with fallback to `campaign_name` (optional):
+```python
+campaign_identifier = request.campaign_name or request.promoted_offering
+```
+
+## Code Locations Fixed
+
+### 1. `src/adapters/google_ad_manager.py` (line 298)
+**Before:**
+```python
+order_id = self.orders_manager.create_order(
+    order_name=f"{request.campaign_name} - {len(packages)} packages",  # ❌ campaign_name can be None
+    ...
+)
+```
+
+**After:**
+```python
+campaign_identifier = request.campaign_name or request.promoted_offering
+order_id = self.orders_manager.create_order(
+    order_name=f"{campaign_identifier} - {len(packages)} packages",  # ✅ Always has value
+    ...
+)
+```
+
+### 2. `src/adapters/gam/managers/workflow.py` (lines 144, 152, 158, 199)
+**Before:**
+```python
+"campaign_name": request.campaign_name,  # ❌ Can be None
+f"Set order name to: {request.campaign_name}",  # ❌ Can show "None"
+```
+
+**After:**
+```python
+campaign_identifier = request.campaign_name or request.promoted_offering
+"campaign_name": campaign_identifier,  # ✅ Always has value
+f"Set order name to: {campaign_identifier}",  # ✅ Shows actual campaign name
+```
+
+## Why This Matters
+
+**AdCP Spec Design**:
+- `promoted_offering`: **Required** field - "Description of advertiser and what is being promoted"
+- `campaign_name`: **Optional** field - "Campaign name for display purposes"
+
+**Best Practice**: Always use required fields for critical operations like naming. Optional fields should only be used as enhancements when present.
+
+---
+
+## Historical Context: buyer_ref Auto-Generation Bug (Also Fixed)
+
+Previously, Wonderstruck generated generic package names like "None - 1 packages" because **we weren't sending `buyer_ref` values**. This was OUR bug - we were incorrectly auto-generating `buyer_ref` when clients used the legacy format, which violated the AdCP principle that `buyer_ref` is the **buyer's identifier**, not ours to create.
 
 ## Root Cause: Our Bug
 
@@ -87,15 +147,16 @@ If buyers want meaningful package names in Wonderstruck (or any other platform),
 }
 ```
 
-## What Publishers Should Do (Fallback Naming)
+## What Publishers Should Do (Fallback Naming Best Practices)
 
 When `buyer_ref` is not provided (which is valid per spec), publishers should generate meaningful names from other fields:
 
-### Option 1: Use promoted_offering + index
+### Option 1: Use promoted_offering + index (✅ Now implemented)
+```python
+campaign_identifier = request.campaign_name or request.promoted_offering
+order_name = f"{campaign_identifier} - {len(packages)} packages"
 ```
-Name: "Nike Shoes Q1 - Package 1"
-Name: "Nike Shoes Q1 - Package 2"
-```
+Result: "Nike Shoes Q1 - 2 packages"
 
 ### Option 2: Use product names
 ```
@@ -109,29 +170,19 @@ Name: "pkg_0_abc123"
 Name: "pkg_1_def456"
 ```
 
-**Current Wonderstruck Behavior**: "None - 1 packages" suggests they're not reading `promoted_offering` or any other meaningful fields.
-
 ## Changes Made
 
 ### Code Changes
-1. **schemas.py**: Removed `buyer_ref` auto-generation in legacy format conversion
-2. **Test Updates**: Updated tests to expect `buyer_ref = None` when not provided by buyer
-
-### Documentation
-This document explains:
-- Why we stopped auto-generating `buyer_ref`
-- What the spec says about `buyer_ref`
-- How publishers should handle missing `buyer_ref`
-
-## Classification
-
-- **Root Cause**: Our implementation bug (auto-generating buyer identifiers)
-- **Impact**: Publishers see generic names when buyers don't provide `buyer_ref`
-- **Fix**: Stop auto-generating, let buyers provide meaningful identifiers
-- **Publisher Action**: Implement fallback naming when `buyer_ref` is absent
+1. **google_ad_manager.py** (line 298): Use `promoted_offering` with fallback to `campaign_name`
+2. **gam/managers/workflow.py** (lines 144, 152, 158, 199): Same fix for workflow steps
+3. **schemas.py** (previously): Removed `buyer_ref` auto-generation
 
 ---
 
-**Status**: Fixed in this commit
-**Priority**: Medium (affects UX but not functionality)
-**Spec Compliance**: Now compliant (buyer_ref is optional, buyer-provided)
+## Summary
+
+**Two Bugs Fixed:**
+1. ✅ Using optional `campaign_name` instead of required `promoted_offering` → Fixed
+2. ✅ Auto-generating `buyer_ref` values (previous fix) → Still fixed
+
+**Status**: Both issues resolved. Order names now use meaningful, always-present values.

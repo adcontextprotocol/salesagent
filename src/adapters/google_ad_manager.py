@@ -294,8 +294,10 @@ class GoogleAdManager(AdServerAdapter):
                 )
 
         # Automatic mode - create order directly
+        # Use promoted_offering (required) or campaign_name (optional) for order name
+        campaign_identifier = request.campaign_name or request.promoted_offering
         order_id = self.orders_manager.create_order(
-            order_name=f"{request.campaign_name} - {len(packages)} packages",
+            order_name=f"{campaign_identifier} - {len(packages)} packages",
             total_budget=request.budget.total,
             start_time=start_time,
             end_time=end_time,

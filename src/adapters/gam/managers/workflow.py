@@ -140,19 +140,22 @@ class GAMWorkflowManager:
         """
         step_id = f"c{uuid.uuid4().hex[:5]}"  # 6 chars total
 
+        # Use promoted_offering (required) or campaign_name (optional)
+        campaign_identifier = request.campaign_name or request.promoted_offering
+
         # Build detailed action list for humans to manually create the order
         action_details = {
             "action_type": "create_gam_order",
             "order_id": media_buy_id,
             "platform": "Google Ad Manager",
             "automation_mode": "manual_creation_required",
-            "campaign_name": request.campaign_name,
+            "campaign_name": campaign_identifier,
             "total_budget": request.budget.total,
             "flight_start": start_time.isoformat(),
             "flight_end": end_time.isoformat(),
             "instructions": [
                 "Navigate to Google Ad Manager and create a new order",
-                f"Set order name to: {request.campaign_name}",
+                f"Set order name to: {campaign_identifier}",
                 f"Set total budget to: ${request.budget.total:,.2f}",
                 f"Set flight dates: {start_time.strftime('%Y-%m-%d')} to {end_time.strftime('%Y-%m-%d')}",
                 "Create line items for each package according to the specifications below",
@@ -193,7 +196,7 @@ class GAMWorkflowManager:
                     status="approval",  # Shortened to fit database field
                     owner="publisher",  # Publisher needs to create GAM order manually
                     assigned_to=None,  # Will be assigned by admin
-                    transaction_details={"campaign_name": request.campaign_name},
+                    transaction_details={"campaign_name": campaign_identifier},
                 )
 
                 db_session.add(workflow_step)
