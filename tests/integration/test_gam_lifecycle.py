@@ -192,12 +192,20 @@ class TestGAMOrderLifecycleIntegration:
 
             # Test activation with guaranteed items (should submit for workflow)
             with patch.object(adapter, "_check_order_has_guaranteed_items", return_value=(True, ["STANDARD"])):
-                response = adapter.update_media_buy(
-                    media_buy_id="12345", action="activate_order", package_id=None, budget=None, today=datetime.now()
-                )
-                assert response.status == "submitted"
-                assert "Cannot auto-activate order with guaranteed line items" in response.reason
-                assert response.workflow_step_id is not None
+                # Mock workflow step creation to avoid database foreign key issues
+                with patch.object(
+                    adapter.workflow_manager, "create_activation_workflow_step", return_value="test_step_id"
+                ):
+                    response = adapter.update_media_buy(
+                        media_buy_id="12345",
+                        action="activate_order",
+                        package_id=None,
+                        budget=None,
+                        today=datetime.now(),
+                    )
+                    assert response.status == "submitted"
+                    assert "Cannot auto-activate order with guaranteed line items" in response.reason
+                    assert response.workflow_step_id == "test_step_id"
 
     # Helper method for line item classification (no external dependencies)
     def _classify_line_items(self, line_items):
