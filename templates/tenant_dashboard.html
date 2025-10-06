@@ -437,6 +437,11 @@
         border-bottom: 1px solid #f3f4f6;
     }
 
+    .mini-table tbody tr:hover {
+        background-color: #f9fafb;
+        transition: background-color 0.15s ease;
+    }
+
     .advertiser-name {
         font-weight: 600;
         color: #111827;
@@ -453,6 +458,8 @@
     .buy-status.active { background: #d1fae5; color: #065f46; }
     .buy-status.pending { background: #fef3c7; color: #92400e; }
     .buy-status.completed { background: #e5e7eb; color: #374151; }
+    .buy-status.failed { background: #fee2e2; color: #991b1b; }
+    .buy-status.working { background: #dbeafe; color: #1e40af; }
 
     .spend-amount {
         font-weight: 600;
@@ -739,7 +746,7 @@
         </thead>
         <tbody>
             {% for buy in recent_media_buys[:5] %}
-            <tr>
+            <tr style="cursor: pointer;" onclick="window.location='{{ script_name }}/tenant/{{ tenant.tenant_id }}/media-buy/{{ buy.media_buy_id }}'">
                 <td class="advertiser-name">{{ buy.advertiser_name }}</td>
                 <td><code style="font-size: 0.75rem;">{{ buy.media_buy_id }}</code></td>
                 <td><code style="font-size: 0.75rem;">{{ buy.buyer_ref or '-' }}</code></td>
