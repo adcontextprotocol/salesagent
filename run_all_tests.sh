@@ -20,9 +20,9 @@ MODE=${1:-full}  # Default to full if no argument
 echo "🧪 Running tests in '$MODE' mode..."
 echo ""
 
-# Quick mode: unit tests + import validation
+# Quick mode: unit tests + integration tests + import validation
 if [ "$MODE" == "quick" ]; then
-    echo "📦 Step 1/2: Validating critical imports..."
+    echo "📦 Step 1/3: Validating critical imports..."
 
     # Check if key imports work (catches missing imports early)
     if ! uv run python -c "from src.core.tools import get_products_raw, create_media_buy_raw" 2>/dev/null; then
@@ -40,16 +40,25 @@ if [ "$MODE" == "quick" ]; then
     echo -e "${GREEN}✅ Imports validated${NC}"
     echo ""
 
-    echo "🧪 Step 2/2: Running unit tests..."
-    if ! uv run pytest tests/unit/ -x --tb=short; then
+    echo "🧪 Step 2/3: Running unit tests..."
+    if ! uv run pytest tests/unit/ -x --tb=short -q; then
         echo -e "${RED}❌ Unit tests failed!${NC}"
         exit 1
     fi
-
-    echo -e "${GREEN}✅ Quick tests passed${NC}"
+    echo -e "${GREEN}✅ Unit tests passed${NC}"
     echo ""
-    echo -e "${YELLOW}ℹ️  Note: Integration tests not run in quick mode${NC}"
-    echo "   Run './run_all_tests.sh' for full validation"
+
+    echo "🔗 Step 3/3: Running integration tests..."
+    # Exclude tests that require a real database connection
+    if ! uv run pytest tests/integration/ -m "not requires_db" -x --tb=line -q; then
+        echo -e "${RED}❌ Integration tests failed!${NC}"
+        exit 1
+    fi
+
+    echo -e "${GREEN}✅ All quick tests passed${NC}"
+    echo ""
+    echo -e "${YELLOW}ℹ️  Note: E2E tests and database-dependent tests not run in quick mode${NC}"
+    echo "   Run './run_all_tests.sh full' for complete validation"
     exit 0
 fi
 

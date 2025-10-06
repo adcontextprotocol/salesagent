@@ -103,6 +103,7 @@ class TestDashboardServiceIntegration:
         assert service.tenant_id == "valid_tenant_id"
         assert service._tenant is None  # Not loaded yet
 
+    @pytest.mark.requires_db
     def test_get_tenant_with_real_database(self, test_tenant_data):
         """Test get_tenant with actual database connection."""
         tenant_id = test_tenant_data["tenant_id"]
