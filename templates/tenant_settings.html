@@ -536,7 +536,9 @@
                         </p>
                     </div>
                     {% if active_adapter == 'google_ad_manager' %}
-                    <button onclick="syncInventory()" class="btn btn-small">Sync Now</button>
+                    <button onclick="syncGAMInventory()" class="btn btn-small btn-primary">
+                        <span id="sync-icon">🔄</span> Sync Inventory
+                    </button>
                     {% endif %}
                 </div>
             </div>
@@ -746,26 +748,6 @@
                 </div>
             </div>
 
-            <div class="form-section">
-                <h3>Product Templates</h3>
-                <p style="margin-bottom: 1rem; color: #6b7280; font-size: 0.875rem;">
-                    Quick-start with industry-standard product templates
-                </p>
-                <div class="form-grid">
-                    <button onclick="loadTemplate('display')" class="btn btn-secondary">
-                        <i class="fas fa-desktop"></i> Display Advertising
-                    </button>
-                    <button onclick="loadTemplate('video')" class="btn btn-secondary">
-                        <i class="fas fa-video"></i> Video Advertising
-                    </button>
-                    <button onclick="loadTemplate('audio')" class="btn btn-secondary">
-                        <i class="fas fa-microphone"></i> Audio/Podcast
-                    </button>
-                    <button onclick="loadTemplate('native')" class="btn btn-secondary">
-                        <i class="fas fa-newspaper"></i> Native Content
-                    </button>
-                </div>
-            </div>
         </div>
 
         <!-- Creative Formats Settings -->
@@ -1619,10 +1601,46 @@ function loadTemplate(templateType) {
     console.log('Loading template:', templateType);
 }
 
-// Sync inventory
-function syncInventory() {
-    // Would trigger inventory sync
-    console.log('Syncing inventory...');
+// Sync GAM inventory
+function syncGAMInventory() {
+    const button = event.target.closest('button');
+    const syncIcon = document.getElementById('sync-icon');
+    const originalText = button.innerHTML;
+
+    button.disabled = true;
+    button.innerHTML = '<span id="sync-icon">⏳</span> Syncing...';
+
+    fetch('{{ script_name }}/tenant/{{ tenant.tenant_id }}/gam/sync-inventory', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        }
+    })
+    .then(response => {
+        if (!response.ok) {
+            return response.text().then(text => {
+                throw new Error(text || 'Failed to sync inventory');
+            });
+        }
+        return response.json();
+    })
+    .then(data => {
+        if (data.success) {
+            alert('✅ Inventory synced successfully!\n\n' +
+                  'Ad Units: ' + (data.ad_units_count || 0) + '\n' +
+                  'Placements: ' + (data.placements_count || 0) + '\n' +
+                  'Custom Targeting: ' + (data.targeting_count || 0));
+            window.location.reload();
+        } else {
+            throw new Error(data.error || 'Unknown error');
+        }
+    })
+    .catch(error => {
+        console.error('Error syncing inventory:', error);
+        alert('❌ Failed to sync inventory:\n\n' + error.message);
+        button.disabled = false;
+        button.innerHTML = originalText;
+    });
 }
 
 // Check OAuth status for adapter selection (runs on page load)
