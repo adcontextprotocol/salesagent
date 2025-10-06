@@ -672,7 +672,9 @@ class TestDatabaseSchemaEvolution:
         product_dict = product.model_dump()
         assert "product_id" in product_dict
         assert "name" in product_dict
-        assert "cpm" in product_dict  # Should be present even if None
+        # Per AdCP spec and issue #289: optional null fields should be omitted, not included
+        assert "cpm" not in product_dict  # Optional field should be omitted when None
+        assert "min_spend" not in product_dict  # Optional field should be omitted when None
 
 
 class TestParallelTestExecution:
