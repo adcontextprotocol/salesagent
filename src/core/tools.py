@@ -27,6 +27,7 @@ from src.core.schemas import (
     CreateMediaBuyResponse,
     GetMediaBuyDeliveryRequest,
     GetMediaBuyDeliveryResponse,
+    GetProductsRequest,
     GetProductsResponse,
     GetSignalsRequest,
     GetSignalsResponse,
