@@ -368,23 +368,41 @@ uv run pytest tests/ -x
 # CI caught it after 2 failed runs
 ```
 
-#### Pre-Push Hook (Automatic Validation)
+#### Pre-Push Validation
 
-A pre-push hook is configured in `.git/hooks/pre-push` that automatically runs before every `git push`:
-- **Quick Mode**: Runs unit tests + import validation (2-3 minutes)
-- **Blocks Push**: If tests fail, push is aborted (use `--no-verify` to override)
-- **Test Runner**: Uses `./run_all_tests.sh quick` for validation
-
-**Manual Testing**:
+**⚠️ RECOMMENDED WORKFLOW:**
 ```bash
-# Run the same checks the pre-push hook runs
-./run_all_tests.sh quick
+# 1. Before pushing - run CI mode (catches database issues)
+./run_all_tests.sh ci        # ~3-5 min, exactly like GitHub Actions
 
-# Run full test suite (unit + integration + e2e)
-./run_all_tests.sh full
+# 2. Push - quick mode runs automatically
+git push                      # ~1 min validation, blocks if tests fail
 ```
 
-The hook is already installed and will run automatically on every push.
+**Test Modes:**
+
+**CI Mode (RECOMMENDED before pushing):**
+- Starts PostgreSQL container automatically (postgres:15)
+- Runs ALL tests including database-dependent tests
+- Exactly matches GitHub Actions environment
+- Catches issues before CI does
+- Automatically cleans up container
+
+**Quick Mode (runs automatically on push):**
+- Fast validation: unit tests + integration tests (no database)
+- Pre-push hook uses this mode
+- Blocks push if tests fail (override with `git push --no-verify`)
+
+**Full Mode (comprehensive, no Docker):**
+- All tests with SQLite instead of PostgreSQL
+- Good for development without Docker
+
+**Command Reference:**
+```bash
+./run_all_tests.sh ci      # Like CI (PostgreSQL container) - USE THIS!
+./run_all_tests.sh quick   # Fast pre-push validation (automatic)
+./run_all_tests.sh full    # Full suite (SQLite, no Docker)
+```
 
 See `docs/testing/` for detailed patterns and case studies.
 

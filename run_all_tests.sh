@@ -1,6 +1,10 @@
 #!/bin/bash
 # Test runner script for pre-push hook validation
 # Implements the testing workflow documented in CLAUDE.md
+#
+# ⚠️  RECOMMENDED: Run './run_all_tests.sh ci' before pushing
+#     This runs tests exactly like GitHub Actions with PostgreSQL container
+#     and catches database-specific issues that quick mode misses.
 
 set -e  # Exit on first error
 
