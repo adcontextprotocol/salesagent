@@ -213,6 +213,9 @@ jobs:
     - name: Install dependencies
       run: |
         uv sync --extra dev
+        # Clear Python bytecode cache to prevent stale imports
+        find . -type d -name __pycache__ -exec rm -rf {} + || true
+        find . -type f -name '*.pyc' -delete || true
 
     - name: Run database migrations
       env:

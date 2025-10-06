@@ -18,9 +18,25 @@ pytestmark = pytest.mark.integration
 
 @pytest.fixture
 def mock_context():
-    """Create mock context for all tests (reduces duplicate Mock() calls)."""
-    context = Mock()
-    context.meta = {"headers": {"x-adcp-auth": "test_token"}}
+    """Create mock context with filter_test_token for TestGetProductsFilterBehavior."""
+    context = Mock(spec=["meta"])
+    context.meta = {"headers": {"x-adcp-auth": "filter_test_token"}}
+    return context
+
+
+@pytest.fixture
+def mock_context_filter_logic():
+    """Create mock context with filter_logic_token for TestProductFilterLogic."""
+    context = Mock(spec=["meta"])
+    context.meta = {"headers": {"x-adcp-auth": "filter_logic_token"}}
+    return context
+
+
+@pytest.fixture
+def mock_context_edge_case():
+    """Create mock context with edge_case_token for TestFilterEdgeCases."""
+    context = Mock(spec=["meta"])
+    context.meta = {"headers": {"x-adcp-auth": "edge_case_token"}}
     return context
 
 
@@ -304,11 +320,11 @@ class TestProductFilterLogic:
             session.commit()
 
     @pytest.mark.asyncio
-    async def test_delivery_type_filter_guaranteed(self, mock_context):
+    async def test_delivery_type_filter_guaranteed(self, mock_context_filter_logic):
         """Test manual filtering by guaranteed delivery_type."""
         get_products = self._import_get_products_tool()
 
-        context = mock_context
+        context = mock_context_filter_logic
 
         result = await get_products(
             promoted_offering="Nike Air Jordan 2025 basketball shoes",
@@ -323,11 +339,11 @@ class TestProductFilterLogic:
         assert filtered[0].product_id == "guaranteed_video_fixed"
 
     @pytest.mark.asyncio
-    async def test_delivery_type_filter_non_guaranteed(self, mock_context):
+    async def test_delivery_type_filter_non_guaranteed(self, mock_context_filter_logic):
         """Test manual filtering by non-guaranteed delivery_type."""
         get_products = self._import_get_products_tool()
 
-        context = mock_context
+        context = mock_context_filter_logic
 
         result = await get_products(
             promoted_offering="Nike Air Jordan 2025 basketball shoes",
@@ -341,11 +357,11 @@ class TestProductFilterLogic:
         assert filtered[0].product_id == "programmatic_display_dynamic"
 
     @pytest.mark.asyncio
-    async def test_is_fixed_price_filter_true(self, mock_context):
+    async def test_is_fixed_price_filter_true(self, mock_context_filter_logic):
         """Test manual filtering by is_fixed_price=True."""
         get_products = self._import_get_products_tool()
 
-        context = mock_context
+        context = mock_context_filter_logic
 
         result = await get_products(
             promoted_offering="Nike Air Jordan 2025 basketball shoes",
@@ -361,11 +377,11 @@ class TestProductFilterLogic:
         # The is_fixed_price filter still works correctly
 
     @pytest.mark.asyncio
-    async def test_is_fixed_price_filter_false(self, mock_context):
+    async def test_is_fixed_price_filter_false(self, mock_context_filter_logic):
         """Test manual filtering by is_fixed_price=False."""
         get_products = self._import_get_products_tool()
 
-        context = mock_context
+        context = mock_context_filter_logic
 
         result = await get_products(
             promoted_offering="Nike Air Jordan 2025 basketball shoes",
@@ -380,11 +396,11 @@ class TestProductFilterLogic:
         assert filtered[0].cpm is None
 
     @pytest.mark.asyncio
-    async def test_format_type_filter_video(self, mock_context):
+    async def test_format_type_filter_video(self, mock_context_filter_logic):
         """Test manual filtering by format_types containing video."""
         get_products = self._import_get_products_tool()
 
-        context = mock_context
+        context = mock_context_filter_logic
 
         result = await get_products(
             promoted_offering="Nike Air Jordan 2025 basketball shoes",
@@ -413,11 +429,11 @@ class TestProductFilterLogic:
         assert filtered[0].product_id == "guaranteed_video_fixed"
 
     @pytest.mark.asyncio
-    async def test_format_type_filter_display(self, mock_context):
+    async def test_format_type_filter_display(self, mock_context_filter_logic):
         """Test manual filtering by format_types containing display."""
         get_products = self._import_get_products_tool()
 
-        context = mock_context
+        context = mock_context_filter_logic
 
         result = await get_products(
             promoted_offering="Nike Air Jordan 2025 basketball shoes",
@@ -446,11 +462,11 @@ class TestProductFilterLogic:
         assert filtered[0].product_id == "programmatic_display_dynamic"
 
     @pytest.mark.asyncio
-    async def test_format_id_filter_specific(self, mock_context):
+    async def test_format_id_filter_specific(self, mock_context_filter_logic):
         """Test manual filtering by specific format_id."""
         get_products = self._import_get_products_tool()
 
-        context = mock_context
+        context = mock_context_filter_logic
 
         result = await get_products(
             promoted_offering="Nike Air Jordan 2025 basketball shoes",
@@ -475,11 +491,11 @@ class TestProductFilterLogic:
         assert filtered[0].product_id == "guaranteed_video_fixed"
 
     @pytest.mark.asyncio
-    async def test_combined_filters_delivery_and_pricing(self, mock_context):
+    async def test_combined_filters_delivery_and_pricing(self, mock_context_filter_logic):
         """Test combining multiple filters (delivery_type + is_fixed_price)."""
         get_products = self._import_get_products_tool()
 
-        context = mock_context
+        context = mock_context_filter_logic
 
         result = await get_products(
             promoted_offering="Nike Air Jordan 2025 basketball shoes",
@@ -497,11 +513,11 @@ class TestProductFilterLogic:
         assert filtered[0].product_id == "guaranteed_video_fixed"
 
     @pytest.mark.asyncio
-    async def test_combined_filters_no_matches(self, mock_context):
+    async def test_combined_filters_no_matches(self, mock_context_filter_logic):
         """Test that conflicting filters return empty results."""
         get_products = self._import_get_products_tool()
 
-        context = mock_context
+        context = mock_context_filter_logic
 
         result = await get_products(
             promoted_offering="Nike Air Jordan 2025 basketball shoes",
@@ -571,11 +587,11 @@ class TestFilterEdgeCases:
             session.commit()
 
     @pytest.mark.asyncio
-    async def test_product_with_empty_formats(self, mock_context):
+    async def test_product_with_empty_formats(self, mock_context_edge_case):
         """Test that products with empty formats lists are handled correctly."""
         get_products = self._import_get_products_tool()
 
-        context = mock_context
+        context = mock_context_edge_case
 
         result = await get_products(
             promoted_offering="Nike Air Jordan 2025 basketball shoes",
@@ -589,11 +605,11 @@ class TestFilterEdgeCases:
         assert result.products[0].formats == []
 
     @pytest.mark.asyncio
-    async def test_format_filter_with_empty_formats_product(self, mock_context):
+    async def test_format_filter_with_empty_formats_product(self, mock_context_edge_case):
         """Test filtering by format_types when product has empty formats."""
         get_products = self._import_get_products_tool()
 
-        context = mock_context
+        context = mock_context_edge_case
 
         result = await get_products(
             promoted_offering="Nike Air Jordan 2025 basketball shoes",
