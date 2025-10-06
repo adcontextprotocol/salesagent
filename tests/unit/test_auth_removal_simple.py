@@ -15,7 +15,8 @@ class TestAuthRemovalChanges:
 
     def test_get_principal_from_context_returns_none_without_auth(self):
         """Test that get_principal_from_context returns None when no auth provided."""
-        context = Mock()
+        context = Mock(spec=["meta"])  # Limit to only meta attribute
+        context.meta = {}  # Empty meta, no headers
 
         with patch("src.core.main.get_http_headers", return_value={}):  # No x-adcp-auth header
             result = get_principal_from_context(context)
@@ -23,7 +24,8 @@ class TestAuthRemovalChanges:
 
     def test_get_principal_from_context_works_with_auth(self):
         """Test that get_principal_from_context still works with auth."""
-        context = Mock()
+        context = Mock(spec=["meta"])  # Limit to only meta attribute
+        context.meta = {"headers": {"x-adcp-auth": "test-token"}}
 
         with patch("src.core.main.get_http_headers", return_value={"x-adcp-auth": "test-token"}):
             with patch("src.core.main.get_principal_from_token", return_value="test_principal"):
