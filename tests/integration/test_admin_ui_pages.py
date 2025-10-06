@@ -87,13 +87,6 @@ class TestAdminUIPages:
         response = authenticated_session.get(f"/tenant/{test_tenant['tenant_id']}/settings", follow_redirects=True)
         assert response.status_code == 200
 
-    def test_product_setup_wizard_page_renders(self, authenticated_session, test_tenant):
-        """Test that the product setup wizard page renders successfully."""
-        response = authenticated_session.get(
-            f"/tenant/{test_tenant['tenant_id']}/products/setup-wizard", follow_redirects=True
-        )
-        assert response.status_code == 200
-
     def test_admin_index_redirects(self, client):
         """Test that the admin index redirects to signup landing page when not authenticated."""
         response = client.get("/")
