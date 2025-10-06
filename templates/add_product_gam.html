@@ -121,45 +121,12 @@
             {% endfor %}
         </div>
 
-        <!-- Section 4: GAM Line Item Settings (Collapsible) -->
-        <details style="margin-top: 2rem; border: 1px solid #ddd; border-radius: 4px; padding: 1rem;">
-            <summary style="cursor: pointer; font-weight: bold; font-size: 1.1em; margin-bottom: 1rem;">
-                Advanced GAM Settings (Optional)
-            </summary>
-
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-top: 1rem;">
-                <div class="form-group" id="priority-container">
-                    <!-- Priority field shown/hidden based on line item type -->
-                </div>
-
-                <div class="form-group">
-                    <!-- Placeholder for alignment -->
-                </div>
+        <!-- Section 4: Priority (for Standard/Sponsorship only) -->
+        <div id="priority-section" style="margin-top: 2rem; padding: 1rem; background: #f8f9fa; border-radius: 4px;">
+            <div class="form-group" id="priority-container" style="margin: 0;">
+                <!-- Priority field shown/hidden based on line item type -->
             </div>
-
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-top: 1rem;">
-                <div class="form-group">
-                    <label for="creative_rotation_type">Creative Rotation</label>
-                    <select id="creative_rotation_type" name="creative_rotation_type">
-                        <option value="">Use Default</option>
-                        <option value="EVEN">Even</option>
-                        <option value="OPTIMIZED">Optimized</option>
-                        <option value="MANUAL">Manual</option>
-                        <option value="SEQUENTIAL">Sequential</option>
-                    </select>
-                </div>
-
-                <div class="form-group">
-                    <label for="delivery_rate_type">Delivery Pacing</label>
-                    <select id="delivery_rate_type" name="delivery_rate_type">
-                        <option value="">Use Default</option>
-                        <option value="EVENLY">Evenly</option>
-                        <option value="FRONTLOADED">Frontloaded</option>
-                        <option value="AS_FAST_AS_POSSIBLE">As Fast As Possible</option>
-                    </select>
-                </div>
-            </div>
-        </details>
+        </div>
 
         <!-- Submit Buttons -->
         <div style="margin-top: 2rem; display: flex; gap: 1rem;">
@@ -221,26 +188,20 @@ document.getElementById('line_item_type').addEventListener('change', function() 
         `;
     }
 
-    // Update priority field
+    // Update priority field and section visibility
+    const prioritySection = document.getElementById('priority-section');
+
     if (lineItemType === 'STANDARD' || lineItemType === 'SPONSORSHIP') {
-        // Standard/Sponsorship: Custom priority (1-10)
+        // Standard/Sponsorship: Show custom priority input
+        prioritySection.style.display = 'block';
         priorityContainer.innerHTML = `
             <label for="priority">Priority (1-10) *</label>
             <input type="number" id="priority" name="priority" min="1" max="10" placeholder="e.g., 5" required>
-            <small style="color: #666; display: block; margin-top: 0.25rem;">Lower number = higher priority</small>
-        `;
-    } else if (lineItemType === 'PRICE_PRIORITY') {
-        // Price Priority: Fixed at 12
-        priorityContainer.innerHTML = `
-            <label>Priority</label>
-            <p style="color: #666; margin: 0.5rem 0 0 0; font-style: italic;">Priority 12 (automatic for price priority)</p>
+            <small style="color: #666; display: block; margin-top: 0.25rem;">Lower number = higher priority. Standard line items typically use priorities 6-10.</small>
         `;
     } else {
-        // House: Fixed at 16
-        priorityContainer.innerHTML = `
-            <label>Priority</label>
-            <p style="color: #666; margin: 0.5rem 0 0 0; font-style: italic;">Priority 16 (automatic for house)</p>
-        `;
+        // Price Priority & House: Hide priority section (handled automatically)
+        prioritySection.style.display = 'none';
     }
 });
 
