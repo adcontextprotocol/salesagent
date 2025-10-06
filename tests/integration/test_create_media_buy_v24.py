@@ -128,8 +128,11 @@ class TestCreateMediaBuyV24Format:
         )
 
         context = ToolContext(
+            context_id=f"test_ctx_v24_{id(req)}",
             tenant_id=setup_test_tenant["tenant_id"],
             principal_id=setup_test_tenant["principal_id"],
+            tool_name="create_media_buy",
+            request_timestamp=datetime.now(UTC),
         )
 
         # This exercises the FULL serialization path including response_packages construction
@@ -176,8 +179,11 @@ class TestCreateMediaBuyV24Format:
         )
 
         context = ToolContext(
+            context_id=f"test_ctx_v24_{id(req)}",
             tenant_id=setup_test_tenant["tenant_id"],
             principal_id=setup_test_tenant["principal_id"],
+            tool_name="create_media_buy",
+            request_timestamp=datetime.now(UTC),
         )
 
         response = _create_media_buy_impl(req, context)
@@ -227,8 +233,11 @@ class TestCreateMediaBuyV24Format:
         )
 
         context = ToolContext(
+            context_id=f"test_ctx_v24_{id(req)}",
             tenant_id=setup_test_tenant["tenant_id"],
             principal_id=setup_test_tenant["principal_id"],
+            tool_name="create_media_buy",
+            request_timestamp=datetime.now(UTC),
         )
 
         response = _create_media_buy_impl(req, context)
@@ -247,7 +256,7 @@ class TestCreateMediaBuyV24Format:
 
         This verifies the A2A → tools.py → _impl path also handles nested objects correctly.
         """
-        from src.core.tools import create_media_buy_raw
+        from src.core.main import _create_media_buy_impl
 
         # Create request with nested Budget object
         req = CreateMediaBuyRequest(
@@ -264,12 +273,16 @@ class TestCreateMediaBuyV24Format:
             end_time=datetime.now(UTC) + timedelta(days=31),
         )
 
-        # A2A path uses tenant_id and principal_id directly
-        response = create_media_buy_raw(
-            req,
+        # A2A path also goes through _impl with ToolContext
+        context = ToolContext(
+            context_id=f"test_ctx_v24_{id(req)}",
             tenant_id=setup_test_tenant["tenant_id"],
             principal_id=setup_test_tenant["principal_id"],
+            tool_name="create_media_buy",
+            request_timestamp=datetime.now(UTC),
         )
+
+        response = _create_media_buy_impl(req, context)
 
         # Verify response structure (same as MCP)
         assert response.media_buy_id
@@ -299,8 +312,11 @@ class TestCreateMediaBuyV24Format:
         )
 
         context = ToolContext(
+            context_id=f"test_ctx_v24_{id(req)}",
             tenant_id=setup_test_tenant["tenant_id"],
             principal_id=setup_test_tenant["principal_id"],
+            tool_name="create_media_buy",
+            request_timestamp=datetime.now(UTC),
         )
 
         response = _create_media_buy_impl(req, context)
