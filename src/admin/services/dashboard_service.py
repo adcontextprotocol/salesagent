@@ -127,6 +127,7 @@ class DashboardService:
                 recent_buys = (
                     db_session.query(MediaBuy)
                     .filter(MediaBuy.tenant_id == self.tenant_id)
+                    .filter(MediaBuy.media_buy_id.isnot(None))  # Defensive: ensure valid ID
                     .options(joinedload(MediaBuy.principal))  # Eager load to avoid N+1
                     .order_by(MediaBuy.created_at.desc())
                     .limit(limit)
