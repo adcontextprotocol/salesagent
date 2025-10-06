@@ -17,7 +17,7 @@ from typing import TypedDict
 from sqlalchemy.orm import Session
 
 from src.core.database.database_session import get_db_session
-from src.core.database.models import Creative, CreativeAssignment, MediaBuy
+from src.core.database.models import Creative, CreativeAssignment, GAMLineItem, GAMOrder, MediaBuy, Tenant
 
 logger = logging.getLogger(__name__)
 
@@ -35,6 +35,9 @@ class ReadinessDetails(TypedDict):
     creatives_rejected: int
     blocking_issues: list[str]
     warnings: list[str]
+    gam_order_status: str | None  # GAM order status if using GAM adapter
+    gam_line_items_total: int  # Number of line items in GAM
+    gam_line_items_ready: int  # Number of approved/active line items
 
 
 class MediaBuyReadinessService:
@@ -141,6 +144,36 @@ class MediaBuyReadinessService:
             if creatives_total == 0 and packages_total > 0:
                 blocking_issues.append("No creatives uploaded")
 
+            # Check GAM status if using GAM adapter
+            gam_order_status = None
+            gam_line_items_total = 0
+            gam_line_items_ready = 0
+
+            # Determine if tenant uses GAM
+            tenant = session.query(Tenant).filter_by(tenant_id=tenant_id).first()
+            if tenant and tenant.ad_server == "google_ad_manager":
+                # Check if we have GAM order data for this media buy
+                gam_order = session.query(GAMOrder).filter_by(tenant_id=tenant_id, order_id=media_buy_id).first()
+
+                if gam_order:
+                    gam_order_status = gam_order.status
+                    # Check for blocking GAM statuses
+                    if gam_order.status in ["DRAFT", "PENDING_APPROVAL"]:
+                        warnings.append(f"GAM order is {gam_order.status.replace('_', ' ').lower()}")
+                    elif gam_order.status in ["CANCELED", "DELETED"]:
+                        blocking_issues.append(f"GAM order is {gam_order.status.lower()}")
+
+                    # Get line item statuses
+                    line_items = session.query(GAMLineItem).filter_by(tenant_id=tenant_id, order_id=media_buy_id).all()
+                    gam_line_items_total = len(line_items)
+                    gam_line_items_ready = sum(
+                        1 for li in line_items if li.status in ["APPROVED", "DELIVERING", "READY"]
+                    )
+
+                    if gam_line_items_total > 0 and gam_line_items_ready < gam_line_items_total:
+                        pending_count = gam_line_items_total - gam_line_items_ready
+                        warnings.append(f"{pending_count} GAM line item(s) need approval")
+
             # Compute operational state
             now = datetime.now(UTC)
             state = MediaBuyReadinessService._compute_state(
@@ -175,6 +208,9 @@ class MediaBuyReadinessService:
                 "creatives_rejected": creatives_rejected,
                 "blocking_issues": blocking_issues,
                 "warnings": warnings,
+                "gam_order_status": gam_order_status,
+                "gam_line_items_total": gam_line_items_total,
+                "gam_line_items_ready": gam_line_items_ready,
             }
 
         finally:

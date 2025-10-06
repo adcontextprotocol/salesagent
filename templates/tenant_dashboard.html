@@ -769,9 +769,10 @@
                 <td><code style="font-size: 0.75rem;">{{ buy.media_buy_id }}</code></td>
                 <td><code style="font-size: 0.75rem;">{{ buy.buyer_ref or '-' }}</code></td>
                 <td>
-                    <span class="buy-status {{ buy.readiness_state }}" title="{{ buy.readiness_details.blocking_issues|join(', ') if buy.readiness_details.blocking_issues else 'Ready' }}">
+                    <span class="buy-status {{ buy.readiness_state }}" title="{% if buy.readiness_details.gam_order_status %}GAM: {{ buy.readiness_details.gam_order_status }}{% if buy.readiness_details.gam_line_items_total > 0 %} ({{ buy.readiness_details.gam_line_items_ready }}/{{ buy.readiness_details.gam_line_items_total }} line items ready){% endif %}&#10;{% endif %}{{ buy.readiness_details.blocking_issues|join(', ') if buy.readiness_details.blocking_issues else 'Ready' }}{% if buy.readiness_details.warnings %}&#10;{{ buy.readiness_details.warnings|join(', ') }}{% endif %}">
                         {{ buy.readiness_state|upper|replace('_', ' ') }}
                         {% if buy.is_ready %}✓{% endif %}
+                        {% if buy.readiness_details.gam_order_status %}<span style="font-size: 0.7em; opacity: 0.7;">📋</span>{% endif %}
                     </span>
                 </td>
                 <td class="spend-amount">${{ "{:,.0f}".format(buy.budget) }} {{ buy.currency or 'USD' }}</td>
