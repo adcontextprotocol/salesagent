@@ -14,8 +14,9 @@ os.environ["PYTEST_CURRENT_TEST"] = "true"
 @pytest.fixture(scope="session")
 def test_database_url():
     """Create a test database URL."""
-    # Use in-memory SQLite for tests by default
-    return os.environ.get("TEST_DATABASE_URL", "sqlite:///:memory:")
+    # Use TEST_DATABASE_URL if set (for local testing), otherwise DATABASE_URL (for CI),
+    # otherwise default to in-memory SQLite
+    return os.environ.get("TEST_DATABASE_URL") or os.environ.get("DATABASE_URL", "sqlite:///:memory:")
 
 
 @pytest.fixture(scope="session")
