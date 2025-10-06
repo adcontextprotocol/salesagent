@@ -106,7 +106,6 @@
                 <td>
                     <div style="display: flex; gap: 0.5rem;">
                         <a href="{{ url_for('products.edit_product', tenant_id=tenant_id, product_id=product.product_id) }}" class="btn btn-secondary btn-sm">Edit</a>
-                        <a href="{{ url_for('products.gam_product_config', tenant_id=tenant_id, product_id=product.product_id) }}" class="btn btn-sm" title="Configure GAM trafficking settings">GAM Config</a>
                         <button onclick="deleteProduct('{{ product.product_id }}', '{{ product.name }}')" class="btn btn-danger btn-sm" style="background: #dc3545; border-color: #dc3545;">Delete</button>
                     </div>
                 </td>
