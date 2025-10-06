@@ -171,6 +171,48 @@ def tenant_settings(tenant_id, section=None):
             is_production = os.environ.get("PRODUCTION") == "true"
             mcp_port = int(os.environ.get("ADCP_SALES_PORT", 8080)) if not is_production else None
 
+            # Parse JSON fields for template rendering
+            import json
+
+            authorized_domains = []
+            authorized_emails = []
+
+            if tenant.authorized_domains:
+                if isinstance(tenant.authorized_domains, str):
+                    try:
+                        authorized_domains = json.loads(tenant.authorized_domains)
+                    except json.JSONDecodeError:
+                        logger.error(f"Failed to parse authorized_domains for tenant {tenant_id}")
+                        authorized_domains = []
+                else:
+                    authorized_domains = tenant.authorized_domains
+
+            if tenant.authorized_emails:
+                if isinstance(tenant.authorized_emails, str):
+                    try:
+                        authorized_emails = json.loads(tenant.authorized_emails)
+                    except json.JSONDecodeError:
+                        logger.error(f"Failed to parse authorized_emails for tenant {tenant_id}")
+                        authorized_emails = []
+                else:
+                    authorized_emails = tenant.authorized_emails
+
+            # Get product counts
+            from src.core.database.models import Product
+
+            products = db_session.query(Product).filter_by(tenant_id=tenant_id).all()
+            product_count = len(products)
+            active_products = len([p for p in products if p.status == "active"])
+            draft_products = len([p for p in products if p.status == "draft"])
+
+            # Get creative formats
+            from src.core.database.models import CreativeFormat
+
+            creative_formats = db_session.query(CreativeFormat).filter_by(tenant_id=tenant_id).all()
+
+            # Get admin port
+            admin_port = int(os.environ.get("ADMIN_UI_PORT", 8001))
+
             return render_template(
                 "tenant_settings.html",
                 tenant=tenant,
@@ -184,7 +226,14 @@ def tenant_settings(tenant_id, section=None):
                 advertiser_count=advertiser_count,
                 active_advertisers=active_advertisers,
                 mcp_port=mcp_port,
+                admin_port=admin_port,
                 is_production=is_production,
+                authorized_domains=authorized_domains,
+                authorized_emails=authorized_emails,
+                product_count=product_count,
+                active_products=active_products,
+                draft_products=draft_products,
+                creative_formats=creative_formats,
             )
 
     except Exception as e:
