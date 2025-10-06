@@ -747,7 +747,8 @@
 <div class="media-buys-table">
     <div class="table-header">
         <h3>Recent Media Buys</h3>
-        <a href="/operations" class="view-all-link">View all →</a>
+        <!-- TODO: Implement view all media buys page -->
+        <!-- <a href="{{ script_name }}/tenant/{{ tenant.tenant_id }}/media-buys" class="view-all-link">View all →</a> -->
     </div>
 
     <table class="mini-table">
@@ -764,9 +765,9 @@
         </thead>
         <tbody>
             {% for buy in recent_media_buys[:5] %}
-            <tr style="cursor: pointer;" onclick="window.location='{{ script_name }}/tenant/{{ tenant.tenant_id }}/media-buy/{{ buy.media_buy_id }}'">
+            <tr {% if buy.media_buy_id %}style="cursor: pointer;" onclick="window.location='{{ script_name }}/tenant/{{ tenant.tenant_id }}/media-buy/{{ buy.media_buy_id }}'"{% endif %}>
                 <td class="advertiser-name">{{ buy.advertiser_name }}</td>
-                <td><code style="font-size: 0.75rem;">{{ buy.media_buy_id }}</code></td>
+                <td><code style="font-size: 0.75rem;">{{ buy.media_buy_id or 'N/A' }}</code></td>
                 <td><code style="font-size: 0.75rem;">{{ buy.buyer_ref or '-' }}</code></td>
                 <td>
                     <span class="buy-status {{ buy.readiness_state }}" title="{% if buy.readiness_details.gam_order_status %}GAM: {{ buy.readiness_details.gam_order_status }}{% if buy.readiness_details.gam_line_items_total > 0 %} ({{ buy.readiness_details.gam_line_items_ready }}/{{ buy.readiness_details.gam_line_items_total }} line items ready){% endif %}&#10;{% endif %}{{ buy.readiness_details.blocking_issues|join(', ') if buy.readiness_details.blocking_issues else 'Ready' }}{% if buy.readiness_details.warnings %}&#10;{{ buy.readiness_details.warnings|join(', ') }}{% endif %}">
