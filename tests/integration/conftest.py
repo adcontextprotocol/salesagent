@@ -189,13 +189,25 @@ def authenticated_admin_session(admin_client, integration_db):
         db_session.add(email_config)
         db_session.commit()
 
+    # Enable test mode for authentication
+    os.environ["ADCP_AUTH_TEST_MODE"] = "true"
+
     with admin_client.session_transaction() as sess:
         sess["authenticated"] = True
         sess["role"] = "super_admin"
         sess["email"] = "test@example.com"
         sess["user"] = {"email": "test@example.com", "role": "super_admin"}  # Required by require_auth decorator
         sess["is_super_admin"] = True  # Blueprint sets this
-    return admin_client
+        # Test mode session keys for require_tenant_access() decorator
+        sess["test_user"] = "test@example.com"
+        sess["test_user_role"] = "super_admin"
+        sess["test_user_name"] = "Test Admin"
+
+    yield admin_client
+
+    # Clean up test mode
+    if "ADCP_AUTH_TEST_MODE" in os.environ:
+        del os.environ["ADCP_AUTH_TEST_MODE"]
 
 
 @pytest.fixture

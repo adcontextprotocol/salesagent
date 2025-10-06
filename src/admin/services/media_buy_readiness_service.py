@@ -189,12 +189,13 @@ class MediaBuyReadinessService:
             )
 
             # Determine if ready to activate
+            # Note: "live" campaigns are already activated, but we consider them "ready"
             is_ready_to_activate = (
                 len(blocking_issues) == 0
                 and packages_total > 0
                 and packages_with_creatives == packages_total
                 and creatives_approved == creatives_total
-                and state in ["ready", "scheduled"]
+                and state in ["scheduled", "live"]
             )
 
             return {
