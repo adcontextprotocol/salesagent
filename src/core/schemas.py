@@ -1905,7 +1905,8 @@ class CreateMediaBuyRequest(BaseModel):
             return values
 
         # If using legacy format, convert to new format
-        if "product_ids" in values and not values.get("packages"):
+        # Check that product_ids is not None and not empty (key existing with None value doesn't count)
+        if values.get("product_ids") and not values.get("packages"):
             # Generate buyer_ref if not provided
             if not values.get("buyer_ref"):
                 values["buyer_ref"] = f"buy_{uuid.uuid4().hex[:8]}"

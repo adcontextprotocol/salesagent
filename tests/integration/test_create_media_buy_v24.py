@@ -257,6 +257,7 @@ class TestCreateMediaBuyV24Format:
         This verifies the A2A → tools.py → _impl path also handles nested objects correctly.
         """
         from src.core.main import _create_media_buy_impl
+        from src.core.tool_context import ToolContext
 
         # Create request with nested Budget object
         req = CreateMediaBuyRequest(
