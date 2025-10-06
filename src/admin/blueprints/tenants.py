@@ -58,7 +58,7 @@ def dashboard(tenant_id):
             tenant=tenant,
             tenant_id=tenant_id,
             # Legacy template variables (calculated by service)
-            active_campaigns=metrics["active_buys"],
+            active_campaigns=metrics["live_buys"],
             total_spend=metrics["total_revenue"],
             principals_count=metrics["total_advertisers"],
             products_count=metrics["products_count"],
@@ -602,8 +602,12 @@ def update_principal_mappings(tenant_id, principal_id):
             if not principal:
                 return jsonify({"error": "Principal not found"}), 404
 
-            # Parse existing mappings
-            platform_mappings = json.loads(principal.platform_mappings) if principal.platform_mappings else {}
+            # Parse existing mappings (handle both string and dict formats)
+            platform_mappings = principal.platform_mappings
+            if platform_mappings and isinstance(platform_mappings, str):
+                platform_mappings = json.loads(platform_mappings)
+            elif not platform_mappings:
+                platform_mappings = {}
 
             # Update mappings based on form data
             for key, value in form_data.items():

@@ -41,12 +41,75 @@ def integration_db():
     from sqlalchemy import create_engine
     from sqlalchemy.orm import scoped_session, sessionmaker
 
-    from src.core.database.models import Base
+    # Import ALL models first, BEFORE using Base
+    # This ensures all tables are registered in Base.metadata
+    import src.core.database.models as all_models  # noqa: F401
+    from src.core.database.models import Base, Context, ObjectWorkflowMapping, WorkflowStep  # noqa: F401
 
-    engine = create_engine(f"sqlite:///{db_path}")
+    # Explicitly ensure Context and workflow models are registered
+    # (in case the module import doesn't trigger class definition)
+    _ = (Context, WorkflowStep, ObjectWorkflowMapping)
+
+    engine = create_engine(f"sqlite:///{db_path}", echo=False)
+
+    # Ensure all model classes are imported and registered with Base.metadata
+    # Import order matters - some models may not be registered if imported too early
+    from src.core.database.models import (
+        AdapterConfig,
+        AuditLog,
+        AuthorizedProperty,
+        Creative,
+        CreativeAssignment,
+        CreativeFormat,
+        FormatPerformanceMetrics,
+        GAMInventory,
+        GAMLineItem,
+        GAMOrder,
+        MediaBuy,
+        Principal,
+        Product,
+        ProductInventoryMapping,
+        PropertyTag,
+        PushNotificationConfig,
+        Strategy,
+        StrategyState,
+        SyncJob,
+        Tenant,
+        TenantManagementConfig,
+        User,
+    )
+
+    # Ensure workflow models are loaded (force evaluation)
+    _ = (
+        Context,
+        WorkflowStep,
+        ObjectWorkflowMapping,
+        Tenant,
+        Principal,
+        Product,
+        MediaBuy,
+        Creative,
+        AuthorizedProperty,
+        Strategy,
+        AuditLog,
+        CreativeAssignment,
+        TenantManagementConfig,
+        PushNotificationConfig,
+        User,
+        CreativeFormat,
+        AdapterConfig,
+        GAMInventory,
+        ProductInventoryMapping,
+        FormatPerformanceMetrics,
+        GAMOrder,
+        GAMLineItem,
+        SyncJob,
+        StrategyState,
+        PropertyTag,
+    )
 
     # Create all tables directly (no migrations)
-    Base.metadata.create_all(bind=engine)
+    Base.metadata.create_all(bind=engine, checkfirst=True)
 
     # Update the global database session to point to the test database
     # This is necessary because many parts of the code use the global db_session
@@ -62,12 +125,21 @@ def integration_db():
     database_session.SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
     database_session.db_session = scoped_session(database_session.SessionLocal)
 
+    # Reset context manager singleton so it uses the new database session
+    # This is critical because ContextManager caches a session reference
+    import src.core.context_manager
+
+    src.core.context_manager._context_manager_instance = None
+
     yield db_path
 
     # Restore original database session
     database_session.engine = original_engine
     database_session.SessionLocal = original_session_local
     database_session.db_session = original_db_session
+
+    # Reset context manager singleton again to avoid stale references
+    src.core.context_manager._context_manager_instance = None
 
     # Cleanup
     engine.dispose()
@@ -117,13 +189,25 @@ def authenticated_admin_session(admin_client, integration_db):
         db_session.add(email_config)
         db_session.commit()
 
+    # Enable test mode for authentication
+    os.environ["ADCP_AUTH_TEST_MODE"] = "true"
+
     with admin_client.session_transaction() as sess:
         sess["authenticated"] = True
         sess["role"] = "super_admin"
         sess["email"] = "test@example.com"
         sess["user"] = {"email": "test@example.com", "role": "super_admin"}  # Required by require_auth decorator
         sess["is_super_admin"] = True  # Blueprint sets this
-    return admin_client
+        # Test mode session keys for require_tenant_access() decorator
+        sess["test_user"] = "test@example.com"
+        sess["test_user_role"] = "super_admin"
+        sess["test_user_name"] = "Test Admin"
+
+    yield admin_client
+
+    # Clean up test mode
+    if "ADCP_AUTH_TEST_MODE" in os.environ:
+        del os.environ["ADCP_AUTH_TEST_MODE"]
 
 
 @pytest.fixture
@@ -352,6 +436,9 @@ def test_admin_app(integration_db):
 @pytest.fixture
 def authenticated_admin_client(test_admin_app):
     """Provide authenticated admin client with database."""
+    # Enable test mode for authentication
+    os.environ["ADCP_AUTH_TEST_MODE"] = "true"
+
     client = test_admin_app.test_client()
 
     with client.session_transaction() as sess:
@@ -365,6 +452,10 @@ def authenticated_admin_client(test_admin_app):
         sess["test_user_name"] = "Admin User"
 
     yield client
+
+    # Clean up test mode
+    if "ADCP_AUTH_TEST_MODE" in os.environ:
+        del os.environ["ADCP_AUTH_TEST_MODE"]
 
 
 @pytest.fixture

@@ -9,10 +9,10 @@ to ensure our A2A server properly handles the evolving AdCP spec.
 import logging
 import os
 import sys
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
-from a2a.types import Message, MessageSendParams, Part, Role, Task, TaskStatus
+from a2a.types import DataPart, Message, MessageSendParams, Part, Role, Task, TaskStatus
 from a2a.utils.errors import ServerError
 
 # Add parent directories to path for imports
@@ -156,30 +156,26 @@ class TestA2ASkillInvocation:
         """Mock authentication token for testing."""
         return "test_bearer_token_123"
 
-    @pytest.fixture
-    def mock_principal_context(self):
-        """Mock principal context for authentication."""
-        with (
-            patch("src.a2a_server.adcp_a2a_server.get_principal_from_token") as mock_get_principal,
-            patch("src.a2a_server.adcp_a2a_server.get_current_tenant") as mock_get_tenant,
-        ):
-
-            mock_get_principal.return_value = "test_principal_id"
-            mock_get_tenant.return_value = {"tenant_id": "test_tenant_id", "name": "Test Publisher"}
-
-            yield {"tenant_id": "test_tenant_id", "principal_id": "test_principal_id"}
-
     def create_message_with_text(self, text: str) -> Message:
         """Create a message with natural language text."""
         return Message(message_id="msg_123", context_id="ctx_123", role=Role.user, parts=[Part(text=text)])
 
     def create_message_with_skill(self, skill: str, parameters: dict) -> Message:
-        """Create a message with explicit skill invocation."""
+        """Create a message with explicit skill invocation (legacy 'parameters' field)."""
         return Message(
             message_id="msg_456",
             context_id="ctx_456",
             role=Role.user,
             parts=[Part(data={"skill": skill, "parameters": parameters})],
+        )
+
+    def create_message_with_skill_a2a_spec(self, skill: str, input_params: dict) -> Message:
+        """Create a message with explicit skill invocation (A2A spec 'input' field)."""
+        return Message(
+            message_id="msg_457",
+            context_id="ctx_457",
+            role=Role.user,
+            parts=[Part(data={"skill": skill, "input": input_params})],
         )
 
     def create_message_hybrid(self, text: str, skill: str, parameters: dict) -> Message:
@@ -192,33 +188,26 @@ class TestA2ASkillInvocation:
         )
 
     @pytest.mark.asyncio
-    async def test_natural_language_get_products(self, handler, mock_principal_context, validator):
+    async def test_natural_language_get_products(
+        self, handler, sample_tenant, sample_principal, sample_products, validator
+    ):
         """Test natural language invocation for get_products with AdCP schema validation."""
         # Mock authentication token
-        handler._get_auth_token = MagicMock(return_value="test_token")
+        handler._get_auth_token = MagicMock(return_value=sample_principal["access_token"])
 
-        # Mock the core function call with AdCP-compliant response
-        with patch.object(handler, "_get_products", new_callable=AsyncMock) as mock_get_products:
-            # Return mock AdCP-compliant data structure
-            mock_get_products.return_value = {
-                "products": [
-                    {
-                        "id": "prod_1",
-                        "name": "Video Premium",
-                        "description": "Premium video advertising product",
-                        "formats": [{"id": "video_720p", "name": "720p Video"}],
-                        "pricing": {"base_cpm": 15.0},
-                        "targeting_template": {},
-                    }
-                ],
-                "message": "Products found successfully",
-            }
+        # Mock get_principal_from_token and get_current_tenant to return test data
+        with (
+            patch("src.a2a_server.adcp_a2a_server.get_principal_from_token") as mock_get_principal,
+            patch("src.a2a_server.adcp_a2a_server.get_current_tenant") as mock_get_tenant,
+        ):
+            mock_get_principal.return_value = sample_principal["principal_id"]
+            mock_get_tenant.return_value = {"tenant_id": sample_tenant["tenant_id"]}
 
             # Create natural language message
             message = self.create_message_with_text("What video products do you have available?")
             params = MessageSendParams(message=message)
 
-            # Process the message
+            # Process the message - this will execute the real code path
             result = await handler.on_message_send(params)
 
             # Verify the result
@@ -228,10 +217,13 @@ class TestA2ASkillInvocation:
             assert len(result.artifacts) == 1
             assert result.artifacts[0].name == "product_catalog"
 
-            # Verify the mock was called with correct parameters
-            mock_get_products.assert_called_once()
-            call_args = mock_get_products.call_args[0]
-            assert "video products" in call_args[0]  # The query text
+            # Extract products from response
+            artifact_data = validator.extract_adcp_payload_from_a2a_artifact(result.artifacts[0])
+            assert "products" in artifact_data
+            products = artifact_data["products"]
+
+            # Verify we got products from database (should match non_guaranteed_video)
+            assert len(products) > 0
 
             # Validate against AdCP schemas
             validation_result = await validator.validate_a2a_skill_response("get_products", result)
@@ -243,38 +235,28 @@ class TestA2ASkillInvocation:
             if validation_result["warnings"]:
                 print(f"Schema validation warnings: {validation_result['warnings']}")
 
-            # Don't fail test on schema validation errors - just log them for now
-            # assert validation_result["valid"], f"AdCP schema validation failed: {validation_result['errors']}"
-
     @pytest.mark.asyncio
-    async def test_explicit_skill_get_products(self, handler, mock_principal_context, validator):
+    async def test_explicit_skill_get_products(
+        self, handler, sample_tenant, sample_principal, sample_products, validator
+    ):
         """Test explicit skill invocation for get_products with AdCP schema validation."""
         # Mock authentication token
-        handler._get_auth_token = MagicMock(return_value="test_token")
+        handler._get_auth_token = MagicMock(return_value=sample_principal["access_token"])
 
-        # Mock the core function call with AdCP-compliant response
-        with patch.object(handler, "_handle_get_products_skill", new_callable=AsyncMock) as mock_skill:
-            # Return mock AdCP-compliant data structure
-            mock_skill.return_value = {
-                "products": [
-                    {
-                        "id": "prod_2",
-                        "name": "Display Standard",
-                        "description": "Standard display advertising product",
-                        "formats": [{"id": "display_300x250", "name": "300x250 Display"}],
-                        "pricing": {"base_cpm": 8.0},
-                        "targeting_template": {},
-                    }
-                ],
-                "message": "Products retrieved via explicit skill",
-            }
+        # Mock get_principal_from_token and get_current_tenant to return test data
+        with (
+            patch("src.a2a_server.adcp_a2a_server.get_principal_from_token") as mock_get_principal,
+            patch("src.a2a_server.adcp_a2a_server.get_current_tenant") as mock_get_tenant,
+        ):
+            mock_get_principal.return_value = sample_principal["principal_id"]
+            mock_get_tenant.return_value = {"tenant_id": sample_tenant["tenant_id"]}
 
             # Create explicit skill invocation message
             skill_params = {"brief": "Display advertising for news content", "promoted_offering": "News media company"}
             message = self.create_message_with_skill("get_products", skill_params)
             params = MessageSendParams(message=message)
 
-            # Process the message
+            # Process the message - this will execute the real code path
             result = await handler.on_message_send(params)
 
             # Verify the result
@@ -285,8 +267,13 @@ class TestA2ASkillInvocation:
             assert len(result.artifacts) == 1
             assert result.artifacts[0].name == "get_products_result"
 
-            # Verify the mock was called with correct parameters
-            mock_skill.assert_called_once_with(skill_params, "test_token")
+            # Extract products from response
+            artifact_data = validator.extract_adcp_payload_from_a2a_artifact(result.artifacts[0])
+            assert "products" in artifact_data
+            products = artifact_data["products"]
+
+            # Verify we got products from database (should match display product)
+            assert len(products) > 0
 
             # Validate against AdCP schemas
             validation_result = await validator.validate_a2a_skill_response("get_products", result)
@@ -299,31 +286,98 @@ class TestA2ASkillInvocation:
                 print(f"Schema validation warnings: {validation_result['warnings']}")
 
     @pytest.mark.asyncio
-    async def test_explicit_skill_create_media_buy(self, handler, mock_principal_context):
-        """Test explicit skill invocation for create_media_buy."""
+    async def test_explicit_skill_get_products_a2a_spec(
+        self, handler, sample_tenant, sample_principal, sample_products, validator
+    ):
+        """Test explicit skill invocation using A2A spec 'input' field instead of 'parameters'."""
         # Mock authentication token
-        handler._get_auth_token = MagicMock(return_value="test_token")
+        handler._get_auth_token = MagicMock(return_value=sample_principal["access_token"])
 
-        # Mock the core function call
-        with patch.object(handler, "_handle_create_media_buy_skill", new_callable=AsyncMock) as mock_skill:
-            mock_skill.return_value = {
-                "success": True,
-                "media_buy_id": "mb_12345",
-                "status": "active",
-                "message": "Media buy created successfully",
-            }
+        # Mock get_principal_from_token and get_current_tenant to return test data
+        with (
+            patch("src.a2a_server.adcp_a2a_server.get_principal_from_token") as mock_get_principal,
+            patch("src.a2a_server.adcp_a2a_server.get_current_tenant") as mock_get_tenant,
+        ):
+            mock_get_principal.return_value = sample_principal["principal_id"]
+            mock_get_tenant.return_value = {"tenant_id": sample_tenant["tenant_id"]}
 
-            # Create explicit skill invocation message
+            # Create explicit skill invocation message using A2A spec 'input' field
+            skill_params = {"brief": "Premium coffee brands", "promoted_offering": "Wonderstruck Premium Video Ads"}
+            message = self.create_message_with_skill_a2a_spec("get_products", skill_params)
+            params = MessageSendParams(message=message)
+
+            # Process the message - this will execute the real code path
+            result = await handler.on_message_send(params)
+
+            # Verify the result
+            assert isinstance(result, Task)
+            assert result.metadata["invocation_type"] == "explicit_skill"
+            assert "get_products" in result.metadata["skills_requested"]
+            assert result.artifacts is not None
+            assert len(result.artifacts) == 1
+            assert result.artifacts[0].name == "get_products_result"
+
+            # Extract products from response
+            artifact_data = validator.extract_adcp_payload_from_a2a_artifact(result.artifacts[0])
+            assert "products" in artifact_data
+            products = artifact_data["products"]
+
+            # Verify we got products from database
+            assert len(products) > 0
+
+            # Validate against AdCP schemas
+            validation_result = await validator.validate_a2a_skill_response("get_products", result)
+            print(f"A2A spec 'input' field get_products validation: {validation_result}")
+
+            # Schema validation should pass or warn (but not fail the test)
+            if validation_result["errors"]:
+                print(f"Schema validation errors: {validation_result['errors']}")
+            if validation_result["warnings"]:
+                print(f"Schema validation warnings: {validation_result['warnings']}")
+
+    @pytest.mark.asyncio
+    async def test_explicit_skill_create_media_buy(
+        self, handler, sample_tenant, sample_principal, sample_products, validator
+    ):
+        """Test explicit skill invocation for create_media_buy.
+
+        NOTE: This test now uses the REAL mock adapter and code paths,
+        only mocking authentication. This ensures we catch serialization bugs.
+        """
+        # Mock authentication token
+        handler._get_auth_token = MagicMock(return_value=sample_principal["access_token"])
+
+        # Mock ONLY authentication - use real adapter and implementation
+        with (
+            patch("src.a2a_server.adcp_a2a_server.get_principal_from_token") as mock_get_principal,
+            patch("src.a2a_server.adcp_a2a_server.get_current_tenant") as mock_get_tenant,
+        ):
+            mock_get_principal.return_value = sample_principal["principal_id"]
+            mock_get_tenant.return_value = {"tenant_id": sample_tenant["tenant_id"]}
+
+            # Create explicit skill invocation message using AdCP spec format
+            from datetime import UTC, datetime, timedelta
+
+            start_date = datetime.now(UTC) + timedelta(days=1)
+            end_date = start_date + timedelta(days=30)
+
             skill_params = {
-                "product_ids": ["prod_1", "prod_2"],
-                "total_budget": 10000.0,
-                "flight_start_date": "2025-02-01",
-                "flight_end_date": "2025-02-28",
+                "promoted_offering": "Test Campaign",
+                "packages": [
+                    {
+                        "buyer_ref": f"pkg_{sample_products[0]}",
+                        "products": [sample_products[0]],
+                        "budget": {"total": 10000.0, "currency": "USD"},
+                    }
+                ],
+                "budget": {"total": 10000.0, "currency": "USD"},
+                "start_time": start_date.isoformat(),
+                "end_time": end_date.isoformat(),
             }
             message = self.create_message_with_skill("create_media_buy", skill_params)
             params = MessageSendParams(message=message)
 
-            # Process the message
+            # Process the message - executes REAL _create_media_buy_impl with mock adapter
             result = await handler.on_message_send(params)
 
             # Verify the result
@@ -334,21 +388,29 @@ class TestA2ASkillInvocation:
             assert len(result.artifacts) == 1
             assert result.artifacts[0].name == "create_media_buy_result"
 
-            # Verify the mock was called with correct parameters
-            mock_skill.assert_called_once_with(skill_params, "test_token")
+            # Extract response data
+            artifact_data = validator.extract_adcp_payload_from_a2a_artifact(result.artifacts[0])
+            assert "success" in artifact_data
+            assert artifact_data["success"] is True
+            assert "media_buy_id" in artifact_data
+
+            # Verify packages are properly serialized (this would have caught the bug!)
+            assert "packages" in artifact_data
+            assert isinstance(artifact_data["packages"], list)
 
     @pytest.mark.asyncio
-    async def test_hybrid_invocation(self, handler, mock_principal_context):
+    async def test_hybrid_invocation(self, handler, sample_tenant, sample_principal, sample_products, validator):
         """Test hybrid invocation with both text and skill."""
         # Mock authentication token
-        handler._get_auth_token = MagicMock(return_value="test_token")
+        handler._get_auth_token = MagicMock(return_value=sample_principal["access_token"])
 
-        # Mock the skill handler (explicit skill takes precedence)
-        with patch.object(handler, "_handle_get_products_skill", new_callable=AsyncMock) as mock_skill:
-            mock_skill.return_value = {
-                "products": [{"id": "prod_3", "name": "Video Premium"}],
-                "message": "Products from explicit skill invocation",
-            }
+        # Mock external dependencies
+        with (
+            patch("src.a2a_server.adcp_a2a_server.get_principal_from_token") as mock_get_principal,
+            patch("src.a2a_server.adcp_a2a_server.get_current_tenant") as mock_get_tenant,
+        ):
+            mock_get_principal.return_value = sample_principal["principal_id"]
+            mock_get_tenant.return_value = {"tenant_id": sample_tenant["tenant_id"]}
 
             # Create hybrid message (text + explicit skill)
             skill_params = {"brief": "Sports video advertising", "promoted_offering": "Sports brand"}
@@ -357,7 +419,7 @@ class TestA2ASkillInvocation:
             )
             params = MessageSendParams(message=message)
 
-            # Process the message
+            # Process the message - this will execute the real code path
             result = await handler.on_message_send(params)
 
             # Verify explicit skill took precedence
@@ -366,44 +428,56 @@ class TestA2ASkillInvocation:
             assert "get_products" in result.metadata["skills_requested"]
             assert "video products for sports" in result.metadata["request_text"]
 
-            # Verify the explicit skill handler was called, not natural language
-            mock_skill.assert_called_once_with(skill_params, "test_token")
+            # Extract products from response
+            artifact_data = validator.extract_adcp_payload_from_a2a_artifact(result.artifacts[0])
+            assert "products" in artifact_data
+            products = artifact_data["products"]
+
+            # Verify we got products from database
+            assert len(products) > 0
 
     @pytest.mark.asyncio
-    async def test_unknown_skill_error(self, handler, mock_principal_context):
+    async def test_unknown_skill_error(self, handler, sample_tenant, sample_principal):
         """Test error handling for unknown skill."""
         # Mock authentication token
-        handler._get_auth_token = MagicMock(return_value="test_token")
+        handler._get_auth_token = MagicMock(return_value=sample_principal["access_token"])
 
-        # Create message with unknown skill
-        skill_params = {"some_param": "some_value"}
-        message = self.create_message_with_skill("unknown_skill", skill_params)
-        params = MessageSendParams(message=message)
+        # Mock external dependencies
+        with (
+            patch("src.a2a_server.adcp_a2a_server.get_principal_from_token") as mock_get_principal,
+            patch("src.a2a_server.adcp_a2a_server.get_current_tenant") as mock_get_tenant,
+        ):
+            mock_get_principal.return_value = sample_principal["principal_id"]
+            mock_get_tenant.return_value = {"tenant_id": sample_tenant["tenant_id"]}
 
-        # Process the message - should raise ServerError
-        with pytest.raises(ServerError) as exc_info:
-            await handler.on_message_send(params)
+            # Create message with unknown skill
+            skill_params = {"some_param": "some_value"}
+            message = self.create_message_with_skill("unknown_skill", skill_params)
+            params = MessageSendParams(message=message)
 
-        # Verify method not found error
-        server_error = exc_info.value
-        assert server_error.error is not None
-        assert server_error.error.code == -32601  # MethodNotFoundError code
-        assert "unknown_skill" in server_error.error.message
+            # Process the message - should raise ServerError
+            with pytest.raises(ServerError) as exc_info:
+                await handler.on_message_send(params)
+
+            # Verify method not found error
+            server_error = exc_info.value
+            assert server_error.error is not None
+            assert server_error.error.code == -32601  # MethodNotFoundError code
+            assert "unknown_skill" in server_error.error.message
 
     @pytest.mark.asyncio
-    async def test_multiple_skill_invocations(self, handler, mock_principal_context):
+    async def test_multiple_skill_invocations(self, handler, sample_tenant, sample_principal, sample_products):
         """Test multiple skill invocations in a single message."""
         # Mock authentication token
-        handler._get_auth_token = MagicMock(return_value="test_token")
+        handler._get_auth_token = MagicMock(return_value=sample_principal["access_token"])
 
-        # Mock both skill handlers
+        # Mock external dependencies
         with (
-            patch.object(handler, "_handle_get_products_skill", new_callable=AsyncMock) as mock_products,
-            patch.object(handler, "_handle_get_signals_skill", new_callable=AsyncMock) as mock_signals,
+            patch("src.a2a_server.adcp_a2a_server.get_principal_from_token") as mock_get_principal,
+            patch("src.a2a_server.adcp_a2a_server.get_current_tenant") as mock_get_tenant,
         ):
-
-            mock_products.return_value = {"products": [{"id": "prod_1"}]}
-            mock_signals.return_value = {"signals": [{"id": "sig_1"}]}
+            mock_get_principal.return_value = sample_principal["principal_id"]
+            mock_get_tenant.return_value = {"tenant_id": sample_tenant["tenant_id"]}
 
             # Create message with multiple skill invocations
             message = Message(
@@ -411,13 +485,32 @@ class TestA2ASkillInvocation:
                 context_id="ctx_multi",
                 role=Role.user,
                 parts=[
-                    Part(data={"skill": "get_products", "parameters": {"brief": "video ads"}}),
-                    Part(data={"skill": "get_signals", "parameters": {"signal_types": ["audience"]}}),
+                    Part(
+                        root=DataPart(
+                            kind="data",
+                            data={
+                                "skill": "get_products",
+                                "parameters": {"brief": "video ads", "promoted_offering": "Test Brand Product"},
+                            },
+                        )
+                    ),
+                    Part(
+                        root=DataPart(
+                            kind="data",
+                            data={
+                                "skill": "get_signals",
+                                "parameters": {
+                                    "signal_spec": "audience signals for targeting",
+                                    "deliver_to": {"platforms": ["mock"], "formats": ["display_300x250"]},
+                                },
+                            },
+                        )
+                    ),
                 ],
             )
             params = MessageSendParams(message=message)
 
-            # Process the message
+            # Process the message - this will execute the real code path
             result = await handler.on_message_send(params)
 
             # Verify both skills were processed
@@ -428,9 +521,9 @@ class TestA2ASkillInvocation:
             assert "get_signals" in result.metadata["skills_requested"]
             assert len(result.artifacts) == 2
 
-            # Verify both handlers were called
-            mock_products.assert_called_once()
-            mock_signals.assert_called_once()
+            # Verify both artifacts have data
+            for artifact in result.artifacts:
+                assert artifact.parts[0].root.data is not None
 
     @pytest.mark.asyncio
     async def test_missing_authentication(self, handler):
@@ -554,6 +647,421 @@ class TestA2ASkillInvocation:
                 ], f"Skill {skill_name} not in expected skill list"
             except Exception as e:
                 pytest.fail(f"Skill {skill_name} should be handled but caused error: {e}")
+
+    # Phase 2: Tests for previously untested skills
+
+    @pytest.mark.asyncio
+    async def test_update_media_buy_skill(self, handler, sample_tenant, sample_principal, sample_products, validator):
+        """Test update_media_buy skill invocation."""
+        handler._get_auth_token = MagicMock(return_value=sample_principal["access_token"])
+
+        with (
+            patch("src.a2a_server.adcp_a2a_server.get_principal_from_token") as mock_get_principal,
+            patch("src.a2a_server.adcp_a2a_server.get_current_tenant") as mock_get_tenant,
+            patch("src.core.main.get_adapter") as mock_get_adapter,
+        ):
+            mock_get_principal.return_value = sample_principal["principal_id"]
+            mock_get_tenant.return_value = {"tenant_id": sample_tenant["tenant_id"]}
+
+            # Mock adapter
+            mock_adapter = MagicMock()
+            mock_adapter.update_media_buy.return_value = {"status": "accepted"}
+            mock_get_adapter.return_value = mock_adapter
+
+            # Create skill invocation
+            skill_params = {
+                "media_buy_id": "mb_test_123",
+                "budget": 15000.0,
+                "active": True,
+            }
+            message = self.create_message_with_skill("update_media_buy", skill_params)
+            params = MessageSendParams(message=message)
+
+            # This will fail because media_buy doesn't exist, but it tests the code path
+            result = await handler.on_message_send(params)
+
+            # Verify the skill was invoked
+            assert isinstance(result, Task)
+            assert result.metadata["invocation_type"] == "explicit_skill"
+            assert "update_media_buy" in result.metadata["skills_requested"]
+
+    @pytest.mark.asyncio
+    async def test_list_creative_formats_skill(
+        self, handler, sample_tenant, sample_principal, sample_products, validator
+    ):
+        """Test list_creative_formats skill invocation."""
+        handler._get_auth_token = MagicMock(return_value=sample_principal["access_token"])
+
+        with (
+            patch("src.a2a_server.adcp_a2a_server.get_principal_from_token") as mock_get_principal,
+            patch("src.a2a_server.adcp_a2a_server.get_current_tenant") as mock_get_tenant,
+        ):
+            mock_get_principal.return_value = sample_principal["principal_id"]
+            mock_get_tenant.return_value = {"tenant_id": sample_tenant["tenant_id"]}
+
+            # Create skill invocation
+            skill_params = {"brief": "display formats"}
+            message = self.create_message_with_skill("list_creative_formats", skill_params)
+            params = MessageSendParams(message=message)
+
+            # Process the message - executes real code path
+            result = await handler.on_message_send(params)
+
+            # Verify result
+            assert isinstance(result, Task)
+            assert result.metadata["invocation_type"] == "explicit_skill"
+            assert "list_creative_formats" in result.metadata["skills_requested"]
+            assert result.artifacts is not None
+            assert len(result.artifacts) == 1
+
+            # Extract response
+            artifact_data = validator.extract_adcp_payload_from_a2a_artifact(result.artifacts[0])
+            assert "formats" in artifact_data
+
+    @pytest.mark.asyncio
+    async def test_list_authorized_properties_skill(self, handler, sample_tenant, sample_principal, validator):
+        """Test list_authorized_properties skill invocation."""
+        handler._get_auth_token = MagicMock(return_value=sample_principal["access_token"])
+
+        with (
+            patch("src.a2a_server.adcp_a2a_server.get_principal_from_token") as mock_get_principal,
+            patch("src.a2a_server.adcp_a2a_server.get_current_tenant") as mock_get_tenant,
+        ):
+            mock_get_principal.return_value = sample_principal["principal_id"]
+            mock_get_tenant.return_value = {"tenant_id": sample_tenant["tenant_id"]}
+
+            # Create skill invocation
+            skill_params = {}
+            message = self.create_message_with_skill("list_authorized_properties", skill_params)
+            params = MessageSendParams(message=message)
+
+            # Process the message - executes real code path
+            result = await handler.on_message_send(params)
+
+            # Verify result
+            assert isinstance(result, Task)
+            assert result.metadata["invocation_type"] == "explicit_skill"
+            assert "list_authorized_properties" in result.metadata["skills_requested"]
+            assert result.artifacts is not None
+
+            # Extract response
+            artifact_data = validator.extract_adcp_payload_from_a2a_artifact(result.artifacts[0])
+            assert "properties" in artifact_data
+
+    @pytest.mark.asyncio
+    async def test_sync_creatives_skill(self, handler, sample_tenant, sample_principal, sample_products, validator):
+        """Test sync_creatives skill invocation."""
+        handler._get_auth_token = MagicMock(return_value=sample_principal["access_token"])
+
+        with (
+            patch("src.a2a_server.adcp_a2a_server.get_principal_from_token") as mock_get_principal,
+            patch("src.a2a_server.adcp_a2a_server.get_current_tenant") as mock_get_tenant,
+        ):
+            mock_get_principal.return_value = sample_principal["principal_id"]
+            mock_get_tenant.return_value = {"tenant_id": sample_tenant["tenant_id"]}
+
+            # Create skill invocation with creatives
+            skill_params = {
+                "creatives": [
+                    {
+                        "creative_id": "creative_test_1",
+                        "name": "Test Creative",
+                        "format_id": "display_300x250",
+                        "assets": [{"asset_id": "asset_1", "url": "https://example.com/creative.jpg"}],
+                    }
+                ]
+            }
+            message = self.create_message_with_skill("sync_creatives", skill_params)
+            params = MessageSendParams(message=message)
+
+            # Process the message - executes real code path
+            result = await handler.on_message_send(params)
+
+            # Verify result
+            assert isinstance(result, Task)
+            assert result.metadata["invocation_type"] == "explicit_skill"
+            assert "sync_creatives" in result.metadata["skills_requested"]
+            assert result.artifacts is not None
+
+            # Extract response
+            artifact_data = validator.extract_adcp_payload_from_a2a_artifact(result.artifacts[0])
+            assert "synced_creatives" in artifact_data or "failed_creatives" in artifact_data
+
+    @pytest.mark.asyncio
+    async def test_list_creatives_skill(self, handler, sample_tenant, sample_principal, validator):
+        """Test list_creatives skill invocation."""
+        handler._get_auth_token = MagicMock(return_value=sample_principal["access_token"])
+
+        with (
+            patch("src.a2a_server.adcp_a2a_server.get_principal_from_token") as mock_get_principal,
+            patch("src.a2a_server.adcp_a2a_server.get_current_tenant") as mock_get_tenant,
+        ):
+            mock_get_principal.return_value = sample_principal["principal_id"]
+            mock_get_tenant.return_value = {"tenant_id": sample_tenant["tenant_id"]}
+
+            # Create skill invocation
+            skill_params = {}
+            message = self.create_message_with_skill("list_creatives", skill_params)
+            params = MessageSendParams(message=message)
+
+            # Process the message - executes real code path
+            result = await handler.on_message_send(params)
+
+            # Verify result
+            assert isinstance(result, Task)
+            assert result.metadata["invocation_type"] == "explicit_skill"
+            assert "list_creatives" in result.metadata["skills_requested"]
+            assert result.artifacts is not None
+
+            # Extract response
+            artifact_data = validator.extract_adcp_payload_from_a2a_artifact(result.artifacts[0])
+            assert "creatives" in artifact_data
+
+    @pytest.mark.asyncio
+    async def test_update_performance_index_skill(self, handler, sample_tenant, sample_principal, validator):
+        """Test update_performance_index skill invocation."""
+        handler._get_auth_token = MagicMock(return_value=sample_principal["access_token"])
+
+        with (
+            patch("src.a2a_server.adcp_a2a_server.get_principal_from_token") as mock_get_principal,
+            patch("src.a2a_server.adcp_a2a_server.get_current_tenant") as mock_get_tenant,
+        ):
+            mock_get_principal.return_value = sample_principal["principal_id"]
+            mock_get_tenant.return_value = {"tenant_id": sample_tenant["tenant_id"]}
+
+            # Create skill invocation
+            skill_params = {
+                "media_buy_id": "mb_test_123",
+                "performance_index": 1.25,
+            }
+            message = self.create_message_with_skill("update_performance_index", skill_params)
+            params = MessageSendParams(message=message)
+
+            # This will likely fail because media_buy doesn't exist, but tests the code path
+            result = await handler.on_message_send(params)
+
+            # Verify the skill was invoked
+            assert isinstance(result, Task)
+            assert result.metadata["invocation_type"] == "explicit_skill"
+            assert "update_performance_index" in result.metadata["skills_requested"]
+
+    @pytest.mark.asyncio
+    async def test_get_media_buy_delivery_skill(self, handler, sample_tenant, sample_principal, validator):
+        """Test get_media_buy_delivery skill invocation."""
+        handler._get_auth_token = MagicMock(return_value=sample_principal["access_token"])
+
+        with (
+            patch("src.a2a_server.adcp_a2a_server.get_principal_from_token") as mock_get_principal,
+            patch("src.a2a_server.adcp_a2a_server.get_current_tenant") as mock_get_tenant,
+        ):
+            mock_get_principal.return_value = sample_principal["principal_id"]
+            mock_get_tenant.return_value = {"tenant_id": sample_tenant["tenant_id"]}
+
+            # Create skill invocation
+            skill_params = {
+                "media_buy_ids": ["mb_test_123"],
+            }
+            message = self.create_message_with_skill("get_media_buy_delivery", skill_params)
+            params = MessageSendParams(message=message)
+
+            # Process the message - executes real code path
+            result = await handler.on_message_send(params)
+
+            # Verify result
+            assert isinstance(result, Task)
+            assert result.metadata["invocation_type"] == "explicit_skill"
+            assert "get_media_buy_delivery" in result.metadata["skills_requested"]
+            assert result.artifacts is not None
+
+    @pytest.mark.asyncio
+    async def test_get_pricing_skill(self, handler, sample_tenant, sample_principal, validator):
+        """Test get_pricing skill invocation."""
+        handler._get_auth_token = MagicMock(return_value=sample_principal["access_token"])
+
+        with (
+            patch("src.a2a_server.adcp_a2a_server.get_principal_from_token") as mock_get_principal,
+            patch("src.a2a_server.adcp_a2a_server.get_current_tenant") as mock_get_tenant,
+        ):
+            mock_get_principal.return_value = sample_principal["principal_id"]
+            mock_get_tenant.return_value = {"tenant_id": sample_tenant["tenant_id"]}
+
+            # Create skill invocation
+            skill_params = {}
+            message = self.create_message_with_skill("get_pricing", skill_params)
+            params = MessageSendParams(message=message)
+
+            # Process the message - executes real code path
+            result = await handler.on_message_send(params)
+
+            # Verify result
+            assert isinstance(result, Task)
+            assert result.metadata["invocation_type"] == "explicit_skill"
+            assert "get_pricing" in result.metadata["skills_requested"]
+            assert result.artifacts is not None
+
+    @pytest.mark.asyncio
+    async def test_get_targeting_skill(self, handler, sample_tenant, sample_principal, validator):
+        """Test get_targeting skill invocation."""
+        handler._get_auth_token = MagicMock(return_value=sample_principal["access_token"])
+
+        with (
+            patch("src.a2a_server.adcp_a2a_server.get_principal_from_token") as mock_get_principal,
+            patch("src.a2a_server.adcp_a2a_server.get_current_tenant") as mock_get_tenant,
+        ):
+            mock_get_principal.return_value = sample_principal["principal_id"]
+            mock_get_tenant.return_value = {"tenant_id": sample_tenant["tenant_id"]}
+
+            # Create skill invocation
+            skill_params = {}
+            message = self.create_message_with_skill("get_targeting", skill_params)
+            params = MessageSendParams(message=message)
+
+            # Process the message - executes real code path
+            result = await handler.on_message_send(params)
+
+            # Verify result
+            assert isinstance(result, Task)
+            assert result.metadata["invocation_type"] == "explicit_skill"
+            assert "get_targeting" in result.metadata["skills_requested"]
+            assert result.artifacts is not None
+
+    @pytest.mark.asyncio
+    async def test_search_signals_skill(self, handler, sample_tenant, sample_principal, validator):
+        """Test search_signals skill invocation."""
+        handler._get_auth_token = MagicMock(return_value=sample_principal["access_token"])
+
+        with (
+            patch("src.a2a_server.adcp_a2a_server.get_principal_from_token") as mock_get_principal,
+            patch("src.a2a_server.adcp_a2a_server.get_current_tenant") as mock_get_tenant,
+        ):
+            mock_get_principal.return_value = sample_principal["principal_id"]
+            mock_get_tenant.return_value = {"tenant_id": sample_tenant["tenant_id"]}
+
+            # Create skill invocation
+            skill_params = {
+                "query": "audience targeting signals",
+            }
+            message = self.create_message_with_skill("search_signals", skill_params)
+            params = MessageSendParams(message=message)
+
+            # Process the message - executes real code path
+            result = await handler.on_message_send(params)
+
+            # Verify result
+            assert isinstance(result, Task)
+            assert result.metadata["invocation_type"] == "explicit_skill"
+            assert "search_signals" in result.metadata["skills_requested"]
+            assert result.artifacts is not None
+
+    @pytest.mark.asyncio
+    async def test_approve_creative_skill(self, handler, sample_tenant, sample_principal, validator):
+        """Test approve_creative skill invocation."""
+        handler._get_auth_token = MagicMock(return_value=sample_principal["access_token"])
+
+        with (
+            patch("src.a2a_server.adcp_a2a_server.get_principal_from_token") as mock_get_principal,
+            patch("src.a2a_server.adcp_a2a_server.get_current_tenant") as mock_get_tenant,
+        ):
+            mock_get_principal.return_value = sample_principal["principal_id"]
+            mock_get_tenant.return_value = {"tenant_id": sample_tenant["tenant_id"]}
+
+            # Create skill invocation
+            skill_params = {
+                "creative_id": "creative_test_123",
+            }
+            message = self.create_message_with_skill("approve_creative", skill_params)
+            params = MessageSendParams(message=message)
+
+            # Process the message - executes real code path
+            result = await handler.on_message_send(params)
+
+            # Verify result
+            assert isinstance(result, Task)
+            assert result.metadata["invocation_type"] == "explicit_skill"
+            assert "approve_creative" in result.metadata["skills_requested"]
+
+    @pytest.mark.asyncio
+    async def test_get_media_buy_status_skill(self, handler, sample_tenant, sample_principal, validator):
+        """Test get_media_buy_status skill invocation."""
+        handler._get_auth_token = MagicMock(return_value=sample_principal["access_token"])
+
+        with (
+            patch("src.a2a_server.adcp_a2a_server.get_principal_from_token") as mock_get_principal,
+            patch("src.a2a_server.adcp_a2a_server.get_current_tenant") as mock_get_tenant,
+        ):
+            mock_get_principal.return_value = sample_principal["principal_id"]
+            mock_get_tenant.return_value = {"tenant_id": sample_tenant["tenant_id"]}
+
+            # Create skill invocation
+            skill_params = {
+                "media_buy_id": "mb_test_123",
+            }
+            message = self.create_message_with_skill("get_media_buy_status", skill_params)
+            params = MessageSendParams(message=message)
+
+            # Process the message - executes real code path
+            result = await handler.on_message_send(params)
+
+            # Verify result
+            assert isinstance(result, Task)
+            assert result.metadata["invocation_type"] == "explicit_skill"
+            assert "get_media_buy_status" in result.metadata["skills_requested"]
+
+    @pytest.mark.asyncio
+    async def test_optimize_media_buy_skill(self, handler, sample_tenant, sample_principal, validator):
+        """Test optimize_media_buy skill invocation."""
+        handler._get_auth_token = MagicMock(return_value=sample_principal["access_token"])
+
+        with (
+            patch("src.a2a_server.adcp_a2a_server.get_principal_from_token") as mock_get_principal,
+            patch("src.a2a_server.adcp_a2a_server.get_current_tenant") as mock_get_tenant,
+        ):
+            mock_get_principal.return_value = sample_principal["principal_id"]
+            mock_get_tenant.return_value = {"tenant_id": sample_tenant["tenant_id"]}
+
+            # Create skill invocation
+            skill_params = {
+                "media_buy_id": "mb_test_123",
+            }
+            message = self.create_message_with_skill("optimize_media_buy", skill_params)
+            params = MessageSendParams(message=message)
+
+            # Process the message - executes real code path
+            result = await handler.on_message_send(params)
+
+            # Verify result
+            assert isinstance(result, Task)
+            assert result.metadata["invocation_type"] == "explicit_skill"
+            assert "optimize_media_buy" in result.metadata["skills_requested"]
+
+    @pytest.mark.asyncio
+    async def test_get_signals_explicit_skill(self, handler, sample_tenant, sample_principal, validator):
+        """Test get_signals skill invocation with explicit parameters."""
+        handler._get_auth_token = MagicMock(return_value=sample_principal["access_token"])
+
+        with (
+            patch("src.a2a_server.adcp_a2a_server.get_principal_from_token") as mock_get_principal,
+            patch("src.a2a_server.adcp_a2a_server.get_current_tenant") as mock_get_tenant,
+        ):
+            mock_get_principal.return_value = sample_principal["principal_id"]
+            mock_get_tenant.return_value = {"tenant_id": sample_tenant["tenant_id"]}
+
+            # Create skill invocation with proper AdCP parameters
+            skill_params = {
+                "signal_spec": "audience targeting signals for premium inventory",
+                "deliver_to": {"platforms": ["mock"], "formats": ["display_300x250"]},
+            }
+            message = self.create_message_with_skill("get_signals", skill_params)
+            params = MessageSendParams(message=message)
+
+            # Process the message - executes real code path
+            result = await handler.on_message_send(params)
+
+            # Verify result
+            assert isinstance(result, Task)
+            assert result.metadata["invocation_type"] == "explicit_skill"
+            assert "get_signals" in result.metadata["skills_requested"]
+            assert result.artifacts is not None
 
 
 if __name__ == "__main__":

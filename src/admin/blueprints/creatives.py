@@ -81,6 +81,80 @@ def index(tenant_id, **kwargs):
     )
 
 
+@creatives_bp.route("/list", methods=["GET"])
+@require_tenant_access()
+def list_creatives(tenant_id, **kwargs):
+    """List all uploaded creatives and their media buy associations."""
+    from src.core.database.models import Creative, CreativeAssignment, MediaBuy, Principal
+
+    with get_db_session() as db_session:
+        # Get tenant name
+        tenant = db_session.query(Tenant).filter_by(tenant_id=tenant_id).first()
+        if not tenant:
+            return "Tenant not found", 404
+
+        tenant_name = tenant.name
+
+        # Get all creatives for this tenant with their assignments
+        creatives = db_session.query(Creative).filter_by(tenant_id=tenant_id).order_by(Creative.created_at.desc()).all()
+
+        # Build creative data with media buy associations
+        creative_list = []
+        for creative in creatives:
+            # Get principal name
+            principal = (
+                db_session.query(Principal).filter_by(tenant_id=tenant_id, principal_id=creative.principal_id).first()
+            )
+            principal_name = principal.name if principal else creative.principal_id
+
+            # Get all assignments for this creative
+            assignments = (
+                db_session.query(CreativeAssignment)
+                .filter_by(tenant_id=tenant_id, creative_id=creative.creative_id)
+                .all()
+            )
+
+            # Get media buy details for each assignment
+            media_buys = []
+            for assignment in assignments:
+                media_buy = db_session.query(MediaBuy).filter_by(media_buy_id=assignment.media_buy_id).first()
+                if media_buy:
+                    media_buys.append(
+                        {
+                            "media_buy_id": media_buy.media_buy_id,
+                            "order_name": media_buy.order_name,
+                            "package_id": assignment.package_id,
+                            "status": media_buy.status,
+                            "start_date": media_buy.start_date,
+                            "end_date": media_buy.end_date,
+                        }
+                    )
+
+            creative_list.append(
+                {
+                    "creative_id": creative.creative_id,
+                    "name": creative.name,
+                    "format": creative.format,
+                    "status": creative.status,
+                    "principal_name": principal_name,
+                    "principal_id": creative.principal_id,
+                    "group_id": creative.group_id,
+                    "created_at": creative.created_at,
+                    "approved_at": creative.approved_at,
+                    "approved_by": creative.approved_by,
+                    "media_buys": media_buys,
+                    "assignment_count": len(media_buys),
+                }
+            )
+
+    return render_template(
+        "creatives_list.html",
+        tenant_id=tenant_id,
+        tenant_name=tenant_name,
+        creatives=creative_list,
+    )
+
+
 @creatives_bp.route("/add/ai", methods=["GET"])
 @require_tenant_access()
 def add_ai(tenant_id, **kwargs):
@@ -162,14 +236,12 @@ def sync_standard(tenant_id, **kwargs):
     """Sync standard formats from adcontextprotocol.org."""
     try:
         # This would normally fetch from the protocol site
-        # For now, return success
-        flash("Standard formats synced successfully", "success")
-        return redirect(url_for("creatives.index", tenant_id=tenant_id))
+        # For now, return success with count of 0
+        return jsonify({"success": True, "count": 0, "message": "Standard formats sync not yet implemented"})
 
     except Exception as e:
         logger.error(f"Error syncing standard formats: {e}", exc_info=True)
-        flash(f"Error syncing formats: {str(e)}", "error")
-        return redirect(url_for("creatives.index", tenant_id=tenant_id))
+        return jsonify({"success": False, "error": str(e)}), 500
 
 
 @creatives_bp.route("/discover", methods=["POST"])
@@ -404,10 +476,8 @@ def delete_format(tenant_id, format_id, **kwargs):
             db_session.delete(creative_format)
             db_session.commit()
 
-            flash("Creative format deleted successfully", "success")
-            return redirect(url_for("creatives.index", tenant_id=tenant_id))
+            return jsonify({"success": True})
 
     except Exception as e:
         logger.error(f"Error deleting creative format: {e}", exc_info=True)
-        flash(f"Error deleting format: {str(e)}", "error")
-        return redirect(url_for("creatives.index", tenant_id=tenant_id))
+        return jsonify({"error": str(e)}), 500

@@ -17,13 +17,29 @@ repos:
         pass_filenames: false
         always_run: true
 
-      # Prevent excessive mocking
+      # Prevent over-mocking (mocking internal implementation instead of external I/O)
       - id: no-excessive-mocking
         name: Prevent excessive mocking in tests
-        entry: sh -c 'for f in $(find tests -name "test_*.py" 2>/dev/null); do if [ -f "$f" ]; then count=$(grep -o "@patch\|MagicMock\|Mock()" "$f" 2>/dev/null | wc -l | tr -d " "); if [ "$count" -gt 10 ]; then echo "❌ Excessive mocking in $f ($count mocks). Consider integration tests instead."; exit 1; fi; fi; done'
+        entry: uv run python scripts/check_test_mocking.py
         language: system
         pass_filenames: false
         always_run: true
+
+      # Check A2A skill test coverage
+      - id: a2a-skill-coverage
+        name: Verify 100% A2A skill coverage
+        entry: uv run python scripts/check_a2a_skill_coverage.py
+        language: system
+        pass_filenames: false
+        always_run: true
+
+      # Detect testing anti-patterns (over-mocking, missing coverage)
+      - id: detect-test-antipatterns
+        name: Detect testing anti-patterns
+        entry: uv run python scripts/detect_test_antipatterns.py
+        language: system
+        files: '^(tests/.*\.py|src/a2a_server/adcp_a2a_server\.py)$'
+        pass_filenames: true
 
       # Ensure smoke tests pass
       - id: smoke-tests
@@ -83,10 +99,27 @@ repos:
         pass_filenames: false
         always_run: true
 
+      # Check Pydantic-AdCP schema alignment (prevents client validation errors like missing promoted_offering)
+      - id: pydantic-adcp-alignment
+        name: Pydantic model alignment with AdCP schemas (REGRESSION PREVENTION)
+        entry: uv run pytest tests/unit/test_pydantic_schema_alignment.py::TestSpecificFieldValidation -v --tb=short
+        language: system
+        files: '^(src/core/schemas\.py|tests/e2e/schemas/v1/.*\.json)$'
+        pass_filenames: false
+        always_run: true
+
       # Prevent A2A regression issues (URL format, function calls)
       - id: a2a-regression-check
         name: A2A regression prevention
         entry: python3 scripts/validate_a2a_fixes.py
+        language: system
+        files: ^src/a2a_server/
+        pass_filenames: false
+
+      # Validate A2A AdCP spec compliance (prevents legacy format acceptance)
+      - id: a2a-adcp-compliance
+        name: A2A AdCP spec compliance validation
+        entry: uv run python scripts/validate_a2a_adcp_compliance.py
         language: system
         files: ^src/a2a_server/
         pass_filenames: false
@@ -105,6 +138,14 @@ repos:
         entry: uv run python scripts/validate_schema_database_alignment.py --quiet
         language: system
         files: '^(src/core/schemas\.py|src/core/database/models\.py)$'
+        pass_filenames: false
+
+      # Validate MCP tool-schema parameter alignment (prevents datetime.combine bugs)
+      - id: mcp-schema-alignment
+        name: MCP tool-schema parameter alignment
+        entry: uv run python tools/validate_mcp_schemas.py
+        language: system
+        files: '^(src/core/schemas\.py|src/core/main\.py)$'
         pass_filenames: false
 
       # Test MCP endpoints (requires server running)

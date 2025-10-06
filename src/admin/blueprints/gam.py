@@ -428,6 +428,104 @@ def get_gam_custom_targeting_keys(tenant_id):
         return jsonify({"error": str(e)}), 500
 
 
+@gam_bp.route("/sync-inventory", methods=["POST"])
+@require_tenant_access()
+def sync_gam_inventory(tenant_id):
+    """Trigger GAM inventory sync for a tenant."""
+    if session.get("role") == "viewer":
+        return jsonify({"success": False, "error": "Access denied"}), 403
+
+    try:
+        with get_db_session() as db_session:
+            # Get tenant and adapter config
+            tenant = db_session.query(Tenant).filter_by(tenant_id=tenant_id).first()
+            if not tenant:
+                return jsonify({"success": False, "error": "Tenant not found"}), 404
+
+            from src.core.database.models import AdapterConfig
+
+            adapter_config = db_session.query(AdapterConfig).filter_by(tenant_id=tenant_id).first()
+
+            if not adapter_config or not adapter_config.gam_network_code or not adapter_config.gam_refresh_token:
+                return jsonify({"success": False, "error": "GAM not configured for this tenant"}), 400
+
+            # Initialize GAM inventory discovery
+            discovery = GAMInventoryDiscovery(
+                network_code=adapter_config.gam_network_code,
+                refresh_token=adapter_config.gam_refresh_token,
+            )
+
+            # Perform full inventory discovery
+            ad_units = discovery.discover_ad_units()
+            placements = discovery.discover_placements()
+            targeting = discovery.discover_custom_targeting()
+
+            # Store in database
+            from src.services.gam_inventory_service import GAMInventoryService
+
+            inventory_service = GAMInventoryService(db_session)
+
+            # Save ad units
+            for ad_unit in ad_units:
+                inventory_service.save_ad_unit(
+                    tenant_id=tenant_id,
+                    ad_unit_id=str(ad_unit["id"]),
+                    name=ad_unit["name"],
+                    ad_unit_code=ad_unit.get("adUnitCode", ""),
+                    parent_id=str(ad_unit.get("parentId", "")),
+                    ad_unit_sizes=ad_unit.get("adUnitSizes", []),
+                    targeting_preset_id=ad_unit.get("targetingPresetId"),
+                    description=ad_unit.get("description", ""),
+                    explicitly_targeted=ad_unit.get("explicitlyTargeted", False),
+                    status=ad_unit.get("status", "ACTIVE"),
+                )
+
+            # Save placements
+            for placement in placements:
+                inventory_service.save_placement(
+                    tenant_id=tenant_id,
+                    placement_id=str(placement["id"]),
+                    name=placement["name"],
+                    description=placement.get("description", ""),
+                    placement_code=placement.get("placementCode", ""),
+                    status=placement.get("status", "ACTIVE"),
+                    targeted_ad_unit_ids=[str(aid) for aid in placement.get("targetedAdUnitIds", [])],
+                )
+
+            # Save custom targeting keys
+            for key in targeting:
+                inventory_service.save_targeting_key(
+                    tenant_id=tenant_id,
+                    key_id=str(key["id"]),
+                    name=key["name"],
+                    display_name=key.get("displayName", key["name"]),
+                    key_type=key.get("type", "FREEFORM"),
+                    status=key.get("status", "ACTIVE"),
+                )
+
+            db_session.commit()
+
+            # Update tenant's last sync time
+            tenant.last_inventory_sync = datetime.now(UTC)
+            db_session.commit()
+
+            logger.info(f"Successfully synced GAM inventory for tenant {tenant_id}")
+
+            return jsonify(
+                {
+                    "success": True,
+                    "message": "Inventory synced successfully",
+                    "ad_units_count": len(ad_units),
+                    "placements_count": len(placements),
+                    "targeting_count": len(targeting),
+                }
+            )
+
+    except Exception as e:
+        logger.error(f"Error syncing GAM inventory for tenant {tenant_id}: {e}", exc_info=True)
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
 @gam_bp.route("/api/line-item/<line_item_id>", methods=["GET"])
 @require_tenant_access(api_mode=True)
 def get_gam_line_item_api(tenant_id, line_item_id):

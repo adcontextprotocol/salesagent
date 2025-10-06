@@ -50,6 +50,7 @@ from src.core.database.models import Product as ModelProduct
 # Schema models (explicit imports to avoid collisions)
 from src.core.schemas import (
     ActivateSignalResponse,
+    AggregatedTotals,
     CreateMediaBuyRequest,
     CreateMediaBuyResponse,
     Creative,
@@ -64,6 +65,7 @@ from src.core.schemas import (
     GetSignalsResponse,
     ListAuthorizedPropertiesRequest,
     ListAuthorizedPropertiesResponse,
+    ListCreativeFormatsRequest,
     ListCreativeFormatsResponse,
     ListCreativesResponse,
     MediaBuyDeliveryData,
@@ -226,10 +228,34 @@ def get_principal_from_token(token: str, tenant_id: str | None = None) -> str | 
             return principal.principal_id
 
 
+def _get_header_case_insensitive(headers: dict, header_name: str) -> str | None:
+    """Get a header value with case-insensitive lookup.
+
+    HTTP headers are case-insensitive, but Python dicts are case-sensitive.
+    This helper function performs case-insensitive header lookup.
+
+    Args:
+        headers: Dictionary of headers
+        header_name: Header name to look up (will be compared case-insensitively)
+
+    Returns:
+        Header value if found, None otherwise
+    """
+    if not headers:
+        return None
+
+    header_name_lower = header_name.lower()
+    for key, value in headers.items():
+        if key.lower() == header_name_lower:
+            return value
+    return None
+
+
 def get_principal_from_context(context: Context | None) -> str | None:
     """Extract principal ID from the FastMCP context using x-adcp-auth header.
 
     Uses the current recommended FastMCP pattern with get_http_headers().
+    Falls back to context.meta["headers"] for sync tools where get_http_headers() may return empty dict.
     Requires FastMCP >= 2.11.0.
     """
     if not context:
@@ -240,7 +266,11 @@ def get_principal_from_context(context: Context | None) -> str | None:
     try:
         headers = get_http_headers()
     except Exception:
-        # Fallback to context.meta approach for sync tools
+        pass  # Will try fallback below
+
+    # If get_http_headers() returned empty dict or None, try context.meta fallback
+    # This is necessary for sync tools where get_http_headers() may not work
+    if not headers:
         if hasattr(context, "meta") and context.meta and "headers" in context.meta:
             headers = context.meta["headers"]
         # Try other possible attributes
@@ -252,8 +282,8 @@ def get_principal_from_context(context: Context | None) -> str | None:
     if not headers:
         return None
 
-    # Get the x-adcp-auth header
-    auth_token = headers.get("x-adcp-auth")
+    # Get the x-adcp-auth header (case-insensitive lookup)
+    auth_token = _get_header_case_insensitive(headers, "x-adcp-auth")
     if not auth_token:
         return None
 
@@ -262,7 +292,7 @@ def get_principal_from_context(context: Context | None) -> str | None:
     tenant_context = None
 
     # 1. Check Apx-Incoming-Host header (for Approximated.app virtual hosts)
-    apx_host = headers.get("apx-incoming-host")
+    apx_host = _get_header_case_insensitive(headers, "apx-incoming-host")
     if apx_host:
         tenant_context = get_tenant_by_virtual_host(apx_host)
         if tenant_context:
@@ -272,11 +302,11 @@ def get_principal_from_context(context: Context | None) -> str | None:
 
     # 2. Check x-adcp-tenant header (set by middleware for path-based routing)
     if not requested_tenant_id:
-        requested_tenant_id = headers.get("x-adcp-tenant")
+        requested_tenant_id = _get_header_case_insensitive(headers, "x-adcp-tenant")
 
     # 3. If not found, check host header for subdomain
     if not requested_tenant_id:
-        host = headers.get("host", "")
+        host = _get_header_case_insensitive(headers, "host") or ""
         subdomain = host.split(".")[0] if "." in host else None
         if subdomain and subdomain not in ["localhost", "adcp-sales-agent", "www"]:
             requested_tenant_id = subdomain
@@ -350,9 +380,23 @@ def get_adapter(principal: Principal, dry_run: bool = False, testing_context=Non
             elif adapter_type == "google_ad_manager":
                 adapter_config["network_code"] = config_row.gam_network_code
                 adapter_config["refresh_token"] = config_row.gam_refresh_token
-                adapter_config["company_id"] = config_row.gam_company_id
                 adapter_config["trafficker_id"] = config_row.gam_trafficker_id
                 adapter_config["manual_approval_required"] = config_row.gam_manual_approval_required
+
+                # Get advertiser_id from principal's platform_mappings (per-principal, not tenant-level)
+                # Support both old format (nested under "google_ad_manager") and new format (root "gam_advertiser_id")
+                if principal.platform_mappings:
+                    # Try nested format first
+                    gam_mappings = principal.platform_mappings.get("google_ad_manager", {})
+                    advertiser_id = gam_mappings.get("advertiser_id")
+
+                    # Fall back to root-level format if nested not found
+                    if not advertiser_id:
+                        advertiser_id = principal.platform_mappings.get("gam_advertiser_id")
+
+                    adapter_config["company_id"] = advertiser_id
+                else:
+                    adapter_config["company_id"] = None
             elif adapter_type == "kevel":
                 adapter_config["network_id"] = config_row.kevel_network_id
                 adapter_config["api_key"] = config_row.kevel_api_key
@@ -553,12 +597,47 @@ def _detect_snippet_type(snippet: str) -> str:
 
 # --- Security Helper ---
 def _get_principal_id_from_context(context: Context) -> str:
-    """Extracts the token from the header and returns a principal_id."""
-    principal_id = get_principal_from_context(context)
-    if not principal_id:
-        raise ToolError("Missing or invalid x-adcp-auth header for authentication.")
+    """Extracts the token from the header and returns a principal_id.
 
-    console.print(f"[bold green]Authenticated principal '{principal_id}'[/bold green]")
+    Handles both FastMCP Context (with HTTP headers) and ToolContext (with principal_id already set).
+    This allows the same implementation function to work from both MCP and A2A paths.
+    """
+    # Import here to avoid circular dependency
+    from src.core.tool_context import ToolContext
+
+    # If this is a ToolContext (from A2A), principal_id is already set
+    if isinstance(context, ToolContext):
+        console.print(f"[bold green]Authenticated principal '{context.principal_id}' (from ToolContext)[/bold green]")
+        return context.principal_id
+
+    # Otherwise, extract from FastMCP Context headers
+    principal_id = get_principal_from_context(context)
+
+    # Extract headers for debugging
+    headers = {}
+    if hasattr(context, "meta"):
+        headers = context.meta.get("headers", {})
+    auth_header = headers.get("x-adcp-auth", "NOT_PRESENT")
+    apx_host = headers.get("apx-incoming-host", "NOT_PRESENT")
+
+    if not principal_id:
+        # Determine if header is missing or just invalid
+        if auth_header == "NOT_PRESENT":
+            raise ToolError(
+                f"Missing x-adcp-auth header. "
+                f"Apx-Incoming-Host: {apx_host}, "
+                f"Tenant: {get_current_tenant().get('tenant_id') if get_current_tenant() else 'NONE'}"
+            )
+        else:
+            # Header present but invalid (token not found in DB)
+            raise ToolError(
+                f"Invalid x-adcp-auth token (not found in database). "
+                f"Token: {auth_header[:20]}..., "
+                f"Apx-Incoming-Host: {apx_host}, "
+                f"Tenant: {get_current_tenant().get('tenant_id') if get_current_tenant() else 'NONE'}"
+            )
+
+    console.print(f"[bold green]Authenticated principal '{principal_id}' (from FastMCP Context)[/bold green]")
     return principal_id
 
 
@@ -639,22 +718,20 @@ def log_tool_activity(context: Context, tool_name: str, start_time: float = None
 # --- MCP Tools (Full Implementation) ---
 
 
-@mcp.tool
-async def get_products(promoted_offering: str, brief: str = "", context: Context = None) -> GetProductsResponse:
-    """Get available products matching the brief.
+async def _get_products_impl(req: GetProductsRequest, context: Context) -> GetProductsResponse:
+    """Shared implementation for get_products.
+
+    Contains all business logic for product discovery including policy checks,
+    product catalog providers, dynamic pricing, and filtering.
 
     Args:
-        promoted_offering: What is being promoted/advertised (required per AdCP spec)
-        brief: Brief description of the advertising campaign or requirements (optional)
-        context: FastMCP context (automatically provided)
+        req: GetProductsRequest with all query parameters
+        context: FastMCP Context for tenant/principal resolution
 
     Returns:
         GetProductsResponse containing matching products
     """
     from src.core.tool_context import ToolContext
-
-    # Create request object from individual parameters (MCP-compliant)
-    req = GetProductsRequest(brief=brief or "", promoted_offering=promoted_offering)
 
     start_time = time.time()
 
@@ -761,6 +838,8 @@ async def get_products(promoted_offering: str, brief: str = "", context: Context
     # If restricted and manual review is required, create a task
     if policy_result.status == PolicyStatus.RESTRICTED and policy_settings.get("require_manual_review", False):
         # Create a manual review task
+        from src.core.database.database_session import get_db_session
+
         with get_db_session() as session:
             task_id = f"policy_review_{tenant['tenant_id']}_{int(datetime.now(UTC).timestamp())}"
 
@@ -846,6 +925,94 @@ async def get_products(promoted_offering: str, brief: str = "", context: Context
         context=context_data,
     )
 
+    # Enrich products with dynamic pricing (AdCP PR #79)
+    # Calculate floor_cpm, recommended_cpm, estimated_exposures from cached metrics
+    try:
+        from src.core.database.database_session import get_db_session
+        from src.services.dynamic_pricing_service import DynamicPricingService
+
+        # Extract country from request if available (future enhancement: parse from targeting)
+        country_code = None  # TODO: Extract from targeting if provided
+
+        with get_db_session() as pricing_session:
+            pricing_service = DynamicPricingService(pricing_session)
+            products = pricing_service.enrich_products_with_pricing(
+                products,
+                tenant_id=tenant["tenant_id"],
+                country_code=country_code,
+                min_exposures=req.min_exposures,
+            )
+    except Exception as e:
+        logger.warning(f"Failed to enrich products with dynamic pricing: {e}. Using defaults.")
+
+    # Apply AdCP filters if provided
+    if req.filters:
+        filtered_products = []
+        for product in products:
+            # Filter by delivery_type
+            if req.filters.delivery_type and product.delivery_type != req.filters.delivery_type:
+                continue
+
+            # Filter by is_fixed_price
+            if req.filters.is_fixed_price is not None and product.is_fixed_price != req.filters.is_fixed_price:
+                continue
+
+            # Filter by format_types
+            if req.filters.format_types:
+                # Product.formats is list[str] (format IDs), need to look up types from FORMAT_REGISTRY
+                from src.core.schemas import get_format_by_id
+
+                product_format_types = set()
+                for format_id in product.formats:
+                    if isinstance(format_id, str):
+                        format_obj = get_format_by_id(format_id)
+                        if format_obj:
+                            product_format_types.add(format_obj.type)
+                    elif hasattr(format_id, "type"):
+                        # Already a Format object
+                        product_format_types.add(format_id.type)
+
+                if not any(fmt_type in product_format_types for fmt_type in req.filters.format_types):
+                    continue
+
+            # Filter by format_ids
+            if req.filters.format_ids:
+                # Product.formats is list[str] (format IDs)
+                product_format_ids = set()
+                for format_id in product.formats:
+                    if isinstance(format_id, str):
+                        product_format_ids.add(format_id)
+                    elif hasattr(format_id, "format_id"):
+                        # Already a Format object
+                        product_format_ids.add(format_id.format_id)
+
+                if not any(fmt_id in product_format_ids for fmt_id in req.filters.format_ids):
+                    continue
+
+            # Filter by standard_formats_only
+            if req.filters.standard_formats_only:
+                # Check if all formats are IAB standard formats
+                # IAB standard formats typically follow patterns like "display_", "video_", "audio_", "native_"
+                has_only_standard = True
+                for format_id in product.formats:
+                    if isinstance(format_id, str):
+                        if not format_id.startswith(("display_", "video_", "audio_", "native_")):
+                            has_only_standard = False
+                            break
+                    elif hasattr(format_id, "format_id"):
+                        if not format_id.format_id.startswith(("display_", "video_", "audio_", "native_")):
+                            has_only_standard = False
+                            break
+
+                if not has_only_standard:
+                    continue
+
+            # Product passed all filters
+            filtered_products.append(product)
+
+        products = filtered_products
+        logger.info(f"Applied filters: {req.filters.model_dump(exclude_none=True)}. {len(products)} products remain.")
+
     # Filter products based on policy compliance
     eligible_products = []
     for product in products:
@@ -857,6 +1024,29 @@ async def get_products(promoted_offering: str, brief: str = "", context: Context
             eligible_products.append(product)
         else:
             logger.info(f"Product {product.product_id} excluded: {reason}")
+
+    # Apply min_exposures filtering (AdCP PR #79)
+    if req.min_exposures is not None:
+        filtered_products = []
+        for product in eligible_products:
+            # For guaranteed products, check estimated_exposures
+            if product.delivery_type == "guaranteed":
+                if product.estimated_exposures is not None and product.estimated_exposures >= req.min_exposures:
+                    filtered_products.append(product)
+                else:
+                    logger.info(
+                        f"Product {product.product_id} excluded: estimated_exposures "
+                        f"({product.estimated_exposures}) < min_exposures ({req.min_exposures})"
+                    )
+            else:
+                # For non-guaranteed, include if recommended_cpm is set (indicates it can meet min_exposures)
+                # or if no recommended_cpm is set (product doesn't provide exposure estimates)
+                if product.recommended_cpm is not None:
+                    filtered_products.append(product)
+                else:
+                    # Include non-guaranteed products without recommended_cpm (can't filter by exposure estimates)
+                    filtered_products.append(product)
+        eligible_products = filtered_products
 
     # Apply testing hooks to response
     response_data = {"products": [p.model_dump_internal() for p in eligible_products]}
@@ -890,13 +1080,64 @@ async def get_products(promoted_offering: str, brief: str = "", context: Context
 
 
 @mcp.tool
-def list_creative_formats(context: Context) -> ListCreativeFormatsResponse:
+async def get_products(
+    promoted_offering: str,
+    brief: str = "",
+    adcp_version: str = "1.0.0",
+    min_exposures: int | None = None,
+    filters: dict | None = None,
+    strategy_id: str | None = None,
+    context: Context = None,
+) -> GetProductsResponse:
+    """Get available products matching the brief.
+
+    MCP tool wrapper that delegates to the shared implementation.
+
+    Args:
+        promoted_offering: What is being promoted/advertised (required per AdCP spec)
+        brief: Brief description of the advertising campaign or requirements (optional)
+        adcp_version: AdCP schema version for this request (default: 1.0.0)
+        min_exposures: Minimum impressions needed for measurement validity (AdCP PR #79, optional)
+        filters: Structured filters for product discovery (optional)
+        strategy_id: Optional strategy ID for linking operations (optional)
+        context: FastMCP context (automatically provided)
+
+    Returns:
+        GetProductsResponse containing matching products
+    """
+    from src.core.schemas import ProductFilters
+
+    # Convert filters dict to ProductFilters if provided
+    filters_obj = ProductFilters(**filters) if filters else None
+
+    # Create request object from individual parameters (MCP-compliant)
+    req = GetProductsRequest(
+        brief=brief or "",
+        promoted_offering=promoted_offering,
+        adcp_version=adcp_version,
+        min_exposures=min_exposures,
+        filters=filters_obj,
+        strategy_id=strategy_id,
+    )
+
+    # Call shared implementation
+    return await _get_products_impl(req, context)
+
+
+def _list_creative_formats_impl(
+    req: ListCreativeFormatsRequest | None, context: Context
+) -> ListCreativeFormatsResponse:
     """List all available creative formats (AdCP spec endpoint).
 
     Returns comprehensive standard formats from AdCP registry plus any custom tenant formats.
     Prioritizes database formats over registry formats when format_id conflicts exist.
+    Supports optional filtering by type, standard_only, category, and format_ids.
     """
     start_time = time.time()
+
+    # Use default request if none provided
+    if req is None:
+        req = ListCreativeFormatsRequest()
 
     # For discovery endpoints, authentication is optional
     principal_id = get_principal_from_context(context)  # Returns None if no auth
@@ -957,6 +1198,25 @@ def list_creative_formats(context: Context) -> ListCreativeFormatsResponse:
             formats.append(standard_format)
             format_ids_seen.add(format_id)
 
+    # Apply filters from request
+    if req.type:
+        formats = [f for f in formats if f.type == req.type]
+
+    if req.standard_only:
+        formats = [f for f in formats if f.is_standard]
+
+    if req.category:
+        # Category maps to is_standard: "standard" -> True, "custom" -> False
+        if req.category == "standard":
+            formats = [f for f in formats if f.is_standard]
+        elif req.category == "custom":
+            formats = [f for f in formats if not f.is_standard]
+
+    if req.format_ids:
+        # Filter to only the specified format IDs
+        format_ids_set = set(req.format_ids)
+        formats = [f for f in formats if f.format_id in format_ids_set]
+
     # Sort formats by type and name for consistent ordering
     formats.sort(key=lambda f: (f.type, f.name))
 
@@ -1008,13 +1268,51 @@ def list_creative_formats(context: Context) -> ListCreativeFormatsResponse:
     return response
 
 
-@mcp.tool
-def sync_creatives(
+@mcp.tool()
+def list_creative_formats(
+    adcp_version: str = "1.0.0",
+    type: str | None = None,
+    standard_only: bool | None = None,
+    category: str | None = None,
+    format_ids: list[str] | None = None,
+    context: Context = None,
+) -> ListCreativeFormatsResponse:
+    """List all available creative formats (AdCP spec endpoint).
+
+    MCP tool wrapper that delegates to the shared implementation.
+
+    Args:
+        adcp_version: AdCP schema version for this request (default: "1.0.0")
+        type: Filter by format type (audio, video, display)
+        standard_only: Only return IAB standard formats
+        category: Filter by format category (standard, custom)
+        format_ids: Filter by specific format IDs
+        context: FastMCP context (automatically provided)
+
+    Returns:
+        ListCreativeFormatsResponse with all available formats
+    """
+    req = ListCreativeFormatsRequest(
+        adcp_version=adcp_version,
+        type=type,
+        standard_only=standard_only,
+        category=category,
+        format_ids=format_ids,
+    )
+    return _list_creative_formats_impl(req, context)
+
+
+def _sync_creatives_impl(
     creatives: list[dict],
     media_buy_id: str = None,
     buyer_ref: str = None,
     assign_to_packages: list[str] = None,
     upsert: bool = True,
+    patch: bool = False,
+    assignments: dict = None,
+    dry_run: bool = False,
+    delete_missing: bool = False,
+    validation_mode: str = "strict",
     context: Context = None,
 ) -> SyncCreativesResponse:
     """Sync creative assets to centralized library (AdCP spec endpoint).
@@ -1023,6 +1321,7 @@ def sync_creatives(
     - Bulk creative upload/update with upsert semantics
     - Creative assignment to media buy packages
     - Support for both hosted assets (media_url) and third-party tags (snippet)
+    - Patch updates, dry-run mode, and validation options
 
     Args:
         creatives: Array of creative assets to sync
@@ -1030,6 +1329,11 @@ def sync_creatives(
         buyer_ref: Buyer's reference for the media buy (optional)
         assign_to_packages: Package IDs to assign creatives to (optional)
         upsert: Whether to update existing creatives or create new ones
+        patch: When true, only update provided fields (partial update)
+        assignments: Bulk assignment map of creative_id to package_ids
+        dry_run: Preview changes without applying them
+        delete_missing: Delete creatives not in sync payload (use with caution)
+        validation_mode: Validation strictness (strict or lenient)
         context: FastMCP context (automatically provided)
 
     Returns:
@@ -1049,7 +1353,23 @@ def sync_creatives(
     principal_id = _get_principal_id_from_context(context)
 
     # Get tenant information
-    tenant = get_current_tenant()
+    # If context is ToolContext (A2A), tenant is already set, but verify it matches
+    from src.core.tool_context import ToolContext
+
+    if isinstance(context, ToolContext):
+        # Tenant context should already be set by A2A handler, but verify
+        tenant = get_current_tenant()
+        if not tenant or tenant.get("tenant_id") != context.tenant_id:
+            # Tenant context wasn't set properly - this shouldn't happen but handle it
+            console.print(
+                f"[yellow]Warning: Tenant context mismatch, setting from ToolContext: {context.tenant_id}[/yellow]"
+            )
+            # We need to load the tenant properly - for now use the ID from context
+            tenant = {"tenant_id": context.tenant_id}
+    else:
+        # FastMCP path - tenant should be set by get_principal_from_context
+        tenant = get_current_tenant()
+
     if not tenant:
         raise ToolError("No tenant context available")
 
@@ -1057,6 +1377,13 @@ def sync_creatives(
     synced_creatives = []
     failed_creatives = []
     assignments = []
+
+    # Track creatives requiring approval for workflow creation
+    creatives_needing_approval = []
+
+    # Get tenant creative approval settings
+    auto_approve_formats = tenant.get("auto_approve_formats", [])
+    human_review_required = tenant.get("human_review_required", True)
 
     with get_db_session() as session:
         # Resolve media buy
@@ -1085,8 +1412,8 @@ def sync_creatives(
                     schema_data = {
                         "creative_id": creative.get("creative_id") or str(uuid.uuid4()),
                         "name": creative.get("name", ""),  # Ensure name is never None
-                        "format_id": creative.get("format"),  # Use alias name
-                        "click_through_url": creative.get("click_url"),
+                        "format_id": creative.get("format_id") or creative.get("format"),  # Support both field names
+                        "click_through_url": creative.get("click_url") or creative.get("click_through_url"),
                         "width": creative.get("width"),
                         "height": creative.get("height"),
                         "duration": creative.get("duration"),
@@ -1123,7 +1450,7 @@ def sync_creatives(
                     if not creative.get("name") or str(creative.get("name")).strip() == "":
                         raise ValueError("Creative name cannot be empty")
 
-                    if not creative.get("format"):
+                    if not creative.get("format_id") and not creative.get("format"):
                         raise ValueError("Creative format is required")
 
                 except (ValidationError, ValueError) as validation_error:
@@ -1149,8 +1476,13 @@ def sync_creatives(
                     if existing_creative and upsert:
                         # Update existing creative
                         existing_creative.name = creative.get("name")
-                        existing_creative.format = creative.get("format")
+                        existing_creative.format = creative.get("format_id") or creative.get("format")
                         existing_creative.updated_at = datetime.now(UTC)
+
+                        # Determine if creative needs approval (same logic as create)
+                        creative_format = creative.get("format_id") or creative.get("format")
+                        needs_approval = human_review_required and creative_format not in auto_approve_formats
+                        existing_creative.status = "pending" if needs_approval else "approved"
 
                         # Store creative properties in data field
                         data = existing_creative.data or {}
@@ -1179,6 +1511,16 @@ def sync_creatives(
 
                         attributes.flag_modified(existing_creative, "data")
 
+                        # Track creatives needing approval for workflow creation
+                        if needs_approval:
+                            creatives_needing_approval.append(
+                                {
+                                    "creative_id": existing_creative.creative_id,
+                                    "format": creative_format,
+                                    "name": creative.get("name"),
+                                }
+                            )
+
                     else:
                         # Create new creative
                         from src.core.database.models import Creative as DBCreative
@@ -1200,13 +1542,18 @@ def sync_creatives(
                         if creative.get("template_variables"):
                             data["template_variables"] = creative.get("template_variables")
 
+                        # Determine if creative needs approval
+                        creative_format = creative.get("format_id") or creative.get("format")
+                        needs_approval = human_review_required and creative_format not in auto_approve_formats
+                        creative_status = "pending" if needs_approval else "approved"
+
                         db_creative = DBCreative(
                             tenant_id=tenant["tenant_id"],
                             creative_id=creative.get("creative_id") or str(uuid.uuid4()),
                             name=creative.get("name"),
-                            format=creative.get("format"),
+                            format=creative.get("format_id") or creative.get("format"),
                             principal_id=principal_id,
-                            status="pending",
+                            status=creative_status,
                             created_at=datetime.now(UTC),
                             data=data,
                         )
@@ -1217,6 +1564,16 @@ def sync_creatives(
                         # Update creative_id if it was generated
                         if not creative.get("creative_id"):
                             creative["creative_id"] = db_creative.creative_id
+
+                        # Track creatives needing approval for workflow creation
+                        if needs_approval:
+                            creatives_needing_approval.append(
+                                {
+                                    "creative_id": db_creative.creative_id,
+                                    "format": creative_format,
+                                    "name": creative.get("name"),
+                                }
+                            )
 
                     # Handle package assignments
                     if assign_to_packages and media_buy:
@@ -1257,6 +1614,51 @@ def sync_creatives(
         # Commit all successful creative operations
         session.commit()
 
+    # Create workflow steps for creatives requiring approval
+    if creatives_needing_approval:
+        from src.core.context_manager import get_context_manager
+        from src.core.database.models import ObjectWorkflowMapping
+
+        ctx_manager = get_context_manager()
+
+        # Get or create persistent context for this operation
+        # is_async=True because we're creating workflow steps that need tracking
+        persistent_ctx = ctx_manager.get_or_create_context(
+            principal_id=principal_id, tenant_id=tenant["tenant_id"], is_async=True
+        )
+
+        with get_db_session() as session:
+            for creative_info in creatives_needing_approval:
+                # Create workflow step for creative approval
+                step = ctx_manager.create_workflow_step(
+                    context_id=persistent_ctx.context_id,
+                    step_type="creative_approval",
+                    owner="publisher",
+                    status="requires_approval",
+                    tool_name="sync_creatives",
+                    request_data={
+                        "creative_id": creative_info["creative_id"],
+                        "format": creative_info["format"],
+                        "name": creative_info["name"],
+                    },
+                    initial_comment=f"Creative '{creative_info['name']}' (format: {creative_info['format']}) requires manual approval",
+                )
+
+                # Create ObjectWorkflowMapping to link creative to workflow step
+                # This is CRITICAL for webhook delivery when creative is approved
+                mapping = ObjectWorkflowMapping(
+                    step_id=step.step_id,
+                    object_type="creative",
+                    object_id=creative_info["creative_id"],
+                    action="approval_required",
+                )
+                session.add(mapping)
+
+            session.commit()
+            console.print(
+                f"[blue]📋 Created {len(creatives_needing_approval)} workflow steps for creative approval[/blue]"
+            )
+
     # Audit logging
     audit_logger = get_audit_logger("AdCP", tenant["tenant_id"])
     audit_logger.log_operation(
@@ -1281,6 +1683,8 @@ def sync_creatives(
         message += f", {len(failed_creatives)} failed"
     if assignments:
         message += f", {len(assignments)} assignments created"
+    if creatives_needing_approval:
+        message += f", {len(creatives_needing_approval)} require approval"
 
     # Convert synced creative dictionaries to schema objects for AdCP-compliant response
     synced_creative_schemas = []
@@ -1341,8 +1745,56 @@ def sync_creatives(
     )
 
 
-@mcp.tool
-def list_creatives(
+@mcp.tool()
+def sync_creatives(
+    creatives: list[dict],
+    media_buy_id: str = None,
+    buyer_ref: str = None,
+    assign_to_packages: list[str] = None,
+    upsert: bool = True,
+    patch: bool = False,
+    assignments: dict = None,
+    dry_run: bool = False,
+    delete_missing: bool = False,
+    validation_mode: str = "strict",
+    context: Context = None,
+) -> SyncCreativesResponse:
+    """Sync creative assets to centralized library (AdCP spec endpoint).
+
+    MCP tool wrapper that delegates to the shared implementation.
+
+    Args:
+        creatives: List of creative objects to sync
+        media_buy_id: Optional media buy ID to associate creatives with
+        buyer_ref: Optional buyer reference for filtering
+        assign_to_packages: List of package IDs to assign creatives to
+        upsert: If True, update existing creatives; if False, only create new ones
+        patch: When true, only update provided fields (partial update)
+        assignments: Bulk assignment map of creative_id to package_ids
+        dry_run: Preview changes without applying them
+        delete_missing: Delete creatives not in sync payload (use with caution)
+        validation_mode: Validation strictness (strict or lenient)
+        context: FastMCP context (automatically provided)
+
+    Returns:
+        SyncCreativesResponse with sync results
+    """
+    return _sync_creatives_impl(
+        creatives,
+        media_buy_id,
+        buyer_ref,
+        assign_to_packages,
+        upsert,
+        patch,
+        assignments,
+        dry_run,
+        delete_missing,
+        validation_mode,
+        context,
+    )
+
+
+def _list_creatives_impl(
     media_buy_id: str = None,
     buyer_ref: str = None,
     status: str = None,
@@ -1351,6 +1803,13 @@ def list_creatives(
     created_after: str = None,
     created_before: str = None,
     search: str = None,
+    filters: dict = None,
+    sort: dict = None,
+    pagination: dict = None,
+    fields: list[str] = None,
+    include_performance: bool = False,
+    include_assignments: bool = False,
+    include_sub_assets: bool = False,
     page: int = 1,
     limit: int = 50,
     sort_by: str = "created_date",
@@ -1371,6 +1830,13 @@ def list_creatives(
         created_after: Filter by creation date (ISO string) (optional)
         created_before: Filter by creation date (ISO string) (optional)
         search: Search in creative names and descriptions (optional)
+        filters: Advanced filtering options (nested object, optional)
+        sort: Sort configuration (nested object, optional)
+        pagination: Pagination parameters (nested object, optional)
+        fields: Specific fields to return (optional)
+        include_performance: Include performance metrics (optional)
+        include_assignments: Include package assignments (optional)
+        include_sub_assets: Include sub-assets (optional)
         page: Page number for pagination (default: 1)
         limit: Number of results per page (default: 50, max: 1000)
         sort_by: Sort field (created_date, name, status) (default: created_date)
@@ -1406,6 +1872,13 @@ def list_creatives(
         created_after=created_after_dt,
         created_before=created_before_dt,
         search=search,
+        filters=filters,
+        sort=sort,
+        pagination=pagination,
+        fields=fields,
+        include_performance=include_performance,
+        include_assignments=include_assignments,
+        include_sub_assets=include_sub_assets,
         page=page,
         limit=min(limit, 1000),  # Enforce max limit
         sort_by=sort_by,
@@ -1567,6 +2040,59 @@ def list_creatives(
 
     return ListCreativesResponse(
         creatives=creatives, total_count=total_count, page=req.page, limit=req.limit, has_more=has_more, message=message
+    )
+
+
+@mcp.tool()
+def list_creatives(
+    media_buy_id: str = None,
+    buyer_ref: str = None,
+    status: str = None,
+    format: str = None,
+    tags: list[str] = None,
+    created_after: str = None,
+    created_before: str = None,
+    search: str = None,
+    filters: dict = None,
+    sort: dict = None,
+    pagination: dict = None,
+    fields: list[str] = None,
+    include_performance: bool = False,
+    include_assignments: bool = False,
+    include_sub_assets: bool = False,
+    page: int = 1,
+    limit: int = 50,
+    sort_by: str = "created_date",
+    sort_order: str = "desc",
+    context: Context = None,
+) -> ListCreativesResponse:
+    """List and filter creative assets from the centralized library.
+
+    MCP tool wrapper that delegates to the shared implementation.
+    Supports both flat parameters (status, format, etc.) and nested objects (filters, sort, pagination)
+    for maximum flexibility.
+    """
+    return _list_creatives_impl(
+        media_buy_id,
+        buyer_ref,
+        status,
+        format,
+        tags,
+        created_after,
+        created_before,
+        search,
+        filters,
+        sort,
+        pagination,
+        fields,
+        include_performance,
+        include_assignments,
+        include_sub_assets,
+        page,
+        limit,
+        sort_by,
+        sort_order,
+        context,
     )
 
 
@@ -1820,8 +2346,7 @@ async def activate_signal(
         )
 
 
-@mcp.tool
-def list_authorized_properties(
+def _list_authorized_properties_impl(
     req: ListAuthorizedPropertiesRequest = None, context: Context = None
 ) -> ListAuthorizedPropertiesResponse:
     """List all properties this agent is authorized to represent (AdCP spec endpoint).
@@ -1851,10 +2376,21 @@ def list_authorized_properties(
     principal_id = _get_principal_id_from_context(context)
 
     # Apply testing hooks
-    headers = context.meta.get("headers", {}) if context and context.meta else {}
-    testing_context = get_testing_context(headers)
-    campaign_info = {"endpoint": "list_authorized_properties", "tenant_id": tenant_id}
-    apply_testing_hooks(testing_context, campaign_info, headers)
+    from src.core.testing_hooks import TestingContext
+    from src.core.tool_context import ToolContext
+
+    if isinstance(context, ToolContext):
+        # ToolContext has testing_context field directly
+        testing_context = TestingContext(**context.testing_context) if context.testing_context else TestingContext()
+        headers = {}
+    else:
+        # FastMCP Context has meta.headers
+        headers = context.meta.get("headers", {}) if context and context.meta else {}
+        testing_context = get_testing_context(headers)
+
+    # Note: apply_testing_hooks signature is (data, testing_ctx, operation, campaign_info)
+    # For list_authorized_properties, we don't modify data, so we can skip this call
+    # The testing_context is used later if needed
 
     log_tool_activity(context, "list_authorized_properties", start_time)
 
@@ -1917,11 +2453,12 @@ def list_authorized_properties(
             )
 
             # Log audit
-            audit_logger = get_audit_logger()
+            audit_logger = get_audit_logger("AdCP", tenant_id)
             audit_logger.log_operation(
                 operation="list_authorized_properties",
-                tenant_id=tenant_id,
+                principal_name=principal_id,
                 principal_id=principal_id,
+                adapter_id="mcp_server",
                 success=True,
                 details={
                     "properties_count": len(properties),
@@ -1936,11 +2473,12 @@ def list_authorized_properties(
         logger.error(f"Error listing authorized properties: {str(e)}")
 
         # Log audit for failure
-        audit_logger = get_audit_logger()
+        audit_logger = get_audit_logger("AdCP", tenant_id)
         audit_logger.log_operation(
             operation="list_authorized_properties",
-            tenant_id=tenant_id,
+            principal_name=principal_id,
             principal_id=principal_id,
+            adapter_id="mcp_server",
             success=False,
             error_message=str(e),
         )
@@ -1949,8 +2487,26 @@ def list_authorized_properties(
 
 
 @mcp.tool
-def create_media_buy(
-    po_number: str,
+def list_authorized_properties(
+    req: ListAuthorizedPropertiesRequest = None, context: Context = None
+) -> ListAuthorizedPropertiesResponse:
+    """List all properties this agent is authorized to represent (AdCP spec endpoint).
+
+    MCP tool wrapper that delegates to the shared implementation.
+
+    Args:
+        req: Request parameters including optional tag filters
+        context: FastMCP context for authentication
+
+    Returns:
+        ListAuthorizedPropertiesResponse with properties and tag metadata
+    """
+    return _list_authorized_properties_impl(req, context)
+
+
+def _create_media_buy_impl(
+    promoted_offering: str,
+    po_number: str = None,
     buyer_ref: str = None,
     packages: list = None,
     start_time: str = None,
@@ -1972,7 +2528,8 @@ def create_media_buy(
     """Create a media buy with the specified parameters.
 
     Args:
-        po_number: Purchase order number (required)
+        promoted_offering: Description of advertiser and what is being promoted (required per AdCP spec)
+        po_number: Purchase order number (optional)
         buyer_ref: Buyer reference for tracking
         packages: Array of packages with products and budgets
         start_time: Campaign start time (ISO 8601)
@@ -1998,6 +2555,7 @@ def create_media_buy(
 
     # Create request object from individual parameters (MCP-compliant)
     req = CreateMediaBuyRequest(
+        promoted_offering=promoted_offering,
         po_number=po_number,
         buyer_ref=buyer_ref,
         packages=packages,
@@ -2063,6 +2621,11 @@ def create_media_buy(
 
         now = datetime.now(UTC)
 
+        # Validate start_time
+        if req.start_time is None:
+            error_msg = "start_time is required"
+            raise ValueError(error_msg)
+
         # Ensure start_time is timezone-aware for comparison
         start_time = req.start_time
         if start_time.tzinfo is None:
@@ -2070,6 +2633,11 @@ def create_media_buy(
 
         if start_time < now:
             error_msg = f"Invalid start time: {req.start_time}. Start time cannot be in the past."
+            raise ValueError(error_msg)
+
+        # Validate end_time
+        if req.end_time is None:
+            error_msg = "end_time is required"
             raise ValueError(error_msg)
 
         # Ensure end_time is timezone-aware for comparison
@@ -2209,6 +2777,57 @@ def create_media_buy(
         catalog = get_product_catalog()
         product_ids = req.get_product_ids()
         products_in_buy = [p for p in catalog if p.product_id in product_ids]
+
+        # Validate and auto-generate GAM implementation_config for each product if needed
+        if adapter.__class__.__name__ == "GoogleAdManager":
+            from src.services.gam_product_config_service import GAMProductConfigService
+
+            gam_validator = GAMProductConfigService()
+            config_errors = []
+
+            for product in products_in_buy:
+                # Auto-generate default config if missing
+                if not product.implementation_config:
+                    logger.info(
+                        f"Product '{product.name}' ({product.product_id}) is missing GAM configuration. "
+                        f"Auto-generating defaults based on product type."
+                    )
+                    # Generate defaults based on product delivery type and formats
+                    delivery_type = product.delivery_type if hasattr(product, "delivery_type") else "non_guaranteed"
+                    formats = product.formats if hasattr(product, "formats") else None
+                    product.implementation_config = gam_validator.generate_default_config(
+                        delivery_type=delivery_type, formats=formats
+                    )
+
+                    # Persist the auto-generated config to database
+                    with get_db_session() as db_session:
+                        db_product = db_session.query(ModelProduct).filter_by(product_id=product.product_id).first()
+                        if db_product:
+                            db_product.implementation_config = product.implementation_config
+                            db_session.commit()
+                            logger.info(f"Saved auto-generated GAM config for product {product.product_id}")
+
+                # Validate the config (whether existing or auto-generated)
+                is_valid, error_msg = gam_validator.validate_config(product.implementation_config)
+                if not is_valid:
+                    config_errors.append(
+                        f"Product '{product.name}' ({product.product_id}) has invalid GAM configuration: {error_msg}"
+                    )
+
+            if config_errors:
+                error_detail = "GAM configuration validation failed:\n" + "\n".join(
+                    f"  • {err}" for err in config_errors
+                )
+                ctx_manager.update_workflow_step(step.step_id, status="failed", error_message=error_detail)
+                return CreateMediaBuyResponse(
+                    media_buy_id="",
+                    status=TaskStatus.FAILED,
+                    detail=error_detail,
+                    creative_deadline=None,
+                    message="Media buy creation failed due to invalid product configuration. Please fix the configuration in Admin UI and try again.",
+                    errors=[{"code": "invalid_configuration", "message": err} for err in config_errors],
+                )
+
         product_auto_create = all(
             p.implementation_config.get("auto_create_enabled", True) if p.implementation_config else True
             for p in products_in_buy
@@ -2304,10 +2923,31 @@ def create_media_buy(
             )
 
         # Create the media buy using the adapter (SYNCHRONOUS operation)
+        # Defensive null check: ensure start_time and end_time are set
+        if not req.start_time or not req.end_time:
+            error_msg = "start_time and end_time are required but were not properly set"
+            ctx_manager.update_workflow_step(step.step_id, status="failed", error_message=error_msg)
+            return CreateMediaBuyResponse(
+                media_buy_id="",
+                status=TaskStatus.FAILED,
+                detail=error_msg,
+                creative_deadline=None,
+                message="Media buy creation failed: missing required datetime fields",
+                errors=[{"code": "invalid_datetime", "message": error_msg}],
+            )
         response = adapter.create_media_buy(req, packages, req.start_time, req.end_time)
 
         # Store the media buy in memory (for backward compatibility)
         media_buys[response.media_buy_id] = (req, principal_id)
+
+        # Determine initial status based on flight dates
+        now = datetime.now(UTC)
+        if now < req.start_time:
+            media_buy_status = "pending"
+        elif now > req.end_time:
+            media_buy_status = "completed"
+        else:
+            media_buy_status = "active"
 
         # Store the media buy in database (context_id is NULL for synchronous operations)
         tenant = get_current_tenant()
@@ -2327,11 +2967,48 @@ def create_media_buy(
                 end_date=req.end_time.date(),  # Legacy field for compatibility
                 start_time=req.start_time,  # AdCP v2.4 datetime scheduling
                 end_time=req.end_time,  # AdCP v2.4 datetime scheduling
-                status=response.status or TaskStatus.WORKING,
+                status=media_buy_status,
                 raw_request=req.model_dump(mode="json"),
             )
             session.add(new_media_buy)
             session.commit()
+
+        # Handle creative_ids in packages if provided
+        if req.packages:
+            with get_db_session() as session:
+                from src.core.database.models import CreativeAssignment as DBAssignment
+
+                for i, package in enumerate(req.packages):
+                    if package.creative_ids:
+                        package_id = f"{response.media_buy_id}_pkg_{i+1}"
+                        for creative_id in package.creative_ids:
+                            # Verify the creative exists
+                            from src.core.database.models import Creative as DBCreative
+
+                            creative = (
+                                session.query(DBCreative)
+                                .filter_by(tenant_id=tenant["tenant_id"], creative_id=creative_id)
+                                .first()
+                            )
+
+                            if not creative:
+                                logger.warning(
+                                    f"Creative {creative_id} not found for package {package_id}, skipping assignment"
+                                )
+                                continue
+
+                            # Create assignment with generated assignment_id
+                            assignment_id = f"assign_{uuid.uuid4().hex[:12]}"
+                            assignment = DBAssignment(
+                                assignment_id=assignment_id,
+                                tenant_id=tenant["tenant_id"],
+                                media_buy_id=response.media_buy_id,
+                                package_id=package_id,
+                                creative_id=creative_id,
+                            )
+                            session.add(assignment)
+
+                session.commit()
 
         # Handle creatives if provided
         if req.creatives:
@@ -2359,14 +3036,23 @@ def create_media_buy(
         # Build packages list for response (AdCP v2.4 format)
         response_packages = []
         for i, package in enumerate(req.packages):
-            response_packages.append(
-                {
-                    "package_id": f"{response.media_buy_id}_pkg_{i+1}",
-                    "buyer_ref": package.buyer_ref,
-                    "products": package.products,
-                    "status": TaskStatus.WORKING,
-                }
-            )
+            # Serialize the package to dict to handle any nested Pydantic objects
+            # Use model_dump_internal to avoid validation that requires package_id (not set yet on request packages)
+            if hasattr(package, "model_dump_internal"):
+                package_dict = package.model_dump_internal()
+            elif hasattr(package, "model_dump"):
+                # Fallback: use model_dump with exclude_none to avoid validation errors
+                package_dict = package.model_dump(exclude_none=True, mode="python")
+            else:
+                package_dict = package
+
+            # Override/add response-specific fields (package_id and status are set by server)
+            response_package = {
+                **package_dict,
+                "package_id": f"{response.media_buy_id}_pkg_{i+1}",
+                "status": TaskStatus.WORKING,
+            }
+            response_packages.append(response_package)
 
         # Create AdCP v2.4 compliant response
         adcp_response = CreateMediaBuyResponse(
@@ -2379,7 +3065,7 @@ def create_media_buy(
         )
 
         # Log activity
-        log_tool_activity(context, "create_media_buy", start_time)
+        log_tool_activity(context, "create_media_buy", request_start_time)
 
         # Also log specific media buy activity
         try:
@@ -2471,6 +3157,24 @@ def create_media_buy(
         except Exception as e:
             console.print(f"[yellow]⚠️ Failed to send success Slack notification: {e}[/yellow]")
 
+        # Log to audit logs for business activity feed
+        audit_logger = get_audit_logger("AdCP", tenant["tenant_id"])
+        audit_logger.log_operation(
+            operation="create_media_buy",
+            principal_name=principal_name,
+            principal_id=principal_id or "anonymous",
+            adapter_id="mcp_server",
+            success=True,
+            details={
+                "media_buy_id": response.media_buy_id,
+                "total_budget": total_budget,
+                "po_number": req.po_number,
+                "duration_days": (req.end_time - req.start_time).days + 1 if req.end_time and req.start_time else 0,
+                "product_count": len(req.get_product_ids()),
+                "packages_count": len(response_packages) if response_packages else 0,
+            },
+        )
+
         return modified_response
 
     except Exception as e:
@@ -2515,19 +3219,107 @@ def create_media_buy(
                 error_message=str(e),
             )
 
-            console.print(f"[red]💥 Sent failure notification to Slack for {principal_name}[/red]")
-        except Exception as notification_error:
-            console.print(f"[yellow]⚠️ Failed to send failure Slack notification: {notification_error}[/yellow]")
+            console.print(f"[red]❌ Sent failure notification to Slack: {str(e)}[/red]")
+        except Exception as notify_error:
+            console.print(f"[yellow]⚠️ Failed to send failure Slack notification: {notify_error}[/yellow]")
 
-        # Return proper error response instead of raising ToolError
-        return CreateMediaBuyResponse(
-            media_buy_id="",
-            status=TaskStatus.FAILED,
-            detail=str(e),
-            creative_deadline=None,
-            message=f"Media buy creation failed: {str(e)}",
-            errors=[{"code": "execution_error", "message": str(e)}],
-        )
+        # Log to audit logs for failed operation
+        try:
+            audit_logger = get_audit_logger("AdCP", tenant["tenant_id"])
+            audit_logger.log_operation(
+                operation="create_media_buy",
+                principal_name=principal.name if principal else "unknown",
+                principal_id=principal_id or "anonymous",
+                adapter_id="mcp_server",
+                success=False,
+                error_message=str(e),
+                details={
+                    "error_type": type(e).__name__,
+                    "error_message": str(e),
+                    "po_number": req.po_number if req else None,
+                    "total_budget": total_budget if "total_budget" in locals() else 0,
+                },
+            )
+        except:
+            pass
+
+        raise ToolError("MEDIA_BUY_CREATION_ERROR", f"Failed to create media buy: {str(e)}")
+
+
+@mcp.tool()
+def create_media_buy(
+    promoted_offering: str,
+    po_number: str = None,
+    buyer_ref: str = None,
+    packages: list = None,
+    start_time: str = None,
+    end_time: str = None,
+    budget: dict = None,
+    product_ids: list = None,
+    start_date: str = None,
+    end_date: str = None,
+    total_budget: float = None,
+    targeting_overlay: dict = None,
+    pacing: str = "even",
+    daily_budget: float = None,
+    creatives: list = None,
+    reporting_webhook: dict = None,
+    required_axe_signals: list = None,
+    enable_creative_macro: bool = False,
+    strategy_id: str = None,
+    context: Context = None,
+) -> CreateMediaBuyResponse:
+    """Create a media buy with the specified parameters.
+
+    MCP tool wrapper that delegates to the shared implementation.
+
+    Args:
+        promoted_offering: Description of advertiser and what is being promoted (required per AdCP spec)
+        po_number: Purchase order number (optional)
+        buyer_ref: Buyer reference for tracking
+        packages: Array of packages with products and budgets
+        start_time: Campaign start time (ISO 8601)
+        end_time: Campaign end time (ISO 8601)
+        budget: Overall campaign budget
+        product_ids: Legacy: Product IDs (converted to packages)
+        start_date: Legacy: Start date (converted to start_time)
+        end_date: Legacy: End date (converted to end_time)
+        total_budget: Legacy: Total budget (converted to Budget object)
+        targeting_overlay: Targeting overlay configuration
+        pacing: Pacing strategy (even, asap, daily_budget)
+        daily_budget: Daily budget limit
+        creatives: Creative assets for the campaign
+        reporting_webhook: Webhook configuration for automated reporting delivery
+        required_axe_signals: Required targeting signals
+        enable_creative_macro: Enable AXE to provide creative_macro signal
+        strategy_id: Optional strategy ID for linking operations
+        context: FastMCP context (automatically provided)
+
+    Returns:
+        CreateMediaBuyResponse with media buy details
+    """
+    return _create_media_buy_impl(
+        promoted_offering=promoted_offering,
+        po_number=po_number,
+        buyer_ref=buyer_ref,
+        packages=packages,
+        start_time=start_time,
+        end_time=end_time,
+        budget=budget,
+        product_ids=product_ids,
+        start_date=start_date,
+        end_date=end_date,
+        total_budget=total_budget,
+        targeting_overlay=targeting_overlay,
+        pacing=pacing,
+        daily_budget=daily_budget,
+        creatives=creatives,
+        reporting_webhook=reporting_webhook,
+        required_axe_signals=required_axe_signals,
+        enable_creative_macro=enable_creative_macro,
+        strategy_id=strategy_id,
+        context=context,
+    )
 
 
 # Unified update tools
@@ -2768,6 +3560,21 @@ def update_media_buy(
         buy_request.targeting_overlay = req.targeting_overlay
     if req.creative_assignments:
         creative_assignments[req.media_buy_id] = req.creative_assignments
+
+    # Create ObjectWorkflowMapping to link media buy update to workflow step
+    # This enables webhook delivery when the update completes
+    from src.core.database.database_session import get_db_session
+    from src.core.database.models import ObjectWorkflowMapping
+
+    with get_db_session() as session:
+        mapping = ObjectWorkflowMapping(
+            step_id=step.step_id,
+            object_type="media_buy",
+            object_id=req.media_buy_id,
+            action="update",
+        )
+        session.add(mapping)
+        session.commit()
 
     # Update workflow step with success
     ctx_manager.update_workflow_step(
@@ -3738,6 +4545,51 @@ def get_strategy_manager(context: Context | None) -> StrategyManager:
 async def health(request: Request):
     """Health check endpoint."""
     return JSONResponse({"status": "healthy", "service": "mcp"})
+
+
+@mcp.custom_route("/debug/tenant", methods=["GET"])
+async def debug_tenant(request: Request):
+    """Debug endpoint to check tenant detection from headers."""
+    headers = dict(request.headers)
+
+    # Check for Apx-Incoming-Host header
+    apx_host = headers.get("apx-incoming-host") or headers.get("Apx-Incoming-Host")
+    host_header = headers.get("host") or headers.get("Host")
+
+    # Resolve tenant using same logic as auth
+    tenant_id = None
+    tenant_name = None
+    detection_method = None
+
+    # Try Apx-Incoming-Host first
+    if apx_host:
+        tenant = get_tenant_by_virtual_host(apx_host)
+        if tenant:
+            tenant_id = tenant.get("tenant_id")
+            tenant_name = tenant.get("name")
+            detection_method = "apx-incoming-host"
+
+    # Try Host header subdomain
+    if not tenant_id and host_header:
+        subdomain = host_header.split(".")[0] if "." in host_header else None
+        if subdomain and subdomain not in ["localhost", "adcp-sales-agent", "www", "sales-agent"]:
+            tenant_id = subdomain
+            detection_method = "host-subdomain"
+
+    response_data = {
+        "tenant_id": tenant_id,
+        "tenant_name": tenant_name,
+        "detection_method": detection_method,
+        "apx_incoming_host": apx_host,
+        "host": host_header,
+    }
+
+    # Add X-Tenant-Id header to response
+    response = JSONResponse(response_data)
+    if tenant_id:
+        response.headers["X-Tenant-Id"] = tenant_id
+
+    return response
 
 
 @mcp.custom_route("/debug/root", methods=["GET"])

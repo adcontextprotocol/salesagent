@@ -40,6 +40,7 @@ def test_mock_ad_server_create_media_buy(sample_packages):
 
     # CreateMediaBuyRequest now uses product_ids, not selected_packages
     request = CreateMediaBuyRequest(
+        promoted_offering="Premium basketball shoes for sports enthusiasts",
         product_ids=["pkg_1"],
         start_date=start_time.date(),
         end_date=end_time.date(),

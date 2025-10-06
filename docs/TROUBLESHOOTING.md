@@ -481,3 +481,139 @@ If notifications aren't working:
      -H "Content-Type: application/json" \
      -d '{"text": "Test notification"}'
    ```
+
+## Testing Issues
+
+### Pre-commit Hook "Excessive Mocking" Failure
+
+**Cause**: Test file has more than 10 mocks (detected via `@patch|MagicMock|Mock()` count)
+
+**Fix**: Apply mock reduction patterns:
+1. Create centralized `MockSetup` class for duplicate mock creation
+2. Use `patch.multiple()` helper methods to consolidate patches
+3. Move database testing to integration tests with real DB connections
+4. Focus mocking on external dependencies only (APIs, third-party services)
+
+See `docs/testing/mock-reduction-patterns.md` for detailed examples.
+
+### Tests Failing After Mock Refactoring
+
+**Common Causes**:
+- Missing imports: Add `from src.core.main import function_name`
+- Mock return type mismatches: Ensure mocks return correct data types (list, dict, not Mock)
+- Schema validation errors: Update test data to match current model requirements
+- Test class naming: Rename `TestModel` classes to `ModelClass` to avoid pytest collection
+
+### Integration Tests Slow or Flaky
+
+**Fix**: Use proper database session management and isolation
+**Pattern**: Create/cleanup test data in fixtures rather than mocking database calls
+
+### Async Test Failures
+
+**Fix**: Ensure proper `@pytest.mark.asyncio` and `AsyncMock` usage
+**Pattern**: Use `async with` for async context managers, `await` for all async calls
+
+## Testing Backend Issues
+
+### Testing Hooks Not Working
+
+**Issue**: X-Dry-Run, X-Mock-Time headers not being processed
+
+**Cause**: Headers not being extracted from FastMCP context properly
+**Fix**: Use `context.meta.get("headers", {})` to extract headers from FastMCP context
+
+### Response Headers Missing
+
+**Issue**: X-Next-Event, X-Next-Event-Time, X-Simulated-Spend headers not in response
+
+**Cause**: Response headers not being set after apply_testing_hooks
+**Fix**: Ensure `campaign_info` dict is passed to testing hooks for event calculation
+
+### Session Isolation Not Working
+
+**Issue**: Parallel tests interfering with each other
+
+**Cause**: Missing or incorrect X-Test-Session-ID header
+**Fix**: Generate unique session IDs per test and include in all requests
+
+## Production Issues
+
+### "operator does not exist: text < timestamp with time zone"
+
+**Cause**: Database schema mismatch - columns created as TEXT instead of TIMESTAMP WITH TIME ZONE
+**Root Cause**: Deprecated task system with conflicting schema definitions
+**Fix**: Migrate to unified workflow system and eliminate task tables
+**Prevention**: Use consistent schema definitions and avoid dual systems
+
+### "Can't locate revision identified by '[revision_id]'"
+
+**Cause**: Broken Alembic migration chain with missing or incorrect revision links
+**Symptoms**: App crashes on startup, deployment failures, migration errors
+
+**Fix Process**:
+1. Check migration history: `alembic history`
+2. Identify last known good revision
+3. Reset to good revision: `alembic stamp [good_revision]`
+4. Create new migration with correct `down_revision`
+5. Deploy migration fix before code changes
+
+**Prevention**: Never modify committed migration files, always test migrations locally
+
+### Production Crashes After PR Merge
+
+**Debugging Process**:
+1. Check deployment status: `fly status --app adcp-sales-agent`
+2. Review logs: `fly logs --app adcp-sales-agent`
+3. Identify specific error patterns (database, import, runtime)
+4. Check git history for recent changes
+5. Test fixes locally before deploying
+
+**Recovery**: Deploy minimal fix first, then implement broader changes
+
+## Schema Alignment Issues
+
+### AttributeError on Model Fields
+
+**Symptoms**: `AttributeError: 'Creative' object has no attribute 'format_id'`
+
+**Common Causes**:
+- Field removed in schema migration
+- Wrong data type assumptions
+- JSONB updates not persisting
+- Tests passing locally but failing in CI
+
+**Prevention**:
+1. Always use `attributes.flag_modified()` for JSONB updates
+2. Update all three layers when refactoring: Database schema, ORM model, MCP tools
+3. Use pre-commit schema validation hooks
+4. Test BOTH model creation AND updates
+
+See `docs/development/schema-alignment.md` for detailed patterns.
+
+## GAM Inventory Sync Issues (FIXED - Sep 2025)
+
+**Historical Issue**: Inventory browser returned `{"error": "Not yet implemented"}`
+
+**Root Causes**:
+1. Import path issues from code reorganization
+2. Missing endpoint registration
+3. Route conflicts
+
+**Prevention**: Always use absolute imports and verify endpoint registration for new services
+
+## Port Conflicts
+
+**Solution**: Update `.env` file:
+```bash
+ADMIN_UI_PORT=8001  # Change from conflicting port
+ADCP_SALES_PORT=8080
+A2A_PORT=8091
+```
+
+## Additional Resources
+
+- **Testing Patterns**: `docs/testing/`
+- **A2A Implementation**: `docs/a2a-implementation-guide.md`
+- **Security Guide**: `docs/security.md`
+- **Architecture**: `docs/ARCHITECTURE.md`

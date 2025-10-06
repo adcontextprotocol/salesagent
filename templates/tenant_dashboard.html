@@ -134,44 +134,104 @@
     }
 
     .activity-item {
-        margin-bottom: 0.5rem;
-        border-radius: 4px;
+        margin-bottom: 0.75rem;
+        border-radius: 8px;
         transition: all 0.2s;
         animation: slideIn 0.3s ease-out;
         border: 1px solid #e5e7eb;
         overflow: hidden;
+        background: white;
     }
 
     .activity-item.action-required {
         border-left: 4px solid #f59e0b;
+        background: #fffbeb;
     }
 
     .activity-header {
-        padding: 0.75rem;
+        padding: 1rem;
         cursor: pointer;
         display: flex;
         justify-content: space-between;
-        align-items: flex-start;
+        align-items: center;
+        gap: 1rem;
     }
 
     .activity-header:hover {
-        background: #f9fafb;
+        background: rgba(0, 0, 0, 0.02);
     }
 
     .activity-icon {
-        font-size: 1.25rem;
-        margin-right: 0.75rem;
+        font-size: 1.5rem;
+        margin-right: 0;
+        flex-shrink: 0;
     }
 
     .activity-main {
         display: flex;
-        align-items: flex-start;
+        align-items: center;
+        gap: 0.75rem;
+        flex: 1;
+        min-width: 0;
+    }
+
+    .activity-content-text {
+        flex: 1;
+        min-width: 0;
+    }
+
+    .activity-summary {
+        font-size: 0.9rem;
+        color: #111827;
+        font-weight: 500;
+        margin-bottom: 0.25rem;
+        line-height: 1.4;
+    }
+
+    .activity-meta {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        font-size: 0.8rem;
+        color: #6b7280;
+        flex-wrap: wrap;
+    }
+
+    .activity-badge {
+        display: inline-flex;
+        align-items: center;
+        padding: 0.125rem 0.5rem;
+        border-radius: 4px;
+        font-size: 0.75rem;
+        font-weight: 500;
+        white-space: nowrap;
+    }
+
+    .activity-badge.success {
+        background: #d1fae5;
+        color: #065f46;
+    }
+
+    .activity-badge.error {
+        background: #fee2e2;
+        color: #991b1b;
+    }
+
+    .activity-badge.a2a {
+        background: #dbeafe;
+        color: #1e40af;
+    }
+
+    .activity-badge.mcp {
+        background: #e0e7ff;
+        color: #3730a3;
     }
 
     .expand-indicator {
         font-size: 0.75rem;
-        color: #6b7280;
+        color: #9ca3af;
         transition: transform 0.2s;
+        flex-shrink: 0;
     }
 
     .expand-indicator.expanded {
@@ -233,46 +293,6 @@
         }
     }
 
-    .activity-item:hover {
-        background: #f9fafb;
-    }
-
-    .activity-item.api-call { background: #eff6ff; }
-    .activity-item.product-query { background: #f0f9ff; }
-    .activity-item.human-task { background: #fffbeb; }
-    .activity-item.media-buy { background: #f0fdf4; }
-    .activity-item.creative { background: #faf5ff; }
-    .activity-item.error { background: #fef2f2; }
-
-    .activity-time {
-        font-size: 0.75rem;
-        color: #9ca3af;
-        margin-bottom: 0.25rem;
-    }
-
-    .activity-content {
-        display: flex;
-        justify-content: space-between;
-        align-items: start;
-    }
-
-    .activity-principal {
-        font-weight: 600;
-        color: #111827;
-        font-size: 0.875rem;
-    }
-
-    .activity-action {
-        color: #6b7280;
-        font-size: 0.875rem;
-        margin-top: 0.25rem;
-    }
-
-    .activity-details {
-        font-size: 0.75rem;
-        color: #9ca3af;
-        text-align: right;
-    }
 
     .quick-actions {
         background: white;
@@ -324,6 +344,9 @@
 
     .action-icon.settings { background: #ede9fe; color: #7c3aed; }
     .action-icon.products { background: #dbeafe; color: #2563eb; }
+    .action-icon.properties { background: #fef3c7; color: #d97706; }
+    .action-icon.creatives { background: #fce7f3; color: #db2777; }
+    .action-icon.workflows { background: #dbeafe; color: #1e40af; }
     .action-icon.inventory { background: #d1fae5; color: #059669; }
     .action-icon.reports { background: #fed7aa; color: #ea580c; }
 
@@ -417,6 +440,11 @@
         border-bottom: 1px solid #f3f4f6;
     }
 
+    .mini-table tbody tr:hover {
+        background-color: #f9fafb;
+        transition: background-color 0.15s ease;
+    }
+
     .advertiser-name {
         font-weight: 600;
         color: #111827;
@@ -430,9 +458,14 @@
         font-weight: 600;
     }
 
-    .buy-status.active { background: #d1fae5; color: #065f46; }
-    .buy-status.pending { background: #fef3c7; color: #92400e; }
+    .buy-status.live { background: #d1fae5; color: #065f46; }
+    .buy-status.scheduled { background: #dbeafe; color: #1e40af; }
+    .buy-status.needs_creatives { background: #fef3c7; color: #92400e; }
+    .buy-status.needs_approval { background: #fed7aa; color: #9a3412; }
     .buy-status.completed { background: #e5e7eb; color: #374151; }
+    .buy-status.failed { background: #fee2e2; color: #991b1b; }
+    .buy-status.paused { background: #e0e7ff; color: #3730a3; }
+    .buy-status.draft { background: #f3f4f6; color: #6b7280; }
 
     .spend-amount {
         font-weight: 600;
@@ -487,23 +520,31 @@
     </div>
 
     <div class="metric-card buys">
-        <div class="metric-label">Active Media Buys</div>
-        <div class="metric-value">{{ metrics.active_buys }}</div>
+        <div class="metric-label">Live Media Buys</div>
+        <div class="metric-value">{{ metrics.live_buys }}</div>
         <div class="metric-change neutral">
-            {{ metrics.pending_buys }} pending approval
+            {% if metrics.scheduled_buys > 0 %}
+                <i class="fas fa-calendar-check"></i>
+                {{ metrics.scheduled_buys }} scheduled to start
+            {% else %}
+                No media buys scheduled
+            {% endif %}
         </div>
     </div>
 
     <div class="metric-card workflows">
-        <div class="metric-label">Active Workflows</div>
-        <div class="metric-value">{{ metrics.pending_workflows }}</div>
-        <div class="metric-change {{ 'negative' if metrics.approval_needed > 0 else 'neutral' }}">
-            {% if metrics.approval_needed > 0 %}
+        <div class="metric-label">Needs Attention</div>
+        <div class="metric-value">{{ metrics.needs_attention }}</div>
+        <div class="metric-change {{ 'negative' if metrics.needs_attention > 0 else 'positive' }}">
+            {% if metrics.needs_creatives > 0 %}
+                <i class="fas fa-image"></i>
+                {{ metrics.needs_creatives }} need creatives
+            {% elif metrics.needs_approval > 0 %}
                 <i class="fas fa-hand-paper"></i>
-                {{ metrics.approval_needed }} need approval
+                {{ metrics.needs_approval }} need approval
             {% else %}
                 <i class="fas fa-check-circle"></i>
-                All workflows running smoothly
+                All media buys ready
             {% endif %}
         </div>
     </div>
@@ -530,96 +571,123 @@
         </div>
 
         <div class="activity-list" id="activity-list">
-            <!-- Show recent workflow activity -->
+            <!-- Show recent BUSINESS activity -->
             {% if metrics.recent_activity %}
                 {% for activity in metrics.recent_activity %}
-                    <div class="activity-item {{ activity.type if activity.type else 'info' }} {{ 'action-required' if activity.action_required else '' }}">
-                        <div style="padding: 0.75rem; display: flex; justify-content: space-between; align-items: center;">
-                            <div style="flex: 1;">
-                                <div style="font-weight: 600; margin-bottom: 0.25rem;">
-                                    {% if activity.success == false %}
-                                        <i class="fas fa-times-circle" style="color: #ef4444; margin-right: 0.5rem;"></i>
-                                    {% elif activity.operation.startswith('A2A.') %}
-                                        <i class="fas fa-exchange-alt" style="color: #3b82f6; margin-right: 0.5rem;"></i>
-                                    {% elif activity.operation in ['get_products', 'create_media_buy', 'check_media_buy_status'] %}
-                                        <i class="fas fa-shopping-cart" style="color: #10b981; margin-right: 0.5rem;"></i>
-                                    {% elif activity.operation == 'policy_check' %}
-                                        <i class="fas fa-shield-alt" style="color: #f59e0b; margin-right: 0.5rem;"></i>
-                                    {% else %}
-                                        <i class="fas fa-cog" style="color: #6b7280; margin-right: 0.5rem;"></i>
-                                    {% endif %}
-                                    {{ activity.operation }}
+                    <div class="activity-item {{ activity.type }} {{ 'action-required' if activity.action_required else '' }}" data-activity-id="activity-{{ loop.index }}">
+                        <div class="activity-header" style="cursor: pointer; padding: 1rem;" onclick="toggleActivityDetails('activity-{{ loop.index }}')">
+                            <div class="activity-main">
+                                <span class="activity-icon">
+                                    {% if activity.type == 'product_search' %}🔍
+                                    {% elif activity.type == 'media_buy' %}💰
+                                    {% elif activity.type == 'action_needed' %}⚠️
+                                    {% elif activity.type == 'creative_review' %}🎨
+                                    {% else %}📌{% endif %}
+                                </span>
+                                <div class="activity-content-text">
+                                    <div class="activity-summary">{{ activity.title }}</div>
+                                    <div class="activity-meta">
+                                        {% if activity.action_required %}
+                                            <span class="activity-badge error">Action Needed</span>
+                                        {% else %}
+                                            <span class="activity-badge success">{{ activity.type|replace('_', ' ')|title }}</span>
+                                        {% endif %}
+                                        <span>{{ activity.description }}</span>
+                                        <span style="margin-left: auto; white-space: nowrap;">{{ activity.time_relative }}</span>
+                                    </div>
                                 </div>
-                                <div style="color: #6b7280; font-size: 0.875rem;">
-                                    by {{ activity.principal_name or 'System' }}
-                                    {% if activity.success == false %}
-                                        <span style="color: #ef4444;">• Failed</span>
-                                    {% endif %}
-                                </div>
+                                <span class="expand-indicator">▼</span>
                             </div>
-                            <div style="color: #9ca3af; font-size: 0.75rem; text-align: right;">
-                                {{ activity.time_relative }}
+                        </div>
+                        <div class="activity-expanded" id="details-activity-{{ loop.index }}" style="display: none;">
+                            <div class="expanded-content">
+                                <h4 style="margin-top: 0; font-size: 0.875rem; font-weight: 600;">Details</h4>
+                                <dl style="margin: 0.5rem 0; display: grid; grid-template-columns: auto 1fr; gap: 0.5rem; font-size: 0.875rem;">
+                                    <dt style="font-weight: 600;">Principal:</dt>
+                                    <dd style="margin: 0;">{{ activity.principal_name }}</dd>
+
+                                    <dt style="font-weight: 600;">Timestamp:</dt>
+                                    <dd style="margin: 0;">{{ activity.timestamp }}</dd>
+
+                                    {% if activity.metadata %}
+                                        {% for key, value in activity.metadata.items() %}
+                                            <dt style="font-weight: 600;">{{ key|replace('_', ' ')|title }}:</dt>
+                                            <dd style="margin: 0;">{{ value }}</dd>
+                                        {% endfor %}
+                                    {% endif %}
+                                </dl>
+
+                                {% if activity.action_required %}
+                                    <div class="action-buttons">
+                                        {% if activity.type == 'action_needed' %}
+                                            <a href="{{ script_name }}/tenant/{{ tenant.tenant_id }}/workflows/{{ activity.metadata.workflow_id }}/steps/{{ activity.metadata.step_id }}/review" class="btn btn-primary" style="text-decoration: none;">
+                                                → View Full Details & Approve
+                                            </a>
+                                            <button class="btn btn-secondary" onclick="event.stopPropagation(); quickRejectWorkflow('{{ activity.metadata.workflow_id }}', '{{ activity.metadata.step_id }}')">
+                                                ✗ Quick Reject
+                                            </button>
+                                        {% elif activity.type == 'creative_review' %}
+                                            <a href="{{ script_name }}/tenant/{{ tenant.tenant_id }}/creatives/{{ activity.metadata.creative_id }}/review" class="btn btn-primary" style="text-decoration: none;">
+                                                → View Creative & Approve
+                                            </a>
+                                            <button class="btn btn-secondary" onclick="event.stopPropagation(); quickRejectCreative('{{ activity.metadata.creative_id }}')">
+                                                ✗ Quick Reject
+                                            </button>
+                                        {% endif %}
+                                    </div>
+                                {% endif %}
                             </div>
                         </div>
                     </div>
                 {% endfor %}
             {% else %}
                 <div class="activity-item info" style="text-align: center; padding: 2rem; color: #6b7280;">
-                    <i class="fas fa-stream" style="font-size: 2rem; margin-bottom: 1rem; opacity: 0.5;"></i>
-                    <p>Loading recent activities...</p>
-                    <p style="font-size: 0.875rem;">API calls and operations will appear here</p>
+                    <i class="fas fa-chart-line" style="font-size: 2rem; margin-bottom: 1rem; opacity: 0.5;"></i>
+                    <p>No recent business activity</p>
+                    <p style="font-size: 0.875rem;">Activity will appear as advertisers search for products and create campaigns</p>
                 </div>
             {% endif %}
         </div>
 
         <div style="text-align: center; padding: 1rem; border-top: 1px solid #e5e7eb;">
-            <small style="color: #6b7280;">Showing recent activity • Live updates every 5 seconds</small>
+            <small style="color: #6b7280;">Showing business activity from last 7 days</small>
         </div>
     </div>
 
     <!-- Quick Actions -->
     <div>
         <div class="quick-actions">
-            <h3>Quick Actions</h3>
+            <h3>Operations</h3>
             <div class="action-grid">
-                <a href="{{ script_name }}/tenant/{{ tenant.tenant_id }}/settings" class="action-button">
-                    <div class="action-icon settings">⚙️</div>
+                <a href="{{ script_name }}/tenant/{{ tenant.tenant_id }}/creative-formats/list" class="action-button">
+                    <div class="action-icon creatives">🎨</div>
                     <div>
-                        <div style="font-weight: 600;">Configuration</div>
-                        <div style="font-size: 0.75rem; color: #6b7280;">Ad server, products, formats</div>
+                        <div style="font-weight: 600;">Uploaded Creatives</div>
+                        <div style="font-size: 0.75rem; color: #6b7280;">View all creatives & media buys</div>
                     </div>
                 </a>
-
-                <a href="{{ script_name }}/tenant/{{ tenant.tenant_id }}/products" class="action-button">
-                    <div class="action-icon products">📦</div>
-                    <div>
-                        <div style="font-weight: 600;">Products</div>
-                        <div style="font-size: 0.75rem; color: #6b7280;">{{ product_count }} configured</div>
-                    </div>
-                </a>
-                <a href="{{ script_name }}/tenant/{{ tenant.tenant_id }}/authorized-properties" class="action-button">
-                    <div class="action-icon properties">🏠</div>
-                    <div>
-                        <div style="font-weight: 600;">Authorized Properties</div>
-                        <div style="font-size: 0.75rem; color: #6b7280;">Properties this agent represents</div>
-                    </div>
-                </a>
-
-                {% if tenant.ad_server == 'google_ad_manager' %}
-                <a href="{{ script_name }}/tenant/{{ tenant.tenant_id }}/inventory" class="action-button">
-                    <div class="action-icon inventory">📊</div>
-                    <div>
-                        <div style="font-weight: 600;">GAM Inventory</div>
-                        <div style="font-size: 0.75rem; color: #6b7280;">View & sync</div>
-                    </div>
-                </a>
-                {% endif %}
 
                 <a href="{{ script_name }}/tenant/{{ tenant.tenant_id }}/reporting" class="action-button">
                     <div class="action-icon reports">📈</div>
                     <div>
                         <div style="font-weight: 600;">Reports</div>
-                        <div style="font-size: 0.75rem; color: #6b7280;">Performance data</div>
+                        <div style="font-size: 0.75rem; color: #6b7280;">Performance & delivery data</div>
+                    </div>
+                </a>
+
+                <a href="{{ script_name }}/tenant/{{ tenant.tenant_id }}/workflows" class="action-button">
+                    <div class="action-icon workflows">📋</div>
+                    <div>
+                        <div style="font-weight: 600;">Workflows</div>
+                        <div style="font-size: 0.75rem; color: #6b7280;">Approvals & reviews</div>
+                    </div>
+                </a>
+
+                <a href="{{ script_name }}/tenant/{{ tenant.tenant_id }}/settings" class="action-button">
+                    <div class="action-icon settings">⚙️</div>
+                    <div>
+                        <div style="font-weight: 600;">Settings</div>
+                        <div style="font-size: 0.75rem; color: #6b7280;">Products, properties, configuration</div>
                     </div>
                 </a>
             </div>
@@ -666,7 +734,8 @@
 <div class="media-buys-table">
     <div class="table-header">
         <h3>Recent Media Buys</h3>
-        <a href="/operations" class="view-all-link">View all →</a>
+        <!-- TODO: Implement view all media buys page -->
+        <!-- <a href="{{ script_name }}/tenant/{{ tenant.tenant_id }}/media-buys" class="view-all-link">View all →</a> -->
     </div>
 
     <table class="mini-table">
@@ -683,12 +752,16 @@
         </thead>
         <tbody>
             {% for buy in recent_media_buys[:5] %}
-            <tr>
+            <tr {% if buy.media_buy_id %}style="cursor: pointer;" onclick="window.location='{{ script_name }}/tenant/{{ tenant.tenant_id }}/media-buy/{{ buy.media_buy_id }}'"{% endif %}>
                 <td class="advertiser-name">{{ buy.advertiser_name }}</td>
-                <td><code style="font-size: 0.75rem;">{{ buy.media_buy_id }}</code></td>
+                <td><code style="font-size: 0.75rem;">{{ buy.media_buy_id or 'N/A' }}</code></td>
                 <td><code style="font-size: 0.75rem;">{{ buy.buyer_ref or '-' }}</code></td>
                 <td>
-                    <span class="buy-status {{ buy.status }}">{{ buy.status|upper }}</span>
+                    <span class="buy-status {{ buy.readiness_state }}" title="{% if buy.readiness_details.gam_order_status %}GAM: {{ buy.readiness_details.gam_order_status }}{% if buy.readiness_details.gam_line_items_total > 0 %} ({{ buy.readiness_details.gam_line_items_ready }}/{{ buy.readiness_details.gam_line_items_total }} line items ready){% endif %}&#10;{% endif %}{{ buy.readiness_details.blocking_issues|join(', ') if buy.readiness_details.blocking_issues else 'Ready' }}{% if buy.readiness_details.warnings %}&#10;{{ buy.readiness_details.warnings|join(', ') }}{% endif %}">
+                        {{ buy.readiness_state|upper|replace('_', ' ') }}
+                        {% if buy.is_ready %}✓{% endif %}
+                        {% if buy.readiness_details.gam_order_status %}<span style="font-size: 0.7em; opacity: 0.7;">📋</span>{% endif %}
+                    </span>
                 </td>
                 <td class="spend-amount">${{ "{:,.0f}".format(buy.budget) }} {{ buy.currency or 'USD' }}</td>
                 <td>${{ "{:,.0f}".format(buy.spend) }}</td>
@@ -705,6 +778,7 @@
 let pollingInterval = null;
 let activityBuffer = [];
 const MAX_ACTIVITIES = 50;
+const expandedStates = new Set(); // Track which activities are expanded
 
 // HTML escaping functions to prevent XSS
 function escapeHtml(text) {
@@ -807,17 +881,42 @@ async function pollActivities() {
 function updateActivities(activities) {
     const list = document.getElementById('activity-list');
 
-    // Clear existing activities
-    list.innerHTML = '';
-
     if (activities.length === 0) {
         list.innerHTML = '<div class="activity-item">No recent activities</div>';
         return;
     }
 
+    // Store existing activity IDs and their expanded states
+    const existingIds = new Set();
+    Array.from(list.children).forEach(child => {
+        const activityId = child.dataset.activityId;
+        if (activityId) {
+            existingIds.add(activityId);
+            // Preserve expanded state
+            const expanded = document.getElementById(`expanded-${activityId}`);
+            if (expanded && expanded.style.display !== 'none') {
+                expandedStates.add(activityId);
+            }
+        }
+    });
+
+    // Clear and rebuild
+    list.innerHTML = '';
+
     // Add all activities (they come in newest-first order)
     activities.forEach(activity => {
         addActivity(activity, false); // false = initial load, don't insert at top
+
+        // Restore expanded state if it was previously expanded
+        const activityId = activity.id || Date.now();
+        if (expandedStates.has(activityId)) {
+            const expanded = document.getElementById(`expanded-${activityId}`);
+            const indicator = document.getElementById(`indicator-${activityId}`);
+            if (expanded) {
+                expanded.style.display = 'block';
+                if (indicator) indicator.classList.add('expanded');
+            }
+        }
     });
 }
 
@@ -880,7 +979,9 @@ function addActivity(activity, isNewActivity = true) {
 
     // Safely escape all user-provided content to prevent XSS
     const safeActivityId = escapeHtmlAttr(activityId);
-    const safePrincipalName = escapeHtml(activity.principal_name);
+    // Show "System" instead of "anonymous" for better UX
+    const principalName = activity.principal_name || 'System';
+    const safePrincipalName = escapeHtml(principalName === 'anonymous' ? 'System' : principalName);
     const safeAction = escapeHtml(activity.action);
     const safePrimary = activity.details ? escapeHtml(activity.details.primary) : '';
     const safeSecondary = activity.details && activity.details.secondary ? escapeHtml(activity.details.secondary) : '';
@@ -899,27 +1000,75 @@ function addActivity(activity, isNewActivity = true) {
     };
     const icon = iconMap[activity.type] || '📌';
 
+    // Build a clear summary line
+    let summaryText = '';
+    const operation = escapeHtml(activity.operation || 'Unknown operation');
+
+    // Remove common prefixes for cleaner display
+    const cleanOperation = operation.replace(/^(AdCP\.|MCP\.|A2A\.)/, '');
+
+    if (operation.includes('get_products')) {
+        summaryText = `${safePrincipalName} searched for products`;
+        if (safePrimary) {
+            summaryText += ` - ${safePrimary}`;
+        }
+    } else if (operation.includes('create_media_buy')) {
+        summaryText = `${safePrincipalName} created a media buy`;
+        if (safePrimary) {
+            summaryText += ` - ${safePrimary}`;
+        }
+    } else if (operation.includes('upload_creative')) {
+        summaryText = `${safePrincipalName} uploaded a creative`;
+        if (safePrimary) {
+            summaryText += ` - ${safePrimary}`;
+        }
+    } else if (operation.includes('policy_check')) {
+        summaryText = `${safePrincipalName} ran policy check`;
+        if (safePrimary) {
+            summaryText += ` - ${safePrimary}`;
+        }
+    } else if (operation.startsWith('A2A.')) {
+        summaryText = `${safePrincipalName} via A2A: ${cleanOperation}`;
+        if (safeSecondary) {
+            summaryText += ` - ${safeSecondary}`;
+        }
+    } else {
+        // For other operations, show clean operation name
+        summaryText = `${safePrincipalName}: ${cleanOperation}`;
+        if (safePrimary) {
+            summaryText += ` - ${safePrimary}`;
+        }
+    }
+
+    // Determine badge type
+    let badgeClass = 'mcp';
+    let badgeText = 'MCP';
+    if (operation.startsWith('A2A.')) {
+        badgeClass = 'a2a';
+        badgeText = 'A2A';
+    }
+    if (!activity.success) {
+        badgeClass = 'error';
+        badgeText = 'Failed';
+    } else if (activity.success) {
+        badgeClass = 'success';
+        badgeText = 'Success';
+    }
+
     item.innerHTML = `
         <div class="activity-header" onclick="toggleActivityDetails('${safeActivityId}')">
-            <div class="activity-content" style="flex: 1;">
-                <div class="activity-main">
-                    <span class="activity-icon">${icon}</span>
-                    <div style="flex: 1;">
-                        <div class="activity-principal">${safePrincipalName}</div>
-                        <div class="activity-action">${safeAction}</div>
-                        <div class="activity-details" style="margin-top: 0.25rem;">
-                            ${activity.details ? `
-                                <div style="font-weight: 500;">${safePrimary}</div>
-                                ${safeSecondary ? `<div style="font-size: 0.875rem; color: #6b7280;">${safeSecondary}</div>` : ''}
-                            ` : ''}
-                        </div>
+            <div class="activity-main">
+                <span class="activity-icon">${icon}</span>
+                <div class="activity-content-text">
+                    <div class="activity-summary">${summaryText}</div>
+                    <div class="activity-meta">
+                        <span class="activity-badge ${badgeClass}">${badgeText}</span>
+                        ${safeSecondary ? `<span>${safeSecondary}</span>` : ''}
+                        <span style="margin-left: auto; white-space: nowrap;">${safeTimeRelative}</span>
                     </div>
                 </div>
             </div>
-            <div style="display: flex; align-items: center; gap: 1rem;">
-                <div class="activity-time">${safeTimeRelative}</div>
-                <div class="expand-indicator" id="indicator-${safeActivityId}">▼</div>
-            </div>
+            <div class="expand-indicator" id="indicator-${safeActivityId}">▼</div>
         </div>
 
         <div class="activity-expanded" id="expanded-${safeActivityId}" style="display: none;">
@@ -1044,17 +1193,74 @@ function refreshDashboard() {
 
 // Toggle activity details expansion
 function toggleActivityDetails(activityId) {
-    const expanded = document.getElementById(`expanded-${activityId}`);
-    const indicator = document.getElementById(`indicator-${activityId}`);
+    const expanded = document.getElementById(`details-${activityId}`);
+    const activityItem = document.querySelector(`[data-activity-id="${activityId}"]`);
+    const indicator = activityItem ? activityItem.querySelector('.expand-indicator') : null;
 
     if (expanded) {
         if (expanded.style.display === 'none') {
             expanded.style.display = 'block';
             if (indicator) indicator.classList.add('expanded');
+            expandedStates.add(activityId); // Remember this is expanded
         } else {
             expanded.style.display = 'none';
             if (indicator) indicator.classList.remove('expanded');
+            expandedStates.delete(activityId); // Remember this is collapsed
         }
+    }
+}
+
+// Quick reject workflow step (from dashboard without viewing details)
+async function quickRejectWorkflow(workflowId, stepId) {
+    const reason = prompt('Please provide a reason for rejection:');
+    if (!reason) return;
+
+    try {
+        const response = await fetch(`{{ script_name }}/tenant/{{ tenant.tenant_id }}/workflows/${workflowId}/steps/${stepId}/reject`, {
+            method: 'POST',
+            credentials: 'same-origin',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ reason })
+        });
+
+        if (response.ok) {
+            alert('Workflow step rejected successfully!');
+            window.location.reload();
+        } else {
+            const error = await response.text();
+            alert(`Failed to reject: ${error}`);
+        }
+    } catch (err) {
+        alert(`Error: ${err.message}`);
+    }
+}
+
+// Quick reject creative (from dashboard without viewing details)
+async function quickRejectCreative(creativeId) {
+    const reason = prompt('Please provide a reason for rejection:');
+    if (!reason) return;
+
+    try {
+        const response = await fetch(`{{ script_name }}/tenant/{{ tenant.tenant_id }}/creatives/${creativeId}/reject`, {
+            method: 'POST',
+            credentials: 'same-origin',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ reason })
+        });
+
+        if (response.ok) {
+            alert('Creative rejected successfully!');
+            window.location.reload();
+        } else {
+            const error = await response.text();
+            alert(`Failed to reject: ${error}`);
+        }
+    } catch (err) {
+        alert(`Error: ${err.message}`);
     }
 }
 
@@ -1076,17 +1282,10 @@ function viewTaskDetails(activityId) {
     }
 }
 
-// Initialize activity polling
+// No longer polling - business activity is server-rendered
+// User can refresh page to see latest activity
 document.addEventListener('DOMContentLoaded', function() {
-    connectActivityStream();
-});
-
-// Clean up polling on page unload
-window.addEventListener('beforeunload', function() {
-    if (pollingInterval) {
-        clearInterval(pollingInterval);
-        pollingInterval = null;
-    }
+    console.log('Business activity dashboard loaded');
 });
 </script>
 {% endblock %}

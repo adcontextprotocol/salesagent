@@ -128,11 +128,11 @@ class TestTenantDashboard:
         # Should calculate metrics without errors
         assert response.status_code == 200
 
-        # Check for metrics display (active campaigns, total revenue, etc.)
+        # Check for metrics display (live media buys, total revenue, etc.)
         # Look for key dashboard elements rather than broad error checking
         assert b"Total Revenue" in response.data
-        assert b"Active Media Buys" in response.data
-        assert b"Active Workflows" in response.data
+        assert b"Live Media Buys" in response.data
+        assert b"Needs Attention" in response.data
 
         # Check for specific error messages that would indicate dashboard failures
         assert b"Error loading dashboard" not in response.data

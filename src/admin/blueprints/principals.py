@@ -11,12 +11,12 @@ from flask import Blueprint, flash, jsonify, redirect, render_template, request,
 from src.admin.services import DashboardService
 from src.admin.utils import require_tenant_access
 from src.core.database.database_session import get_db_session
-from src.core.database.models import MediaBuy, Principal, Tenant
+from src.core.database.models import MediaBuy, Principal, PushNotificationConfig, Tenant
 
 logger = logging.getLogger(__name__)
 
-# Create Blueprint
-principals_bp = Blueprint("principals", __name__, url_prefix="/tenant/<tenant_id>")
+# Create Blueprint (url_prefix is set during registration in app.py)
+principals_bp = Blueprint("principals", __name__)
 
 
 @principals_bp.route("/principals")
@@ -42,11 +42,18 @@ def list_principals(tenant_id):
                     .count()
                 )
 
+                # Handle both string (SQLite) and dict (PostgreSQL JSONB) formats
+                mappings = principal.platform_mappings
+                if mappings and isinstance(mappings, str):
+                    mappings = json.loads(mappings)
+                elif not mappings:
+                    mappings = {}
+
                 principal_dict = {
                     "principal_id": principal.principal_id,
                     "name": principal.name,
                     "access_token": principal.access_token,
-                    "platform_mappings": json.loads(principal.platform_mappings) if principal.platform_mappings else {},
+                    "platform_mappings": mappings,
                     "media_buy_count": media_buy_count,
                     "created_at": principal.created_at,
                 }
@@ -142,6 +149,17 @@ def create_principal(tenant_id):
         # GAM advertiser mapping
         gam_advertiser_id = request.form.get("gam_advertiser_id", "").strip()
         if gam_advertiser_id:
+            # Validate it's numeric (GAM expects integer company IDs)
+            try:
+                int(gam_advertiser_id)
+            except (ValueError, TypeError):
+                flash(
+                    f"GAM Advertiser ID must be numeric (got: '{gam_advertiser_id}'). "
+                    "Please select a valid advertiser from the dropdown.",
+                    "error",
+                )
+                return redirect(request.url)
+
             platform_mappings["google_ad_manager"] = {
                 "advertiser_id": gam_advertiser_id,
                 "enabled": True,
@@ -184,6 +202,44 @@ def create_principal(tenant_id):
         return redirect(request.url)
 
 
+@principals_bp.route("/principal/<principal_id>", methods=["GET"])
+@require_tenant_access()
+def get_principal(tenant_id, principal_id):
+    """Get principal details including platform mappings."""
+    try:
+        with get_db_session() as db_session:
+            principal = db_session.query(Principal).filter_by(tenant_id=tenant_id, principal_id=principal_id).first()
+
+            if not principal:
+                return jsonify({"error": "Principal not found"}), 404
+
+            # Parse platform mappings (handle both string and dict formats)
+            if principal.platform_mappings:
+                if isinstance(principal.platform_mappings, str):
+                    mappings = json.loads(principal.platform_mappings)
+                else:
+                    mappings = principal.platform_mappings
+            else:
+                mappings = {}
+
+            return jsonify(
+                {
+                    "success": True,
+                    "principal": {
+                        "principal_id": principal.principal_id,
+                        "name": principal.name,
+                        "access_token": principal.access_token,
+                        "platform_mappings": mappings,
+                        "created_at": principal.created_at.isoformat() if principal.created_at else None,
+                    },
+                }
+            )
+
+    except Exception as e:
+        logger.error(f"Error getting principal {principal_id}: {e}", exc_info=True)
+        return jsonify({"error": f"Failed to get principal: {str(e)}"}), 500
+
+
 @principals_bp.route("/principal/<principal_id>/update_mappings", methods=["POST"])
 @require_tenant_access()
 def update_mappings(tenant_id, principal_id):
@@ -195,6 +251,26 @@ def update_mappings(tenant_id, principal_id):
 
         platform_mappings = data.get("platform_mappings", {})
 
+        # Validate GAM advertiser_id if present
+        if "google_ad_manager" in platform_mappings:
+            gam_config = platform_mappings["google_ad_manager"]
+            advertiser_id = gam_config.get("advertiser_id") or gam_config.get("company_id")
+
+            if advertiser_id:
+                # Validate it's numeric (GAM expects integer company IDs)
+                try:
+                    int(advertiser_id)
+                except (ValueError, TypeError):
+                    return (
+                        jsonify(
+                            {
+                                "error": f"GAM Advertiser ID must be numeric (got: '{advertiser_id}'). "
+                                "Please select a valid advertiser from the dropdown."
+                            }
+                        ),
+                        400,
+                    )
+
         with get_db_session() as db_session:
             principal = db_session.query(Principal).filter_by(tenant_id=tenant_id, principal_id=principal_id).first()
 
@@ -203,7 +279,6 @@ def update_mappings(tenant_id, principal_id):
 
             # Update mappings
             principal.platform_mappings = json.dumps(platform_mappings)
-            principal.updated_at = datetime.now(UTC)
             db_session.commit()
 
             return jsonify(
@@ -261,10 +336,8 @@ def get_gam_advertisers(tenant_id):
                 # Create a mock principal for GAM initialization
                 # Need dummy advertiser_id for GAM adapter validation, even though get_advertisers() doesn't use it
                 mock_principal = Principal(
-                    tenant_id=tenant_id,
                     principal_id="system",
                     name="System",
-                    access_token="mock_token",
                     platform_mappings={
                         "google_ad_manager": {
                             "advertiser_id": "system_temp_advertiser_id",  # Dummy ID for validation only
@@ -274,19 +347,22 @@ def get_gam_advertisers(tenant_id):
                 )
 
                 # Build GAM config from AdapterConfig
-                gam_config = (
-                    {
-                        "network_code": tenant.adapter_config.gam_network_code,
-                        "refresh_token": tenant.adapter_config.gam_refresh_token,
-                        "trafficker_id": tenant.adapter_config.gam_trafficker_id,
-                        "manual_approval_required": tenant.adapter_config.gam_manual_approval_required or False,
-                    }
-                    if tenant.adapter_config
-                    else {}
-                )
+                if not tenant.adapter_config or not tenant.adapter_config.gam_network_code:
+                    return jsonify({"error": "GAM network code not configured for this tenant"}), 400
+
+                gam_config = {
+                    "refresh_token": tenant.adapter_config.gam_refresh_token,
+                    "manual_approval_required": tenant.adapter_config.gam_manual_approval_required or False,
+                }
 
                 adapter = GoogleAdManager(
-                    config=gam_config, principal=mock_principal, dry_run=False, tenant_id=tenant_id
+                    config=gam_config,
+                    principal=mock_principal,
+                    network_code=tenant.adapter_config.gam_network_code,
+                    advertiser_id=None,
+                    trafficker_id=tenant.adapter_config.gam_trafficker_id,
+                    dry_run=False,
+                    tenant_id=tenant_id,
                 )
 
                 # Get advertisers (companies) from GAM
@@ -306,3 +382,230 @@ def get_gam_advertisers(tenant_id):
     except Exception as e:
         logger.error(f"Error getting GAM advertisers: {e}", exc_info=True)
         return jsonify({"error": "Internal server error"}), 500
+
+
+@principals_bp.route("/api/principal/<principal_id>/config", methods=["GET"])
+@require_tenant_access()
+def get_principal_config(tenant_id, principal_id):
+    """Get principal configuration including platform mappings for testing UI."""
+    try:
+        with get_db_session() as db_session:
+            principal = db_session.query(Principal).filter_by(tenant_id=tenant_id, principal_id=principal_id).first()
+
+            if not principal:
+                return jsonify({"error": "Principal not found"}), 404
+
+            # Parse platform mappings
+            platform_mappings = (
+                json.loads(principal.platform_mappings)
+                if isinstance(principal.platform_mappings, str)
+                else principal.platform_mappings
+            )
+
+            return jsonify(
+                {
+                    "principal_id": principal.principal_id,
+                    "name": principal.name,
+                    "platform_mappings": platform_mappings,
+                }
+            )
+
+    except Exception as e:
+        logger.error(f"Error getting principal config: {e}", exc_info=True)
+        return jsonify({"error": "Internal server error"}), 500
+
+
+@principals_bp.route("/api/principal/<principal_id>/testing-config", methods=["POST"])
+@require_tenant_access()
+def save_testing_config(tenant_id, principal_id):
+    """Save testing configuration (HITL settings) for a mock adapter principal."""
+    try:
+        data = request.get_json()
+        if not data or "hitl_config" not in data:
+            return jsonify({"error": "Missing hitl_config in request"}), 400
+
+        hitl_config = data["hitl_config"]
+
+        with get_db_session() as db_session:
+            principal = db_session.query(Principal).filter_by(tenant_id=tenant_id, principal_id=principal_id).first()
+
+            if not principal:
+                return jsonify({"error": "Principal not found"}), 404
+
+            # Parse existing platform mappings
+            platform_mappings = (
+                json.loads(principal.platform_mappings)
+                if isinstance(principal.platform_mappings, str)
+                else principal.platform_mappings or {}
+            )
+
+            # Ensure mock adapter exists
+            if "mock" not in platform_mappings:
+                platform_mappings["mock"] = {"advertiser_id": f"mock_{principal_id}", "enabled": True}
+
+            # Update hitl_config
+            platform_mappings["mock"]["hitl_config"] = hitl_config
+
+            # Save back to database
+            principal.platform_mappings = json.dumps(platform_mappings)
+            principal.updated_at = datetime.now(UTC)
+            db_session.commit()
+
+            logger.info(f"Updated testing config for principal {principal_id} in tenant {tenant_id}")
+
+            return jsonify({"success": True, "message": "Testing configuration saved successfully"})
+
+    except Exception as e:
+        logger.error(f"Error saving testing config: {e}", exc_info=True)
+        return jsonify({"error": "Failed to save testing configuration"}), 500
+
+
+@principals_bp.route("/principals/<principal_id>/webhooks", methods=["GET"])
+@require_tenant_access()
+def manage_webhooks(tenant_id, principal_id):
+    """Manage webhook configurations for a principal."""
+    try:
+        with get_db_session() as db_session:
+            principal = db_session.query(Principal).filter_by(tenant_id=tenant_id, principal_id=principal_id).first()
+            if not principal:
+                flash("Principal not found", "error")
+                return redirect(url_for("principals.list_principals", tenant_id=tenant_id))
+
+            # Get all webhooks for this principal
+            webhooks = (
+                db_session.query(PushNotificationConfig).filter_by(tenant_id=tenant_id, principal_id=principal_id).all()
+            )
+
+            return render_template(
+                "webhook_management.html",
+                tenant_id=tenant_id,
+                principal=principal,
+                webhooks=webhooks,
+            )
+
+    except Exception as e:
+        logger.error(f"Error loading webhook management: {e}", exc_info=True)
+        flash(f"Error loading webhooks: {str(e)}", "error")
+        return redirect(url_for("principals.list_principals", tenant_id=tenant_id))
+
+
+@principals_bp.route("/principals/<principal_id>/webhooks/register", methods=["POST"])
+@require_tenant_access()
+def register_webhook(tenant_id, principal_id):
+    """Register a new webhook for a principal."""
+    try:
+        from src.core.webhook_validator import WebhookURLValidator
+
+        url = request.form.get("url")
+        auth_type = request.form.get("auth_type", "none")
+
+        # Validate URL for SSRF protection
+        is_valid, error_msg = WebhookURLValidator.validate_webhook_url(url)
+        if not is_valid:
+            flash(f"Invalid webhook URL: {error_msg}", "error")
+            return redirect(url_for("principals.manage_webhooks", tenant_id=tenant_id, principal_id=principal_id))
+
+        # Build auth config based on type
+        auth_config = {}
+        if auth_type == "hmac_sha256":
+            secret = request.form.get("hmac_secret")
+            if not secret:
+                flash("HMAC secret is required for HMAC authentication", "error")
+                return redirect(url_for("principals.manage_webhooks", tenant_id=tenant_id, principal_id=principal_id))
+            auth_config = {"secret": secret}
+
+        with get_db_session() as db_session:
+            # Check if webhook already exists
+            existing = (
+                db_session.query(PushNotificationConfig)
+                .filter_by(tenant_id=tenant_id, principal_id=principal_id, url=url)
+                .first()
+            )
+
+            if existing:
+                flash("Webhook URL already registered for this principal", "warning")
+                return redirect(url_for("principals.manage_webhooks", tenant_id=tenant_id, principal_id=principal_id))
+
+            # Create new webhook
+            webhook = PushNotificationConfig(
+                config_id=str(uuid.uuid4()),
+                tenant_id=tenant_id,
+                principal_id=principal_id,
+                url=url,
+                auth_type=auth_type if auth_type != "none" else None,
+                auth_config=auth_config if auth_config else None,
+                is_active=True,
+                created_at=datetime.now(UTC),
+            )
+
+            db_session.add(webhook)
+            db_session.commit()
+
+            logger.info(f"Registered webhook {url} for principal {principal_id} in tenant {tenant_id}")
+            flash("Webhook registered successfully", "success")
+
+        return redirect(url_for("principals.manage_webhooks", tenant_id=tenant_id, principal_id=principal_id))
+
+    except Exception as e:
+        logger.error(f"Error registering webhook: {e}", exc_info=True)
+        flash(f"Error registering webhook: {str(e)}", "error")
+        return redirect(url_for("principals.manage_webhooks", tenant_id=tenant_id, principal_id=principal_id))
+
+
+@principals_bp.route("/principals/<principal_id>/webhooks/<config_id>/delete", methods=["POST"])
+@require_tenant_access()
+def delete_webhook(tenant_id, principal_id, config_id):
+    """Delete a webhook configuration."""
+    try:
+        with get_db_session() as db_session:
+            webhook = (
+                db_session.query(PushNotificationConfig)
+                .filter_by(tenant_id=tenant_id, principal_id=principal_id, config_id=config_id)
+                .first()
+            )
+
+            if not webhook:
+                flash("Webhook not found", "error")
+                return redirect(url_for("principals.manage_webhooks", tenant_id=tenant_id, principal_id=principal_id))
+
+            db_session.delete(webhook)
+            db_session.commit()
+
+            logger.info(f"Deleted webhook {config_id} for principal {principal_id} in tenant {tenant_id}")
+            flash("Webhook deleted successfully", "success")
+
+        return redirect(url_for("principals.manage_webhooks", tenant_id=tenant_id, principal_id=principal_id))
+
+    except Exception as e:
+        logger.error(f"Error deleting webhook: {e}", exc_info=True)
+        flash(f"Error deleting webhook: {str(e)}", "error")
+        return redirect(url_for("principals.manage_webhooks", tenant_id=tenant_id, principal_id=principal_id))
+
+
+@principals_bp.route("/principals/<principal_id>/webhooks/<config_id>/toggle", methods=["POST"])
+@require_tenant_access()
+def toggle_webhook(tenant_id, principal_id, config_id):
+    """Toggle webhook active status."""
+    try:
+        with get_db_session() as db_session:
+            webhook = (
+                db_session.query(PushNotificationConfig)
+                .filter_by(tenant_id=tenant_id, principal_id=principal_id, config_id=config_id)
+                .first()
+            )
+
+            if not webhook:
+                return jsonify({"error": "Webhook not found"}), 404
+
+            webhook.is_active = not webhook.is_active
+            db_session.commit()
+
+            logger.info(
+                f"Toggled webhook {config_id} to {'active' if webhook.is_active else 'inactive'} for principal {principal_id}"
+            )
+
+            return jsonify({"success": True, "is_active": webhook.is_active})
+
+    except Exception as e:
+        logger.error(f"Error toggling webhook: {e}", exc_info=True)
+        return jsonify({"error": str(e)}), 500

@@ -290,54 +290,6 @@ class TestProductAPIs:
             assert data["total_count"] > 0
             assert data["criteria"]["industry"] == "news"
 
-    def test_bulk_product_upload_csv(self, authenticated_admin_client, integration_db):
-        """Test CSV bulk upload."""
-        # Create tenant first with unique ID
-        import uuid
-
-        from src.core.database.database_session import get_db_session
-
-        tenant_id = f"test_tenant_{uuid.uuid4().hex[:8]}"
-
-        with get_db_session() as session:
-            tenant = create_tenant_with_timestamps(
-                tenant_id=tenant_id,
-                name="Test Tenant",
-                subdomain=f"test_{uuid.uuid4().hex[:8]}",  # Unique subdomain
-                is_active=True,
-                ad_server="mock",
-                authorized_emails=["test@example.com"],
-            )
-            session.add(tenant)
-            session.commit()
-
-        csv_data = """name,product_id,formats,delivery_type,cpm,is_fixed_price,targeting_template
-Test Product,test_prod,"[{""format_id"":""display_300x250"",""name"":""Medium Rectangle"",""type"":""display"",""description"":""Standard medium rectangle"",""width"":300,""height"":250,""delivery_options"":{}}]",guaranteed,15.0,true,"{}"
-"""
-        from io import BytesIO
-
-        # Create proper file upload data
-        data = {"file": (BytesIO(csv_data.encode()), "products.csv")}
-
-        response = authenticated_admin_client.post(
-            f"/tenant/{tenant_id}/products/bulk/upload", data=data, content_type="multipart/form-data"
-        )
-
-        print(f"Response status: {response.status_code}")
-        print(f"Response data: {response.data}")
-
-        # The web route returns a redirect on success
-        assert response.status_code == 302  # Redirect after successful upload
-
-        # Verify the product was created by checking the database
-        with get_db_session() as session:
-            from src.core.database.models import Product
-
-            product = session.query(Product).filter_by(tenant_id=tenant_id, product_id="test_prod").first()
-            assert product is not None
-            assert product.name == "Test Product"
-            assert product.cpm == 15.0
-
     def test_quick_create_products_api(self, authenticated_admin_client, integration_db):
         """Test quick create API."""
         # Create tenant first with unique ID

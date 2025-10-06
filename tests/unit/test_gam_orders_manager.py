@@ -4,6 +4,8 @@ Ultra-minimal unit tests for GAMOrdersManager class to ensure CI passes.
 This file ensures we have some test coverage without any import dependencies.
 """
 
+import pytest
+
 
 def test_basic_functionality():
     """Test basic functionality."""
@@ -56,3 +58,32 @@ def test_dry_run_simulation():
 
     assert simulated_order_id == "dry_run_12345"
     assert service_called is False
+
+
+def test_optional_advertiser_id_for_query_operations():
+    """Test that advertiser_id and trafficker_id are optional for query operations like get_advertisers()."""
+    from datetime import datetime
+    from unittest.mock import MagicMock
+
+    from src.adapters.gam.managers.orders import GAMOrdersManager
+
+    # Mock client manager
+    mock_client_manager = MagicMock()
+
+    # Test 1: Can initialize without advertiser_id/trafficker_id
+    manager = GAMOrdersManager(client_manager=mock_client_manager, advertiser_id=None, trafficker_id=None, dry_run=True)
+    assert manager.advertiser_id is None
+    assert manager.trafficker_id is None
+
+    # Test 2: get_advertisers() should work without advertiser_id
+    advertisers = manager.get_advertisers()
+    assert isinstance(advertisers, list)
+    assert len(advertisers) == 2  # Dry-run returns 2 mock advertisers
+
+    # Test 3: create_order() should fail with clear error when advertiser_id is missing
+    with pytest.raises(ValueError) as exc_info:
+        manager.create_order(
+            order_name="Test Order", total_budget=1000.0, start_time=datetime.now(), end_time=datetime.now()
+        )
+    assert "advertiser_id and trafficker_id" in str(exc_info.value)
+    assert "order creation" in str(exc_info.value).lower()

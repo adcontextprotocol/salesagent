@@ -68,7 +68,7 @@ class TestGAMOrderLifecycleIntegration:
                 advertiser_id=test_principals["regular"].platform_mappings["google_ad_manager"]["advertiser_id"],
                 trafficker_id=gam_config["trafficker_id"],
                 dry_run=True,
-                tenant_id="test"
+                tenant_id="test",
             )
             assert regular_adapter._is_admin_principal() is False
 
@@ -80,7 +80,7 @@ class TestGAMOrderLifecycleIntegration:
                 advertiser_id=test_principals["gam_admin"].platform_mappings["google_ad_manager"]["advertiser_id"],
                 trafficker_id=gam_config["trafficker_id"],
                 dry_run=True,
-                tenant_id="test"
+                tenant_id="test",
             )
             assert gam_admin_adapter._is_admin_principal() is True
 
@@ -92,7 +92,7 @@ class TestGAMOrderLifecycleIntegration:
                 advertiser_id=test_principals["is_admin"].platform_mappings["google_ad_manager"]["advertiser_id"],
                 trafficker_id=gam_config["trafficker_id"],
                 dry_run=True,
-                tenant_id="test"
+                tenant_id="test",
             )
             assert is_admin_adapter._is_admin_principal() is True
 
@@ -107,7 +107,7 @@ class TestGAMOrderLifecycleIntegration:
                 advertiser_id=test_principals["regular"].platform_mappings["google_ad_manager"]["advertiser_id"],
                 trafficker_id=gam_config["trafficker_id"],
                 dry_run=True,
-                tenant_id="test"
+                tenant_id="test",
             )
 
             # Actions that should work for regular users
@@ -134,7 +134,7 @@ class TestGAMOrderLifecycleIntegration:
                 advertiser_id=test_principals["gam_admin"].platform_mappings["google_ad_manager"]["advertiser_id"],
                 trafficker_id=gam_config["trafficker_id"],
                 dry_run=True,
-                tenant_id="test"
+                tenant_id="test",
             )
             response = admin_adapter.update_media_buy(
                 media_buy_id="12345", action="approve_order", package_id=None, budget=None, today=datetime.now()
@@ -179,7 +179,7 @@ class TestGAMOrderLifecycleIntegration:
                 advertiser_id=test_principals["regular"].platform_mappings["google_ad_manager"]["advertiser_id"],
                 trafficker_id=gam_config["trafficker_id"],
                 dry_run=True,
-                tenant_id="test"
+                tenant_id="test",
             )
 
             # Test activation with non-guaranteed items (should succeed)
@@ -190,13 +190,22 @@ class TestGAMOrderLifecycleIntegration:
                 assert response.status == "accepted"
                 assert "activate_order" in response.detail
 
-            # Test activation with guaranteed items (should fail)
+            # Test activation with guaranteed items (should submit for workflow)
             with patch.object(adapter, "_check_order_has_guaranteed_items", return_value=(True, ["STANDARD"])):
-                response = adapter.update_media_buy(
-                    media_buy_id="12345", action="activate_order", package_id=None, budget=None, today=datetime.now()
-                )
-                assert response.status == "failed"
-                assert "Cannot auto-activate order with guaranteed line items" in response.reason
+                # Mock workflow step creation to avoid database foreign key issues
+                with patch.object(
+                    adapter.workflow_manager, "create_activation_workflow_step", return_value="test_step_id"
+                ):
+                    response = adapter.update_media_buy(
+                        media_buy_id="12345",
+                        action="activate_order",
+                        package_id=None,
+                        budget=None,
+                        today=datetime.now(),
+                    )
+                    assert response.status == "submitted"
+                    assert "Cannot auto-activate order with guaranteed line items" in response.reason
+                    assert response.workflow_step_id == "test_step_id"
 
     # Helper method for line item classification (no external dependencies)
     def _classify_line_items(self, line_items):

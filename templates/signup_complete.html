@@ -1,0 +1,161 @@
+{% extends "base.html" %}
+
+{% block title %}Welcome to AdCP Sales Agent!{% endblock %}
+
+{% block content %}
+<div style="max-width: 800px; margin: 3rem auto; padding: 0 1rem;">
+    <div class="card" style="text-align: center;">
+        <!-- Success Icon -->
+        <div style="margin-bottom: 2rem;">
+            <div style="width: 100px; height: 100px; background: linear-gradient(135deg, #34A853 0%, #4CAF50 100%); border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto; box-shadow: 0 4px 12px rgba(52, 168, 83, 0.3);">
+                <svg width="60" height="60" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="20 6 9 17 4 12"></polyline>
+                </svg>
+            </div>
+        </div>
+
+        <h1 style="margin-bottom: 1rem; color: #1a1a1a;">🎉 Welcome to AdCP Sales Agent!</h1>
+        <p style="font-size: 1.2rem; color: #666; margin-bottom: 2rem;">
+            Your account has been created successfully, <strong>{{ tenant.name }}</strong>!
+        </p>
+
+        <!-- Tenant Information -->
+        <div style="background: #f8f9fa; border-radius: 8px; padding: 1.5rem; margin-bottom: 2rem; text-align: left;">
+            <h3 style="margin-bottom: 1rem; color: #1a1a1a;">📋 Your Account Details</h3>
+
+            <div style="display: grid; gap: 1rem;">
+                <div>
+                    <strong style="color: #666;">Publisher Name:</strong><br>
+                    <span style="font-size: 1.1rem;">{{ tenant.name }}</span>
+                </div>
+
+                <div>
+                    <strong style="color: #666;">Subdomain:</strong><br>
+                    <code style="background: white; padding: 0.25rem 0.5rem; border-radius: 4px; font-size: 0.9rem;">{{ tenant.subdomain }}</code>
+                </div>
+
+                <div>
+                    <strong style="color: #666;">Your Dashboard URL:</strong><br>
+                    {% if tenant.subdomain and tenant.subdomain != 'localhost' %}
+                        <a href="https://{{ tenant.subdomain }}.sales-agent.scope3.com/admin/" target="_blank" style="color: #4285F4; text-decoration: none; font-weight: 500;">
+                            https://{{ tenant.subdomain }}.sales-agent.scope3.com/admin/
+                        </a>
+                    {% else %}
+                        <a href="/tenant/{{ tenant.tenant_id }}" style="color: #4285F4; text-decoration: none; font-weight: 500;">
+                            View Your Dashboard
+                        </a>
+                    {% endif %}
+                </div>
+
+                <div>
+                    <strong style="color: #666;">Ad Server:</strong><br>
+                    <span style="text-transform: capitalize;">{{ tenant.ad_server.replace('_', ' ') }}</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Next Steps -->
+        <div style="background: #e3f2fd; border-radius: 8px; padding: 1.5rem; margin-bottom: 2rem; text-align: left;">
+            <h3 style="margin-bottom: 1rem; color: #1565c0;">🚀 Next Steps</h3>
+
+            <ol style="margin: 0; padding-left: 1.5rem; color: #666;">
+                <li style="margin-bottom: 0.75rem;">
+                    <strong>Complete Ad Server Setup</strong><br>
+                    <small>Configure your {{ tenant.ad_server.replace('_', ' ') }} integration in Settings</small>
+                </li>
+                <li style="margin-bottom: 0.75rem;">
+                    <strong>Create Your First Product</strong><br>
+                    <small>Define ad products that AI buyers can discover and purchase</small>
+                </li>
+                <li style="margin-bottom: 0.75rem;">
+                    <strong>Configure Targeting</strong><br>
+                    <small>Set up targeting options for your inventory</small>
+                </li>
+                <li style="margin-bottom: 0.75rem;">
+                    <strong>Invite Team Members</strong><br>
+                    <small>Add users to your account in the Users & Access section</small>
+                </li>
+                <li style="margin-bottom: 0;">
+                    <strong>Create Principals for Advertisers</strong><br>
+                    <small>Set up API access for advertisers who will buy your inventory</small>
+                </li>
+            </ol>
+        </div>
+
+        <!-- Action Buttons -->
+        <div style="display: flex; flex-direction: column; gap: 1rem; margin-top: 2rem;">
+            <a href="{{ url_for('tenants.dashboard', tenant_id=tenant.tenant_id) }}" class="btn" style="font-size: 1.1rem; padding: 1rem;">
+                Go to My Dashboard →
+            </a>
+
+            {% if tenant.ad_server == 'google_ad_manager' %}
+                <a href="{{ url_for('auth.gam_authorize', tenant_id=tenant.tenant_id) }}" class="btn btn-secondary" style="font-size: 1rem; padding: 0.75rem;">
+                    🔗 Connect Google Ad Manager Now
+                </a>
+            {% endif %}
+
+            <a href="{{ url_for('products.list_products', tenant_id=tenant.tenant_id) }}" class="btn btn-secondary" style="font-size: 1rem; padding: 0.75rem;">
+                📦 Create Your First Product
+            </a>
+        </div>
+
+        <!-- Help Resources -->
+        <div style="margin-top: 3rem; padding-top: 2rem; border-top: 1px solid #eee;">
+            <h3 style="margin-bottom: 1rem; color: #1a1a1a; font-size: 1rem;">📚 Need Help?</h3>
+            <p style="color: #666; font-size: 0.9rem; margin-bottom: 1rem;">
+                Check out these resources to get the most out of your Sales Agent:
+            </p>
+
+            <div style="display: flex; justify-content: center; gap: 1.5rem; flex-wrap: wrap;">
+                <a href="https://adcontextprotocol.org/docs/" target="_blank" style="color: #4285F4; text-decoration: none; font-size: 0.9rem;">
+                    📖 Protocol Documentation
+                </a>
+                <a href="https://github.com/adcontextprotocol/salesagent" target="_blank" style="color: #4285F4; text-decoration: none; font-size: 0.9rem;">
+                    💻 GitHub Repository
+                </a>
+                <a href="{{ url_for('core.mcp_test') }}" style="color: #4285F4; text-decoration: none; font-size: 0.9rem;">
+                    🧪 Test MCP API
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+.btn {
+    transition: transform 0.2s, box-shadow 0.2s;
+    text-decoration: none;
+    display: inline-block;
+    text-align: center;
+}
+
+.btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 12px rgba(0,0,0,0.15);
+}
+
+.btn-secondary {
+    background: #6c757d;
+    color: white;
+}
+
+.btn-secondary:hover {
+    background: #5a6268;
+}
+
+@keyframes slideInUp {
+    from {
+        opacity: 0;
+        transform: translateY(20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.card {
+    animation: slideInUp 0.5s ease-out;
+}
+</style>
+{% endblock %}

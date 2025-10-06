@@ -279,7 +279,10 @@ class GAMAutomationTester:
         )
 
         request = CreateMediaBuyRequest(
-            po_number="AUTO001", total_budget=10.00, targeting_overlay=Targeting()  # $10 test budget
+            promoted_offering="Athletic footwear and sports equipment",
+            po_number="AUTO001",
+            total_budget=10.00,
+            targeting_overlay=Targeting(),  # $10 test budget
         )
 
         start_time = datetime.now() + timedelta(hours=1)
@@ -333,7 +336,12 @@ class GAMAutomationTester:
             package_id="gam_test_confirm", name="Confirmation Test Package", impressions=500, cpm=0.50, format="display"
         )
 
-        request = CreateMediaBuyRequest(po_number="CONF001", total_budget=5.00, targeting_overlay=Targeting())
+        request = CreateMediaBuyRequest(
+            promoted_offering="Consumer electronics and smart home devices",
+            po_number="CONF001",
+            total_budget=5.00,
+            targeting_overlay=Targeting(),
+        )
 
         start_time = datetime.now() + timedelta(hours=2)
         end_time = start_time + timedelta(days=1)
@@ -387,7 +395,12 @@ class GAMAutomationTester:
             package_id="gam_test_manual", name="Manual Test Package", impressions=750, cpm=0.75, format="display"
         )
 
-        request = CreateMediaBuyRequest(po_number="MAN001", total_budget=7.50, targeting_overlay=Targeting())
+        request = CreateMediaBuyRequest(
+            promoted_offering="Outdoor gear and camping equipment",
+            po_number="MAN001",
+            total_budget=7.50,
+            targeting_overlay=Targeting(),
+        )
 
         start_time = datetime.now() + timedelta(hours=3)
         end_time = start_time + timedelta(days=1)
@@ -444,7 +457,12 @@ class GAMAutomationTester:
             format="display",
         )
 
-        request = CreateMediaBuyRequest(po_number="GUAR001", total_budget=500.00, targeting_overlay=Targeting())
+        request = CreateMediaBuyRequest(
+            promoted_offering="Luxury automotive vehicles and accessories",
+            po_number="GUAR001",
+            total_budget=500.00,
+            targeting_overlay=Targeting(),
+        )
 
         start_time = datetime.now() + timedelta(hours=4)
         end_time = start_time + timedelta(days=7)
@@ -502,7 +520,12 @@ class GAMAutomationTester:
             format="display",
         )
 
-        request = CreateMediaBuyRequest(po_number="LIFECYCLE001", total_budget=7.50, targeting_overlay=Targeting())
+        request = CreateMediaBuyRequest(
+            promoted_offering="Fitness trackers and wearable technology",
+            po_number="LIFECYCLE001",
+            total_budget=7.50,
+            targeting_overlay=Targeting(),
+        )
 
         start_time = datetime.now() + timedelta(hours=2)
         end_time = start_time + timedelta(days=1)
@@ -566,7 +589,12 @@ class GAMAutomationTester:
             format="display",
         )
 
-        request = CreateMediaBuyRequest(po_number="LIFECYCLE002", total_budget=20.00, targeting_overlay=Targeting())
+        request = CreateMediaBuyRequest(
+            promoted_offering="Sustainable fashion and eco-friendly clothing",
+            po_number="LIFECYCLE002",
+            total_budget=20.00,
+            targeting_overlay=Targeting(),
+        )
 
         start_time = datetime.now() + timedelta(hours=2)
         end_time = start_time + timedelta(days=2)
@@ -628,7 +656,12 @@ class GAMAutomationTester:
             format="display",
         )
 
-        request = CreateMediaBuyRequest(po_number="LIFECYCLE003", total_budget=15.00, targeting_overlay=Targeting())
+        request = CreateMediaBuyRequest(
+            promoted_offering="Premium pet food and pet care products",
+            po_number="LIFECYCLE003",
+            total_budget=15.00,
+            targeting_overlay=Targeting(),
+        )
 
         start_time = datetime.now() + timedelta(hours=2)
         end_time = start_time + timedelta(days=1)
@@ -694,7 +727,12 @@ class GAMAutomationTester:
             format="display",
         )
 
-        request = CreateMediaBuyRequest(po_number="LIFECYCLE004", total_budget=1.00, targeting_overlay=Targeting())
+        request = CreateMediaBuyRequest(
+            promoted_offering="Coffee beans and specialty beverages",
+            po_number="LIFECYCLE004",
+            total_budget=1.00,
+            targeting_overlay=Targeting(),
+        )
 
         start_time = datetime.now() + timedelta(hours=1)
         end_time = start_time + timedelta(hours=2)  # Short duration

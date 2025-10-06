@@ -1,0 +1,353 @@
+{% extends "base.html" %}
+
+{% block title %}Uploaded Creatives - {{ tenant_name }} - Sales Agent Admin{% endblock %}
+
+{% block content %}
+<div class="card">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+        <h2>Uploaded Creatives - {{ tenant_name }}</h2>
+        <div style="display: flex; gap: 0.5rem;">
+            <a href="{{ url_for('tenants.dashboard', tenant_id=tenant_id) }}" class="btn btn-secondary">← Back to Home</a>
+            <a href="{{ url_for('creatives.index', tenant_id=tenant_id) }}" class="btn btn-secondary">Creative Formats</a>
+        </div>
+    </div>
+
+    <div class="alert alert-info">
+        <strong>Creative Library:</strong> View all uploaded creatives and see which media buys they're assigned to. Filter by status, advertiser, or format.
+    </div>
+
+    <!-- Filter Controls -->
+    <div style="margin-bottom: 1.5rem; padding: 1rem; background: #f8f9fa; border-radius: 4px;">
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem;">
+            <div>
+                <label for="filter-status" style="display: block; margin-bottom: 0.25rem; font-weight: 500;">Status:</label>
+                <select id="filter-status" onchange="filterCreatives()" style="width: 100%; padding: 0.5rem;">
+                    <option value="">All Statuses</option>
+                    <option value="active">Active</option>
+                    <option value="pending">Pending</option>
+                    <option value="approved">Approved</option>
+                    <option value="rejected">Rejected</option>
+                </select>
+            </div>
+            <div>
+                <label for="filter-advertiser" style="display: block; margin-bottom: 0.25rem; font-weight: 500;">Advertiser:</label>
+                <select id="filter-advertiser" onchange="filterCreatives()" style="width: 100%; padding: 0.5rem;">
+                    <option value="">All Advertisers</option>
+                    {% set principals = creatives | map(attribute='principal_name') | unique | list %}
+                    {% for principal in principals %}
+                    <option value="{{ principal }}">{{ principal }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div>
+                <label for="filter-format" style="display: block; margin-bottom: 0.25rem; font-weight: 500;">Format:</label>
+                <select id="filter-format" onchange="filterCreatives()" style="width: 100%; padding: 0.5rem;">
+                    <option value="">All Formats</option>
+                    {% set formats = creatives | map(attribute='format') | unique | list %}
+                    {% for format in formats %}
+                    <option value="{{ format }}">{{ format }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div>
+                <label for="filter-search" style="display: block; margin-bottom: 0.25rem; font-weight: 500;">Search:</label>
+                <input type="text" id="filter-search" placeholder="Creative name..." onkeyup="filterCreatives()" style="width: 100%; padding: 0.5rem;">
+            </div>
+        </div>
+    </div>
+
+    {% if creatives|length == 0 %}
+    <!-- No creatives uploaded yet -->
+    <div style="text-align: center; padding: 3rem; background: #f9f9f9; border-radius: 4px;">
+        <div style="font-size: 4rem; margin-bottom: 1rem;">🎨</div>
+        <h3 style="color: #666; margin-bottom: 0.5rem;">No Creatives Yet</h3>
+        <p style="color: #999;">Creatives will appear here once advertisers upload them via the AdCP protocol.</p>
+    </div>
+    {% else %}
+    <!-- Creatives Grid -->
+    <div id="creatives-grid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(350px, 1fr)); gap: 1.5rem;">
+        {% for creative in creatives %}
+        <div class="creative-card"
+             data-status="{{ creative.status }}"
+             data-advertiser="{{ creative.principal_name }}"
+             data-format="{{ creative.format }}"
+             data-name="{{ creative.name|lower }}">
+
+            <!-- Creative Header -->
+            <div class="creative-header">
+                <div>
+                    <h4 style="margin: 0 0 0.25rem 0;">{{ creative.name }}</h4>
+                    <p style="margin: 0; font-size: 0.85rem; color: #666;">{{ creative.principal_name }}</p>
+                </div>
+                <span class="status-badge status-{{ creative.status }}">{{ creative.status }}</span>
+            </div>
+
+            <!-- Creative Details -->
+            <div class="creative-details">
+                <div class="detail-row">
+                    <span class="detail-label">Creative ID:</span>
+                    <span class="detail-value"><code>{{ creative.creative_id }}</code></span>
+                </div>
+                <div class="detail-row">
+                    <span class="detail-label">Format:</span>
+                    <span class="detail-value"><span class="format-badge">{{ creative.format }}</span></span>
+                </div>
+                {% if creative.group_id %}
+                <div class="detail-row">
+                    <span class="detail-label">Group:</span>
+                    <span class="detail-value">{{ creative.group_id }}</span>
+                </div>
+                {% endif %}
+                <div class="detail-row">
+                    <span class="detail-label">Created:</span>
+                    <span class="detail-value">{{ creative.created_at.strftime('%Y-%m-%d %H:%M') if creative.created_at else 'N/A' }}</span>
+                </div>
+                {% if creative.approved_at %}
+                <div class="detail-row">
+                    <span class="detail-label">Approved:</span>
+                    <span class="detail-value">{{ creative.approved_at.strftime('%Y-%m-%d %H:%M') }}</span>
+                </div>
+                {% endif %}
+            </div>
+
+            <!-- Media Buy Associations -->
+            <div class="media-buy-section">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+                    <h5 style="margin: 0; font-size: 0.9rem; color: #555;">Media Buys ({{ creative.assignment_count }})</h5>
+                    {% if creative.assignment_count == 0 %}
+                    <span style="font-size: 0.85rem; color: #999;">Not assigned</span>
+                    {% endif %}
+                </div>
+
+                {% if creative.media_buys %}
+                <div class="media-buys-list">
+                    {% for mb in creative.media_buys %}
+                    <div class="media-buy-item">
+                        <div style="display: flex; justify-content: space-between; align-items: start;">
+                            <div style="flex: 1; min-width: 0;">
+                                <a href="{{ url_for('operations.media_buy_detail', tenant_id=tenant_id, media_buy_id=mb.media_buy_id) }}"
+                                   style="font-weight: 500; color: #007bff; text-decoration: none;">
+                                    {{ mb.order_name }}
+                                </a>
+                                <p style="margin: 0.25rem 0 0 0; font-size: 0.85rem; color: #666;">
+                                    Package: {{ mb.package_id }}
+                                </p>
+                            </div>
+                            <span class="status-badge-small status-{{ mb.status }}">{{ mb.status }}</span>
+                        </div>
+                        <div style="font-size: 0.8rem; color: #999; margin-top: 0.25rem;">
+                            {{ mb.start_date.strftime('%Y-%m-%d') if mb.start_date else 'N/A' }} -
+                            {{ mb.end_date.strftime('%Y-%m-%d') if mb.end_date else 'N/A' }}
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+                {% else %}
+                <div style="padding: 1rem; background: #f8f9fa; border-radius: 4px; text-align: center;">
+                    <p style="margin: 0; font-size: 0.85rem; color: #999;">Creative not assigned to any media buys yet</p>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+
+    <!-- Summary Stats -->
+    <div style="margin-top: 2rem; padding: 1rem; background: #f8f9fa; border-radius: 4px;">
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 1rem; text-align: center;">
+            <div>
+                <div style="font-size: 2rem; font-weight: bold; color: #007bff;">{{ creatives|length }}</div>
+                <div style="font-size: 0.9rem; color: #666;">Total Creatives</div>
+            </div>
+            <div>
+                <div style="font-size: 2rem; font-weight: bold; color: #28a745;">{{ creatives|selectattr('status', 'equalto', 'active')|list|length }}</div>
+                <div style="font-size: 0.9rem; color: #666;">Active</div>
+            </div>
+            <div>
+                <div style="font-size: 2rem; font-weight: bold; color: #ffc107;">{{ creatives|selectattr('status', 'equalto', 'pending')|list|length }}</div>
+                <div style="font-size: 0.9rem; color: #666;">Pending</div>
+            </div>
+            <div>
+                <div style="font-size: 2rem; font-weight: bold; color: #999;">{{ creatives|selectattr('assignment_count', 'equalto', 0)|list|length }}</div>
+                <div style="font-size: 0.9rem; color: #666;">Unassigned</div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+</div>
+
+<style>
+.creative-card {
+    background: white;
+    border: 1px solid #e0e0e0;
+    border-radius: 8px;
+    padding: 1.5rem;
+    transition: box-shadow 0.2s;
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+
+.creative-card:hover {
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+.creative-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: start;
+    padding-bottom: 1rem;
+    border-bottom: 2px solid #f0f0f0;
+}
+
+.status-badge {
+    padding: 0.35rem 0.75rem;
+    border-radius: 12px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: uppercase;
+}
+
+.status-badge-small {
+    padding: 0.2rem 0.5rem;
+    border-radius: 8px;
+    font-size: 0.7rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    white-space: nowrap;
+}
+
+.status-active {
+    background: #d4edda;
+    color: #155724;
+}
+
+.status-pending {
+    background: #fff3cd;
+    color: #856404;
+}
+
+.status-approved {
+    background: #d1ecf1;
+    color: #0c5460;
+}
+
+.status-rejected {
+    background: #f8d7da;
+    color: #721c24;
+}
+
+.status-draft {
+    background: #e2e3e5;
+    color: #383d41;
+}
+
+.creative-details {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.detail-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 0.9rem;
+}
+
+.detail-label {
+    color: #666;
+    font-weight: 500;
+}
+
+.detail-value {
+    color: #333;
+}
+
+.format-badge {
+    display: inline-block;
+    padding: 0.25rem 0.5rem;
+    background: #e3f2fd;
+    color: #1976d2;
+    border-radius: 4px;
+    font-size: 0.85rem;
+    font-weight: 500;
+}
+
+.media-buy-section {
+    padding-top: 1rem;
+    border-top: 1px solid #f0f0f0;
+}
+
+.media-buys-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+}
+
+.media-buy-item {
+    padding: 0.75rem;
+    background: #f8f9fa;
+    border-left: 3px solid #007bff;
+    border-radius: 4px;
+}
+
+.media-buy-item a:hover {
+    text-decoration: underline;
+}
+
+code {
+    background: #f4f4f4;
+    padding: 0.2rem 0.4rem;
+    border-radius: 3px;
+    font-size: 0.85rem;
+}
+</style>
+
+<script>
+function filterCreatives() {
+    const statusFilter = document.getElementById('filter-status').value.toLowerCase();
+    const advertiserFilter = document.getElementById('filter-advertiser').value.toLowerCase();
+    const formatFilter = document.getElementById('filter-format').value.toLowerCase();
+    const searchFilter = document.getElementById('filter-search').value.toLowerCase();
+
+    const cards = document.querySelectorAll('.creative-card');
+    let visibleCount = 0;
+
+    cards.forEach(card => {
+        const status = card.dataset.status.toLowerCase();
+        const advertiser = card.dataset.advertiser.toLowerCase();
+        const format = card.dataset.format.toLowerCase();
+        const name = card.dataset.name;
+
+        const statusMatch = !statusFilter || status === statusFilter;
+        const advertiserMatch = !advertiserFilter || advertiser === advertiserFilter;
+        const formatMatch = !formatFilter || format === formatFilter;
+        const searchMatch = !searchFilter || name.includes(searchFilter);
+
+        if (statusMatch && advertiserMatch && formatMatch && searchMatch) {
+            card.style.display = '';
+            visibleCount++;
+        } else {
+            card.style.display = 'none';
+        }
+    });
+
+    // Show message if no results
+    const grid = document.getElementById('creatives-grid');
+    let noResultsMsg = document.getElementById('no-results-message');
+
+    if (visibleCount === 0) {
+        if (!noResultsMsg) {
+            noResultsMsg = document.createElement('div');
+            noResultsMsg.id = 'no-results-message';
+            noResultsMsg.style.cssText = 'grid-column: 1 / -1; text-align: center; padding: 2rem; color: #999;';
+            noResultsMsg.innerHTML = '<p>No creatives match your filters.</p>';
+            grid.appendChild(noResultsMsg);
+        }
+    } else if (noResultsMsg) {
+        noResultsMsg.remove();
+    }
+}
+</script>
+{% endblock %}

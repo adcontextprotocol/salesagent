@@ -131,6 +131,12 @@ def create_tenant():
             tenant_id = f"tenant_{uuid.uuid4().hex[:8]}"
             admin_token = secrets.token_urlsafe(32)
 
+            # Handle authorized emails - automatically add creator's email
+            email_list = data.get("authorized_emails", [])
+            creator_email = data.get("creator_email")
+            if creator_email and creator_email not in email_list:
+                email_list.append(creator_email)
+
             # Create tenant
             new_tenant = Tenant(
                 tenant_id=tenant_id,
@@ -142,7 +148,7 @@ def create_tenant():
                 billing_contact=data.get("billing_contact"),
                 max_daily_budget=data.get("max_daily_budget", 10000),
                 enable_axe_signals=data.get("enable_axe_signals", True),
-                authorized_emails=json.dumps(data.get("authorized_emails", [])),
+                authorized_emails=json.dumps(email_list),
                 authorized_domains=json.dumps(data.get("authorized_domains", [])),
                 slack_webhook_url=data.get("slack_webhook_url"),
                 slack_audit_webhook_url=data.get("slack_audit_webhook_url"),
@@ -166,12 +172,12 @@ def create_tenant():
                     adapter_type=adapter_type,
                     gam_network_code=data.get("gam_network_code"),
                     gam_refresh_token=data.get("gam_refresh_token"),
-                    gam_company_id=data.get("gam_company_id"),
                     gam_trafficker_id=data.get("gam_trafficker_id"),
                     gam_manual_approval_required=data.get("gam_manual_approval_required", False),
                     created_at=datetime.now(UTC),
                     updated_at=datetime.now(UTC),
                 )
+                # NOTE: gam_company_id removed - advertiser_id is per-principal in platform_mappings
             elif adapter_type == "kevel":
                 new_adapter = AdapterConfig(
                     tenant_id=tenant_id,
@@ -303,11 +309,11 @@ def get_tenant(tenant_id):
                         {
                             "gam_network_code": adapter.gam_network_code,
                             "has_refresh_token": bool(adapter.gam_refresh_token),
-                            "gam_company_id": adapter.gam_company_id,
                             "gam_trafficker_id": adapter.gam_trafficker_id,
                             "gam_manual_approval_required": bool(adapter.gam_manual_approval_required),
                         }
                     )
+                    # NOTE: gam_company_id removed - advertiser_id is per-principal in platform_mappings
                 elif adapter.adapter_type == "kevel":
                     adapter_data.update(
                         {
@@ -395,8 +401,7 @@ def update_tenant(tenant_id):
                             adapter.gam_network_code = adapter_data["gam_network_code"]
                         if "gam_refresh_token" in adapter_data:
                             adapter.gam_refresh_token = adapter_data["gam_refresh_token"]
-                        if "gam_company_id" in adapter_data:
-                            adapter.gam_company_id = adapter_data["gam_company_id"]
+                        # NOTE: gam_company_id removed - advertiser_id is per-principal in platform_mappings
                         if "gam_trafficker_id" in adapter_data:
                             adapter.gam_trafficker_id = adapter_data["gam_trafficker_id"]
                         if "gam_manual_approval_required" in adapter_data:

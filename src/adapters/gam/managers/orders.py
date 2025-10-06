@@ -21,13 +21,15 @@ NON_GUARANTEED_LINE_ITEM_TYPES = {"NETWORK", "BULK", "PRICE_PRIORITY", "HOUSE"}
 class GAMOrdersManager:
     """Manages Google Ad Manager order operations."""
 
-    def __init__(self, client_manager, advertiser_id: str, trafficker_id: str, dry_run: bool = False):
+    def __init__(
+        self, client_manager, advertiser_id: str | None = None, trafficker_id: str | None = None, dry_run: bool = False
+    ):
         """Initialize orders manager.
 
         Args:
             client_manager: GAMClientManager instance
-            advertiser_id: GAM advertiser ID
-            trafficker_id: GAM trafficker ID
+            advertiser_id: GAM advertiser ID (required for order creation operations)
+            trafficker_id: GAM trafficker ID (required for order creation operations)
             dry_run: Whether to run in dry-run mode
         """
         self.client_manager = client_manager
@@ -58,8 +60,16 @@ class GAMOrdersManager:
             Created order ID as string
 
         Raises:
+            ValueError: If advertiser_id or trafficker_id not configured
             Exception: If order creation fails
         """
+        # Validate required configuration for order creation
+        if not self.advertiser_id or not self.trafficker_id:
+            raise ValueError(
+                "Order creation requires both advertiser_id and trafficker_id. "
+                "These must be provided when initializing GAMOrdersManager for order operations."
+            )
+
         # Create Order object
         order = {
             "name": order_name,
@@ -256,16 +266,16 @@ class GAMOrdersManager:
             statement = statement_builder.ToStatement()
 
             result = company_service.getCompaniesByStatement(statement)
-            companies = result.get("results", [])
+            companies = result.results if result and hasattr(result, "results") else []
 
             # Format for UI
             advertisers = []
             for company in companies:
                 advertisers.append(
                     {
-                        "id": str(company["id"]),
-                        "name": company["name"],
-                        "type": company["type"],
+                        "id": str(company.id),
+                        "name": company.name,
+                        "type": company.type,
                     }
                 )
 

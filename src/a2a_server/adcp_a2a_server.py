@@ -58,7 +58,6 @@ from src.core.audit_logger import get_audit_logger
 from src.core.auth_utils import get_principal_from_token
 from src.core.config_loader import get_current_tenant
 from src.core.schemas import (
-    CreateMediaBuyRequest,
     GetSignalsRequest,
     ListAuthorizedPropertiesRequest,
 )
@@ -129,15 +128,31 @@ class AdCPRequestHandler(RequestHandler):
         Raises:
             ValueError: If authentication fails
         """
+        # Get request headers for debugging
+        headers = getattr(_request_context, "request_headers", {})
+        apx_host = headers.get("apx-incoming-host", "NOT_PRESENT")
+
         # Authenticate using the token
         principal_id = get_principal_from_token(auth_token)
         if not principal_id:
-            raise ServerError(InvalidRequestError(message="Invalid or missing authentication token"))
+            raise ServerError(
+                InvalidRequestError(
+                    message=f"Invalid authentication token (not found in database). "
+                    f"Token: {auth_token[:20]}..., "
+                    f"Apx-Incoming-Host: {apx_host}"
+                )
+            )
 
         # Get tenant info (set as side effect of authentication)
         tenant = get_current_tenant()
         if not tenant:
-            raise ServerError(InvalidRequestError(message="Unable to determine tenant from authentication"))
+            raise ServerError(
+                InvalidRequestError(
+                    message=f"Unable to determine tenant from authentication. "
+                    f"Principal: {principal_id}, "
+                    f"Apx-Incoming-Host: {apx_host}"
+                )
+            )
 
         # Generate context ID if not provided
         if not context_id:
@@ -217,16 +232,24 @@ class AdCPRequestHandler(RequestHandler):
 
                 # Handle structured data parts (explicit skill invocation)
                 elif hasattr(part, "data") and isinstance(part.data, dict):
-                    if "skill" in part.data and "parameters" in part.data:
-                        skill_invocations.append({"skill": part.data["skill"], "parameters": part.data["parameters"]})
-                        logger.info(f"Found explicit skill invocation: {part.data['skill']}")
+                    # Support both "input" (A2A spec) and "parameters" (legacy) for skill params
+                    if "skill" in part.data:
+                        params_data = part.data.get("input") or part.data.get("parameters", {})
+                        skill_invocations.append({"skill": part.data["skill"], "parameters": params_data})
+                        logger.info(
+                            f"Found explicit skill invocation: {part.data['skill']} with params: {list(params_data.keys())}"
+                        )
 
                 # Handle nested data structure (some A2A clients use this format)
                 elif hasattr(part, "root") and hasattr(part.root, "data"):
                     data = part.root.data
-                    if isinstance(data, dict) and "skill" in data and "parameters" in data:
-                        skill_invocations.append({"skill": data["skill"], "parameters": data["parameters"]})
-                        logger.info(f"Found explicit skill invocation (nested): {data['skill']}")
+                    if isinstance(data, dict) and "skill" in data:
+                        # Support both "input" (A2A spec) and "parameters" (legacy) for skill params
+                        params_data = data.get("input") or data.get("parameters", {})
+                        skill_invocations.append({"skill": data["skill"], "parameters": params_data})
+                        logger.info(
+                            f"Found explicit skill invocation (nested): {data['skill']} with params: {list(params_data.keys())}"
+                        )
 
         # Combine text for natural language fallback
         combined_text = " ".join(text_parts).strip().lower()
@@ -585,44 +608,287 @@ class AdCPRequestHandler(RequestHandler):
         params: Any,
         context: ServerCallContext | None = None,
     ) -> Any:
-        """Handle get push notification config requests."""
-        # Not implemented for now
-        from a2a.types import UnsupportedOperationError
+        """Handle get push notification config requests.
 
-        raise UnsupportedOperationError("Push notifications not supported")
+        Retrieves the push notification configuration for a specific config ID.
+        """
+        from a2a.types import InvalidParamsError, NotFoundError
+
+        from src.core.database.database_session import get_db_session
+        from src.core.database.models import PushNotificationConfig as DBPushNotificationConfig
+
+        try:
+            # Get authentication token
+            auth_token = self._get_auth_token()
+            if not auth_token:
+                raise ServerError(InvalidRequestError(message="Missing authentication token"))
+
+            # Resolve tenant and principal from auth token
+            tool_context = self._create_tool_context_from_a2a(auth_token, "get_push_notification_config")
+
+            # Extract config_id from params
+            config_id = params.get("id") if isinstance(params, dict) else getattr(params, "id", None)
+            if not config_id:
+                raise ServerError(InvalidParamsError(message="Missing required parameter: id"))
+
+            # Query database for config
+            with get_db_session() as db:
+                config = (
+                    db.query(DBPushNotificationConfig)
+                    .filter_by(
+                        id=config_id,
+                        tenant_id=tool_context.tenant_id,
+                        principal_id=tool_context.principal_id,
+                        is_active=True,
+                    )
+                    .first()
+                )
+
+                if not config:
+                    raise ServerError(NotFoundError(message=f"Push notification config not found: {config_id}"))
+
+                # Return A2A PushNotificationConfig format
+                return {
+                    "id": config.id,
+                    "url": config.url,
+                    "authentication": (
+                        {"type": config.authentication_type or "none", "token": config.authentication_token}
+                        if config.authentication_type
+                        else None
+                    ),
+                    "token": config.validation_token,
+                }
+
+        except ServerError:
+            raise
+        except Exception as e:
+            logger.error(f"Error getting push notification config: {e}")
+            raise ServerError(InternalError(message=f"Failed to get push notification config: {str(e)}"))
 
     async def on_set_task_push_notification_config(
         self,
         params: Any,
         context: ServerCallContext | None = None,
     ) -> Any:
-        """Handle set push notification config requests."""
-        # Not implemented for now
-        from a2a.types import UnsupportedOperationError
+        """Handle set push notification config requests.
 
-        raise UnsupportedOperationError("Push notifications not supported")
+        Creates or updates a push notification configuration for async operation callbacks.
+        Buyers use this to register webhook URLs where they want to receive status updates.
+        """
+        import uuid
+        from datetime import UTC, datetime
+
+        from a2a.types import InvalidParamsError
+
+        from src.core.database.database_session import get_db_session
+        from src.core.database.models import PushNotificationConfig as DBPushNotificationConfig
+
+        try:
+            # Get authentication token
+            auth_token = self._get_auth_token()
+            if not auth_token:
+                raise ServerError(InvalidRequestError(message="Missing authentication token"))
+
+            # Resolve tenant and principal from auth token
+            tool_context = self._create_tool_context_from_a2a(auth_token, "set_push_notification_config")
+
+            # Extract parameters
+            if isinstance(params, dict):
+                url = params.get("url")
+                authentication = params.get("authentication")
+                config_id = params.get("id") or f"pnc_{uuid.uuid4().hex[:16]}"
+                validation_token = params.get("token")
+                session_id = params.get("session_id")
+            else:
+                url = getattr(params, "url", None)
+                authentication = getattr(params, "authentication", None)
+                config_id = getattr(params, "id", None) or f"pnc_{uuid.uuid4().hex[:16]}"
+                validation_token = getattr(params, "token", None)
+                session_id = getattr(params, "session_id", None)
+
+            if not url:
+                raise ServerError(InvalidParamsError(message="Missing required parameter: url"))
+
+            # Extract authentication details
+            auth_type = None
+            auth_token_value = None
+            if authentication:
+                if isinstance(authentication, dict):
+                    auth_type = authentication.get("type")
+                    auth_token_value = authentication.get("token")
+                else:
+                    auth_type = getattr(authentication, "type", None)
+                    auth_token_value = getattr(authentication, "token", None)
+
+            # Create or update configuration
+            with get_db_session() as db:
+                # Check if config exists
+                existing_config = (
+                    db.query(DBPushNotificationConfig)
+                    .filter_by(id=config_id, tenant_id=tool_context.tenant_id, principal_id=tool_context.principal_id)
+                    .first()
+                )
+
+                if existing_config:
+                    # Update existing config
+                    existing_config.url = url
+                    existing_config.authentication_type = auth_type
+                    existing_config.authentication_token = auth_token_value
+                    existing_config.validation_token = validation_token
+                    existing_config.session_id = session_id
+                    existing_config.updated_at = datetime.now(UTC)
+                    existing_config.is_active = True
+                else:
+                    # Create new config
+                    new_config = DBPushNotificationConfig(
+                        id=config_id,
+                        tenant_id=tool_context.tenant_id,
+                        principal_id=tool_context.principal_id,
+                        session_id=session_id,
+                        url=url,
+                        authentication_type=auth_type,
+                        authentication_token=auth_token_value,
+                        validation_token=validation_token,
+                        is_active=True,
+                    )
+                    db.add(new_config)
+
+                db.commit()
+
+                logger.info(
+                    f"Push notification config {'updated' if existing_config else 'created'}: {config_id} for tenant {tool_context.tenant_id}"
+                )
+
+                # Return A2A response
+                return {
+                    "id": config_id,
+                    "url": url,
+                    "authentication": {"type": auth_type or "none", "token": auth_token_value} if auth_type else None,
+                    "token": validation_token,
+                    "status": "active",
+                }
+
+        except ServerError:
+            raise
+        except Exception as e:
+            logger.error(f"Error setting push notification config: {e}")
+            raise ServerError(InternalError(message=f"Failed to set push notification config: {str(e)}"))
 
     async def on_list_task_push_notification_config(
         self,
         params: Any,
         context: ServerCallContext | None = None,
     ) -> Any:
-        """Handle list push notification config requests."""
-        # Not implemented for now
-        from a2a.types import UnsupportedOperationError
+        """Handle list push notification config requests.
 
-        raise UnsupportedOperationError("Push notifications not supported")
+        Returns all active push notification configurations for the authenticated principal.
+        """
+        from src.core.database.database_session import get_db_session
+        from src.core.database.models import PushNotificationConfig as DBPushNotificationConfig
+
+        try:
+            # Get authentication token
+            auth_token = self._get_auth_token()
+            if not auth_token:
+                raise ServerError(InvalidRequestError(message="Missing authentication token"))
+
+            # Resolve tenant and principal from auth token
+            tool_context = self._create_tool_context_from_a2a(auth_token, "list_push_notification_configs")
+
+            # Query database for all active configs
+            with get_db_session() as db:
+                configs = (
+                    db.query(DBPushNotificationConfig)
+                    .filter_by(tenant_id=tool_context.tenant_id, principal_id=tool_context.principal_id, is_active=True)
+                    .all()
+                )
+
+                # Convert to A2A format
+                configs_list = []
+                for config in configs:
+                    configs_list.append(
+                        {
+                            "id": config.id,
+                            "url": config.url,
+                            "authentication": (
+                                {"type": config.authentication_type or "none", "token": config.authentication_token}
+                                if config.authentication_type
+                                else None
+                            ),
+                            "token": config.validation_token,
+                            "created_at": config.created_at.isoformat() if config.created_at else None,
+                        }
+                    )
+
+                logger.info(f"Listed {len(configs_list)} push notification configs for tenant {tool_context.tenant_id}")
+
+                return {"configs": configs_list, "total_count": len(configs_list)}
+
+        except ServerError:
+            raise
+        except Exception as e:
+            logger.error(f"Error listing push notification configs: {e}")
+            raise ServerError(InternalError(message=f"Failed to list push notification configs: {str(e)}"))
 
     async def on_delete_task_push_notification_config(
         self,
         params: Any,
         context: ServerCallContext | None = None,
     ) -> Any:
-        """Handle delete push notification config requests."""
-        # Not implemented for now
-        from a2a.types import UnsupportedOperationError
+        """Handle delete push notification config requests.
 
-        raise UnsupportedOperationError("Push notifications not supported")
+        Marks a push notification configuration as inactive (soft delete).
+        """
+        from datetime import UTC, datetime
+
+        from a2a.types import InvalidParamsError, NotFoundError
+
+        from src.core.database.database_session import get_db_session
+        from src.core.database.models import PushNotificationConfig as DBPushNotificationConfig
+
+        try:
+            # Get authentication token
+            auth_token = self._get_auth_token()
+            if not auth_token:
+                raise ServerError(InvalidRequestError(message="Missing authentication token"))
+
+            # Resolve tenant and principal from auth token
+            tool_context = self._create_tool_context_from_a2a(auth_token, "delete_push_notification_config")
+
+            # Extract config_id from params
+            config_id = params.get("id") if isinstance(params, dict) else getattr(params, "id", None)
+            if not config_id:
+                raise ServerError(InvalidParamsError(message="Missing required parameter: id"))
+
+            # Query database and mark as inactive
+            with get_db_session() as db:
+                config = (
+                    db.query(DBPushNotificationConfig)
+                    .filter_by(id=config_id, tenant_id=tool_context.tenant_id, principal_id=tool_context.principal_id)
+                    .first()
+                )
+
+                if not config:
+                    raise ServerError(NotFoundError(message=f"Push notification config not found: {config_id}"))
+
+                # Soft delete by marking as inactive
+                config.is_active = False
+                config.updated_at = datetime.now(UTC)
+                db.commit()
+
+                logger.info(f"Deleted push notification config: {config_id} for tenant {tool_context.tenant_id}")
+
+                return {
+                    "id": config_id,
+                    "status": "deleted",
+                    "message": "Push notification configuration deleted successfully",
+                }
+
+        except ServerError:
+            raise
+        except Exception as e:
+            logger.error(f"Error deleting push notification config: {e}")
+            raise ServerError(InternalError(message=f"Failed to delete push notification config: {str(e)}"))
 
     async def _handle_explicit_skill(self, skill_name: str, parameters: dict, auth_token: str) -> dict:
         """Handle explicit AdCP skill invocations.
@@ -717,10 +983,20 @@ class AdCPRequestHandler(RequestHandler):
                 brief=brief, promoted_offering=promoted_offering, context=tool_context
             )
 
+            # Handle both dict and object responses (defensive pattern)
+            if isinstance(response, dict):
+                products = response.get("products", [])
+                message = response.get("message", "Products retrieved successfully")
+                products_list = products
+            else:
+                products = response.products
+                message = response.message or "Products retrieved successfully"
+                products_list = [product.model_dump() for product in products]
+
             # Convert to A2A response format
             return {
-                "products": [product.model_dump() for product in response.products],
-                "message": response.message or "Products retrieved successfully",
+                "products": products_list,
+                "message": message,
             }
 
         except Exception as e:
@@ -728,7 +1004,17 @@ class AdCPRequestHandler(RequestHandler):
             raise ServerError(InternalError(message=f"Unable to retrieve products: {str(e)}"))
 
     async def _handle_create_media_buy_skill(self, parameters: dict, auth_token: str) -> dict:
-        """Handle explicit create_media_buy skill invocation."""
+        """Handle explicit create_media_buy skill invocation.
+
+        IMPORTANT: This handler ONLY accepts AdCP spec-compliant format:
+        - packages[] (required)
+        - budget{} (required)
+        - start_time (required)
+        - end_time (required)
+        - promoted_offering (required)
+
+        Legacy format (product_ids, total_budget, start_date, end_date) is NOT supported.
+        """
         try:
             # Create ToolContext from A2A auth info
             tool_context = self._create_tool_context_from_a2a(
@@ -736,51 +1022,47 @@ class AdCPRequestHandler(RequestHandler):
                 tool_name="create_media_buy",
             )
 
-            # Map A2A parameters to CreateMediaBuyRequest
-            # Required parameters
-            required_params = ["product_ids", "total_budget", "flight_start_date", "flight_end_date"]
+            # Validate AdCP spec required parameters
+            required_params = [
+                "promoted_offering",
+                "packages",
+                "budget",
+                "start_time",
+                "end_time",
+            ]
             missing_params = [param for param in required_params if param not in parameters]
 
             if missing_params:
                 return {
                     "success": False,
-                    "message": f"Missing required parameters: {missing_params}",
+                    "message": f"Missing required AdCP parameters: {missing_params}",
                     "required_parameters": required_params,
                     "received_parameters": list(parameters.keys()),
+                    "error": "This endpoint only accepts AdCP v2.4 spec-compliant format. See https://adcontextprotocol.org/docs/",
                 }
 
-            # Create request object with parameter mapping
-            request = CreateMediaBuyRequest(
-                product_ids=parameters["product_ids"],
-                total_budget=float(parameters["total_budget"]),
-                flight_start_date=parameters["flight_start_date"],
-                flight_end_date=parameters["flight_end_date"],
-                # Optional parameters with defaults
-                preferred_deal_ids=parameters.get("preferred_deal_ids", []),
-                custom_targeting=parameters.get("custom_targeting", {}),
-                creative_requirements=parameters.get("creative_requirements", {}),
-                optimization_goal=parameters.get("optimization_goal", "impressions"),
-            )
-
-            # Call core function directly - map request parameters to function parameters
+            # Call core function with AdCP spec-compliant parameters
             response = core_create_media_buy_tool(
-                po_number=f"A2A-{uuid.uuid4().hex[:8]}",  # Generate PO number
-                product_ids=request.product_ids,
-                total_budget=request.total_budget,
-                start_date=request.flight_start_date,
-                end_date=request.flight_end_date,
-                targeting_overlay=request.custom_targeting,
-                buyer_ref=f"A2A-{tool_context.principal_id}",
+                promoted_offering=parameters["promoted_offering"],
+                po_number=parameters.get("po_number", f"A2A-{uuid.uuid4().hex[:8]}"),
+                buyer_ref=parameters.get("buyer_ref", f"A2A-{tool_context.principal_id}"),
+                packages=parameters["packages"],
+                start_time=parameters["start_time"],
+                end_time=parameters["end_time"],
+                budget=parameters["budget"],
+                targeting_overlay=parameters.get("custom_targeting", {}),
                 context=tool_context,
             )
 
             # Convert response to A2A format
+            # Note: response.packages is already list[dict] per CreateMediaBuyResponse schema
+            # See src/core/schemas.py:2034 - packages field is list[dict[str, Any]]
             return {
                 "success": True,
                 "media_buy_id": response.media_buy_id,
                 "status": response.status,
                 "message": response.message or "Media buy created successfully",
-                "packages": [package.model_dump() for package in response.packages] if response.packages else [],
+                "packages": response.packages if response.packages else [],  # Already list of dicts
                 "next_steps": response.next_steps if hasattr(response, "next_steps") else [],
             }
 
@@ -855,15 +1137,31 @@ class AdCPRequestHandler(RequestHandler):
                 context=tool_context,
             )
 
+            # Handle both dict and object responses (defensive pattern)
+            if isinstance(response, dict):
+                creatives_list = response.get("creatives", [])
+                total_count = response.get("total_count", 0)
+                page = response.get("page", 1)
+                limit = response.get("limit", 50)
+                has_more = response.get("has_more", False)
+                message = response.get("message", "Creatives retrieved successfully")
+            else:
+                creatives_list = [creative.model_dump() for creative in response.creatives]
+                total_count = response.total_count
+                page = response.page
+                limit = response.limit
+                has_more = response.has_more
+                message = response.message or "Creatives retrieved successfully"
+
             # Convert response to A2A format
             return {
                 "success": True,
-                "creatives": [creative.model_dump() for creative in response.creatives],
-                "total_count": response.total_count,
-                "page": response.page,
-                "limit": response.limit,
-                "has_more": response.has_more,
-                "message": response.message or "Creatives retrieved successfully",
+                "creatives": creatives_list,
+                "total_count": total_count,
+                "page": page,
+                "limit": limit,
+                "has_more": has_more,
+                "message": message,
             }
 
         except Exception as e:
@@ -1063,20 +1361,38 @@ class AdCPRequestHandler(RequestHandler):
                 tool_name="get_signals",
             )
 
-            # Map A2A parameters to GetSignalsRequest (no required parameters)
+            # Map A2A parameters to GetSignalsRequest (per AdCP spec: signal_spec and deliver_to required)
+            if "signal_spec" not in parameters or "deliver_to" not in parameters:
+                return {
+                    "success": False,
+                    "message": "Missing required parameters: 'signal_spec' and 'deliver_to'",
+                    "required_parameters": ["signal_spec", "deliver_to"],
+                    "received_parameters": list(parameters.keys()),
+                }
+
             request = GetSignalsRequest(
-                signal_types=parameters.get("signal_types", []),
-                categories=parameters.get("categories", []),
+                signal_spec=parameters["signal_spec"],
+                deliver_to=parameters["deliver_to"],
+                filters=parameters.get("filters"),
+                max_results=parameters.get("max_results"),
             )
 
             # Call core function directly
             response = await core_get_signals_tool(request, tool_context)
 
+            # Handle both dict and object responses (defensive pattern)
+            if isinstance(response, dict):
+                signals = response.get("signals", [])
+                signals_list = signals
+            else:
+                signals = response.signals
+                signals_list = [signal.model_dump() for signal in signals]
+
             # Convert response to A2A format
             return {
-                "signals": [signal.model_dump() for signal in response.signals],
-                "message": response.message or "Signals retrieved successfully",
-                "total_count": len(response.signals),
+                "signals": signals_list,
+                "message": "Signals retrieved successfully",
+                "total_count": len(signals_list),
             }
 
         except Exception as e:
@@ -1119,17 +1435,42 @@ class AdCPRequestHandler(RequestHandler):
                 tool_name="list_creative_formats",
             )
 
-            # Call core function directly - no parameters needed for this endpoint
-            response = core_list_creative_formats_tool(context=tool_context)
+            # Build request from parameters (all optional)
+            from src.core.schemas import ListCreativeFormatsRequest
+
+            req = ListCreativeFormatsRequest(
+                adcp_version=parameters.get("adcp_version", "1.0.0"),
+                type=parameters.get("type"),
+                standard_only=parameters.get("standard_only"),
+                category=parameters.get("category"),
+                format_ids=parameters.get("format_ids"),
+            )
+
+            # Call core function with request
+            response = core_list_creative_formats_tool(req=req, context=tool_context)
+
+            # Handle both dict and object responses (core function may return either based on INCLUDE_SCHEMAS_IN_RESPONSES)
+            if isinstance(response, dict):
+                # Response is already a dict (schema enhancement enabled)
+                formats = response.get("formats", [])
+                message = response.get("message", "Creative formats retrieved successfully")
+                # Formats in dict are already serialized
+                formats_list = formats
+            else:
+                # Response is ListCreativeFormatsResponse object
+                formats = response.formats
+                message = response.message or "Creative formats retrieved successfully"
+                # Serialize Format objects to dicts
+                formats_list = [format_obj.model_dump() for format_obj in formats]
 
             # Convert response to A2A format with schema validation
             from src.core.schema_validation import INCLUDE_SCHEMAS_IN_RESPONSES, enhance_a2a_response_with_schema
 
             a2a_response = {
                 "success": True,
-                "formats": [format_obj.model_dump() for format_obj in response.formats],
-                "message": response.message or "Creative formats retrieved successfully",
-                "total_count": len(response.formats),
+                "formats": formats_list,
+                "message": message,
+                "total_count": len(formats_list),
                 "specification_version": "AdCP v2.4",
             }
 
@@ -1165,13 +1506,23 @@ class AdCPRequestHandler(RequestHandler):
             # Call core function directly
             response = core_list_authorized_properties_tool(req=request, context=tool_context)
 
+            # Handle both dict and object responses (defensive pattern)
+            if isinstance(response, dict):
+                properties = response.get("properties", [])
+                tags = response.get("tags", {})
+                properties_list = properties
+            else:
+                properties = response.properties
+                tags = response.tags
+                properties_list = [prop.model_dump() for prop in properties]
+
             # Convert response to A2A format
             return {
                 "success": True,
-                "properties": [prop.model_dump() for prop in response.properties],
-                "tag_definitions": response.tag_definitions,
-                "message": response.message or "Authorized properties retrieved successfully",
-                "total_count": len(response.properties),
+                "properties": properties_list,
+                "tags": tags,
+                "message": "Authorized properties retrieved successfully",
+                "total_count": len(properties_list),
             }
 
         except Exception as e:
@@ -1219,7 +1570,10 @@ class AdCPRequestHandler(RequestHandler):
             raise ServerError(InternalError(message=f"Unable to update media buy: {str(e)}"))
 
     async def _handle_get_media_buy_delivery_skill(self, parameters: dict, auth_token: str) -> dict:
-        """Handle explicit get_media_buy_delivery skill invocation (CRITICAL for monitoring)."""
+        """Handle explicit get_media_buy_delivery skill invocation (CRITICAL for monitoring).
+
+        Accepts media_buy_ids (plural, per AdCP v1.6.0 spec) or media_buy_id (singular, legacy).
+        """
         try:
             # Create ToolContext from A2A auth info
             tool_context = self._create_tool_context_from_a2a(
@@ -1227,23 +1581,31 @@ class AdCPRequestHandler(RequestHandler):
                 tool_name="get_media_buy_delivery",
             )
 
-            # Validate required parameters
-            if "media_buy_id" not in parameters:
+            # Extract media_buy_ids - support both plural (spec) and singular (legacy)
+            media_buy_ids = parameters.get("media_buy_ids")
+            if not media_buy_ids:
+                # Fallback to singular form for backward compatibility
+                media_buy_id = parameters.get("media_buy_id")
+                if media_buy_id:
+                    media_buy_ids = [media_buy_id]
+
+            # Validate that we have at least one ID
+            if not media_buy_ids:
                 return {
                     "success": False,
-                    "message": "Missing required parameter: 'media_buy_id'",
-                    "required_parameters": ["media_buy_id"],
+                    "message": "Missing required parameter: 'media_buy_ids' (or 'media_buy_id' for single buy)",
+                    "required_parameters": ["media_buy_ids"],
                     "received_parameters": list(parameters.keys()),
                 }
 
-            # Call core function directly
+            # Call core function directly with spec-compliant plural parameter
             response = core_get_media_buy_delivery_tool(
-                media_buy_id=parameters["media_buy_id"],
+                media_buy_ids=media_buy_ids,
                 context=tool_context,
             )
 
-            # Convert response to A2A format
-            return response  # Raw function already returns dict format
+            # Convert response to dict for A2A format
+            return response.model_dump() if hasattr(response, "model_dump") else response
 
         except Exception as e:
             logger.error(f"Error in get_media_buy_delivery skill: {e}")
@@ -1447,16 +1809,24 @@ class AdCPRequestHandler(RequestHandler):
 
             return {
                 "success": False,
-                "message": f"Authentication successful for {tool_context.principal_id}, but media buy creation needs more details",
-                "required_fields": ["product_ids", "total_budget", "flight_start_date", "flight_end_date"],
+                "message": f"Authentication successful for {tool_context.principal_id}. To create a media buy, use explicit skill invocation with AdCP v2.4 spec-compliant format.",
+                "required_fields": ["promoted_offering", "packages", "budget", "start_time", "end_time"],
                 "authenticated_tenant": tool_context.tenant_id,
                 "authenticated_principal": tool_context.principal_id,
                 "example": {
-                    "product_ids": ["video_premium"],
-                    "total_budget": 10000,
-                    "flight_start_date": "2025-02-01",
-                    "flight_end_date": "2025-02-28",
+                    "promoted_offering": "https://example.com/product",
+                    "packages": [
+                        {
+                            "buyer_ref": "pkg_1",
+                            "products": ["video_premium"],
+                            "budget": {"total": 10000, "currency": "USD"},
+                        }
+                    ],
+                    "budget": {"total": 10000, "currency": "USD"},
+                    "start_time": "2025-02-01T00:00:00Z",
+                    "end_time": "2025-02-28T23:59:59Z",
                 },
+                "documentation": "https://adcontextprotocol.org/docs/",
             }
         except Exception as e:
             logger.error(f"Error in media buy creation: {e}")
@@ -1695,6 +2065,58 @@ def main():
     # Update the app's router with new routes
     app.router.routes = new_routes
 
+    # Add debug endpoint for tenant detection
+    from starlette.routing import Route
+
+    from src.core.config_loader import get_tenant_by_virtual_host
+
+    async def debug_tenant_endpoint(request):
+        """Debug endpoint to check tenant detection from headers."""
+        headers = dict(request.headers)
+
+        # Check for Apx-Incoming-Host header
+        apx_host = headers.get("apx-incoming-host") or headers.get("Apx-Incoming-Host")
+        host_header = headers.get("host") or headers.get("Host")
+
+        # Resolve tenant using same logic as auth
+        tenant_id = None
+        tenant_name = None
+        detection_method = None
+
+        # Try Apx-Incoming-Host first
+        if apx_host:
+            tenant = get_tenant_by_virtual_host(apx_host)
+            if tenant:
+                tenant_id = tenant.get("tenant_id")
+                tenant_name = tenant.get("name")
+                detection_method = "apx-incoming-host"
+
+        # Try Host header subdomain
+        if not tenant_id and host_header:
+            subdomain = host_header.split(".")[0] if "." in host_header else None
+            if subdomain and subdomain not in ["localhost", "adcp-sales-agent", "www", "sales-agent"]:
+                tenant_id = subdomain
+                detection_method = "host-subdomain"
+
+        response_data = {
+            "tenant_id": tenant_id,
+            "tenant_name": tenant_name,
+            "detection_method": detection_method,
+            "apx_incoming_host": apx_host,
+            "host": host_header,
+            "service": "a2a",
+        }
+
+        # Add X-Tenant-Id header to response
+        response = JSONResponse(response_data)
+        if tenant_id:
+            response.headers["X-Tenant-Id"] = tenant_id
+
+        return response
+
+    # Add debug route
+    app.router.routes.append(Route("/debug/tenant", debug_tenant_endpoint, methods=["GET"]))
+
     # Add middleware for backward compatibility with numeric messageId
     @app.middleware("http")
     async def messageId_compatibility_middleware(request, call_next):
@@ -1758,18 +2180,22 @@ def main():
 
             if auth_header.startswith("Bearer "):
                 token = auth_header[7:]  # Remove "Bearer " prefix
-                # Store token in thread-local storage for handler access
+                # Store token and headers in thread-local storage for handler access
                 _request_context.auth_token = token
+                _request_context.request_headers = dict(request.headers)
                 logger.info(f"Extracted Bearer token for A2A request: {token[:10]}...")
             else:
                 logger.warning(f"A2A request to {request.url.path} missing Bearer token in Authorization header")
                 _request_context.auth_token = None
+                _request_context.request_headers = dict(request.headers)
 
         response = await call_next(request)
 
         # Clean up thread-local storage
         if hasattr(_request_context, "auth_token"):
             delattr(_request_context, "auth_token")
+        if hasattr(_request_context, "request_headers"):
+            delattr(_request_context, "request_headers")
 
         return response
 

@@ -8,16 +8,10 @@ the @mcp.tool decorators.
 """
 
 import logging
-import time
-import uuid
-from datetime import UTC, datetime, timedelta
+from typing import Any
 
 from fastmcp.exceptions import ToolError
 from fastmcp.server.context import Context
-
-from src.core.testing_hooks import (
-    get_testing_context,
-)
 
 logger = logging.getLogger(__name__)
 
@@ -26,40 +20,54 @@ logger = logging.getLogger(__name__)
 # Other imports
 from src.core.config_loader import (
     get_current_tenant,
-    get_tenant_by_virtual_host,
-    safe_json_loads,
 )
-from src.core.database.database_session import get_db_session
-from src.core.database.models import Product as ModelProduct
 
 # Schema models (explicit imports to avoid collisions)
 from src.core.schemas import (
     CreateMediaBuyResponse,
+    GetMediaBuyDeliveryRequest,
+    GetMediaBuyDeliveryResponse,
+    GetProductsRequest,
     GetProductsResponse,
     GetSignalsRequest,
     GetSignalsResponse,
     ListAuthorizedPropertiesRequest,
     ListAuthorizedPropertiesResponse,
+    ListCreativeFormatsRequest,
     ListCreativeFormatsResponse,
     ListCreativesResponse,
-    Product,
     SyncCreativesResponse,
 )
 
 
 def get_principal_from_context(context: Context | None) -> str | None:
-    """Extract principal ID from the FastMCP context using x-adcp-auth header."""
+    """Extract principal ID from the FastMCP context or ToolContext.
+
+    Supports both:
+    - FastMCP Context: Extracts from meta.headers['x-adcp-auth']
+    - ToolContext: Uses direct principal_id attribute
+    """
     if not context:
         return None
 
     try:
-        # Get headers from FastMCP context metadata
+        # Check if this is a ToolContext with direct principal_id attribute
+        if hasattr(context, "principal_id"):
+            return context.principal_id
+
+        # Otherwise, extract from FastMCP context metadata
         headers = context.meta.get("headers", {}) if hasattr(context, "meta") else {}
         if not headers:
             return None
 
-        # Get the x-adcp-auth header (FastMCP forwards this in context.meta)
-        auth_token = headers.get("x-adcp-auth")
+        # Get the x-adcp-auth header (case-insensitive lookup)
+        # HTTP headers are case-insensitive, but dict.get() is case-sensitive
+        auth_token = None
+        for key, value in headers.items():
+            if key.lower() == "x-adcp-auth":
+                auth_token = value
+                break
+
         if not auth_token:
             return None
 
@@ -73,7 +81,15 @@ def get_principal_from_context(context: Context | None) -> str | None:
         return None
 
 
-async def get_products_raw(brief: str, promoted_offering: str, context: Context = None) -> GetProductsResponse:
+async def get_products_raw(
+    brief: str,
+    promoted_offering: str,
+    adcp_version: str = "1.0.0",
+    min_exposures: int | None = None,
+    filters: dict | None = None,
+    strategy_id: str | None = None,
+    context: Context = None,
+) -> GetProductsResponse:
     """Get available products matching the brief.
 
     Raw function without @mcp.tool decorator for A2A server use.
@@ -81,92 +97,34 @@ async def get_products_raw(brief: str, promoted_offering: str, context: Context 
     Args:
         brief: Brief description of the advertising campaign or requirements
         promoted_offering: What is being promoted/advertised (required per AdCP spec)
+        adcp_version: AdCP schema version for this request (default: 1.0.0)
+        min_exposures: Minimum impressions needed for measurement validity (optional)
+        filters: Structured filters for product discovery (optional)
+        strategy_id: Optional strategy ID for linking operations (optional)
         context: FastMCP context (automatically provided)
 
     Returns:
         GetProductsResponse containing matching products
     """
-    # Import the implementation from main.py and call it
-    # We can't import the decorated function directly, so we'll implement it here
+    # Use lazy import to avoid circular dependencies
+    from src.core.main import _get_products_impl
+    from src.core.schemas import ProductFilters
 
-    # Use ToolContext if available
-    if hasattr(context, "tenant_id") and hasattr(context, "principal_id"):
-        # ToolContext provided directly
-        principal_id = context.principal_id
-        tenant = {"tenant_id": context.tenant_id}  # Simplified tenant info
-    else:
-        # Legacy path - extract from FastMCP Context
-        testing_ctx = get_testing_context(context)
-        # For discovery endpoints, authentication is optional
-        principal_id = get_principal_from_context(context)  # Returns None if no auth
+    # Convert filters dict to ProductFilters if provided
+    filters_obj = ProductFilters(**filters) if filters else None
 
-        # Get tenant info - required for product lookup
-        tenant = get_current_tenant()
-        if not tenant:
-            # Try to get tenant from virtual host if context available
-            if context and hasattr(context, "meta") and context.meta.get("headers"):
-                headers = context.meta["headers"]
-                host = headers.get("host", "").split(":")[0]  # Remove port if present
-                tenant = get_tenant_by_virtual_host(host)
+    # Create request object
+    req = GetProductsRequest(
+        brief=brief or "",
+        promoted_offering=promoted_offering,
+        adcp_version=adcp_version,
+        min_exposures=min_exposures,
+        filters=filters_obj,
+        strategy_id=strategy_id,
+    )
 
-        if not tenant:
-            raise ToolError("No tenant configuration found", "NO_TENANT")
-
-    # Get tenant ID
-    tenant_id = tenant["tenant_id"]
-
-    # Load products from database
-    logger.info(f"Loading products for tenant {tenant_id}")
-    with get_db_session() as session:
-        db_products = session.query(ModelProduct).filter_by(tenant_id=tenant_id).all()
-
-    # Convert to schema objects and filter based on brief
-    products = []
-    for db_product in db_products:
-        product_data = {
-            "product_id": db_product.product_id,
-            "name": db_product.name,
-            "description": db_product.description or "",
-            "formats": safe_json_loads(db_product.formats, []),
-            "delivery_type": db_product.delivery_type,
-            "is_fixed_price": db_product.is_fixed_price,
-            "cpm": float(db_product.cpm) if db_product.cpm else None,
-            "min_spend": float(db_product.min_spend) if db_product.min_spend else None,
-            "measurement": safe_json_loads(db_product.measurement, None) if db_product.measurement else None,
-            "creative_policy": (
-                safe_json_loads(db_product.creative_policy, None) if db_product.creative_policy else None
-            ),
-            "is_custom": db_product.is_custom or False,
-            "expires_at": db_product.expires_at,
-            "implementation_config": (
-                safe_json_loads(db_product.implementation_config, None) if db_product.implementation_config else None
-            ),
-        }
-        products.append(Product(**product_data))
-
-    # Simple filtering based on brief (can be enhanced)
-    if brief:
-        brief_lower = brief.lower()
-        filtered_products = []
-        for product in products:
-            # Convert format IDs to Format objects for proper type checking
-            from src.core.schemas import convert_format_ids_to_formats
-
-            format_objects = convert_format_ids_to_formats(product.formats)
-
-            if (
-                brief_lower in product.name.lower()
-                or brief_lower in product.description.lower()
-                or any(brief_lower in fmt.type.lower() for fmt in format_objects)
-                or any(brief_lower in fmt_id.lower() for fmt_id in product.formats)
-            ):
-                filtered_products.append(product)
-
-        if filtered_products:
-            products = filtered_products
-
-    message = f"Found {len(products)} matching products for your requirements"
-    return GetProductsResponse(products=products, message=message)
+    # Call shared implementation
+    return await _get_products_impl(req, context)
 
 
 async def get_signals_raw(req: GetSignalsRequest, context: Context = None) -> GetSignalsResponse:
@@ -201,46 +159,44 @@ async def get_signals_raw(req: GetSignalsRequest, context: Context = None) -> Ge
 
     basic_signals = [
         {
-            "signal_id": "age_18_24",
+            "signal_agent_segment_id": "age_18_24",
             "name": "Age 18-24",
             "description": "Audience aged 18-24 years",
-            "category": "demographics",
-            "signal_type": "audience",
+            "signal_type": "marketplace",
+            "data_provider": "Internal Data",
+            "coverage_percentage": 75.0,
             "deployments": [
                 SignalDeployment(
-                    provider="internal",
-                    provider_signal_id="age_18_24",
-                    supported_platforms=["gam", "kevel"],
-                    availability="available",
+                    platform="gam",
+                    is_live=True,
+                    scope="platform-wide",
+                    decisioning_platform_segment_id="age_18_24",
                 )
             ],
-            "pricing": [SignalPricing(provider="internal", cost_type="cpm_multiplier", cost_value=1.2, currency="USD")],
+            "pricing": SignalPricing(cpm=1.2, currency="USD"),
         },
         {
-            "signal_id": "sports_interest",
+            "signal_agent_segment_id": "sports_interest",
             "name": "Sports Interest",
             "description": "Users interested in sports content",
-            "category": "interests",
-            "signal_type": "audience",
+            "signal_type": "marketplace",
+            "data_provider": "Internal Data",
+            "coverage_percentage": 60.0,
             "deployments": [
                 SignalDeployment(
-                    provider="internal",
-                    provider_signal_id="sports_interest",
-                    supported_platforms=["gam"],
-                    availability="available",
+                    platform="gam",
+                    is_live=True,
+                    scope="platform-wide",
+                    decisioning_platform_segment_id="sports_interest",
                 )
             ],
-            "pricing": [SignalPricing(provider="internal", cost_type="cpm_multiplier", cost_value=1.1, currency="USD")],
+            "pricing": SignalPricing(cpm=1.1, currency="USD"),
         },
     ]
 
-    # Filter by signal types if specified
-    if req.signal_types:
-        basic_signals = [s for s in basic_signals if s["signal_type"] in req.signal_types]
-
-    # Filter by categories if specified
-    if req.categories:
-        basic_signals = [s for s in basic_signals if s["category"] in req.categories]
+    # Filter by spec/filters if specified (AdCP v2.4)
+    # For now, return all signals - proper AI-based filtering would go here
+    # using req.signal_spec and req.deliver_to to intelligently match signals
 
     # Convert to Signal objects
     for signal_data in basic_signals:
@@ -252,6 +208,7 @@ async def get_signals_raw(req: GetSignalsRequest, context: Context = None) -> Ge
 
 def create_media_buy_raw(
     po_number: str,
+    promoted_offering: str = None,
     buyer_ref: str = None,
     packages: list = None,
     start_time: str = None,
@@ -261,14 +218,23 @@ def create_media_buy_raw(
     start_date: str = None,
     end_date: str = None,
     targeting_overlay: dict = None,
+    pacing: str = "even",
+    daily_budget: float = None,
+    creatives: list = None,
+    required_axe_signals: list = None,
+    enable_creative_macro: bool = False,
+    strategy_id: str = None,
+    budget: dict = None,
     context: Context = None,
 ) -> CreateMediaBuyResponse:
     """Create a new media buy with specified parameters.
 
     Raw function without @mcp.tool decorator for A2A server use.
+    Delegates to the shared implementation in main.py.
 
     Args:
         po_number: Purchase order number
+        promoted_offering: Description of advertiser and what is being promoted (optional in raw API)
         buyer_ref: Buyer reference identifier
         packages: List of media packages (optional)
         start_time: Start time (legacy parameter)
@@ -278,64 +244,43 @@ def create_media_buy_raw(
         start_date: Flight start date (YYYY-MM-DD)
         end_date: Flight end date (YYYY-MM-DD)
         targeting_overlay: Additional targeting parameters
+        pacing: Pacing strategy
+        daily_budget: Daily budget limit
+        creatives: Creative assets
+        required_axe_signals: Required signals
+        enable_creative_macro: Enable creative macro
+        strategy_id: Strategy ID
+        budget: Budget dict
         context: FastMCP context (automatically provided)
 
     Returns:
         CreateMediaBuyResponse with media buy details
     """
-    # Use ToolContext if available
-    if hasattr(context, "tenant_id") and hasattr(context, "principal_id"):
-        tenant_id = context.tenant_id
-        principal_id = context.principal_id
-    else:
-        # Legacy path - extract from FastMCP Context
-        principal_id = get_principal_from_context(context)
-        if not principal_id:
-            raise ToolError("Authentication required for media buy creation", "AUTH_REQUIRED")
+    # Import here to avoid circular imports
+    from src.core.main import _create_media_buy_impl
 
-        tenant = get_current_tenant()
-        if not tenant:
-            raise ToolError("No tenant configuration found", "NO_TENANT")
-        tenant_id = tenant["tenant_id"]
-
-    # Generate media buy ID
-    media_buy_id = f"mb_{uuid.uuid4().hex[:8]}"
-
-    # Default values
-    if not buyer_ref:
-        buyer_ref = f"buyer_{principal_id}_{int(time.time())}"
-
-    if not start_date and start_time:
-        start_date = start_time
-    if not end_date and end_time:
-        end_date = end_time
-
-    if not start_date:
-        start_date = (datetime.now(UTC).date() + timedelta(days=1)).isoformat()
-    if not end_date:
-        start_dt = datetime.fromisoformat(start_date).date()
-        end_date = (start_dt + timedelta(days=30)).isoformat()
-
-    if not total_budget:
-        total_budget = 10000.0
-
-    if not product_ids:
-        product_ids = []
-
-    # Create response
-    response = CreateMediaBuyResponse(
-        media_buy_id=media_buy_id,
-        status="created",
-        message=f"Media buy {media_buy_id} created successfully",
-        packages=[],  # Empty for now
-        buyer_ref=buyer_ref,
+    # Call the shared implementation
+    return _create_media_buy_impl(
+        promoted_offering=promoted_offering,
         po_number=po_number,
-        flight_start_date=start_date,
-        flight_end_date=end_date,
+        buyer_ref=buyer_ref,
+        packages=packages,
+        start_time=start_time,
+        end_time=end_time,
+        budget=budget,
+        product_ids=product_ids,
+        start_date=start_date,
+        end_date=end_date,
         total_budget=total_budget,
+        targeting_overlay=targeting_overlay,
+        pacing=pacing,
+        daily_budget=daily_budget,
+        creatives=creatives,
+        required_axe_signals=required_axe_signals,
+        enable_creative_macro=enable_creative_macro,
+        strategy_id=strategy_id,
+        context=context,
     )
-
-    return response
 
 
 def sync_creatives_raw(
@@ -348,7 +293,7 @@ def sync_creatives_raw(
 ) -> SyncCreativesResponse:
     """Sync creative assets to the centralized creative library (AdCP spec endpoint).
 
-    Raw function without @mcp.tool decorator for A2A server use.
+    Delegates to the shared implementation in main.py.
 
     Args:
         creatives: List of creative asset objects
@@ -361,52 +306,16 @@ def sync_creatives_raw(
     Returns:
         SyncCreativesResponse with synced creatives and assignments
     """
-    # Use ToolContext if available
-    if hasattr(context, "tenant_id") and hasattr(context, "principal_id"):
-        tenant_id = context.tenant_id
-        principal_id = context.principal_id
-    else:
-        # Legacy path - extract from FastMCP Context
-        principal_id = get_principal_from_context(context)
-        if not principal_id:
-            raise ToolError("Authentication required for creative sync", "AUTH_REQUIRED")
+    # Import here to avoid circular imports
+    from src.core.main import _sync_creatives_impl
 
-        tenant = get_current_tenant()
-        if not tenant:
-            raise ToolError("No tenant configuration found", "NO_TENANT")
-        tenant_id = tenant["tenant_id"]
-
-    synced_creatives = []
-    failed_creatives = []
-    assignments = []
-
-    # Process each creative
-    for creative_data in creatives:
-        try:
-            # Generate creative ID if not provided
-            if "creative_id" not in creative_data:
-                creative_data["creative_id"] = f"cr_{uuid.uuid4().hex[:8]}"
-
-            # Set default status
-            if "status" not in creative_data:
-                creative_data["status"] = "pending_review"
-
-            # Add to synced list
-            from src.core.schemas import Creative
-
-            creative = Creative(**creative_data)
-            synced_creatives.append(creative)
-
-        except Exception as e:
-            failed_creatives.append({"creative_data": creative_data, "error": str(e)})
-
-    message = f"Synced {len(synced_creatives)} creatives, {len(failed_creatives)} failed"
-
-    return SyncCreativesResponse(
-        synced_creatives=synced_creatives,
-        failed_creatives=failed_creatives,
-        assignments=assignments,
-        message=message,
+    return _sync_creatives_impl(
+        creatives=creatives,
+        media_buy_id=media_buy_id,
+        buyer_ref=buyer_ref,
+        assign_to_packages=assign_to_packages,
+        upsert=upsert,
+        context=context,
     )
 
 
@@ -427,12 +336,12 @@ def list_creatives_raw(
 ) -> ListCreativesResponse:
     """List creative assets with filtering and pagination (AdCP spec endpoint).
 
-    Raw function without @mcp.tool decorator for A2A server use.
+    Delegates to the shared implementation in main.py.
 
     Args:
         media_buy_id: Filter by media buy ID (optional)
         buyer_ref: Filter by buyer reference (optional)
-        status: Filter by status (pending_review, approved, rejected, etc.) (optional)
+        status: Filter by status (optional)
         format: Filter by creative format (optional)
         tags: Filter by creative group tags (optional)
         created_after: Filter creatives created after this date (ISO format) (optional)
@@ -440,136 +349,50 @@ def list_creatives_raw(
         search: Search in creative name or description (optional)
         page: Page number for pagination (default: 1)
         limit: Number of results per page (default: 50, max: 1000)
-        sort_by: Sort field (created_date, name, status) (default: created_date)
-        sort_order: Sort order (asc, desc) (default: desc)
+        sort_by: Sort field (default: created_date)
+        sort_order: Sort order (default: desc)
         context: FastMCP context (automatically provided)
 
     Returns:
         ListCreativesResponse with filtered creative assets and pagination info
     """
-    # Use ToolContext if available
-    if hasattr(context, "tenant_id") and hasattr(context, "principal_id"):
-        tenant_id = context.tenant_id
-        principal_id = context.principal_id
-    else:
-        # Legacy path - extract from FastMCP Context
-        principal_id = get_principal_from_context(context)
-        if not principal_id:
-            raise ToolError("Authentication required for listing creatives", "AUTH_REQUIRED")
+    # Import here to avoid circular imports
+    from src.core.main import _list_creatives_impl
 
-        tenant = get_current_tenant()
-        if not tenant:
-            raise ToolError("No tenant configuration found", "NO_TENANT")
-        tenant_id = tenant["tenant_id"]
-
-    # For now, return empty list - full implementation would query database
-    creatives = []
-    total_count = 0
-    has_more = False
-
-    message = f"Found {total_count} creatives matching your criteria"
-
-    return ListCreativesResponse(
-        creatives=creatives,
-        total_count=total_count,
+    return _list_creatives_impl(
+        media_buy_id=media_buy_id,
+        buyer_ref=buyer_ref,
+        status=status,
+        format=format,
+        tags=tags,
+        created_after=created_after,
+        created_before=created_before,
+        search=search,
         page=page,
         limit=limit,
-        has_more=has_more,
-        message=message,
+        sort_by=sort_by,
+        sort_order=sort_order,
+        context=context,
     )
 
 
-def list_creative_formats_raw(context: Context = None) -> ListCreativeFormatsResponse:
+def list_creative_formats_raw(
+    req: ListCreativeFormatsRequest | None = None, context: Context = None
+) -> ListCreativeFormatsResponse:
     """List all available creative formats (raw function for A2A server use).
 
-    Returns comprehensive standard formats from AdCP registry plus any custom tenant formats.
-    Prioritizes database formats over registry formats when format_id conflicts exist.
+    Delegates to shared implementation in main.py.
+
+    Args:
+        req: Optional request with filter parameters
+        context: FastMCP context
+
+    Returns:
+        ListCreativeFormatsResponse with all available formats
     """
-    from src.core.audit_logger import get_audit_logger
+    from src.core.main import _list_creative_formats_impl
 
-    start_time = time.time()
-
-    # For discovery endpoints, authentication is optional
-    principal_id = get_principal_from_context(context)  # Returns None if no auth
-
-    # Get tenant information
-    tenant = get_current_tenant()
-    if not tenant:
-        raise ToolError("No tenant context available")
-
-    formats = []
-    format_ids_seen = set()
-
-    # First, query database for tenant-specific and custom formats
-    with get_db_session() as session:
-        from src.core.database.models import CreativeFormat
-        from src.core.schemas import AssetRequirement, Format
-
-        # Get formats for this tenant (or global formats)
-        db_formats = (
-            session.query(CreativeFormat)
-            .filter(
-                (CreativeFormat.tenant_id == tenant["tenant_id"])
-                | (CreativeFormat.tenant_id.is_(None))  # Global formats
-            )
-            .all()
-        )
-
-        for db_format in db_formats:
-            # Convert database model to schema format
-            assets_required = []
-            if db_format.specs and isinstance(db_format.specs, dict):
-                # Convert old specs format to new assets_required format
-                if "assets" in db_format.specs:
-                    for asset in db_format.specs["assets"]:
-                        assets_required.append(
-                            AssetRequirement(
-                                asset_type=asset.get("asset_type", "unknown"), quantity=1, requirements=asset
-                            )
-                        )
-
-            format_obj = Format(
-                format_id=db_format.format_id,
-                name=db_format.name,
-                type=db_format.type,
-                is_standard=db_format.is_standard or False,
-                iab_specification=getattr(db_format, "iab_specification", None),
-                requirements=db_format.specs or {},
-                assets_required=assets_required if assets_required else None,
-            )
-            formats.append(format_obj)
-            format_ids_seen.add(db_format.format_id)
-
-    # Add standard formats from FORMAT_REGISTRY that aren't already in database
-    from src.core.schemas import FORMAT_REGISTRY
-
-    for format_id, standard_format in FORMAT_REGISTRY.items():
-        if format_id not in format_ids_seen:
-            formats.append(standard_format)
-            format_ids_seen.add(format_id)
-
-    # Sort formats by type and name for consistent ordering
-    formats.sort(key=lambda f: (f.type, f.name))
-
-    # Log the operation
-    audit_logger = get_audit_logger("AdCP", tenant["tenant_id"])
-    audit_logger.log_operation(
-        operation="list_creative_formats",
-        principal_name=principal_id or "anonymous",
-        principal_id=principal_id or "anonymous",
-        adapter_id="N/A",
-        success=True,
-        details={
-            "format_count": len(formats),
-            "execution_time_ms": round((time.time() - start_time) * 1000, 2),
-        },
-        tenant_id=tenant["tenant_id"],
-    )
-
-    return ListCreativeFormatsResponse(
-        formats=formats,
-        message=f"Found {len(formats)} creative formats available for this publisher",
-    )
+    return _list_creative_formats_impl(req, context)
 
 
 def list_authorized_properties_raw(
@@ -577,137 +400,127 @@ def list_authorized_properties_raw(
 ) -> ListAuthorizedPropertiesResponse:
     """List all properties this agent is authorized to represent (raw function for A2A server use).
 
-    Discovers advertising properties (websites, apps, podcasts, etc.) that this
-    sales agent is authorized to sell advertising on behalf of publishers.
+    Delegates to shared implementation in main.py.
     """
-    from src.core.testing_hooks import apply_testing_hooks, get_testing_context
+    from src.core.main import _list_authorized_properties_impl
 
-    start_time = time.time()
-
-    # Handle missing request object (allows empty calls)
-    if req is None:
-        req = ListAuthorizedPropertiesRequest()
-
-    # Get tenant and principal from context
-    tenant = get_current_tenant()
-    if not tenant:
-        raise ToolError("Could not resolve tenant from context")
-
-    tenant_id = tenant["tenant_id"]
-    principal_id = get_principal_from_context(context)
-
-    # Apply testing hooks
-    headers = context.meta.get("headers", {}) if context and context.meta else {}
-    testing_context = get_testing_context(headers)
-    campaign_info = {"endpoint": "list_authorized_properties", "tenant_id": tenant_id}
-    apply_testing_hooks(testing_context, campaign_info, headers)
-
-    try:
-        with get_db_session() as session:
-            from src.core.database.models import AuthorizedProperty, PropertyTag
-            from src.core.schemas import AuthorizedPropertyResponse
-
-            # Query authorized properties for this tenant
-            query = session.query(AuthorizedProperty).filter(AuthorizedProperty.tenant_id == tenant_id)
-
-            # Apply tag filters if provided
-            if req.tags:
-                # Join with PropertyTag to filter by tags
-                query = query.join(PropertyTag, AuthorizedProperty.tags.any(PropertyTag.tag_id.in_(req.tags)))
-
-            # Execute query
-            db_properties = query.all()
-
-            # Convert to response format
-            properties = []
-            for prop in db_properties:
-                # Convert tags to list of tag IDs
-                tag_ids = [tag.tag_id for tag in prop.tags] if prop.tags else []
-
-                property_response = AuthorizedPropertyResponse(
-                    property_id=prop.property_id,
-                    property_type=prop.property_type,
-                    name=prop.name,
-                    identifiers=prop.identifiers or {},
-                    tags=tag_ids,
-                    publisher_domain=prop.publisher_domain,
-                    verification_status=prop.verification_status,
-                    verification_checked_at=prop.verification_checked_at,
-                    verification_error=prop.verification_error,
-                )
-                properties.append(property_response)
-
-            # Get all available tags for this tenant
-            all_tags = session.query(PropertyTag).filter(PropertyTag.tenant_id == tenant_id).all()
-            tag_definitions = {tag.tag_id: {"name": tag.name, "description": tag.description} for tag in all_tags}
-
-            return ListAuthorizedPropertiesResponse(
-                properties=properties,
-                tag_definitions=tag_definitions,
-                message=f"Found {len(properties)} authorized properties",
-            )
-
-    except Exception as e:
-        logger.error(f"Error listing authorized properties: {e}")
-        raise ToolError(f"Failed to list authorized properties: {str(e)}")
+    return _list_authorized_properties_impl(req, context)
 
 
-def update_media_buy_raw(media_buy_id: str, updates: dict, context: Context = None) -> dict:
+def update_media_buy_raw(
+    media_buy_id: str,
+    buyer_ref: str = None,
+    active: bool = None,
+    flight_start_date: str = None,
+    flight_end_date: str = None,
+    budget: float = None,
+    currency: str = None,
+    targeting_overlay: dict = None,
+    start_time: str = None,
+    end_time: str = None,
+    pacing: str = None,
+    daily_budget: float = None,
+    packages: list = None,
+    creatives: list = None,
+    context: Context = None,
+):
     """Update an existing media buy (raw function for A2A server use).
+
+    Delegates to the shared implementation in main.py.
 
     Args:
         media_buy_id: The ID of the media buy to update
-        updates: Dictionary of fields to update
+        buyer_ref: Update buyer reference
+        active: True to activate, False to pause
+        flight_start_date: Change start date
+        flight_end_date: Change end date
+        budget: Update total budget
+        currency: Update currency
+        targeting_overlay: Update targeting
+        start_time: Update start datetime
+        end_time: Update end datetime
+        pacing: Pacing strategy
+        daily_budget: Daily budget cap
+        packages: Package updates
+        creatives: Creative updates
         context: Context for authentication
 
     Returns:
-        Dictionary with update results
+        UpdateMediaBuyResponse
     """
-    # TODO: Implement update_media_buy_raw function
-    # This is a placeholder that returns a not-implemented response
-    return {
-        "success": False,
-        "message": "update_media_buy_raw not yet implemented",
-        "media_buy_id": media_buy_id,
-        "updates_requested": list(updates.keys()) if updates else [],
-    }
+    # Import here to avoid circular imports
+    from src.core.main import _update_media_buy_impl
+
+    return _update_media_buy_impl(
+        media_buy_id=media_buy_id,
+        buyer_ref=buyer_ref,
+        active=active,
+        flight_start_date=flight_start_date,
+        flight_end_date=flight_end_date,
+        budget=budget,
+        currency=currency,
+        targeting_overlay=targeting_overlay,
+        start_time=start_time,
+        end_time=end_time,
+        pacing=pacing,
+        daily_budget=daily_budget,
+        packages=packages,
+        creatives=creatives,
+        context=context,
+    )
 
 
-def get_media_buy_delivery_raw(media_buy_id: str, context: Context = None) -> dict:
-    """Get delivery metrics for a media buy (raw function for A2A server use).
+def get_media_buy_delivery_raw(
+    media_buy_ids: list[str] = None,
+    buyer_refs: list[str] = None,
+    status_filter: str = None,
+    start_date: str = None,
+    end_date: str = None,
+    context: Context = None,
+) -> GetMediaBuyDeliveryResponse:
+    """Get delivery metrics for media buys (raw function for A2A server use).
 
     Args:
-        media_buy_id: The ID of the media buy to get delivery for
+        media_buy_ids: Array of publisher media buy IDs to get delivery data for (optional)
+        buyer_refs: Array of buyer reference IDs to get delivery data for (optional)
+        status_filter: Filter by status - single status or array (optional)
+        start_date: Start date for reporting period in YYYY-MM-DD format (optional)
+        end_date: End date for reporting period in YYYY-MM-DD format (optional)
         context: Context for authentication
 
     Returns:
-        Dictionary with delivery metrics
+        GetMediaBuyDeliveryResponse with delivery metrics
     """
-    # TODO: Implement get_media_buy_delivery_raw function
-    # This is a placeholder that returns a not-implemented response
-    return {
-        "success": False,
-        "message": "get_media_buy_delivery_raw not yet implemented",
-        "media_buy_id": media_buy_id,
-    }
+    # Import here to avoid circular imports
+    from src.core.main import _get_media_buy_delivery_impl
+
+    # Create request object
+    req = GetMediaBuyDeliveryRequest(
+        media_buy_ids=media_buy_ids,
+        buyer_refs=buyer_refs,
+        status_filter=status_filter,
+        start_date=start_date,
+        end_date=end_date,
+    )
+
+    # Call the implementation
+    return _get_media_buy_delivery_impl(req, context)
 
 
-def update_performance_index_raw(media_buy_id: str, performance_data: dict, context: Context = None) -> dict:
+def update_performance_index_raw(media_buy_id: str, performance_data: list[dict[str, Any]], context: Context = None):
     """Update performance data for a media buy (raw function for A2A server use).
+
+    Delegates to the shared implementation in main.py.
 
     Args:
         media_buy_id: The ID of the media buy to update performance for
-        performance_data: Performance metrics to update
+        performance_data: List of performance data objects
         context: Context for authentication
 
     Returns:
-        Dictionary with update results
+        UpdatePerformanceIndexResponse
     """
-    # TODO: Implement update_performance_index_raw function
-    # This is a placeholder that returns a not-implemented response
-    return {
-        "success": False,
-        "message": "update_performance_index_raw not yet implemented",
-        "media_buy_id": media_buy_id,
-        "performance_data_keys": list(performance_data.keys()) if performance_data else [],
-    }
+    # Import here to avoid circular imports
+    from src.core.main import _update_performance_index_impl
+
+    return _update_performance_index_impl(media_buy_id, performance_data, context)

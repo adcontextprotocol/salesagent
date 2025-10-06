@@ -94,7 +94,19 @@ def generate_tenant_landing_page(tenant: dict, virtual_host: str | None = None) 
     mcp_url = f"{base_url}/mcp"
     a2a_url = f"{base_url}/a2a"
     agent_card_url = f"{base_url}/.well-known/agent.json"
-    admin_url = f"{base_url}/admin/"
+
+    # Admin URL: For external domains, use subdomain; otherwise use current domain
+    is_external_domain = virtual_host and not virtual_host.endswith(".sales-agent.scope3.com")
+    if is_external_domain and tenant_subdomain:
+        # External domain: Point admin to tenant subdomain
+        if os.getenv("PRODUCTION") == "true":
+            admin_url = f"https://{tenant_subdomain}.sales-agent.scope3.com/admin/"
+        else:
+            # Local dev: Use localhost with subdomain simulation
+            admin_url = f"http://{tenant_subdomain}.localhost:8001/admin/"
+    else:
+        # Same domain or subdomain: Use base_url
+        admin_url = f"{base_url}/admin/"
 
     # Prepare template context
     template_context = {

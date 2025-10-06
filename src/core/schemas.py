@@ -943,6 +943,14 @@ class Product(BaseModel):
         default=None,
         description="Ad server-specific configuration for implementing this product (placements, line item settings, etc.)",
     )
+    # AdCP PR #79 fields - populated dynamically from historical reporting data
+    # These are NOT stored in database, calculated on-demand from product_performance_metrics
+    currency: str = Field(default="USD", description="ISO 4217 currency code for pricing")
+    estimated_exposures: int | None = Field(None, description="Estimated impressions (calculated dynamically)", gt=0)
+    floor_cpm: float | None = Field(None, description="Minimum acceptable CPM (calculated dynamically)", gt=0)
+    recommended_cpm: float | None = Field(
+        None, description="Suggested CPM to meet exposure goals (calculated dynamically)", gt=0
+    )
 
     @property
     def format_ids(self) -> list[str]:
@@ -962,11 +970,9 @@ class Product(BaseModel):
         if "formats" in data:
             data["format_ids"] = data.pop("formats")
 
-        # Remove null fields per AdCP spec but keep core pricing fields
-        # Core fields that should be present even if None for AdCP compliance
+        # Remove null fields per AdCP spec
+        # Only truly required fields should always be present
         core_fields = {
-            "cpm",
-            "min_spend",
             "product_id",
             "name",
             "description",
@@ -974,6 +980,7 @@ class Product(BaseModel):
             "delivery_type",
             "is_fixed_price",
             "is_custom",
+            "currency",  # PR #79: Always include currency
         }
 
         adcp_data = {}
@@ -1061,6 +1068,47 @@ class UpdatePerformanceIndexResponse(BaseModel):
 
 
 # --- Discovery ---
+class FormatType(str, Enum):
+    """Valid format types per AdCP spec."""
+
+    VIDEO = "video"
+    DISPLAY = "display"
+    AUDIO = "audio"
+    # Note: "native" is not in cached AdCP schema v1.6.0, only video/display/audio
+
+
+class DeliveryType(str, Enum):
+    """Valid delivery types per AdCP spec."""
+
+    GUARANTEED = "guaranteed"
+    NON_GUARANTEED = "non_guaranteed"
+
+
+class ProductFilters(BaseModel):
+    """Structured filters for product discovery per AdCP spec."""
+
+    delivery_type: DeliveryType | None = Field(
+        None,
+        description="Filter by delivery type",
+    )
+    is_fixed_price: bool | None = Field(
+        None,
+        description="Filter for fixed price vs auction products",
+    )
+    format_types: list[FormatType] | None = Field(
+        None,
+        description="Filter by format types",
+    )
+    format_ids: list[str] | None = Field(
+        None,
+        description="Filter by specific format IDs",
+    )
+    standard_formats_only: bool | None = Field(
+        None,
+        description="Only return products accepting IAB standard formats",
+    )
+
+
 class GetProductsRequest(BaseModel):
     brief: str = Field(
         "",
@@ -1070,9 +1118,23 @@ class GetProductsRequest(BaseModel):
         ...,
         description="Description of the advertiser and the product or service being promoted (REQUIRED per AdCP spec)",
     )
+    adcp_version: str = Field(
+        "1.0.0",
+        description="AdCP schema version for this request",
+        pattern=r"^\d+\.\d+\.\d+$",
+    )
+    filters: ProductFilters | None = Field(
+        None,
+        description="Structured filters for product discovery",
+    )
     strategy_id: str | None = Field(
         None,
         description="Optional strategy ID for linking operations and enabling simulation/testing modes",
+    )
+    min_exposures: int | None = Field(
+        None,
+        description="Minimum number of impressions needed for measurement validity (AdCP PR #79)",
+        gt=0,
     )
 
 
@@ -1091,6 +1153,9 @@ class GetProductsResponse(BaseModel):
     automatically by the MCP wrapper at the protocol layer.
     """
 
+    adcp_version: str = Field(
+        default="1.0.0", pattern=r"^\d+\.\d+\.\d+$", description="AdCP schema version used for this response"
+    )
     products: list[Product]
     message: str | None = None  # Optional human-readable message
     errors: list[Error] | None = None  # Optional error reporting
@@ -1100,6 +1165,9 @@ class GetProductsResponse(BaseModel):
         """Override to ensure products use AdCP-compliant serialization."""
         # Get basic structure
         data = {}
+
+        # Add required adcp_version field
+        data["adcp_version"] = self.adcp_version
 
         # Serialize products using their custom model_dump method
         if self.products:
@@ -1121,6 +1189,9 @@ class GetProductsResponse(BaseModel):
         """Override to ensure products use internal field names for reconstruction."""
         data = {}
 
+        # Add required adcp_version field
+        data["adcp_version"] = self.adcp_version
+
         # Serialize products using their internal model_dump method
         if self.products:
             data["products"] = [product.model_dump_internal(**kwargs) for product in self.products]
@@ -1134,6 +1205,23 @@ class GetProductsResponse(BaseModel):
             data["errors"] = self.errors
 
         return data
+
+
+class ListCreativeFormatsRequest(BaseModel):
+    """Request for list_creative_formats tool.
+
+    All parameters are optional filters per AdCP spec.
+    """
+
+    adcp_version: str = Field(
+        default="1.0.0",
+        pattern=r"^\d+\.\d+\.\d+$",
+        description="AdCP schema version for this request (e.g., '1.0.0')",
+    )
+    type: str | None = Field(None, description="Filter by format type (audio, video, display)")
+    standard_only: bool | None = Field(None, description="Only return IAB standard formats")
+    category: str | None = Field(None, description="Filter by format category (standard, custom)")
+    format_ids: list[str] | None = Field(None, description="Filter by specific format IDs")
 
 
 class ListCreativeFormatsResponse(BaseModel):
@@ -1463,6 +1551,18 @@ class CreativeAssignment(BaseModel):
 
     is_active: bool = True
 
+    @model_validator(mode="after")
+    def validate_timezone_aware(self):
+        """Validate that datetime override fields are timezone-aware.
+
+        AdCP spec requires ISO 8601 datetime strings with timezone information.
+        """
+        if self.override_start_date and self.override_start_date.tzinfo is None:
+            raise ValueError("override_start_date must be timezone-aware (ISO 8601 with timezone)")
+        if self.override_end_date and self.override_end_date.tzinfo is None:
+            raise ValueError("override_end_date must be timezone-aware (ISO 8601 with timezone)")
+        return self
+
 
 class AddCreativeAssetsRequest(BaseModel):
     """Request to add creative assets to a media buy (AdCP spec compliant)."""
@@ -1504,12 +1604,23 @@ class SyncCreativesRequest(BaseModel):
     assign_to_packages: list[str] | None = Field(None, description="Package IDs to assign creatives to")
     upsert: bool = Field(True, description="Whether to update existing creatives or create new ones")
 
-    @model_validator(mode="before")
-    def validate_media_buy_reference(cls, values):
-        """Ensure at least one of media_buy_id or buyer_ref is provided."""
-        if not values.get("media_buy_id") and not values.get("buyer_ref"):
-            raise ValueError("Either media_buy_id or buyer_ref must be provided")
-        return values
+    # AdCP spec fields
+    patch: bool = Field(
+        False, description="When true, only provided fields are updated. When false, entire creative is replaced."
+    )
+    assignments: dict[str, list[str]] | None = Field(
+        None, description="Optional bulk assignment of creatives to packages"
+    )
+    dry_run: bool = Field(False, description="Preview changes without applying them")
+    delete_missing: bool = Field(False, description="Delete creatives not present in the request (use with caution)")
+    validation_mode: Literal["strict", "lenient"] = Field(
+        "strict",
+        description="Validation strictness. 'strict' fails entire sync on any error. 'lenient' processes valid creatives.",
+    )
+
+    # Note: media_buy_id and buyer_ref are OPTIONAL per AdCP spec
+    # Creatives can be synced to a central library and used across multiple media buys
+    # If provided, they associate creatives with a specific media buy
 
 
 class SyncCreativesResponse(BaseModel):
@@ -1534,10 +1645,31 @@ class ListCreativesRequest(BaseModel):
     created_after: datetime | None = Field(None, description="Filter by creation date")
     created_before: datetime | None = Field(None, description="Filter by creation date")
     search: str | None = Field(None, description="Search in creative names and descriptions")
+
+    # AdCP spec fields
+    filters: dict[str, Any] | None = Field(None, description="Advanced filtering options")
+    pagination: dict[str, Any] | None = Field(None, description="Pagination parameters (page, limit)")
+    sort: dict[str, Any] | None = Field(None, description="Sort configuration (field, direction)")
+    fields: list[str] | None = Field(None, description="Specific fields to return")
+    include_performance: bool = Field(False, description="Include performance metrics")
+    include_assignments: bool = Field(False, description="Include package assignments")
+    include_sub_assets: bool = Field(False, description="Include sub-assets (e.g., video thumbnails)")
     page: int = Field(1, ge=1, description="Page number for pagination")
     limit: int = Field(50, ge=1, le=1000, description="Number of results per page")
     sort_by: str | None = Field("created_date", description="Sort field (created_date, name, status)")
     sort_order: Literal["asc", "desc"] = Field("desc", description="Sort order")
+
+    @model_validator(mode="after")
+    def validate_timezone_aware(self):
+        """Validate that datetime fields are timezone-aware.
+
+        AdCP spec requires ISO 8601 datetime strings with timezone information.
+        """
+        if self.created_after and self.created_after.tzinfo is None:
+            raise ValueError("created_after must be timezone-aware (ISO 8601 with timezone)")
+        if self.created_before and self.created_before.tzinfo is None:
+            raise ValueError("created_before must be timezone-aware (ISO 8601 with timezone)")
+        return self
 
 
 class ListCreativesResponse(BaseModel):
@@ -1600,6 +1732,18 @@ class AssignCreativeRequest(BaseModel):
     override_start_date: datetime | None = None
     override_end_date: datetime | None = None
     targeting_overlay: Targeting | None = None
+
+    @model_validator(mode="after")
+    def validate_timezone_aware(self):
+        """Validate that datetime override fields are timezone-aware.
+
+        AdCP spec requires ISO 8601 datetime strings with timezone information.
+        """
+        if self.override_start_date and self.override_start_date.tzinfo is None:
+            raise ValueError("override_start_date must be timezone-aware (ISO 8601 with timezone)")
+        if self.override_end_date and self.override_end_date.tzinfo is None:
+            raise ValueError("override_end_date must be timezone-aware (ISO 8601 with timezone)")
+        return self
 
 
 class AssignCreativeResponse(BaseModel):
@@ -1673,6 +1817,7 @@ class Package(BaseModel):
     budget: Budget | None = Field(None, description="Package-specific budget")
     impressions: float | None = Field(None, description="Impression goal for this package", gt=-1)
     targeting_overlay: Targeting | None = Field(None, description="Package-specific targeting")
+    creative_ids: list[str] | None = Field(None, description="Creative IDs to assign to this package")
     creative_assignments: list[dict[str, Any]] | None = Field(
         None, description="Creative assets assigned to this package"
     )
@@ -1713,6 +1858,11 @@ class Package(BaseModel):
 
 # --- Media Buy Lifecycle ---
 class CreateMediaBuyRequest(BaseModel):
+    # Required AdCP fields
+    promoted_offering: str = Field(
+        ..., description="Description of advertiser and what is being promoted (REQUIRED per AdCP spec)"
+    )
+
     # New AdCP v2.4 fields (optional for backward compatibility)
     buyer_ref: str | None = Field(None, description="Buyer reference for tracking")
     packages: list[Package] | None = Field(None, description="Array of packages with products and budgets")
@@ -1729,16 +1879,29 @@ class CreateMediaBuyRequest(BaseModel):
     # Common fields
     campaign_name: str | None = Field(None, description="Campaign name for display purposes")
     targeting_overlay: Targeting | None = None
-    po_number: str = Field(..., description="Purchase order number for tracking (REQUIRED per AdCP spec)")
+    po_number: str | None = Field(None, description="Purchase order number for tracking")
     pacing: Literal["even", "asap", "daily_budget"] = "even"  # Legacy field
     daily_budget: float | None = None  # Legacy field
     creatives: list[Creative] | None = None
+    reporting_webhook: dict[str, Any] | None = Field(
+        None, description="Optional webhook configuration for automated reporting delivery"
+    )
     # AXE signal requirements
     required_axe_signals: list[str] | None = None  # Required targeting signals
     enable_creative_macro: bool | None = False  # Enable AXE to provide creative_macro signal
     strategy_id: str | None = Field(
         None,
         description="Optional strategy ID for linking operations and enabling simulation/testing modes",
+    )
+
+    # Webhook/callback support for MCP protocol (AdCP spec naming)
+    webhook_url: str | None = Field(
+        None,
+        description="Optional webhook URL for status notifications (MCP protocol). For A2A, use A2A push notification methods instead.",
+    )
+    webhook_auth_token: str | None = Field(
+        None,
+        description="Optional authentication token for webhook callbacks (MCP protocol). Used as Bearer token in Authorization header.",
     )
 
     @model_validator(mode="before")
@@ -1771,21 +1934,25 @@ class CreateMediaBuyRequest(BaseModel):
                 )
             values["packages"] = packages
 
-        # Convert dates to datetimes
+        # Convert dates to datetimes with defensive handling
+        # Handle start_date -> start_time conversion (only if start_time not provided)
         if "start_date" in values and not values.get("start_time"):
             start_date = values["start_date"]
-            if isinstance(start_date, str):
-                start_date = date.fromisoformat(start_date)
-            values["start_time"] = datetime.combine(start_date, time.min, tzinfo=UTC)
+            if start_date is not None:
+                if isinstance(start_date, str):
+                    start_date = date.fromisoformat(start_date)
+                values["start_time"] = datetime.combine(start_date, time.min, tzinfo=UTC)
 
+        # Handle end_date -> end_time conversion (only if end_time not provided)
         if "end_date" in values and not values.get("end_time"):
             end_date = values["end_date"]
-            if isinstance(end_date, str):
-                end_date = date.fromisoformat(end_date)
-            values["end_time"] = datetime.combine(end_date, time.max, tzinfo=UTC)
+            if end_date is not None:
+                if isinstance(end_date, str):
+                    end_date = date.fromisoformat(end_date)
+                values["end_time"] = datetime.combine(end_date, time.max, tzinfo=UTC)
 
-        # Convert total_budget to Budget object
-        if "total_budget" in values and not values.get("budget"):
+        # Convert total_budget to Budget object (only if not None)
+        if "total_budget" in values and values["total_budget"] is not None and not values.get("budget"):
             total_budget = values["total_budget"]
             pacing = values.get("pacing", "even")
             daily_cap = values.get("daily_budget")
@@ -1803,6 +1970,19 @@ class CreateMediaBuyRequest(BaseModel):
 
         return values
 
+    @model_validator(mode="after")
+    def validate_timezone_aware(self):
+        """Validate that datetime fields are timezone-aware.
+
+        AdCP spec requires ISO 8601 datetime strings with timezone information.
+        This validator ensures all datetime fields have timezone info.
+        """
+        if self.start_time and self.start_time.tzinfo is None:
+            raise ValueError("start_time must be timezone-aware (ISO 8601 with timezone)")
+        if self.end_time and self.end_time.tzinfo is None:
+            raise ValueError("end_time must be timezone-aware (ISO 8601 with timezone)")
+        return self
+
     # Backward compatibility properties for old field names
     @property
     def flight_start_date(self) -> date:
@@ -1816,6 +1996,24 @@ class CreateMediaBuyRequest(BaseModel):
 
     def get_total_budget(self) -> float:
         """Get total budget, handling both new and legacy formats."""
+        # AdCP v2.4: Sum budgets from all packages
+        if self.packages:
+            total = 0.0
+            for package in self.packages:
+                # Handle both Package objects and dicts
+                if isinstance(package, dict):
+                    budget = package.get("budget")
+                    if budget:
+                        # Budget might be a dict or Budget object
+                        total += budget.get("total", 0.0) if isinstance(budget, dict) else budget.total
+                else:
+                    # Package object
+                    if package.budget:
+                        total += package.budget.total
+            if total > 0:
+                return total
+
+        # Legacy format: top-level budget
         if self.budget:
             return self.budget.total
         return self.total_budget or 0.0
@@ -1825,7 +2023,8 @@ class CreateMediaBuyRequest(BaseModel):
         if self.packages:
             product_ids = []
             for package in self.packages:
-                product_ids.extend(package.products)
+                if package.products:  # Handle None case
+                    product_ids.extend(package.products)
             return product_ids
         return self.product_ids or []
 
@@ -2144,6 +2343,7 @@ class UpdateMediaBuyRequest(BaseModel):
     end_time: datetime | None = None  # AdCP uses datetime, not date
     budget: Budget | None = None  # Budget object contains currency/pacing
     packages: list[AdCPPackageUpdate] | None = None
+    today: date | None = Field(None, exclude=True, description="For testing/simulation only - not part of AdCP spec")
 
     @model_validator(mode="after")
     def validate_oneOf_constraint(self):
@@ -2152,6 +2352,19 @@ class UpdateMediaBuyRequest(BaseModel):
             raise ValueError("Either media_buy_id or buyer_ref must be provided")
         if self.media_buy_id and self.buyer_ref:
             raise ValueError("Cannot provide both media_buy_id and buyer_ref (AdCP oneOf constraint)")
+        return self
+
+    @model_validator(mode="after")
+    def validate_timezone_aware(self):
+        """Validate that datetime fields are timezone-aware.
+
+        AdCP spec requires ISO 8601 datetime strings with timezone information.
+        This validator ensures all datetime fields have timezone info.
+        """
+        if self.start_time and self.start_time.tzinfo is None:
+            raise ValueError("start_time must be timezone-aware (ISO 8601 with timezone)")
+        if self.end_time and self.end_time.tzinfo is None:
+            raise ValueError("end_time must be timezone-aware (ISO 8601 with timezone)")
         return self
 
     # Backward compatibility properties (deprecated)

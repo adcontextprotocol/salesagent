@@ -8,7 +8,7 @@ These tests verify that:
 """
 
 import warnings
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 
 import pytest
@@ -187,6 +187,72 @@ class TestAdCPContract:
         assert request.brief is not None
         assert request.promoted_offering is not None
 
+    def test_product_pr79_fields(self):
+        """Test Product schema compliance with AdCP PR #79 (filtering and pricing enhancements).
+
+        PR #79 adds:
+        - min_exposures filter in get_products request
+        - currency field (ISO 4217)
+        - estimated_exposures for guaranteed products
+        - floor_cpm and recommended_cpm for non-guaranteed products
+        """
+        # Test guaranteed product with estimated_exposures
+        guaranteed_product = ProductSchema(
+            product_id="test_guaranteed",
+            name="Guaranteed Product",
+            description="Test product with exposure estimates",
+            formats=["display_300x250"],
+            delivery_type="guaranteed",
+            is_fixed_price=True,
+            cpm=15.0,
+            currency="USD",
+            estimated_exposures=50000,
+        )
+
+        # Verify AdCP-compliant response includes PR #79 fields
+        adcp_response = guaranteed_product.model_dump()
+        assert "currency" in adcp_response
+        assert adcp_response["currency"] == "USD"
+        assert "estimated_exposures" in adcp_response
+        assert adcp_response["estimated_exposures"] == 50000
+
+        # Test non-guaranteed product with floor_cpm and recommended_cpm
+        non_guaranteed_product = ProductSchema(
+            product_id="test_non_guaranteed",
+            name="Non-Guaranteed Product",
+            description="Test product with CPM guidance",
+            formats=["video_15s"],
+            delivery_type="non_guaranteed",
+            is_fixed_price=False,
+            currency="EUR",
+            floor_cpm=5.0,
+            recommended_cpm=8.5,
+        )
+
+        adcp_response = non_guaranteed_product.model_dump()
+        assert adcp_response["currency"] == "EUR"
+        assert "floor_cpm" in adcp_response
+        assert adcp_response["floor_cpm"] == 5.0
+        assert "recommended_cpm" in adcp_response
+        assert adcp_response["recommended_cpm"] == 8.5
+
+        # Test min_exposures in GetProductsRequest
+        request = GetProductsRequest(
+            brief="Looking for high-volume campaigns",
+            promoted_offering="Nike Air Max 2024",
+            min_exposures=10000,
+        )
+
+        assert request.min_exposures == 10000
+
+        # Test validation: min_exposures must be positive
+        with pytest.raises((ValueError, Exception)):  # Pydantic validation error
+            GetProductsRequest(
+                brief="test",
+                promoted_offering="test",
+                min_exposures=-1000,  # Invalid: must be > 0
+            )
+
         # Should fail without promoted_offering (AdCP requirement)
         with pytest.raises(ValueError):
             GetProductsRequest(brief="Just a brief")
@@ -197,6 +263,7 @@ class TestAdCPContract:
         end_date = datetime.now() + timedelta(days=30)
 
         request = CreateMediaBuyRequest(
+            promoted_offering="Nike Air Jordan 2025 basketball shoes",  # Required per AdCP spec
             product_ids=["product_1", "product_2"],
             total_budget=5000.0,
             start_date=start_date.date(),
@@ -335,6 +402,7 @@ class TestAdCPContract:
     def test_adcp_signal_support(self):
         """Test AdCP v2.4 signal support in targeting."""
         request = CreateMediaBuyRequest(
+            promoted_offering="Luxury automotive vehicles and premium accessories",
             product_ids=["test_product"],
             total_budget=1000.0,
             start_date=datetime.now().date(),
@@ -827,8 +895,8 @@ class TestAdCPContract:
             percentage_goal=60.0,
             rotation_type="weighted",
             override_click_url="https://example.com/override",
-            override_start_date=datetime.now(),
-            override_end_date=datetime.now() + timedelta(days=7),
+            override_start_date=datetime.now(UTC),
+            override_end_date=datetime.now(UTC) + timedelta(days=7),
         )
 
         # Test model_dump (CreativeAssignment may have internal fields)
@@ -985,8 +1053,8 @@ class TestAdCPContract:
             status="approved",
             format="display_300x250",  # Uses format, not format_id
             tags=["sports", "premium"],
-            created_after=datetime.now() - timedelta(days=30),
-            created_before=datetime.now(),
+            created_after=datetime.now(UTC) - timedelta(days=30),
+            created_before=datetime.now(UTC),
             limit=50,
             # Note: ListCreativesRequest uses page, not offset
             page=1,
@@ -1783,7 +1851,7 @@ class TestAdCPContract:
         # ✅ FIXED: Implementation now matches AdCP spec
         # AdCP spec requires: oneOf(media_buy_id OR buyer_ref), optional active/start_time/end_time/budget/packages
 
-        from datetime import datetime
+        from datetime import UTC, datetime
 
         from src.core.schemas import AdCPPackageUpdate, Budget, UpdateMediaBuyRequest
 
@@ -1791,8 +1859,8 @@ class TestAdCPContract:
         adcp_request_id = UpdateMediaBuyRequest(
             media_buy_id="mb_12345",
             active=True,
-            start_time=datetime(2025, 2, 1, 9, 0, 0),
-            end_time=datetime(2025, 2, 28, 23, 59, 59),
+            start_time=datetime(2025, 2, 1, 9, 0, 0, tzinfo=UTC),
+            end_time=datetime(2025, 2, 28, 23, 59, 59, tzinfo=UTC),
             budget=Budget(total=5000.0, currency="USD", pacing="even"),
             packages=[
                 AdCPPackageUpdate(package_id="pkg_123", active=True, budget=Budget(total=2500.0, currency="USD"))
@@ -1810,7 +1878,7 @@ class TestAdCPContract:
 
         # Test AdCP-compliant request with buyer_ref (oneOf option 2)
         adcp_request_ref = UpdateMediaBuyRequest(
-            buyer_ref="br_67890", active=False, start_time=datetime(2025, 3, 1, 0, 0, 0)
+            buyer_ref="br_67890", active=False, start_time=datetime(2025, 3, 1, 0, 0, 0, tzinfo=UTC)
         )
 
         adcp_response_ref = adcp_request_ref.model_dump()

@@ -1,0 +1,599 @@
+{% extends "base.html" %}
+
+{% block title %}{{ 'Edit' if product else 'Create' }} Product - Google Ad Manager{% endblock %}
+
+{% block content %}
+<div class="card">
+    <h2>{{ 'Edit' if product else 'Create' }} Product (Google Ad Manager)</h2>
+
+    {% if not inventory_synced %}
+    <div class="alert alert-warning" style="margin-bottom: 2rem; padding: 1rem; background: #fff3cd; border: 1px solid #ffc107; border-radius: 4px;">
+        <h4 style="margin-top: 0; color: #856404;">⚠️ Inventory Not Synced</h4>
+        <p style="margin-bottom: 1rem;">GAM inventory has not been synced yet. You won't be able to select ad units or placements until inventory is synced.</p>
+        <a href="{{ url_for('tenants.tenant_settings', tenant_id=tenant_id) }}" class="btn btn-primary">
+            <i class="bi bi-arrow-clockwise"></i> Go to Settings to Sync
+        </a>
+    </div>
+    {% endif %}
+
+    <form id="product-form" method="POST">
+        <!-- Section 1: Product Basics -->
+        <h3 style="margin-top: 0; border-bottom: 2px solid #007bff; padding-bottom: 0.5rem;">Product Information</h3>
+        <p style="color: #666; margin-bottom: 1.5rem;">Basic product details that buyers will see</p>
+
+        <div class="form-group">
+            <label for="name">Product Name *</label>
+            <input type="text" id="name" name="name" required placeholder="e.g., Premium Homepage Package" value="{{ product.name if product else '' }}">
+        </div>
+
+        <div class="form-group">
+            <label for="description">Description</label>
+            <textarea id="description" name="description" rows="3" placeholder="Describe this product for potential buyers">{{ product.description if product else '' }}</textarea>
+        </div>
+
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+            <div class="form-group">
+                <label for="line_item_type">Line Item Type *</label>
+                <select id="line_item_type" name="line_item_type" required>
+                    <option value="STANDARD">Standard (Fixed CPM + Priority)</option>
+                    <option value="SPONSORSHIP">Sponsorship (Fixed CPM + Roadblock)</option>
+                    <option value="PRICE_PRIORITY">Price Priority (Floor CPM)</option>
+                    <option value="HOUSE">House (No Price)</option>
+                </select>
+                <small style="color: #666; display: block; margin-top: 0.25rem;">
+                    Standard/Sponsorship: Fixed price + priority<br>
+                    Price Priority: Floor price, priority 12<br>
+                    House: Free, priority 16
+                </small>
+            </div>
+
+            <div class="form-group" id="pricing-container">
+                <!-- Pricing fields populated by JavaScript based on line item type -->
+            </div>
+        </div>
+
+        <div class="form-group">
+            <label for="countries">Countries</label>
+            <select id="countries" name="countries" multiple size="5">
+                <option value="ALL">All Countries</option>
+                <option value="United States">United States</option>
+                <option value="Canada">Canada</option>
+                <option value="United Kingdom">United Kingdom</option>
+                <option value="Australia">Australia</option>
+            </select>
+            <small style="color: #666;">Hold Ctrl/Cmd to select multiple, or select "All Countries"</small>
+        </div>
+
+        <!-- Section 2: GAM Inventory Selection -->
+        <h3 style="margin-top: 2rem; border-bottom: 2px solid #007bff; padding-bottom: 0.5rem;">GAM Inventory</h3>
+        <p style="color: #666; margin-bottom: 1.5rem;">Select ad units and placements from your GAM inventory</p>
+
+        <div class="form-group">
+            <label for="ad-unit-search">Ad Units</label>
+            <div style="display: flex; gap: 0.5rem; margin-bottom: 0.5rem;">
+                <input type="text" id="ad-unit-search" placeholder="Search ad units..." style="flex: 1;">
+                <button type="button" onclick="openInventoryPicker('ad_unit')" class="btn btn-secondary" {% if not inventory_synced %}disabled{% endif %}>
+                    Browse Ad Units
+                </button>
+            </div>
+            <div id="selected-ad-units" style="min-height: 60px; border: 1px solid #ddd; border-radius: 4px; padding: 0.5rem; background: #f9f9f9;">
+                <span style="color: #999;">No ad units selected</span>
+            </div>
+            <textarea id="targeted_ad_unit_ids" name="targeted_ad_unit_ids" style="display: none;"></textarea>
+        </div>
+
+        <div class="form-group">
+            <label for="placement-search">Placements</label>
+            <div style="display: flex; gap: 0.5rem; margin-bottom: 0.5rem;">
+                <input type="text" id="placement-search" placeholder="Search placements..." style="flex: 1;">
+                <button type="button" onclick="openInventoryPicker('placement')" class="btn btn-secondary" {% if not inventory_synced %}disabled{% endif %}>
+                    Browse Placements
+                </button>
+            </div>
+            <div id="selected-placements" style="min-height: 60px; border: 1px solid #ddd; border-radius: 4px; padding: 0.5rem; background: #f9f9f9;">
+                <span style="color: #999;">No placements selected</span>
+            </div>
+            <textarea id="targeted_placement_ids" name="targeted_placement_ids" style="display: none;"></textarea>
+        </div>
+
+        <div class="form-group">
+            <label>
+                <input type="checkbox" name="include_descendants" checked>
+                Include child ad units in targeting
+            </label>
+        </div>
+
+        <!-- Section 3: Creative Formats -->
+        <h3 style="margin-top: 2rem; border-bottom: 2px solid #007bff; padding-bottom: 0.5rem;">Creative Formats</h3>
+        <p style="color: #666; margin-bottom: 1.5rem;">Formats will be auto-suggested based on selected ad units. You can also add formats manually.</p>
+
+        <div id="formats-container" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 1rem; margin-bottom: 1rem;">
+            {% for format in formats %}
+            <label class="format-card" data-format-id="{{ format.format_id }}" data-dimensions="{{ format.dimensions }}" style="border: 2px solid #ddd; border-radius: 4px; padding: 1rem; cursor: pointer; transition: all 0.2s;">
+                <input type="checkbox" name="formats" value="{{ format.format_id }}" style="margin-right: 0.5rem;">
+                <strong>{{ format.name }}</strong><br>
+                <small style="color: #666;">
+                    {{ format.type }}
+                    {% if format.dimensions %} - {{ format.dimensions }}{% endif %}
+                    {% if format.duration %} - {{ format.duration }}{% endif %}
+                </small>
+            </label>
+            {% endfor %}
+        </div>
+
+        <!-- Section 4: Priority (for Standard/Sponsorship only) -->
+        <div id="priority-section" style="margin-top: 2rem; padding: 1rem; background: #f8f9fa; border-radius: 4px;">
+            <div class="form-group" id="priority-container" style="margin: 0;">
+                <!-- Priority field shown/hidden based on line item type -->
+            </div>
+        </div>
+
+        <!-- Submit Buttons -->
+        <div style="margin-top: 2rem; display: flex; gap: 1rem;">
+            <button type="submit" class="btn btn-primary">{{ 'Update Product' if product else 'Create Product' }}</button>
+            <a href="{{ url_for('products.list_products', tenant_id=tenant_id) }}" class="btn btn-secondary">Cancel</a>
+        </div>
+    </form>
+</div>
+
+<style>
+.format-card input[type="checkbox"]:checked + strong {
+    color: #007bff;
+}
+
+.format-card:has(input[type="checkbox"]:checked) {
+    border-color: #007bff;
+    background-color: #e7f3ff;
+}
+
+.format-card:hover {
+    border-color: #007bff;
+    background-color: #f8f9fa;
+}
+</style>
+
+<script>
+// Dynamic pricing and priority fields based on line item type
+document.getElementById('line_item_type').addEventListener('change', function() {
+    const pricingContainer = document.getElementById('pricing-container');
+    const priorityContainer = document.getElementById('priority-container');
+    const lineItemType = this.value;
+
+    // Update pricing fields
+    if (lineItemType === 'HOUSE') {
+        // House: No pricing
+        pricingContainer.innerHTML = `
+            <div class="form-group" style="margin: 0;">
+                <label>Price</label>
+                <p style="color: #666; margin: 0.5rem 0 0 0; font-style: italic;">No price (house line item)</p>
+            </div>
+        `;
+    } else if (lineItemType === 'PRICE_PRIORITY') {
+        // Price Priority: Floor price
+        pricingContainer.innerHTML = `
+            <div class="form-group" style="margin: 0;">
+                <label for="floor_cpm">Floor CPM ($) *</label>
+                <input type="number" id="floor_cpm" name="floor_cpm" step="0.01" min="0" placeholder="e.g., 5.00" required>
+                <small style="color: #666; display: block; margin-top: 0.25rem;">Minimum CPM for this inventory</small>
+            </div>
+        `;
+    } else {
+        // Standard/Sponsorship: Fixed price
+        pricingContainer.innerHTML = `
+            <div class="form-group" style="margin: 0;">
+                <label for="cpm">CPM ($) *</label>
+                <input type="number" id="cpm" name="cpm" step="0.01" min="0" placeholder="e.g., 15.00" required>
+                <small style="color: #666; display: block; margin-top: 0.25rem;">Fixed CPM price</small>
+            </div>
+        `;
+    }
+
+    // Update priority field and section visibility
+    const prioritySection = document.getElementById('priority-section');
+
+    if (lineItemType === 'STANDARD' || lineItemType === 'SPONSORSHIP') {
+        // Standard/Sponsorship: Show custom priority input
+        prioritySection.style.display = 'block';
+        priorityContainer.innerHTML = `
+            <label for="priority">Priority (1-10) *</label>
+            <input type="number" id="priority" name="priority" min="1" max="10" placeholder="e.g., 5" required>
+            <small style="color: #666; display: block; margin-top: 0.25rem;">Lower number = higher priority. Standard line items typically use priorities 6-10.</small>
+        `;
+    } else {
+        // Price Priority & House: Hide priority section (handled automatically)
+        prioritySection.style.display = 'none';
+        // Remove any existing priority field to prevent validation issues
+        priorityContainer.innerHTML = '';
+    }
+});
+
+// Trigger on page load
+document.getElementById('line_item_type').dispatchEvent(new Event('change'));
+
+// Inventory picker functionality
+let currentPickerType = null;
+
+function openInventoryPicker(type) {
+    currentPickerType = type;
+    const modal = document.getElementById('inventory-picker-modal');
+    const title = document.getElementById('picker-modal-title');
+    title.textContent = type === 'ad_unit' ? 'Select Ad Units' : 'Select Placements';
+
+    // Load inventory
+    loadInventory(type);
+
+    // Show modal
+    modal.style.display = 'flex';
+}
+
+function closeInventoryPicker() {
+    document.getElementById('inventory-picker-modal').style.display = 'none';
+    currentPickerType = null;
+}
+
+function loadInventory(type, search = '') {
+    const list = document.getElementById('inventory-list');
+    list.innerHTML = '<div style="padding: 2rem; text-align: center; color: #666;">Loading...</div>';
+
+    const url = `{{ url_for('inventory.get_inventory_list', tenant_id=tenant_id) }}?type=${type}${search ? '&search=' + encodeURIComponent(search) : ''}`;
+
+    fetch(url)
+        .then(response => response.json())
+        .then(data => {
+            if (data.error) {
+                list.innerHTML = `<div style="padding: 2rem; text-align: center; color: #dc3545;">${data.error}</div>`;
+                return;
+            }
+
+            if (data.items.length === 0) {
+                list.innerHTML = '<div style="padding: 2rem; text-align: center; color: #666;">No items found. Try syncing inventory first.</div>';
+                return;
+            }
+
+            // Get currently selected IDs
+            const selectedIds = type === 'ad_unit'
+                ? new Set((document.getElementById('targeted_ad_unit_ids').value || '').split(',').filter(Boolean))
+                : new Set((document.getElementById('targeted_placement_ids').value || '').split(',').filter(Boolean));
+
+            list.innerHTML = data.items.map(item => {
+                // Extract sizes for ad units
+                let sizesHtml = '';
+                if (type === 'ad_unit' && item.metadata && item.metadata.sizes && item.metadata.sizes.length > 0) {
+                    const sizeStrings = item.metadata.sizes.map(s => `${s.width}x${s.height}`).join(', ');
+                    sizesHtml = `<br><small style="color: #28a745; font-weight: 500;">Sizes: ${sizeStrings}</small>`;
+                }
+
+                return `
+                <label class="inventory-item" style="display: flex; align-items: center; padding: 0.75rem; border-bottom: 1px solid #eee; cursor: pointer;">
+                    <input type="checkbox"
+                           value="${item.id}"
+                           data-sizes='${item.metadata && item.metadata.sizes ? JSON.stringify(item.metadata.sizes) : '[]'}'
+                           data-path='${item.path ? JSON.stringify(item.path) : '[]'}'
+                           ${selectedIds.has(item.id) ? 'checked' : ''}
+                           style="margin-right: 0.75rem;">
+                    <div style="flex: 1;">
+                        <strong>${item.name}</strong>
+                        ${item.path && item.path.length > 1 ? `<br><small style="color: #666;">${item.path.join(' > ')}</small>` : ''}
+                        ${sizesHtml}
+                    </div>
+                </label>
+            `}).join('');
+        })
+        .catch(error => {
+            list.innerHTML = `<div style="padding: 2rem; text-align: center; color: #dc3545;">Error loading inventory: ${error.message}</div>`;
+        });
+}
+
+function applyInventorySelection() {
+    const checkboxes = document.querySelectorAll('#inventory-list input[type="checkbox"]:checked');
+    const selectedIds = Array.from(checkboxes).map(cb => cb.value);
+    const selectedNames = Array.from(checkboxes).map(cb => {
+        const label = cb.closest('label');
+        return label.querySelector('strong').textContent;
+    });
+
+    if (currentPickerType === 'ad_unit') {
+        document.getElementById('targeted_ad_unit_ids').value = selectedIds.join(',');
+        updateSelectedDisplay('selected-ad-units', selectedNames, selectedIds);
+
+        // Auto-suggest creative formats based on ad unit sizes
+        autoSuggestFormats(checkboxes);
+    } else {
+        document.getElementById('targeted_placement_ids').value = selectedIds.join(',');
+        updateSelectedDisplay('selected-placements', selectedNames, selectedIds);
+    }
+
+    closeInventoryPicker();
+}
+
+function updateSelectedDisplay(containerId, names, ids) {
+    const container = document.getElementById(containerId);
+    if (names.length === 0) {
+        container.innerHTML = '<span style="color: #999;">No items selected</span>';
+    } else {
+        container.innerHTML = names.map((name, idx) => `
+            <span class="selected-item" style="display: inline-block; background: #e7f3ff; padding: 0.25rem 0.5rem; margin: 0.25rem; border-radius: 4px;">
+                ${name}
+                <button type="button" onclick="removeSelectedItem('${containerId}', '${ids[idx]}')" style="border: none; background: none; color: #666; cursor: pointer; margin-left: 0.25rem;">×</button>
+            </span>
+        `).join('');
+    }
+}
+
+async function autoSuggestFormats(selectedCheckboxes) {
+    // Collect all sizes from selected ad units
+    const allSizes = new Set();
+    const includeChildren = document.querySelector('input[name="include_descendants"]')?.checked;
+
+    // First, collect sizes from directly selected ad units
+    const selectedPaths = [];
+    selectedCheckboxes.forEach(cb => {
+        const sizesData = cb.getAttribute('data-sizes');
+        const pathData = cb.getAttribute('data-path');
+
+        // Extract path from data attribute
+        let path = [];
+        if (pathData) {
+            try {
+                path = JSON.parse(pathData);
+            } catch (e) {
+                console.warn('Failed to parse path data:', e);
+                // Fallback: use the name from the label
+                const label = cb.closest('label');
+                const name = label.querySelector('strong').textContent.trim();
+                path = [name];
+            }
+        }
+        if (path.length > 0) {
+            selectedPaths.push(path);
+        }
+
+        // Collect sizes from this ad unit
+        if (sizesData) {
+            try {
+                const sizes = JSON.parse(sizesData);
+                sizes.forEach(size => {
+                    allSizes.add(`${size.width}x${size.height}`);
+                });
+            } catch (e) {
+                console.warn('Failed to parse size data:', e);
+            }
+        }
+    });
+
+    // If "include children" is checked, fetch all ad units and find children
+    if (includeChildren && selectedPaths.length > 0) {
+        try {
+            const url = `{{ url_for('inventory.get_inventory_list', tenant_id=tenant_id) }}?type=ad_unit`;
+            const response = await fetch(url);
+            const data = await response.json();
+
+            if (data.items) {
+                data.items.forEach(item => {
+                    // Check if this item is a child of any selected path
+                    if (item.path && item.path.length > 0) {
+                        for (const selectedPath of selectedPaths) {
+                            // Check if item.path starts with selectedPath
+                            const isChild = selectedPath.every((segment, idx) => item.path[idx] === segment)
+                                         && item.path.length > selectedPath.length;
+
+                            if (isChild) {
+                                // This is a child - collect its sizes
+                                if (item.metadata && item.metadata.sizes) {
+                                    item.metadata.sizes.forEach(size => {
+                                        allSizes.add(`${size.width}x${size.height}`);
+                                    });
+                                }
+                                break;
+                            }
+                        }
+                    }
+                });
+            }
+        } catch (e) {
+            console.warn('Failed to fetch child ad units:', e);
+        }
+    }
+
+    // If we have sizes, auto-check matching formats
+    if (allSizes.size > 0) {
+        const formatCards = document.querySelectorAll('.format-card');
+        let suggestedCount = 0;
+
+        formatCards.forEach(card => {
+            const dimensions = card.getAttribute('data-dimensions');
+            const checkbox = card.querySelector('input[type="checkbox"]');
+
+            if (dimensions && allSizes.has(dimensions) && !checkbox.checked) {
+                checkbox.checked = true;
+                // Add visual feedback
+                card.style.borderColor = '#28a745';
+                card.style.backgroundColor = '#f0fff4';
+                setTimeout(() => {
+                    card.style.borderColor = '#007bff';
+                    card.style.backgroundColor = '';
+                }, 2000);
+                suggestedCount++;
+            }
+        });
+
+        if (suggestedCount > 0) {
+            console.log(`Auto-suggested ${suggestedCount} format(s) based on ${allSizes.size} unique ad unit sizes (including children: ${includeChildren})`);
+        }
+    }
+}
+
+function removeSelectedItem(containerId, idToRemove) {
+    const isAdUnit = containerId === 'selected-ad-units';
+    const hiddenInput = document.getElementById(isAdUnit ? 'targeted_ad_unit_ids' : 'targeted_placement_ids');
+    const currentIds = hiddenInput.value.split(',').filter(Boolean);
+    const newIds = currentIds.filter(id => id !== idToRemove);
+    hiddenInput.value = newIds.join(',');
+
+    // Refresh display
+    const selectedNames = Array.from(document.getElementById(containerId).querySelectorAll('.selected-item'))
+        .map(span => span.textContent.trim().replace('×', '').trim())
+        .filter((_, idx) => currentIds[idx] !== idToRemove);
+
+    updateSelectedDisplay(containerId, selectedNames, newIds);
+}
+
+// Search handler
+let searchTimeout;
+document.addEventListener('DOMContentLoaded', function() {
+    const searchInput = document.getElementById('picker-search');
+    if (searchInput) {
+        searchInput.addEventListener('input', function() {
+            clearTimeout(searchTimeout);
+            searchTimeout = setTimeout(() => {
+                if (currentPickerType) {
+                    loadInventory(currentPickerType, this.value);
+                }
+            }, 300);
+        });
+    }
+});
+</script>
+
+<!-- Inventory Picker Modal -->
+<div id="inventory-picker-modal" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 1000; align-items: center; justify-content: center;">
+    <div style="background: white; border-radius: 8px; width: 90%; max-width: 600px; max-height: 80vh; display: flex; flex-direction: column;">
+        <!-- Header -->
+        <div style="padding: 1.5rem; border-bottom: 1px solid #ddd;">
+            <h3 id="picker-modal-title" style="margin: 0;">Select Items</h3>
+        </div>
+
+        <!-- Search -->
+        <div style="padding: 1rem; border-bottom: 1px solid #ddd;">
+            <input type="text" id="picker-search" placeholder="Search..." style="width: 100%; padding: 0.5rem; border: 1px solid #ddd; border-radius: 4px;">
+        </div>
+
+        <!-- List -->
+        <div id="inventory-list" style="flex: 1; overflow-y: auto; min-height: 200px;">
+            <!-- Items loaded dynamically -->
+        </div>
+
+        <!-- Footer -->
+        <div style="padding: 1rem; border-top: 1px solid #ddd; display: flex; gap: 0.5rem; justify-content: flex-end;">
+            <button type="button" onclick="closeInventoryPicker()" class="btn btn-secondary">Cancel</button>
+            <button type="button" onclick="applyInventorySelection()" class="btn btn-primary">Apply Selection</button>
+        </div>
+    </div>
+</div>
+
+{% if product %}
+<script>
+// Pre-populate form for editing
+(function() {
+    const product = {{ product | tojson }};
+    const config = product.implementation_config || {};
+
+    // Set line item type
+    if (config.line_item_type) {
+        document.getElementById('line_item_type').value = config.line_item_type;
+        // Trigger change event to populate pricing fields
+        document.getElementById('line_item_type').dispatchEvent(new Event('change'));
+    }
+
+    // Set pricing values after a brief delay to let the change event populate the fields
+    setTimeout(() => {
+        if (product.cpm) {
+            const cpmField = document.getElementById('cpm');
+            if (cpmField) {
+                cpmField.value = product.cpm;
+                console.log('Set CPM to:', product.cpm);
+            }
+        }
+        if (product.price_guidance && product.price_guidance.min !== undefined) {
+            const floorField = document.getElementById('floor_cpm');
+            if (floorField) {
+                floorField.value = product.price_guidance.min;
+                console.log('Set floor_cpm to:', product.price_guidance.min);
+            } else {
+                console.warn('floor_cpm field not found!');
+            }
+        }
+        if (config.priority) {
+            const priorityField = document.getElementById('priority');
+            if (priorityField) {
+                priorityField.value = config.priority;
+                console.log('Set priority to:', config.priority);
+            }
+        }
+    }, 200);
+
+    // Set countries
+    if (product.countries && product.countries.length > 0) {
+        const countriesSelect = document.getElementById('countries');
+        Array.from(countriesSelect.options).forEach(option => {
+            if (product.countries.includes(option.value)) {
+                option.selected = true;
+            }
+        });
+    }
+
+    // Set ad units and placements - fetch actual names from inventory
+    if (config.targeted_ad_unit_ids && config.targeted_ad_unit_ids.length > 0) {
+        document.getElementById('targeted_ad_unit_ids').value = config.targeted_ad_unit_ids.join(',');
+
+        // Fetch ad unit names
+        fetch(`{{ url_for('inventory.get_inventory_list', tenant_id=tenant_id) }}?type=ad_unit`)
+            .then(response => response.json())
+            .then(data => {
+                if (data.items) {
+                    const names = config.targeted_ad_unit_ids.map(id => {
+                        const item = data.items.find(i => i.id === id);
+                        return item ? item.name : id;
+                    });
+                    updateSelectedDisplay('selected-ad-units', names, config.targeted_ad_unit_ids);
+                    console.log('Populated ad units:', names);
+                }
+            })
+            .catch(error => {
+                console.error('Failed to fetch ad unit names:', error);
+                // Fallback to IDs
+                updateSelectedDisplay('selected-ad-units', config.targeted_ad_unit_ids, config.targeted_ad_unit_ids);
+            });
+    }
+
+    if (config.targeted_placement_ids && config.targeted_placement_ids.length > 0) {
+        document.getElementById('targeted_placement_ids').value = config.targeted_placement_ids.join(',');
+
+        // Fetch placement names
+        fetch(`{{ url_for('inventory.get_inventory_list', tenant_id=tenant_id) }}?type=placement`)
+            .then(response => response.json())
+            .then(data => {
+                if (data.items) {
+                    const names = config.targeted_placement_ids.map(id => {
+                        const item = data.items.find(i => i.id === id);
+                        return item ? item.name : id;
+                    });
+                    updateSelectedDisplay('selected-placements', names, config.targeted_placement_ids);
+                    console.log('Populated placements:', names);
+                }
+            })
+            .catch(error => {
+                console.error('Failed to fetch placement names:', error);
+                // Fallback to IDs
+                updateSelectedDisplay('selected-placements', config.targeted_placement_ids, config.targeted_placement_ids);
+            });
+    }
+
+    // Set include descendants checkbox
+    if (config.include_descendants) {
+        const checkbox = document.querySelector('input[name="include_descendants"]');
+        if (checkbox) checkbox.checked = true;
+    }
+
+    // Set creative formats
+    if (product.formats && product.formats.length > 0) {
+        product.formats.forEach(format => {
+            const checkbox = document.querySelector(`input[name="formats"][value="${format}"]`);
+            if (checkbox) checkbox.checked = true;
+        });
+    }
+})();
+</script>
+{% endif %}
+
+{% endblock %}

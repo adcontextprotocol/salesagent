@@ -126,9 +126,18 @@ class TestDashboardReliability:
         # If we have test audit log, should appear in activities
         if activities:
             activity = activities[0]
-            assert "operation" in activity
-            assert "success" in activity
+            # Check top-level fields
+            assert "type" in activity
+            assert "title" in activity
+            assert "description" in activity
+            assert "principal_name" in activity
+            assert "timestamp" in activity
+            assert "action_required" in activity
             assert "time_relative" in activity
+            # Check metadata contains operation details
+            assert "metadata" in activity
+            assert "operation" in activity["metadata"]
+            assert "success" in activity["metadata"]
 
     @pytest.mark.requires_db
     def test_dashboard_service_caching_works(self, test_tenant):
@@ -144,6 +153,7 @@ class TestDashboardReliability:
         tenant2 = service.get_tenant()
         assert tenant2 is tenant1  # Same object
 
+    @pytest.mark.requires_db
     def test_dashboard_service_error_handling(self):
         """Test that dashboard service handles errors appropriately."""
         # Invalid tenant ID should raise ValueError
@@ -205,15 +215,17 @@ class TestDashboardTemplateIntegration:
         service = DashboardService(test_tenant.tenant_id)
         metrics = service.get_dashboard_metrics()
 
-        # Required metrics for template
+        # Required metrics for template (updated for readiness system)
         required_metrics = [
             "total_revenue",
-            "active_buys",
-            "pending_buys",
+            "live_buys",
+            "scheduled_buys",
+            "needs_attention",
             "active_advertisers",
             "recent_activity",
             "pending_workflows",
             "approval_needed",
+            "readiness_summary",
         ]
 
         for metric in required_metrics:

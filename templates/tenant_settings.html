@@ -536,7 +536,9 @@
                         </p>
                     </div>
                     {% if active_adapter == 'google_ad_manager' %}
-                    <button onclick="syncInventory()" class="btn btn-small">Sync Now</button>
+                    <button onclick="syncGAMInventory()" class="btn btn-small btn-primary">
+                        <span id="sync-icon">🔄</span> Sync Inventory
+                    </button>
                     {% endif %}
                 </div>
             </div>
@@ -636,11 +638,36 @@
                     {% endif %}
 
                     <div class="form-group" style="margin-top: 1rem;">
-                        <label for="gam_refresh_token">OAuth Refresh Token</label>
-                        <input type="text" id="gam_refresh_token" class="form-control"
-                               value="{{ adapter_config.get('refresh_token', '') if adapter_config else '' }}"
-                               placeholder="Your OAuth refresh token">
-                        <small class="form-text text-muted">Required for API access. Enter token and click "Auto-detect Network" to retrieve network code.</small>
+                        <label>OAuth Setup</label>
+                        {% if adapter_config and adapter_config.get('refresh_token') %}
+                        <div class="status-card success">
+                            <strong>✅ OAuth Token Configured</strong>
+                            <p>Your refresh token is active and ready to use.</p>
+                            <button onclick="startGAMOAuth()" class="btn btn-secondary btn-sm" style="margin-top: 0.5rem;">
+                                Refresh OAuth Token
+                            </button>
+                        </div>
+                        {% else %}
+                        <div class="status-card warning">
+                            <strong>OAuth Setup Required</strong>
+                            <p>Click the button below to authorize AdCP access to your Google Ad Manager account.</p>
+                            <button onclick="startGAMOAuth()" class="btn btn-primary" style="margin-top: 0.5rem;">
+                                🔑 Get OAuth Token
+                            </button>
+                        </div>
+                        {% endif %}
+
+                        <!-- Advanced option for manual token entry -->
+                        <details style="margin-top: 1rem;">
+                            <summary style="cursor: pointer; color: #666; font-size: 0.9em;">Advanced: Manual Token Entry</summary>
+                            <div style="margin-top: 0.5rem; padding: 1rem; background: #f8f9fa; border-radius: 4px;">
+                                <label for="gam_refresh_token">Manual OAuth Refresh Token</label>
+                                <input type="text" id="gam_refresh_token" class="form-control"
+                                       value="{{ adapter_config.get('refresh_token', '') if adapter_config else '' }}"
+                                       placeholder="Paste your OAuth refresh token here">
+                                <small class="form-text text-muted">For advanced users: manually enter a refresh token if you have one.</small>
+                            </div>
+                        </details>
                     </div>
 
                     <div class="form-group">
@@ -719,11 +746,11 @@
                     <div style="flex: 1;">
                         <strong>No Products Configured Yet</strong>
                         <p style="margin: 0.25rem 0 0 0; font-size: 0.875rem;">
-                            Get started quickly with our Product Setup Wizard to create your first advertising products.
+                            Create your first advertising product to start offering inventory to buyers.
                         </p>
                     </div>
-                    <a href="/tenant/{{ tenant.tenant_id }}/products/setup-wizard" class="btn btn-success">
-                        <i class="fas fa-magic"></i> Launch Setup Wizard
+                    <a href="/tenant/{{ tenant.tenant_id }}/products/add" class="btn btn-success">
+                        <i class="fas fa-plus"></i> Create Product
                     </a>
                 </div>
             </div>
@@ -739,34 +766,11 @@
                     </div>
                     <div style="display: flex; gap: 0.5rem;">
                         <a href="/tenant/{{ tenant.tenant_id }}/products" class="btn btn-small">Manage</a>
-                        <a href="/tenant/{{ tenant.tenant_id }}/products/setup-wizard" class="btn btn-success btn-small">
-                            <i class="fas fa-magic"></i> Setup Wizard
-                        </a>
                         <a href="/tenant/{{ tenant.tenant_id }}/products/add" class="btn btn-primary btn-small">Add New</a>
                     </div>
                 </div>
             </div>
 
-            <div class="form-section">
-                <h3>Product Templates</h3>
-                <p style="margin-bottom: 1rem; color: #6b7280; font-size: 0.875rem;">
-                    Quick-start with industry-standard product templates
-                </p>
-                <div class="form-grid">
-                    <button onclick="loadTemplate('display')" class="btn btn-secondary">
-                        <i class="fas fa-desktop"></i> Display Advertising
-                    </button>
-                    <button onclick="loadTemplate('video')" class="btn btn-secondary">
-                        <i class="fas fa-video"></i> Video Advertising
-                    </button>
-                    <button onclick="loadTemplate('audio')" class="btn btn-secondary">
-                        <i class="fas fa-microphone"></i> Audio/Podcast
-                    </button>
-                    <button onclick="loadTemplate('native')" class="btn btn-secondary">
-                        <i class="fas fa-newspaper"></i> Native Content
-                    </button>
-                </div>
-            </div>
         </div>
 
         <!-- Creative Formats Settings -->
@@ -875,6 +879,11 @@
                                                     onclick="copyA2AConfig('{{ principal.principal_id }}', '{{ principal.name }}', '{{ principal.access_token }}')"
                                                     title="Copy A2A Configuration">
                                                 📋 A2A
+                                            </button>
+                                            <button class="btn btn-outline-secondary btn-sm"
+                                                    onclick="editPrincipalMappings('{{ principal.principal_id }}', '{{ principal.name }}')"
+                                                    title="Edit Platform Mappings">
+                                                ✏️ Edit
                                             </button>
                                             <button class="btn btn-outline-danger btn-sm"
                                                     onclick="deletePrincipal('{{ principal.principal_id }}', '{{ principal.name }}')"
@@ -1407,6 +1416,34 @@ function checkOAuthConfig() {
         });
 }
 
+// Start GAM OAuth flow
+function startGAMOAuth() {
+    // Open OAuth flow in a new window/tab
+    const tenantId = '{{ tenant.tenant_id }}';
+    const oauthUrl = '{{ script_name }}/auth/gam/authorize/' + tenantId;
+
+    // Show loading state
+    const button = event.target;
+    const originalText = button.textContent;
+    button.disabled = true;
+    button.textContent = 'Starting OAuth...';
+
+    // Store original button state for restoration
+    const restoreButton = () => {
+        button.disabled = false;
+        button.textContent = originalText;
+    };
+
+    // Navigate to OAuth URL
+    try {
+        window.location.href = oauthUrl;
+    } catch (error) {
+        console.error('Error starting OAuth flow:', error);
+        alert('Error starting OAuth flow. Please try again.');
+        restoreButton();
+    }
+}
+
 // Auto-detect GAM network code from refresh token
 function detectGAMNetwork() {
     const refreshToken = document.getElementById('gam_refresh_token').value;
@@ -1591,10 +1628,46 @@ function loadTemplate(templateType) {
     console.log('Loading template:', templateType);
 }
 
-// Sync inventory
-function syncInventory() {
-    // Would trigger inventory sync
-    console.log('Syncing inventory...');
+// Sync GAM inventory
+function syncGAMInventory() {
+    const button = event.target.closest('button');
+    const syncIcon = document.getElementById('sync-icon');
+    const originalText = button.innerHTML;
+
+    button.disabled = true;
+    button.innerHTML = '<span id="sync-icon">⏳</span> Syncing...';
+
+    fetch('{{ script_name }}/tenant/{{ tenant.tenant_id }}/gam/sync-inventory', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        }
+    })
+    .then(response => {
+        if (!response.ok) {
+            return response.text().then(text => {
+                throw new Error(text || 'Failed to sync inventory');
+            });
+        }
+        return response.json();
+    })
+    .then(data => {
+        if (data.success) {
+            alert('✅ Inventory synced successfully!\n\n' +
+                  'Ad Units: ' + (data.ad_units_count || 0) + '\n' +
+                  'Placements: ' + (data.placements_count || 0) + '\n' +
+                  'Custom Targeting: ' + (data.targeting_count || 0));
+            window.location.reload();
+        } else {
+            throw new Error(data.error || 'Unknown error');
+        }
+    })
+    .catch(error => {
+        console.error('Error syncing inventory:', error);
+        alert('❌ Failed to sync inventory:\n\n' + error.message);
+        button.disabled = false;
+        button.innerHTML = originalText;
+    });
 }
 
 // Check OAuth status for adapter selection (runs on page load)
@@ -1653,10 +1726,18 @@ function selectGAMAdapter() {
 
 // Copy A2A configuration for a principal
 function copyA2AConfig(principalId, principalName, accessToken) {
+    {% if tenant.virtual_host %}
+    // Use external domain if configured
+    const agentUri = "{% if is_production %}https://{{ tenant.virtual_host }}{% else %}http://localhost:{{ mcp_port }}{% endif %}";
+    {% else %}
+    // Use subdomain as fallback
+    const agentUri = "{% if is_production %}https://{{ tenant.subdomain }}.sales-agent.scope3.com{% else %}http://localhost:{{ mcp_port }}{% endif %}";
+    {% endif %}
+
     const a2aConfig = {
         "id": principalId,
         "name": principalName,
-        "agent_uri": "{% if is_production %}https://{{ tenant.subdomain }}.sales-agent.scope3.com{% else %}http://localhost:{{ mcp_port }}{% endif %}",
+        "agent_uri": agentUri,
         "protocol": "a2a",
         "auth_token_env": accessToken,
         "requiresAuth": true
@@ -1777,5 +1858,300 @@ console.log('Current URL params:', window.location.search);
 // No widget integration needed
 
 // JavaScript widget functions removed - virtual host now uses simple manual input
+
+// ========== Principal Mappings Editor ==========
+let currentPrincipalId = null;
+let currentPrincipalName = null;
+
+function editPrincipalMappings(principalId, principalName) {
+    currentPrincipalId = principalId;
+    currentPrincipalName = principalName;
+
+    // Show loading state
+    document.getElementById('editPrincipalModalTitle').textContent = `Edit ${principalName}`;
+    document.getElementById('editPrincipalForm').innerHTML = '<p class="text-center">Loading...</p>';
+
+    // Show modal
+    const modal = new bootstrap.Modal(document.getElementById('editPrincipalModal'));
+    modal.show();
+
+    // Fetch principal data
+    fetch(`{{ script_name }}/tenant/{{ tenant.tenant_id }}/principal/${principalId}`, {
+        method: 'GET',
+        headers: {
+            'Content-Type': 'application/json',
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            renderPrincipalEditor(data.principal);
+        } else {
+            document.getElementById('editPrincipalForm').innerHTML =
+                `<div class="alert alert-danger">${data.error || 'Failed to load principal'}</div>`;
+        }
+    })
+    .catch(error => {
+        console.error('Error loading principal:', error);
+        document.getElementById('editPrincipalForm').innerHTML =
+            `<div class="alert alert-danger">Error: ${error.message}</div>`;
+    });
+}
+
+function renderPrincipalEditor(principal) {
+    const mappings = principal.platform_mappings || {};
+    const gamMapping = mappings.google_ad_manager || {};
+    const mockMapping = mappings.mock || {};
+    const activeAdapter = '{{ active_adapter }}';
+
+    let adapterSection = '';
+
+    if (activeAdapter === 'google_ad_manager') {
+        // GAM tenant - only show GAM fields
+        adapterSection = `
+            <h5 class="mt-4 mb-3">Google Ad Manager Configuration</h5>
+            <div class="alert alert-info">
+                <strong>ℹ️ Note:</strong> This tenant uses Google Ad Manager. All campaigns will be executed through GAM.
+            </div>
+            <div class="mb-3">
+                <label for="gam_company_id" class="form-label">GAM Advertiser <span style="color: red;">*</span></label>
+                <select class="form-control" id="gam_company_id">
+                    <option value="">Loading advertisers...</option>
+                </select>
+                <small class="form-text text-muted">Select which advertiser company this represents in Google Ad Manager</small>
+                <div id="edit-advertiser-loading-error" style="display: none; color: red; margin-top: 0.5rem;"></div>
+            </div>
+
+            <div class="mb-3">
+                <label for="gam_trafficker_id" class="form-label">Trafficker ID (Optional)</label>
+                <input type="text" class="form-control" id="gam_trafficker_id"
+                       value="${gamMapping.trafficker_id || ''}"
+                       placeholder="e.g., 9876543210">
+                <small class="form-text text-muted">The GAM user ID for trafficking operations</small>
+            </div>`;
+    } else {
+        // Mock tenant - only show mock fields
+        adapterSection = `
+            <h5 class="mt-4 mb-3">Mock Adapter Configuration</h5>
+            <div class="alert alert-info">
+                <strong>ℹ️ Note:</strong> This tenant uses the Mock adapter for testing. No real ad server API calls will be made.
+                <br><strong>To use a real ad server</strong>, configure GAM or another adapter in the Ad Server settings tab.
+            </div>
+            <div class="mb-3">
+                <label for="mock_advertiser_id" class="form-label">Mock Advertiser ID</label>
+                <input type="text" class="form-control" id="mock_advertiser_id"
+                       value="${mockMapping.advertiser_id || principal.principal_id}"
+                       placeholder="e.g., mock_${principal.principal_id}">
+                <small class="form-text text-muted">Mock ID for testing (auto-populated with principal ID)</small>
+            </div>`;
+    }
+
+    const html = `
+        <form id="mappingsForm">
+            <div class="mb-3">
+                <label class="form-label"><strong>Principal ID:</strong> <code>${principal.principal_id}</code></label>
+            </div>
+
+            ${adapterSection}
+        </form>
+    `;
+
+    document.getElementById('editPrincipalForm').innerHTML = html;
+
+    // Load GAM advertisers if this is a GAM tenant
+    if (activeAdapter === 'google_ad_manager') {
+        loadGAMAdvertisersForEdit(gamMapping.company_id || gamMapping.advertiser_id || '');
+    }
+}
+
+function loadGAMAdvertisersForEdit(currentAdvertiserId) {
+    const selectElement = document.getElementById('gam_company_id');
+    const errorDiv = document.getElementById('edit-advertiser-loading-error');
+
+    if (!selectElement) {
+        return; // Element not found, probably not a GAM tenant
+    }
+
+    // Show loading state
+    selectElement.innerHTML = '<option value="">Loading advertisers...</option>';
+    selectElement.disabled = true;
+    errorDiv.style.display = 'none';
+
+    // Fetch advertisers from API (same endpoint as create form)
+    fetch('{{ script_name }}/tenant/{{ tenant.tenant_id }}/api/gam/get-advertisers', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+            tenant_id: '{{ tenant.tenant_id }}'
+        }),
+        credentials: 'same-origin'
+    })
+    .then(response => {
+        if (!response.ok) {
+            return response.text().then(text => {
+                throw new Error(`HTTP ${response.status}: ${text.substring(0, 200)}`);
+            });
+        }
+        return response.json();
+    })
+    .then(data => {
+        if (data.error) {
+            throw new Error(data.error);
+        }
+
+        // Clear loading state
+        selectElement.innerHTML = '';
+        selectElement.disabled = false;
+
+        // Add default option
+        const defaultOption = document.createElement('option');
+        defaultOption.value = '';
+        defaultOption.textContent = 'Select an advertiser...';
+        selectElement.appendChild(defaultOption);
+
+        // Add advertiser options
+        if (data.advertisers && data.advertisers.length > 0) {
+            data.advertisers.forEach(advertiser => {
+                const option = document.createElement('option');
+                option.value = advertiser.id;
+                option.textContent = advertiser.name;
+                selectElement.appendChild(option);
+            });
+
+            // Restore current selection if provided
+            if (currentAdvertiserId) {
+                selectElement.value = currentAdvertiserId;
+            }
+        } else {
+            // No advertisers found
+            const noAdvertisersOption = document.createElement('option');
+            noAdvertisersOption.value = '';
+            noAdvertisersOption.textContent = 'No advertisers found in GAM';
+            noAdvertisersOption.disabled = true;
+            selectElement.appendChild(noAdvertisersOption);
+
+            errorDiv.textContent = 'No advertisers found. Please create an advertiser in Google Ad Manager first.';
+            errorDiv.style.display = 'block';
+        }
+    })
+    .catch(error => {
+        console.error('Error loading advertisers for edit:', error);
+        selectElement.innerHTML = '<option value="">Failed to load advertisers</option>';
+        selectElement.disabled = false;
+        errorDiv.textContent = 'Error loading advertisers: ' + error.message;
+        errorDiv.style.display = 'block';
+    });
+}
+
+function savePrincipalMappings() {
+    const activeAdapter = '{{ active_adapter }}';
+
+    // Build platform mappings object
+    const platformMappings = {};
+
+    if (activeAdapter === 'google_ad_manager') {
+        // GAM tenant - save GAM fields
+        const gamCompanyIdEl = document.getElementById('gam_company_id');
+        const gamTraffickerIdEl = document.getElementById('gam_trafficker_id');
+
+        const gamCompanyId = gamCompanyIdEl ? gamCompanyIdEl.value.trim() : '';
+        const gamTraffickerId = gamTraffickerIdEl ? gamTraffickerIdEl.value.trim() : '';
+
+        // Client-side validation for GAM advertiser ID
+        if (gamCompanyId) {
+            // Check if it's numeric
+            if (!/^\d+$/.test(gamCompanyId)) {
+                alert(`❌ GAM Advertiser ID must be numeric (got: '${gamCompanyId}'). Please select a valid advertiser from the dropdown.`);
+                return;
+            }
+        }
+
+        if (gamCompanyId || gamTraffickerId) {
+            platformMappings.google_ad_manager = {
+                enabled: true  // Always enabled for GAM tenants
+            };
+            if (gamCompanyId) {
+                platformMappings.google_ad_manager.advertiser_id = gamCompanyId;
+                platformMappings.google_ad_manager.company_id = gamCompanyId; // Both for compatibility
+            }
+            if (gamTraffickerId) {
+                platformMappings.google_ad_manager.trafficker_id = gamTraffickerId;
+            }
+        }
+    } else {
+        // Mock tenant - save mock fields
+        const mockAdvertiserIdEl = document.getElementById('mock_advertiser_id');
+        const mockAdvertiserId = mockAdvertiserIdEl ? mockAdvertiserIdEl.value.trim() : '';
+
+        if (mockAdvertiserId) {
+            platformMappings.mock = {
+                enabled: true,  // Always enabled for mock tenants
+                advertiser_id: mockAdvertiserId
+            };
+        }
+    }
+
+    // Show saving state
+    const saveBtn = document.getElementById('saveMappingsBtn');
+    const originalText = saveBtn.textContent;
+    saveBtn.disabled = true;
+    saveBtn.textContent = 'Saving...';
+
+    // Send update request
+    fetch(`{{ script_name }}/tenant/{{ tenant.tenant_id }}/principal/${currentPrincipalId}/update_mappings`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+            platform_mappings: platformMappings
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            alert(`✅ Platform mappings updated successfully for ${currentPrincipalName}`);
+            // Close modal
+            const modal = bootstrap.Modal.getInstance(document.getElementById('editPrincipalModal'));
+            modal.hide();
+            // Reload page to show updated data
+            window.location.reload();
+        } else {
+            alert('❌ Failed to update mappings: ' + (data.error || 'Unknown error'));
+            saveBtn.disabled = false;
+            saveBtn.textContent = originalText;
+        }
+    })
+    .catch(error => {
+        console.error('Error updating mappings:', error);
+        alert('❌ Error: ' + error.message);
+        saveBtn.disabled = false;
+        saveBtn.textContent = originalText;
+    });
+}
 </script>
+
+<!-- Edit Principal Mappings Modal -->
+<div class="modal fade" id="editPrincipalModal" tabindex="-1" aria-labelledby="editPrincipalModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="editPrincipalModalTitle">Edit Platform Mappings</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div id="editPrincipalForm">
+                    <!-- Content loaded dynamically -->
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" id="saveMappingsBtn" onclick="savePrincipalMappings()">Save Changes</button>
+            </div>
+        </div>
+    </div>
+</div>
+
 {% endblock %}

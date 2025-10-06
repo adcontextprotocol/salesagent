@@ -78,8 +78,26 @@ class TestingContext(BaseModel):
         if not context:
             return cls()
 
-        # Use modern FastMCP pattern for getting headers
-        headers = get_http_headers()
+        # Get headers using the recommended FastMCP approach
+        headers = None
+        try:
+            headers = get_http_headers()
+        except Exception:
+            pass  # Will try fallback below
+
+        # If get_http_headers() returned empty dict or None, try context.meta fallback
+        # This is necessary for sync tools where get_http_headers() may not work
+        if not headers:
+            if hasattr(context, "meta") and context.meta and "headers" in context.meta:
+                headers = context.meta["headers"]
+            # Try other possible attributes
+            elif hasattr(context, "headers"):
+                headers = context.headers
+            elif hasattr(context, "_headers"):
+                headers = context._headers
+
+        if not headers:
+            return cls()  # Return default TestingContext if no headers available
 
         # Extract all testing headers
         test_session_id = headers.get("X-Test-Session-ID")

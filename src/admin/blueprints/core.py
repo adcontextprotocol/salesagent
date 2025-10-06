@@ -43,9 +43,40 @@ def get_tenant_from_hostname():
 
 
 @core_bp.route("/")
-@require_auth()
 def index():
-    """Main index page - redirects based on user role."""
+    """Main index page - redirects based on authentication and user role."""
+    # Check if user is authenticated
+    if "user" not in session:
+        # Not authenticated - check domain to decide where to send them
+        host = request.headers.get("Host", "")
+        approximated_host = request.headers.get("Apx-Incoming-Host")
+
+        # Debug logging for troubleshooting
+        logger.info(f"[LANDING DEBUG] Host: {host}, Apx-Incoming-Host: {approximated_host}, Path: {request.path}")
+        logger.info(f"[LANDING DEBUG] All headers: {dict(request.headers)}")
+
+        # admin.sales-agent.scope3.com should go to login
+        if (approximated_host and approximated_host.startswith("admin.")) or host.startswith("admin."):
+            logger.info("[LANDING DEBUG] Detected admin domain, redirecting to login")
+            return redirect(url_for("auth.login"))
+
+        # Check if we're on an external virtual host (via Approximated)
+        # External domains should always show landing page for signup
+        if approximated_host and not approximated_host.endswith(".sales-agent.scope3.com"):
+            logger.info(f"[LANDING DEBUG] External domain detected: {approximated_host}, showing landing page")
+            return render_template("landing.html")
+
+        # Check if we're on a tenant-specific subdomain (*.sales-agent.scope3.com)
+        tenant = get_tenant_from_hostname()
+        if tenant:
+            # Subdomain tenants redirect to login
+            logger.info(f"[LANDING DEBUG] Tenant subdomain detected: {tenant.tenant_id}, redirecting to login")
+            return redirect(url_for("auth.login"))
+
+        # Main domain (sales-agent.scope3.com) - show signup landing
+        logger.info("[LANDING DEBUG] Main domain detected, redirecting to /signup")
+        return redirect(url_for("public.landing"))
+
     # Check if we're on a tenant-specific subdomain
     tenant = get_tenant_from_hostname()
     if tenant:
@@ -223,10 +254,15 @@ def create_tenant():
 
             # Set authorization settings
             authorized_emails = request.form.get("authorized_emails", "")
-            if authorized_emails:
-                new_tenant.authorized_emails = json.dumps(
-                    [e.strip() for e in authorized_emails.split(",") if e.strip()]
-                )
+            email_list = [e.strip() for e in authorized_emails.split(",") if e.strip()]
+
+            # Automatically add the creator's email to authorized list
+            creator_email = session.get("user")
+            if creator_email and creator_email not in email_list:
+                email_list.append(creator_email)
+
+            if email_list:
+                new_tenant.authorized_emails = json.dumps(email_list)
 
             authorized_domains = request.form.get("authorized_domains", "")
             if authorized_domains:

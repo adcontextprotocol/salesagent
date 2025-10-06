@@ -23,12 +23,14 @@ from src.admin.blueprints.operations import operations_bp
 from src.admin.blueprints.policy import policy_bp
 from src.admin.blueprints.principals import principals_bp
 from src.admin.blueprints.products import products_bp
+from src.admin.blueprints.public import public_bp
 from src.admin.blueprints.schemas import schemas_bp
 from src.admin.blueprints.settings import settings_bp, tenant_management_settings_bp
 
 # from src.admin.blueprints.tasks import tasks_bp  # Disabled - tasks eliminated in favor of workflow system
 from src.admin.blueprints.tenants import tenants_bp
 from src.admin.blueprints.users import users_bp
+from src.admin.blueprints.workflows import workflows_bp
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -155,6 +157,67 @@ def create_app(config=None):
     socketio = SocketIO(app, cors_allowed_origins="*", async_mode="threading")
     app.socketio = socketio
 
+    # Redirect external domain /admin requests to tenant subdomain
+    @app.before_request
+    def redirect_external_domain_admin():
+        """Redirect /admin/* requests from external domains to tenant subdomain.
+
+        External domains (via Approximated) should not serve admin UI due to OAuth cookie issues.
+        Instead, redirect to the tenant's subdomain where OAuth works correctly.
+        """
+        from flask import redirect, request
+
+        from src.core.config_loader import get_tenant_by_virtual_host
+
+        # Check if this is an /admin request
+        # Note: CustomProxyFix middleware strips /admin from request.path, so we check script_root
+        # In production with SCRIPT_NAME=/admin, script_root will be '/admin'
+        # But we need to also check that the path isn't just root (/)
+        is_admin_request = (request.script_root == "/admin" and request.path != "/") or request.path.startswith(
+            "/admin"
+        )
+        if not is_admin_request:
+            return None
+
+        # Check for Apx-Incoming-Host header (indicates request from Approximated)
+        apx_host = request.headers.get("Apx-Incoming-Host") or request.headers.get("apx-incoming-host")
+        if not apx_host:
+            logger.debug(f"No Apx-Incoming-Host header for /admin request: {request.path}")
+            return None  # Not from Approximated, allow normal routing
+
+        # Check if it's an external domain (not ending in .sales-agent.scope3.com)
+        if apx_host.endswith(".sales-agent.scope3.com"):
+            logger.debug(f"Subdomain request to /admin, allowing: {apx_host}")
+            return None  # Subdomain request, allow normal routing
+
+        # External domain detected - redirect to tenant subdomain
+        logger.info(f"External domain /admin request detected: {apx_host} -> {request.path}")
+        tenant = get_tenant_by_virtual_host(apx_host)
+        if not tenant:
+            logger.warning(f"No tenant found for external domain: {apx_host}")
+            return None  # Can't determine tenant, let normal routing handle it
+
+        tenant_subdomain = tenant.get("subdomain")
+        if not tenant_subdomain:
+            logger.warning(f"Tenant {tenant.get('tenant_id')} has no subdomain configured")
+            return None  # No subdomain configured, let normal routing handle it
+
+        # Build redirect URL to tenant subdomain
+        # Note: request.full_path is relative to script_root, so we need to add /admin back
+        path_with_admin = (
+            f"/admin{request.full_path}" if not request.full_path.startswith("/admin") else request.full_path
+        )
+
+        if os.environ.get("PRODUCTION") == "true":
+            redirect_url = f"https://{tenant_subdomain}.sales-agent.scope3.com{path_with_admin}"
+        else:
+            # Local dev: Use localhost with port
+            port = os.environ.get("ADMIN_UI_PORT", "8001")
+            redirect_url = f"http://{tenant_subdomain}.localhost:{port}{path_with_admin}"
+
+        logger.info(f"Redirecting external domain {apx_host}/admin to subdomain: {redirect_url}")
+        return redirect(redirect_url, code=302)
+
     # Add context processor to make script_name available in templates
     @app.context_processor
     def inject_script_name():
@@ -184,6 +247,7 @@ def create_app(config=None):
         return response
 
     # Register blueprints
+    app.register_blueprint(public_bp)  # Public routes (no auth required) - MUST BE FIRST
     app.register_blueprint(core_bp)  # Core routes (/, /health, /static, /mcp-test)
     app.register_blueprint(auth_bp)  # No url_prefix - auth routes are at root
     app.register_blueprint(tenant_management_settings_bp)  # Tenant management settings at /settings
@@ -203,6 +267,7 @@ def create_app(config=None):
     app.register_blueprint(activity_stream_bp)  # SSE endpoints - Flask handles /admin via script_name from nginx proxy
     app.register_blueprint(mcp_test_bp)
     app.register_blueprint(schemas_bp)  # JSON Schema validation service
+    app.register_blueprint(workflows_bp, url_prefix="/tenant")  # Workflow approval and review
     # app.register_blueprint(tasks_bp)  # Tasks management - Disabled, tasks eliminated in favor of workflow system
 
     # Import and register existing blueprints

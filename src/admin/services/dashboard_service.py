@@ -10,7 +10,8 @@ from datetime import UTC, datetime, timedelta
 
 from sqlalchemy.orm import joinedload
 
-from src.admin.blueprints.activity_stream import get_recent_activities
+from src.admin.services.business_activity_service import get_business_activities
+from src.admin.services.media_buy_readiness_service import MediaBuyReadinessService
 from src.core.database.database_session import get_db_session
 from src.core.database.models import MediaBuy, Principal, Product, Tenant
 
@@ -50,18 +51,14 @@ class DashboardService:
 
         try:
             with get_db_session() as db_session:
-                # Core business metrics (from actual business tables)
-                active_campaigns = (
-                    db_session.query(MediaBuy).filter_by(tenant_id=self.tenant_id, status="active").count()
-                )
+                # Get readiness summary (replaces simple status counts)
+                readiness_summary = MediaBuyReadinessService.get_tenant_readiness_summary(self.tenant_id)
 
-                pending_buys = db_session.query(MediaBuy).filter_by(tenant_id=self.tenant_id, status="pending").count()
-
+                # Core business metrics
                 principals_count = db_session.query(Principal).filter_by(tenant_id=self.tenant_id).count()
-
                 products_count = db_session.query(Product).filter_by(tenant_id=self.tenant_id).count()
 
-                # Calculate total spend from media buys
+                # Calculate total spend from live and completed media buys
                 total_spend_buys = (
                     db_session.query(MediaBuy)
                     .filter_by(tenant_id=self.tenant_id)
@@ -76,16 +73,28 @@ class DashboardService:
                 # Calculate revenue change (last 7 vs previous 7 days)
                 revenue_change = self._calculate_revenue_change(revenue_data)
 
-                # Get recent activities using SINGLE DATA SOURCE (audit_logs only)
-                recent_activity = get_recent_activities(self.tenant_id, limit=10)
+                # Get recent BUSINESS activities (not raw audit logs)
+                recent_activity = get_business_activities(self.tenant_id, limit=10)
 
-                # SINGLE DATA SOURCE PATTERN: All workflow metrics hardcoded to 0
-                # This eliminates dependency on workflow_steps/tasks tables that cause crashes
+                # Calculate needs attention count
+                needs_attention = (
+                    readiness_summary.get("needs_creatives", 0)
+                    + readiness_summary.get("needs_approval", 0)
+                    + readiness_summary.get("failed", 0)
+                )
+
                 return {
-                    # Real business metrics
+                    # Real business metrics with operational readiness
                     "total_revenue": total_spend_amount,
-                    "active_buys": active_campaigns,
-                    "pending_buys": pending_buys,
+                    "live_buys": readiness_summary.get("live", 0),
+                    "scheduled_buys": readiness_summary.get("scheduled", 0),
+                    "needs_attention": needs_attention,
+                    "needs_creatives": readiness_summary.get("needs_creatives", 0),
+                    "needs_approval": readiness_summary.get("needs_approval", 0),
+                    "paused_buys": readiness_summary.get("paused", 0),
+                    "completed_buys": readiness_summary.get("completed", 0),
+                    "failed_buys": readiness_summary.get("failed", 0),
+                    "draft_buys": readiness_summary.get("draft", 0),
                     "active_advertisers": principals_count,
                     "total_advertisers": principals_count,
                     "products_count": products_count,
@@ -95,6 +104,8 @@ class DashboardService:
                     "revenue_data": revenue_data,
                     # Activity data (SINGLE SOURCE: audit_logs only)
                     "recent_activity": recent_activity,
+                    # Readiness summary for detailed view
+                    "readiness_summary": readiness_summary,
                     # Workflow metrics (hardcoded until unified system implemented)
                     "pending_workflows": 0,
                     "approval_needed": 0,
@@ -110,12 +121,13 @@ class DashboardService:
             raise
 
     def get_recent_media_buys(self, limit: int = 10) -> list[MediaBuy]:
-        """Get recent media buys with relationships loaded."""
+        """Get recent media buys with relationships loaded and readiness state."""
         try:
             with get_db_session() as db_session:
                 recent_buys = (
                     db_session.query(MediaBuy)
                     .filter(MediaBuy.tenant_id == self.tenant_id)
+                    .filter(MediaBuy.media_buy_id.isnot(None))  # Defensive: ensure valid ID
                     .options(joinedload(MediaBuy.principal))  # Eager load to avoid N+1
                     .order_by(MediaBuy.created_at.desc())
                     .limit(limit)
@@ -132,6 +144,14 @@ class DashboardService:
 
                     # Add advertiser name from eager-loaded principal
                     media_buy.advertiser_name = media_buy.principal.name if media_buy.principal else "Unknown"
+
+                    # Add readiness state and details
+                    readiness = MediaBuyReadinessService.get_readiness_state(
+                        media_buy.media_buy_id, self.tenant_id, db_session
+                    )
+                    media_buy.readiness_state = readiness["state"]
+                    media_buy.is_ready = readiness["is_ready_to_activate"]
+                    media_buy.readiness_details = readiness
 
                 return recent_buys
 
@@ -275,7 +295,7 @@ class DashboardService:
                 db_session.execute("SELECT 1").scalar()
 
             # Test audit logs table (our single data source)
-            test_activities = get_recent_activities("health_check", limit=1)
+            test_activities = get_business_activities("health_check", limit=1)
 
             return {
                 "status": "healthy",
