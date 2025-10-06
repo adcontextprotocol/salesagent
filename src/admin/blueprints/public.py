@@ -242,20 +242,47 @@ def provision_tenant():
 
             db_session.add(adapter_config)
 
-            # Create admin user
+            # Create or update admin user
             import uuid
 
-            admin_user = User(
-                user_id=str(uuid.uuid4()),
-                tenant_id=tenant_id,
-                email=user_email.lower(),
-                name=user_name,
-                role="admin",
-                is_active=True,
-                created_at=now,
-                last_login=now,
-            )
-            db_session.add(admin_user)
+            from sqlalchemy.exc import IntegrityError
+
+            # Check if user already exists for this tenant
+            existing_user = db_session.query(User).filter_by(tenant_id=tenant_id, email=user_email.lower()).first()
+
+            if existing_user:
+                # Update existing user's last login
+                existing_user.last_login = now
+                existing_user.is_active = True
+                logger.info(f"User {user_email} already exists for tenant {tenant_id}, updating last_login")
+            else:
+                # Create new user record for this tenant
+                admin_user = User(
+                    user_id=str(uuid.uuid4()),
+                    tenant_id=tenant_id,
+                    email=user_email.lower(),
+                    name=user_name,
+                    role="admin",
+                    is_active=True,
+                    created_at=now,
+                    last_login=now,
+                )
+                db_session.add(admin_user)
+                try:
+                    db_session.flush()  # Flush to detect constraint violations before full commit
+                    logger.info(f"Created new user {user_email} for tenant {tenant_id}")
+                except IntegrityError:
+                    # Race condition: another request created the user simultaneously
+                    db_session.rollback()
+                    logger.warning(
+                        f"User {user_email} was created concurrently for tenant {tenant_id}, updating instead"
+                    )
+                    existing_user = (
+                        db_session.query(User).filter_by(tenant_id=tenant_id, email=user_email.lower()).first()
+                    )
+                    if existing_user:
+                        existing_user.last_login = now
+                        existing_user.is_active = True
 
             # Create default principal (for testing/demo purposes)
             default_principal = Principal(

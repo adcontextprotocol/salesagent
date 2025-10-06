@@ -158,24 +158,45 @@ class SchemaSyncChecker:
         filename = schema_ref.replace("/", "_").replace(".", "_") + ".json"
         return self.cache_dir / filename
 
-    async def _fetch_live_schema(self, schema_ref: str) -> dict[str, Any]:
-        """Fetch a schema from the live AdCP registry."""
-        try:
-            schema_url = f"https://adcontextprotocol.org{schema_ref}"
-            response = await self.http_client.get(schema_url)
-            response.raise_for_status()
-            return response.json()
-        except Exception as e:
-            raise SchemaSyncError(f"Failed to fetch live schema {schema_ref}: {e}")
+    async def _fetch_live_schema(self, schema_ref: str, max_retries: int = 3) -> dict[str, Any]:
+        """Fetch a schema from the live AdCP registry with retry logic for transient errors."""
+        schema_url = f"https://adcontextprotocol.org{schema_ref}"
 
-    async def _fetch_live_index(self) -> dict[str, Any]:
-        """Fetch the live schema index/registry."""
-        try:
-            response = await self.http_client.get(self.INDEX_URL)
-            response.raise_for_status()
-            return response.json()
-        except Exception as e:
-            raise SchemaSyncError(f"Failed to fetch live schema index: {e}")
+        for attempt in range(max_retries):
+            try:
+                response = await self.http_client.get(schema_url)
+                response.raise_for_status()
+                return response.json()
+            except httpx.HTTPStatusError as e:
+                # Retry on 502 Bad Gateway (common transient error)
+                if e.response.status_code == 502 and attempt < max_retries - 1:
+                    wait_time = 2**attempt  # Exponential backoff: 1s, 2s, 4s
+                    print(
+                        f"⚠️  502 error for {schema_ref}, retrying in {wait_time}s (attempt {attempt + 1}/{max_retries})..."
+                    )
+                    await asyncio.sleep(wait_time)
+                    continue
+                raise SchemaSyncError(f"Failed to fetch live schema {schema_ref}: {e}")
+            except Exception as e:
+                raise SchemaSyncError(f"Failed to fetch live schema {schema_ref}: {e}")
+
+    async def _fetch_live_index(self, max_retries: int = 3) -> dict[str, Any]:
+        """Fetch the live schema index/registry with retry logic for transient errors."""
+        for attempt in range(max_retries):
+            try:
+                response = await self.http_client.get(self.INDEX_URL)
+                response.raise_for_status()
+                return response.json()
+            except httpx.HTTPStatusError as e:
+                # Retry on 502 Bad Gateway (common transient error)
+                if e.response.status_code == 502 and attempt < max_retries - 1:
+                    wait_time = 2**attempt  # Exponential backoff: 1s, 2s, 4s
+                    print(f"⚠️  502 error for index, retrying in {wait_time}s (attempt {attempt + 1}/{max_retries})...")
+                    await asyncio.sleep(wait_time)
+                    continue
+                raise SchemaSyncError(f"Failed to fetch live schema index: {e}")
+            except Exception as e:
+                raise SchemaSyncError(f"Failed to fetch live schema index: {e}")
 
     def _load_cached_schema(self, schema_ref: str) -> dict[str, Any] | None:
         """Load a schema from local cache."""

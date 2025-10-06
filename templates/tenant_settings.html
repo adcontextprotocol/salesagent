@@ -187,6 +187,12 @@
         border-color: #fca5a5;
     }
 
+    .status-card.danger {
+        background: #fef2f2;
+        border: 2px solid #dc2626;
+        border-left: 4px solid #dc2626;
+    }
+
     .adapter-cards {
         display: grid;
         grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
@@ -428,6 +434,11 @@
         <a class="settings-nav-item" data-section="advanced">
             <span class="settings-nav-icon">🔧</span>
             <span>Advanced</span>
+        </a>
+
+        <a class="settings-nav-item" data-section="danger-zone">
+            <span class="settings-nav-icon">⚠️</span>
+            <span>Danger Zone</span>
         </a>
     </nav>
 
@@ -1194,6 +1205,60 @@ result = await client.tools.get_products(brief="video ads")</pre>
                     </div>
                 </form>
             </div>
+        </div>
+
+        <!-- Danger Zone -->
+        <div id="danger-zone" class="settings-section">
+            <div class="settings-header">
+                <h2>⚠️ Danger Zone</h2>
+                <p>Irreversible and destructive actions</p>
+            </div>
+
+            <div class="status-card danger">
+                <strong>⚠️ Warning</strong>
+                <p style="margin: 0.25rem 0 0 0; font-size: 0.75rem;">
+                    Actions in this section are permanent and cannot be easily undone
+                </p>
+            </div>
+
+            <div class="form-section" style="border: 2px solid #dc2626; border-radius: 8px; padding: 1.5rem; background: #fef2f2;">
+                <h3 style="color: #991b1b;">Deactivate Sales Agent</h3>
+                <p style="color: #7f1d1d; margin-bottom: 1rem;">
+                    Deactivating your sales agent will:
+                </p>
+                <ul style="color: #7f1d1d; margin-bottom: 1.5rem;">
+                    <li>Stop all active media buys immediately</li>
+                    <li>Disable API access for all principals</li>
+                    <li>Hide this tenant from all user dashboards</li>
+                    <li>Prevent new signups or logins</li>
+                    <li><strong>Preserve all data</strong> - you can reactivate later by contacting support</li>
+                </ul>
+
+                <form id="deactivate-form" method="POST" action="/tenant/{{ tenant.tenant_id }}/deactivate" onsubmit="return confirmDeactivation()">
+                    <div class="form-group">
+                        <label for="confirm-name" style="color: #991b1b;">
+                            Type <strong>{{ tenant.name }}</strong> to confirm:
+                        </label>
+                        <input type="text" id="confirm-name" name="confirm_name" required
+                               placeholder="Enter tenant name to confirm"
+                               style="border: 2px solid #dc2626;">
+                    </div>
+
+                    <button type="submit" class="btn" style="background: #dc2626; color: white;">
+                        Deactivate Sales Agent
+                    </button>
+                </form>
+            </div>
+
+            {% if not tenant.is_active %}
+            <div class="form-section" style="border: 2px solid #059669; border-radius: 8px; padding: 1.5rem; background: #f0fdf4;">
+                <h3 style="color: #065f46;">Sales Agent Currently Inactive</h3>
+                <p style="color: #047857; margin-bottom: 1rem;">
+                    This sales agent is currently deactivated. To reactivate, please contact support at
+                    <a href="mailto:support@scope3.com">support@scope3.com</a>.
+                </p>
+            </div>
+            {% endif %}
         </div>
     </div>
 </div>
@@ -2103,6 +2168,23 @@ function savePrincipalMappings() {
         saveBtn.disabled = false;
         saveBtn.textContent = originalText;
     });
+}
+
+// Tenant deactivation confirmation
+function confirmDeactivation() {
+    const confirmName = document.getElementById('confirm-name').value.trim();
+    const expectedName = "{{ tenant.name }}".trim();
+
+    if (confirmName !== expectedName) {
+        alert('❌ The name you entered does not match. Please type the exact tenant name to confirm.');
+        return false;
+    }
+
+    return confirm(
+        '⚠️ FINAL WARNING\n\n' +
+        'This will immediately deactivate your sales agent and stop all active campaigns.\n\n' +
+        'Are you absolutely sure you want to proceed?'
+    );
 }
 </script>
 

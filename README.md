@@ -253,6 +253,42 @@ conn.close()  # Prone to leaks
 ```
 See [Database Patterns Guide](docs/database-patterns.md) for details.
 
+## Admin Features
+
+### Multi-Tenant User Access
+Users can belong to multiple tenants with the same email address (like GitHub, Slack, etc.):
+- Sign up for multiple publisher accounts with one Google login
+- Different roles per tenant (admin in one, viewer in another)
+- No "email already exists" errors - users are tenant-scoped
+
+**Migration**: Database schema updated with composite unique constraint `(tenant_id, email)`. See `alembic/versions/aff9ca8baa9c_allow_users_multi_tenant_access.py`
+
+### Tenant Deactivation (Soft Delete)
+Deactivate test or unused tenants without losing data:
+
+**How to deactivate:**
+1. Go to Settings → Danger Zone
+2. Type tenant name exactly to confirm
+3. Click "Deactivate Sales Agent"
+
+**What happens:**
+- ✅ All data preserved (media buys, creatives, principals)
+- ❌ Hidden from login and tenant selection
+- ❌ API access blocked
+- ℹ️ Can be reactivated by super admin
+
+**Reactivation** (super admin only):
+```bash
+POST /admin/tenant/{tenant_id}/reactivate
+```
+
+### Self-Signup
+New users can self-provision tenants:
+- Google OAuth authentication
+- GAM-only for self-signup (other adapters via support)
+- Auto-creates tenant, user, and default principal
+- Available at `/signup` on main domain
+
 ## Support
 
 - **Issues**: [GitHub Issues](https://github.com/adcontextprotocol/salesagent/issues)
