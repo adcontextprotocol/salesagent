@@ -10,7 +10,7 @@ from flask import Blueprint, flash, jsonify, redirect, render_template, request,
 
 from src.admin.utils import require_tenant_access
 from src.core.database.database_session import get_db_session
-from src.core.database.models import CreativeFormat, Product, Tenant
+from src.core.database.models import Product, Tenant
 from src.core.validation import sanitize_form_data
 from src.services.ai_product_service import AIProductConfigurationService
 from src.services.default_products import get_default_products, get_industry_specific_products
@@ -23,71 +23,42 @@ products_bp = Blueprint("products", __name__)
 
 
 def get_creative_formats():
-    """Get all available creative formats for the product form."""
-    try:
-        with get_db_session() as db_session:
-            # Get both foundational formats (tenant_id is None) and tenant-specific formats
-            formats = (
-                db_session.query(CreativeFormat)
-                .filter(
-                    CreativeFormat.tenant_id.is_(None)  # Only get foundational/standard formats for product creation
-                )
-                .order_by(CreativeFormat.type, CreativeFormat.name)
-                .all()
-            )
+    """Get all available creative formats for the product form.
 
-            # Convert to dict format for template
-            formats_list = []
-            for fmt in formats:
-                format_dict = {
-                    "format_id": fmt.format_id,
-                    "name": fmt.name,
-                    "type": fmt.type,
-                    "description": fmt.description,
-                    "dimensions": None,
-                    "duration": None,
-                }
+    Returns standard AdCP formats from FORMAT_REGISTRY (authoritative source).
+    Custom tenant-specific formats are stored in database but not used for product creation.
+    """
+    from src.core.schemas import FORMAT_REGISTRY
 
-                # Add dimensions for display formats
-                if fmt.width and fmt.height:
-                    format_dict["dimensions"] = f"{fmt.width}x{fmt.height}"
+    formats_list = []
 
-                # Add duration for video/audio formats
-                if fmt.duration_seconds:
-                    format_dict["duration"] = f"{fmt.duration_seconds}s"
+    # Use FORMAT_REGISTRY as authoritative source for standard formats
+    for _format_id, fmt in FORMAT_REGISTRY.items():
+        format_dict = {
+            "format_id": fmt.format_id,
+            "name": fmt.name,
+            "type": fmt.type,
+            "description": f"{fmt.name} - {fmt.iab_specification or 'Standard format'}",
+            "dimensions": None,
+            "duration": None,
+        }
 
-                formats_list.append(format_dict)
+        # Add dimensions for display/video formats
+        if fmt.requirements and "width" in fmt.requirements and "height" in fmt.requirements:
+            format_dict["dimensions"] = f"{fmt.requirements['width']}x{fmt.requirements['height']}"
 
-            return formats_list
-    except Exception as e:
-        logger.error(f"Error loading creative formats: {e}", exc_info=True)
-        # Return default formats as fallback
-        return [
-            {
-                "format_id": "display_300x250",
-                "name": "Medium Rectangle",
-                "type": "display",
-                "description": "Standard display banner",
-                "dimensions": "300x250",
-                "duration": None,
-            },
-            {
-                "format_id": "display_728x90",
-                "name": "Leaderboard",
-                "type": "display",
-                "description": "Top of page banner",
-                "dimensions": "728x90",
-                "duration": None,
-            },
-            {
-                "format_id": "video_30s",
-                "name": "30 Second Video",
-                "type": "video",
-                "description": "Standard video advertisement",
-                "dimensions": None,
-                "duration": "30s",
-            },
-        ]
+        # Add duration for video/audio formats
+        if fmt.requirements and "duration" in fmt.requirements:
+            format_dict["duration"] = f"{fmt.requirements['duration']}s"
+        elif fmt.requirements and "duration_max" in fmt.requirements:
+            format_dict["duration"] = f"{fmt.requirements['duration_max']}s"
+
+        formats_list.append(format_dict)
+
+    # Sort by type, then name
+    formats_list.sort(key=lambda x: (x["type"], x["name"]))
+
+    return formats_list
 
 
 @products_bp.route("/")
