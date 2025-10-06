@@ -85,8 +85,10 @@
                     {% endif %}
                 </td>
                 <td>
-                    {% if product.is_fixed_price %}
+                    {% if product.is_fixed_price and product.cpm %}
                     ${{ "%.2f"|format(product.cpm) }}
+                    {% elif product.is_fixed_price %}
+                    <span style="color: #999;">No price set</span>
                     {% else %}
                         {% if product.price_guidance %}
                             {% if product.price_guidance.floor is defined %}
