@@ -1809,16 +1809,24 @@ class AdCPRequestHandler(RequestHandler):
 
             return {
                 "success": False,
-                "message": f"Authentication successful for {tool_context.principal_id}, but media buy creation needs more details",
-                "required_fields": ["product_ids", "total_budget", "flight_start_date", "flight_end_date"],
+                "message": f"Authentication successful for {tool_context.principal_id}. To create a media buy, use explicit skill invocation with AdCP v2.4 spec-compliant format.",
+                "required_fields": ["promoted_offering", "packages", "budget", "start_time", "end_time"],
                 "authenticated_tenant": tool_context.tenant_id,
                 "authenticated_principal": tool_context.principal_id,
                 "example": {
-                    "product_ids": ["video_premium"],
-                    "total_budget": 10000,
-                    "flight_start_date": "2025-02-01",
-                    "flight_end_date": "2025-02-28",
+                    "promoted_offering": "https://example.com/product",
+                    "packages": [
+                        {
+                            "buyer_ref": "pkg_1",
+                            "products": ["video_premium"],
+                            "budget": {"total": 10000, "currency": "USD"},
+                        }
+                    ],
+                    "budget": {"total": 10000, "currency": "USD"},
+                    "start_time": "2025-02-01T00:00:00Z",
+                    "end_time": "2025-02-28T23:59:59Z",
                 },
+                "documentation": "https://adcontextprotocol.org/docs/",
             }
         except Exception as e:
             logger.error(f"Error in media buy creation: {e}")

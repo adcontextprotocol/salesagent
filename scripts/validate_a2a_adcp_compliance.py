@@ -120,11 +120,50 @@ def check_adcp_spec_documentation():
     return True
 
 
+def check_no_legacy_format_in_error_messages():
+    """Verify that error messages and examples use spec format, not legacy."""
+    print("🔍 Checking that error messages use spec format...")
+
+    file_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "src", "a2a_server", "adcp_a2a_server.py")
+
+    with open(file_path) as f:
+        content = f.read()
+
+    # Check for legacy format in error messages and examples
+    legacy_terms = ['"product_ids"', '"total_budget"', '"flight_start_date"', '"flight_end_date"']
+
+    found_legacy_in_messages = []
+    for legacy_term in legacy_terms:
+        # Look for these in return statements and examples
+        if legacy_term in content:
+            # Check if it's in a return statement or example (not in comments or docstrings explaining what NOT to do)
+            lines = content.split("\n")
+            for i, line in enumerate(lines):
+                if legacy_term in line and ("return" in line or "example" in line.lower() or "required_fields" in line):
+                    # Skip if this is in a comment explaining what NOT to use
+                    if "# ❌" not in line and "Legacy" not in lines[max(0, i - 5) : i + 1]:
+                        found_legacy_in_messages.append((i + 1, line.strip(), legacy_term))
+
+    if found_legacy_in_messages:
+        print("❌ REGRESSION: Legacy format found in error messages/examples:")
+        for line_num, line_content, term in found_legacy_in_messages:
+            print(f"   Line {line_num}: {term} in '{line_content[:80]}...'")
+        print("   All error messages and examples MUST use AdCP spec format")
+        return False
+
+    print("✅ No legacy format in error messages or examples")
+    return True
+
+
 def main():
     """Run all validation checks."""
     print("🚀 Running A2A AdCP Compliance Validation...\n")
 
-    tests = [check_create_media_buy_validation, check_adcp_spec_documentation]
+    tests = [
+        check_create_media_buy_validation,
+        check_adcp_spec_documentation,
+        check_no_legacy_format_in_error_messages,
+    ]
 
     passed = 0
     failed = 0
