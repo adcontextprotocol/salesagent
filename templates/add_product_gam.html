@@ -266,6 +266,7 @@ function loadInventory(type, search = '') {
                     <input type="checkbox"
                            value="${item.id}"
                            data-sizes='${item.metadata && item.metadata.sizes ? JSON.stringify(item.metadata.sizes) : '[]'}'
+                           data-path='${item.path ? JSON.stringify(item.path) : '[]'}'
                            ${selectedIds.has(item.id) ? 'checked' : ''}
                            style="margin-right: 0.75rem;">
                     <div style="flex: 1;">
@@ -317,11 +318,35 @@ function updateSelectedDisplay(containerId, names, ids) {
     }
 }
 
-function autoSuggestFormats(selectedCheckboxes) {
+async function autoSuggestFormats(selectedCheckboxes) {
     // Collect all sizes from selected ad units
     const allSizes = new Set();
+    const includeChildren = document.querySelector('input[name="include_descendants"]')?.checked;
+
+    // First, collect sizes from directly selected ad units
+    const selectedPaths = [];
     selectedCheckboxes.forEach(cb => {
         const sizesData = cb.getAttribute('data-sizes');
+        const pathData = cb.getAttribute('data-path');
+
+        // Extract path from data attribute
+        let path = [];
+        if (pathData) {
+            try {
+                path = JSON.parse(pathData);
+            } catch (e) {
+                console.warn('Failed to parse path data:', e);
+                // Fallback: use the name from the label
+                const label = cb.closest('label');
+                const name = label.querySelector('strong').textContent.trim();
+                path = [name];
+            }
+        }
+        if (path.length > 0) {
+            selectedPaths.push(path);
+        }
+
+        // Collect sizes from this ad unit
         if (sizesData) {
             try {
                 const sizes = JSON.parse(sizesData);
@@ -333,6 +358,40 @@ function autoSuggestFormats(selectedCheckboxes) {
             }
         }
     });
+
+    // If "include children" is checked, fetch all ad units and find children
+    if (includeChildren && selectedPaths.length > 0) {
+        try {
+            const url = `{{ url_for('inventory.get_inventory_list', tenant_id=tenant_id) }}?type=ad_unit`;
+            const response = await fetch(url);
+            const data = await response.json();
+
+            if (data.items) {
+                data.items.forEach(item => {
+                    // Check if this item is a child of any selected path
+                    if (item.path && item.path.length > 0) {
+                        for (const selectedPath of selectedPaths) {
+                            // Check if item.path starts with selectedPath
+                            const isChild = selectedPath.every((segment, idx) => item.path[idx] === segment)
+                                         && item.path.length > selectedPath.length;
+
+                            if (isChild) {
+                                // This is a child - collect its sizes
+                                if (item.metadata && item.metadata.sizes) {
+                                    item.metadata.sizes.forEach(size => {
+                                        allSizes.add(`${size.width}x${size.height}`);
+                                    });
+                                }
+                                break;
+                            }
+                        }
+                    }
+                });
+            }
+        } catch (e) {
+            console.warn('Failed to fetch child ad units:', e);
+        }
+    }
 
     // If we have sizes, auto-check matching formats
     if (allSizes.size > 0) {
@@ -357,7 +416,7 @@ function autoSuggestFormats(selectedCheckboxes) {
         });
 
         if (suggestedCount > 0) {
-            console.log(`Auto-suggested ${suggestedCount} format(s) based on ad unit sizes`);
+            console.log(`Auto-suggested ${suggestedCount} format(s) based on ${allSizes.size} unique ad unit sizes (including children: ${includeChildren})`);
         }
     }
 }
