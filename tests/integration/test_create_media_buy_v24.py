@@ -134,7 +134,7 @@ class TestCreateMediaBuyV24Format:
         response = _create_media_buy_impl(
             promoted_offering="Nike Air Jordan 2025 basketball shoes",
             po_number="TEST-V24-001",
-            packages=[p.model_dump() for p in packages],  # Convert to dicts for _impl
+            packages=[p.model_dump_internal() for p in packages],  # Use internal to skip package_id validation
             start_time=datetime.now(UTC) + timedelta(days=1),
             end_time=datetime.now(UTC) + timedelta(days=31),
             context=context,
@@ -185,7 +185,7 @@ class TestCreateMediaBuyV24Format:
         response = _create_media_buy_impl(
             promoted_offering="Adidas UltraBoost 2025 running shoes",
             po_number="TEST-V24-002",
-            packages=[p.model_dump() for p in packages],
+            packages=[p.model_dump_internal() for p in packages],
             start_time=datetime.now(UTC) + timedelta(days=1),
             end_time=datetime.now(UTC) + timedelta(days=31),
             context=context,
@@ -240,7 +240,7 @@ class TestCreateMediaBuyV24Format:
         response = _create_media_buy_impl(
             promoted_offering="Puma RS-X 2025 training shoes",
             po_number="TEST-V24-003",
-            packages=[p.model_dump() for p in packages],
+            packages=[p.model_dump_internal() for p in packages],
             start_time=datetime.now(UTC) + timedelta(days=1),
             end_time=datetime.now(UTC) + timedelta(days=31),
             context=context,
@@ -284,7 +284,7 @@ class TestCreateMediaBuyV24Format:
         response = _create_media_buy_impl(
             promoted_offering="Reebok Nano 2025 cross-training shoes",
             po_number="TEST-V24-A2A-001",
-            packages=[p.model_dump() for p in packages],
+            packages=[p.model_dump_internal() for p in packages],
             start_time=datetime.now(UTC) + timedelta(days=1),
             end_time=datetime.now(UTC) + timedelta(days=31),
             context=context,
