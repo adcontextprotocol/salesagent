@@ -142,23 +142,43 @@ def add_product(tenant_id):
                 # Only set countries if some were selected; None means all countries
                 countries = countries_list if countries_list and "ALL" not in countries_list else None
 
-                # Get pricing based on delivery type
-                delivery_type = form_data.get("delivery_type", "guaranteed")
+                # Get pricing based on line item type (GAM form) or delivery type (other adapters)
+                line_item_type = form_data.get("line_item_type")
                 cpm = None
                 price_guidance = None
 
-                if delivery_type == "guaranteed":
-                    cpm = float(form_data.get("cpm", 0)) if form_data.get("cpm") else None
+                # Determine delivery_type and pricing based on line_item_type
+                if line_item_type:
+                    # GAM form: map line item type to delivery type and pricing
+                    if line_item_type in ["STANDARD", "SPONSORSHIP"]:
+                        # Fixed price line items
+                        delivery_type = "guaranteed"
+                        cpm = float(form_data.get("cpm", 0)) if form_data.get("cpm") else None
+                    elif line_item_type == "PRICE_PRIORITY":
+                        # Floor price line item
+                        delivery_type = "non-guaranteed"
+                        floor_cpm = float(form_data.get("floor_cpm", 0)) if form_data.get("floor_cpm") else None
+                        if floor_cpm:
+                            price_guidance = {"min": floor_cpm, "max": floor_cpm}
+                    elif line_item_type == "HOUSE":
+                        # No price
+                        delivery_type = "non-guaranteed"
+                        # No CPM, no price guidance
                 else:
-                    # Non-guaranteed - use price guidance
-                    price_min = (
-                        float(form_data.get("price_guidance_min", 0)) if form_data.get("price_guidance_min") else None
-                    )
-                    price_max = (
-                        float(form_data.get("price_guidance_max", 0)) if form_data.get("price_guidance_max") else None
-                    )
-                    if price_min and price_max:
-                        price_guidance = {"min": price_min, "max": price_max}
+                    # Non-GAM form: use legacy delivery_type field
+                    delivery_type = form_data.get("delivery_type", "guaranteed")
+                    if delivery_type == "guaranteed":
+                        cpm = float(form_data.get("cpm", 0)) if form_data.get("cpm") else None
+                    else:
+                        # Non-guaranteed - use price guidance
+                        price_min = (
+                            float(form_data.get("price_guidance_min", 0)) if form_data.get("price_guidance_min") else None
+                        )
+                        price_max = (
+                            float(form_data.get("price_guidance_max", 0)) if form_data.get("price_guidance_max") else None
+                        )
+                        if price_min and price_max:
+                            price_guidance = {"min": price_min, "max": price_max}
 
                 # Build implementation config based on adapter type
                 implementation_config = {}

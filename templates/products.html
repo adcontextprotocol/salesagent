@@ -95,8 +95,12 @@
                                 {# New format with floor/p50/p75 #}
                                 ${{ "%.2f"|format(product.price_guidance.floor) }} - ${{ "%.2f"|format(product.price_guidance.p75) }}
                             {% elif product.price_guidance.min is defined %}
-                                {# Old format with min/max #}
-                                ${{ "%.2f"|format(product.price_guidance.min) }} - ${{ "%.2f"|format(product.price_guidance.max) }}
+                                {# Old format with min/max - check if they're equal (floor price) #}
+                                {% if product.price_guidance.min == product.price_guidance.max %}
+                                    Floor: ${{ "%.2f"|format(product.price_guidance.min) }}
+                                {% else %}
+                                    ${{ "%.2f"|format(product.price_guidance.min) }} - ${{ "%.2f"|format(product.price_guidance.max) }}
+                                {% endif %}
                             {% else %}
                                 Guidance available
                             {% endif %}
