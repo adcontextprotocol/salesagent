@@ -118,16 +118,24 @@ async def test_explicit_skill_create_media_buy(...):
 
 **Impact**: This test now exercises the real serialization code and would have caught the bug.
 
-### 2. Made E2E Tests Blocking in CI
+### 2. E2E Test Stability Analysis
 
 **File**: `.github/workflows/test.yml`
 
-**Changes**:
-- Removed `continue-on-error: true` from e2e tests (line 343)
-- Added e2e-tests to test-summary job dependencies (line 387)
-- Updated summary check to include e2e test results (lines 393-395)
+**Status**: E2E tests currently run with `continue-on-error: true` (not blocking)
 
-**Impact**: E2E test failures now block CI, catching integration bugs earlier.
+**Why Not Blocking Yet**:
+- E2E tests have connection failures in CI environment
+- Schema validation tests failing (needs investigation)
+- Server startup timing issues in GitHub Actions
+
+**Next Steps Before Making Blocking**:
+1. Stabilize server startup in CI (improve health check polling)
+2. Fix schema validation errors (possibly AdCP spec version mismatch)
+3. Add retry logic for flaky connection issues
+4. Once stable for 2+ weeks, remove `continue-on-error: true`
+
+**Impact**: E2E tests provide early warning but don't block merges yet. Developers should monitor e2e results and fix failures.
 
 ### 3. Added Serialization Verification
 
@@ -153,9 +161,10 @@ Based on this case study, follow these principles:
 ### ❌ DON'T
 
 1. **Over-mock**: Don't mock internal functions that are part of the code path under test
-2. **Ignore test failures**: `continue-on-error: true` should be rare and justified
+2. **Ignore test failures**: `continue-on-error: true` should be rare and justified (e.g., E2E tests still being stabilized)
 3. **Test implementation details**: Focus on behavior and contracts, not internal structure
 4. **Skip integration tests**: They catch bugs that unit tests with mocks cannot
+5. **Make unstable tests blocking**: Stabilize tests first, then make them block CI
 
 ## Metrics
 
