@@ -32,29 +32,75 @@ As of 2025-10-06, E2E tests are running with `continue-on-error: true` because t
 
 **Priority**: Medium - doesn't block basic functionality, but needed for full AdCP compliance.
 
-### 3. ⏳ E2E Server Startup Issues (INFRASTRUCTURE)
+### 3. 🚨 E2E Servers Not Started in CI (CRITICAL INFRASTRUCTURE BUG)
 
 **Issue**: 25 E2E tests failing with connection errors: "Client failed to connect: All connection attempts failed"
 
-**Details**:
-- Server startup in GitHub Actions is unreliable
-- Current wait loop: 30 attempts × 2 seconds = 60 seconds max
-- Health checks: `http://localhost:8080/health` (MCP) and `http://localhost:8091/.well-known/agent.json` (A2A)
+**Root Cause**: The GitHub Actions workflow uses `--skip-docker` flag but **never starts the MCP and A2A servers**!
 
-**Possible causes**:
-1. Servers not starting fast enough
-2. Port conflicts in CI environment
-3. Database initialization taking too long
-4. Process backgrounding issues (`&` in bash)
+**Evidence**:
+- Workflow has "Stop background servers" step referencing `$MCP_PID` and `$A2A_PID`
+- But there's NO "Start background servers" step to set these variables
+- Tests try to connect to:
+  - **MCP Server**: `http://localhost:8080/mcp/` (FastMCP HTTP endpoint)
+  - **A2A Server**: `http://localhost:8091/.well-known/agent.json` (A2A agent endpoint)
+- Both servers are not running, so all connection attempts fail
 
-**Proposed fixes**:
-1. Add retry logic with exponential backoff
-2. Increase health check timeout
-3. Add better logging to see what's failing
-4. Consider using Docker Compose instead of manual process management
-5. Add readiness probes before running tests
+**Current workflow (BROKEN)**:
+```yaml
+- name: Run E2E tests
+  run: |
+    export PATH="$HOME/.cargo/bin:$PATH"
+    uv run pytest tests/e2e/ -v --tb=short --skip-docker  # ← Expects servers running!
+  continue-on-error: true
 
-**Priority**: High - blocks 25+ tests from running.
+- name: Stop background servers  # ← References $MCP_PID and $A2A_PID that don't exist!
+  if: always()
+  run: |
+    if [ ! -z "$MCP_PID" ]; then
+      kill $MCP_PID 2>/dev/null || true
+    fi
+```
+
+**Proposed fix**:
+```yaml
+- name: Start background servers
+  run: |
+    # Start MCP server in background
+    uv run python -m src.core.main &
+    export MCP_PID=$!
+    echo "MCP_PID=$MCP_PID" >> $GITHUB_ENV
+
+    # Start A2A server in background
+    uv run python -m src.a2a_server.server &
+    export A2A_PID=$!
+    echo "A2A_PID=$A2A_PID" >> $GITHUB_ENV
+
+    # Wait for health checks
+    for i in {1..30}; do
+      if curl -sf http://localhost:8080/health > /dev/null && \
+         curl -sf http://localhost:8091/.well-known/agent.json > /dev/null; then
+        echo "✓ Both servers ready"
+        break
+      fi
+      sleep 2
+    done
+
+- name: Run E2E tests
+  run: |
+    export PATH="$HOME/.cargo/bin:$PATH"
+    uv run pytest tests/e2e/ -v --tb=short --skip-docker
+  continue-on-error: true
+
+- name: Stop background servers
+  if: always()
+  run: |
+    kill $MCP_PID $A2A_PID 2>/dev/null || true
+```
+
+**Alternative**: Remove `--skip-docker` and let pytest manage Docker Compose (more reliable).
+
+**Priority**: 🔥 CRITICAL - This is why all E2E connection tests fail!
 
 ### 4. 🐛 Schema Validation Test Failures (DATA)
 
