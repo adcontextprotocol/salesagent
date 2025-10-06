@@ -89,7 +89,12 @@ def get_principal_from_context(context: Context | None) -> str | None:
         return None
 
 
-async def get_products_raw(brief: str, promoted_offering: str, context: Context = None) -> GetProductsResponse:
+async def get_products_raw(
+    brief: str,
+    promoted_offering: str,
+    adcp_version: str = "1.0.0",
+    context: Context = None,
+) -> GetProductsResponse:
     """Get available products matching the brief.
 
     Raw function without @mcp.tool decorator for A2A server use.
@@ -97,6 +102,7 @@ async def get_products_raw(brief: str, promoted_offering: str, context: Context 
     Args:
         brief: Brief description of the advertising campaign or requirements
         promoted_offering: What is being promoted/advertised (required per AdCP spec)
+        adcp_version: AdCP schema version for this request (default: 1.0.0)
         context: FastMCP context (automatically provided)
 
     Returns:
