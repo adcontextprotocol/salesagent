@@ -1004,7 +1004,17 @@ class AdCPRequestHandler(RequestHandler):
             raise ServerError(InternalError(message=f"Unable to retrieve products: {str(e)}"))
 
     async def _handle_create_media_buy_skill(self, parameters: dict, auth_token: str) -> dict:
-        """Handle explicit create_media_buy skill invocation."""
+        """Handle explicit create_media_buy skill invocation.
+
+        IMPORTANT: This handler ONLY accepts AdCP spec-compliant format:
+        - packages[] (required)
+        - budget{} (required)
+        - start_time (required)
+        - end_time (required)
+        - promoted_offering (required)
+
+        Legacy format (product_ids, total_budget, start_date, end_date) is NOT supported.
+        """
         try:
             # Create ToolContext from A2A auth info
             tool_context = self._create_tool_context_from_a2a(
@@ -1012,35 +1022,35 @@ class AdCPRequestHandler(RequestHandler):
                 tool_name="create_media_buy",
             )
 
-            # Map A2A parameters to CreateMediaBuyRequest
-            # Required parameters per AdCP spec
+            # Validate AdCP spec required parameters
             required_params = [
                 "promoted_offering",
-                "product_ids",
-                "total_budget",
-                "flight_start_date",
-                "flight_end_date",
+                "packages",
+                "budget",
+                "start_time",
+                "end_time",
             ]
             missing_params = [param for param in required_params if param not in parameters]
 
             if missing_params:
                 return {
                     "success": False,
-                    "message": f"Missing required parameters: {missing_params}",
+                    "message": f"Missing required AdCP parameters: {missing_params}",
                     "required_parameters": required_params,
                     "received_parameters": list(parameters.keys()),
+                    "error": "This endpoint only accepts AdCP v2.4 spec-compliant format. See https://adcontextprotocol.org/docs/",
                 }
 
-            # Call core function directly with AdCP-compliant parameters
+            # Call core function with AdCP spec-compliant parameters
             response = core_create_media_buy_tool(
                 promoted_offering=parameters["promoted_offering"],
-                po_number=f"A2A-{uuid.uuid4().hex[:8]}",  # Generate PO number
-                product_ids=parameters["product_ids"],
-                total_budget=float(parameters["total_budget"]),
-                start_date=parameters["flight_start_date"],
-                end_date=parameters["flight_end_date"],
+                po_number=parameters.get("po_number", f"A2A-{uuid.uuid4().hex[:8]}"),
+                buyer_ref=parameters.get("buyer_ref", f"A2A-{tool_context.principal_id}"),
+                packages=parameters["packages"],
+                start_time=parameters["start_time"],
+                end_time=parameters["end_time"],
+                budget=parameters["budget"],
                 targeting_overlay=parameters.get("custom_targeting", {}),
-                buyer_ref=f"A2A-{tool_context.principal_id}",
                 context=tool_context,
             )
 
