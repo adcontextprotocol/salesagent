@@ -532,14 +532,51 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 
-    // Set ad units and placements
+    // Set ad units and placements - fetch actual names from inventory
     if (config.targeted_ad_unit_ids && config.targeted_ad_unit_ids.length > 0) {
         document.getElementById('targeted_ad_unit_ids').value = config.targeted_ad_unit_ids.join(',');
-        updateSelectedDisplay('selected-ad-units', config.targeted_ad_unit_ids.map((id, i) => `Ad Unit ${i+1}`), config.targeted_ad_unit_ids);
+
+        // Fetch ad unit names
+        fetch(`{{ url_for('inventory.get_inventory_list', tenant_id=tenant_id) }}?type=ad_unit`)
+            .then(response => response.json())
+            .then(data => {
+                if (data.items) {
+                    const names = config.targeted_ad_unit_ids.map(id => {
+                        const item = data.items.find(i => i.id === id);
+                        return item ? item.name : id;
+                    });
+                    updateSelectedDisplay('selected-ad-units', names, config.targeted_ad_unit_ids);
+                    console.log('Populated ad units:', names);
+                }
+            })
+            .catch(error => {
+                console.error('Failed to fetch ad unit names:', error);
+                // Fallback to IDs
+                updateSelectedDisplay('selected-ad-units', config.targeted_ad_unit_ids, config.targeted_ad_unit_ids);
+            });
     }
+
     if (config.targeted_placement_ids && config.targeted_placement_ids.length > 0) {
         document.getElementById('targeted_placement_ids').value = config.targeted_placement_ids.join(',');
-        updateSelectedDisplay('selected-placements', config.targeted_placement_ids.map((id, i) => `Placement ${i+1}`), config.targeted_placement_ids);
+
+        // Fetch placement names
+        fetch(`{{ url_for('inventory.get_inventory_list', tenant_id=tenant_id) }}?type=placement`)
+            .then(response => response.json())
+            .then(data => {
+                if (data.items) {
+                    const names = config.targeted_placement_ids.map(id => {
+                        const item = data.items.find(i => i.id === id);
+                        return item ? item.name : id;
+                    });
+                    updateSelectedDisplay('selected-placements', names, config.targeted_placement_ids);
+                    console.log('Populated placements:', names);
+                }
+            })
+            .catch(error => {
+                console.error('Failed to fetch placement names:', error);
+                // Fallback to IDs
+                updateSelectedDisplay('selected-placements', config.targeted_placement_ids, config.targeted_placement_ids);
+            });
     }
 
     // Set include descendants checkbox
