@@ -344,6 +344,8 @@
 
     .action-icon.settings { background: #ede9fe; color: #7c3aed; }
     .action-icon.products { background: #dbeafe; color: #2563eb; }
+    .action-icon.properties { background: #fef3c7; color: #d97706; }
+    .action-icon.creatives { background: #fce7f3; color: #db2777; }
     .action-icon.inventory { background: #d1fae5; color: #059669; }
     .action-icon.reports { background: #fed7aa; color: #ea580c; }
 
@@ -676,6 +678,14 @@
                     <div>
                         <div style="font-weight: 600;">Authorized Properties</div>
                         <div style="font-size: 0.75rem; color: #6b7280;">Properties this agent represents</div>
+                    </div>
+                </a>
+
+                <a href="{{ script_name }}/tenant/{{ tenant.tenant_id }}/creative-formats/list" class="action-button">
+                    <div class="action-icon creatives">🎨</div>
+                    <div>
+                        <div style="font-weight: 600;">Uploaded Creatives</div>
+                        <div style="font-size: 0.75rem; color: #6b7280;">View all creatives & media buys</div>
                     </div>
                 </a>
 

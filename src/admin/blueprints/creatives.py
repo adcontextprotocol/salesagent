@@ -81,6 +81,80 @@ def index(tenant_id, **kwargs):
     )
 
 
+@creatives_bp.route("/list", methods=["GET"])
+@require_tenant_access()
+def list_creatives(tenant_id, **kwargs):
+    """List all uploaded creatives and their media buy associations."""
+    from src.core.database.models import Creative, CreativeAssignment, MediaBuy, Principal
+
+    with get_db_session() as db_session:
+        # Get tenant name
+        tenant = db_session.query(Tenant).filter_by(tenant_id=tenant_id).first()
+        if not tenant:
+            return "Tenant not found", 404
+
+        tenant_name = tenant.name
+
+        # Get all creatives for this tenant with their assignments
+        creatives = db_session.query(Creative).filter_by(tenant_id=tenant_id).order_by(Creative.created_at.desc()).all()
+
+        # Build creative data with media buy associations
+        creative_list = []
+        for creative in creatives:
+            # Get principal name
+            principal = (
+                db_session.query(Principal).filter_by(tenant_id=tenant_id, principal_id=creative.principal_id).first()
+            )
+            principal_name = principal.name if principal else creative.principal_id
+
+            # Get all assignments for this creative
+            assignments = (
+                db_session.query(CreativeAssignment)
+                .filter_by(tenant_id=tenant_id, creative_id=creative.creative_id)
+                .all()
+            )
+
+            # Get media buy details for each assignment
+            media_buys = []
+            for assignment in assignments:
+                media_buy = db_session.query(MediaBuy).filter_by(media_buy_id=assignment.media_buy_id).first()
+                if media_buy:
+                    media_buys.append(
+                        {
+                            "media_buy_id": media_buy.media_buy_id,
+                            "order_name": media_buy.order_name,
+                            "package_id": assignment.package_id,
+                            "status": media_buy.status,
+                            "start_date": media_buy.start_date,
+                            "end_date": media_buy.end_date,
+                        }
+                    )
+
+            creative_list.append(
+                {
+                    "creative_id": creative.creative_id,
+                    "name": creative.name,
+                    "format": creative.format,
+                    "status": creative.status,
+                    "principal_name": principal_name,
+                    "principal_id": creative.principal_id,
+                    "group_id": creative.group_id,
+                    "created_at": creative.created_at,
+                    "approved_at": creative.approved_at,
+                    "approved_by": creative.approved_by,
+                    "media_buys": media_buys,
+                    "assignment_count": len(media_buys),
+                }
+            )
+
+    return render_template(
+        "creatives_list.html",
+        tenant_id=tenant_id,
+        tenant_name=tenant_name,
+        creatives=creative_list,
+    )
+
+
 @creatives_bp.route("/add/ai", methods=["GET"])
 @require_tenant_access()
 def add_ai(tenant_id, **kwargs):
