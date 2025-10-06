@@ -247,18 +247,158 @@ document.getElementById('line_item_type').addEventListener('change', function() 
 // Trigger on page load
 document.getElementById('line_item_type').dispatchEvent(new Event('change'));
 
-// Inventory picker functionality (placeholder - will integrate with existing inventory picker)
+// Inventory picker functionality
+let currentPickerType = null;
+
 function openInventoryPicker(type) {
-    // TODO: Integrate with existing GAM inventory picker modal
-    alert(`Opening ${type} picker - integrate with existing inventory modal`);
+    currentPickerType = type;
+    const modal = document.getElementById('inventory-picker-modal');
+    const title = document.getElementById('picker-modal-title');
+    title.textContent = type === 'ad_unit' ? 'Select Ad Units' : 'Select Placements';
+
+    // Load inventory
+    loadInventory(type);
+
+    // Show modal
+    modal.style.display = 'flex';
 }
 
-// Auto-suggest formats based on ad unit selection
-// This would need to call an API to get ad unit sizes and auto-check matching formats
-// For now, it's a placeholder for the integration
+function closeInventoryPicker() {
+    document.getElementById('inventory-picker-modal').style.display = 'none';
+    currentPickerType = null;
+}
+
+function loadInventory(type, search = '') {
+    const list = document.getElementById('inventory-list');
+    list.innerHTML = '<div style="padding: 2rem; text-align: center; color: #666;">Loading...</div>';
+
+    const url = `/admin/api/tenant/{{ tenant_id }}/inventory-list?type=${type}${search ? '&search=' + encodeURIComponent(search) : ''}`;
+
+    fetch(url)
+        .then(response => response.json())
+        .then(data => {
+            if (data.error) {
+                list.innerHTML = `<div style="padding: 2rem; text-align: center; color: #dc3545;">${data.error}</div>`;
+                return;
+            }
+
+            if (data.items.length === 0) {
+                list.innerHTML = '<div style="padding: 2rem; text-align: center; color: #666;">No items found. Try syncing inventory first.</div>';
+                return;
+            }
+
+            // Get currently selected IDs
+            const selectedIds = type === 'ad_unit'
+                ? new Set((document.getElementById('targeted_ad_unit_ids').value || '').split(',').filter(Boolean))
+                : new Set((document.getElementById('targeted_placement_ids').value || '').split(',').filter(Boolean));
+
+            list.innerHTML = data.items.map(item => `
+                <label class="inventory-item" style="display: flex; align-items: center; padding: 0.75rem; border-bottom: 1px solid #eee; cursor: pointer;">
+                    <input type="checkbox"
+                           value="${item.id}"
+                           ${selectedIds.has(item.id) ? 'checked' : ''}
+                           style="margin-right: 0.75rem;">
+                    <div style="flex: 1;">
+                        <strong>${item.name}</strong>
+                        ${item.path && item.path.length > 1 ? `<br><small style="color: #666;">${item.path.join(' > ')}</small>` : ''}
+                    </div>
+                </label>
+            `).join('');
+        })
+        .catch(error => {
+            list.innerHTML = `<div style="padding: 2rem; text-align: center; color: #dc3545;">Error loading inventory: ${error.message}</div>`;
+        });
+}
+
+function applyInventorySelection() {
+    const checkboxes = document.querySelectorAll('#inventory-list input[type="checkbox"]:checked');
+    const selectedIds = Array.from(checkboxes).map(cb => cb.value);
+    const selectedNames = Array.from(checkboxes).map(cb => {
+        const label = cb.closest('label');
+        return label.querySelector('strong').textContent;
+    });
+
+    if (currentPickerType === 'ad_unit') {
+        document.getElementById('targeted_ad_unit_ids').value = selectedIds.join(',');
+        updateSelectedDisplay('selected-ad-units', selectedNames, selectedIds);
+    } else {
+        document.getElementById('targeted_placement_ids').value = selectedIds.join(',');
+        updateSelectedDisplay('selected-placements', selectedNames, selectedIds);
+    }
+
+    closeInventoryPicker();
+}
+
+function updateSelectedDisplay(containerId, names, ids) {
+    const container = document.getElementById(containerId);
+    if (names.length === 0) {
+        container.innerHTML = '<span style="color: #999;">No items selected</span>';
+    } else {
+        container.innerHTML = names.map((name, idx) => `
+            <span class="selected-item" style="display: inline-block; background: #e7f3ff; padding: 0.25rem 0.5rem; margin: 0.25rem; border-radius: 4px;">
+                ${name}
+                <button type="button" onclick="removeSelectedItem('${containerId}', '${ids[idx]}')" style="border: none; background: none; color: #666; cursor: pointer; margin-left: 0.25rem;">×</button>
+            </span>
+        `).join('');
+    }
+}
+
+function removeSelectedItem(containerId, idToRemove) {
+    const isAdUnit = containerId === 'selected-ad-units';
+    const hiddenInput = document.getElementById(isAdUnit ? 'targeted_ad_unit_ids' : 'targeted_placement_ids');
+    const currentIds = hiddenInput.value.split(',').filter(Boolean);
+    const newIds = currentIds.filter(id => id !== idToRemove);
+    hiddenInput.value = newIds.join(',');
+
+    // Refresh display
+    const selectedNames = Array.from(document.getElementById(containerId).querySelectorAll('.selected-item'))
+        .map(span => span.textContent.trim().replace('×', '').trim())
+        .filter((_, idx) => currentIds[idx] !== idToRemove);
+
+    updateSelectedDisplay(containerId, selectedNames, newIds);
+}
+
+// Search handler
+let searchTimeout;
+document.addEventListener('DOMContentLoaded', function() {
+    const searchInput = document.getElementById('picker-search');
+    if (searchInput) {
+        searchInput.addEventListener('input', function() {
+            clearTimeout(searchTimeout);
+            searchTimeout = setTimeout(() => {
+                if (currentPickerType) {
+                    loadInventory(currentPickerType, this.value);
+                }
+            }, 300);
+        });
+    }
+});
 </script>
 
-<!-- Include inventory picker modal if it exists -->
-{% include 'partials/inventory_picker_modal.html' ignore missing %}
+<!-- Inventory Picker Modal -->
+<div id="inventory-picker-modal" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 1000; align-items: center; justify-content: center;">
+    <div style="background: white; border-radius: 8px; width: 90%; max-width: 600px; max-height: 80vh; display: flex; flex-direction: column;">
+        <!-- Header -->
+        <div style="padding: 1.5rem; border-bottom: 1px solid #ddd;">
+            <h3 id="picker-modal-title" style="margin: 0;">Select Items</h3>
+        </div>
+
+        <!-- Search -->
+        <div style="padding: 1rem; border-bottom: 1px solid #ddd;">
+            <input type="text" id="picker-search" placeholder="Search..." style="width: 100%; padding: 0.5rem; border: 1px solid #ddd; border-radius: 4px;">
+        </div>
+
+        <!-- List -->
+        <div id="inventory-list" style="flex: 1; overflow-y: auto; min-height: 200px;">
+            <!-- Items loaded dynamically -->
+        </div>
+
+        <!-- Footer -->
+        <div style="padding: 1rem; border-top: 1px solid #ddd; display: flex; gap: 0.5rem; justify-content: flex-end;">
+            <button type="button" onclick="closeInventoryPicker()" class="btn btn-secondary">Cancel</button>
+            <button type="button" onclick="applyInventorySelection()" class="btn btn-primary">Apply Selection</button>
+        </div>
+    </div>
+</div>
 
 {% endblock %}
