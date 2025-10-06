@@ -339,27 +339,21 @@ class TestA2ASkillInvocation:
     async def test_explicit_skill_create_media_buy(
         self, handler, sample_tenant, sample_principal, sample_products, validator
     ):
-        """Test explicit skill invocation for create_media_buy."""
+        """Test explicit skill invocation for create_media_buy.
+
+        NOTE: This test now uses the REAL mock adapter and code paths,
+        only mocking authentication. This ensures we catch serialization bugs.
+        """
         # Mock authentication token
         handler._get_auth_token = MagicMock(return_value=sample_principal["access_token"])
 
-        # Mock external dependencies (auth, adapter)
+        # Mock ONLY authentication - use real adapter and implementation
         with (
             patch("src.a2a_server.adcp_a2a_server.get_principal_from_token") as mock_get_principal,
             patch("src.a2a_server.adcp_a2a_server.get_current_tenant") as mock_get_tenant,
-            patch("src.core.main.get_adapter") as mock_get_adapter,
         ):
             mock_get_principal.return_value = sample_principal["principal_id"]
             mock_get_tenant.return_value = {"tenant_id": sample_tenant["tenant_id"]}
-
-            # Mock adapter response
-            mock_adapter = MagicMock()
-            mock_adapter.create_media_buy.return_value = {
-                "media_buy_id": "mb_12345",
-                "status": "active",
-                "platform_media_buy_id": "platform_123",
-            }
-            mock_get_adapter.return_value = mock_adapter
 
             # Create explicit skill invocation message
             skill_params = {
@@ -372,7 +366,7 @@ class TestA2ASkillInvocation:
             message = self.create_message_with_skill("create_media_buy", skill_params)
             params = MessageSendParams(message=message)
 
-            # Process the message - this will execute the real code path
+            # Process the message - executes REAL _create_media_buy_impl with mock adapter
             result = await handler.on_message_send(params)
 
             # Verify the result
@@ -388,6 +382,10 @@ class TestA2ASkillInvocation:
             assert "success" in artifact_data
             assert artifact_data["success"] is True
             assert "media_buy_id" in artifact_data
+
+            # Verify packages are properly serialized (this would have caught the bug!)
+            assert "packages" in artifact_data
+            assert isinstance(artifact_data["packages"], list)
 
     @pytest.mark.asyncio
     async def test_hybrid_invocation(self, handler, sample_tenant, sample_principal, sample_products, validator):

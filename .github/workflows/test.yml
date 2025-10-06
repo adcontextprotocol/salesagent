@@ -340,7 +340,6 @@ jobs:
       run: |
         export PATH="$HOME/.cargo/bin:$PATH"
         uv run pytest tests/e2e/ -v --tb=short --skip-docker
-      continue-on-error: true  # E2E tests may be flaky
 
     - name: Stop background servers
       if: always()
@@ -385,15 +384,17 @@ jobs:
   test-summary:
     name: Test Summary
     runs-on: ubuntu-latest
-    needs: [smoke-tests, unit-tests, integration-tests]
+    needs: [smoke-tests, unit-tests, integration-tests, e2e-tests]
     if: always()
 
     steps:
     - name: Check test results
       run: |
-        if [ "${{ needs.unit-tests.result }}" = "failure" ] || [ "${{ needs.integration-tests.result }}" = "failure" ]; then
+        if [ "${{ needs.unit-tests.result }}" = "failure" ] || \
+           [ "${{ needs.integration-tests.result }}" = "failure" ] || \
+           [ "${{ needs.e2e-tests.result }}" = "failure" ]; then
           echo "❌ Tests failed"
           exit 1
         else
-          echo "✅ All required tests passed"
+          echo "✅ All required tests passed (smoke, unit, integration, e2e)"
         fi
