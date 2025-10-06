@@ -20,7 +20,7 @@ pytestmark = pytest.mark.integration
 def mock_context():
     """Create mock context for all tests (reduces duplicate Mock() calls)."""
     context = Mock(spec=["meta"])  # Limit to only meta attribute
-    context.meta = {"headers": {"x-adcp-auth": "test_token"}}
+    context.meta = {"headers": {"x-adcp-auth": "filter_test_token"}}  # Match the token in setup_diverse_products
     return context
 
 
