@@ -85,9 +85,9 @@ def index():
 
     # Check if user is super admin
     if session.get("role") == "super_admin":
-        # Super admin - show all tenants
+        # Super admin - show all active tenants
         with get_db_session() as db_session:
-            tenants = db_session.query(Tenant).order_by(Tenant.name).all()
+            tenants = db_session.query(Tenant).filter_by(is_active=True).order_by(Tenant.name).all()
             tenant_list = []
             for tenant in tenants:
                 tenant_list.append(
@@ -363,3 +363,43 @@ def mcp_test():
         mcp_server_url=mcp_server_url,
         a2a_server_url=a2a_server_url,
     )
+
+
+@core_bp.route("/admin/tenant/<tenant_id>/reactivate", methods=["POST"])
+@require_auth(admin_only=True)
+def reactivate_tenant(tenant_id):
+    """Reactivate a deactivated tenant (super admin only)."""
+    try:
+        # Verify super admin
+        if session.get("role") != "super_admin":
+            flash("Only super admins can reactivate tenants", "error")
+            return redirect(url_for("core.index"))
+
+        with get_db_session() as db_session:
+            tenant = db_session.query(Tenant).filter_by(tenant_id=tenant_id).first()
+
+            if not tenant:
+                flash("Tenant not found", "error")
+                return redirect(url_for("core.index"))
+
+            # Already active?
+            if tenant.is_active:
+                flash(f"Tenant '{tenant.name}' is already active", "warning")
+                return redirect(url_for("core.index"))
+
+            # Reactivate tenant
+            tenant.is_active = True
+            tenant.updated_at = datetime.now(UTC)
+            db_session.commit()
+
+            logger.info(
+                f"Tenant {tenant_id} ({tenant.name}) reactivated by super admin {session.get('user', 'unknown')}"
+            )
+
+            flash(f"Sales agent '{tenant.name}' has been reactivated successfully", "success")
+            return redirect(url_for("core.index"))
+
+    except Exception as e:
+        logger.error(f"Error reactivating tenant {tenant_id}: {e}", exc_info=True)
+        flash(f"Error reactivating sales agent: {str(e)}", "error")
+        return redirect(url_for("core.index"))
