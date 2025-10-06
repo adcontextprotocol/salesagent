@@ -1044,15 +1044,27 @@ class AdCPRequestHandler(RequestHandler):
                 context=tool_context,
             )
 
-            # Convert response to A2A format
-            return {
-                "success": True,
-                "media_buy_id": response.media_buy_id,
-                "status": response.status,
-                "message": response.message or "Media buy created successfully",
-                "packages": [package.model_dump() for package in response.packages] if response.packages else [],
-                "next_steps": response.next_steps if hasattr(response, "next_steps") else [],
-            }
+            # Handle both dict and object responses (defensive pattern)
+            if isinstance(response, dict):
+                # Response is already a dict (schema enhancement enabled)
+                return {
+                    "success": True,
+                    "media_buy_id": response.get("media_buy_id"),
+                    "status": response.get("status"),
+                    "message": response.get("message") or "Media buy created successfully",
+                    "packages": response.get("packages", []),
+                    "next_steps": response.get("next_steps", []),
+                }
+            else:
+                # Response is a Pydantic object
+                return {
+                    "success": True,
+                    "media_buy_id": response.media_buy_id,
+                    "status": response.status,
+                    "message": response.message or "Media buy created successfully",
+                    "packages": [package.model_dump() for package in response.packages] if response.packages else [],
+                    "next_steps": response.next_steps if hasattr(response, "next_steps") else [],
+                }
 
         except Exception as e:
             logger.error(f"Error in create_media_buy skill: {e}")
