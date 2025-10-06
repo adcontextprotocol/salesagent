@@ -25,6 +25,43 @@ def test_database(test_database_url):
     os.environ["DATABASE_URL"] = test_database_url
     os.environ["DB_TYPE"] = "sqlite" if "sqlite" in test_database_url else "postgresql"
 
+    # Import all models FIRST (needed for both in-memory and PostgreSQL)
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import scoped_session, sessionmaker
+
+    from src.core.database.models import (  # noqa: F401
+        AdapterConfig,
+        AuditLog,
+        AuthorizedProperty,
+        Base,
+        Context,
+        Creative,
+        CreativeAssignment,
+        CreativeFormat,
+        FormatPerformanceMetrics,
+        GAMInventory,
+        GAMLineItem,
+        GAMOrder,
+        MediaBuy,
+        ObjectWorkflowMapping,
+        Principal,
+        Product,
+        ProductInventoryMapping,
+        PropertyTag,
+        PushNotificationConfig,
+        Strategy,
+        StrategyState,
+        SyncJob,
+        Tenant,
+        TenantManagementConfig,
+        User,
+        WorkflowStep,
+    )
+
+    # Create a new engine for the test database (don't use get_engine())
+    # This ensures we use the correct DATABASE_URL set above
+    engine = create_engine(test_database_url, echo=False)
+
     # Run migrations if not in-memory
     if ":memory:" not in test_database_url:
         import subprocess
@@ -35,52 +72,16 @@ def test_database(test_database_url):
         if result.returncode != 0:
             pytest.skip(f"Migration failed: {result.stderr}")
     else:
-        # For in-memory database, create tables directly
-        from sqlalchemy import create_engine
-        from sqlalchemy.orm import scoped_session, sessionmaker
-
-        # Import ALL models BEFORE creating tables to ensure all tables are registered
-        # This is critical - if a model isn't imported, its table won't be created
-        from src.core.database.models import (  # noqa: F401
-            AdapterConfig,
-            AuditLog,
-            AuthorizedProperty,
-            Base,
-            Context,
-            Creative,
-            CreativeAssignment,
-            CreativeFormat,
-            FormatPerformanceMetrics,
-            GAMInventory,
-            GAMLineItem,
-            GAMOrder,
-            MediaBuy,
-            ObjectWorkflowMapping,
-            Principal,
-            Product,
-            ProductInventoryMapping,
-            PropertyTag,
-            PushNotificationConfig,
-            Strategy,
-            StrategyState,
-            SyncJob,
-            Tenant,
-            TenantManagementConfig,
-            User,
-            WorkflowStep,
-        )
-
-        # Create a new engine for the test database (don't use get_engine())
-        # This ensures we use the correct DATABASE_URL set above
-        engine = create_engine(test_database_url, echo=False)
+        # For in-memory database, create tables directly (migrations don't work with :memory:)
         Base.metadata.create_all(engine)
 
-        # Update the global database session to use this engine
-        import src.core.database.database_session as db_session_module
+    # Update the global database session to use this engine (for BOTH in-memory and PostgreSQL)
+    # This ensures all tests use the correct test database, not the stale module-level engine
+    import src.core.database.database_session as db_session_module
 
-        db_session_module.engine = engine
-        db_session_module.SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-        db_session_module.db_session = scoped_session(db_session_module.SessionLocal)
+    db_session_module.engine = engine
+    db_session_module.SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+    db_session_module.db_session = scoped_session(db_session_module.SessionLocal)
 
     # Initialize with test data
     from scripts.setup.init_database import init_db
