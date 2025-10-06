@@ -53,9 +53,10 @@ class TestDashboardService:
         # Should only have called database once
         mock_session.query.assert_called_once()
 
+    @patch("src.admin.services.dashboard_service.MediaBuyReadinessService")
     @patch("src.admin.services.dashboard_service.get_db_session")
     @patch("src.admin.services.dashboard_service.get_business_activities")
-    def test_get_dashboard_metrics_single_data_source(self, mock_get_activities, mock_get_db):
+    def test_get_dashboard_metrics_single_data_source(self, mock_get_activities, mock_get_db, mock_readiness_service):
         """Test that dashboard metrics use single data source pattern."""
         # Mock database session
         mock_session = Mock()
@@ -72,6 +73,19 @@ class TestDashboardService:
         mock_query.count.return_value = 5
         mock_query.all.return_value = []
         mock_session.query.return_value = mock_query
+
+        # Mock readiness summary
+        mock_readiness_summary = {
+            "live": 2,
+            "scheduled": 1,
+            "needs_creatives": 1,
+            "needs_approval": 0,
+            "paused": 0,
+            "completed": 3,
+            "failed": 0,
+            "draft": 0,
+        }
+        mock_readiness_service.get_tenant_readiness_summary.return_value = mock_readiness_summary
 
         # Mock recent activities (SINGLE DATA SOURCE)
         mock_activities = [{"operation": "test", "success": True}]
@@ -91,10 +105,12 @@ class TestDashboardService:
         assert metrics["approval_needed"] == 0
         assert metrics["pending_approvals"] == 0
 
-        # Verify business metrics are calculated
+        # Verify business metrics are calculated with new readiness states
         assert "total_revenue" in metrics
-        assert "active_buys" in metrics
-        assert "pending_buys" in metrics
+        assert "live_buys" in metrics
+        assert "scheduled_buys" in metrics
+        assert "needs_attention" in metrics
+        assert "readiness_summary" in metrics
 
     # Note: Complex eager loading test moved to integration suite for better database testing
 

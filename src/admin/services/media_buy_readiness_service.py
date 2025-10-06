@@ -100,11 +100,11 @@ class MediaBuyReadinessService:
             )
 
             # Get unique package IDs that have creative assignments
-            packages_with_assignments = set(a.package_id for a in assignments)
+            packages_with_assignments = {a.package_id for a in assignments}
             packages_with_creatives = len(packages_with_assignments)
 
             # Get all creative IDs
-            creative_ids = list(set(a.creative_id for a in assignments))
+            creative_ids = list({a.creative_id for a in assignments})
             creatives_total = len(creative_ids)
 
             # Get creative statuses
@@ -214,7 +214,9 @@ class MediaBuyReadinessService:
 
         # Check flight timing - ensure timezone-aware datetimes
         if media_buy.start_time:
-            start_time = media_buy.start_time if media_buy.start_time.tzinfo else media_buy.start_time.replace(tzinfo=UTC)
+            start_time = (
+                media_buy.start_time if media_buy.start_time.tzinfo else media_buy.start_time.replace(tzinfo=UTC)
+            )
         else:
             start_time = datetime.combine(media_buy.start_date, datetime.min.time()).replace(tzinfo=UTC)
 
@@ -238,15 +240,19 @@ class MediaBuyReadinessService:
         if now < start_time and not has_blockers and creatives_approved == creatives_total and creatives_total > 0:
             return "scheduled"
 
+        # Draft: initial state (no packages configured)
+        if packages_total == 0:
+            return "draft"
+
         # Needs approval: has pending creatives
         if creatives_pending > 0:
             return "needs_approval"
 
-        # Needs creatives: missing assignments or has rejected creatives
+        # Needs creatives: missing assignments, has rejected creatives, or has packages but no creatives
         if packages_total > packages_with_creatives or creatives_rejected > 0 or creatives_total == 0:
             return "needs_creatives"
 
-        # Draft: initial state
+        # Fallback (shouldn't reach here if logic is complete)
         return "draft"
 
     @staticmethod
@@ -284,9 +290,7 @@ class MediaBuyReadinessService:
 
             # Compute state for each media buy
             for media_buy in media_buys:
-                readiness = MediaBuyReadinessService.get_readiness_state(
-                    media_buy.media_buy_id, tenant_id, session
-                )
+                readiness = MediaBuyReadinessService.get_readiness_state(media_buy.media_buy_id, tenant_id, session)
                 state = readiness["state"]
                 summary[state] = summary.get(state, 0) + 1
 
