@@ -1045,6 +1045,7 @@ class AdCPRequestHandler(RequestHandler):
             )
 
             # Convert response to A2A format
+            # Note: response.packages is already list[dict] per CreateMediaBuyResponse schema
             return {
                 "success": True,
                 "media_buy_id": response.media_buy_id,
