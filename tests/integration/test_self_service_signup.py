@@ -63,7 +63,7 @@ class TestSelfServiceSignupFlow:
         assert b"Create Your Sales Agent Account" in response.data
         assert b"Test Publisher" in response.data  # Template shows user_name, not email
         assert b"Publisher Information" in response.data
-        assert b"Select Your Ad Server" in response.data
+        assert b"Ad Server Integration" in response.data  # Changed from "Select Your Ad Server" for GAM-only signup
 
     def test_provision_tenant_mock_adapter(self, client):
         """Test tenant provisioning with mock adapter."""
