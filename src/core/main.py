@@ -265,21 +265,33 @@ def get_principal_from_context(context: Context | None) -> str | None:
     headers = None
     try:
         headers = get_http_headers()
-    except Exception:
+        logger.debug(f"get_http_headers() returned: {headers} (type: {type(headers)})")
+    except Exception as e:
+        logger.debug(f"get_http_headers() raised exception: {e}")
         pass  # Will try fallback below
 
     # If get_http_headers() returned empty dict or None, try context.meta fallback
     # This is necessary for sync tools where get_http_headers() may not work
     if not headers:
+        logger.debug(f"headers is empty/None, trying fallback. context type: {type(context)}")
+        logger.debug(f"hasattr(context, 'meta'): {hasattr(context, 'meta')}")
+        if hasattr(context, "meta"):
+            logger.debug(f"context.meta = {context.meta}")
+            logger.debug(f"'headers' in context.meta: {'headers' in context.meta if context.meta else 'meta is None'}")
+
         if hasattr(context, "meta") and context.meta and "headers" in context.meta:
             headers = context.meta["headers"]
+            logger.debug(f"Got headers from context.meta: {headers}")
         # Try other possible attributes
         elif hasattr(context, "headers"):
             headers = context.headers
+            logger.debug(f"Got headers from context.headers: {headers}")
         elif hasattr(context, "_headers"):
             headers = context._headers
+            logger.debug(f"Got headers from context._headers: {headers}")
 
     if not headers:
+        logger.debug("No headers found after all attempts")
         return None
 
     # Get the x-adcp-auth header (case-insensitive lookup)
