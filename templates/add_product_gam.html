@@ -233,7 +233,7 @@ function loadInventory(type, search = '') {
     const list = document.getElementById('inventory-list');
     list.innerHTML = '<div style="padding: 2rem; text-align: center; color: #666;">Loading...</div>';
 
-    const url = `/admin/api/tenant/{{ tenant_id }}/inventory-list?type=${type}${search ? '&search=' + encodeURIComponent(search) : ''}`;
+    const url = `{{ url_for('inventory.get_inventory_list', tenant_id=tenant_id) }}?type=${type}${search ? '&search=' + encodeURIComponent(search) : ''}`;
 
     fetch(url)
         .then(response => response.json())
