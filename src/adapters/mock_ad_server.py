@@ -622,6 +622,12 @@ class MockAdServer(AdServerAdapter):
 
         media_buy_id = f"buy_{request.po_number}" if request.po_number else f"buy_{uuid.uuid4().hex[:8]}"
 
+        # Get tenant_id from config loader (will be used for delivery simulation)
+        from src.core.config_loader import get_current_tenant
+
+        tenant = get_current_tenant()
+        tenant_id = tenant.get("tenant_id", "unknown") if tenant else "unknown"
+
         # Strategy-aware behavior modifications
         if self._is_simulation():
             strategy_id = getattr(self.strategy_context, "strategy_id", "unknown")
@@ -723,6 +729,15 @@ class MockAdServer(AdServerAdapter):
             self.log(f"  Campaign ID: {media_buy_id}")
             # Log successful creation
             self.audit_logger.log_success(f"Created Mock Order ID: {media_buy_id}")
+
+            # Start delivery simulation if enabled in config
+            self._start_delivery_simulation(
+                media_buy_id=media_buy_id,
+                tenant_id=tenant_id,
+                start_time=start_time,
+                end_time=end_time,
+                total_budget=total_budget,
+            )
         else:
             self.log(f"Would return: Campaign ID '{media_buy_id}' with status 'pending_creative'")
 
@@ -1073,6 +1088,11 @@ class MockAdServer(AdServerAdapter):
                             "seasonal_factor": float(request.form.get("seasonal_factor", 1.0)),
                             "verbose_logging": "verbose_logging" in request.form,
                             "predictable_ids": "predictable_ids" in request.form,
+                            "delivery_simulation": {
+                                "enabled": "delivery_simulation_enabled" in request.form,
+                                "time_acceleration": int(request.form.get("time_acceleration", 3600)),
+                                "update_interval_seconds": float(request.form.get("update_interval_seconds", 1.0)),
+                            },
                         }
 
                         # Validate the configuration
@@ -1131,6 +1151,57 @@ class MockAdServer(AdServerAdapter):
             errors.append("Latency cannot be negative")
 
         return errors
+
+    def _start_delivery_simulation(
+        self,
+        media_buy_id: str,
+        tenant_id: str,
+        start_time: datetime,
+        end_time: datetime,
+        total_budget: float,
+    ):
+        """Start delivery simulation for a media buy.
+
+        Args:
+            media_buy_id: Media buy identifier
+            tenant_id: Tenant identifier
+            start_time: Campaign start datetime
+            end_time: Campaign end datetime
+            total_budget: Total campaign budget
+        """
+        # Get delivery simulation config from adapter config
+        delivery_sim_config = self.config.get("delivery_simulation", {})
+
+        # Check if delivery simulation is enabled
+        if not delivery_sim_config.get("enabled", False):
+            self.log("⏭️  Delivery simulation disabled in config")
+            return
+
+        # Get simulation parameters
+        time_acceleration = delivery_sim_config.get("time_acceleration", 3600)  # Default: 1 sec = 1 hour
+        update_interval = delivery_sim_config.get("update_interval_seconds", 1.0)  # Default: 1 second
+
+        self.log(f"🚀 Starting delivery simulation (acceleration: {time_acceleration}x, interval: {update_interval}s)")
+
+        try:
+            from src.services.delivery_simulator import delivery_simulator
+
+            delivery_simulator.start_simulation(
+                media_buy_id=media_buy_id,
+                tenant_id=tenant_id,
+                principal_id=self.principal.principal_id,
+                start_time=start_time,
+                end_time=end_time,
+                total_budget=total_budget,
+                time_acceleration=time_acceleration,
+                update_interval_seconds=update_interval,
+            )
+        except Exception as e:
+            self.log(f"⚠️ Failed to start delivery simulation: {e}")
+            # Don't fail the media buy creation if simulation fails
+            import traceback
+
+            self.log(f"Traceback: {traceback.format_exc()}")
 
     async def get_available_inventory(self) -> dict[str, Any]:
         """

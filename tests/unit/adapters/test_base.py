@@ -23,7 +23,7 @@ def sample_packages():
     ]
 
 
-def test_mock_ad_server_create_media_buy(sample_packages):
+def test_mock_ad_server_create_media_buy(sample_packages, mocker):
     """
     Tests that the MockAdServer correctly creates a media buy
     when a create_media_buy request is received.
@@ -34,6 +34,10 @@ def test_mock_ad_server_create_media_buy(sample_packages):
         name="Test Principal",
         platform_mappings={"mock": {"advertiser_id": "test_advertiser"}},
     )
+
+    # Mock get_current_tenant to avoid database access in unit test
+    mocker.patch("src.core.config_loader.get_current_tenant", return_value={"tenant_id": "test_tenant"})
+
     adapter = MockAdServer({}, principal)
     start_time = datetime.now()
     end_time = start_time + timedelta(days=30)
