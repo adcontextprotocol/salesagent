@@ -47,12 +47,14 @@ def get_default_tenant() -> dict[str, Any] | None:
     try:
         with get_db_session() as db_session:
             # Get first active tenant or specific default
-            stmt = (
-                select(Tenant)
-                .filter_by(is_active=True)
-                .order_by(db_session.query(Tenant).filter_by(tenant_id="default").exists().desc(), Tenant.created_at)
-            )
+            # Try to get 'default' tenant first, fall back to first active tenant
+            stmt = select(Tenant).filter_by(tenant_id="default", is_active=True)
             tenant = db_session.scalars(stmt).first()
+
+            if not tenant:
+                # Fall back to first active tenant by creation date
+                stmt = select(Tenant).filter_by(is_active=True).order_by(Tenant.created_at)
+                tenant = db_session.scalars(stmt).first()
 
             if tenant:
                 return {
