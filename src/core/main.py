@@ -3095,14 +3095,11 @@ def _create_media_buy_impl(
 
                 creatives_map = {}
                 if all_creative_ids:
-                    creatives = (
-                        session.query(DBCreative)
-                        .filter(
-                            DBCreative.tenant_id == tenant["tenant_id"],
-                            DBCreative.creative_id.in_(all_creative_ids),
-                        )
-                        .all()
+                    stmt = select(DBCreative).where(
+                        DBCreative.tenant_id == tenant["tenant_id"],
+                        DBCreative.creative_id.in_(all_creative_ids),
                     )
+                    creatives = session.scalars(stmt).all()
                     creatives_map = {c.creative_id: c for c in creatives}
 
                 for i, package in enumerate(req.packages):
