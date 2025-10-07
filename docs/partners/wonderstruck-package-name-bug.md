@@ -1,20 +1,16 @@
-# GAM Order Name Generation - Using Optional Field Bug
+# GAM Order Naming System
 
-## Current Status (2025-10-06) - FIXED
+## Current Status (2025-10-06) - IMPLEMENTED
 
-**✅ OUR BUG - NOW FIXED**: GAM adapter was using optional `campaign_name` field instead of required `promoted_offering` field for order names.
+**✅ PLATFORM FEATURE**: Publishers can now configure their own GAM order/line item naming conventions through the admin UI.
 
-**What Was Happening**:
-- ❌ GAM adapter used `request.campaign_name` which is optional (can be None)
-- ❌ When None, created order names like: `"None - 1 packages"`
-- ✅ `promoted_offering` is required by AdCP spec and always present
+**What We Built**:
+- ✅ Configurable naming templates with variable substitution
+- ✅ Fallback syntax for optional fields (e.g., `{campaign_name|promoted_offering}`)
+- ✅ Publisher-specific naming conventions instead of hardcoded format
+- ✅ Admin UI for easy configuration
 
-**Root Cause**: Code was using wrong field for order name generation.
-
-**The Fix**: Use `promoted_offering` (required) with fallback to `campaign_name` (optional):
-```python
-campaign_identifier = request.campaign_name or request.promoted_offering
-```
+**Why**: Publishers have their own naming conventions. Some want dates, others want advertiser names, others want brief summaries. This should be configurable, not hardcoded.
 
 ## Code Locations Fixed
 
@@ -181,8 +177,50 @@ Name: "pkg_1_def456"
 
 ## Summary
 
-**Two Bugs Fixed:**
-1. ✅ Using optional `campaign_name` instead of required `promoted_offering` → Fixed
+## Naming Template System
+
+### Configuration
+
+Publishers configure naming templates in **Admin UI → Settings → Ad Server → Naming Templates**:
+
+**Order Name Template** (default: `{campaign_name|promoted_offering} - {date_range}`):
+- Variables: `{campaign_name}`, `{promoted_offering}`, `{buyer_ref}`, `{date_range}`, `{month_year}`, `{package_count}`
+- Fallback syntax: `{var1|var2}` uses var1 if present, otherwise var2
+- Examples:
+  - `"{campaign_name} - {month_year}"` → "Q1 Launch - Oct 2025"
+  - `"{promoted_offering} - {date_range}"` → "Nike Shoes - Oct 7-14, 2025"
+  - `"{buyer_ref|campaign_name}"` → Uses buyer's ref or campaign name
+
+**Line Item Name Template** (default: `{product_name}`):
+- Variables: `{product_name}`, `{order_name}`, `{package_index}`
+- Examples:
+  - `"{product_name}"` → "Display 300x250"
+  - `"{order_name} - {product_name}"` → "Q1 Launch - Video Pre-roll"
+
+### Implementation
+
+**Template Processing** (`src/adapters/gam/utils/naming.py`):
+- `apply_naming_template(template, context)` - Variable substitution with fallbacks
+- `build_order_name_context()` - Build variables from request data
+- `format_date_range()` - Smart date formatting (same month, different months, different years)
+
+**Database Schema** (`adapter_config` table):
+- `gam_order_name_template` (String, 500 chars)
+- `gam_line_item_name_template` (String, 500 chars)
+
+**Migration**: `ede76bc258af_add_naming_templates_to_adapter_config.py`
+
+### Benefits
+
+1. **Publisher Control**: Each publisher defines their own naming convention
+2. **Consistency**: Templates ensure consistent naming across all orders
+3. **Flexibility**: Support for multiple naming strategies (dates, advertiser, brief)
+4. **Spec Compliant**: Works with all AdCP fields (required and optional)
+
+---
+
+**Two Issues Resolved:**
+1. ✅ Using optional `campaign_name` instead of required `promoted_offering` → Fixed with configurable templates
 2. ✅ Auto-generating `buyer_ref` values (previous fix) → Still fixed
 
-**Status**: Both issues resolved. Order names now use meaningful, always-present values.
+**Status**: Platform feature complete. Publishers can configure their own naming conventions.

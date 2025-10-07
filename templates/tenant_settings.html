@@ -690,7 +690,37 @@
                         <small class="form-text text-muted">The GAM user ID who will create line items. Auto-detected when you click "Auto-detect Network" above.</small>
                     </div>
 
-                    <div class="form-group">
+                    <div class="form-section" style="margin-top: 2rem; padding-top: 1.5rem; border-top: 1px solid #e5e7eb;">
+                        <h3>Naming Templates</h3>
+                        <p style="color: #6b7280; font-size: 0.875rem; margin-bottom: 1.5rem;">
+                            Configure how orders and line items are named in Google Ad Manager. Use variables like <code>{campaign_name}</code>, <code>{promoted_offering}</code>, <code>{date_range}</code>, etc.
+                        </p>
+
+                        <div class="form-group">
+                            <label for="gam_order_name_template">Order Name Template</label>
+                            <input type="text" id="gam_order_name_template" class="form-control"
+                                   value="{{ adapter_config.get('order_name_template', '{campaign_name|promoted_offering} - {date_range}') if adapter_config else '{campaign_name|promoted_offering} - {date_range}' }}"
+                                   placeholder="{campaign_name|promoted_offering} - {date_range}">
+                            <small class="form-text text-muted">
+                                <strong>Available variables:</strong> <code>{campaign_name}</code>, <code>{promoted_offering}</code>, <code>{buyer_ref}</code>, <code>{date_range}</code>, <code>{month_year}</code>, <code>{package_count}</code>
+                                <br><strong>Fallback syntax:</strong> <code>{campaign_name|promoted_offering}</code> uses campaign_name if provided, otherwise promoted_offering
+                                <br><strong>Example output:</strong> "Q1 Launch - Oct 7-14, 2025" or "Nike Shoes - Oct 2025"
+                            </small>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="gam_line_item_name_template">Line Item Name Template</label>
+                            <input type="text" id="gam_line_item_name_template" class="form-control"
+                                   value="{{ adapter_config.get('line_item_name_template', '{product_name}') if adapter_config else '{product_name}' }}"
+                                   placeholder="{product_name}">
+                            <small class="form-text text-muted">
+                                <strong>Available variables:</strong> <code>{product_name}</code>, <code>{order_name}</code>, <code>{package_index}</code>
+                                <br><strong>Example output:</strong> "Display 300x250" or "Video Pre-roll - Package 1"
+                            </small>
+                        </div>
+                    </div>
+
+                    <div class="form-group" style="margin-top: 2rem;">
                         <button onclick="saveGAMConfig()" class="btn btn-primary">Save GAM Configuration</button>
                         {% if adapter_config and adapter_config.get('refresh_token') %}
                         <button onclick="testGAMConnection()" class="btn btn-secondary" style="margin-left: 0.5rem;">Test Connection</button>
@@ -1506,6 +1536,8 @@ function saveGAMConfig() {
     const networkCode = document.getElementById('gam_network_code').value;
     const refreshToken = document.getElementById('gam_refresh_token').value;
     const traffickerId = document.getElementById('gam_trafficker_id').value;
+    const orderNameTemplate = document.getElementById('gam_order_name_template').value;
+    const lineItemNameTemplate = document.getElementById('gam_line_item_name_template').value;
 
     if (!refreshToken) {
         alert('Please provide a Refresh Token');
@@ -1534,7 +1566,9 @@ function saveGAMConfig() {
         body: JSON.stringify({
             network_code: networkCode,
             refresh_token: refreshToken,
-            trafficker_id: traffickerId
+            trafficker_id: traffickerId,
+            order_name_template: orderNameTemplate,
+            line_item_name_template: lineItemNameTemplate
         })
     })
     .then(response => {
