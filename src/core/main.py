@@ -270,7 +270,8 @@ def get_principal_from_context(context: Context | None) -> str | None:
 
     # If get_http_headers() returned empty dict or None, try context.meta fallback
     # This is necessary for sync tools where get_http_headers() may not work
-    if not headers:
+    # CRITICAL: get_http_headers() returns {} for sync tools, so we need fallback even for empty dict
+    if not headers:  # Handles both None and {}
         if hasattr(context, "meta") and context.meta and "headers" in context.meta:
             headers = context.meta["headers"]
         # Try other possible attributes
@@ -279,13 +280,14 @@ def get_principal_from_context(context: Context | None) -> str | None:
         elif hasattr(context, "_headers"):
             headers = context._headers
 
+    # If still no headers dict available, return None
     if not headers:
         return None
 
     # Get the x-adcp-auth header (case-insensitive lookup)
     auth_token = _get_header_case_insensitive(headers, "x-adcp-auth")
     if not auth_token:
-        return None
+        return None  # No auth provided - this is OK for discovery endpoints
 
     # Check if a specific tenant was requested via header or subdomain
     requested_tenant_id = None
@@ -314,7 +316,20 @@ def get_principal_from_context(context: Context | None) -> str | None:
     # Validate token and get principal
     # If a specific tenant was requested, validate against it
     # Otherwise, look up by token alone and set tenant context
-    return get_principal_from_token(auth_token, requested_tenant_id)
+    principal_id = get_principal_from_token(auth_token, requested_tenant_id)
+
+    # If token was provided but invalid, raise an error
+    # This distinguishes between "no auth" (OK) and "bad auth" (error)
+    if principal_id is None:
+        from fastmcp.exceptions import ToolError
+
+        raise ToolError(
+            "INVALID_AUTH_TOKEN",
+            f"Authentication token is invalid for tenant '{requested_tenant_id or 'any'}'. "
+            f"The token may be expired, revoked, or associated with a different tenant.",
+        )
+
+    return principal_id
 
 
 def get_principal_adapter_mapping(principal_id: str) -> dict[str, Any]:
