@@ -9,7 +9,7 @@ from collections.abc import Generator
 from contextlib import contextmanager
 from typing import Any
 
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, select
 from sqlalchemy.exc import DisconnectionError, OperationalError, SQLAlchemyError
 from sqlalchemy.orm import Session, scoped_session, sessionmaker
 
@@ -38,7 +38,7 @@ else:
         echo=False,
     )
 
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+SessionLocal = sessionmaker(bind=engine)
 import logging
 
 logger = logging.getLogger(__name__)
@@ -194,7 +194,8 @@ def get_or_404(session: Session, model, **kwargs):
     Raises:
         ValueError: If not found
     """
-    instance = session.query(model).filter_by(**kwargs).first()
+    stmt = select(model).filter_by(**kwargs)
+    instance = session.scalars(stmt).first()
     if not instance:
         raise ValueError(f"{model.__name__} not found with criteria: {kwargs}")
     return instance
@@ -213,7 +214,8 @@ def get_or_create(session: Session, model, defaults: dict = None, **kwargs):
     Returns:
         Tuple of (instance, created) where created is a boolean
     """
-    instance = session.query(model).filter_by(**kwargs).first()
+    stmt = select(model).filter_by(**kwargs)
+    instance = session.scalars(stmt).first()
     if instance:
         return instance, False
 

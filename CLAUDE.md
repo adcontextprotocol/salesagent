@@ -96,7 +96,76 @@ Python-based AdCP V2.3 sales agent reference implementation with:
 
 ## Key Architecture Principles
 
-### 1. AdCP Protocol Compliance - MANDATORY
+### 1. SQLAlchemy 2.0 Query Patterns - MANDATORY
+**🚨 CRITICAL**: Use SQLAlchemy 2.0 patterns for all database queries. Legacy 1.x patterns are deprecated.
+
+**Migration Status:**
+- ✅ Stage 1 & 2 Complete: Infrastructure and helper functions migrated
+- 🔄 In Progress: ~114 files with legacy patterns remain
+- 🎯 Goal: All new code uses 2.0 patterns; convert legacy code as touched
+
+**Correct Pattern (SQLAlchemy 2.0):**
+```python
+from sqlalchemy import select
+
+# Single result
+stmt = select(Model).filter_by(field=value)
+instance = session.scalars(stmt).first()
+
+# Multiple results
+stmt = select(Model).filter_by(field=value)
+results = session.scalars(stmt).all()
+
+# With filter() instead of filter_by()
+stmt = select(Model).where(Model.field == value)
+instance = session.scalars(stmt).first()
+
+# Complex queries with joins
+stmt = select(Model).join(Other).where(Model.field == value)
+results = session.scalars(stmt).all()
+```
+
+**❌ WRONG - Legacy Pattern (SQLAlchemy 1.x):**
+```python
+# DO NOT USE - Deprecated in 2.0
+instance = session.query(Model).filter_by(field=value).first()
+results = session.query(Model).filter_by(field=value).all()
+```
+
+**When to Migrate:**
+1. **Always use 2.0 patterns for new code** - No exceptions
+2. **Convert legacy code when touching it** - If you're editing a function with `session.query()`, convert it to `select()` + `scalars()`
+3. **Helper functions available**: Use `get_or_404()` and `get_or_create()` from `database_session.py` (already migrated)
+
+**Common Conversions:**
+```python
+# Pattern 1: Simple filter_by
+- session.query(Model).filter_by(x=y).first()
++ stmt = select(Model).filter_by(x=y)
++ session.scalars(stmt).first()
+
+# Pattern 2: filter() with conditions
+- session.query(Model).filter(Model.x == y).first()
++ stmt = select(Model).where(Model.x == y)
++ session.scalars(stmt).first()
+
+# Pattern 3: All results
+- session.query(Model).filter_by(x=y).all()
++ stmt = select(Model).filter_by(x=y)
++ session.scalars(stmt).all()
+
+# Pattern 4: Count
+- session.query(Model).filter_by(x=y).count()
++ from sqlalchemy import func, select
++ stmt = select(func.count()).select_from(Model).where(Model.x == y)
++ session.scalar(stmt)
+```
+
+**See Also:**
+- PR #307 - Stage 1 & 2 migration examples
+- [SQLAlchemy 2.0 Docs](https://docs.sqlalchemy.org/en/20/changelog/migration_20.html)
+
+### 2. AdCP Protocol Compliance - MANDATORY
 **🚨 CRITICAL**: All client-facing models MUST be AdCP spec-compliant and tested.
 
 **Requirements:**
