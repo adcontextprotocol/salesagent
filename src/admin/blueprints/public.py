@@ -276,7 +276,8 @@ def provision_tenant():
                     logger.warning(
                         f"User {user_email} was created concurrently for tenant {tenant_id}, updating instead"
                     )
-                    existing_user = select(User).filter_by(tenant_id=tenant_id, email=user_email.lower()).first()
+                    stmt = select(User).filter_by(tenant_id=tenant_id, email=user_email.lower())
+                    existing_user = db_session.scalars(stmt).first()
                     if existing_user:
                         existing_user.last_login = now
                         existing_user.is_active = True

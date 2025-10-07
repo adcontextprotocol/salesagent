@@ -285,7 +285,8 @@ def save_multiple(tenant_id, **kwargs):
         with get_db_session() as db_session:
             for format_data in formats:
                 # Check if format already exists
-                existing = select(CreativeFormat).filter_by(name=format_data.get("name"), tenant_id=tenant_id).first()
+                stmt = select(CreativeFormat).filter_by(name=format_data.get("name"), tenant_id=tenant_id)
+                existing = db_session.scalars(stmt).first()
 
                 if existing:
                     skipped_count += 1

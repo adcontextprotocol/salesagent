@@ -170,7 +170,8 @@ def is_super_admin(email):
                     return True
 
             # Check domains
-            domains_config = select(TenantManagementConfig).filter_by(config_key="super_admin_domains").first()
+            stmt = select(TenantManagementConfig).filter_by(config_key="super_admin_domains")
+            domains_config = db_session.scalars(stmt).first()
             if domains_config and domains_config.config_value:
                 domains_list = [d.strip().lower() for d in domains_config.config_value.split(",")]
                 email_domain = email_lower.split("@")[1] if "@" in email_lower else ""
@@ -319,7 +320,8 @@ def require_tenant_access(api_mode=False):
             # Check if user has access to this specific tenant
             try:
                 with get_db_session() as db_session:
-                    user = select(User).filter_by(email=email.lower(), tenant_id=tenant_id, is_active=True).first()
+                    stmt = select(User).filter_by(email=email.lower(), tenant_id=tenant_id, is_active=True)
+                    user = db_session.scalars(stmt).first()
 
                     if not user:
                         if api_mode:

@@ -100,7 +100,8 @@ class MediaBuyReadinessService:
             packages_total = len(packages)
 
             # Get creative assignments for this media buy
-            assignments = select(CreativeAssignment).filter_by(tenant_id=tenant_id, media_buy_id=media_buy_id).all()
+            stmt = select(CreativeAssignment).filter_by(tenant_id=tenant_id, media_buy_id=media_buy_id)
+            assignments = session.scalars(stmt).all()
 
             # Get unique package IDs that have creative assignments
             packages_with_assignments = {a.package_id for a in assignments}
