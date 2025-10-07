@@ -68,13 +68,11 @@ class TestDashboardService:
         mock_tenant = Mock(spec=Tenant)
         mock_tenant.tenant_id = "test_tenant"
 
-        # Mock query results - need to set up proper query chain
-        mock_query = Mock()
-        mock_query.filter_by.return_value = mock_query
-        mock_query.filter.return_value = mock_query
-        mock_query.count.return_value = 5
-        mock_query.all.return_value = []
-        mock_session.query.return_value = mock_query
+        # Mock SQLAlchemy 2.0 query results
+        mock_scalars = Mock()
+        mock_scalars.all.return_value = []
+        mock_session.scalars.return_value = mock_scalars
+        mock_session.scalar.return_value = 5  # For count queries
 
         # Mock readiness summary
         mock_readiness_summary = {
