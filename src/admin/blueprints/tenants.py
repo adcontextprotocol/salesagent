@@ -171,39 +171,10 @@ def tenant_settings(tenant_id, section=None):
             is_production = os.environ.get("PRODUCTION") == "true"
             mcp_port = int(os.environ.get("ADCP_SALES_PORT", 8080)) if not is_production else None
 
-            # Parse JSON fields for template rendering
-            import json
-
-            authorized_domains = []
-            authorized_emails = []
-
-            if tenant.authorized_domains:
-                if isinstance(tenant.authorized_domains, str):
-                    try:
-                        authorized_domains = json.loads(tenant.authorized_domains)
-                    except json.JSONDecodeError:
-                        logger.error(f"Failed to parse authorized_domains for tenant {tenant_id}")
-                        flash(
-                            "Warning: Some authorized domains data could not be loaded. Please review your settings.",
-                            "warning",
-                        )
-                        authorized_domains = []
-                else:
-                    authorized_domains = tenant.authorized_domains
-
-            if tenant.authorized_emails:
-                if isinstance(tenant.authorized_emails, str):
-                    try:
-                        authorized_emails = json.loads(tenant.authorized_emails)
-                    except json.JSONDecodeError:
-                        logger.error(f"Failed to parse authorized_emails for tenant {tenant_id}")
-                        flash(
-                            "Warning: Some authorized emails data could not be loaded. Please review your settings.",
-                            "warning",
-                        )
-                        authorized_emails = []
-                else:
-                    authorized_emails = tenant.authorized_emails
+            # JSON fields are automatically deserialized by JSONType
+            # These are now guaranteed to be lists (or None) from the database
+            authorized_domains = tenant.authorized_domains or []
+            authorized_emails = tenant.authorized_emails or []
 
             # Get product counts
             from src.core.database.models import Product

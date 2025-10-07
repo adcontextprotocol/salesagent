@@ -2,7 +2,6 @@
 
 from sqlalchemy import (
     DECIMAL,
-    JSON,
     BigInteger,
     Boolean,
     CheckConstraint,
@@ -21,6 +20,7 @@ from sqlalchemy import (
 from sqlalchemy.orm import DeclarativeBase, relationship
 from sqlalchemy.sql import func
 
+from src.core.database.json_type import JSONType
 from src.core.json_validators import JSONValidatorMixin
 
 
@@ -47,16 +47,16 @@ class Tenant(Base, JSONValidatorMixin):
     ad_server = Column(String(50))
     max_daily_budget = Column(Integer, nullable=False, default=10000)
     enable_axe_signals = Column(Boolean, nullable=False, default=True)
-    authorized_emails = Column(JSON)  # JSON array
-    authorized_domains = Column(JSON)  # JSON array
+    authorized_emails = Column(JSONType)  # JSON array
+    authorized_domains = Column(JSONType)  # JSON array
     slack_webhook_url = Column(String(500))
     slack_audit_webhook_url = Column(String(500))
     hitl_webhook_url = Column(String(500))
     admin_token = Column(String(100))
-    auto_approve_formats = Column(JSON)  # JSON array
+    auto_approve_formats = Column(JSONType)  # JSON array
     human_review_required = Column(Boolean, nullable=False, default=True)
-    policy_settings = Column(JSON)  # JSON object
-    signals_agent_config = Column(JSON)  # JSON object for upstream signals discovery agent configuration
+    policy_settings = Column(JSONType)  # JSON object
+    signals_agent_config = Column(JSONType)  # JSON object for upstream signals discovery agent configuration
 
     # Relationships
     products = relationship("Product", back_populates="tenant", cascade="all, delete-orphan")
@@ -94,7 +94,7 @@ class CreativeFormat(Base):
     height = Column(Integer)
     duration_seconds = Column(Integer)
     max_file_size_kb = Column(Integer)
-    specs = Column(JSON, nullable=False)  # JSONB in PostgreSQL
+    specs = Column(JSONType, nullable=False)  # JSONB in PostgreSQL
     is_standard = Column(Boolean, default=True)
     is_foundational = Column(Boolean, default=False)
     extends = Column(
@@ -102,7 +102,7 @@ class CreativeFormat(Base):
         ForeignKey("creative_formats.format_id", ondelete="RESTRICT"),
         nullable=True,
     )
-    modifications = Column(JSON, nullable=True)  # JSONB in PostgreSQL
+    modifications = Column(JSONType, nullable=True)  # JSONB in PostgreSQL
     source_url = Column(Text)
     created_at = Column(DateTime, server_default=func.now())
     # updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())  # TEMPORARILY DISABLED - migration 018 not applied in production
@@ -125,19 +125,19 @@ class Product(Base, JSONValidatorMixin):
     product_id = Column(String(100), primary_key=True)
     name = Column(String(200), nullable=False)
     description = Column(Text)
-    formats = Column(JSON, nullable=False)  # JSONB in PostgreSQL
-    targeting_template = Column(JSON, nullable=False)  # JSONB in PostgreSQL
+    formats = Column(JSONType, nullable=False)  # JSONB in PostgreSQL
+    targeting_template = Column(JSONType, nullable=False)  # JSONB in PostgreSQL
     delivery_type = Column(String(50), nullable=False)
     is_fixed_price = Column(Boolean, nullable=False)
     cpm = Column(DECIMAL(10, 2))
     min_spend = Column(DECIMAL(10, 2), nullable=True)  # AdCP spec field
-    measurement = Column(JSON, nullable=True)  # JSONB in PostgreSQL - AdCP measurement object
-    creative_policy = Column(JSON, nullable=True)  # JSONB in PostgreSQL - AdCP creative policy object
-    price_guidance = Column(JSON)  # JSONB in PostgreSQL - Legacy field
+    measurement = Column(JSONType, nullable=True)  # JSONB in PostgreSQL - AdCP measurement object
+    creative_policy = Column(JSONType, nullable=True)  # JSONB in PostgreSQL - AdCP creative policy object
+    price_guidance = Column(JSONType)  # JSONB in PostgreSQL - Legacy field
     is_custom = Column(Boolean, default=False)
     expires_at = Column(DateTime)
-    countries = Column(JSON)  # JSONB in PostgreSQL
-    implementation_config = Column(JSON)  # JSONB in PostgreSQL
+    countries = Column(JSONType)  # JSONB in PostgreSQL
+    implementation_config = Column(JSONType)  # JSONB in PostgreSQL
     # Note: PR #79 fields (currency, estimated_exposures, floor_cpm, recommended_cpm) are NOT stored in database
     # They are calculated dynamically from product_performance_metrics table
 
@@ -157,7 +157,7 @@ class Principal(Base, JSONValidatorMixin):
     )
     principal_id = Column(String(50), primary_key=True)
     name = Column(String(200), nullable=False)
-    platform_mappings = Column(JSON, nullable=False)  # JSONB in PostgreSQL
+    platform_mappings = Column(JSONType, nullable=False)  # JSONB in PostgreSQL
     access_token = Column(String(255), unique=True, nullable=False)
     created_at = Column(DateTime, server_default=func.now())
 
@@ -210,7 +210,7 @@ class Creative(Base):
     status = Column(String(50), nullable=False, default="pending")
 
     # Data field stores creative content and metadata as JSON
-    data = Column(JSON, nullable=False, default=dict)
+    data = Column(JSONType, nullable=False, default=dict)
 
     # Relationships and metadata
     group_id = Column(String(100), nullable=True)
@@ -280,7 +280,7 @@ class MediaBuy(Base):
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
     approved_at = Column(DateTime)
     approved_by = Column(String(255))
-    raw_request = Column(JSON, nullable=False)  # JSONB in PostgreSQL
+    raw_request = Column(JSONType, nullable=False)  # JSONB in PostgreSQL
     strategy_id = Column(String(255), nullable=True)  # Strategy reference for linking operations
 
     # Relationships
@@ -329,7 +329,7 @@ class AuditLog(Base):
     adapter_id = Column(String(50))
     success = Column(Boolean, nullable=False)
     error_message = Column(Text)
-    details = Column(JSON)  # JSONB in PostgreSQL
+    details = Column(JSONType)  # JSONB in PostgreSQL
     strategy_id = Column(String(255), nullable=True)  # Strategy reference for linking operations
 
     # Relationships
@@ -411,9 +411,9 @@ class GAMInventory(Base):
     )  # 'ad_unit', 'placement', 'label', 'custom_targeting_key', 'custom_targeting_value'
     inventory_id = Column(String(50), nullable=False)  # GAM ID
     name = Column(String(200), nullable=False)
-    path = Column(JSON)  # Array of path components for ad units
+    path = Column(JSONType)  # Array of path components for ad units
     status = Column(String(20), nullable=False)
-    inventory_metadata = Column(JSON)  # Full inventory details
+    inventory_metadata = Column(JSONType)  # Full inventory details
     last_synced = Column(DateTime, nullable=False, default=func.now())
     created_at = Column(DateTime, nullable=False, default=func.now())
     updated_at = Column(DateTime, nullable=False, default=func.now(), onupdate=func.now())
@@ -538,10 +538,10 @@ class GAMOrder(Base):
     notes = Column(Text, nullable=True)
     last_modified_date = Column(DateTime, nullable=True)
     is_programmatic = Column(Boolean, nullable=False, default=False)
-    applied_labels = Column(JSON, nullable=True)  # List of label IDs
-    effective_applied_labels = Column(JSON, nullable=True)  # List of label IDs
-    custom_field_values = Column(JSON, nullable=True)
-    order_metadata = Column(JSON, nullable=True)  # Additional GAM fields
+    applied_labels = Column(JSONType, nullable=True)  # List of label IDs
+    effective_applied_labels = Column(JSONType, nullable=True)  # List of label IDs
+    custom_field_values = Column(JSONType, nullable=True)
+    order_metadata = Column(JSONType, nullable=True)  # Additional GAM fields
     last_synced = Column(DateTime, nullable=False, default=func.now())
     created_at = Column(DateTime, nullable=False, default=func.now())
     updated_at = Column(DateTime, nullable=False, default=func.now(), onupdate=func.now())
@@ -604,16 +604,16 @@ class GAMLineItem(Base):
     delivery_indicator_type = Column(
         String(30), nullable=True
     )  # UNDER_DELIVERY, EXPECTED_DELIVERY, OVER_DELIVERY, etc.
-    delivery_data = Column(JSON, nullable=True)  # Detailed delivery stats
-    targeting = Column(JSON, nullable=True)  # Full targeting criteria
-    creative_placeholders = Column(JSON, nullable=True)  # Creative sizes and companions
-    frequency_caps = Column(JSON, nullable=True)
-    applied_labels = Column(JSON, nullable=True)
-    effective_applied_labels = Column(JSON, nullable=True)
-    custom_field_values = Column(JSON, nullable=True)
-    third_party_measurement_settings = Column(JSON, nullable=True)
+    delivery_data = Column(JSONType, nullable=True)  # Detailed delivery stats
+    targeting = Column(JSONType, nullable=True)  # Full targeting criteria
+    creative_placeholders = Column(JSONType, nullable=True)  # Creative sizes and companions
+    frequency_caps = Column(JSONType, nullable=True)
+    applied_labels = Column(JSONType, nullable=True)
+    effective_applied_labels = Column(JSONType, nullable=True)
+    custom_field_values = Column(JSONType, nullable=True)
+    third_party_measurement_settings = Column(JSONType, nullable=True)
     video_max_duration = Column(BigInteger, nullable=True)
-    line_item_metadata = Column(JSON, nullable=True)  # Additional GAM fields
+    line_item_metadata = Column(JSONType, nullable=True)  # Additional GAM fields
     last_modified_date = Column(DateTime, nullable=True)
     creation_date = Column(DateTime, nullable=True)
     external_id = Column(String(255), nullable=True)
@@ -681,7 +681,7 @@ class Context(Base):
     principal_id = Column(String(50), nullable=False)
 
     # Simple conversation tracking
-    conversation_history = Column(JSON, nullable=False, default=list)  # Clarifications and refinements only
+    conversation_history = Column(JSONType, nullable=False, default=list)  # Clarifications and refinements only
     created_at = Column(DateTime, nullable=False, server_default=func.now())
     last_activity_at = Column(DateTime, nullable=False, server_default=func.now())
 
@@ -725,8 +725,8 @@ class WorkflowStep(Base, JSONValidatorMixin):
     )
     step_type = Column(String(50), nullable=False)  # tool_call, approval, notification, etc.
     tool_name = Column(String(100), nullable=True)  # MCP tool name if applicable
-    request_data = Column(JSON, nullable=True)  # Original request JSON
-    response_data = Column(JSON, nullable=True)  # Response/result JSON
+    request_data = Column(JSONType, nullable=True)  # Original request JSON
+    response_data = Column(JSONType, nullable=True)  # Response/result JSON
     status = Column(
         String(20), nullable=False, default="pending"
     )  # pending, in_progress, completed, failed, requires_approval
@@ -735,8 +735,8 @@ class WorkflowStep(Base, JSONValidatorMixin):
     created_at = Column(DateTime, nullable=False, server_default=func.now())
     completed_at = Column(DateTime, nullable=True)
     error_message = Column(Text, nullable=True)
-    transaction_details = Column(JSON, nullable=True)  # Actual API calls made to GAM, etc.
-    comments = Column(JSON, nullable=False, default=list)  # Array of {user, timestamp, comment} objects
+    transaction_details = Column(JSONType, nullable=True)  # Actual API calls made to GAM, etc.
+    comments = Column(JSONType, nullable=False, default=list)  # Array of {user, timestamp, comment} objects
 
     # Relationships
     context = relationship("Context", back_populates="workflow_steps")
@@ -802,7 +802,7 @@ class Strategy(Base, JSONValidatorMixin):
     principal_id = Column(String(100), nullable=True)
     name = Column(String(255), nullable=False)
     description = Column(Text, nullable=True)
-    config = Column(JSON, nullable=False, default=dict)
+    config = Column(JSONType, nullable=False, default=dict)
     is_simulation = Column(Boolean, default=False, nullable=False)
     created_at = Column(DateTime, nullable=False, server_default=func.now())
     updated_at = Column(DateTime, nullable=False, server_default=func.now(), onupdate=func.now())
@@ -843,7 +843,7 @@ class StrategyState(Base, JSONValidatorMixin):
 
     strategy_id = Column(String(255), nullable=False, primary_key=True)
     state_key = Column(String(255), nullable=False, primary_key=True)
-    state_value = Column(JSON, nullable=False)
+    state_value = Column(JSONType, nullable=False)
     updated_at = Column(DateTime, nullable=False, server_default=func.now(), onupdate=func.now())
 
     # Relationships
@@ -870,8 +870,8 @@ class AuthorizedProperty(Base, JSONValidatorMixin):
         String(20), nullable=False
     )  # website, mobile_app, ctv_app, dooh, podcast, radio, streaming_audio
     name = Column(String(255), nullable=False)
-    identifiers = Column(JSON, nullable=False)  # Array of {type, value} objects
-    tags = Column(JSON, nullable=True)  # Array of tag strings
+    identifiers = Column(JSONType, nullable=False)  # Array of {type, value} objects
+    tags = Column(JSONType, nullable=True)  # Array of tag strings
     publisher_domain = Column(String(255), nullable=False)  # Domain for adagents.json verification
     verification_status = Column(String(20), nullable=False, default="pending")  # pending, verified, failed
     verification_checked_at = Column(DateTime, nullable=True)
