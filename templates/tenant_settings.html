@@ -1171,9 +1171,9 @@ result = await client.tools.get_products(brief="video ads")</pre>
                 </p>
 
                 <!-- Current Domains -->
-                {% if tenant.authorized_domains %}
+                {% if authorized_domains %}
                 <div class="domain-list" style="margin-bottom: 1rem;">
-                    {% for domain in tenant.authorized_domains %}
+                    {% for domain in authorized_domains %}
                     <div class="domain-item" style="display: flex; align-items: center; justify-content: between; padding: 0.5rem; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; margin-bottom: 0.5rem;">
                         <div style="flex: 1;">
                             <strong>{{ domain }}</strong>
@@ -1211,9 +1211,9 @@ result = await client.tools.get_products(brief="video ads")</pre>
                 </p>
 
                 <!-- Current Emails -->
-                {% if tenant.authorized_emails %}
+                {% if authorized_emails %}
                 <div class="email-list" style="margin-bottom: 1rem;">
-                    {% for email in tenant.authorized_emails %}
+                    {% for email in authorized_emails %}
                     <div class="email-item" style="display: flex; align-items: center; justify-content: between; padding: 0.5rem; background: #fef7ec; border: 1px solid #fed7aa; border-radius: 6px; margin-bottom: 0.5rem;">
                         <div style="flex: 1;">
                             <strong>{{ email }}</strong>
