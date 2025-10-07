@@ -332,7 +332,8 @@ class TestProductDeletion:
         with patch("src.admin.blueprints.products.get_db_session") as mock_session:
             # Mock the context manager to raise an exception
             mock_context = mock_session.return_value.__enter__.return_value
-            mock_context.query.side_effect = Exception("Database connection failed")
+            # SQLAlchemy 2.0 uses scalars() instead of query()
+            mock_context.scalars.side_effect = Exception("Database connection failed")
 
             response = client.delete(f"/tenant/{tenant_id}/products/{product_id}/delete")
 
