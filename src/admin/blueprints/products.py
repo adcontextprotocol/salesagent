@@ -69,7 +69,7 @@ def list_products(tenant_id):
                 flash("Tenant not found", "error")
                 return redirect(url_for("core.index"))
 
-            products = db_session.query(Product).filter_by(tenant_id=tenant_id).order_by(Product.name).all()
+            products = db_session.scalars(select(Product).filter_by(tenant_id=tenant_id).order_by(Product.name)).all()
 
             # Convert products to dict format for template
             products_list = []
@@ -463,7 +463,7 @@ def delete_product(tenant_id, product_id):
             from src.core.database.models import MediaBuy
 
             active_buys = (
-                db_session.query(MediaBuy)
+                select(MediaBuy)
                 .filter_by(tenant_id=tenant_id)
                 .filter(MediaBuy.status.in_(["pending", "active", "paused"]))
                 .all()

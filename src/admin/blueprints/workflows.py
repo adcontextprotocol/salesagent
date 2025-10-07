@@ -32,7 +32,7 @@ def list_workflows(tenant_id, **kwargs):
 
         # Get all workflow steps that need attention
         pending_steps = (
-            db.query(WorkflowStep)
+            select(WorkflowStep)
             .join(Context, WorkflowStep.context_id == Context.context_id)
             .filter(Context.tenant_id == tenant_id, WorkflowStep.status == "pending_approval")
             .order_by(WorkflowStep.created_at.desc())
@@ -40,7 +40,8 @@ def list_workflows(tenant_id, **kwargs):
         )
 
         # Get media buys for context
-        media_buys = db.query(MediaBuy).filter_by(tenant_id=tenant_id).order_by(MediaBuy.created_at.desc()).all()
+        stmt = select(MediaBuy).filter_by(tenant_id=tenant_id).order_by(MediaBuy.created_at.desc())
+        media_buys = db.scalars(stmt).all()
 
         # Build summary stats
         summary = {
@@ -91,7 +92,7 @@ def review_workflow_step(tenant_id, workflow_id, step_id):
     with get_db_session() as db:
         # Get the workflow step with context
         step = (
-            db.query(WorkflowStep)
+            select(WorkflowStep)
             .join(Context, WorkflowStep.context_id == Context.context_id)
             .filter(WorkflowStep.step_id == step_id, Context.tenant_id == tenant_id)
             .first()
@@ -137,7 +138,7 @@ def approve_workflow_step(tenant_id, workflow_id, step_id):
         with get_db_session() as db:
             # Get the workflow step
             step = (
-                db.query(WorkflowStep)
+                select(WorkflowStep)
                 .join(Context, WorkflowStep.context_id == Context.context_id)
                 .filter(WorkflowStep.step_id == step_id, Context.tenant_id == tenant_id)
                 .first()
@@ -182,7 +183,7 @@ def reject_workflow_step(tenant_id, workflow_id, step_id):
         with get_db_session() as db:
             # Get the workflow step
             step = (
-                db.query(WorkflowStep)
+                select(WorkflowStep)
                 .join(Context, WorkflowStep.context_id == Context.context_id)
                 .filter(WorkflowStep.step_id == step_id, Context.tenant_id == tenant_id)
                 .first()

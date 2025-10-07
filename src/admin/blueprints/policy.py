@@ -72,7 +72,7 @@ def index(tenant_id):
 
         # Get recent policy checks from audit log
         audit_logs = (
-            db_session.query(AuditLog)
+            select(AuditLog)
             .filter_by(tenant_id=tenant_id, operation="policy_check")
             .order_by(AuditLog.timestamp.desc())
             .limit(20)
@@ -98,7 +98,7 @@ def index(tenant_id):
         pending_reviews = []
         try:
             workflow_steps = (
-                db_session.query(WorkflowStep)
+                select(WorkflowStep)
                 .filter_by(tenant_id=tenant_id, step_type="policy_review", status="pending")
                 .order_by(WorkflowStep.created_at.desc())
                 .all()
@@ -224,7 +224,7 @@ def review_task(tenant_id, task_id):
             try:
                 # Get the workflow step
                 step = (
-                    db_session.query(WorkflowStep)
+                    select(WorkflowStep)
                     .join(Context, WorkflowStep.context_id == Context.context_id)
                     .filter(Context.tenant_id == tenant_id, WorkflowStep.step_id == task_id)
                     .first()
@@ -262,7 +262,7 @@ def review_task(tenant_id, task_id):
         # GET request - show review form
         try:
             step = (
-                db_session.query(WorkflowStep)
+                select(WorkflowStep)
                 .join(Context, WorkflowStep.context_id == Context.context_id)
                 .filter(Context.tenant_id == tenant_id, WorkflowStep.step_id == task_id)
                 .first()

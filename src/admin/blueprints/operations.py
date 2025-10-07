@@ -99,7 +99,7 @@ def workflows(tenant_id, **kwargs):
 
         # Get all workflow steps that need attention
         pending_steps = (
-            db.query(WorkflowStep)
+            select(WorkflowStep)
             .join(Context, WorkflowStep.context_id == Context.context_id)
             .filter(Context.tenant_id == tenant_id, WorkflowStep.status == "pending_approval")
             .order_by(WorkflowStep.created_at.desc())
@@ -107,7 +107,8 @@ def workflows(tenant_id, **kwargs):
         )
 
         # Get media buys for context
-        media_buys = db.query(MediaBuy).filter_by(tenant_id=tenant_id).order_by(MediaBuy.created_at.desc()).all()
+        stmt = select(MediaBuy).filter_by(tenant_id=tenant_id).order_by(MediaBuy.created_at.desc())
+        media_buys = db.scalars(stmt).all()
 
         # Build summary stats
         summary = {
