@@ -426,7 +426,12 @@ POST /api/v1/tenant-management/tenants/{tenant_id}/principals
 ```json
 {
   "name": "Acme Advertiser",
-  "gam_advertiser_id": "456789",
+  "platform_mappings": {
+    "google_ad_manager": {
+      "advertiser_id": "456789",
+      "enabled": true
+    }
+  },
   "access_token": "auto_generated_or_custom"
 }
 ```

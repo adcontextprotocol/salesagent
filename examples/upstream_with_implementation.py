@@ -188,7 +188,9 @@ async def get_products(
     # All our products work on Google Ad Manager (our ad server)
     # Check if advertiser has a GAM account to work with us
     if principal_data and "platform_mappings" in principal_data:
-        if "gam_advertiser_id" not in principal_data["platform_mappings"]:
+        platform_mappings = principal_data["platform_mappings"]
+        gam_config = platform_mappings.get("google_ad_manager", {})
+        if not gam_config or not gam_config.get("advertiser_id"):
             # Advertiser doesn't have a GAM account
             print(f"   ⚠️  Note: Advertiser {principal_id} needs a GAM account")
             # Could return limited products or require account setup
@@ -283,16 +285,17 @@ async def validate_implementation(product_id: str, principal_data: dict[str, Any
 
     # All our products use Google Ad Manager (our ad server)
     platform_mappings = principal_data.get("platform_mappings", {})
+    gam_config = platform_mappings.get("google_ad_manager", {})
 
     # Check if advertiser has a GAM account
-    if "gam_advertiser_id" not in platform_mappings:
+    if not gam_config or not gam_config.get("advertiser_id"):
         return {"valid": False, "reason": "Advertiser needs a Google Ad Manager account to buy from us"}
 
     return {
         "valid": True,
         "implementation_ready": True,
         "ad_server": "google_ad_manager",
-        "advertiser_id": platform_mappings.get("gam_advertiser_id"),
+        "advertiser_id": gam_config.get("advertiser_id"),
     }
 
 

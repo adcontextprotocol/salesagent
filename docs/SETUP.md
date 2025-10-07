@@ -225,7 +225,10 @@ curl -X POST "http://localhost:8001/admin/tenant/{tenant_id}/principals" \
   -d '{
     "name": "Advertiser Name",
     "platform_mappings": {
-      "gam_advertiser_id": "123456"
+      "google_ad_manager": {
+        "advertiser_id": "123456",
+        "enabled": true
+      }
     }
   }'
 ```

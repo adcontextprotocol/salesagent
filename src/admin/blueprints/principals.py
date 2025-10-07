@@ -188,7 +188,7 @@ def create_principal(tenant_id):
                 principal_id=principal_id,
                 name=principal_name,
                 access_token=access_token,
-                platform_mappings=json.dumps(platform_mappings),
+                platform_mappings=platform_mappings,  # JSONType handles serialization
                 created_at=datetime.now(UTC),
                 updated_at=datetime.now(UTC),
             )
@@ -284,8 +284,8 @@ def update_mappings(tenant_id, principal_id):
             if not principal:
                 return jsonify({"error": "Principal not found"}), 404
 
-            # Update mappings
-            principal.platform_mappings = json.dumps(platform_mappings)
+            # Update mappings - JSONType handles serialization
+            principal.platform_mappings = platform_mappings
             db_session.commit()
 
             return jsonify(
@@ -457,8 +457,8 @@ def save_testing_config(tenant_id, principal_id):
             # Update hitl_config
             platform_mappings["mock"]["hitl_config"] = hitl_config
 
-            # Save back to database
-            principal.platform_mappings = json.dumps(platform_mappings)
+            # Save back to database - JSONType handles serialization
+            principal.platform_mappings = platform_mappings
             principal.updated_at = datetime.now(UTC)
             db_session.commit()
 
