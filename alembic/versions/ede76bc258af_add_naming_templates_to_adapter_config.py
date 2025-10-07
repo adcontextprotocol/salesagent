@@ -26,13 +26,13 @@ def upgrade() -> None:
     op.add_column("adapter_config", sa.Column("gam_line_item_name_template", sa.String(500), nullable=True))
 
     # Set sensible defaults for existing rows
-    # Order name: "{campaign_name} - {date_range}" or "{promoted_offering} - {date_range}"
-    # Line item name: "{order_name} - {product_name}"
+    # Order name: "{campaign_name|promoted_offering} - {date_range}"
+    # Line item name: "{order_name} - {product_name}" (includes campaign context for better reporting)
     op.execute(
         """
         UPDATE adapter_config
         SET gam_order_name_template = '{campaign_name|promoted_offering} - {date_range}',
-            gam_line_item_name_template = '{product_name}'
+            gam_line_item_name_template = '{order_name} - {product_name}'
         WHERE adapter_type = 'google_ad_manager'
     """
     )
