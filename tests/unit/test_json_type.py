@@ -2,6 +2,8 @@
 
 import json
 
+import pytest
+
 from src.core.database.json_type import JSONType
 
 
@@ -61,27 +63,28 @@ class TestJSONType:
         assert isinstance(result, dict)
 
     def test_process_result_value_with_invalid_json_string(self):
-        """Test that invalid JSON strings return None with warning."""
+        """Test that invalid JSON strings raise ValueError."""
         json_type = JSONType()
         invalid_json = "not valid json"
-        result = json_type.process_result_value(invalid_json, None)
-        assert result is None
+
+        with pytest.raises(ValueError, match="Database contains invalid JSON"):
+            json_type.process_result_value(invalid_json, None)
 
     def test_process_result_value_with_malformed_json(self):
-        """Test various malformed JSON patterns."""
+        """Test various malformed JSON patterns raise ValueError."""
         json_type = JSONType()
 
         # Unclosed brackets
-        result = json_type.process_result_value('{"key": "value"', None)
-        assert result is None
+        with pytest.raises(ValueError, match="Database contains invalid JSON"):
+            json_type.process_result_value('{"key": "value"', None)
 
         # Trailing comma
-        result = json_type.process_result_value('["item1", "item2",]', None)
-        assert result is None
+        with pytest.raises(ValueError, match="Database contains invalid JSON"):
+            json_type.process_result_value('["item1", "item2",]', None)
 
         # Single quotes instead of double
-        result = json_type.process_result_value("{'key': 'value'}", None)
-        assert result is None
+        with pytest.raises(ValueError, match="Database contains invalid JSON"):
+            json_type.process_result_value("{'key': 'value'}", None)
 
     def test_process_result_value_with_nested_json(self):
         """Test deeply nested JSON structures."""
@@ -143,26 +146,28 @@ class TestJSONType:
     def test_process_result_value_with_empty_string(self):
         """Test that empty string is treated as invalid JSON."""
         json_type = JSONType()
-        result = json_type.process_result_value("", None)
-        assert result is None
+
+        with pytest.raises(ValueError, match="Database contains invalid JSON"):
+            json_type.process_result_value("", None)
 
     def test_process_result_value_with_whitespace_only_string(self):
         """Test that whitespace-only string is treated as invalid JSON."""
         json_type = JSONType()
-        result = json_type.process_result_value("   \n\t  ", None)
-        assert result is None
+
+        with pytest.raises(ValueError, match="Database contains invalid JSON"):
+            json_type.process_result_value("   \n\t  ", None)
 
     def test_process_result_value_with_unexpected_type(self):
-        """Test that unexpected types are handled gracefully."""
+        """Test that unexpected types raise TypeError."""
         json_type = JSONType()
 
         # Integer (unexpected)
-        result = json_type.process_result_value(42, None)
-        assert result == 42  # Returned as-is with warning
+        with pytest.raises(TypeError, match="Unexpected type in JSON column"):
+            json_type.process_result_value(42, None)
 
         # Boolean (unexpected)
-        result = json_type.process_result_value(True, None)
-        assert result is True
+        with pytest.raises(TypeError, match="Unexpected type in JSON column"):
+            json_type.process_result_value(True, None)
 
     def test_cache_ok_is_true(self):
         """Test that cache_ok flag is set for query caching."""
@@ -175,6 +180,95 @@ class TestJSONType:
 
         # JSONType.impl is the JSON class itself, used by TypeDecorator
         assert JSONType.impl == JSON
+
+
+class TestJSONTypeBindParam:
+    """Test process_bind_param input validation."""
+
+    def test_process_bind_param_with_none(self):
+        """Test that None values are passed through."""
+        json_type = JSONType()
+        result = json_type.process_bind_param(None, None)
+        assert result is None
+
+    def test_process_bind_param_with_dict(self):
+        """Test that dict values are passed through."""
+        json_type = JSONType()
+        test_dict = {"key": "value"}
+        result = json_type.process_bind_param(test_dict, None)
+        assert result == test_dict
+
+    def test_process_bind_param_with_list(self):
+        """Test that list values are passed through."""
+        json_type = JSONType()
+        test_list = ["item1", "item2"]
+        result = json_type.process_bind_param(test_list, None)
+        assert result == test_list
+
+    def test_process_bind_param_with_invalid_type(self):
+        """Test that non-JSON types are converted to empty dict."""
+        json_type = JSONType()
+
+        # String (not dict/list)
+        result = json_type.process_bind_param("invalid", None)
+        assert result == {}
+
+        # Integer
+        result = json_type.process_bind_param(42, None)
+        assert result == {}
+
+        # Boolean
+        result = json_type.process_bind_param(True, None)
+        assert result == {}
+
+
+class TestJSONTypePostgreSQLOptimization:
+    """Test PostgreSQL fast-path optimization."""
+
+    def test_postgresql_dict_fast_path(self):
+        """Test that PostgreSQL dicts skip deserialization."""
+        from unittest.mock import Mock
+
+        json_type = JSONType()
+        dialect = Mock()
+        dialect.name = "postgresql"
+
+        test_dict = {"key": "value"}
+        result = json_type.process_result_value(test_dict, dialect)
+
+        # Should return immediately without processing
+        assert result == test_dict
+        assert result is test_dict  # Same object reference
+
+    def test_postgresql_list_fast_path(self):
+        """Test that PostgreSQL lists skip deserialization."""
+        from unittest.mock import Mock
+
+        json_type = JSONType()
+        dialect = Mock()
+        dialect.name = "postgresql"
+
+        test_list = ["item1", "item2"]
+        result = json_type.process_result_value(test_list, dialect)
+
+        # Should return immediately without processing
+        assert result == test_list
+        assert result is test_list  # Same object reference
+
+    def test_sqlite_requires_deserialization(self):
+        """Test that SQLite strings are still deserialized."""
+        from unittest.mock import Mock
+
+        json_type = JSONType()
+        dialect = Mock()
+        dialect.name = "sqlite"
+
+        json_string = '{"key": "value"}'
+        result = json_type.process_result_value(json_string, dialect)
+
+        # Should deserialize
+        assert result == {"key": "value"}
+        assert isinstance(result, dict)
 
 
 class TestJSONTypeRealWorldScenarios:
@@ -232,13 +326,13 @@ class TestJSONTypeRealWorldScenarios:
         assert result == []
 
     def test_corrupted_data_scenario(self):
-        """Test that corrupted database data is handled gracefully."""
+        """Test that corrupted database data raises ValueError."""
         json_type = JSONType()
 
-        # Corrupted data returns None (logged as warning)
-        result = json_type.process_result_value("corrupted data", None)
-        assert result is None
+        # Corrupted data raises ValueError
+        with pytest.raises(ValueError, match="Database contains invalid JSON"):
+            json_type.process_result_value("corrupted data", None)
 
-        # Partial JSON
-        result = json_type.process_result_value('["item1", "item2"', None)
-        assert result is None
+        # Partial JSON raises ValueError
+        with pytest.raises(ValueError, match="Database contains invalid JSON"):
+            json_type.process_result_value('["item1", "item2"', None)
