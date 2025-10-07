@@ -18,7 +18,7 @@ class TestDashboardServiceIntegration:
     """Integration tests for DashboardService with real database data."""
 
     @pytest.fixture
-    def test_tenant_data(self):
+    def test_tenant_data(self, integration_db):
         """Create test tenant with real database connection."""
         tenant_id = "dashboard_test_tenant"
         principal_id = "dashboard_test_principal"
@@ -144,7 +144,7 @@ class TestDashboardServiceIntegration:
             value = getattr(tenant, field)
             assert value is not None, f"Field {field} should not be None"
 
-    def test_dashboard_service_with_nonexistent_tenant(self):
+    def test_dashboard_service_with_nonexistent_tenant(self, integration_db):
         """Test dashboard service behavior with nonexistent tenant."""
         service = DashboardService("nonexistent_tenant_id")
 
