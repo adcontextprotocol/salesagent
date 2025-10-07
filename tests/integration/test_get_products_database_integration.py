@@ -28,7 +28,7 @@ class TestDatabaseProductsIntegration:
     """Integration tests using real database without excessive mocking."""
 
     @pytest.fixture
-    def test_tenant_id(self):
+    def test_tenant_id(self, integration_db):
         """Create a test tenant for database integration tests."""
         tenant_id = "test_integration_tenant"
         with get_db_session() as session:
@@ -366,7 +366,7 @@ class TestDatabasePerformanceOptimization:
     """Performance-optimized database tests with faster cleanup and connection pooling."""
 
     @pytest.fixture
-    def optimized_test_setup(self):
+    def optimized_test_setup(self, integration_db):
         """Performance-optimized test setup with transaction rollbacks."""
         tenant_id = "perf_test_tenant"
 
@@ -548,7 +548,7 @@ class TestDatabaseSchemaEvolution:
     """Tests for database schema evolution scenarios."""
 
     @pytest.fixture
-    def schema_evolution_setup(self):
+    def schema_evolution_setup(self, integration_db):
         """Setup for schema evolution testing."""
         tenant_id = "schema_evolution_test"
 
