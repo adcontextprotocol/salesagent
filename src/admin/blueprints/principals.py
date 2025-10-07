@@ -31,17 +31,19 @@ def list_principals(tenant_id):
                 flash("Tenant not found", "error")
                 return redirect(url_for("core.index"))
 
-            principals = db_session.query(Principal).filter_by(tenant_id=tenant_id).order_by(Principal.name).all()
+            stmt = select(Principal).filter_by(tenant_id=tenant_id).order_by(Principal.name)
+            principals = db_session.scalars(stmt).all()
 
             # Convert to dict format for template
             principals_list = []
             for principal in principals:
                 # Count media buys for this principal
-                media_buy_count = (
-                    db_session.query(MediaBuy)
+                stmt = (
+                    select(func.count())
+                    .select_from(MediaBuy)
                     .filter_by(tenant_id=tenant_id, principal_id=principal.principal_id)
-                    .count()
                 )
+                media_buy_count = db_session.scalar(stmt)
 
                 # Handle both string (SQLite) and dict (PostgreSQL JSONB) formats
                 mappings = principal.platform_mappings
@@ -527,11 +529,8 @@ def register_webhook(tenant_id, principal_id):
 
         with get_db_session() as db_session:
             # Check if webhook already exists
-            existing = (
-                db_session.query(PushNotificationConfig)
-                .filter_by(tenant_id=tenant_id, principal_id=principal_id, url=url)
-                .first()
-            )
+            stmt = select(PushNotificationConfig).filter_by(tenant_id=tenant_id, principal_id=principal_id, url=url)
+            existing = db_session.scalars(stmt).first()
 
             if existing:
                 flash("Webhook URL already registered for this principal", "warning")
@@ -569,11 +568,10 @@ def delete_webhook(tenant_id, principal_id, config_id):
     """Delete a webhook configuration."""
     try:
         with get_db_session() as db_session:
-            webhook = (
-                db_session.query(PushNotificationConfig)
-                .filter_by(tenant_id=tenant_id, principal_id=principal_id, config_id=config_id)
-                .first()
+            stmt = select(PushNotificationConfig).filter_by(
+                tenant_id=tenant_id, principal_id=principal_id, config_id=config_id
             )
+            webhook = db_session.scalars(stmt).first()
 
             if not webhook:
                 flash("Webhook not found", "error")
@@ -599,11 +597,10 @@ def toggle_webhook(tenant_id, principal_id, config_id):
     """Toggle webhook active status."""
     try:
         with get_db_session() as db_session:
-            webhook = (
-                db_session.query(PushNotificationConfig)
-                .filter_by(tenant_id=tenant_id, principal_id=principal_id, config_id=config_id)
-                .first()
+            stmt = select(PushNotificationConfig).filter_by(
+                tenant_id=tenant_id, principal_id=principal_id, config_id=config_id
             )
+            webhook = db_session.scalars(stmt).first()
 
             if not webhook:
                 return jsonify({"error": "Webhook not found"}), 404

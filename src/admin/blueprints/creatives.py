@@ -108,11 +108,8 @@ def list_creatives(tenant_id, **kwargs):
             principal_name = principal.name if principal else creative.principal_id
 
             # Get all assignments for this creative
-            assignments = (
-                db_session.query(CreativeAssignment)
-                .filter_by(tenant_id=tenant_id, creative_id=creative.creative_id)
-                .all()
-            )
+            stmt = select(CreativeAssignment).filter_by(tenant_id=tenant_id, creative_id=creative.creative_id)
+            assignments = db_session.scalars(stmt).all()
 
             # Get media buy details for each assignment
             media_buys = []

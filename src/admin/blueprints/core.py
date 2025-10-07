@@ -87,7 +87,8 @@ def index():
     if session.get("role") == "super_admin":
         # Super admin - show all active tenants
         with get_db_session() as db_session:
-            tenants = db_session.query(Tenant).filter_by(is_active=True).order_by(Tenant.name).all()
+            stmt = select(Tenant).filter_by(is_active=True).order_by(Tenant.name)
+            tenants = db_session.scalars(stmt).all()
             tenant_list = []
             for tenant in tenants:
                 tenant_list.append(
@@ -309,7 +310,8 @@ def mcp_test():
     # Get all tenants and their principals
     with get_db_session() as db_session:
         # Get tenants
-        tenant_objs = db_session.query(Tenant).filter_by(is_active=True).order_by(Tenant.name).all()
+        stmt = select(Tenant).filter_by(is_active=True).order_by(Tenant.name)
+        tenant_objs = db_session.scalars(stmt).all()
         tenants = []
         for tenant in tenant_objs:
             tenants.append(
@@ -321,17 +323,13 @@ def mcp_test():
             )
 
         # Get all principals with their tenant info
-        principal_objs = (
-            db_session.query(Principal)
-            .join(Tenant)
-            .filter(Tenant.is_active)
-            .order_by(Tenant.name, Principal.name)
-            .all()
-        )
+        stmt = select(Principal).join(Tenant).where(Tenant.is_active).order_by(Tenant.name, Principal.name)
+        principal_objs = db_session.scalars(stmt).all()
         principals = []
         for principal in principal_objs:
             # Get the tenant name via relationship or separate query
-            tenant_name = db_session.query(Tenant.name).filter_by(tenant_id=principal.tenant_id).scalar()
+            stmt = select(Tenant.name).filter_by(tenant_id=principal.tenant_id)
+            tenant_name = db_session.scalar(stmt)
             principals.append(
                 {
                     "principal_id": principal.principal_id,

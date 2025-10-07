@@ -26,7 +26,8 @@ def list_users(tenant_id):
             flash("Tenant not found", "error")
             return redirect(url_for("core.index"))
 
-        users = db_session.query(User).filter_by(tenant_id=tenant_id).order_by(User.email).all()
+        stmt = select(User).filter_by(tenant_id=tenant_id).order_by(User.email)
+        users = db_session.scalars(stmt).all()
 
         users_list = []
         for user in users:
