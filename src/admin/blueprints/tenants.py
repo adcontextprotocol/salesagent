@@ -183,6 +183,10 @@ def tenant_settings(tenant_id, section=None):
                         authorized_domains = json.loads(tenant.authorized_domains)
                     except json.JSONDecodeError:
                         logger.error(f"Failed to parse authorized_domains for tenant {tenant_id}")
+                        flash(
+                            "Warning: Some authorized domains data could not be loaded. Please review your settings.",
+                            "warning",
+                        )
                         authorized_domains = []
                 else:
                     authorized_domains = tenant.authorized_domains
@@ -193,6 +197,10 @@ def tenant_settings(tenant_id, section=None):
                         authorized_emails = json.loads(tenant.authorized_emails)
                     except json.JSONDecodeError:
                         logger.error(f"Failed to parse authorized_emails for tenant {tenant_id}")
+                        flash(
+                            "Warning: Some authorized emails data could not be loaded. Please review your settings.",
+                            "warning",
+                        )
                         authorized_emails = []
                 else:
                     authorized_emails = tenant.authorized_emails
