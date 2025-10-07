@@ -38,6 +38,7 @@ from scripts.setup.init_database import init_db
 # Other imports
 from src.core.config_loader import (
     get_current_tenant,
+    get_tenant_by_subdomain,
     get_tenant_by_virtual_host,
     load_config,
     set_current_tenant,
@@ -335,16 +336,38 @@ def get_principal_from_context(context: Context | None) -> str | None:
         subdomain = host.split(".")[0] if "." in host else None
         console.print(f"[blue]Extracted subdomain from Host header: {subdomain}[/blue]")
         if subdomain and subdomain not in ["localhost", "adcp-sales-agent", "www", "admin"]:
-            requested_tenant_id = subdomain
-            detection_method = "subdomain"
-            console.print(f"[green]Tenant detected from subdomain: {requested_tenant_id}[/green]")
+            # Look up tenant by subdomain to get actual tenant_id
+            console.print(f"[blue]Looking up tenant by subdomain: {subdomain}[/blue]")
+            tenant_context = get_tenant_by_subdomain(subdomain)
+            if tenant_context:
+                requested_tenant_id = tenant_context["tenant_id"]
+                detection_method = "subdomain"
+                set_current_tenant(tenant_context)
+                console.print(
+                    f"[green]Tenant detected from subdomain: {subdomain} → tenant_id: {requested_tenant_id}[/green]"
+                )
+            else:
+                console.print(f"[yellow]No tenant found for subdomain: {subdomain}[/yellow]")
 
     # 2. Check x-adcp-tenant header (set by nginx for path-based routing)
     if not requested_tenant_id:
-        requested_tenant_id = _get_header_case_insensitive(headers, "x-adcp-tenant")
-        if requested_tenant_id:
-            detection_method = "x-adcp-tenant header"
-            console.print(f"[green]Tenant detected from x-adcp-tenant header: {requested_tenant_id}[/green]")
+        tenant_hint = _get_header_case_insensitive(headers, "x-adcp-tenant")
+        if tenant_hint:
+            console.print(f"[blue]Looking up tenant from x-adcp-tenant header: {tenant_hint}[/blue]")
+            # Try to look up by subdomain first (most common case)
+            tenant_context = get_tenant_by_subdomain(tenant_hint)
+            if tenant_context:
+                requested_tenant_id = tenant_context["tenant_id"]
+                detection_method = "x-adcp-tenant header (subdomain lookup)"
+                set_current_tenant(tenant_context)
+                console.print(
+                    f"[green]Tenant detected from x-adcp-tenant: {tenant_hint} → tenant_id: {requested_tenant_id}[/green]"
+                )
+            else:
+                # Fallback: assume it's already a tenant_id
+                requested_tenant_id = tenant_hint
+                detection_method = "x-adcp-tenant header (direct)"
+                console.print(f"[yellow]Using x-adcp-tenant as tenant_id directly: {requested_tenant_id}[/yellow]")
 
     # 3. Check Apx-Incoming-Host header (for Approximated.app virtual hosts)
     if not requested_tenant_id:

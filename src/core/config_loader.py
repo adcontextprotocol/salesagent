@@ -139,6 +139,47 @@ def set_current_tenant(tenant_dict: dict[str, Any]):
     current_tenant.set(tenant_dict)
 
 
+def get_tenant_by_subdomain(subdomain: str) -> dict[str, Any] | None:
+    """Get tenant by subdomain.
+
+    Args:
+        subdomain: The subdomain to look up (e.g., 'wonderstruck' from wonderstruck.sales-agent.scope3.com)
+
+    Returns:
+        Tenant dict if found, None otherwise
+    """
+    try:
+        with get_db_session() as db_session:
+            tenant = db_session.query(Tenant).filter_by(subdomain=subdomain, is_active=True).first()
+
+            if tenant:
+                return {
+                    "tenant_id": tenant.tenant_id,
+                    "name": tenant.name,
+                    "subdomain": tenant.subdomain,
+                    "virtual_host": tenant.virtual_host,
+                    "ad_server": tenant.ad_server,
+                    "max_daily_budget": tenant.max_daily_budget,
+                    "enable_axe_signals": tenant.enable_axe_signals,
+                    "authorized_emails": safe_json_loads(tenant.authorized_emails, []),
+                    "authorized_domains": safe_json_loads(tenant.authorized_domains, []),
+                    "slack_webhook_url": tenant.slack_webhook_url,
+                    "admin_token": tenant.admin_token,
+                    "auto_approve_formats": safe_json_loads(tenant.auto_approve_formats, []),
+                    "human_review_required": tenant.human_review_required,
+                    "slack_audit_webhook_url": tenant.slack_audit_webhook_url,
+                    "hitl_webhook_url": tenant.hitl_webhook_url,
+                    "policy_settings": safe_json_loads(tenant.policy_settings, None),
+                    "signals_agent_config": safe_json_loads(tenant.signals_agent_config, None),
+                }
+            return None
+    except Exception as e:
+        # If table doesn't exist or other DB errors, return None
+        if "no such table" in str(e) or "does not exist" in str(e):
+            return None
+        raise
+
+
 def get_tenant_by_virtual_host(virtual_host: str) -> dict[str, Any] | None:
     """Get tenant by virtual host."""
     try:
