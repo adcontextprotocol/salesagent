@@ -32,6 +32,7 @@ def test_health_routes_in_refactored_app():
     print("✅ Both health routes work in refactored app!")
 
 
+@pytest.mark.requires_db
 def test_health_routes_in_original_app():
     """Test that health routes still work in original app for comparison."""
     from src.admin.app import create_app
