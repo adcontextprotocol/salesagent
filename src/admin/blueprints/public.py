@@ -156,9 +156,8 @@ def provision_tenant():
 
         # Check if subdomain already exists
         with get_db_session() as db_session:
-            existing_tenant = (
-                select(Tenant).filter(or_(Tenant.subdomain == subdomain, Tenant.tenant_id == subdomain)).first()
-            )
+            stmt = select(Tenant).filter(or_(Tenant.subdomain == subdomain, Tenant.tenant_id == subdomain))
+            existing_tenant = db_session.scalars(stmt).first()
 
             if existing_tenant:
                 flash(f"Subdomain '{subdomain}' is already taken. Please choose another.", "error")
