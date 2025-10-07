@@ -23,6 +23,7 @@ class DeliverySimulator:
         """Initialize the delivery simulator."""
         self._active_simulations: dict[str, threading.Thread] = {}
         self._stop_signals: dict[str, threading.Event] = {}
+        self._sequence_numbers: dict[str, int] = {}  # Track sequence per media buy
 
     def start_simulation(
         self,
@@ -52,9 +53,10 @@ class DeliverySimulator:
             logger.warning(f"Delivery simulation already running for {media_buy_id}")
             return
 
-        # Create stop signal
+        # Create stop signal and initialize sequence number
         stop_signal = threading.Event()
         self._stop_signals[media_buy_id] = stop_signal
+        self._sequence_numbers[media_buy_id] = 0  # Will increment to 1 on first webhook
 
         # Start simulation thread
         thread = threading.Thread(
@@ -215,6 +217,8 @@ class DeliverySimulator:
                 del self._active_simulations[media_buy_id]
             if media_buy_id in self._stop_signals:
                 del self._stop_signals[media_buy_id]
+            if media_buy_id in self._sequence_numbers:
+                del self._sequence_numbers[media_buy_id]
 
     async def _send_delivery_webhook(
         self,
@@ -229,7 +233,7 @@ class DeliverySimulator:
         total_budget: float,
         status: str,
     ):
-        """Send delivery update webhook.
+        """Send AdCP-compliant delivery update webhook.
 
         Args:
             media_buy_id: Media buy identifier
@@ -243,46 +247,74 @@ class DeliverySimulator:
             total_budget: Total campaign budget
             status: Campaign status (started, delivering, completed)
         """
-        progress_pct = (elapsed_hours / total_hours * 100) if total_hours > 0 else 0
-        pacing_pct = (spend / total_budget * 100) if total_budget > 0 else 0
+        # Increment sequence number
+        self._sequence_numbers[media_buy_id] = self._sequence_numbers.get(media_buy_id, 0) + 1
+        sequence_number = self._sequence_numbers[media_buy_id]
 
-        delivery_data = {
-            "event_type": "delivery_update",
-            "media_buy_id": media_buy_id,
-            "status": status,
-            "simulated_time": simulated_time.isoformat(),
-            "progress": {
-                "elapsed_hours": round(elapsed_hours, 2),
-                "total_hours": round(total_hours, 2),
-                "progress_percentage": round(progress_pct, 1),
+        progress_pct = (elapsed_hours / total_hours * 100) if total_hours > 0 else 0
+        pacing_index = (
+            (spend / total_budget) / (elapsed_hours / total_hours) if elapsed_hours > 0 and total_hours > 0 else 1.0
+        )
+
+        # Determine AdCP notification_type
+        if status == "completed":
+            notification_type = "final"
+        else:
+            notification_type = "scheduled"
+
+        # Calculate next expected notification time
+        if notification_type != "final":
+            next_expected_at = (datetime.now(UTC) + timedelta(seconds=1.0)).isoformat()
+        else:
+            next_expected_at = None
+
+        # AdCP V2.3 compliant GetMediaBuyDeliveryResponse format
+        # This is the format defined in /schemas/v1/media-buy/get-media-buy-delivery-response.json
+        delivery_payload = {
+            "adcp_version": "2.3.0",
+            "notification_type": notification_type,
+            "sequence_number": sequence_number,
+            "reporting_period": {
+                "start": simulated_time.isoformat(),
+                "end": simulated_time.isoformat(),  # Single point-in-time for simulation
             },
-            "delivery": {
-                "impressions": impressions,
-                "spend": round(spend, 2),
-                "total_budget": total_budget,
-                "pacing_percentage": round(pacing_pct, 1),
-            },
-            "metrics": {
-                "cpm": round((spend / impressions * 1000), 2) if impressions > 0 else 0,
-                "clicks": int(impressions * 0.01),  # 1% CTR
-                "ctr": 0.01,
-            },
+            "currency": "USD",
+            "media_buy_deliveries": [
+                {
+                    "media_buy_id": media_buy_id,
+                    "status": (
+                        "active" if status == "delivering" else "completed" if status == "completed" else "pending"
+                    ),
+                    "totals": {
+                        "impressions": impressions,
+                        "spend": round(spend, 2),
+                        "clicks": int(impressions * 0.01),  # 1% CTR
+                        "ctr": 0.01,
+                    },
+                    "by_package": [],  # Empty for simulation - could be enhanced later
+                }
+            ],
         }
 
+        # Add next_expected_at if not final
+        if next_expected_at:
+            delivery_payload["next_expected_at"] = next_expected_at
+
         logger.info(
-            f"📤 Delivery webhook for {media_buy_id}: "
+            f"📤 Delivery webhook #{sequence_number} for {media_buy_id}: "
             f"{elapsed_hours:.1f}/{total_hours:.1f}h "
-            f"({progress_pct:.1f}% progress, {pacing_pct:.1f}% pacing) "
-            f"- {impressions:,} imps, ${spend:,.2f} spend"
+            f"({progress_pct:.1f}% progress, pacing_index: {pacing_index:.2f}) "
+            f"- {impressions:,} imps, ${spend:,.2f} spend [{notification_type}]"
         )
 
         try:
+            # Send via push notification service using AdCP-compliant payload
             result = await push_notification_service.send_task_status_notification(
                 tenant_id=tenant_id,
                 principal_id=principal_id,
                 task_id=media_buy_id,
-                task_status=status,
-                task_data=delivery_data,
+                task_status="completed" if status == "completed" else "working",
+                task_data=delivery_payload,
             )
 
             if result["sent"] > 0:

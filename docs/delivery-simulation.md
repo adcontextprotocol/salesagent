@@ -69,49 +69,64 @@ Result:
 
 ## Webhook Payload
 
-> **⚠️ Important**: This is a **custom webhook format** for delivery simulation, not part of the AdCP V2.3 or A2A protocol specifications. It uses the A2A push notification transport mechanism (via `PushNotificationService`) but with custom delivery-specific data in the `data` field. This is a reference implementation convenience feature for testing AI agents.
+> **✅ AdCP V2.3 Compliant**: Delivery simulation webhooks use the standard **`GetMediaBuyDeliveryResponse`** format defined in the AdCP V2.3 specification. This ensures compatibility with any AdCP-compliant AI agents and tools.
 
-Each delivery update webhook includes:
+The webhook payload follows the A2A push notification transport with AdCP-compliant delivery data:
 
+**Outer Envelope (A2A Transport):**
 ```json
 {
   "task_id": "buy_abc123",
-  "status": "delivering",
+  "status": "working" | "completed",
   "timestamp": "2025-10-07T12:34:56.789Z",
   "tenant_id": "tenant_123",
   "principal_id": "principal_456",
-  "data": {
-    "event_type": "delivery_update",
-    "media_buy_id": "buy_abc123",
-    "status": "started" | "delivering" | "completed",
-    "simulated_time": "2025-10-08T15:00:00Z",
-    "progress": {
-      "elapsed_hours": 27.5,
-      "total_hours": 168.0,
-      "progress_percentage": 16.4
-    },
-    "delivery": {
-      "impressions": 45000,
-      "spend": 450.00,
-      "total_budget": 5000.00,
-      "pacing_percentage": 9.0
-    },
-    "metrics": {
-      "cpm": 10.00,
-      "clicks": 450,
-      "ctr": 0.01
+  "data": { /* AdCP GetMediaBuyDeliveryResponse */ }
+}
+```
+
+**Inner Payload (AdCP V2.3 GetMediaBuyDeliveryResponse):**
+```json
+{
+  "adcp_version": "2.3.0",
+  "notification_type": "scheduled" | "final",
+  "sequence_number": 1,
+  "next_expected_at": "2025-10-07T12:34:57.789Z",
+  "reporting_period": {
+    "start": "2025-10-08T15:00:00Z",
+    "end": "2025-10-08T15:00:00Z"
+  },
+  "currency": "USD",
+  "media_buy_deliveries": [
+    {
+      "media_buy_id": "buy_abc123",
+      "status": "active" | "completed",
+      "totals": {
+        "impressions": 45000,
+        "spend": 450.00,
+        "clicks": 450,
+        "ctr": 0.01
+      },
+      "by_package": []
     }
-  }
+  ]
 }
 ```
 
 ### Webhook Events
 
-| Status | Description | When Fired |
-|--------|-------------|------------|
-| `started` | Campaign just began | First webhook (0% progress) |
-| `delivering` | Campaign in progress | Every update interval |
-| `completed` | Campaign finished | Final webhook (100% progress) |
+| notification_type | Description | When Fired |
+|------------------|-------------|------------|
+| `scheduled` | Regular periodic update | Every update interval during campaign |
+| `final` | Campaign completed | Last webhook when campaign reaches 100% |
+
+### Key AdCP Fields
+
+- **`notification_type`**: Indicates if this is a scheduled update or final report
+- **`sequence_number`**: Sequential counter starting at 1, increments with each webhook
+- **`next_expected_at`**: ISO timestamp for next webhook (omitted when `notification_type` is `final`)
+- **`media_buy_deliveries`**: Array of delivery data (one per media buy)
+- **`totals`**: Aggregate metrics (impressions, spend, clicks, CTR)
 
 ## Setting Up Webhook Endpoints
 
