@@ -294,7 +294,6 @@ class TestMCPEndpointsComprehensive:
             assert "auth" in str(exc_info.value).lower() or "invalid" in str(exc_info.value).lower()
 
     @pytest.mark.requires_server
-    @pytest.mark.xfail(reason="get_signals needs proper signal_spec per AdCP spec - test data needs fixing")
     async def test_get_signals_optional(self, mcp_client):
         """Test the optional get_signals endpoint."""
         async with mcp_client as client:
@@ -304,8 +303,12 @@ class TestMCPEndpointsComprehensive:
                     "get_signals",
                     {
                         "req": {
-                            "query": "sports",
-                            "type": "contextual",
+                            "signal_spec": "Audiences interested in sports and athletic products",
+                            "deliver_to": {
+                                "platforms": "all",
+                                "countries": ["US"],
+                            },
+                            "max_results": 10,
                         }
                     },
                 )
@@ -319,7 +322,6 @@ class TestMCPEndpointsComprehensive:
                     raise
 
     @pytest.mark.requires_server
-    @pytest.mark.xfail(reason="Test passes extra fields not in API - test data needs fixing")
     async def test_full_workflow(self, mcp_client):
         """Test a complete workflow from discovery to media buy."""
         async with mcp_client as client:
@@ -356,9 +358,9 @@ class TestMCPEndpointsComprehensive:
             assert "media_buy_id" in buy_content
             media_buy_id = buy_content["media_buy_id"]
 
-            # 3. Get media buy status
+            # 3. Get media buy delivery status
             status_result = await client.call_tool(
-                "get_media_buy_status",
+                "get_media_buy_delivery",
                 {"media_buy_id": media_buy_id},
             )
 
