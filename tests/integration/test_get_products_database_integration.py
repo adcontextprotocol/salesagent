@@ -15,6 +15,7 @@ from decimal import Decimal
 from typing import Any
 
 import pytest
+from sqlalchemy import delete, func, select
 
 from product_catalog_providers.database import DatabaseProductCatalog
 from src.core.database.database_session import get_db_session
@@ -33,8 +34,8 @@ class TestDatabaseProductsIntegration:
         tenant_id = "test_integration_tenant"
         with get_db_session() as session:
             # Clean up any existing test data
-            session.query(ProductModel).filter_by(tenant_id=tenant_id).delete()
-            session.query(Tenant).filter_by(tenant_id=tenant_id).delete()
+            session.execute(delete(ProductModel).where(ProductModel.tenant_id == tenant_id))
+            session.execute(delete(Tenant).where(Tenant.tenant_id == tenant_id))
 
             # Create test tenant
             tenant = create_tenant_with_timestamps(
@@ -47,8 +48,8 @@ class TestDatabaseProductsIntegration:
 
         # Cleanup
         with get_db_session() as session:
-            session.query(ProductModel).filter_by(tenant_id=tenant_id).delete()
-            session.query(Tenant).filter_by(tenant_id=tenant_id).delete()
+            session.execute(delete(ProductModel).where(ProductModel.tenant_id == tenant_id))
+            session.execute(delete(Tenant).where(Tenant.tenant_id == tenant_id))
             session.commit()
 
     @pytest.fixture
@@ -378,13 +379,13 @@ class TestDatabasePerformanceOptimization:
             try:
                 # Clean up any existing test data (tables may not exist)
                 try:
-                    session.query(ProductModel).filter_by(tenant_id=tenant_id).delete()
+                    session.execute(delete(ProductModel).where(ProductModel.tenant_id == tenant_id))
                 except Exception:
                     # Table might not exist, rollback and continue
                     session.rollback()
                     savepoint = session.begin_nested()  # Start a new savepoint
                 try:
-                    session.query(Tenant).filter_by(tenant_id=tenant_id).delete()
+                    session.execute(delete(Tenant).where(Tenant.tenant_id == tenant_id))
                 except Exception:
                     # Table might not exist, rollback and continue
                     session.rollback()
@@ -486,11 +487,8 @@ class TestDatabasePerformanceOptimization:
             """Function to access fields concurrently."""
             try:
                 with get_db_session() as session:
-                    db_product = (
-                        session.query(ProductModel)
-                        .filter_by(tenant_id=tenant_id, product_id="concurrent_test_001")
-                        .first()
-                    )
+                    stmt = select(ProductModel).filter_by(tenant_id=tenant_id, product_id="concurrent_test_001")
+                    db_product = session.scalars(stmt).first()
 
                     # Test concurrent field access
                     field_values = {
@@ -554,8 +552,8 @@ class TestDatabaseSchemaEvolution:
 
         with get_db_session() as session:
             # Clean up
-            session.query(ProductModel).filter_by(tenant_id=tenant_id).delete()
-            session.query(Tenant).filter_by(tenant_id=tenant_id).delete()
+            session.execute(delete(ProductModel).where(ProductModel.tenant_id == tenant_id))
+            session.execute(delete(Tenant).where(Tenant.tenant_id == tenant_id))
 
             # Create tenant with proper timestamps
             tenant = create_tenant_with_timestamps(
@@ -568,8 +566,8 @@ class TestDatabaseSchemaEvolution:
 
         # Cleanup
         with get_db_session() as session:
-            session.query(ProductModel).filter_by(tenant_id=tenant_id).delete()
-            session.query(Tenant).filter_by(tenant_id=tenant_id).delete()
+            session.execute(delete(ProductModel).where(ProductModel.tenant_id == tenant_id))
+            session.execute(delete(Tenant).where(Tenant.tenant_id == tenant_id))
             session.commit()
 
     def test_new_field_addition_backward_compatibility(self, schema_evolution_setup):
@@ -689,8 +687,8 @@ class TestParallelTestExecution:
         # Each test gets its own isolated tenant and data
         with get_db_session() as session:
             # Clean up any existing data for this test
-            session.query(ProductModel).filter_by(tenant_id=tenant_id).delete()
-            session.query(Tenant).filter_by(tenant_id=tenant_id).delete()
+            session.execute(delete(ProductModel).where(ProductModel.tenant_id == tenant_id))
+            session.execute(delete(Tenant).where(Tenant.tenant_id == tenant_id))
 
             # Create isolated tenant for this test with proper timestamps
             tenant = create_tenant_with_timestamps(
@@ -747,8 +745,8 @@ class TestParallelTestExecution:
         finally:
             # Cleanup isolated data
             with get_db_session() as session:
-                session.query(ProductModel).filter_by(tenant_id=tenant_id).delete()
-                session.query(Tenant).filter_by(tenant_id=tenant_id).delete()
+                session.execute(delete(ProductModel).where(ProductModel.tenant_id == tenant_id))
+                session.execute(delete(Tenant).where(Tenant.tenant_id == tenant_id))
                 session.commit()
 
     @pytest.mark.integration
@@ -763,8 +761,8 @@ class TestParallelTestExecution:
             try:
                 with get_db_session() as session:
                     # Simulate typical database operations
-                    count = session.query(ProductModel).count()
-                    tenant_count = session.query(Tenant).count()
+                    count = session.scalar(select(func.count()).select_from(ProductModel))
+                    tenant_count = session.scalar(select(func.count()).select_from(Tenant))
 
                     # Record timing for this operation
                     operation_time = time.time() - start_time
