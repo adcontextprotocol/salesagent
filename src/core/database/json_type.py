@@ -8,7 +8,7 @@ import json
 import logging
 from typing import Any
 
-from sqlalchemy import JSON
+from sqlalchemy import Text
 from sqlalchemy.engine import Dialect
 from sqlalchemy.types import TypeDecorator
 
@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 
 
 class JSONType(TypeDecorator):
-    """JSON type that automatically deserializes string JSON from SQLite.
+    """JSON type that automatically handles JSON serialization/deserialization.
 
     SQLite stores JSON as text strings, while PostgreSQL uses native JSONB.
     This type decorator ensures that regardless of the database backend,
@@ -27,8 +27,9 @@ class JSONType(TypeDecorator):
             data = Column(JSONType)  # Instead of Column(JSON)
 
     Features:
-    - Automatically deserializes JSON strings to Python objects
-    - Handles None values gracefully
+    - Automatically serializes Python objects to JSON strings for storage
+    - Automatically deserializes JSON strings to Python objects when reading
+    - Handles None values gracefully (stores as SQL NULL, not JSON 'null')
     - Validates data before storage
     - Optimized for PostgreSQL (skips unnecessary processing)
     - Works with both SQLite and PostgreSQL
@@ -39,10 +40,10 @@ class JSONType(TypeDecorator):
     - Non-JSON types being stored are logged and converted to empty dict
     """
 
-    impl = JSON
+    impl = Text
     cache_ok = True
 
-    def process_bind_param(self, value: Any, dialect: Dialect) -> dict | list | None:
+    def process_bind_param(self, value: Any, dialect: Dialect) -> str | None:
         """Process value being sent to database.
 
         Args:
@@ -50,7 +51,7 @@ class JSONType(TypeDecorator):
             dialect: Database dialect (postgres, sqlite, etc.)
 
         Returns:
-            Value ready for database storage (dict, list, or None)
+            JSON string ready for database storage, or None for SQL NULL
         """
         if value is None:
             return None
@@ -61,10 +62,19 @@ class JSONType(TypeDecorator):
                 f"JSONType received non-JSON type: {type(value).__name__}. "
                 f"Converting to empty dict to prevent data corruption."
             )
-            return {}
+            value = {}
 
-        # SQLAlchemy's JSON type handles actual serialization
-        return value
+        # Serialize to JSON string for database storage
+        try:
+            return json.dumps(value)
+        except (TypeError, ValueError) as e:
+            logger.error(
+                f"Failed to serialize value to JSON: {e}. "
+                f"Value type: {type(value).__name__}, "
+                f"Value preview: {str(value)[:100]}"
+            )
+            # Fall back to empty dict
+            return json.dumps({})
 
     def process_result_value(self, value: Any, dialect: Dialect) -> dict | list | None:
         """Process value returned from database.

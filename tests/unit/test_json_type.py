@@ -174,12 +174,12 @@ class TestJSONType:
         json_type = JSONType()
         assert json_type.cache_ok is True
 
-    def test_impl_is_json(self):
-        """Test that the implementation type is JSON."""
-        from sqlalchemy import JSON
+    def test_impl_is_text(self):
+        """Test that the implementation type is Text."""
+        from sqlalchemy import Text
 
-        # JSONType.impl is the JSON class itself, used by TypeDecorator
-        assert JSONType.impl == JSON
+        # JSONType.impl is the Text class, so we handle serialization ourselves
+        assert JSONType.impl == Text
 
 
 class TestJSONTypeBindParam:
@@ -192,34 +192,36 @@ class TestJSONTypeBindParam:
         assert result is None
 
     def test_process_bind_param_with_dict(self):
-        """Test that dict values are passed through."""
+        """Test that dict values are serialized to JSON string."""
         json_type = JSONType()
         test_dict = {"key": "value"}
         result = json_type.process_bind_param(test_dict, None)
-        assert result == test_dict
+        assert result == '{"key": "value"}'
+        assert isinstance(result, str)
 
     def test_process_bind_param_with_list(self):
-        """Test that list values are passed through."""
+        """Test that list values are serialized to JSON string."""
         json_type = JSONType()
         test_list = ["item1", "item2"]
         result = json_type.process_bind_param(test_list, None)
-        assert result == test_list
+        assert result == '["item1", "item2"]'
+        assert isinstance(result, str)
 
     def test_process_bind_param_with_invalid_type(self):
-        """Test that non-JSON types are converted to empty dict."""
+        """Test that non-JSON types are converted to empty dict JSON."""
         json_type = JSONType()
 
         # String (not dict/list)
         result = json_type.process_bind_param("invalid", None)
-        assert result == {}
+        assert result == "{}"
 
         # Integer
         result = json_type.process_bind_param(42, None)
-        assert result == {}
+        assert result == "{}"
 
         # Boolean
         result = json_type.process_bind_param(True, None)
-        assert result == {}
+        assert result == "{}"
 
 
 class TestJSONTypePostgreSQLOptimization:
