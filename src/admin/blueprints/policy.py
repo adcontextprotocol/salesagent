@@ -71,13 +71,13 @@ def index(tenant_id):
         policy_settings.update(tenant_policies)
 
         # Get recent policy checks from audit log
-        audit_logs = (
+        stmt = (
             select(AuditLog)
             .filter_by(tenant_id=tenant_id, operation="policy_check")
             .order_by(AuditLog.timestamp.desc())
             .limit(20)
-            .all()
         )
+        audit_logs = session.scalars(stmt).all()
 
         recent_checks = []
         for log in audit_logs:
@@ -97,12 +97,12 @@ def index(tenant_id):
         # Query workflow steps instead of tasks (tasks table was removed)
         pending_reviews = []
         try:
-            workflow_steps = (
+            stmt = (
                 select(WorkflowStep)
                 .filter_by(tenant_id=tenant_id, step_type="policy_review", status="pending")
                 .order_by(WorkflowStep.created_at.desc())
-                .all()
             )
+            workflow_steps = session.scalars(stmt).all()
 
             for step in workflow_steps:
                 details = json.loads(step.data) if step.data else {}
@@ -223,12 +223,12 @@ def review_task(tenant_id, task_id):
 
             try:
                 # Get the workflow step
-                step = (
+                stmt = (
                     select(WorkflowStep)
                     .join(Context, WorkflowStep.context_id == Context.context_id)
                     .filter(Context.tenant_id == tenant_id, WorkflowStep.step_id == task_id)
-                    .first()
                 )
+                step = session.scalars(stmt).first()
 
                 if not step:
                     return "Task not found", 404
@@ -261,12 +261,12 @@ def review_task(tenant_id, task_id):
 
         # GET request - show review form
         try:
-            step = (
+            stmt = (
                 select(WorkflowStep)
                 .join(Context, WorkflowStep.context_id == Context.context_id)
                 .filter(Context.tenant_id == tenant_id, WorkflowStep.step_id == task_id)
-                .first()
             )
+            step = session.scalars(stmt).first()
 
             if not step:
                 return "Task not found", 404

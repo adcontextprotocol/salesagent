@@ -52,7 +52,7 @@ def revenue_chart_api(tenant_id):
         date_start = datetime.now(UTC) - timedelta(days=days)
 
         # Query revenue by principal
-        results = (
+        stmt = (
             select(Principal.name, func.sum(MediaBuy.budget).label("revenue"))
             .join(
                 MediaBuy,
@@ -66,8 +66,8 @@ def revenue_chart_api(tenant_id):
             .group_by(Principal.name)
             .order_by(func.sum(MediaBuy.budget).desc())
             .limit(10)
-            .all()
         )
+        results = db_session.execute(stmt).all()
 
         labels = []
         values = []

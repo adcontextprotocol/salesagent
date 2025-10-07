@@ -114,11 +114,8 @@ class MediaBuyReadinessService:
             # Get creative statuses
             creatives = []
             if creative_ids:
-                creatives = (
-                    select(Creative)
-                    .filter(Creative.tenant_id == tenant_id, Creative.creative_id.in_(creative_ids))
-                    .all()
-                )
+                stmt = select(Creative).filter(Creative.tenant_id == tenant_id, Creative.creative_id.in_(creative_ids))
+                creatives = session.scalars(stmt).all()
 
             creatives_approved = sum(1 for c in creatives if c.status == "approved")
             creatives_pending = sum(1 for c in creatives if c.status == "pending")

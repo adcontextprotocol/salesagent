@@ -47,7 +47,7 @@ def get_business_activities(tenant_id: str, limit: int = 50) -> list[dict]:
         with get_db_session() as db:
             # Get ALL recent audit logs (last 7 days) - no filtering by operation
             week_ago = datetime.now(UTC) - timedelta(days=7)
-            recent_logs = (
+            stmt = (
                 select(AuditLog)
                 .filter(
                     AuditLog.tenant_id == tenant_id,
@@ -55,8 +55,8 @@ def get_business_activities(tenant_id: str, limit: int = 50) -> list[dict]:
                 )
                 .order_by(AuditLog.timestamp.desc())
                 .limit(limit * 2)  # Get more than we need in case we filter some out
-                .all()
             )
+            recent_logs = db_session.scalars(stmt).all()
 
             for log in recent_logs:
                 # Parse details if available

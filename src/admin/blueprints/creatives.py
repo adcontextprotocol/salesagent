@@ -46,12 +46,12 @@ def index(tenant_id, **kwargs):
         tenant_name = tenant.name
 
         # Get all formats (standard + custom for this tenant)
-        creative_formats = (
+        stmt = (
             select(CreativeFormat)
             .filter(or_(CreativeFormat.tenant_id.is_(None), CreativeFormat.tenant_id == tenant_id))
             .order_by(CreativeFormat.is_standard.desc(), CreativeFormat.type, CreativeFormat.name)
-            .all()
         )
+        creative_formats = db_session.scalars(stmt).all()
 
         formats = []
         for cf in creative_formats:

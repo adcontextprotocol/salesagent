@@ -98,13 +98,13 @@ def workflows(tenant_id, **kwargs):
             return "Tenant not found", 404
 
         # Get all workflow steps that need attention
-        pending_steps = (
+        stmt = (
             select(WorkflowStep)
             .join(Context, WorkflowStep.context_id == Context.context_id)
             .filter(Context.tenant_id == tenant_id, WorkflowStep.status == "pending_approval")
             .order_by(WorkflowStep.created_at.desc())
-            .all()
         )
+        pending_steps = db.scalars(stmt).all()
 
         # Get media buys for context
         stmt = select(MediaBuy).filter_by(tenant_id=tenant_id).order_by(MediaBuy.created_at.desc())

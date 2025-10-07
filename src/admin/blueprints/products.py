@@ -462,12 +462,12 @@ def delete_product(tenant_id, product_id):
             # Import here to avoid circular imports
             from src.core.database.models import MediaBuy
 
-            active_buys = (
+            stmt = (
                 select(MediaBuy)
                 .filter_by(tenant_id=tenant_id)
                 .filter(MediaBuy.status.in_(["pending", "active", "paused"]))
-                .all()
             )
+            active_buys = db_session.scalars(stmt).all()
 
             # Check if any active media buys reference this product
             for buy in active_buys:

@@ -247,12 +247,12 @@ def check_inventory_sync(tenant_id):
             # Get last sync time if available
             last_sync = None
             if has_inventory:
-                latest = (
+                stmt = (
                     select(GAMInventory)
                     .filter(GAMInventory.tenant_id == tenant_id)
                     .order_by(GAMInventory.created_at.desc())
-                    .first()
                 )
+                latest = db_session.scalars(stmt).first()
                 if latest and latest.created_at:
                     last_sync = latest.created_at.isoformat()
 

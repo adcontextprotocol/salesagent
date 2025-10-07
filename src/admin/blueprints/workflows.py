@@ -31,13 +31,13 @@ def list_workflows(tenant_id, **kwargs):
             return "Tenant not found", 404
 
         # Get all workflow steps that need attention
-        pending_steps = (
+        stmt = (
             select(WorkflowStep)
             .join(Context, WorkflowStep.context_id == Context.context_id)
             .filter(Context.tenant_id == tenant_id, WorkflowStep.status == "pending_approval")
             .order_by(WorkflowStep.created_at.desc())
-            .all()
         )
+        pending_steps = db.scalars(stmt).all()
 
         # Get media buys for context
         stmt = select(MediaBuy).filter_by(tenant_id=tenant_id).order_by(MediaBuy.created_at.desc())
@@ -91,12 +91,12 @@ def review_workflow_step(tenant_id, workflow_id, step_id):
     """Show detailed review page for a workflow step requiring approval."""
     with get_db_session() as db:
         # Get the workflow step with context
-        step = (
+        stmt = (
             select(WorkflowStep)
             .join(Context, WorkflowStep.context_id == Context.context_id)
             .filter(WorkflowStep.step_id == step_id, Context.tenant_id == tenant_id)
-            .first()
         )
+        step = db.scalars(stmt).first()
 
         if not step:
             flash("Workflow step not found", "error")
@@ -137,12 +137,12 @@ def approve_workflow_step(tenant_id, workflow_id, step_id):
     try:
         with get_db_session() as db:
             # Get the workflow step
-            step = (
+            stmt = (
                 select(WorkflowStep)
                 .join(Context, WorkflowStep.context_id == Context.context_id)
                 .filter(WorkflowStep.step_id == step_id, Context.tenant_id == tenant_id)
-                .first()
             )
+            step = db.scalars(stmt).first()
 
             if not step:
                 return jsonify({"error": "Workflow step not found"}), 404
@@ -182,12 +182,12 @@ def reject_workflow_step(tenant_id, workflow_id, step_id):
 
         with get_db_session() as db:
             # Get the workflow step
-            step = (
+            stmt = (
                 select(WorkflowStep)
                 .join(Context, WorkflowStep.context_id == Context.context_id)
                 .filter(WorkflowStep.step_id == step_id, Context.tenant_id == tenant_id)
-                .first()
             )
+            step = db.scalars(stmt).first()
 
             if not step:
                 return jsonify({"error": "Workflow step not found"}), 404
