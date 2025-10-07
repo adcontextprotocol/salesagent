@@ -9,7 +9,7 @@ Example: 1 second = 1 hour of campaign time (configurable)
 import asyncio
 import logging
 import threading
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 
 from src.services.push_notification_service import push_notification_service
 
