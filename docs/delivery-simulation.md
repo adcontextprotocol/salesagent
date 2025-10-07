@@ -69,6 +69,8 @@ Result:
 
 ## Webhook Payload
 
+> **⚠️ Important**: This is a **custom webhook format** for delivery simulation, not part of the AdCP V2.3 or A2A protocol specifications. It uses the A2A push notification transport mechanism (via `PushNotificationService`) but with custom delivery-specific data in the `data` field. This is a reference implementation convenience feature for testing AI agents.
+
 Each delivery update webhook includes:
 
 ```json
