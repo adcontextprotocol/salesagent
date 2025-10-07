@@ -122,7 +122,8 @@ class TestVirtualHostEdgeCases:
         # Arrange
         mock_session = MagicMock()
         mock_get_db_session.return_value.__enter__.return_value = mock_session
-        mock_session.query.side_effect = Exception("Database query failed")
+        # Mock scalars() instead of query() for SQLAlchemy 2.0
+        mock_session.scalars.side_effect = Exception("Database query failed")
 
         # Act & Assert
         with pytest.raises(Exception, match="Database query failed"):
@@ -134,7 +135,8 @@ class TestVirtualHostEdgeCases:
         # Arrange
         mock_session = MagicMock()
         mock_get_db_session.return_value.__enter__.return_value = mock_session
-        mock_session.query.return_value.filter_by.return_value.first.return_value = None
+        # Mock scalars() chain for SQLAlchemy 2.0
+        mock_session.scalars.return_value.first.return_value = None
 
         injection_attempts = [
             "'; DROP TABLE tenants; --",
