@@ -53,7 +53,7 @@ def revenue_chart_api(tenant_id):
 
         # Query revenue by principal
         results = (
-            db_session.query(Principal.name, func.sum(MediaBuy.budget).label("revenue"))
+            select(Principal.name, func.sum(MediaBuy.budget).label("revenue"))
             .join(
                 MediaBuy,
                 (MediaBuy.principal_id == Principal.principal_id) & (MediaBuy.tenant_id == Principal.tenant_id),
@@ -198,7 +198,8 @@ def get_product_suggestions(tenant_id):
 
         # Check existing products to mark which are already created
         with get_db_session() as db_session:
-            existing_products = db_session.query(Product.product_id).filter_by(tenant_id=tenant_id).all()
+            stmt = select(Product.product_id).filter_by(tenant_id=tenant_id)
+            existing_products = db_session.scalars(stmt).all()
             existing_ids = {product[0] for product in existing_products}
 
         # Add metadata to suggestions

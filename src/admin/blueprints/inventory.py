@@ -76,14 +76,16 @@ def orders_browser(tenant_id):
             return "Tenant not found", 404
 
         # Get GAM orders from database
-        orders = db_session.query(GAMOrder).filter_by(tenant_id=tenant_id).order_by(GAMOrder.updated_at.desc()).all()
+        stmt = select(GAMOrder).filter_by(tenant_id=tenant_id).order_by(GAMOrder.updated_at.desc())
+        orders = db_session.scalars(stmt).all()
 
         # Calculate summary stats
         total_orders = len(orders)
         active_orders = sum(1 for o in orders if o.status == "ACTIVE")
 
         # Get total revenue from media buys
-        total_revenue = db_session.query(func.sum(MediaBuy.budget)).filter_by(tenant_id=tenant_id).scalar() or 0
+        stmt = select(func.sum(MediaBuy.budget)).filter_by(tenant_id=tenant_id)
+        total_revenue = db_session.scalar(stmt) or 0
 
         return render_template(
             "orders_browser.html",
@@ -138,15 +140,15 @@ def get_orders(tenant_id):
             advertiser = request.args.get("advertiser")
 
             # Build query
-            query = db_session.query(GAMOrder).filter_by(tenant_id=tenant_id)
+            stmt = select(GAMOrder).filter_by(tenant_id=tenant_id)
 
             if status:
-                query = query.filter_by(status=status)
+                stmt = stmt.filter_by(status=status)
             if advertiser:
-                query = query.filter_by(advertiser_name=advertiser)
+                stmt = stmt.filter_by(advertiser_name=advertiser)
 
             # Get orders
-            orders = query.order_by(GAMOrder.updated_at.desc()).all()
+            orders = db_session.scalars(stmt.order_by(GAMOrder.updated_at.desc())).all()
 
             # Convert to JSON
             orders_data = []
@@ -191,10 +193,11 @@ def get_order_details(tenant_id, order_id):
                 return jsonify({"error": "Order not found"}), 404
 
             # Get line items count (would need GAMLineItem model)
-            # line_items_count = db_session.query(GAMLineItem).filter_by(
+            # stmt = select(GAMLineItem).filter_by(
             #     tenant_id=tenant_id,
             #     order_id=order_id
-            # ).count()
+            # )
+            # line_items_count = db_session.scalar(select(func.count()).select_from(stmt.subquery()))
 
             return jsonify(
                 {
@@ -245,7 +248,7 @@ def check_inventory_sync(tenant_id):
             last_sync = None
             if has_inventory:
                 latest = (
-                    db_session.query(GAMInventory)
+                    select(GAMInventory)
                     .filter(GAMInventory.tenant_id == tenant_id)
                     .order_by(GAMInventory.created_at.desc())
                     .first()
@@ -391,22 +394,22 @@ def get_inventory_list(tenant_id):
 
         with get_db_session() as db_session:
             # Build query
-            query = db_session.query(GAMInventory).filter(GAMInventory.tenant_id == tenant_id)
+            stmt = select(GAMInventory).filter(GAMInventory.tenant_id == tenant_id)
 
             # Filter by type if specified
             if inventory_type:
-                query = query.filter(GAMInventory.inventory_type == inventory_type)
+                stmt = stmt.filter(GAMInventory.inventory_type == inventory_type)
             else:
                 # Default to ad_unit and placement only
-                query = query.filter(GAMInventory.inventory_type.in_(["ad_unit", "placement"]))
+                stmt = stmt.filter(GAMInventory.inventory_type.in_(["ad_unit", "placement"]))
 
             # Filter by status
             if status:
-                query = query.filter(GAMInventory.status == status)
+                stmt = stmt.filter(GAMInventory.status == status)
 
             # Filter by search term
             if search:
-                query = query.filter(
+                stmt = stmt.filter(
                     or_(
                         GAMInventory.name.ilike(f"%{search}%"),
                         func.cast(GAMInventory.path, String).ilike(f"%{search}%"),
@@ -414,12 +417,12 @@ def get_inventory_list(tenant_id):
                 )
 
             # Order by path/name for better organization
-            query = query.order_by(GAMInventory.inventory_type, GAMInventory.name)
+            stmt = stmt.order_by(GAMInventory.inventory_type, GAMInventory.name)
 
             # Limit results to prevent overwhelming the UI
-            query = query.limit(500)
+            stmt = stmt.limit(500)
 
-            items = query.all()
+            items = db_session.scalars(stmt).all()
 
             # Format response
             result = []

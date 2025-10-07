@@ -47,7 +47,7 @@ def index(tenant_id, **kwargs):
 
         # Get all formats (standard + custom for this tenant)
         creative_formats = (
-            db_session.query(CreativeFormat)
+            select(CreativeFormat)
             .filter(or_(CreativeFormat.tenant_id.is_(None), CreativeFormat.tenant_id == tenant_id))
             .order_by(CreativeFormat.is_standard.desc(), CreativeFormat.type, CreativeFormat.name)
             .all()
@@ -96,7 +96,8 @@ def list_creatives(tenant_id, **kwargs):
         tenant_name = tenant.name
 
         # Get all creatives for this tenant with their assignments
-        creatives = db_session.query(Creative).filter_by(tenant_id=tenant_id).order_by(Creative.created_at.desc()).all()
+        stmt = select(Creative).filter_by(tenant_id=tenant_id).order_by(Creative.created_at.desc())
+        creatives = db_session.scalars(stmt).all()
 
         # Build creative data with media buy associations
         creative_list = []
@@ -194,7 +195,8 @@ def save(tenant_id, **kwargs):
 
         with get_db_session() as db_session:
             # Check if format already exists
-            existing = db_session.query(CreativeFormat).filter_by(name=data.get("name"), tenant_id=tenant_id).first()
+            stmt = select(CreativeFormat).filter_by(name=data.get("name"), tenant_id=tenant_id)
+            existing = db_session.scalars(stmt).first()
 
             if existing:
                 return jsonify({"error": f"Format '{data.get('name')}' already exists"}), 400
@@ -283,11 +285,7 @@ def save_multiple(tenant_id, **kwargs):
         with get_db_session() as db_session:
             for format_data in formats:
                 # Check if format already exists
-                existing = (
-                    db_session.query(CreativeFormat)
-                    .filter_by(name=format_data.get("name"), tenant_id=tenant_id)
-                    .first()
-                )
+                existing = select(CreativeFormat).filter_by(name=format_data.get("name"), tenant_id=tenant_id).first()
 
                 if existing:
                     skipped_count += 1

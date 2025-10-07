@@ -117,7 +117,8 @@ def ensure_user_in_tenant(email: str, tenant_id: str, role: str = "admin", name:
 
     with get_db_session() as session:
         # Check if user already exists
-        user = session.query(User).filter_by(email=email_lower, tenant_id=tenant_id).first()
+        stmt = select(User).filter_by(email=email_lower, tenant_id=tenant_id)
+        user = session.scalars(stmt).first()
 
         if user:
             # Update existing user
@@ -206,7 +207,8 @@ def add_authorized_domain(tenant_id: str, domain: str) -> bool:
         return False
 
     with get_db_session() as session:
-        tenant = session.query(Tenant).filter_by(tenant_id=tenant_id).first()
+        stmt = select(Tenant).filter_by(tenant_id=tenant_id)
+        tenant = session.scalars(stmt).first()
         if not tenant:
             return False
 
@@ -248,7 +250,8 @@ def remove_authorized_domain(tenant_id: str, domain: str) -> bool:
     domain_lower = domain.lower()
 
     with get_db_session() as session:
-        tenant = session.query(Tenant).filter_by(tenant_id=tenant_id).first()
+        stmt = select(Tenant).filter_by(tenant_id=tenant_id)
+        tenant = session.scalars(stmt).first()
         if not tenant:
             return False
 
@@ -295,7 +298,8 @@ def add_authorized_email(tenant_id: str, email: str) -> bool:
         return False
 
     with get_db_session() as session:
-        tenant = session.query(Tenant).filter_by(tenant_id=tenant_id).first()
+        stmt = select(Tenant).filter_by(tenant_id=tenant_id)
+        tenant = session.scalars(stmt).first()
         if not tenant:
             return False
 
@@ -337,7 +341,8 @@ def remove_authorized_email(tenant_id: str, email: str) -> bool:
     email_lower = email.lower()
 
     with get_db_session() as session:
-        tenant = session.query(Tenant).filter_by(tenant_id=tenant_id).first()
+        stmt = select(Tenant).filter_by(tenant_id=tenant_id)
+        tenant = session.scalars(stmt).first()
         if not tenant:
             return False
 

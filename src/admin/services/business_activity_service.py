@@ -13,6 +13,8 @@ import json
 import logging
 from datetime import UTC, datetime, timedelta
 
+from sqlalchemy import select
+
 from src.core.database.database_session import get_db_session
 from src.core.database.models import AuditLog
 
@@ -46,7 +48,7 @@ def get_business_activities(tenant_id: str, limit: int = 50) -> list[dict]:
             # Get ALL recent audit logs (last 7 days) - no filtering by operation
             week_ago = datetime.now(UTC) - timedelta(days=7)
             recent_logs = (
-                db.query(AuditLog)
+                select(AuditLog)
                 .filter(
                     AuditLog.tenant_id == tenant_id,
                     AuditLog.timestamp >= week_ago,

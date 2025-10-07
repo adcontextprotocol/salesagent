@@ -157,9 +157,7 @@ def provision_tenant():
         # Check if subdomain already exists
         with get_db_session() as db_session:
             existing_tenant = (
-                db_session.query(Tenant)
-                .filter(or_(Tenant.subdomain == subdomain, Tenant.tenant_id == subdomain))
-                .first()
+                select(Tenant).filter(or_(Tenant.subdomain == subdomain, Tenant.tenant_id == subdomain)).first()
             )
 
             if existing_tenant:
@@ -248,7 +246,8 @@ def provision_tenant():
             from sqlalchemy.exc import IntegrityError
 
             # Check if user already exists for this tenant
-            existing_user = db_session.query(User).filter_by(tenant_id=tenant_id, email=user_email.lower()).first()
+            stmt = select(User).filter_by(tenant_id=tenant_id, email=user_email.lower())
+            existing_user = db_session.scalars(stmt).first()
 
             if existing_user:
                 # Update existing user's last login
@@ -277,9 +276,7 @@ def provision_tenant():
                     logger.warning(
                         f"User {user_email} was created concurrently for tenant {tenant_id}, updating instead"
                     )
-                    existing_user = (
-                        db_session.query(User).filter_by(tenant_id=tenant_id, email=user_email.lower()).first()
-                    )
+                    existing_user = select(User).filter_by(tenant_id=tenant_id, email=user_email.lower()).first()
                     if existing_user:
                         existing_user.last_login = now
                         existing_user.is_active = True
