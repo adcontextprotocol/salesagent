@@ -4,6 +4,7 @@ import json
 import logging
 
 from flask import Blueprint, jsonify, redirect, render_template, request, session, url_for
+from sqlalchemy import select
 
 from src.admin.utils import get_tenant_config_from_db, require_auth
 from src.core.audit_logger import AuditLogger
@@ -29,7 +30,7 @@ def index(tenant_id):
 
     with get_db_session() as db_session:
         # Get tenant info
-        tenant = db_session.query(Tenant).filter_by(tenant_id=tenant_id).first()
+        tenant = db_session.scalars(select(Tenant).filter_by(tenant_id=tenant_id)).first()
         if not tenant:
             return "Tenant not found", 404
 
@@ -70,13 +71,13 @@ def index(tenant_id):
         policy_settings.update(tenant_policies)
 
         # Get recent policy checks from audit log
-        audit_logs = (
-            db_session.query(AuditLog)
+        stmt = (
+            select(AuditLog)
             .filter_by(tenant_id=tenant_id, operation="policy_check")
             .order_by(AuditLog.timestamp.desc())
             .limit(20)
-            .all()
         )
+        audit_logs = session.scalars(stmt).all()
 
         recent_checks = []
         for log in audit_logs:
@@ -96,12 +97,12 @@ def index(tenant_id):
         # Query workflow steps instead of tasks (tasks table was removed)
         pending_reviews = []
         try:
-            workflow_steps = (
-                db_session.query(WorkflowStep)
+            stmt = (
+                select(WorkflowStep)
                 .filter_by(tenant_id=tenant_id, step_type="policy_review", status="pending")
                 .order_by(WorkflowStep.created_at.desc())
-                .all()
             )
+            workflow_steps = session.scalars(stmt).all()
 
             for step in workflow_steps:
                 details = json.loads(step.data) if step.data else {}
@@ -185,7 +186,7 @@ def update(tenant_id):
 
         # Update database
         with get_db_session() as db_session:
-            tenant = db_session.query(Tenant).filter_by(tenant_id=tenant_id).first()
+            tenant = db_session.scalars(select(Tenant).filter_by(tenant_id=tenant_id)).first()
             if tenant:
                 tenant.policy_settings = json.dumps(policy_settings)
                 db_session.commit()
@@ -222,12 +223,12 @@ def review_task(tenant_id, task_id):
 
             try:
                 # Get the workflow step
-                step = (
-                    db_session.query(WorkflowStep)
+                stmt = (
+                    select(WorkflowStep)
                     .join(Context, WorkflowStep.context_id == Context.context_id)
                     .filter(Context.tenant_id == tenant_id, WorkflowStep.step_id == task_id)
-                    .first()
                 )
+                step = session.scalars(stmt).first()
 
                 if not step:
                     return "Task not found", 404
@@ -260,12 +261,12 @@ def review_task(tenant_id, task_id):
 
         # GET request - show review form
         try:
-            step = (
-                db_session.query(WorkflowStep)
+            stmt = (
+                select(WorkflowStep)
                 .join(Context, WorkflowStep.context_id == Context.context_id)
                 .filter(Context.tenant_id == tenant_id, WorkflowStep.step_id == task_id)
-                .first()
             )
+            step = session.scalars(stmt).first()
 
             if not step:
                 return "Task not found", 404

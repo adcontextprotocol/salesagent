@@ -14,6 +14,7 @@ import logging
 from datetime import UTC, datetime
 from typing import TypedDict
 
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from src.core.database.database_session import get_db_session
@@ -61,7 +62,8 @@ class MediaBuyReadinessService:
 
         try:
             # Get media buy
-            media_buy = session.query(MediaBuy).filter_by(tenant_id=tenant_id, media_buy_id=media_buy_id).first()
+            stmt = select(MediaBuy).filter_by(tenant_id=tenant_id, media_buy_id=media_buy_id)
+            media_buy = session.scalars(stmt).first()
 
             if not media_buy:
                 return {
@@ -98,9 +100,8 @@ class MediaBuyReadinessService:
             packages_total = len(packages)
 
             # Get creative assignments for this media buy
-            assignments = (
-                session.query(CreativeAssignment).filter_by(tenant_id=tenant_id, media_buy_id=media_buy_id).all()
-            )
+            stmt = select(CreativeAssignment).filter_by(tenant_id=tenant_id, media_buy_id=media_buy_id)
+            assignments = session.scalars(stmt).all()
 
             # Get unique package IDs that have creative assignments
             packages_with_assignments = {a.package_id for a in assignments}
@@ -113,11 +114,8 @@ class MediaBuyReadinessService:
             # Get creative statuses
             creatives = []
             if creative_ids:
-                creatives = (
-                    session.query(Creative)
-                    .filter(Creative.tenant_id == tenant_id, Creative.creative_id.in_(creative_ids))
-                    .all()
-                )
+                stmt = select(Creative).filter(Creative.tenant_id == tenant_id, Creative.creative_id.in_(creative_ids))
+                creatives = session.scalars(stmt).all()
 
             creatives_approved = sum(1 for c in creatives if c.status == "approved")
             creatives_pending = sum(1 for c in creatives if c.status == "pending")
@@ -150,10 +148,12 @@ class MediaBuyReadinessService:
             gam_line_items_ready = 0
 
             # Determine if tenant uses GAM
-            tenant = session.query(Tenant).filter_by(tenant_id=tenant_id).first()
+            stmt = select(Tenant).filter_by(tenant_id=tenant_id)
+            tenant = session.scalars(stmt).first()
             if tenant and tenant.ad_server == "google_ad_manager":
                 # Check if we have GAM order data for this media buy
-                gam_order = session.query(GAMOrder).filter_by(tenant_id=tenant_id, order_id=media_buy_id).first()
+                stmt = select(GAMOrder).filter_by(tenant_id=tenant_id, order_id=media_buy_id)
+                gam_order = session.scalars(stmt).first()
 
                 if gam_order:
                     gam_order_status = gam_order.status
@@ -164,7 +164,8 @@ class MediaBuyReadinessService:
                         blocking_issues.append(f"GAM order is {gam_order.status.lower()}")
 
                     # Get line item statuses
-                    line_items = session.query(GAMLineItem).filter_by(tenant_id=tenant_id, order_id=media_buy_id).all()
+                    stmt = select(GAMLineItem).filter_by(tenant_id=tenant_id, order_id=media_buy_id)
+                    line_items = session.scalars(stmt).all()
                     gam_line_items_total = len(line_items)
                     gam_line_items_ready = sum(
                         1 for li in line_items if li.status in ["APPROVED", "DELIVERING", "READY"]
@@ -311,7 +312,8 @@ class MediaBuyReadinessService:
         """
         with get_db_session() as session:
             # Get all media buys for tenant
-            media_buys = session.query(MediaBuy).filter_by(tenant_id=tenant_id).all()
+            stmt = select(MediaBuy).filter_by(tenant_id=tenant_id)
+            media_buys = session.scalars(stmt).all()
 
             # Initialize counts
             summary = {

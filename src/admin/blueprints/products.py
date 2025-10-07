@@ -5,6 +5,7 @@ import logging
 import uuid
 
 from flask import Blueprint, flash, jsonify, redirect, render_template, request, url_for
+from sqlalchemy import func, select
 
 from src.admin.utils import require_tenant_access
 from src.core.database.database_session import get_db_session
@@ -63,12 +64,12 @@ def list_products(tenant_id):
     """List all products for a tenant."""
     try:
         with get_db_session() as db_session:
-            tenant = db_session.query(Tenant).filter_by(tenant_id=tenant_id).first()
+            tenant = db_session.scalars(select(Tenant).filter_by(tenant_id=tenant_id)).first()
             if not tenant:
                 flash("Tenant not found", "error")
                 return redirect(url_for("core.index"))
 
-            products = db_session.query(Product).filter_by(tenant_id=tenant_id).order_by(Product.name).all()
+            products = db_session.scalars(select(Product).filter_by(tenant_id=tenant_id).order_by(Product.name)).all()
 
             # Convert products to dict format for template
             products_list = []
@@ -119,7 +120,7 @@ def add_product(tenant_id):
     """Add a new product - adapter-specific form."""
     # Get tenant's adapter type
     with get_db_session() as db_session:
-        tenant = db_session.query(Tenant).filter_by(tenant_id=tenant_id).first()
+        tenant = db_session.scalars(select(Tenant).filter_by(tenant_id=tenant_id)).first()
         if not tenant:
             flash("Tenant not found", "error")
             return redirect(url_for("products.list_products", tenant_id=tenant_id))
@@ -269,7 +270,9 @@ def add_product(tenant_id):
         from src.core.database.models import GAMInventory
 
         with get_db_session() as db_session:
-            inventory_count = db_session.query(GAMInventory).filter_by(tenant_id=tenant_id).count()
+            inventory_count = db_session.scalar(
+                select(func.count()).select_from(GAMInventory).filter_by(tenant_id=tenant_id)
+            )
             inventory_synced = inventory_count > 0
 
         return render_template(
@@ -290,7 +293,7 @@ def edit_product(tenant_id, product_id):
     """Edit an existing product."""
     # Get tenant's adapter type
     with get_db_session() as db_session:
-        tenant = db_session.query(Tenant).filter_by(tenant_id=tenant_id).first()
+        tenant = db_session.scalars(select(Tenant).filter_by(tenant_id=tenant_id)).first()
         if not tenant:
             flash("Tenant not found", "error")
             return redirect(url_for("products.list_products", tenant_id=tenant_id))
@@ -299,7 +302,7 @@ def edit_product(tenant_id, product_id):
 
     try:
         with get_db_session() as db_session:
-            product = db_session.query(Product).filter_by(tenant_id=tenant_id, product_id=product_id).first()
+            product = db_session.scalars(select(Product).filter_by(tenant_id=tenant_id, product_id=product_id)).first()
             if not product:
                 flash("Product not found", "error")
                 return redirect(url_for("products.list_products", tenant_id=tenant_id))
@@ -415,7 +418,9 @@ def edit_product(tenant_id, product_id):
             if adapter_type == "google_ad_manager":
                 from src.core.database.models import GAMInventory
 
-                inventory_count = db_session.query(GAMInventory).filter_by(tenant_id=tenant_id).count()
+                inventory_count = db_session.scalar(
+                    select(func.count()).select_from(GAMInventory).filter_by(tenant_id=tenant_id)
+                )
                 inventory_synced = inventory_count > 0
 
                 return render_template(
@@ -445,7 +450,7 @@ def delete_product(tenant_id, product_id):
     try:
         with get_db_session() as db_session:
             # Find the product
-            product = db_session.query(Product).filter_by(tenant_id=tenant_id, product_id=product_id).first()
+            product = db_session.scalars(select(Product).filter_by(tenant_id=tenant_id, product_id=product_id)).first()
 
             if not product:
                 return jsonify({"error": "Product not found"}), 404
@@ -457,12 +462,12 @@ def delete_product(tenant_id, product_id):
             # Import here to avoid circular imports
             from src.core.database.models import MediaBuy
 
-            active_buys = (
-                db_session.query(MediaBuy)
+            stmt = (
+                select(MediaBuy)
                 .filter_by(tenant_id=tenant_id)
                 .filter(MediaBuy.status.in_(["pending", "active", "paused"]))
-                .all()
             )
+            active_buys = db_session.scalars(stmt).all()
 
             # Check if any active media buys reference this product
             for buy in active_buys:

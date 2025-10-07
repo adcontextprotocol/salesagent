@@ -14,6 +14,7 @@ import uuid
 from datetime import UTC, datetime
 
 from flask import Blueprint, flash, jsonify, redirect, render_template, request, session, url_for
+from sqlalchemy import func, select
 
 from src.admin.services import DashboardService
 from src.admin.utils import get_tenant_config_from_db, require_auth, require_tenant_access
@@ -243,7 +244,7 @@ def update(tenant_id):
             return redirect(url_for("tenants.settings", tenant_id=tenant_id))
 
         with get_db_session() as db_session:
-            tenant = db_session.query(Tenant).filter_by(tenant_id=tenant_id).first()
+            tenant = db_session.scalars(select(Tenant).filter_by(tenant_id=tenant_id)).first()
             if not tenant:
                 flash("Tenant not found", "error")
                 return redirect(url_for("core.index"))
@@ -274,7 +275,7 @@ def update_slack(tenant_id):
         webhook_url = form_data.get("slack_webhook_url", "").strip()
 
         with get_db_session() as db_session:
-            tenant = db_session.query(Tenant).filter_by(tenant_id=tenant_id).first()
+            tenant = db_session.scalars(select(Tenant).filter_by(tenant_id=tenant_id)).first()
             if not tenant:
                 flash("Tenant not found", "error")
                 return redirect(url_for("core.index"))
@@ -299,7 +300,7 @@ def test_slack(tenant_id):
     """Test Slack webhook."""
     try:
         with get_db_session() as db_session:
-            tenant = db_session.query(Tenant).filter_by(tenant_id=tenant_id).first()
+            tenant = db_session.scalars(select(Tenant).filter_by(tenant_id=tenant_id)).first()
             if not tenant:
                 return jsonify({"success": False, "error": "Tenant not found"}), 404
 
@@ -373,7 +374,7 @@ def update_tenant(tenant_id):
             human_review_required = request.form.get("human_review_required") == "true"
 
             # Find and update tenant
-            tenant = db_session.query(Tenant).filter_by(tenant_id=tenant_id).first()
+            tenant = db_session.scalars(select(Tenant).filter_by(tenant_id=tenant_id)).first()
             if tenant:
                 tenant.max_daily_budget = max_daily_budget
                 tenant.enable_axe_signals = enable_axe_signals
@@ -397,14 +398,13 @@ def list_users(tenant_id):
     """List users for a tenant."""
     try:
         with get_db_session() as db_session:
-            tenant = db_session.query(Tenant).filter_by(tenant_id=tenant_id).first()
+            tenant = db_session.scalars(select(Tenant).filter_by(tenant_id=tenant_id)).first()
             if not tenant:
                 flash("Tenant not found", "error")
                 return redirect(url_for("core.index"))
 
-            users = (
-                db_session.query(User).filter_by(tenant_id=tenant_id).order_by(User.is_admin.desc(), User.email).all()
-            )
+            stmt = select(User).filter_by(tenant_id=tenant_id).order_by(User.is_admin.desc(), User.email)
+            users = db_session.scalars(stmt).all()
 
             return render_template(
                 "users.html",
@@ -436,7 +436,8 @@ def add_user(tenant_id):
 
         with get_db_session() as db_session:
             # Check if user already exists
-            existing = db_session.query(User).filter_by(tenant_id=tenant_id, email=form_data["email"].lower()).first()
+            stmt = select(User).filter_by(tenant_id=tenant_id, email=form_data["email"].lower())
+            existing = db_session.scalars(stmt).first()
             if existing:
                 flash("User already exists", "error")
                 return redirect(url_for("tenants.list_users", tenant_id=tenant_id))
@@ -470,7 +471,7 @@ def toggle_user(tenant_id, user_id):
     """Toggle user active status."""
     try:
         with get_db_session() as db_session:
-            user = db_session.query(User).filter_by(tenant_id=tenant_id, user_id=user_id).first()
+            user = db_session.scalars(select(User).filter_by(tenant_id=tenant_id, user_id=user_id)).first()
             if not user:
                 flash("User not found", "error")
                 return redirect(url_for("tenants.list_users", tenant_id=tenant_id))
@@ -495,7 +496,7 @@ def update_user_role(tenant_id, user_id):
     """Update user admin role."""
     try:
         with get_db_session() as db_session:
-            user = db_session.query(User).filter_by(tenant_id=tenant_id, user_id=user_id).first()
+            user = db_session.scalars(select(User).filter_by(tenant_id=tenant_id, user_id=user_id)).first()
             if not user:
                 flash("User not found", "error")
                 return redirect(url_for("tenants.list_users", tenant_id=tenant_id))
@@ -539,7 +540,7 @@ def create_principal(tenant_id):
                 platform_mappings = {}
 
                 # Get tenant to check adapter type
-                tenant = db_session.query(Tenant).filter_by(tenant_id=tenant_id).first()
+                tenant = db_session.scalars(select(Tenant).filter_by(tenant_id=tenant_id)).first()
                 if tenant and tenant.adapter_config:
                     adapter_config_obj = tenant.adapter_config
 
@@ -598,7 +599,7 @@ def create_principal(tenant_id):
     # GET request - show form
     try:
         with get_db_session() as db_session:
-            tenant = db_session.query(Tenant).filter_by(tenant_id=tenant_id).first()
+            tenant = db_session.scalars(select(Tenant).filter_by(tenant_id=tenant_id)).first()
             if not tenant:
                 flash("Tenant not found", "error")
                 return redirect(url_for("core.index"))
@@ -630,7 +631,9 @@ def update_principal_mappings(tenant_id, principal_id):
         form_data = sanitize_form_data(request.form.to_dict())
 
         with get_db_session() as db_session:
-            principal = db_session.query(Principal).filter_by(tenant_id=tenant_id, principal_id=principal_id).first()
+            principal = db_session.scalars(
+                select(Principal).filter_by(tenant_id=tenant_id, principal_id=principal_id)
+            ).first()
             if not principal:
                 return jsonify({"error": "Principal not found"}), 404
 
@@ -673,7 +676,7 @@ def deactivate_tenant(tenant_id):
         confirm_name = request.form.get("confirm_name", "").strip()
 
         with get_db_session() as db_session:
-            tenant = db_session.query(Tenant).filter_by(tenant_id=tenant_id).first()
+            tenant = db_session.scalars(select(Tenant).filter_by(tenant_id=tenant_id)).first()
 
             if not tenant:
                 flash("Tenant not found", "error")
@@ -738,7 +741,9 @@ def delete_principal(tenant_id, principal_id):
     try:
         with get_db_session() as db_session:
             # Find the principal
-            principal = db_session.query(Principal).filter_by(tenant_id=tenant_id, principal_id=principal_id).first()
+            principal = db_session.scalars(
+                select(Principal).filter_by(tenant_id=tenant_id, principal_id=principal_id)
+            ).first()
 
             if not principal:
                 return jsonify({"error": "Principal not found"}), 404
@@ -746,12 +751,13 @@ def delete_principal(tenant_id, principal_id):
             # Check if principal has active media buys
             from src.core.database.models import MediaBuy
 
-            active_buys = (
-                db_session.query(MediaBuy)
+            stmt = (
+                select(func.count())
+                .select_from(MediaBuy)
                 .filter_by(tenant_id=tenant_id, principal_id=principal_id)
-                .filter(MediaBuy.status.in_(["active", "pending"]))
-                .count()
+                .where(MediaBuy.status.in_(["active", "pending"]))
             )
+            active_buys = db_session.scalar(stmt)
 
             if active_buys > 0:
                 return jsonify({"error": f"Cannot delete principal with {active_buys} active media buys"}), 400

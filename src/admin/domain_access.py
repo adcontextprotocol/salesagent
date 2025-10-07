@@ -7,6 +7,8 @@ Simple email domain extraction approach - no complex OAuth hd claims needed.
 import json
 import logging
 
+from sqlalchemy import select
+
 from src.core.database.database_session import get_db_session
 from src.core.database.models import Tenant, User
 
@@ -34,7 +36,7 @@ def find_tenant_by_authorized_domain(domain: str) -> Tenant | None:
         return None
 
     with get_db_session() as session:
-        tenants = session.query(Tenant).filter(Tenant.is_active).all()
+        tenants = session.scalars(select(Tenant).where(Tenant.is_active)).all()
 
         for tenant in tenants:
             if tenant.authorized_domains:
@@ -73,7 +75,7 @@ def find_tenants_by_authorized_email(email: str) -> list[Tenant]:
     matching_tenants = []
 
     with get_db_session() as session:
-        tenants = session.query(Tenant).filter(Tenant.is_active).all()
+        tenants = session.scalars(select(Tenant).where(Tenant.is_active)).all()
 
         for tenant in tenants:
             if tenant.authorized_emails:
@@ -115,7 +117,8 @@ def ensure_user_in_tenant(email: str, tenant_id: str, role: str = "admin", name:
 
     with get_db_session() as session:
         # Check if user already exists
-        user = session.query(User).filter_by(email=email_lower, tenant_id=tenant_id).first()
+        stmt = select(User).filter_by(email=email_lower, tenant_id=tenant_id)
+        user = session.scalars(stmt).first()
 
         if user:
             # Update existing user
@@ -204,7 +207,8 @@ def add_authorized_domain(tenant_id: str, domain: str) -> bool:
         return False
 
     with get_db_session() as session:
-        tenant = session.query(Tenant).filter_by(tenant_id=tenant_id).first()
+        stmt = select(Tenant).filter_by(tenant_id=tenant_id)
+        tenant = session.scalars(stmt).first()
         if not tenant:
             return False
 
@@ -246,7 +250,8 @@ def remove_authorized_domain(tenant_id: str, domain: str) -> bool:
     domain_lower = domain.lower()
 
     with get_db_session() as session:
-        tenant = session.query(Tenant).filter_by(tenant_id=tenant_id).first()
+        stmt = select(Tenant).filter_by(tenant_id=tenant_id)
+        tenant = session.scalars(stmt).first()
         if not tenant:
             return False
 
@@ -293,7 +298,8 @@ def add_authorized_email(tenant_id: str, email: str) -> bool:
         return False
 
     with get_db_session() as session:
-        tenant = session.query(Tenant).filter_by(tenant_id=tenant_id).first()
+        stmt = select(Tenant).filter_by(tenant_id=tenant_id)
+        tenant = session.scalars(stmt).first()
         if not tenant:
             return False
 
@@ -335,7 +341,8 @@ def remove_authorized_email(tenant_id: str, email: str) -> bool:
     email_lower = email.lower()
 
     with get_db_session() as session:
-        tenant = session.query(Tenant).filter_by(tenant_id=tenant_id).first()
+        stmt = select(Tenant).filter_by(tenant_id=tenant_id)
+        tenant = session.scalars(stmt).first()
         if not tenant:
             return False
 

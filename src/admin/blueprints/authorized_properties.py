@@ -8,6 +8,7 @@ from datetime import datetime
 from typing import Any
 
 from flask import Blueprint, flash, redirect, render_template, request, session, url_for
+from sqlalchemy import select
 
 from src.admin.utils import require_tenant_access
 from src.core.database.database_session import get_db_session
@@ -145,14 +146,11 @@ def _save_properties_batch(properties_data: list[dict[str, Any]], tenant_id: str
                 property_id = prop_data.get("property_id", str(uuid.uuid4()))
 
                 # Check if property already exists
-                existing_property = (
-                    db_session.query(AuthorizedProperty)
-                    .filter(
-                        AuthorizedProperty.tenant_id == tenant_id,
-                        AuthorizedProperty.property_id == property_id,
-                    )
-                    .first()
+                stmt = select(AuthorizedProperty).where(
+                    AuthorizedProperty.tenant_id == tenant_id,
+                    AuthorizedProperty.property_id == property_id,
                 )
+                existing_property = db_session.scalars(stmt).first()
 
                 if existing_property:
                     # Update existing property
@@ -225,7 +223,8 @@ def _construct_agent_url(tenant_id: str, request) -> str:
     # Get tenant information directly from database using tenant_id parameter
     try:
         with get_db_session() as db_session:
-            tenant_obj = db_session.query(Tenant).filter(Tenant.tenant_id == tenant_id).first()
+            stmt = select(Tenant).where(Tenant.tenant_id == tenant_id)
+            tenant_obj = db_session.scalars(stmt).first()
             if not tenant_obj:
                 raise ValueError(f"Tenant {tenant_id} not found")
 
@@ -273,7 +272,8 @@ def list_authorized_properties(tenant_id):
         with get_db_session() as db_session:
             # Get tenant info
             logger.info(f"Querying tenant: {tenant_id}")
-            tenant = db_session.query(Tenant).filter(Tenant.tenant_id == tenant_id).first()
+            stmt = select(Tenant).where(Tenant.tenant_id == tenant_id)
+            tenant = db_session.scalars(stmt).first()
             if not tenant:
                 logger.error(f"Tenant not found: {tenant_id}")
                 flash(PROPERTY_ERROR_MESSAGES["tenant_not_found"], "error")
@@ -283,12 +283,12 @@ def list_authorized_properties(tenant_id):
 
             # Get all properties for this tenant
             logger.info("Querying authorized properties...")
-            properties = (
-                db_session.query(AuthorizedProperty)
-                .filter(AuthorizedProperty.tenant_id == tenant_id)
+            stmt = (
+                select(AuthorizedProperty)
+                .where(AuthorizedProperty.tenant_id == tenant_id)
                 .order_by(AuthorizedProperty.created_at.desc())
-                .all()
             )
+            properties = db_session.scalars(stmt).all()
 
             logger.info(f"Found {len(properties)} properties")
 
@@ -329,13 +329,15 @@ def upload_authorized_properties(tenant_id):
     if request.method == "GET":
         try:
             with get_db_session() as db_session:
-                tenant = db_session.query(Tenant).filter(Tenant.tenant_id == tenant_id).first()
+                stmt = select(Tenant).where(Tenant.tenant_id == tenant_id)
+                tenant = db_session.scalars(stmt).first()
                 if not tenant:
                     flash(PROPERTY_ERROR_MESSAGES["tenant_not_found"], "error")
                     return redirect(url_for("core.admin_dashboard"))
 
                 # Get existing tags for this tenant
-                existing_tags = db_session.query(PropertyTag).filter(PropertyTag.tenant_id == tenant_id).all()
+                stmt = select(PropertyTag).where(PropertyTag.tenant_id == tenant_id)
+                existing_tags = db_session.scalars(stmt).all()
 
                 return render_template(
                     "authorized_properties_upload.html",
@@ -394,14 +396,11 @@ def delete_property(tenant_id, property_id):
     """Delete an authorized property."""
     try:
         with get_db_session() as db_session:
-            property_obj = (
-                db_session.query(AuthorizedProperty)
-                .filter(
-                    AuthorizedProperty.tenant_id == tenant_id,
-                    AuthorizedProperty.property_id == property_id,
-                )
-                .first()
+            stmt = select(AuthorizedProperty).where(
+                AuthorizedProperty.tenant_id == tenant_id,
+                AuthorizedProperty.property_id == property_id,
             )
+            property_obj = db_session.scalars(stmt).first()
 
             if not property_obj:
                 flash(PROPERTY_ERROR_MESSAGES["property_not_found"], "error")
@@ -426,18 +425,15 @@ def list_property_tags(tenant_id):
     try:
         with get_db_session() as db_session:
             # Get tenant info
-            tenant = db_session.query(Tenant).filter(Tenant.tenant_id == tenant_id).first()
+            stmt = select(Tenant).where(Tenant.tenant_id == tenant_id)
+            tenant = db_session.scalars(stmt).first()
             if not tenant:
                 flash("Tenant not found", "error")
                 return redirect(url_for("core.admin_dashboard"))
 
             # Get all tags for this tenant
-            tags = (
-                db_session.query(PropertyTag)
-                .filter(PropertyTag.tenant_id == tenant_id)
-                .order_by(PropertyTag.name)
-                .all()
-            )
+            stmt = select(PropertyTag).where(PropertyTag.tenant_id == tenant_id).order_by(PropertyTag.name)
+            tags = db_session.scalars(stmt).all()
 
             return render_template(
                 "property_tags_list.html",
@@ -475,11 +471,8 @@ def create_property_tag(tenant_id):
 
         with get_db_session() as db_session:
             # Check if tag already exists
-            existing_tag = (
-                db_session.query(PropertyTag)
-                .filter(PropertyTag.tenant_id == tenant_id, PropertyTag.tag_id == tag_id)
-                .first()
-            )
+            stmt = select(PropertyTag).where(PropertyTag.tenant_id == tenant_id, PropertyTag.tag_id == tag_id)
+            existing_tag = db_session.scalars(stmt).first()
 
             if existing_tag:
                 flash(PROPERTY_ERROR_MESSAGES["tag_already_exists"].format(tag_id=tag_id), "error")
@@ -603,13 +596,15 @@ def create_property(tenant_id):
     if request.method == "GET":
         try:
             with get_db_session() as db_session:
-                tenant = db_session.query(Tenant).filter(Tenant.tenant_id == tenant_id).first()
+                stmt = select(Tenant).where(Tenant.tenant_id == tenant_id)
+                tenant = db_session.scalars(stmt).first()
                 if not tenant:
                     flash(PROPERTY_ERROR_MESSAGES["tenant_not_found"], "error")
                     return redirect(url_for("core.admin_dashboard"))
 
                 # Get existing tags for this tenant
-                existing_tags = db_session.query(PropertyTag).filter(PropertyTag.tenant_id == tenant_id).all()
+                stmt = select(PropertyTag).where(PropertyTag.tenant_id == tenant_id)
+                existing_tags = db_session.scalars(stmt).all()
 
                 return render_template(
                     "property_form.html",
@@ -673,27 +668,26 @@ def edit_property(tenant_id, property_id):
     if request.method == "GET":
         try:
             with get_db_session() as db_session:
-                tenant = db_session.query(Tenant).filter(Tenant.tenant_id == tenant_id).first()
+                stmt = select(Tenant).where(Tenant.tenant_id == tenant_id)
+                tenant = db_session.scalars(stmt).first()
                 if not tenant:
                     flash(PROPERTY_ERROR_MESSAGES["tenant_not_found"], "error")
                     return redirect(url_for("core.admin_dashboard"))
 
                 # Get the property to edit
-                property_obj = (
-                    db_session.query(AuthorizedProperty)
-                    .filter(
-                        AuthorizedProperty.tenant_id == tenant_id,
-                        AuthorizedProperty.property_id == property_id,
-                    )
-                    .first()
+                stmt = select(AuthorizedProperty).where(
+                    AuthorizedProperty.tenant_id == tenant_id,
+                    AuthorizedProperty.property_id == property_id,
                 )
+                property_obj = db_session.scalars(stmt).first()
 
                 if not property_obj:
                     flash(PROPERTY_ERROR_MESSAGES["property_not_found"], "error")
                     return redirect(url_for("authorized_properties.list_authorized_properties", tenant_id=tenant_id))
 
                 # Get existing tags for this tenant
-                existing_tags = db_session.query(PropertyTag).filter(PropertyTag.tenant_id == tenant_id).all()
+                stmt = select(PropertyTag).where(PropertyTag.tenant_id == tenant_id)
+                existing_tags = db_session.scalars(stmt).all()
 
                 return render_template(
                     "property_form.html",
@@ -722,14 +716,11 @@ def edit_property(tenant_id, property_id):
 
         with get_db_session() as db_session:
             # Get the property to update
-            property_obj = (
-                db_session.query(AuthorizedProperty)
-                .filter(
-                    AuthorizedProperty.tenant_id == tenant_id,
-                    AuthorizedProperty.property_id == property_id,
-                )
-                .first()
+            stmt = select(AuthorizedProperty).where(
+                AuthorizedProperty.tenant_id == tenant_id,
+                AuthorizedProperty.property_id == property_id,
             )
+            property_obj = db_session.scalars(stmt).first()
 
             if not property_obj:
                 flash(PROPERTY_ERROR_MESSAGES["property_not_found"], "error")
