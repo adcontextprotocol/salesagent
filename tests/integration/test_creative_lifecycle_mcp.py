@@ -22,7 +22,10 @@ class MockContext:
     """Mock FastMCP Context for testing."""
 
     def __init__(self, auth_token="test-token-123"):
-        self.meta = {"headers": {"x-adcp-auth": auth_token}}
+        if auth_token is None:
+            self.meta = {"headers": {}}  # No auth header for testing optional auth
+        else:
+            self.meta = {"headers": {"x-adcp-auth": auth_token}}
 
 
 class TestCreativeLifecycleMCP:
@@ -681,15 +684,22 @@ class TestCreativeLifecycleMCP:
             assert "Invalid auth token" in str(exc_info.value)
 
     def test_list_creatives_authentication_optional(self, mock_context):
-        """Test list_creatives allows optional authentication (for discovery)."""
-        _, core_list_creatives_tool = self._import_mcp_tools()
-        mock_context = MockContext("invalid-token")
+        """Test list_creatives allows optional authentication (for discovery) but rejects invalid tokens."""
+        from fastmcp.exceptions import ToolError
 
-        # list_creatives allows optional auth - should not raise exception
-        result = core_list_creatives_tool(context=mock_context)
-        # Should return valid response even with invalid token
+        _, core_list_creatives_tool = self._import_mcp_tools()
+
+        # Test 1: Invalid token should raise error
+        mock_context = MockContext("invalid-token")
+        with pytest.raises(ToolError) as exc_info:
+            core_list_creatives_tool(context=mock_context)
+        assert "INVALID_AUTH_TOKEN" in str(exc_info.value)
+
+        # Test 2: No token (None) should work for discovery
+        mock_context_no_auth = MockContext(None)
+        result = core_list_creatives_tool(context=mock_context_no_auth)
         assert isinstance(result, ListCreativesResponse)
-        assert result.creatives == []  # Empty list since no creatives match invalid context
+        assert result.creatives == []  # Empty list since no auth context
 
     def test_sync_creatives_missing_tenant(self, mock_context, sample_creatives):
         """Test sync_creatives handles missing tenant gracefully."""
