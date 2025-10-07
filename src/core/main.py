@@ -152,6 +152,9 @@ def get_principal_from_token(token: str, tenant_id: str | None = None) -> str | 
     If tenant_id is provided, only looks in that specific tenant.
     If not provided, searches globally by token and sets the tenant context.
     """
+    console.print(
+        f"[blue]Looking up principal: tenant_id={tenant_id}, token={'***' + token[-6:] if token else 'None'}[/blue]"
+    )
 
     # Use standardized session management
     with get_db_session() as session:
@@ -159,12 +162,15 @@ def get_principal_from_token(token: str, tenant_id: str | None = None) -> str | 
         with session.begin():
             if tenant_id:
                 # If tenant_id specified, ONLY look in that tenant
+                console.print(f"[blue]Searching for principal in tenant '{tenant_id}'[/blue]")
                 principal = session.query(ModelPrincipal).filter_by(access_token=token, tenant_id=tenant_id).first()
 
                 if not principal:
+                    console.print(f"[yellow]No principal found in tenant '{tenant_id}', checking admin token[/yellow]")
                     # Also check if it's the admin token for this specific tenant
                     tenant = session.query(Tenant).filter_by(tenant_id=tenant_id, is_active=True).first()
                     if tenant and token == tenant.admin_token:
+                        console.print(f"[green]Token matches admin token for tenant '{tenant_id}'[/green]")
                         # Set tenant context for admin token
                         tenant_dict = {
                             "tenant_id": tenant.tenant_id,
@@ -185,17 +191,27 @@ def get_principal_from_token(token: str, tenant_id: str | None = None) -> str | 
                         }
                         set_current_tenant(tenant_dict)
                         return f"{tenant_id}_admin"
+                    console.print(f"[red]Token not found in tenant '{tenant_id}' and doesn't match admin token[/red]")
                     return None
+                else:
+                    console.print(f"[green]Found principal '{principal.principal_id}' in tenant '{tenant_id}'[/green]")
             else:
                 # No tenant specified - search globally by token
+                console.print("[blue]No tenant specified - searching globally by token[/blue]")
                 principal = session.query(ModelPrincipal).filter_by(access_token=token).first()
 
                 if not principal:
+                    console.print("[red]No principal found with this token globally[/red]")
                     return None
+
+                console.print(
+                    f"[green]Found principal '{principal.principal_id}' in tenant '{principal.tenant_id}'[/green]"
+                )
 
                 # CRITICAL: Validate the tenant exists and is active before proceeding
                 tenant_check = session.query(Tenant).filter_by(tenant_id=principal.tenant_id, is_active=True).first()
                 if not tenant_check:
+                    console.print(f"[red]Tenant '{principal.tenant_id}' is inactive or deleted[/red]")
                     # Tenant is disabled or deleted - fail securely
                     return None
 
@@ -220,6 +236,7 @@ def get_principal_from_token(token: str, tenant_id: str | None = None) -> str | 
                     "policy_settings": tenant.policy_settings,
                 }
                 set_current_tenant(tenant_dict)
+                console.print(f"[bold green]Set tenant context to '{tenant.tenant_id}'[/bold green]")
 
                 # Check if this is the admin token for the tenant
                 if token == tenant.admin_token:
@@ -286,32 +303,60 @@ def get_principal_from_context(context: Context | None) -> str | None:
 
     # Get the x-adcp-auth header (case-insensitive lookup)
     auth_token = _get_header_case_insensitive(headers, "x-adcp-auth")
+
+    # Log all relevant headers for debugging
+    host_header = _get_header_case_insensitive(headers, "host")
+    apx_host_header = _get_header_case_insensitive(headers, "apx-incoming-host")
+    tenant_header = _get_header_case_insensitive(headers, "x-adcp-tenant")
+    console.print("[blue]Auth Headers Debug:[/blue]")
+    console.print(f"  Host: {host_header}")
+    console.print(f"  Apx-Incoming-Host: {apx_host_header}")
+    console.print(f"  x-adcp-tenant: {tenant_header}")
+    console.print(f"  x-adcp-auth: {'Present' if auth_token else 'Missing'}")
+
     if not auth_token:
+        console.print("[yellow]No x-adcp-auth token found - OK for discovery endpoints[/yellow]")
         return None  # No auth provided - this is OK for discovery endpoints
 
     # Check if a specific tenant was requested via header or subdomain
     requested_tenant_id = None
     tenant_context = None
+    detection_method = None
 
-    # 1. Check Apx-Incoming-Host header (for Approximated.app virtual hosts)
-    apx_host = _get_header_case_insensitive(headers, "apx-incoming-host")
-    if apx_host:
-        tenant_context = get_tenant_by_virtual_host(apx_host)
-        if tenant_context:
-            requested_tenant_id = tenant_context["tenant_id"]
-            # Set tenant context immediately for virtual host routing
-            set_current_tenant(tenant_context)
-
-    # 2. Check x-adcp-tenant header (set by middleware for path-based routing)
-    if not requested_tenant_id:
-        requested_tenant_id = _get_header_case_insensitive(headers, "x-adcp-tenant")
-
-    # 3. If not found, check host header for subdomain
+    # 1. Check host header for subdomain FIRST (most common case)
     if not requested_tenant_id:
         host = _get_header_case_insensitive(headers, "host") or ""
         subdomain = host.split(".")[0] if "." in host else None
-        if subdomain and subdomain not in ["localhost", "adcp-sales-agent", "www"]:
+        console.print(f"[blue]Extracted subdomain from Host header: {subdomain}[/blue]")
+        if subdomain and subdomain not in ["localhost", "adcp-sales-agent", "www", "admin"]:
             requested_tenant_id = subdomain
+            detection_method = "subdomain"
+            console.print(f"[green]Tenant detected from subdomain: {requested_tenant_id}[/green]")
+
+    # 2. Check x-adcp-tenant header (set by nginx for path-based routing)
+    if not requested_tenant_id:
+        requested_tenant_id = _get_header_case_insensitive(headers, "x-adcp-tenant")
+        if requested_tenant_id:
+            detection_method = "x-adcp-tenant header"
+            console.print(f"[green]Tenant detected from x-adcp-tenant header: {requested_tenant_id}[/green]")
+
+    # 3. Check Apx-Incoming-Host header (for Approximated.app virtual hosts)
+    if not requested_tenant_id:
+        apx_host = _get_header_case_insensitive(headers, "apx-incoming-host")
+        if apx_host:
+            console.print(f"[blue]Looking up tenant by virtual host: {apx_host}[/blue]")
+            tenant_context = get_tenant_by_virtual_host(apx_host)
+            if tenant_context:
+                requested_tenant_id = tenant_context["tenant_id"]
+                detection_method = "apx-incoming-host"
+                # Set tenant context immediately for virtual host routing
+                set_current_tenant(tenant_context)
+                console.print(f"[green]Tenant detected from Apx-Incoming-Host: {requested_tenant_id}[/green]")
+
+    if not requested_tenant_id:
+        console.print("[yellow]No tenant detected from any source - will use global token lookup[/yellow]")
+    else:
+        console.print(f"[bold green]Final tenant_id: {requested_tenant_id} (via {detection_method})[/bold green]")
 
     # Validate token and get principal
     # If a specific tenant was requested, validate against it
