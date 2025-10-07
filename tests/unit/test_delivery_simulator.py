@@ -156,27 +156,37 @@ class TestDeliverySimulator:
         assert kwargs["task_id"] == media_buy_id
 
         task_data = kwargs["task_data"]
-        assert "event_type" in task_data
-        assert task_data["event_type"] == "delivery_update"
-        assert "media_buy_id" in task_data
-        assert "status" in task_data
-        assert "simulated_time" in task_data
-        assert "progress" in task_data
-        assert "delivery" in task_data
-        assert "metrics" in task_data
 
-        # Check progress structure
-        progress = task_data["progress"]
-        assert "elapsed_hours" in progress
-        assert "total_hours" in progress
-        assert "progress_percentage" in progress
+        # Verify AdCP V2.3 compliant format
+        assert "adcp_version" in task_data
+        assert task_data["adcp_version"] == "2.3.0"
 
-        # Check delivery structure
-        delivery = task_data["delivery"]
-        assert "impressions" in delivery
-        assert "spend" in delivery
-        assert "total_budget" in delivery
-        assert "pacing_percentage" in delivery
+        assert "notification_type" in task_data
+        assert task_data["notification_type"] in ["scheduled", "final"]
+
+        assert "sequence_number" in task_data
+        assert task_data["sequence_number"] >= 1
+
+        assert "reporting_period" in task_data
+        assert "start" in task_data["reporting_period"]
+        assert "end" in task_data["reporting_period"]
+
+        assert "currency" in task_data
+        assert task_data["currency"] == "USD"
+
+        assert "media_buy_deliveries" in task_data
+        assert len(task_data["media_buy_deliveries"]) == 1
+
+        # Check media buy delivery structure
+        delivery = task_data["media_buy_deliveries"][0]
+        assert "media_buy_id" in delivery
+        assert delivery["media_buy_id"] == media_buy_id
+        assert "status" in delivery
+        assert delivery["status"] in ["pending", "active", "completed"]
+        assert "totals" in delivery
+        assert "impressions" in delivery["totals"]
+        assert "spend" in delivery["totals"]
+        assert "by_package" in delivery
 
     def test_time_acceleration_calculation(self, simulator, mock_push_service):
         """Test that time acceleration works correctly."""
@@ -202,10 +212,10 @@ class TestDeliverySimulator:
         # Should have completed
         assert media_buy_id not in simulator._active_simulations
 
-        # Check final webhook had completed status
+        # Check final webhook had completed notification_type
         last_call = mock_push_service.send_task_status_notification.call_args_list[-1]
         task_data = last_call[1]["task_data"]
-        assert task_data["status"] == "completed"
+        assert task_data["notification_type"] == "final"
 
     def test_delivery_metrics_progression(self, simulator, mock_push_service):
         """Test that delivery metrics progress realistically."""
@@ -238,18 +248,20 @@ class TestDeliverySimulator:
         first_data = calls[0][1]["task_data"]
         last_data = calls[-1][1]["task_data"]
 
-        # First should have 0 spend/impressions
-        assert first_data["delivery"]["spend"] == 0
-        assert first_data["delivery"]["impressions"] == 0
-        assert first_data["status"] == "started"
+        # First should have 0 spend/impressions (AdCP format)
+        first_delivery = first_data["media_buy_deliveries"][0]
+        assert first_delivery["totals"]["spend"] == 0
+        assert first_delivery["totals"]["impressions"] == 0
+        assert first_data["notification_type"] == "scheduled"
 
         # Last should have full spend/impressions
-        assert last_data["delivery"]["spend"] > 0
-        assert last_data["delivery"]["impressions"] > 0
-        assert last_data["status"] == "completed"
+        last_delivery = last_data["media_buy_deliveries"][0]
+        assert last_delivery["totals"]["spend"] > 0
+        assert last_delivery["totals"]["impressions"] > 0
+        assert last_data["notification_type"] == "final"
 
         # Spend should not exceed budget significantly
-        assert last_data["delivery"]["spend"] <= total_budget * 1.1  # Allow 10% variance
+        assert last_delivery["totals"]["spend"] <= total_budget * 1.1  # Allow 10% variance
 
     def test_cleanup_after_completion(self, simulator, mock_push_service):
         """Test that simulator cleans up after completion."""
