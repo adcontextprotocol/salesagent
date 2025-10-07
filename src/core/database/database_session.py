@@ -38,7 +38,7 @@ else:
         echo=False,
     )
 
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+SessionLocal = sessionmaker(bind=engine)
 import logging
 
 logger = logging.getLogger(__name__)
