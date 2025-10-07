@@ -7,6 +7,8 @@ Simple email domain extraction approach - no complex OAuth hd claims needed.
 import json
 import logging
 
+from sqlalchemy import select
+
 from src.core.database.database_session import get_db_session
 from src.core.database.models import Tenant, User
 
@@ -34,7 +36,7 @@ def find_tenant_by_authorized_domain(domain: str) -> Tenant | None:
         return None
 
     with get_db_session() as session:
-        tenants = session.query(Tenant).filter(Tenant.is_active).all()
+        tenants = session.scalars(select(Tenant).where(Tenant.is_active)).all()
 
         for tenant in tenants:
             if tenant.authorized_domains:
@@ -73,7 +75,7 @@ def find_tenants_by_authorized_email(email: str) -> list[Tenant]:
     matching_tenants = []
 
     with get_db_session() as session:
-        tenants = session.query(Tenant).filter(Tenant.is_active).all()
+        tenants = session.scalars(select(Tenant).where(Tenant.is_active)).all()
 
         for tenant in tenants:
             if tenant.authorized_emails:
