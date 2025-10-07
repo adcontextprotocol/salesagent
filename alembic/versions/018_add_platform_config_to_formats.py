@@ -1,6 +1,6 @@
 """Add platform_config to creative_formats
 
-Revision ID: 018_add_platform_config_to_formats
+Revision ID: 018_platform_config
 Revises: 017_handle_partial_schemas
 Create Date: 2025-10-07 12:00:00.000000
 
@@ -12,7 +12,7 @@ from sqlalchemy.dialects import postgresql
 from alembic import op
 
 # revision identifiers
-revision = "018_add_platform_config_to_formats"
+revision = "018_platform_config"
 down_revision = "017_handle_partial_schemas"
 branch_labels = None
 depends_on = None
