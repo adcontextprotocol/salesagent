@@ -174,7 +174,7 @@ class User(Base):
 
     user_id = Column(String(50), primary_key=True)
     tenant_id = Column(String(50), ForeignKey("tenants.tenant_id", ondelete="CASCADE"), nullable=False)
-    email = Column(String(255), unique=True, nullable=False)
+    email = Column(String(255), nullable=False)  # Removed unique=True to allow multi-tenant access
     name = Column(String(200), nullable=False)
     role = Column(String(20), nullable=False)
     google_id = Column(String(255))
@@ -187,6 +187,7 @@ class User(Base):
 
     __table_args__ = (
         CheckConstraint("role IN ('admin', 'manager', 'viewer')"),
+        UniqueConstraint("tenant_id", "email", name="uq_users_tenant_email"),  # Unique per tenant
         Index("idx_users_tenant", "tenant_id"),
         Index("idx_users_email", "email"),
         Index("idx_users_google_id", "google_id"),

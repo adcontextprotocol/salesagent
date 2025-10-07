@@ -630,6 +630,73 @@ def update_principal_mappings(tenant_id, principal_id):
         return jsonify({"error": "Internal server error"}), 500
 
 
+@tenants_bp.route("/<tenant_id>/deactivate", methods=["POST"])
+@require_tenant_access()
+def deactivate_tenant(tenant_id):
+    """Deactivate (soft delete) a tenant."""
+    try:
+        # Get confirmation from form
+        confirm_name = request.form.get("confirm_name", "").strip()
+
+        with get_db_session() as db_session:
+            tenant = db_session.query(Tenant).filter_by(tenant_id=tenant_id).first()
+
+            if not tenant:
+                flash("Tenant not found", "error")
+                return redirect(url_for("core.index"))
+
+            # Verify name matches
+            if confirm_name != tenant.name:
+                flash("Confirmation name did not match. Deactivation cancelled.", "error")
+                return redirect(url_for("tenants.tenant_settings", tenant_id=tenant_id, section="danger-zone"))
+
+            # Already inactive?
+            if not tenant.is_active:
+                flash("This sales agent is already deactivated.", "warning")
+                return redirect(url_for("tenants.tenant_settings", tenant_id=tenant_id, section="danger-zone"))
+
+            # Deactivate tenant (soft delete)
+            tenant.is_active = False
+            tenant.updated_at = datetime.now(UTC)
+            db_session.commit()
+
+            # Log to application logs
+            logger.info(f"Tenant {tenant_id} ({tenant.name}) deactivated by user {session.get('user', 'unknown')}")
+
+            # Create audit log entry for compliance
+            from src.core.audit_logger import AuditLogger
+
+            try:
+                audit_logger = AuditLogger(tenant_id)
+                audit_logger.log_security_event(
+                    event_type="tenant_deactivation",
+                    severity="critical",
+                    user_email=session.get("user", "unknown"),
+                    details={
+                        "tenant_name": tenant.name,
+                        "deactivated_at": datetime.now(UTC).isoformat(),
+                        "deactivated_by": session.get("user", "unknown"),
+                    },
+                )
+            except Exception as e:
+                # Don't fail deactivation if audit logging fails
+                logger.error(f"Failed to create audit log for deactivation: {e}")
+
+            # Clear session and redirect to login
+            session.clear()
+            flash(
+                f"Sales agent '{tenant.name}' has been deactivated. "
+                "All data is preserved. Contact support to reactivate.",
+                "success",
+            )
+            return redirect(url_for("auth.login"))
+
+    except Exception as e:
+        logger.error(f"Error deactivating tenant {tenant_id}: {e}", exc_info=True)
+        flash(f"Error deactivating sales agent: {str(e)}", "error")
+        return redirect(url_for("tenants.tenant_settings", tenant_id=tenant_id, section="danger-zone"))
+
+
 @tenants_bp.route("/<tenant_id>/principals/<principal_id>/delete", methods=["DELETE"])
 @require_tenant_access()
 def delete_principal(tenant_id, principal_id):
