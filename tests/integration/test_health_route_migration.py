@@ -4,10 +4,13 @@ import json
 import sys
 from pathlib import Path
 
+import pytest
+
 # Add project root to path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 
+@pytest.mark.requires_db
 def test_health_routes_in_refactored_app():
     """Test that both health routes work in the refactored app."""
     from src.admin.app import create_app
