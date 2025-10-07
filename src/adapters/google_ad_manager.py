@@ -264,6 +264,40 @@ class GoogleAdManager(AdServerAdapter):
             self.log(f"[red]Error: {error_msg}[/red]")
             return CreateMediaBuyResponse(media_buy_id="", status="failed", message=error_msg)
 
+        # Get products to access implementation_config
+        import json
+
+        from src.core.database.database_session import get_db_session
+        from src.core.database.models import Product
+
+        products_map = {}
+        with get_db_session() as db_session:
+            for package in packages:
+                product = (
+                    db_session.query(Product)
+                    .filter_by(
+                        tenant_id=self.tenant_id, product_id=package.package_id  # package_id is actually product_id
+                    )
+                    .first()
+                )
+                if product:
+                    products_map[package.package_id] = {
+                        "product_id": product.product_id,
+                        "implementation_config": (
+                            json.loads(product.implementation_config) if product.implementation_config else {}
+                        ),
+                    }
+
+        # Validate targeting
+        unsupported_features = self._validate_targeting(request.targeting_overlay)
+        if unsupported_features:
+            error_msg = f"Unsupported targeting features: {', '.join(unsupported_features)}"
+            self.log(f"[red]Error: {error_msg}[/red]")
+            return CreateMediaBuyResponse(media_buy_id="", status="failed", message=error_msg)
+
+        # Build base targeting from targeting overlay
+        base_targeting = self._build_targeting(request.targeting_overlay)
+
         # Check if manual approval is required for media buy creation
         if self._requires_manual_approval("create_media_buy"):
             self.log("[yellow]Manual approval mode - creating workflow step for human intervention[/yellow]")
@@ -317,6 +351,26 @@ class GoogleAdManager(AdServerAdapter):
 
         self.log(f"✓ Created GAM Order ID: {order_id}")
 
+        # Create line items for each package
+        try:
+            line_item_ids = self.orders_manager.create_line_items(
+                order_id=order_id,
+                packages=packages,
+                start_time=start_time,
+                end_time=end_time,
+                targeting=base_targeting,
+                products_map=products_map,
+                log_func=self.log,
+                tenant_id=self.tenant_id,
+                order_name=order_name,
+                targeting_overlay=request.targeting_overlay,
+            )
+            self.log(f"✓ Created {len(line_item_ids)} line items")
+        except Exception as e:
+            error_msg = f"Order created but failed to create line items: {str(e)}"
+            self.log(f"[red]Error: {error_msg}[/red]")
+            return CreateMediaBuyResponse(media_buy_id=order_id, status="failed", message=error_msg)
+
         # Check if activation approval is needed (guaranteed line items require human approval)
         has_guaranteed, item_types = self._check_order_has_guaranteed_items(order_id)
         if has_guaranteed:
@@ -332,8 +386,21 @@ class GoogleAdManager(AdServerAdapter):
                 workflow_step_id=step_id,
             )
 
+        # Build package responses with line_item_ids for creative association
+        package_responses = []
+        for package, line_item_id in zip(packages, line_item_ids, strict=False):
+            package_responses.append(
+                {
+                    "package_id": package.package_id,
+                    "platform_line_item_id": str(line_item_id),  # GAM line item ID for creative association
+                }
+            )
+
         return CreateMediaBuyResponse(
-            media_buy_id=order_id, status="draft", message=f"Created GAM order with {len(packages)} line items"
+            media_buy_id=order_id,
+            status="draft",
+            message=f"Created GAM order with {len(packages)} line items",
+            packages=package_responses,
         )
 
     def archive_order(self, order_id: str) -> bool:
@@ -414,6 +481,72 @@ class GoogleAdManager(AdServerAdapter):
 
         # Automatic mode - process creatives directly
         return self.creatives_manager.add_creative_assets(media_buy_id, assets, today)
+
+    def associate_creatives(self, line_item_ids: list[str], platform_creative_ids: list[str]) -> list[dict[str, Any]]:
+        """Associate already-uploaded creatives with line items.
+
+        Used when buyer provides creative_ids in create_media_buy, indicating
+        creatives were already synced and should be associated immediately.
+
+        Args:
+            line_item_ids: GAM line item IDs
+            platform_creative_ids: GAM creative IDs (already uploaded)
+
+        Returns:
+            List of association results with status
+        """
+        if not self.creatives_manager:
+            self.log("[red]Error: Creatives manager not initialized[/red]")
+            return [
+                {
+                    "line_item_id": lid,
+                    "creative_id": cid,
+                    "status": "failed",
+                    "error": "Creatives manager not initialized",
+                }
+                for lid in line_item_ids
+                for cid in platform_creative_ids
+            ]
+
+        results = []
+
+        if not self.dry_run:
+            lica_service = self.client_manager.get_service("LineItemCreativeAssociationService")
+
+        for line_item_id in line_item_ids:
+            for creative_id in platform_creative_ids:
+                if self.dry_run:
+                    self.log(
+                        f"[cyan][DRY RUN] Would associate creative {creative_id} with line item {line_item_id}[/cyan]"
+                    )
+                    results.append(
+                        {"line_item_id": line_item_id, "creative_id": creative_id, "status": "success (dry-run)"}
+                    )
+                else:
+                    association = {
+                        "creativeId": int(creative_id),
+                        "lineItemId": int(line_item_id),
+                    }
+
+                    try:
+                        lica_service.createLineItemCreativeAssociations([association])
+                        self.log(f"[green]✓ Associated creative {creative_id} with line item {line_item_id}[/green]")
+                        results.append({"line_item_id": line_item_id, "creative_id": creative_id, "status": "success"})
+                    except Exception as e:
+                        error_msg = str(e)
+                        self.log(
+                            f"[red]✗ Failed to associate creative {creative_id} with line item {line_item_id}: {error_msg}[/red]"
+                        )
+                        results.append(
+                            {
+                                "line_item_id": line_item_id,
+                                "creative_id": creative_id,
+                                "status": "failed",
+                                "error": error_msg,
+                            }
+                        )
+
+        return results
 
     def check_media_buy_status(self, media_buy_id: str, today: datetime) -> CheckMediaBuyStatusResponse:
         """Check the status of a media buy in GAM."""

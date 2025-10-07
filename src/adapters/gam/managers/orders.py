@@ -242,6 +242,409 @@ class GAMOrdersManager:
         statement_builder.WithBindVariable("orderId", order_id)
         return statement_builder.ToStatement()
 
+    def create_line_items(
+        self,
+        order_id: str,
+        packages: list,
+        start_time: datetime,
+        end_time: datetime,
+        targeting: dict[str, Any],
+        products_map: dict[str, Any],
+        log_func: callable = None,
+        tenant_id: str = None,
+        order_name: str = None,
+        targeting_overlay: Any = None,
+    ) -> list[str]:
+        """Create line items for an order.
+
+        Args:
+            order_id: GAM order ID
+            packages: List of MediaPackage objects
+            start_time: Flight start datetime
+            end_time: Flight end datetime
+            targeting: Base targeting dict (built from targeting overlay)
+            products_map: Map of product_id to product config
+            log_func: Optional logging function
+            tenant_id: Tenant ID for fetching naming templates
+            order_name: Order name for line item naming context
+            targeting_overlay: Original AdCP targeting overlay for frequency caps, etc.
+
+        Returns:
+            List of created line item IDs
+
+        Raises:
+            ValueError: If required configuration missing
+            Exception: If line item creation fails
+        """
+        if not self.advertiser_id or not self.trafficker_id:
+            raise ValueError(
+                "Line item creation requires both advertiser_id and trafficker_id. "
+                "These must be provided when initializing GAMOrdersManager."
+            )
+
+        def log(msg):
+            if log_func:
+                log_func(msg)
+            else:
+                logger.info(msg)
+
+        # Get line item naming template from adapter config
+        line_item_name_template = "{product_name}"  # Default
+        if tenant_id:
+            from src.core.database.database_session import get_db_session
+            from src.core.database.models import AdapterConfig
+
+            with get_db_session() as db_session:
+                adapter_config = db_session.query(AdapterConfig).filter_by(tenant_id=tenant_id).first()
+                if adapter_config and adapter_config.gam_line_item_name_template:
+                    line_item_name_template = adapter_config.gam_line_item_name_template
+
+        created_line_item_ids = []
+        flight_duration_days = (end_time - start_time).days
+
+        for package_index, package in enumerate(packages, start=1):
+            # Get product-specific configuration
+            product = products_map.get(package.package_id)
+            impl_config = product.get("implementation_config", {}) if product else {}
+
+            # Build line item targeting (merge base targeting with product config)
+            line_item_targeting = dict(targeting)  # Copy base targeting
+
+            # Add ad unit/placement targeting from product config
+            if impl_config.get("targeted_ad_unit_ids"):
+                if "inventoryTargeting" not in line_item_targeting:
+                    line_item_targeting["inventoryTargeting"] = {}
+                line_item_targeting["inventoryTargeting"]["targetedAdUnits"] = [
+                    {"adUnitId": ad_unit_id, "includeDescendants": impl_config.get("include_descendants", True)}
+                    for ad_unit_id in impl_config["targeted_ad_unit_ids"]
+                ]
+
+            if impl_config.get("targeted_placement_ids"):
+                if "inventoryTargeting" not in line_item_targeting:
+                    line_item_targeting["inventoryTargeting"] = {}
+                line_item_targeting["inventoryTargeting"]["targetedPlacements"] = [
+                    {"placementId": placement_id} for placement_id in impl_config["targeted_placement_ids"]
+                ]
+
+            # Require inventory targeting - no fallback
+            if "inventoryTargeting" not in line_item_targeting or not line_item_targeting["inventoryTargeting"]:
+                error_msg = (
+                    f"Product {package.package_id} is not configured with inventory targeting. "
+                    f"Please configure 'targeted_ad_unit_ids' or 'targeted_placement_ids' in the product's implementation_config."
+                )
+                log(f"[red]Error: {error_msg}[/red]")
+                raise ValueError(error_msg)
+
+            # Add custom targeting from product config
+            # IMPORTANT: Merge without overwriting buyer's targeting (e.g., AEE signals from key_value_pairs)
+            if impl_config.get("custom_targeting_keys"):
+                if "customTargeting" not in line_item_targeting:
+                    line_item_targeting["customTargeting"] = {}
+                # Add product custom targeting, but don't overwrite existing keys from buyer
+                for key, value in impl_config["custom_targeting_keys"].items():
+                    if key not in line_item_targeting["customTargeting"]:
+                        line_item_targeting["customTargeting"][key] = value
+                    else:
+                        log(
+                            f"[yellow]Product config custom targeting key '{key}' conflicts with buyer targeting, keeping buyer value[/yellow]"
+                        )
+
+            # Build creative placeholders from format_ids
+            # First try to get from package.format_ids (buyer-specified)
+            creative_placeholders = []
+
+            if package.format_ids:
+                from src.core.format_resolver import get_format
+
+                # Validate format types against product supported types
+                supported_format_types = impl_config.get("supported_format_types", ["display", "video", "native"])
+
+                for format_id in package.format_ids:
+                    # Use format resolver to support custom formats and product overrides
+                    try:
+                        format_obj = get_format(format_id, tenant_id=tenant_id, product_id=package.package_id)
+                    except ValueError as e:
+                        error_msg = f"Format lookup failed for '{format_id}': {e}"
+                        log(f"[red]Error: {error_msg}[/red]")
+                        raise ValueError(error_msg)
+
+                    # Check if format type is supported by product
+                    if format_obj.type not in supported_format_types:
+                        error_msg = (
+                            f"Format '{format_id}' (type: {format_obj.type}) is not supported by product {package.package_id}. "
+                            f"Product supports: {', '.join(supported_format_types)}. "
+                            f"Configure 'supported_format_types' in product implementation_config if this should be supported."
+                        )
+                        log(f"[red]Error: {error_msg}[/red]")
+                        raise ValueError(error_msg)
+
+                    # Audio formats are not supported in GAM (no creative placeholders)
+                    if format_obj.type == "audio":
+                        error_msg = (
+                            f"Audio format '{format_id}' is not supported. "
+                            f"GAM does not support standalone audio line items. "
+                            f"Audio can only be used as companion creatives to video ads. "
+                            f"To deliver audio ads, use a different ad server (e.g., Triton, Kevel) that supports audio."
+                        )
+                        log(f"[red]Error: {error_msg}[/red]")
+                        raise ValueError(error_msg)
+
+                    # Check if format has GAM-specific config
+                    platform_cfg = format_obj.platform_config or {}
+                    gam_cfg = platform_cfg.get("gam", {})
+                    placeholder_cfg = gam_cfg.get("creative_placeholder", {})
+
+                    # Build creative placeholder
+                    placeholder = {
+                        "expectedCreativeCount": 1,
+                    }
+
+                    # Check for GAM custom creative template (1x1 placeholder)
+                    if "creative_template_id" in placeholder_cfg:
+                        # Use 1x1 placeholder with custom template
+                        placeholder["size"] = {
+                            "width": 1,
+                            "height": 1,
+                            "isAspectRatio": False,
+                        }
+                        placeholder["creativeTemplateId"] = placeholder_cfg["creative_template_id"]
+                        log(
+                            f"  Custom template placeholder: 1x1 with template_id={placeholder_cfg['creative_template_id']}"
+                        )
+
+                    else:
+                        # Use platform config if available, otherwise fall back to requirements
+                        if placeholder_cfg:
+                            width = placeholder_cfg.get("width")
+                            height = placeholder_cfg.get("height")
+                            creative_size_type = placeholder_cfg.get("creative_size_type", "PIXEL")
+                        else:
+                            # Fallback to requirements (legacy formats)
+                            requirements = format_obj.requirements or {}
+                            width = requirements.get("width")
+                            height = requirements.get("height")
+                            creative_size_type = "NATIVE" if format_obj.type == "native" else "PIXEL"
+
+                        if width and height:
+                            placeholder["size"] = {"width": width, "height": height}
+                            placeholder["creativeSizeType"] = creative_size_type
+
+                            # Log video-specific info
+                            if format_obj.type == "video":
+                                aspect_ratio = (
+                                    format_obj.requirements.get("aspect_ratio", "unknown")
+                                    if format_obj.requirements
+                                    else "unknown"
+                                )
+                                log(f"  Video placeholder: {width}x{height} ({aspect_ratio} aspect ratio)")
+                        else:
+                            # For formats without dimensions
+                            error_msg = (
+                                f"Format '{format_id}' has no width/height configuration for GAM. "
+                                f"Add 'platform_config.gam.creative_placeholder' to format definition or "
+                                f"ensure format has width/height in requirements."
+                            )
+                            log(f"[red]Error: {error_msg}[/red]")
+                            raise ValueError(error_msg)
+
+                    creative_placeholders.append(placeholder)
+
+            # Fall back to product config only if no valid placeholders from format_ids
+            if not creative_placeholders and impl_config.get("creative_placeholders"):
+                for placeholder in impl_config["creative_placeholders"]:
+                    creative_placeholders.append(
+                        {
+                            "size": {"width": placeholder["width"], "height": placeholder["height"]},
+                            "expectedCreativeCount": placeholder.get("expected_creative_count", 1),
+                            "creativeSizeType": "NATIVE" if placeholder.get("is_native") else "PIXEL",
+                        }
+                    )
+
+            # Require creative placeholders - no defaults
+            if not creative_placeholders:
+                error_msg = (
+                    f"No creative placeholders for package {package.package_id}. "
+                    f"Package must have format_ids or product must have creative_placeholders configured."
+                )
+                log(f"[red]Error: {error_msg}[/red]")
+                raise ValueError(error_msg)
+
+            # Determine goal type and units
+            goal_type = impl_config.get("primary_goal_type", "LIFETIME")
+            goal_unit_type = impl_config.get("primary_goal_unit_type", "IMPRESSIONS")
+
+            if goal_type == "LIFETIME":
+                goal_units = package.impressions
+            elif goal_type == "DAILY":
+                # For DAILY goals, divide total impressions by flight days
+                goal_units = int(package.impressions / max(flight_duration_days, 1))
+            else:
+                # For other goal types (NONE, etc), use package impressions
+                goal_units = package.impressions
+
+            # Apply line item naming template
+            from src.adapters.gam.utils.naming import apply_naming_template, build_line_item_name_context
+
+            # Get product name from database for template
+            product_name = product.get("product_id", package.name) if product else package.name
+
+            line_item_name_context = build_line_item_name_context(
+                order_name=order_name or f"Order {order_id}",
+                product_name=product_name,
+                package_name=package.name,
+                package_index=package_index,
+            )
+            line_item_name = apply_naming_template(line_item_name_template, line_item_name_context)
+
+            # Build line item object
+            line_item = {
+                "name": line_item_name,
+                "orderId": int(order_id),
+                "targeting": line_item_targeting,
+                "creativePlaceholders": creative_placeholders,
+                "lineItemType": impl_config.get("line_item_type", "STANDARD"),
+                "priority": impl_config.get("priority", 8),
+                "costType": impl_config.get("cost_type", "CPM"),
+                "costPerUnit": {"currencyCode": "USD", "microAmount": int(package.cpm * 1_000_000)},
+                "primaryGoal": {
+                    "goalType": goal_type,
+                    "unitType": goal_unit_type,
+                    "units": goal_units,
+                },
+                "creativeRotationType": impl_config.get("creative_rotation_type", "EVEN"),
+                "deliveryRateType": impl_config.get("delivery_rate_type", "EVENLY"),
+                "startDateTime": {
+                    "date": {"year": start_time.year, "month": start_time.month, "day": start_time.day},
+                    "hour": start_time.hour,
+                    "minute": start_time.minute,
+                    "second": start_time.second,
+                    "timeZoneId": impl_config.get("time_zone", "America/New_York"),
+                },
+                "endDateTime": {
+                    "date": {"year": end_time.year, "month": end_time.month, "day": end_time.day},
+                    "hour": end_time.hour,
+                    "minute": end_time.minute,
+                    "second": end_time.second,
+                    "timeZoneId": impl_config.get("time_zone", "America/New_York"),
+                },
+            }
+
+            # Add frequency caps - merge buyer's frequency cap with product config
+            frequency_caps = []
+
+            # First, add product-level frequency caps from impl_config
+            if impl_config.get("frequency_caps"):
+                for cap in impl_config["frequency_caps"]:
+                    frequency_caps.append(
+                        {
+                            "maxImpressions": cap["max_impressions"],
+                            "numTimeUnits": cap["time_range"],
+                            "timeUnit": cap["time_unit"],
+                        }
+                    )
+
+            # Then, add buyer's frequency cap from targeting_overlay if present
+            if targeting_overlay and targeting_overlay.frequency_cap:
+                freq_cap = targeting_overlay.frequency_cap
+                # Convert AdCP FrequencyCap (suppress_minutes) to GAM format
+                # AdCP: suppress_minutes (e.g., 60 = 1 hour)
+                # GAM: maxImpressions=1, numTimeUnits=X, timeUnit="MINUTE"/"HOUR"/"DAY"
+
+                # Determine best GAM time unit
+                if freq_cap.suppress_minutes < 60:
+                    time_unit = "MINUTE"
+                    num_time_units = freq_cap.suppress_minutes
+                elif freq_cap.suppress_minutes < 1440:  # Less than 24 hours
+                    time_unit = "HOUR"
+                    num_time_units = freq_cap.suppress_minutes // 60
+                else:
+                    time_unit = "DAY"
+                    num_time_units = freq_cap.suppress_minutes // 1440
+
+                frequency_caps.append(
+                    {
+                        "maxImpressions": 1,  # Suppress after 1 impression
+                        "numTimeUnits": num_time_units,
+                        "timeUnit": time_unit,
+                    }
+                )
+                log(f"Added buyer frequency cap: 1 impression per {num_time_units} {time_unit.lower()}(s)")
+
+            if frequency_caps:
+                line_item["frequencyCaps"] = frequency_caps
+
+            # Add competitive exclusion labels
+            if impl_config.get("competitive_exclusion_labels"):
+                line_item["effectiveAppliedLabels"] = [
+                    {"labelId": label} for label in impl_config["competitive_exclusion_labels"]
+                ]
+
+            # Add discount if configured
+            if impl_config.get("discount_type") and impl_config.get("discount_value"):
+                line_item["discount"] = impl_config["discount_value"]
+                line_item["discountType"] = impl_config["discount_type"]
+
+            # Determine environment type - prefer buyer's media_type, fallback to product config
+            environment_type = line_item_targeting.get("_media_type_environment")  # From targeting overlay
+            if not environment_type:
+                environment_type = impl_config.get("environment_type", "BROWSER")
+
+            # Clean up internal field from targeting
+            if "_media_type_environment" in line_item_targeting:
+                del line_item_targeting["_media_type_environment"]
+
+            # Add video-specific settings
+            if environment_type == "VIDEO_PLAYER":
+                line_item["environmentType"] = "VIDEO_PLAYER"
+                if impl_config.get("companion_delivery_option"):
+                    line_item["companionDeliveryOption"] = impl_config["companion_delivery_option"]
+                if impl_config.get("video_max_duration"):
+                    line_item["videoMaxDuration"] = impl_config["video_max_duration"]
+                if impl_config.get("skip_offset"):
+                    line_item["videoSkippableAdType"] = "ENABLED"
+                    line_item["videoSkipOffset"] = impl_config["skip_offset"]
+            else:
+                line_item["environmentType"] = environment_type
+
+            # Advanced settings
+            if impl_config.get("allow_overbook"):
+                line_item["allowOverbook"] = True
+            if impl_config.get("skip_inventory_check"):
+                line_item["skipInventoryCheck"] = True
+            if impl_config.get("disable_viewability_avg_revenue_optimization"):
+                line_item["disableViewabilityAvgRevenueOptimization"] = True
+
+            if self.dry_run:
+                log(f"Would call: line_item_service.createLineItems(['{package.name}'])")
+                log(f"  Package: {package.name}")
+                log(f"  Line Item Type: {impl_config.get('line_item_type', 'STANDARD')}")
+                log(f"  Priority: {impl_config.get('priority', 8)}")
+                log(f"  CPM: ${package.cpm}")
+                log(f"  Impressions Goal: {package.impressions:,}")
+                log(f"  Creative Placeholders: {len(creative_placeholders)} sizes")
+                for cp in creative_placeholders[:3]:
+                    log(
+                        f"    - {cp['size']['width']}x{cp['size']['height']} ({'Native' if cp.get('creativeSizeType') == 'NATIVE' else 'Display'})"
+                    )
+                if len(creative_placeholders) > 3:
+                    log(f"    - ... and {len(creative_placeholders) - 3} more")
+                created_line_item_ids.append(f"dry_run_line_item_{len(created_line_item_ids)}")
+            else:
+                try:
+                    line_item_service = self.client_manager.get_service("LineItemService")
+                    created_line_items = line_item_service.createLineItems([line_item])
+                    if created_line_items:
+                        line_item_id = str(created_line_items[0]["id"])
+                        created_line_item_ids.append(line_item_id)
+                        log(f"✓ Created LineItem ID: {line_item_id} for {package.name}")
+                except Exception as e:
+                    error_msg = f"Failed to create LineItem for {package.name}: {str(e)}"
+                    log(f"[red]Error: {error_msg}[/red]")
+                    log(f"[red]Targeting structure: {line_item_targeting}[/red]")
+                    raise
+
+        return created_line_item_ids
+
     def get_advertisers(self) -> list[dict[str, Any]]:
         """Get list of advertisers (companies) from GAM for advertiser selection.
 

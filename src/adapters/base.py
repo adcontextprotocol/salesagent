@@ -84,6 +84,23 @@ class AdServerAdapter(ABC):
         pass
 
     @abstractmethod
+    def associate_creatives(self, line_item_ids: list[str], platform_creative_ids: list[str]) -> list[dict[str, Any]]:
+        """Associate already-uploaded creatives with line items.
+
+        This is used when buyer provides creative_ids in create_media_buy request,
+        indicating they've already synced creatives and want them associated immediately.
+
+        Args:
+            line_item_ids: Platform-specific line item IDs
+            platform_creative_ids: Platform-specific creative IDs (already uploaded via sync_creatives)
+
+        Returns:
+            List of association results with status for each combination
+            Example: [{"line_item_id": "123", "creative_id": "456", "status": "success"}]
+        """
+        pass
+
+    @abstractmethod
     def check_media_buy_status(self, media_buy_id: str, today: datetime) -> CheckMediaBuyStatusResponse:
         """Checks the status of a media buy on the ad server."""
         pass
