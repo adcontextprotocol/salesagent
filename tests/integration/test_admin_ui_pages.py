@@ -34,7 +34,6 @@ def authenticated_session(client):
 @pytest.fixture
 def test_tenant(integration_db):
     """Create a test tenant in the database."""
-    import json
 
     from src.core.database.database_session import get_db_session
 
@@ -47,9 +46,9 @@ def test_tenant(integration_db):
             subdomain=tenant_data["subdomain"],
             is_active=tenant_data["is_active"],
             ad_server="mock",
-            auto_approve_formats=json.dumps([]),
+            auto_approve_formats=[],  # JSONType expects list, not json.dumps()
             human_review_required=False,
-            policy_settings=json.dumps({}),
+            policy_settings={},  # JSONType expects dict, not json.dumps()
         )
         session.add(tenant)
         session.commit()
