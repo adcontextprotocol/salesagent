@@ -8,7 +8,7 @@ import string
 from datetime import UTC, datetime
 
 from flask import Blueprint, flash, jsonify, redirect, render_template, request, send_from_directory, session, url_for
-from sqlalchemy import text
+from sqlalchemy import select, text
 
 from src.admin.utils import require_auth
 from src.core.database.database_session import get_db_session
@@ -30,14 +30,14 @@ def get_tenant_from_hostname():
     if approximated_host and not approximated_host.startswith("admin."):
         # Approximated handles all external routing - look up tenant by virtual_host
         with get_db_session() as db_session:
-            tenant = db_session.query(Tenant).filter_by(virtual_host=approximated_host).first()
+            tenant = db_session.scalars(select(Tenant).filter_by(virtual_host=approximated_host)).first()
             return tenant
 
     # Fallback to direct domain routing (sales-agent.scope3.com)
     if ".sales-agent.scope3.com" in host and not host.startswith("admin."):
         tenant_subdomain = host.split(".")[0]
         with get_db_session() as db_session:
-            tenant = db_session.query(Tenant).filter_by(subdomain=tenant_subdomain).first()
+            tenant = db_session.scalars(select(Tenant).filter_by(subdomain=tenant_subdomain)).first()
             return tenant
     return None
 
@@ -224,7 +224,7 @@ def create_tenant():
 
         with get_db_session() as db_session:
             # Check if tenant already exists
-            existing = db_session.query(Tenant).filter_by(tenant_id=tenant_id).first()
+            existing = db_session.scalars(select(Tenant).filter_by(tenant_id=tenant_id)).first()
             if existing:
                 flash(f"Tenant with ID {tenant_id} already exists", "error")
                 return render_template("create_tenant.html")
@@ -376,7 +376,7 @@ def reactivate_tenant(tenant_id):
             return redirect(url_for("core.index"))
 
         with get_db_session() as db_session:
-            tenant = db_session.query(Tenant).filter_by(tenant_id=tenant_id).first()
+            tenant = db_session.scalars(select(Tenant).filter_by(tenant_id=tenant_id)).first()
 
             if not tenant:
                 flash("Tenant not found", "error")

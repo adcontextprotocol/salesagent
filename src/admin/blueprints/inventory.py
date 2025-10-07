@@ -4,7 +4,7 @@ import json
 import logging
 
 from flask import Blueprint, jsonify, render_template, request, session
-from sqlalchemy import String, func, or_
+from sqlalchemy import String, func, or_, select
 
 from src.admin.utils import get_tenant_config_from_db, require_auth, require_tenant_access
 from src.core.database.database_session import get_db_session
@@ -22,7 +22,7 @@ def targeting_browser(tenant_id):
     """Display targeting browser page."""
 
     with get_db_session() as db_session:
-        tenant = db_session.query(Tenant).filter_by(tenant_id=tenant_id).first()
+        tenant = db_session.scalars(select(Tenant).filter_by(tenant_id=tenant_id)).first()
         row = (tenant.tenant_id, tenant.name) if tenant else None
         if not row:
             return "Tenant not found", 404
@@ -43,7 +43,7 @@ def inventory_browser(tenant_id):
     """Display inventory browser page."""
 
     with get_db_session() as db_session:
-        tenant = db_session.query(Tenant).filter_by(tenant_id=tenant_id).first()
+        tenant = db_session.scalars(select(Tenant).filter_by(tenant_id=tenant_id)).first()
         row = (tenant.tenant_id, tenant.name) if tenant else None
         if not row:
             return "Tenant not found", 404
@@ -71,7 +71,7 @@ def orders_browser(tenant_id):
         return "Access denied", 403
 
     with get_db_session() as db_session:
-        tenant = db_session.query(Tenant).filter_by(tenant_id=tenant_id).first()
+        tenant = db_session.scalars(select(Tenant).filter_by(tenant_id=tenant_id)).first()
         if not tenant:
             return "Tenant not found", 404
 
@@ -102,7 +102,7 @@ def sync_orders(tenant_id):
     """Sync GAM orders for a tenant."""
     try:
         with get_db_session() as db_session:
-            tenant = db_session.query(Tenant).filter_by(tenant_id=tenant_id).first()
+            tenant = db_session.scalars(select(Tenant).filter_by(tenant_id=tenant_id)).first()
 
             if not tenant:
                 return jsonify({"error": "Tenant not found"}), 404
@@ -185,7 +185,7 @@ def get_order_details(tenant_id, order_id):
     """Get details for a specific order."""
     try:
         with get_db_session() as db_session:
-            order = db_session.query(GAMOrder).filter_by(tenant_id=tenant_id, order_id=order_id).first()
+            order = db_session.scalars(select(GAMOrder).filter_by(tenant_id=tenant_id, order_id=order_id)).first()
 
             if not order:
                 return jsonify({"error": "Order not found"}), 404
@@ -235,7 +235,9 @@ def check_inventory_sync(tenant_id):
     try:
         with get_db_session() as db_session:
             # Count inventory items
-            inventory_count = db_session.query(GAMInventory).filter_by(tenant_id=tenant_id).count()
+            inventory_count = db_session.scalar(
+                select(func.count()).select_from(GAMInventory).filter_by(tenant_id=tenant_id)
+            )
 
             has_inventory = inventory_count > 0
 
@@ -283,7 +285,7 @@ def analyze_ad_server_inventory(tenant_id):
 
         # Find enabled adapter from database
         with get_db_session() as db_session:
-            tenant = db_session.query(Tenant).filter_by(tenant_id=tenant_id).first()
+            tenant = db_session.scalars(select(Tenant).filter_by(tenant_id=tenant_id)).first()
 
             adapter_type = None
             adapter_config = {}
@@ -319,7 +321,7 @@ def analyze_ad_server_inventory(tenant_id):
 
         # Get a principal for API calls
         with get_db_session() as db_session:
-            principal_obj = db_session.query(Principal).filter_by(tenant_id=tenant_id).first()
+            principal_obj = db_session.scalars(select(Principal).filter_by(tenant_id=tenant_id)).first()
 
             if not principal_obj:
                 return jsonify({"error": "No principal found for tenant"}), 404

@@ -21,7 +21,7 @@ def discover_creative_formats_from_url(url):
 
 
 from flask import Blueprint, flash, jsonify, redirect, render_template, request, url_for
-from sqlalchemy import or_
+from sqlalchemy import or_, select
 
 from src.admin.utils import require_tenant_access
 from src.core.database.database_session import get_db_session
@@ -39,7 +39,7 @@ def index(tenant_id, **kwargs):
     """List creative formats (both standard and custom)."""
     with get_db_session() as db_session:
         # Get tenant name
-        tenant = db_session.query(Tenant).filter_by(tenant_id=tenant_id).first()
+        tenant = db_session.scalars(select(Tenant).filter_by(tenant_id=tenant_id)).first()
         if not tenant:
             return "Tenant not found", 404
 
@@ -89,7 +89,7 @@ def list_creatives(tenant_id, **kwargs):
 
     with get_db_session() as db_session:
         # Get tenant name
-        tenant = db_session.query(Tenant).filter_by(tenant_id=tenant_id).first()
+        tenant = db_session.scalars(select(Tenant).filter_by(tenant_id=tenant_id)).first()
         if not tenant:
             return "Tenant not found", 404
 
@@ -102,9 +102,9 @@ def list_creatives(tenant_id, **kwargs):
         creative_list = []
         for creative in creatives:
             # Get principal name
-            principal = (
-                db_session.query(Principal).filter_by(tenant_id=tenant_id, principal_id=creative.principal_id).first()
-            )
+            principal = db_session.scalars(
+                select(Principal).filter_by(tenant_id=tenant_id, principal_id=creative.principal_id)
+            ).first()
             principal_name = principal.name if principal else creative.principal_id
 
             # Get all assignments for this creative
@@ -117,7 +117,7 @@ def list_creatives(tenant_id, **kwargs):
             # Get media buy details for each assignment
             media_buys = []
             for assignment in assignments:
-                media_buy = db_session.query(MediaBuy).filter_by(media_buy_id=assignment.media_buy_id).first()
+                media_buy = db_session.scalars(select(MediaBuy).filter_by(media_buy_id=assignment.media_buy_id)).first()
                 if media_buy:
                     media_buys.append(
                         {
@@ -342,7 +342,7 @@ def save_multiple(tenant_id, **kwargs):
 def get_format(tenant_id, format_id, **kwargs):
     """Get a specific creative format for editing."""
     with get_db_session() as db_session:
-        creative_format = db_session.query(CreativeFormat).filter_by(format_id=format_id).first()
+        creative_format = db_session.scalars(select(CreativeFormat).filter_by(format_id=format_id)).first()
 
         if not creative_format:
             return jsonify({"error": "Format not found"}), 404
@@ -373,7 +373,7 @@ def get_format(tenant_id, format_id, **kwargs):
 def edit_format(tenant_id, format_id, **kwargs):
     """Display the edit creative format page."""
     with get_db_session() as db_session:
-        creative_format = db_session.query(CreativeFormat).filter_by(format_id=format_id).first()
+        creative_format = db_session.scalars(select(CreativeFormat).filter_by(format_id=format_id)).first()
 
         if not creative_format:
             flash("Format not found", "error")
@@ -400,7 +400,7 @@ def edit_format(tenant_id, format_id, **kwargs):
         }
 
         # Get tenant name
-        tenant = db_session.query(Tenant).filter_by(tenant_id=tenant_id).first()
+        tenant = db_session.scalars(select(Tenant).filter_by(tenant_id=tenant_id)).first()
         tenant_name = tenant.name if tenant else ""
 
     return render_template(
@@ -421,7 +421,7 @@ def update_format(tenant_id, format_id, **kwargs):
             return jsonify({"error": "No data provided"}), 400
 
         with get_db_session() as db_session:
-            creative_format = db_session.query(CreativeFormat).filter_by(format_id=format_id).first()
+            creative_format = db_session.scalars(select(CreativeFormat).filter_by(format_id=format_id)).first()
 
             if not creative_format:
                 return jsonify({"error": "Format not found"}), 404
@@ -460,7 +460,7 @@ def delete_format(tenant_id, format_id, **kwargs):
     """Delete a creative format."""
     try:
         with get_db_session() as db_session:
-            creative_format = db_session.query(CreativeFormat).filter_by(format_id=format_id).first()
+            creative_format = db_session.scalars(select(CreativeFormat).filter_by(format_id=format_id)).first()
 
             if not creative_format:
                 return jsonify({"error": "Format not found"}), 404

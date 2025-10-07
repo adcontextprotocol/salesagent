@@ -4,6 +4,7 @@ import json
 import logging
 
 from flask import Blueprint, jsonify, redirect, render_template, request, session, url_for
+from sqlalchemy import select
 
 from src.admin.utils import get_tenant_config_from_db, require_auth
 from src.core.audit_logger import AuditLogger
@@ -29,7 +30,7 @@ def index(tenant_id):
 
     with get_db_session() as db_session:
         # Get tenant info
-        tenant = db_session.query(Tenant).filter_by(tenant_id=tenant_id).first()
+        tenant = db_session.scalars(select(Tenant).filter_by(tenant_id=tenant_id)).first()
         if not tenant:
             return "Tenant not found", 404
 
@@ -185,7 +186,7 @@ def update(tenant_id):
 
         # Update database
         with get_db_session() as db_session:
-            tenant = db_session.query(Tenant).filter_by(tenant_id=tenant_id).first()
+            tenant = db_session.scalars(select(Tenant).filter_by(tenant_id=tenant_id)).first()
             if tenant:
                 tenant.policy_settings = json.dumps(policy_settings)
                 db_session.commit()

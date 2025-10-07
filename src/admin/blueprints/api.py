@@ -7,7 +7,7 @@ from datetime import UTC, datetime, timedelta
 from fastmcp.client import Client
 from fastmcp.client.transports import StreamableHttpTransport
 from flask import Blueprint, jsonify, request
-from sqlalchemy import func, text
+from sqlalchemy import func, select, text
 
 from src.admin.utils import require_auth
 from src.core.database.database_session import get_db_session
@@ -285,9 +285,9 @@ def quick_create_products(tenant_id):
 
                 try:
                     # Check if already exists
-                    existing_product = (
-                        db_session.query(Product).filter_by(tenant_id=tenant_id, product_id=product_id).first()
-                    )
+                    existing_product = db_session.scalars(
+                        select(Product).filter_by(tenant_id=tenant_id, product_id=product_id)
+                    ).first()
                     if existing_product:
                         errors.append(f"Product already exists: {product_id}")
                         continue
@@ -426,7 +426,7 @@ def mcp_test_call():
 
         # Get tenant from token
         with get_db_session() as db_session:
-            principal = db_session.query(Principal).filter_by(access_token=auth_token).first()
+            principal = db_session.scalars(select(Principal).filter_by(access_token=auth_token)).first()
             if not principal:
                 return jsonify({"success": False, "error": "Invalid auth token"}), 401
 

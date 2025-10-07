@@ -3,6 +3,7 @@
 import logging
 
 from flask import Blueprint, jsonify
+from sqlalchemy import select
 
 from src.admin.utils import require_auth, require_tenant_access
 
@@ -51,7 +52,7 @@ def reporting(tenant_id):
         return "Access denied", 403
 
     with get_db_session() as db_session:
-        tenant_obj = db_session.query(Tenant).filter_by(tenant_id=tenant_id).first()
+        tenant_obj = db_session.scalars(select(Tenant).filter_by(tenant_id=tenant_id)).first()
 
         if not tenant_obj:
             return "Tenant not found", 404
@@ -92,7 +93,7 @@ def workflows(tenant_id, **kwargs):
 
     with get_db_session() as db:
         # Get tenant
-        tenant = db.query(Tenant).filter_by(tenant_id=tenant_id).first()
+        tenant = db.scalars(select(Tenant).filter_by(tenant_id=tenant_id)).first()
         if not tenant:
             return "Tenant not found", 404
 
@@ -119,12 +120,12 @@ def workflows(tenant_id, **kwargs):
         # Format workflow steps for display
         workflows_list = []
         for step in pending_steps:
-            context = db.query(Context).filter_by(context_id=step.context_id).first()
+            context = db.scalars(select(Context).filter_by(context_id=step.context_id)).first()
             principal = None
             if context and context.principal_id:
-                principal = (
-                    db.query(ModelPrincipal).filter_by(principal_id=context.principal_id, tenant_id=tenant_id).first()
-                )
+                principal = db.scalars(
+                    select(ModelPrincipal).filter_by(principal_id=context.principal_id, tenant_id=tenant_id)
+                ).first()
 
             workflows_list.append(
                 {
@@ -161,7 +162,9 @@ def media_buy_detail(tenant_id, media_buy_id):
 
     try:
         with get_db_session() as db_session:
-            media_buy = db_session.query(MediaBuy).filter_by(tenant_id=tenant_id, media_buy_id=media_buy_id).first()
+            media_buy = db_session.scalars(
+                select(MediaBuy).filter_by(tenant_id=tenant_id, media_buy_id=media_buy_id)
+            ).first()
 
             if not media_buy:
                 return "Media buy not found", 404

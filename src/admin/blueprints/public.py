@@ -7,7 +7,7 @@ import string
 from datetime import UTC, datetime
 
 from flask import Blueprint, flash, redirect, render_template, request, session, url_for
-from sqlalchemy import or_
+from sqlalchemy import or_, select
 
 from src.core.database.database_session import get_db_session
 from src.core.database.models import AdapterConfig, Principal, Tenant, User
@@ -44,7 +44,7 @@ def landing():
     with get_db_session() as db_session:
         # Check Approximated host first
         if approximated_host:
-            tenant = db_session.query(Tenant).filter_by(virtual_host=approximated_host).first()
+            tenant = db_session.scalars(select(Tenant).filter_by(virtual_host=approximated_host)).first()
             if tenant:
                 # On a tenant domain - redirect to login instead
                 flash("Signup is only available at the main site.", "info")
@@ -54,7 +54,7 @@ def landing():
         if ".sales-agent.scope3.com" in host and not host.startswith("admin."):
             tenant_subdomain = host.split(".")[0]
             if tenant_subdomain and tenant_subdomain != "sales-agent":
-                tenant = db_session.query(Tenant).filter_by(subdomain=tenant_subdomain).first()
+                tenant = db_session.scalars(select(Tenant).filter_by(subdomain=tenant_subdomain)).first()
                 if tenant:
                     # On a tenant subdomain - redirect to login instead
                     flash("Signup is only available at the main site.", "info")
@@ -332,7 +332,7 @@ def signup_complete():
 
     # Get tenant info
     with get_db_session() as db_session:
-        tenant = db_session.query(Tenant).filter_by(tenant_id=tenant_id).first()
+        tenant = db_session.scalars(select(Tenant).filter_by(tenant_id=tenant_id)).first()
         if not tenant:
             flash("Tenant not found", "error")
             return redirect(url_for("public.landing"))

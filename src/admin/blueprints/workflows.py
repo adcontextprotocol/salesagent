@@ -5,6 +5,7 @@ import logging
 from datetime import UTC, datetime
 
 from flask import Blueprint, flash, jsonify, redirect, render_template, request, session, url_for
+from sqlalchemy import select
 from sqlalchemy.orm import attributes
 
 from src.admin.utils import require_tenant_access
@@ -25,7 +26,7 @@ def list_workflows(tenant_id, **kwargs):
 
     with get_db_session() as db:
         # Get tenant
-        tenant = db.query(Tenant).filter_by(tenant_id=tenant_id).first()
+        tenant = db.scalars(select(Tenant).filter_by(tenant_id=tenant_id)).first()
         if not tenant:
             return "Tenant not found", 404
 
@@ -52,12 +53,12 @@ def list_workflows(tenant_id, **kwargs):
         # Format workflow steps for display
         workflows_list = []
         for step in pending_steps:
-            context = db.query(Context).filter_by(context_id=step.context_id).first()
+            context = db.scalars(select(Context).filter_by(context_id=step.context_id)).first()
             principal = None
             if context and context.principal_id:
-                principal = (
-                    db.query(ModelPrincipal).filter_by(principal_id=context.principal_id, tenant_id=tenant_id).first()
-                )
+                principal = db.scalars(
+                    select(ModelPrincipal).filter_by(principal_id=context.principal_id, tenant_id=tenant_id)
+                ).first()
 
             workflows_list.append(
                 {
@@ -101,14 +102,14 @@ def review_workflow_step(tenant_id, workflow_id, step_id):
             return redirect(url_for("tenants.tenant_dashboard", tenant_id=tenant_id))
 
         # Get the context for tenant/principal info
-        context = db.query(Context).filter_by(context_id=step.context_id).first()
+        context = db.scalars(select(Context).filter_by(context_id=step.context_id)).first()
 
         # Get principal info
         principal = None
         if context and context.principal_id:
-            principal = (
-                db.query(ModelPrincipal).filter_by(principal_id=context.principal_id, tenant_id=tenant_id).first()
-            )
+            principal = db.scalars(
+                select(ModelPrincipal).filter_by(principal_id=context.principal_id, tenant_id=tenant_id)
+            ).first()
 
         # Parse request data
         request_data = step.request_data if step.request_data else {}
