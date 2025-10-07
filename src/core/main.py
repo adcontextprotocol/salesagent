@@ -3007,6 +3007,24 @@ def _create_media_buy_impl(
                 from src.core.database.models import Creative as DBCreative
                 from src.core.database.models import CreativeAssignment as DBAssignment
 
+                # Batch load all creatives upfront to avoid N+1 queries
+                all_creative_ids = []
+                for package in req.packages:
+                    if package.creative_ids:
+                        all_creative_ids.extend(package.creative_ids)
+
+                creatives_map = {}
+                if all_creative_ids:
+                    creatives = (
+                        session.query(DBCreative)
+                        .filter(
+                            DBCreative.tenant_id == tenant["tenant_id"],
+                            DBCreative.creative_id.in_(all_creative_ids),
+                        )
+                        .all()
+                    )
+                    creatives_map = {c.creative_id: c for c in creatives}
+
                 for i, package in enumerate(req.packages):
                     if package.creative_ids:
                         package_id = f"{response.media_buy_id}_pkg_{i+1}"
@@ -3020,12 +3038,8 @@ def _create_media_buy_impl(
                         platform_creative_ids = []
 
                         for creative_id in package.creative_ids:
-                            # Verify the creative exists and has platform_creative_id
-                            creative = (
-                                session.query(DBCreative)
-                                .filter_by(tenant_id=tenant["tenant_id"], creative_id=creative_id)
-                                .first()
-                            )
+                            # Get creative from batch-loaded map
+                            creative = creatives_map.get(creative_id)
 
                             if not creative:
                                 logger.warning(

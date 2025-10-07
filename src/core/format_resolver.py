@@ -6,9 +6,52 @@ Provides layered format lookup:
 3. Standard formats (from FORMAT_REGISTRY)
 """
 
+import json
 
 from src.core.database.database_session import get_db_session
 from src.core.schemas import FORMAT_REGISTRY, Format
+
+
+def _parse_format_from_db_row(row: tuple) -> Format:
+    """Extract Format object from database row.
+
+    Args:
+        row: Database tuple with format fields:
+            (format_id, name, type, description, width, height,
+             duration_seconds, max_file_size_kb, specs, is_standard, platform_config)
+
+    Returns:
+        Format object constructed from database row
+    """
+    # Parse JSON fields (handle both string and dict from SQLite vs PostgreSQL)
+    specs = json.loads(row[8]) if isinstance(row[8], str) else row[8]
+    platform_config = None
+    if row[10]:
+        platform_config = json.loads(row[10]) if isinstance(row[10], str) else row[10]
+
+    # Build requirements dict from database columns
+    requirements = {}
+    if row[4]:  # width
+        requirements["width"] = row[4]
+    if row[5]:  # height
+        requirements["height"] = row[5]
+    if row[6]:  # duration_seconds
+        requirements["duration_max"] = row[6]
+    if row[7]:  # max_file_size_kb
+        requirements["max_file_size_kb"] = row[7]
+
+    # Merge with specs JSON
+    if specs:
+        requirements.update(specs)
+
+    return Format(
+        format_id=row[0],
+        name=row[1],
+        type=row[2],
+        is_standard=bool(row[9]),
+        requirements=requirements if requirements else None,
+        platform_config=platform_config,
+    )
 
 
 def get_format(format_id: str, tenant_id: str | None = None, product_id: str | None = None) -> Format:
@@ -90,8 +133,6 @@ def _get_product_format_override(tenant_id: str, product_id: str, format_id: str
             return None
 
         # Parse implementation_config JSON
-        import json
-
         impl_config = json.loads(row[0]) if isinstance(row[0], str) else row[0]
         format_overrides = impl_config.get("format_overrides", {})
 
@@ -161,38 +202,7 @@ def _get_tenant_custom_format(tenant_id: str, format_id: str) -> Format | None:
         if not row:
             return None
 
-        # Parse JSON fields
-        import json
-
-        specs = json.loads(row[8]) if isinstance(row[8], str) else row[8]
-        platform_config = None
-        if row[10]:
-            platform_config = json.loads(row[10]) if isinstance(row[10], str) else row[10]
-
-        # Build Format object from database row
-        # Map database fields to Format model
-        requirements = {}
-        if row[4]:  # width
-            requirements["width"] = row[4]
-        if row[5]:  # height
-            requirements["height"] = row[5]
-        if row[6]:  # duration_seconds
-            requirements["duration_max"] = row[6]
-        if row[7]:  # max_file_size_kb
-            requirements["max_file_size_kb"] = row[7]
-
-        # Merge with specs JSON
-        if specs:
-            requirements.update(specs)
-
-        return Format(
-            format_id=row[0],
-            name=row[1],
-            type=row[2],
-            is_standard=bool(row[9]),
-            requirements=requirements if requirements else None,
-            platform_config=platform_config,
-        )
+        return _parse_format_from_db_row(row)
 
 
 def list_available_formats(tenant_id: str | None = None) -> list[Format]:
@@ -228,35 +238,7 @@ def list_available_formats(tenant_id: str | None = None) -> list[Format]:
                 {"tenant_id": tenant_id},
             )
 
-            import json
-
             for row in result.fetchall():
-                specs = json.loads(row[8]) if isinstance(row[8], str) else row[8]
-                platform_config = None
-                if row[10]:
-                    platform_config = json.loads(row[10]) if isinstance(row[10], str) else row[10]
-
-                requirements = {}
-                if row[4]:
-                    requirements["width"] = row[4]
-                if row[5]:
-                    requirements["height"] = row[5]
-                if row[6]:
-                    requirements["duration_max"] = row[6]
-                if row[7]:
-                    requirements["max_file_size_kb"] = row[7]
-                if specs:
-                    requirements.update(specs)
-
-                formats.append(
-                    Format(
-                        format_id=row[0],
-                        name=row[1],
-                        type=row[2],
-                        is_standard=bool(row[9]),
-                        requirements=requirements if requirements else None,
-                        platform_config=platform_config,
-                    )
-                )
+                formats.append(_parse_format_from_db_row(row))
 
     return formats
