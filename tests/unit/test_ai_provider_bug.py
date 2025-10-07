@@ -35,7 +35,7 @@ async def test_ai_provider_bug():
             product_id="test_audio_bug",
             name="Test Audio Product",
             description="Test product to reproduce bug",
-            formats=json.dumps(["audio_15s", "audio_30s"]),  # Valid format list but with audio formats
+            formats=["audio_15s", "audio_30s"],  # JSONType expects list, not json.dumps()
             targeting_template={},
             delivery_type="guaranteed",
             is_fixed_price=True,

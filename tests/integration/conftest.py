@@ -4,7 +4,6 @@ Integration test specific fixtures.
 These fixtures are for tests that require database and service integration.
 """
 
-import json
 import os
 from datetime import UTC, datetime
 from unittest.mock import MagicMock, patch
@@ -223,9 +222,9 @@ def test_tenant_with_data(integration_db):
             subdomain=tenant_data["subdomain"],
             is_active=tenant_data["is_active"],
             ad_server="mock",
-            auto_approve_formats=json.dumps([]),
+            auto_approve_formats=[],  # JSONType expects list, not json.dumps()
             human_review_required=False,
-            policy_settings=json.dumps({}),
+            policy_settings={},  # JSONType expects dict, not json.dumps()
             created_at=now,
             updated_at=now,
         )
