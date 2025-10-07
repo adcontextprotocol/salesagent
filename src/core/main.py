@@ -3033,15 +3033,17 @@ def _create_media_buy_impl(
                                 )
                                 continue
 
-                            if not creative.platform_creative_id:
-                                logger.error(
-                                    f"Creative {creative_id} has not been synced to ad server yet. "
-                                    f"Call sync_creatives first to upload creative before referencing it in create_media_buy."
+                            # Create database assignment (always create, even if not yet uploaded to GAM)
+                            # Get platform_creative_id from creative.data JSON
+                            platform_creative_id = creative.data.get("platform_creative_id") if creative.data else None
+                            if platform_creative_id:
+                                # Add to association list for immediate GAM association
+                                platform_creative_ids.append(platform_creative_id)
+                            else:
+                                logger.warning(
+                                    f"Creative {creative_id} has not been uploaded to ad server yet (no platform_creative_id). "
+                                    f"Database assignment will be created, but GAM association will be skipped until creative is uploaded."
                                 )
-                                continue
-
-                            # Add to association list
-                            platform_creative_ids.append(creative.platform_creative_id)
 
                             # Create database assignment
                             assignment_id = f"assign_{uuid.uuid4().hex[:12]}"
