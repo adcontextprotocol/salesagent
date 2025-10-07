@@ -4,26 +4,37 @@ Provides time-accelerated campaign delivery simulation with webhook notification
 Fires webhooks at configurable intervals to simulate real-world campaign delivery.
 
 Example: 1 second = 1 hour of campaign time (configurable)
+
+NOTE: Time acceleration is mock-adapter specific for testing. Webhook delivery
+itself is a core feature (webhook_delivery_service) shared by all adapters.
 """
 
-import asyncio
+import atexit
 import logging
 import threading
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta
 
-from src.services.push_notification_service import push_notification_service
+from src.services.webhook_delivery_service import webhook_delivery_service
 
 logger = logging.getLogger(__name__)
 
 
 class DeliverySimulator:
-    """Simulates accelerated campaign delivery with webhook notifications."""
+    """Simulates accelerated campaign delivery with webhook notifications.
+
+    Thread-safe simulator that uses shared webhook_delivery_service for webhook sending.
+    This class handles time acceleration logic (mock-specific), while webhook delivery
+    is a core feature shared by all adapters.
+    """
 
     def __init__(self):
         """Initialize the delivery simulator."""
         self._active_simulations: dict[str, threading.Thread] = {}
         self._stop_signals: dict[str, threading.Event] = {}
-        self._sequence_numbers: dict[str, int] = {}  # Track sequence per media buy
+        self._lock = threading.Lock()  # Protect shared state
+
+        # Register graceful shutdown
+        atexit.register(self._shutdown)
 
     def start_simulation(
         self,
@@ -38,6 +49,8 @@ class DeliverySimulator:
     ):
         """Start delivery simulation for a media buy.
 
+        Thread-safe operation.
+
         Args:
             media_buy_id: Media buy identifier
             tenant_id: Tenant identifier
@@ -48,49 +61,52 @@ class DeliverySimulator:
             time_acceleration: How many real seconds = 1 simulated second (default: 3600 = 1 sec = 1 hour)
             update_interval_seconds: How often to fire webhooks in real time (default: 1 second)
         """
-        # Don't start if already running
-        if media_buy_id in self._active_simulations:
-            logger.warning(f"Delivery simulation already running for {media_buy_id}")
-            return
+        with self._lock:
+            # Don't start if already running
+            if media_buy_id in self._active_simulations:
+                logger.warning(f"Delivery simulation already running for {media_buy_id}")
+                return
 
-        # Create stop signal and initialize sequence number
-        stop_signal = threading.Event()
-        self._stop_signals[media_buy_id] = stop_signal
-        self._sequence_numbers[media_buy_id] = 0  # Will increment to 1 on first webhook
+            # Create stop signal
+            stop_signal = threading.Event()
+            self._stop_signals[media_buy_id] = stop_signal
 
-        # Start simulation thread
-        thread = threading.Thread(
-            target=self._run_simulation,
-            args=(
-                media_buy_id,
-                tenant_id,
-                principal_id,
-                start_time,
-                end_time,
-                total_budget,
-                time_acceleration,
-                update_interval_seconds,
-                stop_signal,
-            ),
-            daemon=True,
-        )
-        self._active_simulations[media_buy_id] = thread
-        thread.start()
+            # Start simulation thread
+            thread = threading.Thread(
+                target=self._run_simulation,
+                args=(
+                    media_buy_id,
+                    tenant_id,
+                    principal_id,
+                    start_time,
+                    end_time,
+                    total_budget,
+                    time_acceleration,
+                    update_interval_seconds,
+                    stop_signal,
+                ),
+                daemon=True,
+            )
+            self._active_simulations[media_buy_id] = thread
+            thread.start()
 
-        logger.info(
-            f"✅ Started delivery simulation for {media_buy_id} "
-            f"(acceleration: {time_acceleration}x, interval: {update_interval_seconds}s)"
-        )
+            logger.info(
+                f"✅ Started delivery simulation for {media_buy_id} "
+                f"(acceleration: {time_acceleration}x, interval: {update_interval_seconds}s)"
+            )
 
     def stop_simulation(self, media_buy_id: str):
         """Stop delivery simulation for a media buy.
 
+        Thread-safe operation.
+
         Args:
             media_buy_id: Media buy identifier
         """
-        if media_buy_id in self._stop_signals:
-            self._stop_signals[media_buy_id].set()
-            logger.info(f"🛑 Stopping delivery simulation for {media_buy_id}")
+        with self._lock:
+            if media_buy_id in self._stop_signals:
+                self._stop_signals[media_buy_id].set()
+                logger.info(f"🛑 Stopping delivery simulation for {media_buy_id}")
 
     def _run_simulation(
         self,
@@ -133,19 +149,19 @@ class DeliverySimulator:
             )
 
             # Send initial webhook - campaign started
-            asyncio.run(
-                self._send_delivery_webhook(
-                    media_buy_id=media_buy_id,
-                    tenant_id=tenant_id,
-                    principal_id=principal_id,
-                    simulated_time=start_time,
-                    elapsed_hours=0,
-                    total_hours=campaign_duration / 3600,
-                    impressions=0,
-                    spend=0.0,
-                    total_budget=total_budget,
-                    status="started",
-                )
+            webhook_delivery_service.send_delivery_webhook(
+                media_buy_id=media_buy_id,
+                tenant_id=tenant_id,
+                principal_id=principal_id,
+                reporting_period_start=start_time,
+                reporting_period_end=start_time,
+                impressions=0,
+                spend=0.0,
+                status="pending",
+                clicks=0,
+                ctr=0.0,
+                is_final=False,
+                next_expected_interval_seconds=update_interval_seconds,
             )
 
             elapsed_real_seconds = 0.0
@@ -189,19 +205,19 @@ class DeliverySimulator:
                     status = "delivering"
 
                 # Send delivery update webhook
-                asyncio.run(
-                    self._send_delivery_webhook(
-                        media_buy_id=media_buy_id,
-                        tenant_id=tenant_id,
-                        principal_id=principal_id,
-                        simulated_time=simulated_time,
-                        elapsed_hours=elapsed_hours,
-                        total_hours=total_hours,
-                        impressions=impressions,
-                        spend=spend,
-                        total_budget=total_budget,
-                        status=status,
-                    )
+                webhook_delivery_service.send_delivery_webhook(
+                    media_buy_id=media_buy_id,
+                    tenant_id=tenant_id,
+                    principal_id=principal_id,
+                    reporting_period_start=start_time,
+                    reporting_period_end=simulated_time,
+                    impressions=impressions,
+                    spend=spend,
+                    status=status,
+                    clicks=int(impressions * 0.01),
+                    ctr=0.01,
+                    is_final=(progress_ratio >= 1.0),
+                    next_expected_interval_seconds=update_interval_seconds if progress_ratio < 1.0 else None,
                 )
 
                 # Stop if campaign completed
@@ -212,118 +228,29 @@ class DeliverySimulator:
         except Exception as e:
             logger.error(f"❌ Error in delivery simulation for {media_buy_id}: {e}", exc_info=True)
         finally:
-            # Cleanup
-            if media_buy_id in self._active_simulations:
-                del self._active_simulations[media_buy_id]
-            if media_buy_id in self._stop_signals:
-                del self._stop_signals[media_buy_id]
-            if media_buy_id in self._sequence_numbers:
-                del self._sequence_numbers[media_buy_id]
+            # Thread-safe cleanup
+            with self._lock:
+                if media_buy_id in self._active_simulations:
+                    del self._active_simulations[media_buy_id]
+                if media_buy_id in self._stop_signals:
+                    del self._stop_signals[media_buy_id]
 
-    async def _send_delivery_webhook(
-        self,
-        media_buy_id: str,
-        tenant_id: str,
-        principal_id: str,
-        simulated_time: datetime,
-        elapsed_hours: float,
-        total_hours: float,
-        impressions: int,
-        spend: float,
-        total_budget: float,
-        status: str,
-    ):
-        """Send AdCP-compliant delivery update webhook.
+            # Reset webhook sequence number
+            webhook_delivery_service.reset_sequence(media_buy_id)
 
-        Args:
-            media_buy_id: Media buy identifier
-            tenant_id: Tenant identifier
-            principal_id: Principal identifier
-            simulated_time: Current simulated campaign time
-            elapsed_hours: Hours elapsed in simulation
-            total_hours: Total campaign hours
-            impressions: Impressions delivered so far
-            spend: Spend so far
-            total_budget: Total campaign budget
-            status: Campaign status (started, delivering, completed)
-        """
-        # Increment sequence number
-        self._sequence_numbers[media_buy_id] = self._sequence_numbers.get(media_buy_id, 0) + 1
-        sequence_number = self._sequence_numbers[media_buy_id]
+    def _shutdown(self):
+        """Graceful shutdown handler."""
+        logger.info("🛑 DeliverySimulator shutting down")
+        with self._lock:
+            # Signal all active simulations to stop
+            for media_buy_id, stop_signal in self._stop_signals.items():
+                stop_signal.set()
+                logger.info(f"   Stopping simulation for {media_buy_id}")
 
-        progress_pct = (elapsed_hours / total_hours * 100) if total_hours > 0 else 0
-        pacing_index = (
-            (spend / total_budget) / (elapsed_hours / total_hours) if elapsed_hours > 0 and total_hours > 0 else 1.0
-        )
+            # Wait briefly for threads to finish
+            import time
 
-        # Determine AdCP notification_type
-        if status == "completed":
-            notification_type = "final"
-        else:
-            notification_type = "scheduled"
-
-        # Calculate next expected notification time
-        if notification_type != "final":
-            next_expected_at = (datetime.now(UTC) + timedelta(seconds=1.0)).isoformat()
-        else:
-            next_expected_at = None
-
-        # AdCP V2.3 compliant GetMediaBuyDeliveryResponse format
-        # This is the format defined in /schemas/v1/media-buy/get-media-buy-delivery-response.json
-        delivery_payload = {
-            "adcp_version": "2.3.0",
-            "notification_type": notification_type,
-            "sequence_number": sequence_number,
-            "reporting_period": {
-                "start": simulated_time.isoformat(),
-                "end": simulated_time.isoformat(),  # Single point-in-time for simulation
-            },
-            "currency": "USD",
-            "media_buy_deliveries": [
-                {
-                    "media_buy_id": media_buy_id,
-                    "status": (
-                        "active" if status == "delivering" else "completed" if status == "completed" else "pending"
-                    ),
-                    "totals": {
-                        "impressions": impressions,
-                        "spend": round(spend, 2),
-                        "clicks": int(impressions * 0.01),  # 1% CTR
-                        "ctr": 0.01,
-                    },
-                    "by_package": [],  # Empty for simulation - could be enhanced later
-                }
-            ],
-        }
-
-        # Add next_expected_at if not final
-        if next_expected_at:
-            delivery_payload["next_expected_at"] = next_expected_at
-
-        logger.info(
-            f"📤 Delivery webhook #{sequence_number} for {media_buy_id}: "
-            f"{elapsed_hours:.1f}/{total_hours:.1f}h "
-            f"({progress_pct:.1f}% progress, pacing_index: {pacing_index:.2f}) "
-            f"- {impressions:,} imps, ${spend:,.2f} spend [{notification_type}]"
-        )
-
-        try:
-            # Send via push notification service using AdCP-compliant payload
-            result = await push_notification_service.send_task_status_notification(
-                tenant_id=tenant_id,
-                principal_id=principal_id,
-                task_id=media_buy_id,
-                task_status="completed" if status == "completed" else "working",
-                task_data=delivery_payload,
-            )
-
-            if result["sent"] > 0:
-                logger.debug(f"✅ Delivery webhook sent to {result['sent']} endpoint(s)")
-            else:
-                logger.debug(f"⚠️ No webhooks configured for {tenant_id}/{principal_id}")
-
-        except Exception as e:
-            logger.error(f"❌ Failed to send delivery webhook: {e}")
+            time.sleep(0.5)
 
 
 # Global singleton instance

@@ -1,0 +1,217 @@
+{% extends "base.html" %}
+
+{% block title %}Webhook Delivery Activity - {{ tenant.name }}{% endblock %}
+
+{% block content %}
+<div class="container-fluid mt-4">
+    <div class="row">
+        <div class="col-12">
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <div>
+                    <h2><i class="fas fa-bell"></i> Webhook Delivery Activity</h2>
+                    <p class="text-muted">Monitor delivery webhook notifications for {{ tenant.name }}</p>
+                </div>
+                <div>
+                    <a href="{{ script_name }}/tenant/{{ tenant.tenant_id }}" class="btn btn-secondary">
+                        <i class="fas fa-arrow-left"></i> Back to Tenant
+                    </a>
+                </div>
+            </div>
+
+            <!-- Summary Stats -->
+            <div class="row mb-4">
+                <div class="col-md-4">
+                    <div class="card">
+                        <div class="card-body">
+                            <h5 class="card-title">Total Webhooks</h5>
+                            <p class="display-6">{{ total_webhooks }}</p>
+                            <p class="text-muted"><small>All delivery notifications sent</small></p>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="card">
+                        <div class="card-body">
+                            <h5 class="card-title">Active Campaigns</h5>
+                            <p class="display-6">{{ unique_media_buys }}</p>
+                            <p class="text-muted"><small>Campaigns with webhook activity</small></p>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="card">
+                        <div class="card-body">
+                            <h5 class="card-title">Recent Activity</h5>
+                            <p class="display-6">{{ webhook_logs|length }}</p>
+                            <p class="text-muted"><small>Webhooks in current view</small></p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Filters -->
+            <div class="card mb-4">
+                <div class="card-body">
+                    <h5 class="card-title">Filters</h5>
+                    <form method="GET" class="row g-3">
+                        <div class="col-md-4">
+                            <label for="media_buy_id" class="form-label">Media Buy</label>
+                            <select class="form-select" id="media_buy_id" name="media_buy_id">
+                                <option value="">All Media Buys</option>
+                                {% for buy in media_buys %}
+                                <option value="{{ buy.media_buy_id }}" {% if media_buy_filter == buy.media_buy_id %}selected{% endif %}>
+                                    {{ buy.media_buy_id }} - {{ buy.status }}
+                                </option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-md-4">
+                            <label for="principal_id" class="form-label">Principal</label>
+                            <select class="form-select" id="principal_id" name="principal_id">
+                                <option value="">All Principals</option>
+                                {% for principal in principals %}
+                                <option value="{{ principal.principal_id }}" {% if principal_filter == principal.principal_id %}selected{% endif %}>
+                                    {{ principal.name }}
+                                </option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-md-2">
+                            <label for="limit" class="form-label">Limit</label>
+                            <select class="form-select" id="limit" name="limit">
+                                <option value="50" {% if limit == 50 %}selected{% endif %}>50</option>
+                                <option value="100" {% if limit == 100 %}selected{% endif %}>100</option>
+                                <option value="250" {% if limit == 250 %}selected{% endif %}>250</option>
+                                <option value="500" {% if limit == 500 %}selected{% endif %}>500</option>
+                            </select>
+                        </div>
+                        <div class="col-md-2 d-flex align-items-end">
+                            <button type="submit" class="btn btn-primary w-100">
+                                <i class="fas fa-filter"></i> Apply
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+
+            <!-- Webhook Logs -->
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0">Webhook Activity Log</h5>
+                </div>
+                <div class="card-body p-0">
+                    {% if webhook_logs %}
+                    <div class="table-responsive">
+                        <table class="table table-hover mb-0">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Timestamp</th>
+                                    <th>Media Buy</th>
+                                    <th>Principal</th>
+                                    <th>Sequence</th>
+                                    <th>Type</th>
+                                    <th>Metrics</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for log in webhook_logs %}
+                                <tr>
+                                    <td>
+                                        <small class="text-muted">
+                                            {{ log.timestamp.strftime('%Y-%m-%d %H:%M:%S') }}
+                                        </small>
+                                    </td>
+                                    <td>
+                                        <code class="small">{{ log.details.get('media_buy_id', 'N/A') }}</code>
+                                    </td>
+                                    <td>
+                                        <small>{{ log.principal_id }}</small>
+                                    </td>
+                                    <td>
+                                        <span class="badge bg-info">
+                                            #{{ log.details.get('sequence_number', 'N/A') }}
+                                        </span>
+                                    </td>
+                                    <td>
+                                        {% if log.details.get('notification_type') == 'final' %}
+                                        <span class="badge bg-success">
+                                            <i class="fas fa-check-circle"></i> Final
+                                        </span>
+                                        {% else %}
+                                        <span class="badge bg-primary">
+                                            <i class="fas fa-clock"></i> Scheduled
+                                        </span>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        <small>
+                                            <strong>{{ "{:,}".format(log.details.get('impressions', 0)) }}</strong> imps<br>
+                                            <strong>${{ "%.2f"|format(log.details.get('spend', 0)) }}</strong> spend
+                                        </small>
+                                    </td>
+                                    <td>
+                                        <button class="btn btn-sm btn-outline-primary"
+                                                onclick="showWebhookDetails('{{ log.audit_log_id }}')">
+                                            <i class="fas fa-eye"></i> Details
+                                        </button>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    {% else %}
+                    <div class="text-center py-5">
+                        <i class="fas fa-bell-slash fa-3x text-muted mb-3"></i>
+                        <p class="text-muted">No webhook activity found.</p>
+                        <p class="text-muted">
+                            Webhooks will appear here when delivery notifications are sent.
+                        </p>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Webhook Details Modal -->
+<div class="modal fade" id="webhookDetailsModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Webhook Details</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <pre id="webhookDetailsContent" style="max-height: 400px; overflow-y: auto;"></pre>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+function showWebhookDetails(auditLogId) {
+    // Find the log in the data
+    const logs = {{ webhook_logs | tojson | safe }};
+    const log = logs.find(l => l.audit_log_id == auditLogId);
+
+    if (log) {
+        document.getElementById('webhookDetailsContent').textContent = JSON.stringify(log, null, 2);
+        const modal = new bootstrap.Modal(document.getElementById('webhookDetailsModal'));
+        modal.show();
+    }
+}
+
+// Auto-refresh every 30 seconds if no filters are applied
+{% if not media_buy_filter and not principal_filter %}
+setTimeout(function() {
+    location.reload();
+}, 30000);
+{% endif %}
+</script>
+{% endblock %}
