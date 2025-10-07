@@ -34,10 +34,12 @@ class TestDashboardService:
         mock_session = Mock()
         mock_get_db.return_value.__enter__.return_value = mock_session
 
-        # Mock tenant
+        # Mock tenant (SQLAlchemy 2.0 pattern)
         mock_tenant = Mock(spec=Tenant)
         mock_tenant.tenant_id = "test_tenant"
-        mock_session.query.return_value.filter_by.return_value.first.return_value = mock_tenant
+        mock_scalars = Mock()
+        mock_scalars.first.return_value = mock_tenant
+        mock_session.scalars.return_value = mock_scalars
 
         service = DashboardService("test_tenant")
 
@@ -51,7 +53,7 @@ class TestDashboardService:
         assert result2 == mock_tenant
 
         # Should only have called database once
-        mock_session.query.assert_called_once()
+        mock_session.scalars.assert_called_once()
 
     @patch("src.admin.services.dashboard_service.MediaBuyReadinessService")
     @patch("src.admin.services.dashboard_service.get_db_session")
