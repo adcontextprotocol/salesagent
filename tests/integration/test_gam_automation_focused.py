@@ -5,7 +5,6 @@ Tests the implementation of Issue #116: automatic activation for non-guaranteed 
 Focused integration tests using real database connections and minimal mocking.
 """
 
-import json
 from datetime import datetime
 
 import pytest
@@ -41,7 +40,7 @@ class TestGAMProductConfiguration:
     """Test database-backed product configuration for automation."""
 
     @pytest.fixture
-    def test_tenant_data(self):
+    def test_tenant_data(self, integration_db):
         """Create test tenant and products in database."""
         tenant_id = "test_automation_tenant"
 
@@ -66,13 +65,12 @@ class TestGAMProductConfiguration:
                 delivery_type="non_guaranteed",
                 is_fixed_price=True,
                 cpm=2.50,
-                implementation_config=json.dumps(
-                    {
-                        "line_item_type": "NETWORK",
-                        "non_guaranteed_automation": "automatic",
-                        "creative_placeholders": [{"width": 300, "height": 250, "expected_creative_count": 1}],
-                    }
-                ),
+                # JSONType expects dict, not json.dumps() string
+                implementation_config={
+                    "line_item_type": "NETWORK",
+                    "non_guaranteed_automation": "automatic",
+                    "creative_placeholders": [{"width": 300, "height": 250, "expected_creative_count": 1}],
+                },
             )
 
             # Non-guaranteed product requiring confirmation
@@ -85,13 +83,12 @@ class TestGAMProductConfiguration:
                 delivery_type="non_guaranteed",
                 is_fixed_price=True,
                 cpm=1.00,
-                implementation_config=json.dumps(
-                    {
-                        "line_item_type": "HOUSE",
-                        "non_guaranteed_automation": "confirmation_required",
-                        "creative_placeholders": [{"width": 728, "height": 90, "expected_creative_count": 1}],
-                    }
-                ),
+                # JSONType expects dict, not json.dumps() string
+                implementation_config={
+                    "line_item_type": "HOUSE",
+                    "non_guaranteed_automation": "confirmation_required",
+                    "creative_placeholders": [{"width": 728, "height": 90, "expected_creative_count": 1}],
+                },
             )
 
             db_session.add_all([product_auto, product_conf])
@@ -118,7 +115,8 @@ class TestGAMProductConfiguration:
             auto_product = db_session.query(Product).filter_by(tenant_id=tenant_id, product_id=auto_product_id).first()
 
             assert auto_product is not None
-            config = json.loads(auto_product.implementation_config)
+            # JSONType automatically deserializes, no json.loads() needed
+            config = auto_product.implementation_config
             assert config["non_guaranteed_automation"] == "automatic"
             assert config["line_item_type"] == "NETWORK"
 
@@ -126,7 +124,8 @@ class TestGAMProductConfiguration:
             conf_product = db_session.query(Product).filter_by(tenant_id=tenant_id, product_id=conf_product_id).first()
 
             assert conf_product is not None
-            config = json.loads(conf_product.implementation_config)
+            # JSONType automatically deserializes, no json.loads() needed
+            config = conf_product.implementation_config
             assert config["non_guaranteed_automation"] == "confirmation_required"
             assert config["line_item_type"] == "HOUSE"
 

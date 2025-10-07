@@ -2,6 +2,97 @@
 
 ## 🚨 CRITICAL ARCHITECTURE PATTERNS
 
+### Database JSON Fields Pattern (SQLAlchemy 2.0)
+**🚨 MANDATORY**: All JSON columns MUST use `JSONType` for cross-database compatibility.
+
+**The Problem:**
+- SQLite stores JSON as text strings → requires manual `json.loads()`
+- PostgreSQL uses native JSONB → returns Python dicts/lists automatically
+- This inconsistency causes bugs (e.g., iterating over strings character-by-character)
+
+**The Solution: JSONType**
+We have a custom `JSONType` TypeDecorator that handles this automatically:
+
+```python
+# ✅ CORRECT - Use JSONType for ALL JSON columns
+from src.core.database.json_type import JSONType
+
+class MyModel(Base):
+    __tablename__ = "my_table"
+
+    # Use JSONType, not JSON
+    config = Column(JSONType, nullable=False, default=dict)
+    tags = Column(JSONType, nullable=True)
+    metadata = Column(JSONType)
+```
+
+**❌ WRONG - Never use plain JSON type:**
+```python
+from sqlalchemy import JSON
+
+class MyModel(Base):
+    config = Column(JSON)  # ❌ Will cause bugs!
+```
+
+**In Application Code:**
+```python
+# ✅ CORRECT - JSONType handles everything automatically
+with get_db_session() as session:
+    model = session.query(MyModel).first()
+
+    # Always receive dict/list, never string
+    assert isinstance(model.config, dict)
+    assert isinstance(model.tags, (list, type(None)))
+
+    # No manual json.loads() needed!
+    config_value = model.config.get("key")
+
+# ❌ WRONG - Manual JSON parsing (old pattern)
+import json
+config = json.loads(model.config) if isinstance(model.config, str) else model.config
+```
+
+**Migration Strategy:**
+1. **New code**: ALWAYS use `JSONType` for new JSON columns
+2. **Existing code**: Convert to `JSONType` when you touch it
+3. **No manual parsing**: Remove any `json.loads()` calls when converting
+
+**mypy + SQLAlchemy Plugin Compatibility:**
+JSONType is fully compatible with mypy's SQLAlchemy plugin:
+
+```python
+from typing import Optional
+from sqlalchemy.orm import Mapped, mapped_column
+
+class MyModel(Base):
+    __tablename__ = "my_table"
+
+    # mypy-compatible syntax (SQLAlchemy 2.0 style)
+    config: Mapped[dict] = mapped_column(JSONType, nullable=False, default=dict)
+    tags: Mapped[Optional[list]] = mapped_column(JSONType, nullable=True)
+```
+
+**Error Handling:**
+JSONType uses fail-fast error handling:
+- **Invalid JSON in database** → Raises `ValueError` (data corruption alert)
+- **Non-dict/list types being stored** → Converts to `{}` with warning
+- **Unexpected database types** → Raises `TypeError`
+
+This ensures data corruption is detected immediately, not hidden.
+
+**Current Status:**
+- ✅ All 45 JSON columns in models.py use JSONType
+- ✅ 30 comprehensive unit tests
+- ✅ PostgreSQL fast-path optimization (~20% performance improvement)
+- ✅ Production-ready with robust error handling
+
+**References:**
+- Implementation: `src/core/database/json_type.py`
+- Tests: `tests/unit/test_json_type.py`
+- SQLAlchemy docs: [TypeDecorator](https://docs.sqlalchemy.org/en/20/core/custom_types.html#typedecorator)
+
+---
+
 ### MCP/A2A Shared Implementation Pattern
 **🚨 MANDATORY**: All tools MUST use shared implementation to avoid code duplication.
 
@@ -96,7 +187,76 @@ Python-based AdCP V2.3 sales agent reference implementation with:
 
 ## Key Architecture Principles
 
-### 1. AdCP Protocol Compliance - MANDATORY
+### 1. SQLAlchemy 2.0 Query Patterns - MANDATORY
+**🚨 CRITICAL**: Use SQLAlchemy 2.0 patterns for all database queries. Legacy 1.x patterns are deprecated.
+
+**Migration Status:**
+- ✅ Stage 1 & 2 Complete: Infrastructure and helper functions migrated
+- 🔄 In Progress: ~114 files with legacy patterns remain
+- 🎯 Goal: All new code uses 2.0 patterns; convert legacy code as touched
+
+**Correct Pattern (SQLAlchemy 2.0):**
+```python
+from sqlalchemy import select
+
+# Single result
+stmt = select(Model).filter_by(field=value)
+instance = session.scalars(stmt).first()
+
+# Multiple results
+stmt = select(Model).filter_by(field=value)
+results = session.scalars(stmt).all()
+
+# With filter() instead of filter_by()
+stmt = select(Model).where(Model.field == value)
+instance = session.scalars(stmt).first()
+
+# Complex queries with joins
+stmt = select(Model).join(Other).where(Model.field == value)
+results = session.scalars(stmt).all()
+```
+
+**❌ WRONG - Legacy Pattern (SQLAlchemy 1.x):**
+```python
+# DO NOT USE - Deprecated in 2.0
+instance = session.query(Model).filter_by(field=value).first()
+results = session.query(Model).filter_by(field=value).all()
+```
+
+**When to Migrate:**
+1. **Always use 2.0 patterns for new code** - No exceptions
+2. **Convert legacy code when touching it** - If you're editing a function with `session.query()`, convert it to `select()` + `scalars()`
+3. **Helper functions available**: Use `get_or_404()` and `get_or_create()` from `database_session.py` (already migrated)
+
+**Common Conversions:**
+```python
+# Pattern 1: Simple filter_by
+- session.query(Model).filter_by(x=y).first()
++ stmt = select(Model).filter_by(x=y)
++ session.scalars(stmt).first()
+
+# Pattern 2: filter() with conditions
+- session.query(Model).filter(Model.x == y).first()
++ stmt = select(Model).where(Model.x == y)
++ session.scalars(stmt).first()
+
+# Pattern 3: All results
+- session.query(Model).filter_by(x=y).all()
++ stmt = select(Model).filter_by(x=y)
++ session.scalars(stmt).all()
+
+# Pattern 4: Count
+- session.query(Model).filter_by(x=y).count()
++ from sqlalchemy import func, select
++ stmt = select(func.count()).select_from(Model).where(Model.x == y)
++ session.scalar(stmt)
+```
+
+**See Also:**
+- PR #307 - Stage 1 & 2 migration examples
+- [SQLAlchemy 2.0 Docs](https://docs.sqlalchemy.org/en/20/changelog/migration_20.html)
+
+### 2. AdCP Protocol Compliance - MANDATORY
 **🚨 CRITICAL**: All client-facing models MUST be AdCP spec-compliant and tested.
 
 **Requirements:**

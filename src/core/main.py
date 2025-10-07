@@ -12,6 +12,7 @@ from fastmcp.exceptions import ToolError
 from fastmcp.server.context import Context
 from fastmcp.server.dependencies import get_http_headers
 from rich.console import Console
+from sqlalchemy import select
 
 from src.adapters.google_ad_manager import GoogleAdManager
 from src.adapters.kevel import Kevel
@@ -37,6 +38,7 @@ from scripts.setup.init_database import init_db
 # Other imports
 from src.core.config_loader import (
     get_current_tenant,
+    get_tenant_by_subdomain,
     get_tenant_by_virtual_host,
     load_config,
     set_current_tenant,
@@ -152,6 +154,9 @@ def get_principal_from_token(token: str, tenant_id: str | None = None) -> str | 
     If tenant_id is provided, only looks in that specific tenant.
     If not provided, searches globally by token and sets the tenant context.
     """
+    console.print(
+        f"[blue]Looking up principal: tenant_id={tenant_id}, token={'***' + token[-6:] if token else 'None'}[/blue]"
+    )
 
     # Use standardized session management
     with get_db_session() as session:
@@ -159,12 +164,17 @@ def get_principal_from_token(token: str, tenant_id: str | None = None) -> str | 
         with session.begin():
             if tenant_id:
                 # If tenant_id specified, ONLY look in that tenant
-                principal = session.query(ModelPrincipal).filter_by(access_token=token, tenant_id=tenant_id).first()
+                console.print(f"[blue]Searching for principal in tenant '{tenant_id}'[/blue]")
+                stmt = select(ModelPrincipal).filter_by(access_token=token, tenant_id=tenant_id)
+                principal = session.scalars(stmt).first()
 
                 if not principal:
+                    console.print(f"[yellow]No principal found in tenant '{tenant_id}', checking admin token[/yellow]")
                     # Also check if it's the admin token for this specific tenant
-                    tenant = session.query(Tenant).filter_by(tenant_id=tenant_id, is_active=True).first()
+                    stmt = select(Tenant).filter_by(tenant_id=tenant_id, is_active=True)
+                    tenant = session.scalars(stmt).first()
                     if tenant and token == tenant.admin_token:
+                        console.print(f"[green]Token matches admin token for tenant '{tenant_id}'[/green]")
                         # Set tenant context for admin token
                         tenant_dict = {
                             "tenant_id": tenant.tenant_id,
@@ -185,22 +195,35 @@ def get_principal_from_token(token: str, tenant_id: str | None = None) -> str | 
                         }
                         set_current_tenant(tenant_dict)
                         return f"{tenant_id}_admin"
+                    console.print(f"[red]Token not found in tenant '{tenant_id}' and doesn't match admin token[/red]")
                     return None
+                else:
+                    console.print(f"[green]Found principal '{principal.principal_id}' in tenant '{tenant_id}'[/green]")
             else:
                 # No tenant specified - search globally by token
-                principal = session.query(ModelPrincipal).filter_by(access_token=token).first()
+                console.print("[blue]No tenant specified - searching globally by token[/blue]")
+                stmt = select(ModelPrincipal).filter_by(access_token=token)
+                principal = session.scalars(stmt).first()
 
                 if not principal:
+                    console.print("[red]No principal found with this token globally[/red]")
                     return None
 
+                console.print(
+                    f"[green]Found principal '{principal.principal_id}' in tenant '{principal.tenant_id}'[/green]"
+                )
+
                 # CRITICAL: Validate the tenant exists and is active before proceeding
-                tenant_check = session.query(Tenant).filter_by(tenant_id=principal.tenant_id, is_active=True).first()
+                stmt = select(Tenant).filter_by(tenant_id=principal.tenant_id, is_active=True)
+                tenant_check = session.scalars(stmt).first()
                 if not tenant_check:
+                    console.print(f"[red]Tenant '{principal.tenant_id}' is inactive or deleted[/red]")
                     # Tenant is disabled or deleted - fail securely
                     return None
 
             # Get the tenant for this principal and set it as current context
-            tenant = session.query(Tenant).filter_by(tenant_id=principal.tenant_id, is_active=True).first()
+            stmt = select(Tenant).filter_by(tenant_id=principal.tenant_id, is_active=True)
+            tenant = session.scalars(stmt).first()
             if tenant:
                 tenant_dict = {
                     "tenant_id": tenant.tenant_id,
@@ -220,6 +243,7 @@ def get_principal_from_token(token: str, tenant_id: str | None = None) -> str | 
                     "policy_settings": tenant.policy_settings,
                 }
                 set_current_tenant(tenant_dict)
+                console.print(f"[bold green]Set tenant context to '{tenant.tenant_id}'[/bold green]")
 
                 # Check if this is the admin token for the tenant
                 if token == tenant.admin_token:
@@ -270,7 +294,8 @@ def get_principal_from_context(context: Context | None) -> str | None:
 
     # If get_http_headers() returned empty dict or None, try context.meta fallback
     # This is necessary for sync tools where get_http_headers() may not work
-    if not headers:
+    # CRITICAL: get_http_headers() returns {} for sync tools, so we need fallback even for empty dict
+    if not headers:  # Handles both None and {}
         if hasattr(context, "meta") and context.meta and "headers" in context.meta:
             headers = context.meta["headers"]
         # Try other possible attributes
@@ -279,51 +304,114 @@ def get_principal_from_context(context: Context | None) -> str | None:
         elif hasattr(context, "_headers"):
             headers = context._headers
 
+    # If still no headers dict available, return None
     if not headers:
         return None
 
     # Get the x-adcp-auth header (case-insensitive lookup)
     auth_token = _get_header_case_insensitive(headers, "x-adcp-auth")
+
+    # Log all relevant headers for debugging
+    host_header = _get_header_case_insensitive(headers, "host")
+    apx_host_header = _get_header_case_insensitive(headers, "apx-incoming-host")
+    tenant_header = _get_header_case_insensitive(headers, "x-adcp-tenant")
+    console.print("[blue]Auth Headers Debug:[/blue]")
+    console.print(f"  Host: {host_header}")
+    console.print(f"  Apx-Incoming-Host: {apx_host_header}")
+    console.print(f"  x-adcp-tenant: {tenant_header}")
+    console.print(f"  x-adcp-auth: {'Present' if auth_token else 'Missing'}")
+
     if not auth_token:
-        return None
+        console.print("[yellow]No x-adcp-auth token found - OK for discovery endpoints[/yellow]")
+        return None  # No auth provided - this is OK for discovery endpoints
 
     # Check if a specific tenant was requested via header or subdomain
     requested_tenant_id = None
     tenant_context = None
+    detection_method = None
 
-    # 1. Check Apx-Incoming-Host header (for Approximated.app virtual hosts)
-    apx_host = _get_header_case_insensitive(headers, "apx-incoming-host")
-    if apx_host:
-        tenant_context = get_tenant_by_virtual_host(apx_host)
-        if tenant_context:
-            requested_tenant_id = tenant_context["tenant_id"]
-            # Set tenant context immediately for virtual host routing
-            set_current_tenant(tenant_context)
-
-    # 2. Check x-adcp-tenant header (set by middleware for path-based routing)
-    if not requested_tenant_id:
-        requested_tenant_id = _get_header_case_insensitive(headers, "x-adcp-tenant")
-
-    # 3. If not found, check host header for subdomain
+    # 1. Check host header for subdomain FIRST (most common case)
     if not requested_tenant_id:
         host = _get_header_case_insensitive(headers, "host") or ""
         subdomain = host.split(".")[0] if "." in host else None
-        if subdomain and subdomain not in ["localhost", "adcp-sales-agent", "www"]:
-            requested_tenant_id = subdomain
+        console.print(f"[blue]Extracted subdomain from Host header: {subdomain}[/blue]")
+        if subdomain and subdomain not in ["localhost", "adcp-sales-agent", "www", "admin"]:
+            # Look up tenant by subdomain to get actual tenant_id
+            console.print(f"[blue]Looking up tenant by subdomain: {subdomain}[/blue]")
+            tenant_context = get_tenant_by_subdomain(subdomain)
+            if tenant_context:
+                requested_tenant_id = tenant_context["tenant_id"]
+                detection_method = "subdomain"
+                set_current_tenant(tenant_context)
+                console.print(
+                    f"[green]Tenant detected from subdomain: {subdomain} → tenant_id: {requested_tenant_id}[/green]"
+                )
+            else:
+                console.print(f"[yellow]No tenant found for subdomain: {subdomain}[/yellow]")
+
+    # 2. Check x-adcp-tenant header (set by nginx for path-based routing)
+    if not requested_tenant_id:
+        tenant_hint = _get_header_case_insensitive(headers, "x-adcp-tenant")
+        if tenant_hint:
+            console.print(f"[blue]Looking up tenant from x-adcp-tenant header: {tenant_hint}[/blue]")
+            # Try to look up by subdomain first (most common case)
+            tenant_context = get_tenant_by_subdomain(tenant_hint)
+            if tenant_context:
+                requested_tenant_id = tenant_context["tenant_id"]
+                detection_method = "x-adcp-tenant header (subdomain lookup)"
+                set_current_tenant(tenant_context)
+                console.print(
+                    f"[green]Tenant detected from x-adcp-tenant: {tenant_hint} → tenant_id: {requested_tenant_id}[/green]"
+                )
+            else:
+                # Fallback: assume it's already a tenant_id
+                requested_tenant_id = tenant_hint
+                detection_method = "x-adcp-tenant header (direct)"
+                console.print(f"[yellow]Using x-adcp-tenant as tenant_id directly: {requested_tenant_id}[/yellow]")
+
+    # 3. Check Apx-Incoming-Host header (for Approximated.app virtual hosts)
+    if not requested_tenant_id:
+        apx_host = _get_header_case_insensitive(headers, "apx-incoming-host")
+        if apx_host:
+            console.print(f"[blue]Looking up tenant by virtual host: {apx_host}[/blue]")
+            tenant_context = get_tenant_by_virtual_host(apx_host)
+            if tenant_context:
+                requested_tenant_id = tenant_context["tenant_id"]
+                detection_method = "apx-incoming-host"
+                # Set tenant context immediately for virtual host routing
+                set_current_tenant(tenant_context)
+                console.print(f"[green]Tenant detected from Apx-Incoming-Host: {requested_tenant_id}[/green]")
+
+    if not requested_tenant_id:
+        console.print("[yellow]No tenant detected from any source - will use global token lookup[/yellow]")
+    else:
+        console.print(f"[bold green]Final tenant_id: {requested_tenant_id} (via {detection_method})[/bold green]")
 
     # Validate token and get principal
     # If a specific tenant was requested, validate against it
     # Otherwise, look up by token alone and set tenant context
-    return get_principal_from_token(auth_token, requested_tenant_id)
+    principal_id = get_principal_from_token(auth_token, requested_tenant_id)
+
+    # If token was provided but invalid, raise an error
+    # This distinguishes between "no auth" (OK) and "bad auth" (error)
+    if principal_id is None:
+        from fastmcp.exceptions import ToolError
+
+        raise ToolError(
+            "INVALID_AUTH_TOKEN",
+            f"Authentication token is invalid for tenant '{requested_tenant_id or 'any'}'. "
+            f"The token may be expired, revoked, or associated with a different tenant.",
+        )
+
+    return principal_id
 
 
 def get_principal_adapter_mapping(principal_id: str) -> dict[str, Any]:
     """Get the platform mappings for a principal."""
     tenant = get_current_tenant()
     with get_db_session() as session:
-        principal = (
-            session.query(ModelPrincipal).filter_by(principal_id=principal_id, tenant_id=tenant["tenant_id"]).first()
-        )
+        stmt = select(ModelPrincipal).filter_by(principal_id=principal_id, tenant_id=tenant["tenant_id"])
+        principal = session.scalars(stmt).first()
         return principal.platform_mappings if principal else {}
 
 
@@ -331,9 +419,8 @@ def get_principal_object(principal_id: str) -> Principal | None:
     """Get a Principal object for the given principal_id."""
     tenant = get_current_tenant()
     with get_db_session() as session:
-        principal = (
-            session.query(ModelPrincipal).filter_by(principal_id=principal_id, tenant_id=tenant["tenant_id"]).first()
-        )
+        stmt = select(ModelPrincipal).filter_by(principal_id=principal_id, tenant_id=tenant["tenant_id"])
+        principal = session.scalars(stmt).first()
 
         if principal:
             return Principal(
@@ -370,7 +457,8 @@ def get_adapter(principal: Principal, dry_run: bool = False, testing_context=Non
 
     # Get adapter config from adapter_config table
     with get_db_session() as session:
-        config_row = session.query(AdapterConfig).filter_by(tenant_id=tenant["tenant_id"]).first()
+        stmt = select(AdapterConfig).filter_by(tenant_id=tenant["tenant_id"])
+        config_row = session.scalars(stmt).first()
 
         adapter_config = {"enabled": True}
         if config_row:
@@ -684,11 +772,8 @@ def log_tool_activity(context: Context, tool_name: str, start_time: float = None
 
         if principal_id:
             with get_db_session() as session:
-                principal = (
-                    session.query(ModelPrincipal)
-                    .filter_by(principal_id=principal_id, tenant_id=tenant["tenant_id"])
-                    .first()
-                )
+                stmt = select(ModelPrincipal).filter_by(principal_id=principal_id, tenant_id=tenant["tenant_id"])
+                principal = session.scalars(stmt).first()
                 if principal:
                     principal_name = principal.name
 
@@ -1164,14 +1249,10 @@ def _list_creative_formats_impl(
         from src.core.schemas import AssetRequirement, Format
 
         # Get formats for this tenant (or global formats)
-        db_formats = (
-            session.query(CreativeFormat)
-            .filter(
-                (CreativeFormat.tenant_id == tenant["tenant_id"])
-                | (CreativeFormat.tenant_id.is_(None))  # Global formats
-            )
-            .all()
+        stmt = select(CreativeFormat).where(
+            (CreativeFormat.tenant_id == tenant["tenant_id"]) | (CreativeFormat.tenant_id.is_(None))  # Global formats
         )
+        db_formats = session.scalars(stmt).all()
 
         for db_format in db_formats:
             # Convert database model to schema format
@@ -1452,11 +1533,10 @@ def _sync_creatives_impl(
                     if creative.get("creative_id"):
                         from src.core.database.models import Creative as DBCreative
 
-                        existing_creative = (
-                            session.query(DBCreative)
-                            .filter_by(tenant_id=tenant["tenant_id"], creative_id=creative.get("creative_id"))
-                            .first()
+                        stmt = select(DBCreative).filter_by(
+                            tenant_id=tenant["tenant_id"], creative_id=creative.get("creative_id")
                         )
+                        existing_creative = session.scalars(stmt).first()
 
                     if existing_creative:
                         # Update existing creative (respects patch vs full upsert)
@@ -1612,7 +1692,8 @@ def _sync_creatives_impl(
                 for package_id in package_ids:
                     # Find which media buy this package belongs to
                     # Packages are stored in media_buy.raw_request["packages"]
-                    media_buys = session.query(MediaBuy).filter_by(tenant_id=tenant["tenant_id"]).all()
+                    stmt = select(MediaBuy).filter_by(tenant_id=tenant["tenant_id"])
+                    media_buys = session.scalars(stmt).all()
 
                     media_buy_id = None
                     for mb in media_buys:
@@ -1733,11 +1814,10 @@ def _sync_creatives_impl(
         with get_db_session() as session:
             from src.core.database.models import Creative as DBCreative
 
-            db_creative = (
-                session.query(DBCreative)
-                .filter_by(tenant_id=tenant["tenant_id"], creative_id=creative_dict.get("creative_id"))
-                .first()
+            stmt = select(DBCreative).filter_by(
+                tenant_id=tenant["tenant_id"], creative_id=creative_dict.get("creative_id")
             )
+            db_creative = session.scalars(stmt).first()
             if db_creative:
                 # Create schema object with populated internal fields
                 # Using aliased field names for construction
@@ -1932,47 +2012,49 @@ def _list_creatives_impl(
         from src.core.database.models import MediaBuy
 
         # Build query
-        query = session.query(DBCreative).filter_by(tenant_id=tenant["tenant_id"])
+        stmt = select(DBCreative).filter_by(tenant_id=tenant["tenant_id"])
 
         # Apply filters
         if req.media_buy_id:
             # Filter by media buy assignments
-            query = query.join(DBAssignment, DBCreative.creative_id == DBAssignment.creative_id).filter(
+            stmt = stmt.join(DBAssignment, DBCreative.creative_id == DBAssignment.creative_id).where(
                 DBAssignment.media_buy_id == req.media_buy_id
             )
 
         if req.buyer_ref:
             # Filter by buyer_ref through media buy
-            query = (
-                query.join(DBAssignment, DBCreative.creative_id == DBAssignment.creative_id)
+            stmt = (
+                stmt.join(DBAssignment, DBCreative.creative_id == DBAssignment.creative_id)
                 .join(MediaBuy, DBAssignment.media_buy_id == MediaBuy.media_buy_id)
-                .filter(MediaBuy.buyer_ref == req.buyer_ref)
+                .where(MediaBuy.buyer_ref == req.buyer_ref)
             )
 
         if req.status:
-            query = query.filter(DBCreative.status == req.status)
+            stmt = stmt.where(DBCreative.status == req.status)
 
         if req.format:
-            query = query.filter(DBCreative.format == req.format)
+            stmt = stmt.where(DBCreative.format == req.format)
 
         if req.tags:
             # Simple tag filtering - in production, might use JSON operators
             for tag in req.tags:
-                query = query.filter(DBCreative.name.contains(tag))  # Simplified
+                stmt = stmt.where(DBCreative.name.contains(tag))  # Simplified
 
         if req.created_after:
-            query = query.filter(DBCreative.created_at >= req.created_after)
+            stmt = stmt.where(DBCreative.created_at >= req.created_after)
 
         if req.created_before:
-            query = query.filter(DBCreative.created_at <= req.created_before)
+            stmt = stmt.where(DBCreative.created_at <= req.created_before)
 
         if req.search:
             # Search in name and description
             search_term = f"%{req.search}%"
-            query = query.filter(DBCreative.name.ilike(search_term))
+            stmt = stmt.where(DBCreative.name.ilike(search_term))
 
         # Get total count before pagination
-        total_count = query.count()
+        from sqlalchemy import func
+
+        total_count = session.scalar(select(func.count()).select_from(stmt.subquery()))
 
         # Apply sorting
         if req.sort_by == "name":
@@ -1983,13 +2065,13 @@ def _list_creatives_impl(
             sort_column = DBCreative.created_at
 
         if req.sort_order == "asc":
-            query = query.order_by(sort_column.asc())
+            stmt = stmt.order_by(sort_column.asc())
         else:
-            query = query.order_by(sort_column.desc())
+            stmt = stmt.order_by(sort_column.desc())
 
         # Apply pagination
         offset = (req.page - 1) * req.limit
-        db_creatives = query.offset(offset).limit(req.limit).all()
+        db_creatives = session.scalars(stmt.offset(offset).limit(req.limit)).all()
 
         # Convert to schema objects
         for db_creative in db_creatives:
@@ -2425,7 +2507,7 @@ def _list_authorized_properties_impl(
     try:
         with get_db_session() as session:
             # Query authorized properties for this tenant
-            query = session.query(AuthorizedProperty).filter(AuthorizedProperty.tenant_id == tenant_id)
+            stmt = select(AuthorizedProperty).where(AuthorizedProperty.tenant_id == tenant_id)
 
             # Apply tag filtering if requested
             if req.tags:
@@ -2433,12 +2515,12 @@ def _list_authorized_properties_impl(
                 tag_filters = []
                 for tag in req.tags:
                     tag_filters.append(AuthorizedProperty.tags.contains([tag]))
-                query = query.filter(sa.or_(*tag_filters))
+                stmt = stmt.where(sa.or_(*tag_filters))
 
             # Only include verified properties
-            query = query.filter(AuthorizedProperty.verification_status == "verified")
+            stmt = stmt.where(AuthorizedProperty.verification_status == "verified")
 
-            authorized_properties = query.all()
+            authorized_properties = session.scalars(stmt).all()
 
             # Convert database models to Pydantic models
             properties = []
@@ -2466,11 +2548,8 @@ def _list_authorized_properties_impl(
             # Get tag metadata for all referenced tags
             tag_metadata = {}
             if all_tags:
-                property_tags = (
-                    session.query(PropertyTag)
-                    .filter(PropertyTag.tenant_id == tenant_id, PropertyTag.tag_id.in_(all_tags))
-                    .all()
-                )
+                stmt = select(PropertyTag).where(PropertyTag.tenant_id == tenant_id, PropertyTag.tag_id.in_(all_tags))
+                property_tags = session.scalars(stmt).all()
 
                 for tag in property_tags:
                     tag_metadata[tag.tag_id] = PropertyTagMetadata(name=tag.name, description=tag.description)
@@ -2829,7 +2908,8 @@ def _create_media_buy_impl(
 
                     # Persist the auto-generated config to database
                     with get_db_session() as db_session:
-                        db_product = db_session.query(ModelProduct).filter_by(product_id=product.product_id).first()
+                        stmt = select(ModelProduct).filter_by(product_id=product.product_id)
+                        db_product = db_session.scalars(stmt).first()
                         if db_product:
                             db_product.implementation_config = product.implementation_config
                             db_session.commit()
@@ -3163,11 +3243,8 @@ def _create_media_buy_impl(
         try:
             principal_name = "Unknown"
             with get_db_session() as session:
-                principal_db = (
-                    session.query(ModelPrincipal)
-                    .filter_by(principal_id=principal_id, tenant_id=tenant["tenant_id"])
-                    .first()
-                )
+                stmt = select(ModelPrincipal).filter_by(principal_id=principal_id, tenant_id=tenant["tenant_id"])
+                principal_db = session.scalars(stmt).first()
                 if principal_db:
                     principal_name = principal_db.name
 
@@ -3206,11 +3283,8 @@ def _create_media_buy_impl(
             # Get principal name for notification (reuse from activity logging above)
             principal_name = "Unknown"
             with get_db_session() as session:
-                principal_db = (
-                    session.query(ModelPrincipal)
-                    .filter_by(principal_id=principal_id, tenant_id=tenant["tenant_id"])
-                    .first()
-                )
+                stmt = select(ModelPrincipal).filter_by(principal_id=principal_id, tenant_id=tenant["tenant_id"])
+                principal_db = session.scalars(stmt).first()
                 if principal_db:
                     principal_name = principal_db.name
 
@@ -4197,7 +4271,8 @@ def complete_task(req, context):
     )
 
     with get_db_session() as db_session:
-        db_task = db_session.query(Task).filter_by(task_id=req.task_id, tenant_id=tenant["tenant_id"]).first()
+        stmt = select(Task).filter_by(task_id=req.task_id, tenant_id=tenant["tenant_id"])
+        db_task = db_session.scalars(stmt).first()
 
         if not db_task:
             raise ToolError("NOT_FOUND", f"Task {req.task_id} not found")
@@ -4494,7 +4569,8 @@ def mark_task_complete(req, context):
     raise ToolError("DEPRECATED", "Task system has been replaced with workflow steps.")
 
     with get_db_session() as db_session:
-        db_task = db_session.query(Task).filter_by(task_id=req.task_id, tenant_id=tenant["tenant_id"]).first()
+        stmt = select(Task).filter_by(task_id=req.task_id, tenant_id=tenant["tenant_id"])
+        db_task = db_session.scalars(stmt).first()
 
         if not db_task:
             raise ToolError("NOT_FOUND", f"Task {req.task_id} not found")
@@ -4557,7 +4633,8 @@ def get_product_catalog() -> list[Product]:
     tenant = get_current_tenant()
 
     with get_db_session() as session:
-        products = session.query(ModelProduct).filter_by(tenant_id=tenant["tenant_id"]).all()
+        stmt = select(ModelProduct).filter_by(tenant_id=tenant["tenant_id"])
+        products = session.scalars(stmt).all()
 
         loaded_products = []
         for product in products:
@@ -4773,7 +4850,8 @@ async def debug_root_logic(request: Request):
             # This is the fallback logic we don't need for test-agent
             try:
                 with get_db_session() as db_session:
-                    tenant_obj = db_session.query(Tenant).filter_by(subdomain=subdomain, is_active=True).first()
+                    stmt = select(Tenant).filter_by(subdomain=subdomain, is_active=True)
+                    tenant_obj = db_session.scalars(stmt).first()
                     if tenant_obj:
                         debug_info["subdomain_tenant_found"] = True
                         # Build tenant dict...
@@ -4884,7 +4962,8 @@ if unified_mode:
             # Look up tenant by subdomain
             try:
                 with get_db_session() as db_session:
-                    tenant_obj = db_session.query(Tenant).filter_by(subdomain=subdomain, is_active=True).first()
+                    stmt = select(Tenant).filter_by(subdomain=subdomain, is_active=True)
+                    tenant_obj = db_session.scalars(stmt).first()
                     if tenant_obj:
                         tenant = {
                             "tenant_id": tenant_obj.tenant_id,
@@ -4955,31 +5034,34 @@ if unified_mode:
 
         with get_db_session() as session:
             # Base query for workflow steps in this tenant
-            query = session.query(WorkflowStep).join(Context).filter(Context.tenant_id == tenant["tenant_id"])
+            stmt = select(WorkflowStep).join(Context).where(Context.tenant_id == tenant["tenant_id"])
 
             # Apply status filter
             if status:
-                query = query.filter(WorkflowStep.status == status)
+                stmt = stmt.where(WorkflowStep.status == status)
 
             # Apply object type/ID filters
             if object_type and object_id:
-                query = query.join(ObjectWorkflowMapping).filter(
+                stmt = stmt.join(ObjectWorkflowMapping).where(
                     ObjectWorkflowMapping.object_type == object_type, ObjectWorkflowMapping.object_id == object_id
                 )
             elif object_type:
-                query = query.join(ObjectWorkflowMapping).filter(ObjectWorkflowMapping.object_type == object_type)
+                stmt = stmt.join(ObjectWorkflowMapping).where(ObjectWorkflowMapping.object_type == object_type)
 
             # Get total count before pagination
-            total = query.count()
+            from sqlalchemy import func
+
+            total = session.scalar(select(func.count()).select_from(stmt.subquery()))
 
             # Apply pagination and ordering
-            tasks = query.order_by(WorkflowStep.created_at.desc()).offset(offset).limit(limit).all()
+            tasks = session.scalars(stmt.order_by(WorkflowStep.created_at.desc()).offset(offset).limit(limit)).all()
 
             # Format tasks for response
             formatted_tasks = []
             for task in tasks:
                 # Get associated objects
-                mappings = session.query(ObjectWorkflowMapping).filter_by(step_id=task.step_id).all()
+                stmt = select(ObjectWorkflowMapping).filter_by(step_id=task.step_id)
+                mappings = session.scalars(stmt).all()
 
                 formatted_task = {
                     "task_id": task.step_id,
@@ -5040,18 +5122,19 @@ if unified_mode:
 
         with get_db_session() as session:
             # Find the task in this tenant
-            task = (
-                session.query(WorkflowStep)
+            stmt = (
+                select(WorkflowStep)
                 .join(Context)
-                .filter(WorkflowStep.step_id == task_id, Context.tenant_id == tenant["tenant_id"])
-                .first()
+                .where(WorkflowStep.step_id == task_id, Context.tenant_id == tenant["tenant_id"])
             )
+            task = session.scalars(stmt).first()
 
             if not task:
                 raise ValueError(f"Task {task_id} not found")
 
             # Get associated objects
-            mappings = session.query(ObjectWorkflowMapping).filter_by(step_id=task_id).all()
+            stmt = select(ObjectWorkflowMapping).filter_by(step_id=task_id)
+            mappings = session.scalars(stmt).all()
 
             # Build detailed response
             task_detail = {
@@ -5109,12 +5192,12 @@ if unified_mode:
 
         with get_db_session() as session:
             # Find the task in this tenant
-            task = (
-                session.query(WorkflowStep)
+            stmt = (
+                select(WorkflowStep)
                 .join(Context)
-                .filter(WorkflowStep.step_id == task_id, Context.tenant_id == tenant["tenant_id"])
-                .first()
+                .where(WorkflowStep.step_id == task_id, Context.tenant_id == tenant["tenant_id"])
             )
+            task = session.scalars(stmt).first()
 
             if not task:
                 raise ValueError(f"Task {task_id} not found")

@@ -21,7 +21,7 @@ from src.core.database.models import GAMLineItem, GAMOrder
 
 # Create database session factory
 engine = create_engine(DatabaseConfig.get_connection_string())
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+SessionLocal = sessionmaker(bind=engine)
 # Use scoped_session for thread-local sessions
 db_session = scoped_session(SessionLocal)
 
