@@ -9,6 +9,14 @@ repos:
         language: system
         pass_filenames: false
 
+      # Enforce JSONType usage for all JSON columns
+      - id: enforce-jsontype
+        name: Enforce JSONType usage (not plain JSON)
+        entry: sh -c 'if grep -rE "Column\(JSON[,)]" --include="*.py" src/core/database/models.py; then echo "❌ Found Column(JSON) usage! Use Column(JSONType) instead. See CLAUDE.md for pattern."; exit 1; fi'
+        language: system
+        pass_filenames: false
+        always_run: true
+
       # Prevent skipping tests (but allow skip_ci for CI-specific issues)
       - id: no-skip-tests
         name: No @pytest.mark.skip decorators allowed
