@@ -361,13 +361,17 @@ class TestMCPEndpointsComprehensive:
             # 3. Get media buy delivery status
             status_result = await client.call_tool(
                 "get_media_buy_delivery",
-                {"media_buy_id": media_buy_id},
+                {"media_buy_ids": [media_buy_id]},
             )
 
             status_content = safe_get_content(status_result)
-            assert status_content["media_buy_id"] == media_buy_id
-            assert "status" in status_content
-            assert "packages" in status_content
+            # Response contains deliveries array per AdCP spec
+            assert "deliveries" in status_content
+            # Newly created media buy might not have delivery data yet
+            assert isinstance(status_content["deliveries"], list)
+            # But should have aggregated totals
+            assert "aggregated_totals" in status_content
+            assert "currency" in status_content
 
 
 if __name__ == "__main__":
