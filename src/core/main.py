@@ -2835,7 +2835,7 @@ def _create_media_buy_impl(
                             if applicable_min_spends:
                                 # Use the highest minimum spend among all products in package
                                 required_min_spend = max(applicable_min_spends)
-                                package_budget = Decimal(str(package.budget.amount)) if package.budget else Decimal("0")
+                                package_budget = Decimal(str(package.budget.total)) if package.budget else Decimal("0")
 
                                 if package_budget < required_min_spend:
                                     error_msg = (
@@ -2867,7 +2867,7 @@ def _create_media_buy_impl(
                 # For packages, validate each package's daily budget
                 if req.packages:
                     for package in req.packages:
-                        package_budget = Decimal(str(package.budget.amount)) if package.budget else Decimal("0")
+                        package_budget = Decimal(str(package.budget.total)) if package.budget else Decimal("0")
                         package_daily_budget = package_budget / Decimal(str(flight_days))
 
                         if package_daily_budget > currency_limit.max_daily_package_spend:
