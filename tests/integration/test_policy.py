@@ -60,7 +60,7 @@ class TestAIPolicyAnalysis:
             mock_response.text = '{"status": "blocked", "reason": "Targets vulnerable elderly population with predatory financial services", "restrictions": [], "warnings": []}'
             return mock_response
 
-        policy_service_with_ai.model.generate_content = mock_generate
+        policy_service_with_ai.model.generate_content_async = mock_generate
 
         result = await policy_service_with_ai.check_brief_compliance("Reverse mortgage solutions for seniors")
 
@@ -84,7 +84,7 @@ class TestAIPolicyAnalysis:
             mock_response.text = '{"status": "blocked", "reason": "Contains prohibited advertiser: badcompany.com", "restrictions": [], "warnings": []}'
             return mock_response
 
-        policy_service_with_ai.model.generate_content = mock_generate
+        policy_service_with_ai.model.generate_content_async = mock_generate
 
         result = await policy_service_with_ai.check_brief_compliance(
             "Compare our product to competitor_brand", tenant_policies=tenant_policies
@@ -100,7 +100,7 @@ class TestAIPolicyAnalysis:
         async def mock_generate_error(*args, **kwargs):
             raise Exception("API error")
 
-        policy_service_with_ai.model.generate_content = mock_generate_error
+        policy_service_with_ai.model.generate_content_async = mock_generate_error
 
         result = await policy_service_with_ai.check_brief_compliance("Normal product advertisement")
 
