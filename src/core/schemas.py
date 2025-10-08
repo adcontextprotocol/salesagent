@@ -2700,8 +2700,8 @@ class GetSignalsRequest(BaseModel):
     - Optional: max_results (result limit)
     """
 
-    signal_spec: str = Field(..., description="Natural language description of the desired signals")
-    deliver_to: SignalDeliverTo = Field(..., description="Where the signals need to be delivered")
+    signal_spec: str = Field("", description="Natural language description of the desired signals")
+    deliver_to: SignalDeliverTo | None = Field(None, description="Where the signals need to be delivered")
     filters: SignalFilters | None = Field(None, description="Filters to refine results")
     max_results: int | None = Field(None, ge=1, description="Maximum number of results to return")
 

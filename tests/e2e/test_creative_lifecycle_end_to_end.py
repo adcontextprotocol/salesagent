@@ -89,10 +89,11 @@ class CreativeLifecycleTestSuite:
         """Create a test media buy for creative assignments."""
         try:
             # Get available products first
-            products_result = await self.mcp_client.tools.get_products(
-                brief="display and video ads", promoted_offering="creative testing"
+            products_result = await self.mcp_client.call_tool(
+                "get_products",
+                {"req": {"brief": "display and video ads", "promoted_offering": "creative testing"}},
             )
-            products_data = products_result.content if hasattr(products_result, "content") else products_result
+            products_data = products_result[0].content if products_result else {}
 
             if not products_data.get("products"):
                 pytest.skip("No products available for creative testing")
@@ -100,14 +101,20 @@ class CreativeLifecycleTestSuite:
             # Create media buy with first available product
             product_id = products_data["products"][0]["product_id"]
 
-            create_result = await self.mcp_client.tools.create_media_buy(
-                product_ids=[product_id],
-                total_budget=5000.0,
-                flight_start_date=(datetime.now(UTC) + timedelta(days=1)).isoformat(),
-                flight_end_date=(datetime.now(UTC) + timedelta(days=30)).isoformat(),
+            create_result = await self.mcp_client.call_tool(
+                "create_media_buy",
+                {
+                    "req": {
+                        "promoted_offering": "creative testing",
+                        "product_ids": [product_id],
+                        "total_budget": 5000.0,
+                        "start_date": (datetime.now(UTC) + timedelta(days=1)).date().isoformat(),
+                        "end_date": (datetime.now(UTC) + timedelta(days=30)).date().isoformat(),
+                    }
+                },
             )
 
-            create_data = create_result.content if hasattr(create_result, "content") else create_result
+            create_data = create_result[0].content if create_result else {}
 
             if not create_data.get("success"):
                 pytest.fail(f"Failed to create test media buy: {create_data.get('message')}")
