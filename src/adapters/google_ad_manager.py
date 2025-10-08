@@ -265,7 +265,6 @@ class GoogleAdManager(AdServerAdapter):
             return CreateMediaBuyResponse(media_buy_id="", status="failed", message=error_msg)
 
         # Get products to access implementation_config
-        import json
 
         from src.core.database.database_session import get_db_session
         from src.core.database.models import Product
@@ -284,7 +283,7 @@ class GoogleAdManager(AdServerAdapter):
                     products_map[package.package_id] = {
                         "product_id": product.product_id,
                         "implementation_config": (
-                            json.loads(product.implementation_config) if product.implementation_config else {}
+                            product.implementation_config if product.implementation_config else {}
                         ),
                     }
 

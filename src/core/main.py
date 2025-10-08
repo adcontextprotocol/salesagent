@@ -3045,7 +3045,16 @@ def _create_media_buy_impl(
                 message="Media buy creation failed: missing required datetime fields",
                 errors=[{"code": "invalid_datetime", "message": error_msg}],
             )
-        response = adapter.create_media_buy(req, packages, req.start_time, req.end_time)
+
+        # Call adapter with detailed error logging
+        try:
+            response = adapter.create_media_buy(req, packages, req.start_time, req.end_time)
+        except Exception as adapter_error:
+            import traceback
+
+            error_traceback = traceback.format_exc()
+            logger.error(f"Adapter create_media_buy failed with traceback:\n{error_traceback}")
+            raise
 
         # Store the media buy in memory (for backward compatibility)
         media_buys[response.media_buy_id] = (req, principal_id)

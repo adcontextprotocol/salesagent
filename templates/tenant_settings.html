@@ -2111,10 +2111,10 @@ function selectGAMAdapter() {
 function copyA2AConfig(principalId, principalName, accessToken) {
     {% if tenant.virtual_host %}
     // Use external domain if configured
-    const agentUri = "{% if is_production %}https://{{ tenant.virtual_host }}{% else %}http://localhost:{{ mcp_port }}{% endif %}";
+    const agentUri = "{% if is_production %}https://{{ tenant.virtual_host }}{% else %}http://localhost:{{ a2a_port }}{% endif %}";
     {% else %}
     // Use subdomain as fallback
-    const agentUri = "{% if is_production %}https://{{ tenant.subdomain }}.sales-agent.scope3.com{% else %}http://localhost:{{ mcp_port }}{% endif %}";
+    const agentUri = "{% if is_production %}https://{{ tenant.subdomain }}.sales-agent.scope3.com{% else %}http://localhost:{{ a2a_port }}{% endif %}";
     {% endif %}
 
     const a2aConfig = {
@@ -2122,7 +2122,7 @@ function copyA2AConfig(principalId, principalName, accessToken) {
         "name": principalName,
         "agent_uri": agentUri,
         "protocol": "a2a",
-        "auth_token_env": accessToken,
+        "auth_token": accessToken,
         "requiresAuth": true
     };
 

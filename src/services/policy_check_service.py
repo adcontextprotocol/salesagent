@@ -145,7 +145,8 @@ Be strict in your analysis. When in doubt, mark as restricted rather than allowe
                 system_prompt += "\n\nPolicy rules to enforce:\n" + "\n".join(rules_text)
 
         try:
-            response = await self.model.generate_content(
+            # Use async version of generate_content
+            response = await self.model.generate_content_async(
                 [
                     {"role": "user", "parts": [{"text": system_prompt}]},
                     {"role": "user", "parts": [{"text": f"Analyze this advertising brief:\n\n{text}"}]},
