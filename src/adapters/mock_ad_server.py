@@ -636,11 +636,15 @@ class MockAdServer(AdServerAdapter):
         from src.core.utils.naming import apply_naming_template, build_order_name_context
 
         order_name_template = "{campaign_name|promoted_offering} - {date_range}"  # Default
-        with get_db_session() as db_session:
-            if tenant_id and tenant_id != "unknown":
-                tenant_obj = db_session.scalars(select(Tenant).filter_by(tenant_id=tenant_id)).first()
-                if tenant_obj and tenant_obj.order_name_template:
-                    order_name_template = tenant_obj.order_name_template
+        try:
+            with get_db_session() as db_session:
+                if tenant_id and tenant_id != "unknown":
+                    tenant_obj = db_session.scalars(select(Tenant).filter_by(tenant_id=tenant_id)).first()
+                    if tenant_obj and tenant_obj.order_name_template:
+                        order_name_template = tenant_obj.order_name_template
+        except Exception:
+            # Database not available (e.g., in unit tests) - use default template
+            pass
 
         # Build context and apply template
         context = build_order_name_context(request, packages, start_time, end_time)

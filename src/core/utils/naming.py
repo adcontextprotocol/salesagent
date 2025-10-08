@@ -67,6 +67,10 @@ def apply_naming_template(
         ... })
         "Nike Shoes"
     """
+    # Ensure template is a string (handle MagicMock in tests)
+    if not isinstance(template, str):
+        template = str(template)
+
     result = template
 
     # Find all {variable} or {var1|var2} patterns
