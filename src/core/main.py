@@ -1779,6 +1779,21 @@ def _sync_creatives_impl(
                 f"[blue]📋 Created {len(creatives_needing_approval)} workflow steps for creative approval[/blue]"
             )
 
+        # Send Slack notification for pending creative reviews
+        if creatives_needing_approval and tenant.get("slack_webhook_url"):
+            from src.services.slack_notifier import get_slack_notifier
+
+            tenant_config = {"features": {"slack_webhook_url": tenant["slack_webhook_url"]}}
+            notifier = get_slack_notifier(tenant_config)
+
+            for creative_info in creatives_needing_approval:
+                notifier.notify_creative_pending(
+                    creative_id=creative_info["creative_id"],
+                    principal_name=principal_id,
+                    format_type=creative_info["format"],
+                    media_buy_id=None,  # Could enhance this if we track media_buy_id in creative data
+                )
+
     # Audit logging
     audit_logger = get_audit_logger("AdCP", tenant["tenant_id"])
     audit_logger.log_operation(

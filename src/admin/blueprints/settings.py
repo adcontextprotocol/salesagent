@@ -551,3 +551,42 @@ def test_domain_access(tenant_id):
         flash("Error testing email access", "error")
 
     return redirect(url_for("tenants.tenant_settings", tenant_id=tenant_id, section="access"))
+
+
+@settings_bp.route("/creative-review", methods=["POST"])
+@require_tenant_access()
+def update_creative_review_settings(tenant_id, **kwargs):
+    """Update creative review settings including AI configuration."""
+    try:
+        data = request.get_json()
+
+        with get_db_session() as db_session:
+            tenant = db_session.query(Tenant).filter_by(tenant_id=tenant_id).first()
+
+            if not tenant:
+                return jsonify({"success": False, "error": "Tenant not found"}), 404
+
+            # Update creative review settings
+            gemini_api_key = data.get("gemini_api_key", "").strip()
+            creative_review_criteria = data.get("creative_review_criteria", "").strip()
+
+            # Only update if values are provided
+            if gemini_api_key:
+                tenant.gemini_api_key = gemini_api_key
+            elif "gemini_api_key" in data:  # Empty string means clear it
+                tenant.gemini_api_key = None
+
+            if creative_review_criteria:
+                tenant.creative_review_criteria = creative_review_criteria
+            elif "creative_review_criteria" in data:  # Empty string means clear it
+                tenant.creative_review_criteria = None
+
+            tenant.updated_at = datetime.now(UTC)
+            db_session.commit()
+
+            logger.info(f"Updated creative review settings for tenant {tenant_id}")
+            return jsonify({"success": True})
+
+    except Exception as e:
+        logger.error(f"Error updating creative review settings: {e}", exc_info=True)
+        return jsonify({"success": False, "error": str(e)}), 500

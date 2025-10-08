@@ -456,6 +456,11 @@
             <span>Creative Formats</span>
         </a>
 
+        <a class="settings-nav-item" data-section="creative-review">
+            <span class="settings-nav-icon">🤖</span>
+            <span>Creative Review</span>
+        </a>
+
         <a class="settings-nav-item" data-section="advertisers">
             <span class="settings-nav-icon">👥</span>
             <span>Advertisers</span>
@@ -998,6 +1003,110 @@
                     Manage Creative Formats
                 </a>
             </div>
+        </div>
+
+        <!-- Creative Review Settings -->
+        <div id="creative-review" class="settings-section">
+            <div class="settings-header">
+                <h2>🤖 Creative Review & AI Approval</h2>
+                <p>Configure AI-powered creative review using Gemini to automatically approve or flag creatives based on your criteria</p>
+            </div>
+
+            <div class="alert alert-info" style="margin-bottom: 2rem;">
+                <strong>💡 How it works:</strong> When enabled, uploaded creatives can be automatically reviewed by AI based on your custom criteria.
+                The AI checks if the creative matches the promoted offering and meets your quality standards.
+            </div>
+
+            <form id="creative-review-form">
+                <div class="form-section">
+                    <h3>AI Configuration</h3>
+
+                    <div class="form-group">
+                        <label for="gemini_api_key">Gemini API Key <span class="badge bg-warning">Required for AI Review</span></label>
+                        <input type="password" id="gemini_api_key" class="form-control"
+                               value="{{ tenant.gemini_api_key or '' }}"
+                               placeholder="Enter your Gemini API key">
+                        <small class="form-text text-muted">
+                            Your Gemini API key is used for AI-powered creative review. Get one at <a href="https://makersuite.google.com/app/apikey" target="_blank">Google AI Studio</a>.
+                            This key is stored securely and only used for your tenant.
+                        </small>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="creative_review_criteria">Review Criteria <span class="badge bg-warning">Required for AI Review</span></label>
+                        <textarea id="creative_review_criteria" class="form-control" rows="10"
+                                  placeholder="Enter your creative review criteria..."
+                                  style="font-family: monospace; font-size: 0.875rem;">{{ tenant.creative_review_criteria or '' }}</textarea>
+                        <small class="form-text text-muted">
+                            Define what makes a creative acceptable. The AI will use these criteria to approve or reject creatives.
+                            Be specific about brand safety, content guidelines, promoted offering alignment, etc.
+                        </small>
+                    </div>
+
+                    <!-- Sample Criteria Examples -->
+                    <details style="margin-top: 1rem;">
+                        <summary style="cursor: pointer; color: #2563eb; font-weight: 500;">📝 Show Example Criteria</summary>
+                        <div style="margin-top: 0.75rem; padding: 1rem; background: #f8f9fa; border-radius: 8px; font-size: 0.875rem;">
+                            <strong>Example 1: Brand Safety Focus</strong>
+                            <pre style="background: white; padding: 0.75rem; border-radius: 4px; margin: 0.5rem 0; overflow-x: auto;">Approve the creative if:
+1. It clearly promotes the advertised product/offering
+2. Contains no offensive, violent, or inappropriate content
+3. Does not make false or misleading claims
+4. Follows standard advertising guidelines
+5. Image quality is professional (no blurry or pixelated images)
+
+Reject if any of these conditions are violated.</pre>
+
+                            <strong>Example 2: Product Match Focus</strong>
+                            <pre style="background: white; padding: 0.75rem; border-radius: 4px; margin: 0.5rem 0; overflow-x: auto;">The creative must:
+- Clearly advertise the promoted offering specified
+- Not promote competing or unrelated products
+- Include visible product/brand name or logo
+- Be appropriate for general audiences
+- Meet basic quality standards (clear image, readable text)
+
+Approve if all conditions are met, otherwise reject with explanation.</pre>
+
+                            <strong>Example 3: Comprehensive Guidelines</strong>
+                            <pre style="background: white; padding: 0.75rem; border-radius: 4px; margin: 0.5rem 0; overflow-x: auto;">Creative Review Guidelines:
+
+APPROVE if:
+✓ Promoted offering matches creative content
+✓ Professional quality (clear images, readable text)
+✓ Appropriate for all audiences
+✓ No misleading claims or fine print
+✓ Brand/product clearly visible
+✓ Meets industry advertising standards
+
+REJECT if:
+✗ Wrong product/service advertised
+✗ Poor quality or unprofessional
+✗ Inappropriate content
+✗ Misleading or deceptive
+✗ Violates advertising regulations
+✗ Contains competitor branding</pre>
+                        </div>
+                    </details>
+                </div>
+
+                <div class="form-section" style="background: #f0f9ff; padding: 1.5rem; border-radius: 8px; border: 1px solid #bfdbfe;">
+                    <h3 style="margin-top: 0;">Quick Links</h3>
+                    <div style="display: flex; gap: 1rem; flex-wrap: wrap;">
+                        <a href="{{ url_for('creatives.review_creatives', tenant_id=tenant.tenant_id) }}" class="btn btn-primary">
+                            🎨 Review Pending Creatives
+                        </a>
+                        <a href="{{ url_for('creatives.list_creatives', tenant_id=tenant.tenant_id) }}" class="btn btn-secondary">
+                            📚 View All Creatives
+                        </a>
+                    </div>
+                </div>
+
+                <div class="button-group">
+                    <button type="submit" class="btn btn-primary">
+                        💾 Save Creative Review Settings
+                    </button>
+                </div>
+            </form>
         </div>
 
         <!-- Advertisers Settings -->
@@ -1905,6 +2014,37 @@ document.addEventListener('DOMContentLoaded', function() {
     if (document.getElementById('gam_order_name_template')) {
         updateNamingPreview();
     }
+});
+
+// Creative Review Form Handler
+document.getElementById('creative-review-form')?.addEventListener('submit', function(e) {
+    e.preventDefault();
+
+    const geminiApiKey = document.getElementById('gemini_api_key').value;
+    const reviewCriteria = document.getElementById('creative_review_criteria').value;
+
+    fetch('/admin/tenant/{{ tenant.tenant_id }}/settings/creative-review', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+            gemini_api_key: geminiApiKey,
+            creative_review_criteria: reviewCriteria
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            alert('✅ Creative review settings saved successfully!');
+        } else {
+            alert('Error: ' + (data.error || 'Unknown error'));
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('Failed to save settings: ' + error);
+    });
 });
 
 // Save GAM configuration

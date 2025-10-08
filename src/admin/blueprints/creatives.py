@@ -81,6 +81,76 @@ def index(tenant_id, **kwargs):
     )
 
 
+@creatives_bp.route("/review", methods=["GET"])
+@require_tenant_access()
+def review_creatives(tenant_id, **kwargs):
+    """Review pending creatives with preview and approval workflow."""
+    from src.core.database.models import Creative, MediaBuy, Principal, Product
+
+    with get_db_session() as db_session:
+        # Get tenant
+        tenant = db_session.query(Tenant).filter_by(tenant_id=tenant_id).first()
+        if not tenant:
+            return "Tenant not found", 404
+
+        # Get creatives that need review (pending status)
+        creatives = (
+            db_session.query(Creative)
+            .filter_by(tenant_id=tenant_id, status="pending")
+            .order_by(Creative.created_at.desc())
+            .all()
+        )
+
+        # Build creative data with context
+        creative_list = []
+        for creative in creatives:
+            # Get principal name
+            principal = (
+                db_session.query(Principal).filter_by(tenant_id=tenant_id, principal_id=creative.principal_id).first()
+            )
+            principal_name = principal.name if principal else creative.principal_id
+
+            # Get media buy if creative is assigned
+            media_buy = None
+            if creative.data.get("media_buy_id"):
+                media_buy = db_session.query(MediaBuy).filter_by(media_buy_id=creative.data["media_buy_id"]).first()
+
+            # Get promoted offering from media buy
+            promoted_offering = None
+            if media_buy and media_buy.raw_request:
+                packages = media_buy.raw_request.get("packages", [])
+                if packages:
+                    product_id = packages[0].get("product_id")
+                    if product_id:
+                        product = db_session.query(Product).filter_by(product_id=product_id).first()
+                        if product:
+                            promoted_offering = product.name
+
+            creative_list.append(
+                {
+                    "creative_id": creative.creative_id,
+                    "name": creative.name,
+                    "format": creative.format,
+                    "status": creative.status,
+                    "principal_name": principal_name,
+                    "principal_id": creative.principal_id,
+                    "data": creative.data,
+                    "created_at": creative.created_at,
+                    "media_buy_id": creative.data.get("media_buy_id"),
+                    "promoted_offering": promoted_offering,
+                    "media_buy_name": media_buy.order_name if media_buy else None,
+                }
+            )
+
+    return render_template(
+        "creative_review.html",
+        tenant_id=tenant_id,
+        tenant_name=tenant.name,
+        creatives=creative_list,
+        has_ai_review=bool(tenant.gemini_api_key and tenant.creative_review_criteria),
+    )
+
+
 @creatives_bp.route("/list", methods=["GET"])
 @require_tenant_access()
 def list_creatives(tenant_id, **kwargs):
@@ -476,4 +546,214 @@ def delete_format(tenant_id, format_id, **kwargs):
 
     except Exception as e:
         logger.error(f"Error deleting creative format: {e}", exc_info=True)
+        return jsonify({"error": str(e)}), 500
+
+
+@creatives_bp.route("/review/<creative_id>/approve", methods=["POST"])
+@require_tenant_access()
+def approve_creative(tenant_id, creative_id, **kwargs):
+    """Approve a creative."""
+    from src.core.database.models import Creative
+
+    try:
+        data = request.get_json() or {}
+        approved_by = data.get("approved_by", "admin")
+
+        with get_db_session() as db_session:
+            creative = db_session.query(Creative).filter_by(tenant_id=tenant_id, creative_id=creative_id).first()
+
+            if not creative:
+                return jsonify({"error": "Creative not found"}), 404
+
+            # Update creative status
+            creative.status = "approved"
+            creative.approved_at = datetime.now(UTC)
+            creative.approved_by = approved_by
+
+            db_session.commit()
+
+            # Send Slack notification if configured
+            tenant = db_session.query(Tenant).filter_by(tenant_id=tenant_id).first()
+            if tenant and tenant.slack_webhook_url:
+                from src.services.slack_notifier import get_slack_notifier
+
+                tenant_config = {"features": {"slack_webhook_url": tenant.slack_webhook_url}}
+                notifier = get_slack_notifier(tenant_config)
+
+                # Get principal name
+                from src.core.database.models import Principal
+
+                principal = (
+                    db_session.query(Principal)
+                    .filter_by(tenant_id=tenant_id, principal_id=creative.principal_id)
+                    .first()
+                )
+                principal_name = principal.name if principal else creative.principal_id
+
+                notifier.send_message(
+                    f"✅ Creative approved: {creative.name} ({creative.format}) from {principal_name}"
+                )
+
+            return jsonify({"success": True, "status": "approved"})
+
+    except Exception as e:
+        logger.error(f"Error approving creative: {e}", exc_info=True)
+        return jsonify({"error": str(e)}), 500
+
+
+@creatives_bp.route("/review/<creative_id>/reject", methods=["POST"])
+@require_tenant_access()
+def reject_creative(tenant_id, creative_id, **kwargs):
+    """Reject a creative with comments."""
+    from src.core.database.models import Creative
+
+    try:
+        data = request.get_json() or {}
+        rejected_by = data.get("rejected_by", "admin")
+        rejection_reason = data.get("rejection_reason", "")
+
+        if not rejection_reason:
+            return jsonify({"error": "Rejection reason is required"}), 400
+
+        with get_db_session() as db_session:
+            creative = db_session.query(Creative).filter_by(tenant_id=tenant_id, creative_id=creative_id).first()
+
+            if not creative:
+                return jsonify({"error": "Creative not found"}), 404
+
+            # Update creative status
+            creative.status = "rejected"
+            creative.approved_at = datetime.now(UTC)
+            creative.approved_by = rejected_by
+
+            # Store rejection reason in data field
+            if not creative.data:
+                creative.data = {}
+            creative.data["rejection_reason"] = rejection_reason
+            creative.data["rejected_at"] = datetime.now(UTC).isoformat()
+
+            # Mark data field as modified for JSONB update
+            from sqlalchemy.orm import attributes
+
+            attributes.flag_modified(creative, "data")
+
+            db_session.commit()
+
+            # Send Slack notification if configured
+            tenant = db_session.query(Tenant).filter_by(tenant_id=tenant_id).first()
+            if tenant and tenant.slack_webhook_url:
+                from src.services.slack_notifier import get_slack_notifier
+
+                tenant_config = {"features": {"slack_webhook_url": tenant.slack_webhook_url}}
+                notifier = get_slack_notifier(tenant_config)
+
+                # Get principal name
+                from src.core.database.models import Principal
+
+                principal = (
+                    db_session.query(Principal)
+                    .filter_by(tenant_id=tenant_id, principal_id=creative.principal_id)
+                    .first()
+                )
+                principal_name = principal.name if principal else creative.principal_id
+
+                notifier.send_message(
+                    f"❌ Creative rejected: {creative.name} ({creative.format}) from {principal_name}\nReason: {rejection_reason}"
+                )
+
+            return jsonify({"success": True, "status": "rejected"})
+
+    except Exception as e:
+        logger.error(f"Error rejecting creative: {e}", exc_info=True)
+        return jsonify({"error": str(e)}), 500
+
+
+@creatives_bp.route("/review/<creative_id>/ai-review", methods=["POST"])
+@require_tenant_access()
+def ai_review_creative(tenant_id, creative_id, **kwargs):
+    """Run AI-based review on a creative using tenant's Gemini key and criteria."""
+    from src.core.database.models import Creative
+
+    try:
+        with get_db_session() as db_session:
+            tenant = db_session.query(Tenant).filter_by(tenant_id=tenant_id).first()
+            if not tenant:
+                return jsonify({"error": "Tenant not found"}), 404
+
+            if not tenant.gemini_api_key:
+                return jsonify({"error": "Gemini API key not configured for this tenant"}), 400
+
+            if not tenant.creative_review_criteria:
+                return jsonify({"error": "Creative review criteria not configured"}), 400
+
+            creative = db_session.query(Creative).filter_by(tenant_id=tenant_id, creative_id=creative_id).first()
+
+            if not creative:
+                return jsonify({"error": "Creative not found"}), 404
+
+            # Get media buy and promoted offering
+            promoted_offering = "Unknown"
+            if creative.data.get("media_buy_id"):
+                from src.core.database.models import MediaBuy, Product
+
+                media_buy = db_session.query(MediaBuy).filter_by(media_buy_id=creative.data["media_buy_id"]).first()
+                if media_buy and media_buy.raw_request:
+                    packages = media_buy.raw_request.get("packages", [])
+                    if packages:
+                        product_id = packages[0].get("product_id")
+                        if product_id:
+                            product = db_session.query(Product).filter_by(product_id=product_id).first()
+                            if product:
+                                promoted_offering = product.name
+
+            # Build review prompt
+            review_prompt = f"""You are reviewing a creative asset for approval.
+
+Review Criteria:
+{tenant.creative_review_criteria}
+
+Creative Details:
+- Name: {creative.name}
+- Format: {creative.format}
+- Promoted Offering: {promoted_offering}
+- Creative Data: {json.dumps(creative.data, indent=2)}
+
+Based on the review criteria, should this creative be approved?
+Respond with a JSON object containing:
+{{
+    "approved": true/false,
+    "reason": "brief explanation of the decision",
+    "confidence": "high/medium/low"
+}}
+"""
+
+            # Call Gemini API
+            import google.generativeai as genai
+
+            genai.configure(api_key=tenant.gemini_api_key)
+            model = genai.GenerativeModel("gemini-1.5-flash")
+
+            response = model.generate_content(review_prompt)
+            response_text = response.text.strip()
+
+            # Parse JSON response
+            if response_text.startswith("```json"):
+                response_text = response_text[7:]
+            if response_text.endswith("```"):
+                response_text = response_text[:-3]
+            response_text = response_text.strip()
+
+            review_result = json.loads(response_text)
+
+            return jsonify(
+                {
+                    "success": True,
+                    "approved": review_result.get("approved", False),
+                    "reason": review_result.get("reason", ""),
+                    "confidence": review_result.get("confidence", "medium"),
+                }
+            )
+
+    except Exception as e:
+        logger.error(f"Error running AI review: {e}", exc_info=True)
         return jsonify({"error": str(e)}), 500

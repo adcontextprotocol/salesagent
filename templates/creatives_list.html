@@ -7,13 +7,18 @@
     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
         <h2>Uploaded Creatives - {{ tenant_name }}</h2>
         <div style="display: flex; gap: 0.5rem;">
-            <a href="{{ url_for('tenants.dashboard', tenant_id=tenant_id) }}" class="btn btn-secondary">← Back to Home</a>
+            <a href="{{ url_for('creatives.review_creatives', tenant_id=tenant_id) }}" class="btn btn-primary">🎨 Review Creatives</a>
             <a href="{{ url_for('creatives.index', tenant_id=tenant_id) }}" class="btn btn-secondary">Creative Formats</a>
+            <a href="{{ url_for('tenants.dashboard', tenant_id=tenant_id) }}" class="btn btn-secondary">← Back to Home</a>
         </div>
     </div>
 
     <div class="alert alert-info">
         <strong>Creative Library:</strong> View all uploaded creatives and see which media buys they're assigned to. Filter by status, advertiser, or format.
+        {% set pending_count = creatives|selectattr('status', 'equalto', 'pending')|list|length %}
+        {% if pending_count > 0 %}
+        <span class="pending-badge">{{ pending_count }} Pending Review</span>
+        {% endif %}
     </div>
 
     <!-- Filter Controls -->
@@ -24,7 +29,7 @@
                 <select id="filter-status" onchange="filterCreatives()" style="width: 100%; padding: 0.5rem;">
                     <option value="">All Statuses</option>
                     <option value="active">Active</option>
-                    <option value="pending">Pending</option>
+                    <option value="pending" selected>Pending</option>
                     <option value="approved">Approved</option>
                     <option value="rejected">Rejected</option>
                 </select>
@@ -302,7 +307,24 @@ code {
     border-radius: 3px;
     font-size: 0.85rem;
 }
+
+.pending-badge {
+    background: #fff3cd;
+    color: #856404;
+    padding: 0.25rem 0.75rem;
+    border-radius: 12px;
+    font-size: 0.85rem;
+    font-weight: 600;
+    margin-left: 0.5rem;
+}
 </style>
+
+<script>
+// Apply default filter on page load (show pending creatives)
+document.addEventListener('DOMContentLoaded', function() {
+    filterCreatives();
+});
+</script>
 
 <script>
 function filterCreatives() {

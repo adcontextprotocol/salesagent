@@ -59,6 +59,8 @@ class Tenant(Base, JSONValidatorMixin):
     human_review_required = Column(Boolean, nullable=False, default=True)
     policy_settings = Column(JSONType)  # JSON object
     signals_agent_config = Column(JSONType)  # JSON object for upstream signals discovery agent configuration
+    creative_review_criteria = Column(Text, nullable=True)  # AI review prompt for creative approval
+    gemini_api_key = Column(String(500), nullable=True)  # Tenant-specific Gemini API key for AI reviews
 
     # Relationships
     products = relationship("Product", back_populates="tenant", cascade="all, delete-orphan")
