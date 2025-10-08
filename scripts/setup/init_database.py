@@ -64,11 +64,14 @@ def init_db(exit_on_error=False):
                 session.commit()
                 print(f"✅ Updated tenant management domains: {tenant_management_domains}")
 
-        # Check if we need to create a default tenant
-        tenant_count = session.query(Tenant).count()
+        # Check if default tenant already exists (idempotent for CI/testing)
+        from sqlalchemy import select
 
-        if tenant_count == 0:
-            # No tenants exist - create a default one for simple use case
+        stmt = select(Tenant).filter_by(tenant_id="default")
+        existing_tenant = session.scalars(stmt).first()
+
+        if not existing_tenant:
+            # No default tenant exists - create one for simple use case
             admin_token = secrets.token_urlsafe(32)
             secrets.token_urlsafe(32)
 
@@ -346,7 +349,12 @@ def init_db(exit_on_error=False):
                 """
                 )
         else:
-            print(f"Database ready ({tenant_count} tenant(s) configured)")
+            # Tenant already exists - just report readiness
+            from sqlalchemy import func, select
+
+            stmt = select(func.count()).select_from(Tenant)
+            tenant_count = session.scalar(stmt)
+            print(f"✅ Database ready (default tenant already exists, {tenant_count} tenant(s) total)")
 
 
 if __name__ == "__main__":
