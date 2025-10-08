@@ -2855,21 +2855,37 @@ def _create_media_buy_impl(
                                 )
                                 raise ValueError(error_msg)
 
-            # Validate maximum daily spend (if set)
+            # Validate maximum daily spend per package (if set)
+            # This is per-package to prevent buyers from splitting large budgets across many packages
             if currency_limit.max_daily_spend:
-                # Calculate daily budget from total budget and flight duration
                 flight_days = (req.end_time - req.start_time).days
                 if flight_days <= 0:
                     flight_days = 1
-                daily_budget = Decimal(str(total_budget)) / Decimal(str(flight_days))
 
-                if daily_budget > currency_limit.max_daily_spend:
-                    error_msg = (
-                        f"Daily budget ({daily_budget} {request_currency}) exceeds maximum daily spend limit "
-                        f"({currency_limit.max_daily_spend} {request_currency}). "
-                        f"This protects against accidental large budgets."
-                    )
-                    raise ValueError(error_msg)
+                # For packages, validate each package's daily budget
+                if req.packages:
+                    for package in req.packages:
+                        package_budget = Decimal(str(package.budget.amount)) if package.budget else Decimal("0")
+                        package_daily_budget = package_budget / Decimal(str(flight_days))
+
+                        if package_daily_budget > currency_limit.max_daily_spend:
+                            error_msg = (
+                                f"Package daily budget ({package_daily_budget} {request_currency}) exceeds "
+                                f"maximum daily spend per package ({currency_limit.max_daily_spend} {request_currency}). "
+                                f"This protects against accidental large budgets and prevents GAM line item proliferation."
+                            )
+                            raise ValueError(error_msg)
+                else:
+                    # Legacy mode: validate total budget
+                    daily_budget = Decimal(str(total_budget)) / Decimal(str(flight_days))
+
+                    if daily_budget > currency_limit.max_daily_spend:
+                        error_msg = (
+                            f"Daily budget ({daily_budget} {request_currency}) exceeds maximum daily spend "
+                            f"({currency_limit.max_daily_spend} {request_currency}). "
+                            f"This protects against accidental large budgets."
+                        )
+                        raise ValueError(error_msg)
 
         # Validate targeting doesn't use managed-only dimensions
         if req.targeting_overlay:

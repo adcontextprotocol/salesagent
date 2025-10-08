@@ -551,19 +551,19 @@
                                         <br><small style="color: #6b7280;">Currency</small>
                                     </div>
                                     <div class="form-group" style="margin: 0;">
-                                        <label for="min_spend_{{ limit.currency_code }}">Minimum Product Spend</label>
+                                        <label for="min_spend_{{ limit.currency_code }}">Minimum Per Package</label>
                                         <input type="number" id="min_spend_{{ limit.currency_code }}"
                                                name="currency_limits[{{ limit.currency_code }}][min_product_spend]"
                                                value="{{ limit.min_product_spend if limit.min_product_spend else '' }}"
                                                min="0" step="0.01" placeholder="No minimum">
                                     </div>
                                     <div class="form-group" style="margin: 0;">
-                                        <label for="max_daily_{{ limit.currency_code }}">Maximum Daily Spend</label>
+                                        <label for="max_daily_{{ limit.currency_code }}">Maximum Daily Per Package</label>
                                         <input type="number" id="max_daily_{{ limit.currency_code }}"
                                                name="currency_limits[{{ limit.currency_code }}][max_daily_spend]"
                                                value="{{ limit.max_daily_spend if limit.max_daily_spend else '' }}"
                                                min="0" step="0.01" placeholder="No maximum">
-                                        <small>Protects against typos and large budget errors</small>
+                                        <small>Max daily spend per package (prevents line item proliferation)</small>
                                     </div>
                                     <div style="padding-top: 1.5rem;">
                                         <button type="button" class="btn-danger" onclick="removeCurrencyLimit('{{ limit.currency_code }}')">
@@ -655,7 +655,7 @@
                                     <br><small style="color: #6b7280;">Currency</small>
                                 </div>
                                 <div class="form-group" style="margin: 0;">
-                                    <label for="min_spend_${currency}">Minimum Product Spend</label>
+                                    <label for="min_spend_${currency}">Minimum Per Package</label>
                                     <input type="number" id="min_spend_${currency}"
                                            name="currency_limits[${currency}][min_product_spend]"
                                            min="0" step="0.01" placeholder="No minimum">
@@ -665,7 +665,7 @@
                                     <input type="number" id="max_daily_${currency}"
                                            name="currency_limits[${currency}][max_daily_spend]"
                                            min="0" step="0.01" placeholder="No maximum">
-                                    <small>Protects against typos and large budget errors</small>
+                                    <small>Max daily spend per package (prevents line item proliferation)</small>
                                 </div>
                                 <div style="padding-top: 1.5rem;">
                                     <button type="button" class="btn-danger" onclick="removeCurrencyLimit('${currency}')">

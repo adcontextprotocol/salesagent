@@ -155,6 +155,9 @@ class CurrencyLimit(Base):
 
     Each tenant can support multiple currencies with different min/max limits.
     This avoids FX conversion and provides currency-specific controls.
+
+    **IMPORTANT**: All limits are per-package (not per media buy) to prevent
+    buyers from splitting large budgets across many packages/line items.
     """
 
     __tablename__ = "currency_limits"
@@ -166,10 +169,11 @@ class CurrencyLimit(Base):
     )
     currency_code = Column(String(3), primary_key=True)  # ISO 4217: USD, EUR, GBP, etc.
 
-    # Per-product minimum spend in this currency
+    # Minimum budget per package/line item in this currency
     min_product_spend: Mapped[Decimal | None] = mapped_column(DECIMAL(15, 2), nullable=True)
 
-    # Maximum daily spend across all campaigns in this currency
+    # Maximum daily spend per package/line item in this currency
+    # Prevents buyers from creating many small line items to bypass limits
     max_daily_spend: Mapped[Decimal | None] = mapped_column(DECIMAL(15, 2), nullable=True)
 
     created_at = Column(DateTime, nullable=False, server_default=func.now())
