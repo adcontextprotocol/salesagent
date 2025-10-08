@@ -384,6 +384,58 @@ workflow_steps, object_workflow_mappings
 -- tasks, human_tasks (DO NOT USE)
 ```
 
+### Admin UI Settings Structure
+
+**Tenant Settings** (http://localhost:8001/tenant/{id}/settings):
+
+Settings are organized around clear conceptual buckets:
+
+**🏢 Account** (Who You Are)
+- Organization name and subdomain
+- Virtual host configuration
+- Domain/email access control
+
+**🖥️ Ad Server** (Infrastructure)
+- Adapter selection (GAM, Mock, Kevel)
+- OAuth authentication
+- Network codes and IDs
+- Connection testing
+
+**📋 Policies & Workflows** (How You Operate) ⭐ **NEW**
+- **Budget Controls**: Max daily budget
+- **Naming Conventions**: Order/line item templates with live preview
+  - Works across all adapters (GAM, Mock, Kevel)
+  - Quick-start presets (Simple, Campaign-First, Detailed)
+  - Variable reference and validation
+- **Approval Workflow**: Manual approval, human review
+- **Features**: AXE signals, feature flags
+
+**📊 Inventory** (Ad Server Data)
+- Sync inventory from ad server
+- Browse ad units and placements
+
+**📦 Products** (Advertising Products)
+- Product management and configuration
+
+**👥 Advertisers** (Principals)
+- Advertiser/principal management
+- Platform mappings
+
+**🔗 Integrations** (External Services)
+- Slack webhooks
+- Signals discovery agent
+- API tokens
+
+**⚠️ Danger Zone** (Destructive Operations)
+- Delete tenant, reset data
+
+**Key Changes (October 2025):**
+- Naming templates moved from Ad Server to Policies & Workflows
+- Budget controls moved from Account to Policies & Workflows
+- Feature flags moved from Account to Policies & Workflows
+- Settings reduced from 11 to 8 sections
+- Naming templates now work across all adapters
+
 ## Common Operations
 
 ### Running Locally

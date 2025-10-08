@@ -60,6 +60,12 @@ class Tenant(Base, JSONValidatorMixin):
     policy_settings = Column(JSONType)  # JSON object
     signals_agent_config = Column(JSONType)  # JSON object for upstream signals discovery agent configuration
 
+    # Naming templates (business rules - shared across all adapters)
+    order_name_template = Column(
+        String(500), nullable=True, server_default="{campaign_name|promoted_offering} - {date_range}"
+    )
+    line_item_name_template = Column(String(500), nullable=True, server_default="{order_name} - {product_name}")
+
     # Relationships
     products = relationship("Product", back_populates="tenant", cascade="all, delete-orphan")
     principals = relationship("Principal", back_populates="tenant", cascade="all, delete-orphan")
