@@ -427,7 +427,9 @@ def get_gam_custom_targeting_keys(tenant_id):
             )
 
             # Create GAM client
-            client = ad_manager.AdManagerClient(oauth2_client, adapter_config.gam_network_code)
+            client = ad_manager.AdManagerClient(
+                oauth2_client, "AdCP Sales Agent", network_code=adapter_config.gam_network_code
+            )
 
             # Initialize GAM inventory discovery
             discovery = GAMInventoryDiscovery(client=client, tenant_id=tenant_id)
@@ -473,7 +475,9 @@ def sync_gam_inventory(tenant_id):
             )
 
             # Create GAM client
-            client = ad_manager.AdManagerClient(oauth2_client, adapter_config.gam_network_code)
+            client = ad_manager.AdManagerClient(
+                oauth2_client, "AdCP Sales Agent", network_code=adapter_config.gam_network_code
+            )
 
             # Initialize GAM inventory discovery
             discovery = GAMInventoryDiscovery(client=client, tenant_id=tenant_id)
