@@ -5,6 +5,7 @@ import logging
 from datetime import UTC, datetime
 
 from flask import Blueprint, jsonify, render_template, request, session
+from sqlalchemy import select
 
 from src.adapters.gam_inventory_discovery import GAMInventoryDiscovery
 from src.adapters.gam_reporting_service import GAMReportingService
@@ -253,7 +254,7 @@ def configure_gam(tenant_id):
 
         with get_db_session() as db_session:
             # Get existing tenant
-            tenant = db_session.query(Tenant).filter_by(tenant_id=tenant_id).first()
+            tenant = db_session.scalars(select(Tenant).filter_by(tenant_id=tenant_id)).first()
 
             if not tenant:
                 return jsonify({"success": False, "error": "Tenant not found"}), 404
@@ -261,7 +262,7 @@ def configure_gam(tenant_id):
             # Get or create adapter config
             from src.core.database.models import AdapterConfig
 
-            adapter_config = db_session.query(AdapterConfig).filter_by(tenant_id=tenant_id).first()
+            adapter_config = db_session.scalars(select(AdapterConfig).filter_by(tenant_id=tenant_id)).first()
 
             if not adapter_config:
                 adapter_config = AdapterConfig(tenant_id=tenant_id, adapter_type="google_ad_manager")
@@ -303,11 +304,13 @@ def view_gam_line_item(tenant_id, line_item_id):
     try:
         with get_db_session() as db_session:
             # Get the line item
-            line_item = db_session.query(GAMLineItem).filter_by(tenant_id=tenant_id, line_item_id=line_item_id).first()
+            line_item = db_session.scalars(
+                select(GAMLineItem).filter_by(tenant_id=tenant_id, line_item_id=line_item_id)
+            ).first()
 
             if not line_item:
                 # Try to fetch from GAM if not in database
-                tenant = db_session.query(Tenant).filter_by(tenant_id=tenant_id).first()
+                tenant = db_session.scalars(select(Tenant).filter_by(tenant_id=tenant_id)).first()
 
                 if not tenant:
                     return render_template("error.html", error="Tenant not found"), 404
@@ -315,7 +318,7 @@ def view_gam_line_item(tenant_id, line_item_id):
                 # Get GAM configuration from adapter_config
                 from src.core.database.models import AdapterConfig
 
-                adapter_config = db_session.query(AdapterConfig).filter_by(tenant_id=tenant_id).first()
+                adapter_config = db_session.scalars(select(AdapterConfig).filter_by(tenant_id=tenant_id)).first()
 
                 if not adapter_config or not adapter_config.gam_network_code or not adapter_config.gam_refresh_token:
                     return render_template("error.html", error="GAM not configured for this tenant"), 400
@@ -358,22 +361,24 @@ def view_gam_line_item(tenant_id, line_item_id):
 
                 # Get the order if available
                 if line_item.order_id:
-                    order = (
-                        db_session.query(GAMOrder).filter_by(tenant_id=tenant_id, order_id=line_item.order_id).first()
-                    )
+                    order = db_session.scalars(
+                        select(GAMOrder).filter_by(tenant_id=tenant_id, order_id=line_item.order_id)
+                    ).first()
                 else:
                     order = None
 
             else:
                 # Get the associated order
                 order = (
-                    db_session.query(GAMOrder).filter_by(tenant_id=tenant_id, order_id=line_item.order_id).first()
+                    db_session.scalars(
+                        select(GAMOrder).filter_by(tenant_id=tenant_id, order_id=line_item.order_id)
+                    ).first()
                     if line_item.order_id
                     else None
                 )
 
             # Get tenant for template
-            tenant_obj = db_session.query(Tenant).filter_by(tenant_id=tenant_id).first()
+            tenant_obj = db_session.scalars(select(Tenant).filter_by(tenant_id=tenant_id)).first()
             if not tenant_obj:
                 return render_template("error.html", error="Tenant not found"), 404
 
@@ -397,7 +402,7 @@ def get_gam_custom_targeting_keys(tenant_id):
     """Get GAM custom targeting keys."""
     try:
         with get_db_session() as db_session:
-            tenant = db_session.query(Tenant).filter_by(tenant_id=tenant_id).first()
+            tenant = db_session.scalars(select(Tenant).filter_by(tenant_id=tenant_id)).first()
 
             if not tenant:
                 return jsonify({"error": "Tenant not found"}), 404
@@ -405,7 +410,7 @@ def get_gam_custom_targeting_keys(tenant_id):
             # Get GAM configuration from adapter_config
             from src.core.database.models import AdapterConfig
 
-            adapter_config = db_session.query(AdapterConfig).filter_by(tenant_id=tenant_id).first()
+            adapter_config = db_session.scalars(select(AdapterConfig).filter_by(tenant_id=tenant_id)).first()
 
             if not adapter_config or not adapter_config.gam_network_code or not adapter_config.gam_refresh_token:
                 return jsonify({"error": "GAM not configured for this tenant"}), 400
@@ -436,13 +441,13 @@ def sync_gam_inventory(tenant_id):
     try:
         with get_db_session() as db_session:
             # Get tenant and adapter config
-            tenant = db_session.query(Tenant).filter_by(tenant_id=tenant_id).first()
+            tenant = db_session.scalars(select(Tenant).filter_by(tenant_id=tenant_id)).first()
             if not tenant:
                 return jsonify({"success": False, "error": "Tenant not found"}), 404
 
             from src.core.database.models import AdapterConfig
 
-            adapter_config = db_session.query(AdapterConfig).filter_by(tenant_id=tenant_id).first()
+            adapter_config = db_session.scalars(select(AdapterConfig).filter_by(tenant_id=tenant_id)).first()
 
             if not adapter_config or not adapter_config.gam_network_code or not adapter_config.gam_refresh_token:
                 return jsonify({"success": False, "error": "GAM not configured for this tenant"}), 400
@@ -531,11 +536,13 @@ def get_gam_line_item_api(tenant_id, line_item_id):
     try:
         with get_db_session() as db_session:
             # Get the line item
-            line_item = db_session.query(GAMLineItem).filter_by(tenant_id=tenant_id, line_item_id=line_item_id).first()
+            line_item = db_session.scalars(
+                select(GAMLineItem).filter_by(tenant_id=tenant_id, line_item_id=line_item_id)
+            ).first()
 
             if not line_item:
                 # Try to fetch from GAM if not in database
-                tenant = db_session.query(Tenant).filter_by(tenant_id=tenant_id).first()
+                tenant = db_session.scalars(select(Tenant).filter_by(tenant_id=tenant_id)).first()
 
                 if not tenant:
                     return jsonify({"error": "Tenant not found"}), 404
@@ -543,7 +550,7 @@ def get_gam_line_item_api(tenant_id, line_item_id):
                 # Get GAM configuration from adapter_config
                 from src.core.database.models import AdapterConfig
 
-                adapter_config = db_session.query(AdapterConfig).filter_by(tenant_id=tenant_id).first()
+                adapter_config = db_session.scalars(select(AdapterConfig).filter_by(tenant_id=tenant_id)).first()
 
                 if not adapter_config or not adapter_config.gam_network_code or not adapter_config.gam_refresh_token:
                     return jsonify({"error": "GAM not configured for this tenant"}), 400

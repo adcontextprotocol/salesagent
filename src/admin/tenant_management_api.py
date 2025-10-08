@@ -8,6 +8,7 @@ from datetime import UTC, datetime
 from functools import wraps
 
 from flask import Blueprint, jsonify, request
+from sqlalchemy import delete, func, select
 
 from src.core.database.database_session import get_db_session
 from src.core.database.models import (
@@ -39,7 +40,8 @@ def require_tenant_management_api_key(f):
 
         # Get the stored API key from database
         with get_db_session() as db_session:
-            config = db_session.query(TenantManagementConfig).filter_by(config_key="tenant_management_api_key").first()
+            stmt = select(TenantManagementConfig).filter_by(config_key="tenant_management_api_key")
+            config = db_session.scalars(stmt).first()
 
             if not config or not config.config_value:
                 logger.error("Tenant management API key not configured in database")
@@ -65,15 +67,13 @@ def health_check():
 @require_tenant_management_api_key
 def list_tenants():
     """List all tenants."""
-    from sqlalchemy import func
-
     from src.core.database.models import AdapterConfig
 
     with get_db_session() as db_session:
         try:
             # Query with left join and group by
-            tenants_query = (
-                db_session.query(
+            stmt = (
+                select(
                     Tenant.tenant_id,
                     Tenant.name,
                     Tenant.subdomain,
@@ -87,6 +87,7 @@ def list_tenants():
                 .group_by(Tenant.tenant_id)
                 .order_by(Tenant.created_at.desc())
             )
+            tenants_query = db_session.execute(stmt)
 
             results = []
             for row in tenants_query:
@@ -267,7 +268,8 @@ def get_tenant(tenant_id):
     with get_db_session() as db_session:
         try:
             # Get tenant details
-            tenant = db_session.query(Tenant).filter_by(tenant_id=tenant_id).first()
+            stmt = select(Tenant).filter_by(tenant_id=tenant_id)
+            tenant = db_session.scalars(stmt).first()
 
             if not tenant:
                 return jsonify({"error": "Tenant not found"}), 404
@@ -297,7 +299,8 @@ def get_tenant(tenant_id):
             }
 
             # Get adapter config
-            adapter = db_session.query(AdapterConfig).filter_by(tenant_id=tenant_id).first()
+            stmt = select(AdapterConfig).filter_by(tenant_id=tenant_id)
+            adapter = db_session.scalars(stmt).first()
             if adapter:
                 adapter_data = {
                     "adapter_type": adapter.adapter_type,
@@ -332,7 +335,8 @@ def get_tenant(tenant_id):
                 result["adapter_config"] = adapter_data
 
             # Get principals count
-            principals_count = db_session.query(Principal).filter_by(tenant_id=tenant_id).count()
+            stmt = select(func.count()).select_from(Principal).filter_by(tenant_id=tenant_id)
+            principals_count = db_session.scalar(stmt)
             result["principals_count"] = principals_count
 
             return jsonify(result)
@@ -349,7 +353,8 @@ def update_tenant(tenant_id):
     with get_db_session() as db_session:
         try:
             # Check if tenant exists
-            tenant = db_session.query(Tenant).filter_by(tenant_id=tenant_id).first()
+            stmt = select(Tenant).filter_by(tenant_id=tenant_id)
+            tenant = db_session.scalars(stmt).first()
             if not tenant:
                 return jsonify({"error": "Tenant not found"}), 404
 
@@ -393,7 +398,8 @@ def update_tenant(tenant_id):
                 adapter_data = data["adapter_config"]
 
                 # Get current adapter
-                adapter = db_session.query(AdapterConfig).filter_by(tenant_id=tenant_id).first()
+                stmt = select(AdapterConfig).filter_by(tenant_id=tenant_id)
+                adapter = db_session.scalars(stmt).first()
 
                 if adapter:
                     if adapter.adapter_type == "google_ad_manager":
@@ -450,7 +456,8 @@ def delete_tenant(tenant_id):
     with get_db_session() as db_session:
         try:
             # Check if tenant exists
-            tenant = db_session.query(Tenant).filter_by(tenant_id=tenant_id).first()
+            stmt = select(Tenant).filter_by(tenant_id=tenant_id)
+            tenant = db_session.scalars(stmt).first()
             if not tenant:
                 return jsonify({"error": "Tenant not found"}), 404
 
@@ -463,12 +470,12 @@ def delete_tenant(tenant_id):
 
             if hard_delete:
                 # Delete related records first due to foreign key constraints
-                db_session.query(AdapterConfig).filter_by(tenant_id=tenant_id).delete()
-                db_session.query(Principal).filter_by(tenant_id=tenant_id).delete()
-                db_session.query(Product).filter_by(tenant_id=tenant_id).delete()
-                db_session.query(MediaBuy).filter_by(tenant_id=tenant_id).delete()
-                db_session.query(AuditLog).filter_by(tenant_id=tenant_id).delete()
-                db_session.query(User).filter_by(tenant_id=tenant_id).delete()
+                db_session.execute(delete(AdapterConfig).where(AdapterConfig.tenant_id == tenant_id))
+                db_session.execute(delete(Principal).where(Principal.tenant_id == tenant_id))
+                db_session.execute(delete(Product).where(Product.tenant_id == tenant_id))
+                db_session.execute(delete(MediaBuy).where(MediaBuy.tenant_id == tenant_id))
+                db_session.execute(delete(AuditLog).where(AuditLog.tenant_id == tenant_id))
+                db_session.execute(delete(User).where(User.tenant_id == tenant_id))
 
                 # Finally delete the tenant
                 db_session.delete(tenant)
@@ -496,9 +503,8 @@ def initialize_api_key():
     with get_db_session() as db_session:
         try:
             # Check if API key already exists
-            existing_config = (
-                db_session.query(TenantManagementConfig).filter_by(config_key="tenant_management_api_key").first()
-            )
+            stmt = select(TenantManagementConfig).filter_by(config_key="tenant_management_api_key")
+            existing_config = db_session.scalars(stmt).first()
 
             if existing_config:
                 return jsonify({"error": "API key already initialized"}), 409

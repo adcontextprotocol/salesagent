@@ -12,6 +12,7 @@ import os
 from datetime import UTC, datetime
 
 from flask import Blueprint, flash, jsonify, redirect, render_template, request, url_for
+from sqlalchemy import select
 
 from src.admin.utils import require_auth, require_tenant_access
 from src.core.database.database_session import get_db_session
@@ -80,7 +81,7 @@ def update_general(tenant_id):
             return redirect(url_for("tenants.tenant_settings", tenant_id=tenant_id, section="general"))
 
         with get_db_session() as db_session:
-            tenant = db_session.query(Tenant).filter_by(tenant_id=tenant_id).first()
+            tenant = db_session.scalars(select(Tenant).filter_by(tenant_id=tenant_id)).first()
             if not tenant:
                 flash("Tenant not found", "error")
                 return redirect(url_for("core.index"))
@@ -107,7 +108,7 @@ def update_general(tenant_id):
                         return redirect(url_for("tenants.tenant_settings", tenant_id=tenant_id, section="general"))
 
                     # Check if virtual host is already in use by another tenant
-                    existing_tenant = db_session.query(Tenant).filter_by(virtual_host=virtual_host).first()
+                    existing_tenant = db_session.scalars(select(Tenant).filter_by(virtual_host=virtual_host)).first()
                     if existing_tenant and existing_tenant.tenant_id != tenant_id:
                         flash("This virtual host is already in use by another tenant", "error")
                         return redirect(url_for("tenants.tenant_settings", tenant_id=tenant_id, section="general"))
@@ -161,7 +162,7 @@ def update_adapter(tenant_id):
             return redirect(url_for("tenants.tenant_settings", tenant_id=tenant_id, section="adapter"))
 
         with get_db_session() as db_session:
-            tenant = db_session.query(Tenant).filter_by(tenant_id=tenant_id).first()
+            tenant = db_session.scalars(select(Tenant).filter_by(tenant_id=tenant_id)).first()
             if not tenant:
                 if request.is_json:
                     return jsonify({"success": False, "error": "Tenant not found"}), 404
@@ -231,7 +232,7 @@ def update_slack(tenant_id):
         webhook_url = request.form.get("slack_webhook_url", "").strip()
 
         with get_db_session() as db_session:
-            tenant = db_session.query(Tenant).filter_by(tenant_id=tenant_id).first()
+            tenant = db_session.scalars(select(Tenant).filter_by(tenant_id=tenant_id)).first()
             if not tenant:
                 flash("Tenant not found", "error")
                 return redirect(url_for("core.index"))
@@ -291,7 +292,7 @@ def update_signals(tenant_id):
         }
 
         with get_db_session() as db_session:
-            tenant = db_session.query(Tenant).filter_by(tenant_id=tenant_id).first()
+            tenant = db_session.scalars(select(Tenant).filter_by(tenant_id=tenant_id)).first()
             if not tenant:
                 flash("Tenant not found", "error")
                 return redirect(url_for("core.index"))

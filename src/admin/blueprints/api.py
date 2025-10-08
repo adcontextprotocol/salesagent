@@ -7,7 +7,7 @@ from datetime import UTC, datetime, timedelta
 from fastmcp.client import Client
 from fastmcp.client.transports import StreamableHttpTransport
 from flask import Blueprint, jsonify, request
-from sqlalchemy import func, text
+from sqlalchemy import func, select, text
 
 from src.admin.utils import require_auth
 from src.core.database.database_session import get_db_session
@@ -52,8 +52,8 @@ def revenue_chart_api(tenant_id):
         date_start = datetime.now(UTC) - timedelta(days=days)
 
         # Query revenue by principal
-        results = (
-            db_session.query(Principal.name, func.sum(MediaBuy.budget).label("revenue"))
+        stmt = (
+            select(Principal.name, func.sum(MediaBuy.budget).label("revenue"))
             .join(
                 MediaBuy,
                 (MediaBuy.principal_id == Principal.principal_id) & (MediaBuy.tenant_id == Principal.tenant_id),
@@ -66,8 +66,8 @@ def revenue_chart_api(tenant_id):
             .group_by(Principal.name)
             .order_by(func.sum(MediaBuy.budget).desc())
             .limit(10)
-            .all()
         )
+        results = db_session.execute(stmt).all()
 
         labels = []
         values = []
@@ -198,7 +198,8 @@ def get_product_suggestions(tenant_id):
 
         # Check existing products to mark which are already created
         with get_db_session() as db_session:
-            existing_products = db_session.query(Product.product_id).filter_by(tenant_id=tenant_id).all()
+            stmt = select(Product.product_id).filter_by(tenant_id=tenant_id)
+            existing_products = db_session.scalars(stmt).all()
             existing_ids = {product[0] for product in existing_products}
 
         # Add metadata to suggestions
@@ -285,9 +286,9 @@ def quick_create_products(tenant_id):
 
                 try:
                     # Check if already exists
-                    existing_product = (
-                        db_session.query(Product).filter_by(tenant_id=tenant_id, product_id=product_id).first()
-                    )
+                    existing_product = db_session.scalars(
+                        select(Product).filter_by(tenant_id=tenant_id, product_id=product_id)
+                    ).first()
                     if existing_product:
                         errors.append(f"Product already exists: {product_id}")
                         continue
@@ -426,7 +427,7 @@ def mcp_test_call():
 
         # Get tenant from token
         with get_db_session() as db_session:
-            principal = db_session.query(Principal).filter_by(access_token=auth_token).first()
+            principal = db_session.scalars(select(Principal).filter_by(access_token=auth_token)).first()
             if not principal:
                 return jsonify({"success": False, "error": "Invalid auth token"}), 401
 

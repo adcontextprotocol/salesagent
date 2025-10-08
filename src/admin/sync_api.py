@@ -14,6 +14,7 @@ from datetime import UTC, datetime
 from functools import wraps
 
 from flask import Blueprint, jsonify, request
+from sqlalchemy import func, select
 
 from src.adapters.google_ad_manager import GoogleAdManager
 from src.core.database.database_session import get_db_session
@@ -32,7 +33,8 @@ db_session = gam_db_session
 def get_tenant_management_api_key() -> str | None:
     """Get tenant management API key from database."""
     with get_db_session() as db_session:
-        config = db_session.query(TenantManagementConfig).filter_by(config_key="api_key").first()
+        stmt = select(TenantManagementConfig).filter_by(config_key="api_key")
+        config = db_session.scalars(stmt).first()
 
     if config:
         return config.config_value
@@ -74,14 +76,16 @@ def trigger_sync(tenant_id: str):
         # Validate tenant exists and has GAM configured
         db_session.remove()  # Start fresh
 
-        tenant = db_session.query(Tenant).filter_by(tenant_id=tenant_id).first()
+        stmt = select(Tenant).filter_by(tenant_id=tenant_id)
+        tenant = db_session.scalars(stmt).first()
         if not tenant:
             return jsonify({"error": "Tenant not found"}), 404
 
         if tenant.ad_server != "google_ad_manager":
             return jsonify({"error": "Only Google Ad Manager sync is currently supported"}), 400
 
-        adapter_config = db_session.query(AdapterConfig).filter_by(tenant_id=tenant_id).first()
+        stmt = select(AdapterConfig).filter_by(tenant_id=tenant_id)
+        adapter_config = db_session.scalars(stmt).first()
 
         if not adapter_config:
             return jsonify({"error": "Adapter not configured"}), 400
@@ -93,15 +97,12 @@ def trigger_sync(tenant_id: str):
 
         # Check for recent sync if not forcing
         if not force:
-            recent_sync = (
-                db_session.query(SyncJob)
-                .filter(
-                    SyncJob.tenant_id == tenant_id,
-                    SyncJob.status.in_(["running", "completed"]),
-                    SyncJob.started_at >= datetime.now(UTC).replace(hour=0, minute=0, second=0),
-                )
-                .first()
+            stmt = select(SyncJob).where(
+                SyncJob.tenant_id == tenant_id,
+                SyncJob.status.in_(["running", "completed"]),
+                SyncJob.started_at >= datetime.now(UTC).replace(hour=0, minute=0, second=0),
             )
+            recent_sync = db_session.scalars(stmt).first()
 
             if recent_sync:
                 if recent_sync.status == "running":
@@ -211,7 +212,8 @@ def get_sync_status(sync_id: str):
     try:
         db_session.remove()  # Start fresh
 
-        sync_job = db_session.query(SyncJob).filter_by(sync_id=sync_id).first()
+        stmt = select(SyncJob).filter_by(sync_id=sync_id)
+        sync_job = db_session.scalars(stmt).first()
         if not sync_job:
             return jsonify({"error": "Sync job not found"}), 404
 
@@ -265,16 +267,18 @@ def get_sync_history(tenant_id: str):
         status_filter = request.args.get("status")
 
         # Build query
-        query = db_session.query(SyncJob).filter_by(tenant_id=tenant_id)
+        stmt = select(SyncJob).filter_by(tenant_id=tenant_id)
 
         if status_filter:
-            query = query.filter_by(status=status_filter)
+            stmt = stmt.filter_by(status=status_filter)
 
         # Get total count
-        total = query.count()
+        count_stmt = select(func.count()).select_from(stmt.subquery())
+        total = db_session.scalar(count_stmt)
 
         # Get results
-        sync_jobs = query.order_by(SyncJob.started_at.desc()).limit(limit).offset(offset).all()
+        stmt = stmt.order_by(SyncJob.started_at.desc()).limit(limit).offset(offset)
+        sync_jobs = db_session.scalars(stmt).all()
 
         results = []
         for job in sync_jobs:
@@ -316,20 +320,22 @@ def list_tenants():
         db_session.remove()  # Start fresh
 
         # Get all GAM tenants with their adapter configs
-        tenants = db_session.query(Tenant).filter_by(ad_server="google_ad_manager").all()
+        stmt = select(Tenant).filter_by(ad_server="google_ad_manager")
+        tenants = db_session.scalars(stmt).all()
 
         results = []
         for tenant in tenants:
             # Get adapter config
-            adapter_config = db_session.query(AdapterConfig).filter_by(tenant_id=tenant.tenant_id).first()
+            stmt = select(AdapterConfig).filter_by(tenant_id=tenant.tenant_id)
+            adapter_config = db_session.scalars(stmt).first()
 
             # Get last sync info
-            last_sync = (
-                db_session.query(SyncJob)
-                .filter(SyncJob.tenant_id == tenant.tenant_id, SyncJob.status == "completed")
+            stmt = (
+                select(SyncJob)
+                .where(SyncJob.tenant_id == tenant.tenant_id, SyncJob.status == "completed")
                 .order_by(SyncJob.completed_at.desc())
-                .first()
             )
+            last_sync = db_session.scalars(stmt).first()
 
             tenant_info = {
                 "tenant_id": tenant.tenant_id,
@@ -375,17 +381,20 @@ def get_sync_stats():
         # Count by status
         status_counts = {}
         for status in ["pending", "running", "completed", "failed"]:
-            count = db_session.query(SyncJob).filter(SyncJob.status == status, SyncJob.started_at >= since).count()
+            stmt = (
+                select(func.count()).select_from(SyncJob).where(SyncJob.status == status, SyncJob.started_at >= since)
+            )
+            count = db_session.scalar(stmt)
             status_counts[status] = count
 
         # Get recent failures
-        recent_failures = (
-            db_session.query(SyncJob)
-            .filter(SyncJob.status == "failed", SyncJob.started_at >= since)
+        stmt = (
+            select(SyncJob)
+            .where(SyncJob.status == "failed", SyncJob.started_at >= since)
             .order_by(SyncJob.started_at.desc())
             .limit(5)
-            .all()
         )
+        recent_failures = db_session.scalars(stmt).all()
 
         failures = []
         for job in recent_failures:
@@ -399,16 +408,17 @@ def get_sync_stats():
             )
 
         # Get tenants that haven't synced recently
-        all_gam_tenants = db_session.query(Tenant).filter_by(ad_server="google_ad_manager").all()
+        stmt = select(Tenant).filter_by(ad_server="google_ad_manager")
+        all_gam_tenants = db_session.scalars(stmt).all()
 
         stale_tenants = []
         for tenant in all_gam_tenants:
-            last_sync = (
-                db_session.query(SyncJob)
-                .filter(SyncJob.tenant_id == tenant.tenant_id, SyncJob.status == "completed")
+            stmt = (
+                select(SyncJob)
+                .where(SyncJob.tenant_id == tenant.tenant_id, SyncJob.status == "completed")
                 .order_by(SyncJob.completed_at.desc())
-                .first()
             )
+            last_sync = db_session.scalars(stmt).first()
 
             if not last_sync or (datetime.now(UTC) - last_sync.completed_at).days > 1:
                 stale_tenants.append(
@@ -446,13 +456,13 @@ def sync_tenant_orders(tenant_id):
     try:
 
         # Get tenant and adapter config
-        tenant = db_session.query(Tenant).filter_by(tenant_id=tenant_id).first()
+        stmt = select(Tenant).filter_by(tenant_id=tenant_id)
+        tenant = db_session.scalars(stmt).first()
         if not tenant:
             return jsonify({"error": "Tenant not found"}), 404
 
-        adapter_config = (
-            db_session.query(AdapterConfig).filter_by(tenant_id=tenant_id, adapter_type="google_ad_manager").first()
-        )
+        stmt = select(AdapterConfig).filter_by(tenant_id=tenant_id, adapter_type="google_ad_manager")
+        adapter_config = db_session.scalars(stmt).first()
 
         if not adapter_config or not adapter_config.gam_network_code:
             return jsonify({"error": "GAM not configured for tenant"}), 400
@@ -660,7 +670,8 @@ def initialize_tenant_management_api_key() -> str:
     """Initialize tenant management API key if not exists."""
     with get_db_session() as db_session:
         # Check if API key exists
-        config = db_session.query(TenantManagementConfig).filter_by(config_key="api_key").first()
+        stmt = select(TenantManagementConfig).filter_by(config_key="api_key")
+        config = db_session.scalars(stmt).first()
 
         if config:
             return config.config_value

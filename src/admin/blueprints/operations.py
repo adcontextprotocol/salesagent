@@ -3,6 +3,7 @@
 import logging
 
 from flask import Blueprint, jsonify
+from sqlalchemy import select
 
 from src.admin.utils import require_auth, require_tenant_access
 
@@ -51,7 +52,7 @@ def reporting(tenant_id):
         return "Access denied", 403
 
     with get_db_session() as db_session:
-        tenant_obj = db_session.query(Tenant).filter_by(tenant_id=tenant_id).first()
+        tenant_obj = db_session.scalars(select(Tenant).filter_by(tenant_id=tenant_id)).first()
 
         if not tenant_obj:
             return "Tenant not found", 404
@@ -92,21 +93,22 @@ def workflows(tenant_id, **kwargs):
 
     with get_db_session() as db:
         # Get tenant
-        tenant = db.query(Tenant).filter_by(tenant_id=tenant_id).first()
+        tenant = db.scalars(select(Tenant).filter_by(tenant_id=tenant_id)).first()
         if not tenant:
             return "Tenant not found", 404
 
         # Get all workflow steps that need attention
-        pending_steps = (
-            db.query(WorkflowStep)
+        stmt = (
+            select(WorkflowStep)
             .join(Context, WorkflowStep.context_id == Context.context_id)
             .filter(Context.tenant_id == tenant_id, WorkflowStep.status == "pending_approval")
             .order_by(WorkflowStep.created_at.desc())
-            .all()
         )
+        pending_steps = db.scalars(stmt).all()
 
         # Get media buys for context
-        media_buys = db.query(MediaBuy).filter_by(tenant_id=tenant_id).order_by(MediaBuy.created_at.desc()).all()
+        stmt = select(MediaBuy).filter_by(tenant_id=tenant_id).order_by(MediaBuy.created_at.desc())
+        media_buys = db.scalars(stmt).all()
 
         # Build summary stats
         summary = {
@@ -119,12 +121,12 @@ def workflows(tenant_id, **kwargs):
         # Format workflow steps for display
         workflows_list = []
         for step in pending_steps:
-            context = db.query(Context).filter_by(context_id=step.context_id).first()
+            context = db.scalars(select(Context).filter_by(context_id=step.context_id)).first()
             principal = None
             if context and context.principal_id:
-                principal = (
-                    db.query(ModelPrincipal).filter_by(principal_id=context.principal_id, tenant_id=tenant_id).first()
-                )
+                principal = db.scalars(
+                    select(ModelPrincipal).filter_by(principal_id=context.principal_id, tenant_id=tenant_id)
+                ).first()
 
             workflows_list.append(
                 {
@@ -161,7 +163,9 @@ def media_buy_detail(tenant_id, media_buy_id):
 
     try:
         with get_db_session() as db_session:
-            media_buy = db_session.query(MediaBuy).filter_by(tenant_id=tenant_id, media_buy_id=media_buy_id).first()
+            media_buy = db_session.scalars(
+                select(MediaBuy).filter_by(tenant_id=tenant_id, media_buy_id=media_buy_id)
+            ).first()
 
             if not media_buy:
                 return "Media buy not found", 404
@@ -169,11 +173,8 @@ def media_buy_detail(tenant_id, media_buy_id):
             # Get principal info
             principal = None
             if media_buy.principal_id:
-                principal = (
-                    db_session.query(Principal)
-                    .filter_by(tenant_id=tenant_id, principal_id=media_buy.principal_id)
-                    .first()
-                )
+                stmt = select(Principal).filter_by(tenant_id=tenant_id, principal_id=media_buy.principal_id)
+            principal = db_session.scalars(stmt).first()
 
             return render_template(
                 "media_buy_detail.html", tenant_id=tenant_id, media_buy=media_buy, principal=principal
@@ -189,3 +190,71 @@ def media_buy_media_buy_id_approve(tenant_id, **kwargs):
     """TODO: Extract implementation from admin_ui.py."""
     # Placeholder implementation
     return jsonify({"error": "Not yet implemented"}), 501
+
+
+@operations_bp.route("/webhooks", methods=["GET"])
+@require_tenant_access()
+def webhooks(tenant_id, **kwargs):
+    """Display webhook delivery activity dashboard."""
+    from flask import render_template, request
+
+    from src.core.database.database_session import get_db_session
+    from src.core.database.models import AuditLog, MediaBuy, Tenant
+    from src.core.database.models import Principal as ModelPrincipal
+
+    try:
+        with get_db_session() as db:
+            # Get tenant
+            tenant = db.query(Tenant).filter_by(tenant_id=tenant_id).first()
+            if not tenant:
+                return "Tenant not found", 404
+
+            # Build query for webhook audit logs
+            query = (
+                db.query(AuditLog)
+                .filter_by(tenant_id=tenant_id, operation="send_delivery_webhook")
+                .order_by(AuditLog.timestamp.desc())
+            )
+
+            # Filter by media buy if specified
+            media_buy_filter = request.args.get("media_buy_id")
+            if media_buy_filter:
+                query = query.filter(AuditLog.details["media_buy_id"].astext == media_buy_filter)
+
+            # Filter by principal if specified
+            principal_filter = request.args.get("principal_id")
+            if principal_filter:
+                query = query.filter_by(principal_id=principal_filter)
+
+            # Limit results
+            limit = int(request.args.get("limit", 100))
+            webhook_logs = query.limit(limit).all()
+
+            # Get all media buys for filter dropdown
+            media_buys = (
+                db.query(MediaBuy).filter_by(tenant_id=tenant_id).order_by(MediaBuy.created_at.desc()).limit(50).all()
+            )
+
+            # Get all principals for filter dropdown
+            principals = db.query(ModelPrincipal).filter_by(tenant_id=tenant_id).all()
+
+            # Calculate summary stats
+            total_webhooks = query.count()
+            unique_media_buys = len({log.details.get("media_buy_id") for log in webhook_logs if log.details})
+
+            return render_template(
+                "webhooks.html",
+                tenant=tenant,
+                webhook_logs=webhook_logs,
+                media_buys=media_buys,
+                principals=principals,
+                total_webhooks=total_webhooks,
+                unique_media_buys=unique_media_buys,
+                media_buy_filter=media_buy_filter,
+                principal_filter=principal_filter,
+                limit=limit,
+            )
+
+    except Exception as e:
+        logger.error(f"Error loading webhooks dashboard: {e}", exc_info=True)
+        return "Error loading webhooks dashboard", 500

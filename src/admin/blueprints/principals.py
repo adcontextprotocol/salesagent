@@ -7,6 +7,7 @@ import uuid
 from datetime import UTC, datetime
 
 from flask import Blueprint, flash, jsonify, redirect, render_template, request, url_for
+from sqlalchemy import select
 
 from src.admin.services import DashboardService
 from src.admin.utils import require_tenant_access
@@ -25,22 +26,24 @@ def list_principals(tenant_id):
     """List all principals (advertisers) for a tenant."""
     try:
         with get_db_session() as db_session:
-            tenant = db_session.query(Tenant).filter_by(tenant_id=tenant_id).first()
+            tenant = db_session.scalars(select(Tenant).filter_by(tenant_id=tenant_id)).first()
             if not tenant:
                 flash("Tenant not found", "error")
                 return redirect(url_for("core.index"))
 
-            principals = db_session.query(Principal).filter_by(tenant_id=tenant_id).order_by(Principal.name).all()
+            stmt = select(Principal).filter_by(tenant_id=tenant_id).order_by(Principal.name)
+            principals = db_session.scalars(stmt).all()
 
             # Convert to dict format for template
             principals_list = []
             for principal in principals:
                 # Count media buys for this principal
-                media_buy_count = (
-                    db_session.query(MediaBuy)
+                stmt = (
+                    select(func.count())
+                    .select_from(MediaBuy)
                     .filter_by(tenant_id=tenant_id, principal_id=principal.principal_id)
-                    .count()
                 )
+                media_buy_count = db_session.scalar(stmt)
 
                 # Handle both string (SQLite) and dict (PostgreSQL JSONB) formats
                 mappings = principal.platform_mappings
@@ -112,7 +115,7 @@ def create_principal(tenant_id):
     if request.method == "GET":
         # Get tenant info for GAM configuration
         with get_db_session() as db_session:
-            tenant = db_session.query(Tenant).filter_by(tenant_id=tenant_id).first()
+            tenant = db_session.scalars(select(Tenant).filter_by(tenant_id=tenant_id)).first()
             if not tenant:
                 flash("Tenant not found", "error")
                 return redirect(url_for("core.index"))
@@ -174,7 +177,7 @@ def create_principal(tenant_id):
 
         with get_db_session() as db_session:
             # Check if principal name already exists
-            existing = db_session.query(Principal).filter_by(tenant_id=tenant_id, name=principal_name).first()
+            existing = db_session.scalars(select(Principal).filter_by(tenant_id=tenant_id, name=principal_name)).first()
             if existing:
                 flash(f"An advertiser named '{principal_name}' already exists", "error")
                 return redirect(request.url)
@@ -208,7 +211,9 @@ def get_principal(tenant_id, principal_id):
     """Get principal details including platform mappings."""
     try:
         with get_db_session() as db_session:
-            principal = db_session.query(Principal).filter_by(tenant_id=tenant_id, principal_id=principal_id).first()
+            principal = db_session.scalars(
+                select(Principal).filter_by(tenant_id=tenant_id, principal_id=principal_id)
+            ).first()
 
             if not principal:
                 return jsonify({"error": "Principal not found"}), 404
@@ -272,7 +277,9 @@ def update_mappings(tenant_id, principal_id):
                     )
 
         with get_db_session() as db_session:
-            principal = db_session.query(Principal).filter_by(tenant_id=tenant_id, principal_id=principal_id).first()
+            principal = db_session.scalars(
+                select(Principal).filter_by(tenant_id=tenant_id, principal_id=principal_id)
+            ).first()
 
             if not principal:
                 return jsonify({"error": "Principal not found"}), 404
@@ -302,7 +309,7 @@ def get_gam_advertisers(tenant_id):
 
         # Get tenant configuration
         with get_db_session() as db_session:
-            tenant = db_session.query(Tenant).filter_by(tenant_id=tenant_id).first()
+            tenant = db_session.scalars(select(Tenant).filter_by(tenant_id=tenant_id)).first()
             if not tenant:
                 return jsonify({"error": "Tenant not found"}), 404
 
@@ -390,7 +397,9 @@ def get_principal_config(tenant_id, principal_id):
     """Get principal configuration including platform mappings for testing UI."""
     try:
         with get_db_session() as db_session:
-            principal = db_session.query(Principal).filter_by(tenant_id=tenant_id, principal_id=principal_id).first()
+            principal = db_session.scalars(
+                select(Principal).filter_by(tenant_id=tenant_id, principal_id=principal_id)
+            ).first()
 
             if not principal:
                 return jsonify({"error": "Principal not found"}), 404
@@ -427,7 +436,9 @@ def save_testing_config(tenant_id, principal_id):
         hitl_config = data["hitl_config"]
 
         with get_db_session() as db_session:
-            principal = db_session.query(Principal).filter_by(tenant_id=tenant_id, principal_id=principal_id).first()
+            principal = db_session.scalars(
+                select(Principal).filter_by(tenant_id=tenant_id, principal_id=principal_id)
+            ).first()
 
             if not principal:
                 return jsonify({"error": "Principal not found"}), 404
@@ -466,15 +477,17 @@ def manage_webhooks(tenant_id, principal_id):
     """Manage webhook configurations for a principal."""
     try:
         with get_db_session() as db_session:
-            principal = db_session.query(Principal).filter_by(tenant_id=tenant_id, principal_id=principal_id).first()
+            principal = db_session.scalars(
+                select(Principal).filter_by(tenant_id=tenant_id, principal_id=principal_id)
+            ).first()
             if not principal:
                 flash("Principal not found", "error")
                 return redirect(url_for("principals.list_principals", tenant_id=tenant_id))
 
             # Get all webhooks for this principal
-            webhooks = (
-                db_session.query(PushNotificationConfig).filter_by(tenant_id=tenant_id, principal_id=principal_id).all()
-            )
+            webhooks = db_session.scalars(
+                select(PushNotificationConfig).filter_by(tenant_id=tenant_id, principal_id=principal_id)
+            ).all()
 
             return render_template(
                 "webhook_management.html",
@@ -516,11 +529,8 @@ def register_webhook(tenant_id, principal_id):
 
         with get_db_session() as db_session:
             # Check if webhook already exists
-            existing = (
-                db_session.query(PushNotificationConfig)
-                .filter_by(tenant_id=tenant_id, principal_id=principal_id, url=url)
-                .first()
-            )
+            stmt = select(PushNotificationConfig).filter_by(tenant_id=tenant_id, principal_id=principal_id, url=url)
+            existing = db_session.scalars(stmt).first()
 
             if existing:
                 flash("Webhook URL already registered for this principal", "warning")
@@ -558,11 +568,10 @@ def delete_webhook(tenant_id, principal_id, config_id):
     """Delete a webhook configuration."""
     try:
         with get_db_session() as db_session:
-            webhook = (
-                db_session.query(PushNotificationConfig)
-                .filter_by(tenant_id=tenant_id, principal_id=principal_id, config_id=config_id)
-                .first()
+            stmt = select(PushNotificationConfig).filter_by(
+                tenant_id=tenant_id, principal_id=principal_id, config_id=config_id
             )
+            webhook = db_session.scalars(stmt).first()
 
             if not webhook:
                 flash("Webhook not found", "error")
@@ -588,11 +597,10 @@ def toggle_webhook(tenant_id, principal_id, config_id):
     """Toggle webhook active status."""
     try:
         with get_db_session() as db_session:
-            webhook = (
-                db_session.query(PushNotificationConfig)
-                .filter_by(tenant_id=tenant_id, principal_id=principal_id, config_id=config_id)
-                .first()
+            stmt = select(PushNotificationConfig).filter_by(
+                tenant_id=tenant_id, principal_id=principal_id, config_id=config_id
             )
+            webhook = db_session.scalars(stmt).first()
 
             if not webhook:
                 return jsonify({"error": "Webhook not found"}), 404

@@ -7,12 +7,14 @@ Provides layered format lookup:
 """
 
 import json
+from collections.abc import Sequence
+from typing import Any
 
 from src.core.database.database_session import get_db_session
 from src.core.schemas import FORMAT_REGISTRY, Format
 
 
-def _parse_format_from_db_row(row: tuple) -> Format:
+def _parse_format_from_db_row(row: Sequence[Any]) -> Format:
     """Extract Format object from database row.
 
     Args:
@@ -25,12 +27,12 @@ def _parse_format_from_db_row(row: tuple) -> Format:
     """
     # Parse JSON fields (handle both string and dict from SQLite vs PostgreSQL)
     specs = json.loads(row[8]) if isinstance(row[8], str) else row[8]
-    platform_config = None
+    platform_config_data: dict[str, Any] | None = None
     if row[10]:
-        platform_config = json.loads(row[10]) if isinstance(row[10], str) else row[10]
+        platform_config_data = json.loads(row[10]) if isinstance(row[10], str) else row[10]
 
     # Build requirements dict from database columns
-    requirements = {}
+    requirements: dict[str, Any] = {}
     if row[4]:  # width
         requirements["width"] = row[4]
     if row[5]:  # height
@@ -49,8 +51,10 @@ def _parse_format_from_db_row(row: tuple) -> Format:
         name=row[1],
         type=row[2],
         is_standard=bool(row[9]),
+        iab_specification=None,  # Not stored in creative_formats table
+        assets_required=None,  # Not stored in creative_formats table
         requirements=requirements if requirements else None,
-        platform_config=platform_config,
+        platform_config=platform_config_data,
     )
 
 
@@ -214,7 +218,7 @@ def list_available_formats(tenant_id: str | None = None) -> list[Format]:
     Returns:
         List of all available Format objects
     """
-    formats = []
+    formats: list[Format] = []
 
     # Add standard formats
     formats.extend(FORMAT_REGISTRY.values())

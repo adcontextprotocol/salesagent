@@ -6,6 +6,7 @@ import os
 
 from authlib.integrations.flask_client import OAuth
 from flask import Blueprint, abort, current_app, flash, redirect, render_template, request, session, url_for
+from sqlalchemy import select
 
 from src.admin.utils import is_super_admin
 from src.core.database.database_session import get_db_session
@@ -75,7 +76,7 @@ def login():
     if approximated_host:
         # Approximated provides the original requested domain - look up tenant by virtual_host
         with get_db_session() as db_session:
-            tenant = db_session.query(Tenant).filter_by(virtual_host=approximated_host).first()
+            tenant = db_session.scalars(select(Tenant).filter_by(virtual_host=approximated_host)).first()
             if tenant:
                 tenant_context = tenant.tenant_id
                 tenant_name = tenant.name
@@ -93,7 +94,7 @@ def login():
         if tenant_subdomain:
             # Look up tenant by subdomain
             with get_db_session() as db_session:
-                tenant = db_session.query(Tenant).filter_by(subdomain=tenant_subdomain).first()
+                tenant = db_session.scalars(select(Tenant).filter_by(subdomain=tenant_subdomain)).first()
                 if tenant:
                     tenant_context = tenant.tenant_id
                     tenant_name = tenant.name
@@ -112,7 +113,7 @@ def tenant_login(tenant_id):
     """Show tenant-specific login page."""
     # Verify tenant exists
     with get_db_session() as db_session:
-        tenant = db_session.query(Tenant).filter_by(tenant_id=tenant_id).first()
+        tenant = db_session.scalars(select(Tenant).filter_by(tenant_id=tenant_id)).first()
         if not tenant:
             abort(404)
 
@@ -142,7 +143,7 @@ def google_auth():
         if approximated_host and not approximated_host.startswith("admin."):
             # Approximated handles all external routing - look up tenant by virtual_host
             with get_db_session() as db_session:
-                tenant = db_session.query(Tenant).filter_by(virtual_host=approximated_host).first()
+                tenant = db_session.scalars(select(Tenant).filter_by(virtual_host=approximated_host)).first()
                 if tenant:
                     tenant_context = tenant.tenant_id
                     logger.info(
@@ -154,7 +155,7 @@ def google_auth():
         # Extract tenant subdomain from Host header
         tenant_subdomain = host.split(".")[0]
         with get_db_session() as db_session:
-            tenant = db_session.query(Tenant).filter_by(subdomain=tenant_subdomain).first()
+            tenant = db_session.scalars(select(Tenant).filter_by(subdomain=tenant_subdomain)).first()
             if tenant:
                 tenant_context = tenant.tenant_id
                 logger.info(f"Detected tenant context from Host header: {tenant_subdomain} -> {tenant_context}")
@@ -307,7 +308,7 @@ def google_callback():
         if tenant_id:
             # Verify user has access to this tenant
             with get_db_session() as db_session:
-                tenant = db_session.query(Tenant).filter_by(tenant_id=tenant_id).first()
+                tenant = db_session.scalars(select(Tenant).filter_by(tenant_id=tenant_id)).first()
                 if not tenant:
                     flash("Invalid tenant", "error")
                     return redirect(url_for("auth.login"))
@@ -326,7 +327,9 @@ def google_callback():
                         return redirect(url_for("tenants.dashboard", tenant_id=tenant_id))
 
                 # Check if user has access to this tenant
-                user_record = db_session.query(User).filter_by(email=email, tenant_id=tenant_id, is_active=True).first()
+                user_record = db_session.scalars(
+                    select(User).filter_by(email=email, tenant_id=tenant_id, is_active=True)
+                ).first()
 
                 if user_record:
                     session["tenant_id"] = tenant_id
@@ -435,7 +438,9 @@ def google_callback():
             for tenant in tenant_access["email_tenants"]:
                 # Check existing user record for role, default to admin
                 with get_db_session() as db_session:
-                    existing_user = db_session.query(User).filter_by(email=email, tenant_id=tenant.tenant_id).first()
+                    existing_user = db_session.scalars(
+                        select(User).filter_by(email=email, tenant_id=tenant.tenant_id)
+                    ).first()
                     is_admin = existing_user.role == "admin" if existing_user else True
 
                 session["available_tenants"].append(
@@ -571,7 +576,7 @@ def gam_authorize(tenant_id):
     """Initiate GAM OAuth flow for tenant."""
     # Verify tenant exists and user has access
     with get_db_session() as db_session:
-        tenant = db_session.query(Tenant).filter_by(tenant_id=tenant_id).first()
+        tenant = db_session.scalars(select(Tenant).filter_by(tenant_id=tenant_id)).first()
         if not tenant:
             flash("Tenant not found", "error")
             return redirect(url_for("auth.login"))
@@ -730,13 +735,13 @@ def gam_callback():
         with get_db_session() as db_session:
             from src.core.database.models import AdapterConfig
 
-            tenant = db_session.query(Tenant).filter_by(tenant_id=tenant_id).first()
+            tenant = db_session.scalars(select(Tenant).filter_by(tenant_id=tenant_id)).first()
             if not tenant:
                 flash("Tenant not found", "error")
                 return redirect(url_for("auth.login"))
 
             # Get or create adapter config
-            adapter_config = db_session.query(AdapterConfig).filter_by(tenant_id=tenant_id).first()
+            adapter_config = db_session.scalars(select(AdapterConfig).filter_by(tenant_id=tenant_id)).first()
             if not adapter_config:
                 adapter_config = AdapterConfig(tenant_id=tenant_id, adapter_type="google_ad_manager")
                 db_session.add(adapter_config)

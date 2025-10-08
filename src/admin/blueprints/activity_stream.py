@@ -168,13 +168,13 @@ def get_recent_activities(tenant_id: str, since: datetime = None, limit: int = 5
 
     try:
         with get_db_session() as db_session:
-            query = db_session.query(AuditLog).filter(AuditLog.tenant_id == tenant_id)
+            stmt = select(AuditLog).filter(AuditLog.tenant_id == tenant_id)
 
             if since:
-                query = query.filter(AuditLog.timestamp > since)
+                stmt = stmt.filter(AuditLog.timestamp > since)
 
             # Order by timestamp descending and limit results
-            audit_logs = query.order_by(AuditLog.timestamp.desc()).limit(limit).all()
+            audit_logs = db_session.scalars(stmt.order_by(AuditLog.timestamp.desc()).limit(limit)).all()
 
             # Convert to activity format
             activities = []

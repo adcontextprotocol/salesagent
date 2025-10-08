@@ -2627,6 +2627,7 @@ def _create_media_buy_impl(
     pacing: str = "even",
     daily_budget: float = None,
     creatives: list = None,
+    reporting_webhook: dict = None,
     required_axe_signals: list = None,
     enable_creative_macro: bool = False,
     strategy_id: str = None,
@@ -2650,6 +2651,7 @@ def _create_media_buy_impl(
         pacing: Pacing strategy (even, asap, daily_budget)
         daily_budget: Daily budget limit
         creatives: Creative assets for the campaign
+        reporting_webhook: Webhook configuration for automated reporting delivery
         required_axe_signals: Required targeting signals
         enable_creative_macro: Enable AXE to provide creative_macro signal
         strategy_id: Optional strategy ID for linking operations
@@ -3093,14 +3095,14 @@ def _create_media_buy_impl(
                     if package.creative_ids:
                         all_creative_ids.extend(package.creative_ids)
 
-                creatives_map = {}
+                creatives_map: dict[str, Any] = {}
                 if all_creative_ids:
-                    stmt = select(DBCreative).where(
+                    creative_stmt = select(DBCreative).where(
                         DBCreative.tenant_id == tenant["tenant_id"],
                         DBCreative.creative_id.in_(all_creative_ids),
                     )
-                    creatives = session.scalars(stmt).all()
-                    creatives_map = {c.creative_id: c for c in creatives}
+                    creatives_list = session.scalars(creative_stmt).all()
+                    creatives_map = {str(c.creative_id): c for c in creatives_list}
 
                 for i, package in enumerate(req.packages):
                     if package.creative_ids:

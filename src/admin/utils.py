@@ -6,6 +6,7 @@ import os
 from functools import wraps
 
 from flask import abort, g, jsonify, redirect, session, url_for
+from sqlalchemy import select
 
 from src.core.database.database_session import get_db_session
 from src.core.database.models import Tenant, TenantManagementConfig, User
@@ -38,7 +39,8 @@ def get_tenant_config_from_db(tenant_id):
 
     try:
         with get_db_session() as db_session:
-            tenant = db_session.query(Tenant).filter_by(tenant_id=tenant_id).first()
+            stmt = select(Tenant).filter_by(tenant_id=tenant_id)
+            tenant = db_session.scalars(stmt).first()
             if not tenant:
                 logger.warning(f"Tenant not found: {tenant_id}")
                 return {}
@@ -158,7 +160,8 @@ def is_super_admin(email):
     try:
         with get_db_session() as db_session:
             # Check exact emails
-            emails_config = db_session.query(TenantManagementConfig).filter_by(config_key="super_admin_emails").first()
+            stmt = select(TenantManagementConfig).filter_by(config_key="super_admin_emails")
+            emails_config = db_session.scalars(stmt).first()
             if emails_config and emails_config.config_value:
                 emails_list = [e.strip().lower() for e in emails_config.config_value.split(",")]
                 if email_lower in emails_list:
@@ -167,9 +170,8 @@ def is_super_admin(email):
                     return True
 
             # Check domains
-            domains_config = (
-                db_session.query(TenantManagementConfig).filter_by(config_key="super_admin_domains").first()
-            )
+            stmt = select(TenantManagementConfig).filter_by(config_key="super_admin_domains")
+            domains_config = db_session.scalars(stmt).first()
             if domains_config and domains_config.config_value:
                 domains_list = [d.strip().lower() for d in domains_config.config_value.split(",")]
                 email_domain = email_lower.split("@")[1] if "@" in email_lower else ""
@@ -219,13 +221,14 @@ def is_tenant_admin(email, tenant_id=None):
     # Check if user is a tenant admin in the database
     try:
         with get_db_session() as db_session:
-            query = db_session.query(User).filter_by(email=email.lower(), is_active=True, is_admin=True)
+            stmt = select(User).filter_by(email=email.lower(), is_active=True, is_admin=True)
 
             if tenant_id:
                 # Check for specific tenant
-                query = query.filter_by(tenant_id=tenant_id)
+                stmt = stmt.filter_by(tenant_id=tenant_id)
 
-            return query.first() is not None
+            user = db_session.scalars(stmt).first()
+            return user is not None
 
     except Exception as e:
         logger.error(f"Error checking tenant admin status: {e}")
@@ -317,11 +320,8 @@ def require_tenant_access(api_mode=False):
             # Check if user has access to this specific tenant
             try:
                 with get_db_session() as db_session:
-                    user = (
-                        db_session.query(User)
-                        .filter_by(email=email.lower(), tenant_id=tenant_id, is_active=True)
-                        .first()
-                    )
+                    stmt = select(User).filter_by(email=email.lower(), tenant_id=tenant_id, is_active=True)
+                    user = db_session.scalars(stmt).first()
 
                     if not user:
                         if api_mode:
@@ -409,7 +409,8 @@ def get_custom_targeting_mappings(tenant_id=None):
     if tenant_id:
         try:
             with get_db_session() as db_session:
-                tenant = db_session.query(Tenant).filter_by(tenant_id=tenant_id).first()
+                stmt = select(Tenant).filter_by(tenant_id=tenant_id)
+                tenant = db_session.scalars(stmt).first()
                 # TODO: Custom targeting mappings should be stored in a dedicated table or column
                 # For now, return default mappings
                 if tenant:
