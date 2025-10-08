@@ -64,8 +64,8 @@ def docker_services_e2e(request):
     print("Explicitly removing Docker volumes...")
     subprocess.run(["docker", "volume", "prune", "-f"], capture_output=True, check=False)
 
-    print("Starting Docker services...")
-    subprocess.run(["docker-compose", "up", "-d"], check=True)
+    print("Building and starting Docker services...")
+    subprocess.run(["docker-compose", "up", "-d", "--build"], check=True)
 
     # Wait for services to be healthy
     max_wait = 120  # Increased from 60 to 120 seconds for CI
