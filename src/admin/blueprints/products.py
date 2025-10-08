@@ -449,8 +449,6 @@ def edit_product(tenant_id, product_id):
                     "edit_product.html",
                     tenant_id=tenant_id,
                     product=product_dict,
-                    tenant_min_spend=tenant.min_product_spend,
-                    tenant_currency=tenant.currency_code,
                     tenant_adapter=adapter_type,
                 )
 
