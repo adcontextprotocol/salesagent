@@ -431,15 +431,22 @@
 <div class="settings-layout">
     <!-- Settings Navigation -->
     <nav class="settings-nav">
-        <a class="settings-nav-item active" data-section="general">
-            <span class="settings-nav-icon">⚙️</span>
-            <span>General</span>
+        <a class="settings-nav-item active" data-section="account">
+            <span class="settings-nav-icon">🏢</span>
+            <span>Account</span>
         </a>
 
         <a class="settings-nav-item" data-section="adserver">
             <span class="settings-nav-icon">🖥️</span>
             <span>Ad Server</span>
         </a>
+
+        <a class="settings-nav-item" data-section="business-rules">
+            <span class="settings-nav-icon">📋</span>
+            <span>Policies & Workflows</span>
+        </a>
+
+        <div class="settings-nav-separator"></div>
 
         <a class="settings-nav-item" data-section="inventory">
             <span class="settings-nav-icon">📊</span>
@@ -449,11 +456,6 @@
         <a class="settings-nav-item" data-section="products">
             <span class="settings-nav-icon">📦</span>
             <span>Products</span>
-        </a>
-
-        <a class="settings-nav-item" data-section="creatives">
-            <span class="settings-nav-icon">🎨</span>
-            <span>Creative Formats</span>
         </a>
 
         <a class="settings-nav-item" data-section="advertisers">
@@ -468,23 +470,6 @@
             <span>Integrations</span>
         </a>
 
-        <a class="settings-nav-item" data-section="api">
-            <span class="settings-nav-icon">🔑</span>
-            <span>API & Tokens</span>
-        </a>
-
-        <a class="settings-nav-item" data-section="users">
-            <span class="settings-nav-icon">👤</span>
-            <span>Users & Access</span>
-        </a>
-
-        <div class="settings-nav-separator"></div>
-
-        <a class="settings-nav-item" data-section="advanced">
-            <span class="settings-nav-icon">🔧</span>
-            <span>Advanced</span>
-        </a>
-
         <a class="settings-nav-item" data-section="danger-zone">
             <span class="settings-nav-icon">⚠️</span>
             <span>Danger Zone</span>
@@ -493,11 +478,11 @@
 
     <!-- Settings Content -->
     <div class="settings-content">
-        <!-- General Settings -->
-        <div id="general" class="settings-section active">
+        <!-- Account Settings (renamed from General) -->
+        <div id="account" class="settings-section active">
             <div class="settings-header">
-                <h2>General Settings</h2>
-                <p>Basic configuration for your sales agent</p>
+                <h2>Account</h2>
+                <p>Organization identity and access control</p>
             </div>
 
             <form method="POST" action="/tenant/{{ tenant.tenant_id }}/settings/general">
@@ -535,199 +520,11 @@
                     </div>
                 </div>
 
-                <div class="form-section">
-                    <h3>Currency Limits</h3>
-                    <p style="color: #6b7280; margin-bottom: 1.5rem;">
-                        Configure budget limits for each currency you accept. This prevents errors and typos while avoiding foreign exchange complications.
-                    </p>
-
-                    <div id="currency-limits-container">
-                        {% if currency_limits %}
-                            {% for limit in currency_limits %}
-                            <div class="currency-limit-row" data-currency="{{ limit.currency_code }}">
-                                <div class="form-grid" style="grid-template-columns: 120px 1fr 1fr 60px; align-items: start; gap: 1rem; padding: 1rem; background: #f9fafb; border-radius: 8px; margin-bottom: 1rem;">
-                                    <div>
-                                        <strong style="font-size: 1.125rem; color: #111827;">{{ limit.currency_code }}</strong>
-                                        <br><small style="color: #6b7280;">Currency</small>
-                                    </div>
-                                    <div class="form-group" style="margin: 0;">
-                                        <label for="min_spend_{{ limit.currency_code }}">Minimum Per Package</label>
-                                        <input type="number" id="min_spend_{{ limit.currency_code }}"
-                                               name="currency_limits[{{ limit.currency_code }}][min_package_budget]"
-                                               value="{{ limit.min_package_budget if limit.min_package_budget else '' }}"
-                                               min="0" step="0.01" placeholder="No minimum">
-                                        <small style="color: #6b7280;">
-                                            Total budget per package/line item<br>
-                                            <em>Example: Set to 1,000 → rejects packages under $1k</em>
-                                        </small>
-                                    </div>
-                                    <div class="form-group" style="margin: 0;">
-                                        <label for="max_daily_{{ limit.currency_code }}">Maximum Daily Per Package</label>
-                                        <input type="number" id="max_daily_{{ limit.currency_code }}"
-                                               name="currency_limits[{{ limit.currency_code }}][max_daily_package_spend]"
-                                               value="{{ limit.max_daily_package_spend if limit.max_daily_package_spend else '' }}"
-                                               min="0" step="0.01" placeholder="No maximum">
-                                        <small style="color: #6b7280;">
-                                            Max daily spend per package (prevents line item proliferation)<br>
-                                            <em>Example: Set to 10,000 → rejects $100k package over 5 days ($20k/day)</em>
-                                        </small>
-                                    </div>
-                                    <div style="padding-top: 1.5rem;">
-                                        <button type="button" class="btn-danger" onclick="removeCurrencyLimit('{{ limit.currency_code }}')">
-                                            Remove
-                                        </button>
-                                    </div>
-                                </div>
-                            </div>
-                            {% endfor %}
-                        {% else %}
-                            <div style="padding: 2rem; background: #fef3c7; border: 1px solid #fbbf24; border-radius: 8px; margin-bottom: 1rem;">
-                                <strong>⚠️ No currency limits configured</strong>
-                                <p style="margin: 0.5rem 0 0 0; color: #92400e;">
-                                    Add at least one currency to accept media buys. Without currency limits, all media buy requests will be rejected.
-                                </p>
-                            </div>
-                        {% endif %}
-                    </div>
-
-                    <div style="margin-top: 1rem;">
-                        <label for="new_currency">Add Currency Support:</label>
-                        <div style="display: flex; gap: 1rem; align-items: flex-end;">
-                            <select id="new_currency" style="flex: 0 0 200px;">
-                                <option value="">Select currency...</option>
-                                <option value="USD">USD - US Dollar</option>
-                                <option value="EUR">EUR - Euro</option>
-                                <option value="GBP">GBP - British Pound</option>
-                                <option value="JPY">JPY - Japanese Yen</option>
-                                <option value="AUD">AUD - Australian Dollar</option>
-                                <option value="CAD">CAD - Canadian Dollar</option>
-                                <option value="CHF">CHF - Swiss Franc</option>
-                                <option value="CNY">CNY - Chinese Yuan</option>
-                                <option value="INR">INR - Indian Rupee</option>
-                                <option value="BRL">BRL - Brazilian Real</option>
-                            </select>
-                            <button type="button" class="btn" onclick="addCurrencyLimit()">Add Currency</button>
-                        </div>
-                    </div>
-
-                    <div class="form-group" style="margin-top: 2rem;">
-                        <label for="billing_plan">Billing Plan</label>
-                        <input type="text" id="billing_plan" name="billing_plan"
-                               value="{{ tenant.billing_plan or 'standard' }}" readonly>
-                        <small>Contact support to change billing plan</small>
-                    </div>
-                </div>
-
-                <style>
-                    .btn-danger {
-                        background: #dc2626;
-                        color: white;
-                        border: none;
-                        padding: 0.5rem 1rem;
-                        border-radius: 6px;
-                        cursor: pointer;
-                        font-size: 0.875rem;
-                    }
-                    .btn-danger:hover {
-                        background: #b91c1c;
-                    }
-                </style>
-
-                <script>
-                function addCurrencyLimit() {
-                    const select = document.getElementById('new_currency');
-                    const currency = select.value;
-                    if (!currency) {
-                        alert('Please select a currency');
-                        return;
-                    }
-
-                    // Check if currency already exists
-                    if (document.querySelector(`[data-currency="${currency}"]`)) {
-                        alert(`${currency} is already configured`);
-                        return;
-                    }
-
-                    const container = document.getElementById('currency-limits-container');
-
-                    // Remove warning if it exists
-                    const warning = container.querySelector('[style*="fef3c7"]');
-                    if (warning) warning.remove();
-
-                    const html = `
-                        <div class="currency-limit-row" data-currency="${currency}">
-                            <div class="form-grid" style="grid-template-columns: 120px 1fr 1fr 60px; align-items: start; gap: 1rem; padding: 1rem; background: #f9fafb; border-radius: 8px; margin-bottom: 1rem;">
-                                <div>
-                                    <strong style="font-size: 1.125rem; color: #111827;">${currency}</strong>
-                                    <br><small style="color: #6b7280;">Currency</small>
-                                </div>
-                                <div class="form-group" style="margin: 0;">
-                                    <label for="min_spend_${currency}">Minimum Per Package</label>
-                                    <input type="number" id="min_spend_${currency}"
-                                           name="currency_limits[${currency}][min_package_budget]"
-                                           min="0" step="0.01" placeholder="No minimum">
-                                    <small style="color: #6b7280;">
-                                        Total budget per package/line item<br>
-                                        <em>Example: Set to 1,000 → rejects packages under $1k</em>
-                                    </small>
-                                </div>
-                                <div class="form-group" style="margin: 0;">
-                                    <label for="max_daily_${currency}">Maximum Daily Per Package</label>
-                                    <input type="number" id="max_daily_${currency}"
-                                           name="currency_limits[${currency}][max_daily_package_spend]"
-                                           min="0" step="0.01" placeholder="No maximum">
-                                    <small style="color: #6b7280;">
-                                        Max daily spend per package (prevents line item proliferation)<br>
-                                        <em>Example: Set to 10,000 → rejects $100k package over 5 days ($20k/day)</em>
-                                    </small>
-                                </div>
-                                <div style="padding-top: 1.5rem;">
-                                    <button type="button" class="btn-danger" onclick="removeCurrencyLimit('${currency}')">
-                                        Remove
-                                    </button>
-                                </div>
-                            </div>
-                        </div>
-                    `;
-                    container.insertAdjacentHTML('beforeend', html);
-                    select.value = '';
-                }
-
-                function removeCurrencyLimit(currency) {
-                    if (confirm(`Remove ${currency} currency support? Media buys in ${currency} will be rejected.`)) {
-                        const row = document.querySelector(`[data-currency="${currency}"]`);
-                        row.remove();
-
-                        // Add hidden input to mark for deletion
-                        const form = document.querySelector('form');
-                        const input = document.createElement('input');
-                        input.type = 'hidden';
-                        input.name = `currency_limits[${currency}][_delete]`;
-                        input.value = 'true';
-                        form.appendChild(input);
-                    }
-                }
-                </script>
-
-                <div class="form-section">
-                    <h3>Features</h3>
-                    <div class="checkbox-group">
-                        <input type="checkbox" id="enable_axe_signals" name="enable_axe_signals"
-                               {% if tenant.enable_axe_signals %}checked{% endif %}>
-                        <label for="enable_axe_signals">Enable AEE Signals</label>
-                    </div>
-
-                    <div class="checkbox-group">
-                        <input type="checkbox" id="human_review_required" name="human_review_required"
-                               {% if tenant.human_review_required %}checked{% endif %}>
-                        <label for="human_review_required">Require Human Review for Creatives</label>
-                    </div>
-
-                    <!-- Auto-approve trusted field removed - not in model -->
-                </div>
+                <!-- Budget & Limits moved to Business Rules section -->
+                <!-- Features moved to Business Rules section -->
 
                 <div class="button-group">
-                    <button type="submit" class="btn btn-primary">Save Changes</button>
+                    <button type="submit" class="btn btn-primary">Save Account Settings</button>
                     <button type="reset" class="btn btn-secondary">Reset</button>
                 </div>
             </form>
@@ -904,100 +701,6 @@
                         <small class="form-text text-muted">The GAM user ID who will create line items. Auto-detected when you click "Auto-detect Network" above.</small>
                     </div>
 
-                    <div class="form-section" style="margin-top: 2rem; padding-top: 1.5rem; border-top: 1px solid #e5e7eb;">
-                        <h3>Naming Templates</h3>
-                        <p style="color: #6b7280; font-size: 0.875rem; margin-bottom: 1.5rem;">
-                            Configure how orders and line items are named in Google Ad Manager. Use variables like <code>{campaign_name}</code>, <code>{promoted_offering}</code>, <code>{date_range}</code>, etc.
-                        </p>
-
-                        <!-- Preset Template Buttons -->
-                        <div class="form-group">
-                            <label>Quick Start Templates</label>
-                            <div style="display: flex; gap: 0.5rem; margin-bottom: 1rem;">
-                                <button type="button" class="btn btn-secondary btn-sm" onclick="useNamingPreset('simple')">
-                                    📊 Simple
-                                </button>
-                                <button type="button" class="btn btn-secondary btn-sm" onclick="useNamingPreset('campaign')">
-                                    🎯 Campaign-First
-                                </button>
-                                <button type="button" class="btn btn-secondary btn-sm" onclick="useNamingPreset('detailed')">
-                                    📅 Detailed
-                                </button>
-                            </div>
-                        </div>
-
-                        <div class="form-group">
-                            <label for="gam_order_name_template">Order Name Template</label>
-                            <input type="text" id="gam_order_name_template" class="form-control"
-                                   value="{{ adapter_config.get('order_name_template', '{campaign_name|promoted_offering} - {date_range}') if adapter_config else '{campaign_name|promoted_offering} - {date_range}' }}"
-                                   placeholder="{campaign_name|promoted_offering} - {date_range}"
-                                   oninput="updateNamingPreview()">
-                            <details style="margin-top: 0.5rem;">
-                                <summary style="cursor: pointer; color: #666; font-size: 0.875rem;">Show available variables</summary>
-                                <div style="margin-top: 0.5rem; padding: 0.75rem; background: #f8f9fa; border-radius: 4px; font-size: 0.875rem;">
-                                    <strong>Available variables:</strong>
-                                    <ul style="margin: 0.5rem 0; padding-left: 1.5rem;">
-                                        <li><code>{campaign_name}</code> - Campaign name (optional - may be empty)</li>
-                                        <li><code>{promoted_offering}</code> - What's being advertised (always present)</li>
-                                        <li><code>{buyer_ref}</code> - Buyer's internal reference (optional)</li>
-                                        <li><code>{date_range}</code> - Flight dates (e.g., "Oct 7-14, 2025")</li>
-                                        <li><code>{month_year}</code> - Month and year (e.g., "Oct 2025")</li>
-                                        <li><code>{package_count}</code> - Number of packages in order</li>
-                                    </ul>
-                                    <strong>Fallback syntax:</strong> <code>{var1|var2}</code> uses var1 if present, otherwise var2
-                                    <br><strong>Example:</strong> <code>{campaign_name|promoted_offering}</code> tries campaign_name first, falls back to promoted_offering
-                                </div>
-                            </details>
-                        </div>
-
-                        <div class="form-group">
-                            <label for="gam_line_item_name_template">Line Item Name Template</label>
-                            <input type="text" id="gam_line_item_name_template" class="form-control"
-                                   value="{{ adapter_config.get('line_item_name_template', '{order_name} - {product_name}') if adapter_config else '{order_name} - {product_name}' }}"
-                                   placeholder="{order_name} - {product_name}"
-                                   oninput="updateNamingPreview()">
-                            <details style="margin-top: 0.5rem;">
-                                <summary style="cursor: pointer; color: #666; font-size: 0.875rem;">Show available variables</summary>
-                                <div style="margin-top: 0.5rem; padding: 0.75rem; background: #f8f9fa; border-radius: 4px; font-size: 0.875rem;">
-                                    <strong>Available variables:</strong>
-                                    <ul style="margin: 0.5rem 0; padding-left: 1.5rem;">
-                                        <li><code>{product_name}</code> - Product/inventory name (e.g., "Display 300x250")</li>
-                                        <li><code>{order_name}</code> - Parent order name (provides campaign context)</li>
-                                        <li><code>{package_index}</code> - Package position number (1, 2, 3...)</li>
-                                    </ul>
-                                    <strong>Tip:</strong> Including <code>{order_name}</code> helps identify campaigns in line-item reports
-                                </div>
-                            </details>
-                        </div>
-
-                        <!-- Live Preview -->
-                        <div class="form-group" style="margin-top: 1.5rem;">
-                            <label>Preview with Sample Data</label>
-                            <div id="naming-preview" style="padding: 1rem; background: #f0f9ff; border: 1px solid #bfdbfe; border-radius: 8px;">
-                                <div style="margin-bottom: 0.75rem;">
-                                    <strong style="color: #1e40af;">Order Name:</strong>
-                                    <div id="order-preview" style="padding: 0.5rem; background: white; border-radius: 4px; margin-top: 0.25rem; font-family: monospace; color: #059669;">
-                                        Nike Shoes Q1 - Oct 7-14, 2025
-                                    </div>
-                                </div>
-                                <div>
-                                    <strong style="color: #1e40af;">Line Item Names:</strong>
-                                    <div id="lineitem-preview" style="padding: 0.5rem; background: white; border-radius: 4px; margin-top: 0.25rem; font-family: monospace; color: #059669;">
-                                        1. Nike Shoes Q1 - Oct 7-14, 2025 - Display 300x250<br>
-                                        2. Nike Shoes Q1 - Oct 7-14, 2025 - Video Pre-roll<br>
-                                        3. Nike Shoes Q1 - Oct 7-14, 2025 - Native Article
-                                    </div>
-                                </div>
-                                <div id="validation-messages" style="margin-top: 0.75rem; font-size: 0.875rem;">
-                                    <!-- Validation messages will appear here -->
-                                </div>
-                                <small style="color: #64748b; display: block; margin-top: 0.5rem;">
-                                    Using sample: campaign_name=null, promoted_offering="Nike Shoes Q1", dates=Oct 7-14, 2025, 3 products
-                                </small>
-                            </div>
-                        </div>
-                    </div>
-
                     <div class="form-group" style="margin-top: 2rem;">
                         <button onclick="saveGAMConfig()" class="btn btn-primary">Save GAM Configuration</button>
                         {% if adapter_config and adapter_config.get('refresh_token') %}
@@ -1016,6 +719,221 @@
             </div>
         </div>
 
+        <!-- Policies & Workflows Section -->
+        <div id="business-rules" class="settings-section">
+            <div class="settings-header">
+                <h2>Policies & Workflows</h2>
+                <p>Configure how your organization operates: budgets, naming conventions, approval workflows</p>
+            </div>
+
+            <form id="business-rules-form">
+                <!-- Budget Controls -->
+                <div class="form-section">
+                    <h3>Budget Controls</h3>
+                    <div class="form-grid">
+                        <div class="form-group">
+                            <label for="max_daily_budget">Maximum Daily Budget (USD)</label>
+                            <input type="number" id="max_daily_budget" name="max_daily_budget"
+                                   value="{{ tenant.max_daily_budget }}" min="0" step="100">
+                            <small>Maximum daily spend limit across all campaigns</small>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Currency Limits -->
+                <div class="form-section">
+                    <h3>Currency Limits</h3>
+                    <p style="color: #6b7280; margin-bottom: 1.5rem;">
+                        Configure budget limits for each currency you accept. This prevents errors and typos while avoiding foreign exchange complications.
+                    </p>
+
+                    <div id="currency-limits-container">
+                        {% if currency_limits %}
+                            {% for limit in currency_limits %}
+                            <div class="currency-limit-row" data-currency="{{ limit.currency_code }}">
+                                <div class="form-grid" style="grid-template-columns: 120px 1fr 1fr 60px; align-items: start; gap: 1rem; padding: 1rem; background: #f9fafb; border-radius: 8px; margin-bottom: 1rem;">
+                                    <div>
+                                        <strong style="font-size: 1.125rem; color: #111827;">{{ limit.currency_code }}</strong>
+                                        <br><small style="color: #6b7280;">Currency</small>
+                                    </div>
+                                    <div class="form-group" style="margin: 0;">
+                                        <label for="min_spend_{{ limit.currency_code }}">Minimum Per Package</label>
+                                        <input type="number" id="min_spend_{{ limit.currency_code }}"
+                                               name="currency_limits[{{ limit.currency_code }}][min_package_budget]"
+                                               value="{{ limit.min_package_budget if limit.min_package_budget else '' }}"
+                                               min="0" step="0.01" placeholder="No minimum">
+                                        <small style="color: #6b7280;">
+                                            Total budget per package/line item<br>
+                                            <em>Example: Set to 1,000 → rejects packages under $1k</em>
+                                        </small>
+                                    </div>
+                                    <div class="form-group" style="margin: 0;">
+                                        <label for="max_daily_{{ limit.currency_code }}">Maximum Daily Per Package</label>
+                                        <input type="number" id="max_daily_{{ limit.currency_code }}"
+                                               name="currency_limits[{{ limit.currency_code }}][max_daily_package_spend]"
+                                               value="{{ limit.max_daily_package_spend if limit.max_daily_package_spend else '' }}"
+                                               min="0" step="0.01" placeholder="No maximum">
+                                        <small style="color: #6b7280;">
+                                            Max daily spend per package (prevents line item proliferation)<br>
+                                            <em>Example: Set to 10,000 → rejects $100k package over 5 days ($20k/day)</em>
+                                        </small>
+                                    </div>
+                                    <div style="padding-top: 1.5rem;">
+                                        <button type="button" class="btn-danger" onclick="removeCurrencyLimit('{{ limit.currency_code }}')">
+                                            Remove
+                                        </button>
+                                        <input type="hidden" name="currency_limits[{{ limit.currency_code }}][_delete]" value="false">
+                                    </div>
+                                </div>
+                            </div>
+                            {% endfor %}
+                        {% endif %}
+                    </div>
+
+                    <div style="margin-top: 1rem;">
+                        <label for="new_currency_code">Add New Currency</label>
+                        <div style="display: flex; gap: 0.5rem; align-items: flex-end;">
+                            <input type="text" id="new_currency_code" placeholder="USD, EUR, GBP..." maxlength="3" style="width: 100px; text-transform: uppercase;">
+                            <button type="button" class="btn btn-secondary" onclick="addCurrencyLimit()">Add Currency</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Naming Conventions -->
+                <div class="form-section">
+                    <h3>Naming Conventions</h3>
+                    <p style="color: #6b7280; font-size: 0.875rem; margin-bottom: 1rem;">
+                        Configure how orders and line items are named. <strong>Works across all ad servers</strong> (GAM, Mock, Kevel).
+                    </p>
+
+                    <!-- Adapter Support Indicator -->
+                    <div class="alert alert-info" style="font-size: 0.875rem; padding: 0.75rem; margin-bottom: 1.5rem; background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 6px;">
+                        <strong>Adapter Support:</strong>
+                        ✅ Google Ad Manager &nbsp;&nbsp;
+                        ✅ Mock Adapter &nbsp;&nbsp;
+                        ⏳ Kevel (coming soon)
+                    </div>
+
+                    <!-- Quick Start Presets -->
+                    <div class="form-group">
+                        <label>Quick Start Templates</label>
+                        <div style="display: flex; gap: 0.5rem; margin-bottom: 1rem;">
+                            <button type="button" class="btn btn-secondary btn-sm" onclick="useNamingPreset('simple')">
+                                📊 Simple
+                            </button>
+                            <button type="button" class="btn btn-secondary btn-sm" onclick="useNamingPreset('campaign')">
+                                🎯 Campaign-First
+                            </button>
+                            <button type="button" class="btn btn-secondary btn-sm" onclick="useNamingPreset('detailed')">
+                                📅 Detailed
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Order Name Template -->
+                    <div class="form-group">
+                        <label for="order_name_template">Order Name Template</label>
+                        <input type="text" id="order_name_template" name="order_name_template"
+                               value="{{ tenant.order_name_template or '{campaign_name|promoted_offering} - {date_range}' }}"
+                               placeholder="{campaign_name|promoted_offering} - {date_range}"
+                               oninput="updateNamingPreview()">
+                        <details style="margin-top: 0.5rem;">
+                            <summary style="cursor: pointer; color: #666; font-size: 0.875rem;">Show available variables</summary>
+                            <div style="margin-top: 0.5rem; padding: 0.75rem; background: #f8f9fa; border-radius: 4px; font-size: 0.875rem;">
+                                <strong>Available variables:</strong>
+                                <ul style="margin: 0.5rem 0; padding-left: 1.5rem;">
+                                    <li><code>{campaign_name}</code> - Campaign name (optional - may be empty)</li>
+                                    <li><code>{promoted_offering}</code> - What's being advertised (always present)</li>
+                                    <li><code>{buyer_ref}</code> - Buyer's internal reference (optional)</li>
+                                    <li><code>{date_range}</code> - Flight dates (e.g., "Oct 7-14, 2025")</li>
+                                    <li><code>{month_year}</code> - Month and year (e.g., "Oct 2025")</li>
+                                    <li><code>{package_count}</code> - Number of packages in order</li>
+                                </ul>
+                                <strong>Fallback syntax:</strong> <code>{var1|var2}</code> uses var1 if present, otherwise var2
+                                <br><strong>Example:</strong> <code>{campaign_name|promoted_offering}</code> tries campaign_name first, falls back to promoted_offering
+                            </div>
+                        </details>
+                    </div>
+
+                    <!-- Line Item Name Template -->
+                    <div class="form-group">
+                        <label for="line_item_name_template">Line Item Name Template</label>
+                        <input type="text" id="line_item_name_template" name="line_item_name_template"
+                               value="{{ tenant.line_item_name_template or '{order_name} - {product_name}' }}"
+                               placeholder="{order_name} - {product_name}"
+                               oninput="updateNamingPreview()">
+                        <details style="margin-top: 0.5rem;">
+                            <summary style="cursor: pointer; color: #666; font-size: 0.875rem;">Show available variables</summary>
+                            <div style="margin-top: 0.5rem; padding: 0.75rem; background: #f8f9fa; border-radius: 4px; font-size: 0.875rem;">
+                                <strong>Available variables:</strong>
+                                <ul style="margin: 0.5rem 0; padding-left: 1.5rem;">
+                                    <li><code>{product_name}</code> - Product/inventory name (e.g., "Display 300x250")</li>
+                                    <li><code>{order_name}</code> - Parent order name (provides campaign context)</li>
+                                    <li><code>{package_index}</code> - Package position number (1, 2, 3...)</li>
+                                </ul>
+                                <strong>Tip:</strong> Including <code>{order_name}</code> helps identify campaigns in line-item reports
+                            </div>
+                        </details>
+                    </div>
+
+                    <!-- Live Preview -->
+                    <div class="form-group" style="margin-top: 1.5rem;">
+                        <label>Preview with Sample Data</label>
+                        <div id="naming-preview" style="padding: 1rem; background: #f0f9ff; border: 1px solid #bfdbfe; border-radius: 8px;">
+                            <div style="margin-bottom: 0.75rem;">
+                                <strong style="color: #1e40af;">Order Name:</strong>
+                                <div id="order-preview" style="padding: 0.5rem; background: white; border-radius: 4px; margin-top: 0.25rem; font-family: monospace; color: #059669;">
+                                    Nike Shoes Q1 - Oct 7-14, 2025
+                                </div>
+                            </div>
+                            <div>
+                                <strong style="color: #1e40af;">Line Item Names:</strong>
+                                <div id="lineitem-preview" style="padding: 0.5rem; background: white; border-radius: 4px; margin-top: 0.25rem; font-family: monospace; color: #059669;">
+                                    1. Nike Shoes Q1 - Oct 7-14, 2025 - Display 300x250<br>
+                                    2. Nike Shoes Q1 - Oct 7-14, 2025 - Video Pre-roll<br>
+                                    3. Nike Shoes Q1 - Oct 7-14, 2025 - Native Article
+                                </div>
+                            </div>
+                            <div id="validation-messages" style="margin-top: 0.75rem; font-size: 0.875rem;">
+                                <!-- Validation messages will appear here -->
+                            </div>
+                            <small style="color: #64748b; display: block; margin-top: 0.5rem;">
+                                Using sample: campaign_name=null, promoted_offering="Nike Shoes Q1", dates=Oct 7-14, 2025, 3 products
+                            </small>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Approval Workflow -->
+                <div class="form-section">
+                    <h3>Approval Workflow</h3>
+                    <div class="checkbox-group">
+                        <input type="checkbox" id="human_review_required" name="human_review_required"
+                               {% if tenant.human_review_required %}checked{% endif %}>
+                        <label for="human_review_required">Require manual approval for order activation</label>
+                        <small>Orders will be created in draft state and require human approval before activation</small>
+                    </div>
+                </div>
+
+                <!-- Features -->
+                <div class="form-section">
+                    <h3>Features</h3>
+                    <div class="checkbox-group">
+                        <input type="checkbox" id="enable_axe_signals" name="enable_axe_signals"
+                               {% if tenant.enable_axe_signals %}checked{% endif %}>
+                        <label for="enable_axe_signals">Enable AXE environmental signals</label>
+                        <small>Pass carbon intensity and sustainability data to campaigns</small>
+                    </div>
+                </div>
+
+                <div class="button-group">
+                    <button type="button" onclick="saveBusinessRules()" class="btn btn-primary">
+                        Save Business Rules
+                    </button>
+                    <button type="reset" class="btn btn-secondary">Reset</button>
+                </div>
+            </form>
+        </div>
         <!-- Inventory Settings -->
         <div id="inventory" class="settings-section">
             <div class="settings-header">
@@ -1957,8 +1875,17 @@ function useNamingPreset(presetName) {
     const preset = NAMING_PRESETS[presetName];
     if (!preset) return;
 
-    document.getElementById('gam_order_name_template').value = preset.order;
-    document.getElementById('gam_line_item_name_template').value = preset.lineItem;
+    // Support both GAM section and Business Rules section
+    const orderTemplateElement = document.getElementById('order_name_template') || document.getElementById('gam_order_name_template');
+    const lineItemTemplateElement = document.getElementById('line_item_name_template') || document.getElementById('gam_line_item_name_template');
+
+    if (orderTemplateElement) {
+        orderTemplateElement.value = preset.order;
+    }
+    if (lineItemTemplateElement) {
+        lineItemTemplateElement.value = preset.lineItem;
+    }
+
     updateNamingPreview();
 }
 
@@ -1983,10 +1910,37 @@ function applyTemplateVariables(template, context) {
     return result;
 }
 
+// Validate template variables against known variables
+function validateTemplateVariables(template, knownVars) {
+    const warnings = [];
+    const pattern = /\{([^}]+)\}/g;
+    let match;
+
+    while ((match = pattern.exec(template)) !== null) {
+        const variables = match[1].split('|').map(v => v.trim());
+        const hasValidVar = variables.some(v => knownVars.includes(v));
+
+        if (!hasValidVar) {
+            warnings.push(`Unknown variable: ${match[0]} (available: ${variables.map(v => knownVars.includes(v) ? v : v + '?').join('|')})`);
+        }
+    }
+
+    return warnings;
+}
+
 // Update live preview
 function updateNamingPreview() {
-    const orderTemplate = document.getElementById('gam_order_name_template').value;
-    const lineItemTemplate = document.getElementById('gam_line_item_name_template').value;
+    // Support both GAM section (gam_* IDs) and Business Rules section (no prefix)
+    const orderTemplateElement = document.getElementById('order_name_template') || document.getElementById('gam_order_name_template');
+    const lineItemTemplateElement = document.getElementById('line_item_name_template') || document.getElementById('gam_line_item_name_template');
+
+    if (!orderTemplateElement || !lineItemTemplateElement) {
+        console.warn('Naming template elements not found');
+        return;
+    }
+
+    const orderTemplate = orderTemplateElement.value;
+    const lineItemTemplate = lineItemTemplateElement.value;
 
     // Sample context data
     const orderContext = {
@@ -2024,6 +1978,23 @@ function updateNamingPreview() {
     const validationDiv = document.getElementById('validation-messages');
     const errors = [];
 
+    // Known variables for validation
+    const orderKnownVars = ['campaign_name', 'promoted_offering', 'buyer_ref', 'date_range', 'month_year', 'package_count', 'start_date', 'end_date'];
+    const lineItemKnownVars = ['order_name', 'product_name', 'package_index'];
+
+    // Check for unknown variables
+    const orderVarWarnings = validateTemplateVariables(orderTemplate, orderKnownVars);
+    const lineItemVarWarnings = validateTemplateVariables(lineItemTemplate, lineItemKnownVars);
+
+    orderVarWarnings.forEach(warning => {
+        errors.push('⚠️ Order template: ' + warning);
+    });
+
+    lineItemVarWarnings.forEach(warning => {
+        errors.push('⚠️ Line item template: ' + warning);
+    });
+
+    // Check result length and content
     if (!orderName || orderName.trim() === '') {
         errors.push('⚠️ Order template produces empty name - add fallback variables');
     }
@@ -2055,11 +2026,52 @@ function updateNamingPreview() {
 
 // Initialize preview on page load
 document.addEventListener('DOMContentLoaded', function() {
-    // Initialize preview if templates section exists
-    if (document.getElementById('gam_order_name_template')) {
+    // Initialize preview if templates section exists (GAM or Business Rules)
+    if (document.getElementById('gam_order_name_template') || document.getElementById('order_name_template')) {
         updateNamingPreview();
     }
 });
+
+// Save Business Rules
+function saveBusinessRules() {
+    const data = {
+        max_daily_budget: document.getElementById('max_daily_budget').value,
+        order_name_template: document.getElementById('order_name_template').value,
+        line_item_name_template: document.getElementById('line_item_name_template').value,
+        human_review_required: document.getElementById('human_review_required').checked,
+        enable_axe_signals: document.getElementById('enable_axe_signals').checked,
+    };
+
+    fetch('{{ script_name }}/tenant/{{ tenant.tenant_id }}/settings/business-rules', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(data)
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            // Show success message
+            const messageDiv = document.createElement('div');
+            messageDiv.className = 'alert alert-success';
+            messageDiv.style.cssText = 'position: fixed; top: 20px; right: 20px; z-index: 9999; padding: 1rem; border-radius: 8px; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1); max-width: 400px;';
+            messageDiv.textContent = '✓ Business rules updated successfully';
+            document.body.appendChild(messageDiv);
+
+            // Remove message after 3 seconds
+            setTimeout(() => {
+                messageDiv.remove();
+            }, 3000);
+        } else {
+            alert('Error updating business rules: ' + (data.error || 'Unknown error'));
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('Error updating business rules: ' + error.message);
+    });
+}
 
 // Save GAM configuration
 function saveGAMConfig() {
@@ -2684,6 +2696,83 @@ function confirmDeactivation() {
         'This will immediately deactivate your sales agent and stop all active campaigns.\n\n' +
         'Are you absolutely sure you want to proceed?'
     );
+}
+
+// Currency Limits Management
+function addCurrencyLimit() {
+    const input = document.getElementById('new_currency_code');
+    const currencyCode = input.value.trim().toUpperCase();
+
+    if (!currencyCode || currencyCode.length !== 3) {
+        alert('Please enter a valid 3-letter currency code (e.g., USD, EUR, GBP)');
+        return;
+    }
+
+    // Check if currency already exists
+    const existing = document.querySelector(`.currency-limit-row[data-currency="${currencyCode}"]`);
+    if (existing) {
+        alert(`Currency ${currencyCode} already exists`);
+        return;
+    }
+
+    // Create new currency limit row
+    const container = document.getElementById('currency-limits-container');
+    const newRow = document.createElement('div');
+    newRow.className = 'currency-limit-row';
+    newRow.setAttribute('data-currency', currencyCode);
+    newRow.innerHTML = `
+        <div class="form-grid" style="grid-template-columns: 120px 1fr 1fr 60px; align-items: start; gap: 1rem; padding: 1rem; background: #f9fafb; border-radius: 8px; margin-bottom: 1rem;">
+            <div>
+                <strong style="font-size: 1.125rem; color: #111827;">${currencyCode}</strong>
+                <br><small style="color: #6b7280;">Currency</small>
+            </div>
+            <div class="form-group" style="margin: 0;">
+                <label for="min_spend_${currencyCode}">Minimum Per Package</label>
+                <input type="number" id="min_spend_${currencyCode}"
+                       name="currency_limits[${currencyCode}][min_package_budget]"
+                       min="0" step="0.01" placeholder="No minimum">
+                <small style="color: #6b7280;">
+                    Total budget per package/line item<br>
+                    <em>Example: Set to 1,000 → rejects packages under $1k</em>
+                </small>
+            </div>
+            <div class="form-group" style="margin: 0;">
+                <label for="max_daily_${currencyCode}">Maximum Daily Per Package</label>
+                <input type="number" id="max_daily_${currencyCode}"
+                       name="currency_limits[${currencyCode}][max_daily_package_spend]"
+                       min="0" step="0.01" placeholder="No maximum">
+                <small style="color: #6b7280;">
+                    Max daily spend per package (prevents line item proliferation)<br>
+                    <em>Example: Set to 10,000 → rejects $100k package over 5 days ($20k/day)</em>
+                </small>
+            </div>
+            <div style="padding-top: 1.5rem;">
+                <button type="button" class="btn-danger" onclick="removeCurrencyLimit('${currencyCode}')">
+                    Remove
+                </button>
+                <input type="hidden" name="currency_limits[${currencyCode}][_delete]" value="false">
+            </div>
+        </div>
+    `;
+
+    container.appendChild(newRow);
+    input.value = '';
+}
+
+function removeCurrencyLimit(currencyCode) {
+    if (!confirm(`Remove ${currencyCode} currency limits?`)) {
+        return;
+    }
+
+    const row = document.querySelector(`.currency-limit-row[data-currency="${currencyCode}"]`);
+    if (row) {
+        // Mark for deletion
+        const deleteInput = row.querySelector(`input[name="currency_limits[${currencyCode}][_delete]"]`);
+        if (deleteInput) {
+            deleteInput.value = 'true';
+        }
+        row.style.display = 'none';
+    }
 }
 </script>
 
