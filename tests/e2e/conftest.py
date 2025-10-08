@@ -75,35 +75,43 @@ def docker_services_e2e(request):
         subprocess.run(["docker-compose", "up", "-d"], check=True)
 
         # Wait for services to be healthy
-        max_wait = 60
+        max_wait = 120  # Increased from 60 to 120 seconds for CI
         start_time = time.time()
 
         mcp_ready = False
         a2a_ready = False
 
+        mcp_port = os.getenv("ADCP_SALES_PORT", "8092")
+        a2a_port = os.getenv("A2A_PORT", "8094")
+
+        print(f"Waiting for services (max {max_wait}s)...")
+        print(f"  MCP: http://localhost:{mcp_port}/health")
+        print(f"  A2A: http://localhost:{a2a_port}/")
+
         while time.time() - start_time < max_wait:
+            elapsed = int(time.time() - start_time)
+
             # Check MCP server health
             if not mcp_ready:
                 try:
-                    mcp_port = os.getenv("ADCP_SALES_PORT", "8092")  # Matches docker-compose default
                     response = requests.get(f"http://localhost:{mcp_port}/health", timeout=2)
                     if response.status_code == 200:
-                        print("✓ MCP server is ready")
+                        print(f"✓ MCP server is ready (after {elapsed}s)")
                         mcp_ready = True
-                except requests.RequestException:
-                    pass
+                except requests.RequestException as e:
+                    if elapsed % 10 == 0:  # Log every 10 seconds
+                        print(f"  MCP not ready yet ({elapsed}s): {type(e).__name__}")
 
             # Check A2A server health
             if not a2a_ready:
                 try:
-                    # A2A server typically responds to a basic GET request
-                    a2a_port = os.getenv("A2A_PORT", "8094")  # Matches docker-compose default
                     response = requests.get(f"http://localhost:{a2a_port}/", timeout=2)
                     if response.status_code in [200, 404, 405]:  # Any response means it's up
-                        print("✓ A2A server is ready")
+                        print(f"✓ A2A server is ready (after {elapsed}s)")
                         a2a_ready = True
-                except requests.RequestException:
-                    pass
+                except requests.RequestException as e:
+                    if elapsed % 10 == 0:  # Log every 10 seconds
+                        print(f"  A2A not ready yet ({elapsed}s): {type(e).__name__}")
 
             # Both services ready
             if mcp_ready and a2a_ready:
@@ -111,10 +119,22 @@ def docker_services_e2e(request):
 
             time.sleep(2)
         else:
+            # Timeout - try to get container logs for debugging
+            print("\n❌ Health check timeout. Attempting to get container logs...")
+            try:
+                result = subprocess.run(
+                    ["docker-compose", "logs", "--tail=50", "adcp-server"], capture_output=True, text=True, timeout=5
+                )
+                if result.stdout:
+                    print("MCP server logs:")
+                    print(result.stdout)
+            except Exception as e:
+                print(f"Could not get logs: {e}")
+
             if not mcp_ready:
-                pytest.fail("MCP server did not become healthy in time")
+                pytest.fail(f"MCP server did not become healthy in time (waited {max_wait}s, port {mcp_port})")
             if not a2a_ready:
-                pytest.fail("A2A server did not become healthy in time")
+                pytest.fail(f"A2A server did not become healthy in time (waited {max_wait}s, port {a2a_port})")
     else:
         print("✓ Docker services already running")
 
