@@ -354,6 +354,46 @@
         background: #dc2626;
     }
 
+    .alert {
+        padding: 1rem;
+        border-radius: 8px;
+        margin-bottom: 1rem;
+        border: 1px solid;
+    }
+
+    .alert-warning {
+        background: #fffbeb;
+        border-color: #fde047;
+        color: #92400e;
+    }
+
+    .alert-info {
+        background: #eff6ff;
+        border-color: #93c5fd;
+        color: #1e40af;
+    }
+
+    .stat-card {
+        background: white;
+        border: 1px solid #e5e7eb;
+        border-radius: 8px;
+        padding: 1rem;
+        text-align: center;
+    }
+
+    .stat-value {
+        font-size: 2rem;
+        font-weight: 700;
+        color: #111827;
+        margin-bottom: 0.25rem;
+    }
+
+    .stat-label {
+        font-size: 0.875rem;
+        color: #6b7280;
+        font-weight: 500;
+    }
+
     @media (max-width: 768px) {
         .settings-layout {
             grid-template-columns: 1fr;
@@ -365,6 +405,10 @@
 
         .form-grid {
             grid-template-columns: 1fr;
+        }
+
+        .stats-grid {
+            grid-template-columns: 1fr !important;
         }
     }
 
@@ -395,6 +439,11 @@
         <a class="settings-nav-item" data-section="adserver">
             <span class="settings-nav-icon">🖥️</span>
             <span>Ad Server</span>
+        </a>
+
+        <a class="settings-nav-item" data-section="inventory">
+            <span class="settings-nav-icon">📊</span>
+            <span>Inventory</span>
         </a>
 
         <a class="settings-nav-item" data-section="products">
@@ -811,6 +860,71 @@
                 </div>
                 {% endif %}
             </div>
+        </div>
+
+        <!-- Inventory Settings -->
+        <div id="inventory" class="settings-section">
+            <div class="settings-header">
+                <h2>Inventory Management</h2>
+                <p>Sync and manage ad units, placements, and targeting options from your ad server</p>
+            </div>
+
+            {% if active_adapter == 'google_ad_manager' %}
+            <div class="form-section">
+                <h3>Inventory Sync Status</h3>
+
+                <div class="stats-grid" style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; margin-bottom: 1.5rem;">
+                    <div class="stat-card">
+                        <div class="stat-value">{{ inventory_count|default(0) }}</div>
+                        <div class="stat-label">Total Items</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value">{{ ad_units_count|default(0) }}</div>
+                        <div class="stat-label">Ad Units</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value">{{ placements_count|default(0) }}</div>
+                        <div class="stat-label">Placements</div>
+                    </div>
+                </div>
+
+                <div class="status-card {% if last_sync_time %}success{% else %}warning{% endif %}">
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <div>
+                            <strong>{% if last_sync_time %}Last synced: {{ last_sync_time }}{% else %}No sync performed yet{% endif %}</strong>
+                            <p style="margin: 0.5rem 0 0 0; font-size: 0.875rem;">
+                                Syncing imports ad units, placements, and targeting options from Google Ad Manager.
+                            </p>
+                        </div>
+                        <button onclick="syncGAMInventory()" class="btn btn-primary" style="white-space: nowrap;">
+                            <span id="sync-icon">🔄</span> Sync Now
+                        </button>
+                    </div>
+                </div>
+
+                <div class="form-section" style="margin-top: 1.5rem;">
+                    <h3>Actions</h3>
+                    <div style="display: flex; gap: 1rem;">
+                        <a href="/admin/tenant/{{ tenant_id }}/inventory?type=all" class="btn btn-secondary">
+                            📊 Browse Inventory
+                        </a>
+                        <a href="/admin/tenant/{{ tenant_id }}/targeting" class="btn btn-secondary">
+                            🎯 Browse Targeting
+                        </a>
+                    </div>
+                </div>
+            </div>
+            {% else %}
+            <div class="alert alert-warning">
+                <strong>Ad Server Required</strong>
+                <p style="margin: 0.25rem 0 0 0; font-size: 0.875rem;">
+                    Connect to Google Ad Manager in the Ad Server settings to enable inventory sync.
+                </p>
+                <a href="#" onclick="event.preventDefault(); switchSettingsSection('adserver')" class="btn btn-primary" style="margin-top: 1rem;">
+                    Configure Ad Server
+                </a>
+            </div>
+            {% endif %}
         </div>
 
         <!-- Products Settings -->
@@ -1387,6 +1501,14 @@ window.addEventListener('load', function() {
         }
     }
 });
+
+// Helper function to switch to a specific section
+function switchSettingsSection(sectionId) {
+    const navItem = document.querySelector(`[data-section="${sectionId}"]`);
+    if (navItem) {
+        navItem.click();
+    }
+}
 
 // Copy to clipboard
 function copyToClipboard(buttonOrText) {

@@ -64,9 +64,18 @@ def upgrade():
                 platform_mappings = {}
                 print(f"Warning: Invalid platform_mappings for principal {principal_id}, using empty dict")
 
-            # Add the advertiser_id to platform_mappings if not already present
-            if "gam_advertiser_id" not in platform_mappings:
-                platform_mappings["gam_advertiser_id"] = company_id
+            # Add the advertiser_id to platform_mappings using new format
+            # Check both old and new formats to avoid duplicates
+            has_gam_mapping = "gam_advertiser_id" in platform_mappings or (
+                "google_ad_manager" in platform_mappings and platform_mappings["google_ad_manager"].get("advertiser_id")
+            )
+
+            if not has_gam_mapping:
+                # Use new format
+                if "google_ad_manager" not in platform_mappings:
+                    platform_mappings["google_ad_manager"] = {}
+                platform_mappings["google_ad_manager"]["advertiser_id"] = str(company_id)
+                platform_mappings["google_ad_manager"]["enabled"] = True
 
                 connection.execute(
                     sa.text(
@@ -110,7 +119,11 @@ def downgrade():
         except (json.JSONDecodeError, TypeError):
             platform_mappings = {}
             print(f"Warning: Invalid platform_mappings for tenant {tenant_id}, using empty dict")
+
+        # Support both old and new formats
         advertiser_id = platform_mappings.get("gam_advertiser_id")
+        if not advertiser_id and "google_ad_manager" in platform_mappings:
+            advertiser_id = platform_mappings["google_ad_manager"].get("advertiser_id")
 
         if advertiser_id:
             connection.execute(
