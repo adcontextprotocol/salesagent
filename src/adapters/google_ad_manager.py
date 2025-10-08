@@ -342,7 +342,12 @@ class GoogleAdManager(AdServerAdapter):
                 order_name_template = adapter_config.gam_order_name_template
 
         context = build_order_name_context(request, packages, start_time, end_time)
-        order_name = apply_naming_template(order_name_template, context)
+        base_order_name = apply_naming_template(order_name_template, context)
+
+        # Add unique identifier to prevent duplicate order names
+        # Use media_buy_id if available (from buyer_ref), otherwise timestamp
+        unique_suffix = request.buyer_ref or f"mb_{int(datetime.now().timestamp())}"
+        order_name = f"{base_order_name} [{unique_suffix}]"
 
         order_id = self.orders_manager.create_order(
             order_name=order_name,
