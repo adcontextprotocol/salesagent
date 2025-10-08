@@ -76,7 +76,7 @@ services:
     command: python -m src.admin.server
     environment:
       DATABASE_URL: postgresql://adcp_user:secure_password_change_me@postgres:5432/adcp?sslmode=disable
-      ADMIN_UI_PORT: ${ADMIN_UI_PORT:-8001}
+      ADMIN_UI_PORT: 8001
       FLASK_ENV: production
       FLASK_DEBUG: ${FLASK_DEBUG:-0}
       FLASK_SECRET_KEY: ${FLASK_SECRET_KEY:-dev-secret-key-change-in-production}
@@ -95,9 +95,9 @@ services:
       # Test mode
       ADCP_AUTH_TEST_MODE: ${ADCP_AUTH_TEST_MODE:-false}
 
-      # Server ports for MCP and A2A testing
-      ADCP_SALES_PORT: ${ADCP_SALES_PORT:-8080}
-      A2A_PORT: ${A2A_PORT:-8094}
+      # Server ports for MCP and A2A testing (internal container ports)
+      ADCP_SALES_PORT: 8080
+      A2A_PORT: 8091
 
       # Skip nginx for standalone service
       SKIP_NGINX: "true"
@@ -107,7 +107,7 @@ services:
         condition: service_healthy
 
     ports:
-      - "${ADMIN_UI_PORT:-8001}:${ADMIN_UI_PORT:-8001}"
+      - "${ADMIN_UI_PORT:-8001}:8001"
 
     volumes:
       # Mount OAuth credentials file
@@ -115,7 +115,7 @@ services:
       - ./audit_logs:/app/audit_logs
 
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:${ADMIN_UI_PORT:-8001}/health"]
+      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
       interval: 30s
       timeout: 10s
       retries: 3
