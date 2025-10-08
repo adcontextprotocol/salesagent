@@ -527,6 +527,9 @@ class GAMOrdersManager:
                     "second": end_time.second,
                     "timeZoneId": impl_config.get("time_zone", "America/New_York"),
                 },
+                # Set status based on whether manual approval is required
+                # DRAFT = needs manual approval, READY = ready to serve (when creatives added)
+                "status": "READY",  # Always create as READY since creatives will be added
             }
 
             # Add frequency caps - merge buyer's frequency cap with product config

@@ -1049,9 +1049,17 @@
                                                 {% if platform == 'gam_advertiser_id' %}
                                                     <small class="badge bg-primary me-1" title="Google Ad Manager Advertiser ID">GAM: {{ config }}</small>
                                                 {% elif platform == 'google_ad_manager' %}
-                                                    <small class="badge bg-primary me-1" title="Google Ad Manager">{{ platform }}</small>
+                                                    {% if config is mapping and (config.advertiser_id or config.company_id) %}
+                                                        <small class="badge bg-primary me-1" title="Google Ad Manager Advertiser">GAM: {{ config.advertiser_id or config.company_id }}</small>
+                                                    {% else %}
+                                                        <small class="badge bg-primary me-1" title="Google Ad Manager (not configured)">GAM: Not configured</small>
+                                                    {% endif %}
                                                 {% elif platform == 'mock' %}
-                                                    <small class="badge bg-secondary me-1" title="Mock Adapter">{{ platform }}</small>
+                                                    {% if config is mapping and config.advertiser_id %}
+                                                        <small class="badge bg-secondary me-1" title="Mock Adapter">Mock: {{ config.advertiser_id }}</small>
+                                                    {% else %}
+                                                        <small class="badge bg-secondary me-1" title="Mock Adapter">Mock</small>
+                                                    {% endif %}
                                                 {% else %}
                                                     <small class="badge bg-info me-1" title="{{ platform }}">{{ platform }}: {{ config if config is string else config|first if config is iterable else config }}</small>
                                                 {% endif %}
@@ -2431,11 +2439,12 @@ function loadGAMAdvertisersForEdit(currentAdvertiserId) {
 function savePrincipalMappings() {
     const activeAdapter = '{{ active_adapter }}';
 
-    // Build platform mappings object
+    // Build platform mappings - ONLY for the active adapter
+    // This ensures we don't store useless mappings for inactive adapters
     const platformMappings = {};
 
     if (activeAdapter === 'google_ad_manager') {
-        // GAM tenant - save GAM fields
+        // GAM tenant - only save GAM mapping
         const gamCompanyIdEl = document.getElementById('gam_company_id');
         const gamTraffickerIdEl = document.getElementById('gam_trafficker_id');
 
@@ -2451,6 +2460,7 @@ function savePrincipalMappings() {
             }
         }
 
+        // Create GAM mapping (only active adapter)
         if (gamCompanyId || gamTraffickerId) {
             platformMappings.google_ad_manager = {
                 enabled: true  // Always enabled for GAM tenants
@@ -2464,7 +2474,7 @@ function savePrincipalMappings() {
             }
         }
     } else {
-        // Mock tenant - save mock fields
+        // Mock tenant - only save mock mapping
         const mockAdvertiserIdEl = document.getElementById('mock_advertiser_id');
         const mockAdvertiserId = mockAdvertiserIdEl ? mockAdvertiserIdEl.value.trim() : '';
 
