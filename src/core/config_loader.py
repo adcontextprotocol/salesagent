@@ -75,6 +75,9 @@ def get_default_tenant() -> dict[str, Any] | None:
                     "hitl_webhook_url": tenant.hitl_webhook_url,
                     "policy_settings": safe_json_loads(tenant.policy_settings, None),
                     "signals_agent_config": safe_json_loads(tenant.signals_agent_config, None),
+                    "approval_mode": tenant.approval_mode,
+                    "gemini_api_key": tenant.gemini_api_key,
+                    "creative_review_criteria": tenant.creative_review_criteria,
                 }
             return None
     except Exception as e:
@@ -176,6 +179,9 @@ def get_tenant_by_subdomain(subdomain: str) -> dict[str, Any] | None:
                     "hitl_webhook_url": tenant.hitl_webhook_url,
                     "policy_settings": safe_json_loads(tenant.policy_settings, None),
                     "signals_agent_config": safe_json_loads(tenant.signals_agent_config, None),
+                    "approval_mode": tenant.approval_mode,
+                    "gemini_api_key": tenant.gemini_api_key,
+                    "creative_review_criteria": tenant.creative_review_criteria,
                 }
             return None
     except Exception as e:
@@ -211,6 +217,9 @@ def get_tenant_by_virtual_host(virtual_host: str) -> dict[str, Any] | None:
                     "hitl_webhook_url": tenant.hitl_webhook_url,
                     "policy_settings": safe_json_loads(tenant.policy_settings, None),
                     "signals_agent_config": safe_json_loads(tenant.signals_agent_config, None),
+                    "approval_mode": tenant.approval_mode,
+                    "gemini_api_key": tenant.gemini_api_key,
+                    "creative_review_criteria": tenant.creative_review_criteria,
                 }
             return None
     except Exception as e:

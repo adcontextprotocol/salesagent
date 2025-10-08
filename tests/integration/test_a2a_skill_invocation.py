@@ -785,7 +785,7 @@ class TestA2ASkillInvocation:
 
             # Extract response
             artifact_data = validator.extract_adcp_payload_from_a2a_artifact(result.artifacts[0])
-            assert "synced_creatives" in artifact_data or "failed_creatives" in artifact_data
+            assert "creatives" in artifact_data or "failed_creatives" in artifact_data
 
     @pytest.mark.asyncio
     async def test_list_creatives_skill(self, handler, sample_tenant, sample_principal, validator):

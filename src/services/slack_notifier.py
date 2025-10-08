@@ -222,7 +222,13 @@ class SlackNotifier:
         return self.send_message(fallback_text, blocks)
 
     def notify_creative_pending(
-        self, creative_id: str, principal_name: str, format_type: str, media_buy_id: str | None = None
+        self,
+        creative_id: str,
+        principal_name: str,
+        format_type: str,
+        media_buy_id: str | None = None,
+        tenant_id: str | None = None,
+        ai_review_reason: str | None = None,
     ) -> bool:
         """
         Send notification for a creative pending approval.
@@ -232,6 +238,8 @@ class SlackNotifier:
             principal_name: Principal who submitted the creative
             format_type: Creative format (e.g., 'video', 'display_300x250')
             media_buy_id: Associated media buy if applicable
+            tenant_id: Tenant ID for building correct URL
+            ai_review_reason: AI review reasoning if available
 
         Returns:
             True if notification sent successfully
@@ -251,6 +259,22 @@ class SlackNotifier:
         if media_buy_id:
             blocks[1]["fields"].append({"type": "mrkdwn", "text": f"*Media Buy:*\n`{media_buy_id}`"})
 
+        # Add AI review reason if available
+        if ai_review_reason:
+            blocks.append(
+                {"type": "section", "text": {"type": "mrkdwn", "text": f"🤖 *AI Review:*\n{ai_review_reason}"}}
+            )
+
+        # Build correct URL to specific creative
+        admin_url = os.getenv("ADMIN_UI_URL", "http://localhost:8001")
+        if tenant_id:
+            # Link directly to the specific creative using anchor
+            # Correct URL pattern: /tenant/{tenant_id}/creative-formats/review#{creative_id}
+            review_url = f"{admin_url}/tenant/{tenant_id}/creative-formats/review#{creative_id}"
+        else:
+            # Fallback to operations page if tenant_id not provided
+            review_url = f"{admin_url}/operations"
+
         blocks.extend(
             [
                 {
@@ -259,7 +283,7 @@ class SlackNotifier:
                         {
                             "type": "button",
                             "text": {"type": "plain_text", "text": "Review Creative"},
-                            "url": f"{os.getenv('ADMIN_UI_URL', 'http://localhost:8001')}/operations#creatives",
+                            "url": review_url,
                             "style": "primary",
                         }
                     ],

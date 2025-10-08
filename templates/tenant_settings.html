@@ -431,15 +431,22 @@
 <div class="settings-layout">
     <!-- Settings Navigation -->
     <nav class="settings-nav">
-        <a class="settings-nav-item active" data-section="general">
-            <span class="settings-nav-icon">⚙️</span>
-            <span>General</span>
+        <a class="settings-nav-item active" data-section="account">
+            <span class="settings-nav-icon">🏢</span>
+            <span>Account</span>
         </a>
 
         <a class="settings-nav-item" data-section="adserver">
             <span class="settings-nav-icon">🖥️</span>
             <span>Ad Server</span>
         </a>
+
+        <a class="settings-nav-item" data-section="business-rules">
+            <span class="settings-nav-icon">📋</span>
+            <span>Policies & Workflows</span>
+        </a>
+
+        <div class="settings-nav-separator"></div>
 
         <a class="settings-nav-item" data-section="inventory">
             <span class="settings-nav-icon">📊</span>
@@ -449,16 +456,6 @@
         <a class="settings-nav-item" data-section="products">
             <span class="settings-nav-icon">📦</span>
             <span>Products</span>
-        </a>
-
-        <a class="settings-nav-item" data-section="creatives">
-            <span class="settings-nav-icon">🎨</span>
-            <span>Creative Formats</span>
-        </a>
-
-        <a class="settings-nav-item" data-section="creative-review">
-            <span class="settings-nav-icon">🤖</span>
-            <span>Creative Review</span>
         </a>
 
         <a class="settings-nav-item" data-section="advertisers">
@@ -473,23 +470,6 @@
             <span>Integrations</span>
         </a>
 
-        <a class="settings-nav-item" data-section="api">
-            <span class="settings-nav-icon">🔑</span>
-            <span>API & Tokens</span>
-        </a>
-
-        <a class="settings-nav-item" data-section="users">
-            <span class="settings-nav-icon">👤</span>
-            <span>Users & Access</span>
-        </a>
-
-        <div class="settings-nav-separator"></div>
-
-        <a class="settings-nav-item" data-section="advanced">
-            <span class="settings-nav-icon">🔧</span>
-            <span>Advanced</span>
-        </a>
-
         <a class="settings-nav-item" data-section="danger-zone">
             <span class="settings-nav-icon">⚠️</span>
             <span>Danger Zone</span>
@@ -498,11 +478,11 @@
 
     <!-- Settings Content -->
     <div class="settings-content">
-        <!-- General Settings -->
-        <div id="general" class="settings-section active">
+        <!-- Account Settings (renamed from General) -->
+        <div id="account" class="settings-section active">
             <div class="settings-header">
-                <h2>General Settings</h2>
-                <p>Basic configuration for your sales agent</p>
+                <h2>Account</h2>
+                <p>Organization identity and access control</p>
             </div>
 
             <form method="POST" action="/tenant/{{ tenant.tenant_id }}/settings/general">
@@ -540,45 +520,11 @@
                     </div>
                 </div>
 
-                <div class="form-section">
-                    <h3>Budget & Limits</h3>
-                    <div class="form-grid">
-                        <div class="form-group">
-                            <label for="max_daily_budget">Maximum Daily Budget</label>
-                            <input type="number" id="max_daily_budget" name="max_daily_budget"
-                                   value="{{ tenant.max_daily_budget }}" min="0" step="100">
-                            <small>Maximum daily spend limit across all campaigns</small>
-                        </div>
-
-                        <!-- Min campaign budget field removed - not in model -->
-                        <div class="form-group">
-                            <label for="billing_plan">Billing Plan</label>
-                            <input type="text" id="billing_plan" name="billing_plan"
-                                   value="{{ tenant.billing_plan or 'standard' }}" readonly>
-                            <small>Contact support to change billing plan</small>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="form-section">
-                    <h3>Features</h3>
-                    <div class="checkbox-group">
-                        <input type="checkbox" id="enable_axe_signals" name="enable_axe_signals"
-                               {% if tenant.enable_axe_signals %}checked{% endif %}>
-                        <label for="enable_axe_signals">Enable AEE Signals</label>
-                    </div>
-
-                    <div class="checkbox-group">
-                        <input type="checkbox" id="human_review_required" name="human_review_required"
-                               {% if tenant.human_review_required %}checked{% endif %}>
-                        <label for="human_review_required">Require Human Review for Creatives</label>
-                    </div>
-
-                    <!-- Auto-approve trusted field removed - not in model -->
-                </div>
+                <!-- Budget & Limits moved to Business Rules section -->
+                <!-- Features moved to Business Rules section -->
 
                 <div class="button-group">
-                    <button type="submit" class="btn btn-primary">Save Changes</button>
+                    <button type="submit" class="btn btn-primary">Save Account Settings</button>
                     <button type="reset" class="btn btn-secondary">Reset</button>
                 </div>
             </form>
@@ -755,100 +701,6 @@
                         <small class="form-text text-muted">The GAM user ID who will create line items. Auto-detected when you click "Auto-detect Network" above.</small>
                     </div>
 
-                    <div class="form-section" style="margin-top: 2rem; padding-top: 1.5rem; border-top: 1px solid #e5e7eb;">
-                        <h3>Naming Templates</h3>
-                        <p style="color: #6b7280; font-size: 0.875rem; margin-bottom: 1.5rem;">
-                            Configure how orders and line items are named in Google Ad Manager. Use variables like <code>{campaign_name}</code>, <code>{promoted_offering}</code>, <code>{date_range}</code>, etc.
-                        </p>
-
-                        <!-- Preset Template Buttons -->
-                        <div class="form-group">
-                            <label>Quick Start Templates</label>
-                            <div style="display: flex; gap: 0.5rem; margin-bottom: 1rem;">
-                                <button type="button" class="btn btn-secondary btn-sm" onclick="useNamingPreset('simple')">
-                                    📊 Simple
-                                </button>
-                                <button type="button" class="btn btn-secondary btn-sm" onclick="useNamingPreset('campaign')">
-                                    🎯 Campaign-First
-                                </button>
-                                <button type="button" class="btn btn-secondary btn-sm" onclick="useNamingPreset('detailed')">
-                                    📅 Detailed
-                                </button>
-                            </div>
-                        </div>
-
-                        <div class="form-group">
-                            <label for="gam_order_name_template">Order Name Template</label>
-                            <input type="text" id="gam_order_name_template" class="form-control"
-                                   value="{{ adapter_config.get('order_name_template', '{campaign_name|promoted_offering} - {date_range}') if adapter_config else '{campaign_name|promoted_offering} - {date_range}' }}"
-                                   placeholder="{campaign_name|promoted_offering} - {date_range}"
-                                   oninput="updateNamingPreview()">
-                            <details style="margin-top: 0.5rem;">
-                                <summary style="cursor: pointer; color: #666; font-size: 0.875rem;">Show available variables</summary>
-                                <div style="margin-top: 0.5rem; padding: 0.75rem; background: #f8f9fa; border-radius: 4px; font-size: 0.875rem;">
-                                    <strong>Available variables:</strong>
-                                    <ul style="margin: 0.5rem 0; padding-left: 1.5rem;">
-                                        <li><code>{campaign_name}</code> - Campaign name (optional - may be empty)</li>
-                                        <li><code>{promoted_offering}</code> - What's being advertised (always present)</li>
-                                        <li><code>{buyer_ref}</code> - Buyer's internal reference (optional)</li>
-                                        <li><code>{date_range}</code> - Flight dates (e.g., "Oct 7-14, 2025")</li>
-                                        <li><code>{month_year}</code> - Month and year (e.g., "Oct 2025")</li>
-                                        <li><code>{package_count}</code> - Number of packages in order</li>
-                                    </ul>
-                                    <strong>Fallback syntax:</strong> <code>{var1|var2}</code> uses var1 if present, otherwise var2
-                                    <br><strong>Example:</strong> <code>{campaign_name|promoted_offering}</code> tries campaign_name first, falls back to promoted_offering
-                                </div>
-                            </details>
-                        </div>
-
-                        <div class="form-group">
-                            <label for="gam_line_item_name_template">Line Item Name Template</label>
-                            <input type="text" id="gam_line_item_name_template" class="form-control"
-                                   value="{{ adapter_config.get('line_item_name_template', '{order_name} - {product_name}') if adapter_config else '{order_name} - {product_name}' }}"
-                                   placeholder="{order_name} - {product_name}"
-                                   oninput="updateNamingPreview()">
-                            <details style="margin-top: 0.5rem;">
-                                <summary style="cursor: pointer; color: #666; font-size: 0.875rem;">Show available variables</summary>
-                                <div style="margin-top: 0.5rem; padding: 0.75rem; background: #f8f9fa; border-radius: 4px; font-size: 0.875rem;">
-                                    <strong>Available variables:</strong>
-                                    <ul style="margin: 0.5rem 0; padding-left: 1.5rem;">
-                                        <li><code>{product_name}</code> - Product/inventory name (e.g., "Display 300x250")</li>
-                                        <li><code>{order_name}</code> - Parent order name (provides campaign context)</li>
-                                        <li><code>{package_index}</code> - Package position number (1, 2, 3...)</li>
-                                    </ul>
-                                    <strong>Tip:</strong> Including <code>{order_name}</code> helps identify campaigns in line-item reports
-                                </div>
-                            </details>
-                        </div>
-
-                        <!-- Live Preview -->
-                        <div class="form-group" style="margin-top: 1.5rem;">
-                            <label>Preview with Sample Data</label>
-                            <div id="naming-preview" style="padding: 1rem; background: #f0f9ff; border: 1px solid #bfdbfe; border-radius: 8px;">
-                                <div style="margin-bottom: 0.75rem;">
-                                    <strong style="color: #1e40af;">Order Name:</strong>
-                                    <div id="order-preview" style="padding: 0.5rem; background: white; border-radius: 4px; margin-top: 0.25rem; font-family: monospace; color: #059669;">
-                                        Nike Shoes Q1 - Oct 7-14, 2025
-                                    </div>
-                                </div>
-                                <div>
-                                    <strong style="color: #1e40af;">Line Item Names:</strong>
-                                    <div id="lineitem-preview" style="padding: 0.5rem; background: white; border-radius: 4px; margin-top: 0.25rem; font-family: monospace; color: #059669;">
-                                        1. Nike Shoes Q1 - Oct 7-14, 2025 - Display 300x250<br>
-                                        2. Nike Shoes Q1 - Oct 7-14, 2025 - Video Pre-roll<br>
-                                        3. Nike Shoes Q1 - Oct 7-14, 2025 - Native Article
-                                    </div>
-                                </div>
-                                <div id="validation-messages" style="margin-top: 0.75rem; font-size: 0.875rem;">
-                                    <!-- Validation messages will appear here -->
-                                </div>
-                                <small style="color: #64748b; display: block; margin-top: 0.5rem;">
-                                    Using sample: campaign_name=null, promoted_offering="Nike Shoes Q1", dates=Oct 7-14, 2025, 3 products
-                                </small>
-                            </div>
-                        </div>
-                    </div>
-
                     <div class="form-group" style="margin-top: 2rem;">
                         <button onclick="saveGAMConfig()" class="btn btn-primary">Save GAM Configuration</button>
                         {% if adapter_config and adapter_config.get('refresh_token') %}
@@ -867,6 +719,282 @@
             </div>
         </div>
 
+        <!-- Policies & Workflows Section -->
+        <div id="business-rules" class="settings-section">
+            <div class="settings-header">
+                <h2>Policies & Workflows</h2>
+                <p>Configure how your organization operates: budgets, naming conventions, approval workflows</p>
+            </div>
+
+            <form id="business-rules-form">
+                <!-- Budget Controls -->
+                <div class="form-section">
+                    <h3>Budget Controls</h3>
+                    <div class="form-grid">
+                        <div class="form-group">
+                            <label for="max_daily_budget">Maximum Daily Budget (USD)</label>
+                            <input type="number" id="max_daily_budget" name="max_daily_budget"
+                                   value="{{ tenant.max_daily_budget }}" min="0" step="100">
+                            <small>Maximum daily spend limit across all campaigns</small>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Naming Conventions -->
+                <div class="form-section">
+                    <h3>Naming Conventions</h3>
+                    <p style="color: #6b7280; font-size: 0.875rem; margin-bottom: 1rem;">
+                        Configure how orders and line items are named. <strong>Works across all ad servers</strong> (GAM, Mock, Kevel).
+                    </p>
+
+                    <!-- Adapter Support Indicator -->
+                    <div class="alert alert-info" style="font-size: 0.875rem; padding: 0.75rem; margin-bottom: 1.5rem; background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 6px;">
+                        <strong>Adapter Support:</strong>
+                        ✅ Google Ad Manager &nbsp;&nbsp;
+                        ✅ Mock Adapter &nbsp;&nbsp;
+                        ⏳ Kevel (coming soon)
+                    </div>
+
+                    <!-- Quick Start Presets -->
+                    <div class="form-group">
+                        <label>Quick Start Templates</label>
+                        <div style="display: flex; gap: 0.5rem; margin-bottom: 1rem;">
+                            <button type="button" class="btn btn-secondary btn-sm" onclick="useNamingPreset('simple')">
+                                📊 Simple
+                            </button>
+                            <button type="button" class="btn btn-secondary btn-sm" onclick="useNamingPreset('campaign')">
+                                🎯 Campaign-First
+                            </button>
+                            <button type="button" class="btn btn-secondary btn-sm" onclick="useNamingPreset('detailed')">
+                                📅 Detailed
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Order Name Template -->
+                    <div class="form-group">
+                        <label for="order_name_template">Order Name Template</label>
+                        <input type="text" id="order_name_template" name="order_name_template"
+                               value="{{ tenant.order_name_template or '{campaign_name|promoted_offering} - {date_range}' }}"
+                               placeholder="{campaign_name|promoted_offering} - {date_range}"
+                               oninput="updateNamingPreview()">
+                        <details style="margin-top: 0.5rem;">
+                            <summary style="cursor: pointer; color: #666; font-size: 0.875rem;">Show available variables</summary>
+                            <div style="margin-top: 0.5rem; padding: 0.75rem; background: #f8f9fa; border-radius: 4px; font-size: 0.875rem;">
+                                <strong>Available variables:</strong>
+                                <ul style="margin: 0.5rem 0; padding-left: 1.5rem;">
+                                    <li><code>{campaign_name}</code> - Campaign name (optional - may be empty)</li>
+                                    <li><code>{promoted_offering}</code> - What's being advertised (always present)</li>
+                                    <li><code>{buyer_ref}</code> - Buyer's internal reference (optional)</li>
+                                    <li><code>{date_range}</code> - Flight dates (e.g., "Oct 7-14, 2025")</li>
+                                    <li><code>{month_year}</code> - Month and year (e.g., "Oct 2025")</li>
+                                    <li><code>{package_count}</code> - Number of packages in order</li>
+                                </ul>
+                                <strong>Fallback syntax:</strong> <code>{var1|var2}</code> uses var1 if present, otherwise var2
+                                <br><strong>Example:</strong> <code>{campaign_name|promoted_offering}</code> tries campaign_name first, falls back to promoted_offering
+                            </div>
+                        </details>
+                    </div>
+
+                    <!-- Line Item Name Template -->
+                    <div class="form-group">
+                        <label for="line_item_name_template">Line Item Name Template</label>
+                        <input type="text" id="line_item_name_template" name="line_item_name_template"
+                               value="{{ tenant.line_item_name_template or '{order_name} - {product_name}' }}"
+                               placeholder="{order_name} - {product_name}"
+                               oninput="updateNamingPreview()">
+                        <details style="margin-top: 0.5rem;">
+                            <summary style="cursor: pointer; color: #666; font-size: 0.875rem;">Show available variables</summary>
+                            <div style="margin-top: 0.5rem; padding: 0.75rem; background: #f8f9fa; border-radius: 4px; font-size: 0.875rem;">
+                                <strong>Available variables:</strong>
+                                <ul style="margin: 0.5rem 0; padding-left: 1.5rem;">
+                                    <li><code>{product_name}</code> - Product/inventory name (e.g., "Display 300x250")</li>
+                                    <li><code>{order_name}</code> - Parent order name (provides campaign context)</li>
+                                    <li><code>{package_index}</code> - Package position number (1, 2, 3...)</li>
+                                </ul>
+                                <strong>Tip:</strong> Including <code>{order_name}</code> helps identify campaigns in line-item reports
+                            </div>
+                        </details>
+                    </div>
+
+                    <!-- Live Preview -->
+                    <div class="form-group" style="margin-top: 1.5rem;">
+                        <label>Preview with Sample Data</label>
+                        <div id="naming-preview" style="padding: 1rem; background: #f0f9ff; border: 1px solid #bfdbfe; border-radius: 8px;">
+                            <div style="margin-bottom: 0.75rem;">
+                                <strong style="color: #1e40af;">Order Name:</strong>
+                                <div id="order-preview" style="padding: 0.5rem; background: white; border-radius: 4px; margin-top: 0.25rem; font-family: monospace; color: #059669;">
+                                    Nike Shoes Q1 - Oct 7-14, 2025
+                                </div>
+                            </div>
+                            <div>
+                                <strong style="color: #1e40af;">Line Item Names:</strong>
+                                <div id="lineitem-preview" style="padding: 0.5rem; background: white; border-radius: 4px; margin-top: 0.25rem; font-family: monospace; color: #059669;">
+                                    1. Nike Shoes Q1 - Oct 7-14, 2025 - Display 300x250<br>
+                                    2. Nike Shoes Q1 - Oct 7-14, 2025 - Video Pre-roll<br>
+                                    3. Nike Shoes Q1 - Oct 7-14, 2025 - Native Article
+                                </div>
+                            </div>
+                            <div id="validation-messages" style="margin-top: 0.75rem; font-size: 0.875rem;">
+                                <!-- Validation messages will appear here -->
+                            </div>
+                            <small style="color: #64748b; display: block; margin-top: 0.5rem;">
+                                Using sample: campaign_name=null, promoted_offering="Nike Shoes Q1", dates=Oct 7-14, 2025, 3 products
+                            </small>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Approval Workflow -->
+                <div class="form-section">
+                    <h3>Approval Workflow</h3>
+                    <div class="checkbox-group">
+                        <input type="checkbox" id="human_review_required" name="human_review_required"
+                               {% if tenant.human_review_required %}checked{% endif %}>
+                        <label for="human_review_required">Require manual approval for order activation</label>
+                        <small>Orders will be created in draft state and require human approval before activation</small>
+                    </div>
+                </div>
+
+                <!-- Creative Review -->
+                <div class="form-section">
+                    <h3>Creative Review</h3>
+                    <p style="color: #6b7280; font-size: 0.875rem; margin-bottom: 1rem;">
+                        Configure how uploaded creatives are reviewed and approved
+                    </p>
+
+                    <div class="form-group">
+                        <label for="approval_mode">Creative Approval Mode</label>
+                        <select id="approval_mode" name="approval_mode" class="form-control" onchange="updateApprovalModeUI()">
+                            <option value="auto-approve" {% if tenant.approval_mode == 'auto-approve' %}selected{% endif %}>
+                                ✅ Auto-approve all creatives
+                            </option>
+                            <option value="require-human" {% if tenant.approval_mode == 'require-human' or not tenant.approval_mode %}selected{% endif %}>
+                                👤 Require human approval
+                            </option>
+                            <option value="ai-powered" {% if tenant.approval_mode == 'ai-powered' %}selected{% endif %}>
+                                🤖 AI-powered review
+                            </option>
+                        </select>
+                        <small>Choose how creatives are handled when uploaded</small>
+                    </div>
+
+                    <!-- Mode Descriptions -->
+                    <div id="mode-description" style="margin-top: 1rem; padding: 1rem; background: #f8f9fa; border-radius: 8px; border-left: 4px solid #2563eb;">
+                        <div id="desc-auto-approve" style="display: none;">
+                            <strong>✅ Auto-approve Mode:</strong>
+                            <p style="margin: 0.5rem 0 0 0;">All uploaded creatives are immediately approved and ready to use.</p>
+                        </div>
+                        <div id="desc-require-human" style="display: none;">
+                            <strong>👤 Human Review Mode:</strong>
+                            <p style="margin: 0.5rem 0 0 0;">All creatives remain pending until manually reviewed and approved by a human.</p>
+                        </div>
+                        <div id="desc-ai-powered" style="display: none;">
+                            <strong>🤖 AI-Powered Mode:</strong>
+                            <p style="margin: 0.5rem 0 0 0;">Creatives are automatically reviewed by AI based on your criteria below.</p>
+                        </div>
+                    </div>
+
+                    <!-- AI Configuration (shown only for ai-powered mode) -->
+                    <div id="ai-config-section" style="display: none; margin-top: 1rem;">
+                        {% if not tenant.gemini_api_key %}
+                        <div class="alert alert-warning" style="padding: 0.75rem; background: #fef3c7; border: 1px solid #fbbf24; border-radius: 6px; margin-bottom: 1rem;">
+                            <strong>⚠️ Gemini API Key Required</strong>
+                            <p style="margin: 0.5rem 0 0;">AI review requires a Gemini API key. Please set your key in <a href="#general" onclick="showSection('general')">General Settings → AI Services</a>.</p>
+                        </div>
+                        {% else %}
+                        <div class="alert alert-success" style="padding: 0.75rem; background: #d1fae5; border: 1px solid #34d399; border-radius: 6px; margin-bottom: 1rem;">
+                            <strong>✅ Gemini API Key Configured</strong>
+                        </div>
+                        {% endif %}
+
+                        <div class="form-group">
+                            <label for="creative_review_criteria">AI Review Criteria</label>
+                            <textarea id="creative_review_criteria" name="creative_review_criteria" class="form-control" rows="6"
+                                      placeholder="Enter your creative review criteria..."
+                                      style="font-family: monospace; font-size: 0.875rem;">{{ tenant.creative_review_criteria or '' }}</textarea>
+                            <small>Define when to <strong>approve</strong>, <strong>require human approval</strong>, or <strong>reject</strong> creatives. The AI will use these criteria to make three-state decisions.</small>
+                        </div>
+
+                        <details style="margin-top: 0.5rem;">
+                            <summary style="cursor: pointer; color: #2563eb; font-weight: 500; font-size: 0.875rem;">📝 Show Example Criteria</summary>
+                            <div style="margin-top: 0.75rem; padding: 0.75rem; background: #f8f9fa; border-radius: 6px; font-size: 0.875rem;">
+                                <strong>Example 1: Simple Three-State Review</strong>
+                                <pre style="background: white; padding: 0.5rem; border-radius: 4px; margin: 0.5rem 0; overflow-x: auto; white-space: pre-wrap;">APPROVE if:
+✓ Creative clearly matches promoted offering
+✓ Professional quality (clear, readable)
+✓ Appropriate for general audiences
+
+REQUIRE HUMAN APPROVAL if:
+⚠️ Unsure about promoted offering match
+⚠️ Borderline quality or unclear messaging
+⚠️ Contains sensitive content that may need review
+⚠️ Novel or unusual creative approach
+
+REJECT if:
+✗ Wrong product/service advertised
+✗ Poor quality or unprofessional
+✗ Inappropriate or offensive content
+✗ Misleading claims</pre>
+
+                                <strong>Example 2: Brand Safety Focus</strong>
+                                <pre style="background: white; padding: 0.5rem; border-radius: 4px; margin: 0.5rem 0; overflow-x: auto; white-space: pre-wrap;">APPROVE if all conditions met:
+- Clearly promotes the advertised product
+- No offensive, violent, or inappropriate content
+- No false or misleading claims
+- Professional image quality
+
+REQUIRE HUMAN APPROVAL if:
+- Contains claims that need fact-checking
+- Uses controversial themes or messaging
+- Quality is acceptable but not ideal
+- Uncertain about brand guideline compliance
+
+REJECT if any condition met:
+- Violates advertising standards
+- Contains competitor branding
+- Promotes wrong or unrelated products
+- Unprofessional or low quality</pre>
+
+                                <strong>Example 3: Detailed Guidelines</strong>
+                                <pre style="background: white; padding: 0.5rem; border-radius: 4px; margin: 0.5rem 0; overflow-x: auto; white-space: pre-wrap;">Review each creative and respond with one of three actions:
+
+APPROVE - Creative is ready to go live:
+✓ Promoted offering matches creative content
+✓ Professional quality (clear images, readable text)
+✓ Appropriate for all audiences
+✓ No misleading claims or fine print issues
+✓ Brand/product clearly visible
+✓ Meets industry advertising standards
+
+REQUIRE HUMAN APPROVAL - Needs manual review:
+⚠️ Uncertain about promoted offering alignment
+⚠️ Questionable claims that may need verification
+⚠️ Sensitive topics or mature themes
+⚠️ Unusual format or creative approach
+⚠️ Borderline quality or professionalism
+⚠️ Potential legal or compliance concerns
+
+REJECT - Creative cannot be approved:
+✗ Wrong product/service advertised
+✗ Poor quality or unprofessional appearance
+✗ Inappropriate, offensive, or explicit content
+✗ Misleading, deceptive, or false claims
+✗ Violates advertising regulations
+✗ Contains competitor branding or logos</pre>
+                            </div>
+                        </details>
+                    </div>
+                </div>
+
+                <div class="button-group">
+                    <button type="button" onclick="saveBusinessRules()" class="btn btn-primary">
+                        Save Business Rules
+                    </button>
+                    <button type="reset" class="btn btn-secondary">Reset</button>
+                </div>
+            </form>
+        </div>
         <!-- Inventory Settings -->
         <div id="inventory" class="settings-section">
             <div class="settings-header">
@@ -1003,110 +1131,6 @@
                     Manage Creative Formats
                 </a>
             </div>
-        </div>
-
-        <!-- Creative Review Settings -->
-        <div id="creative-review" class="settings-section">
-            <div class="settings-header">
-                <h2>🤖 Creative Review & AI Approval</h2>
-                <p>Configure AI-powered creative review using Gemini to automatically approve or flag creatives based on your criteria</p>
-            </div>
-
-            <div class="alert alert-info" style="margin-bottom: 2rem;">
-                <strong>💡 How it works:</strong> When enabled, uploaded creatives can be automatically reviewed by AI based on your custom criteria.
-                The AI checks if the creative matches the promoted offering and meets your quality standards.
-            </div>
-
-            <form id="creative-review-form">
-                <div class="form-section">
-                    <h3>AI Configuration</h3>
-
-                    <div class="form-group">
-                        <label for="gemini_api_key">Gemini API Key <span class="badge bg-warning">Required for AI Review</span></label>
-                        <input type="password" id="gemini_api_key" class="form-control"
-                               value="{{ tenant.gemini_api_key or '' }}"
-                               placeholder="Enter your Gemini API key">
-                        <small class="form-text text-muted">
-                            Your Gemini API key is used for AI-powered creative review. Get one at <a href="https://makersuite.google.com/app/apikey" target="_blank">Google AI Studio</a>.
-                            This key is stored securely and only used for your tenant.
-                        </small>
-                    </div>
-
-                    <div class="form-group">
-                        <label for="creative_review_criteria">Review Criteria <span class="badge bg-warning">Required for AI Review</span></label>
-                        <textarea id="creative_review_criteria" class="form-control" rows="10"
-                                  placeholder="Enter your creative review criteria..."
-                                  style="font-family: monospace; font-size: 0.875rem;">{{ tenant.creative_review_criteria or '' }}</textarea>
-                        <small class="form-text text-muted">
-                            Define what makes a creative acceptable. The AI will use these criteria to approve or reject creatives.
-                            Be specific about brand safety, content guidelines, promoted offering alignment, etc.
-                        </small>
-                    </div>
-
-                    <!-- Sample Criteria Examples -->
-                    <details style="margin-top: 1rem;">
-                        <summary style="cursor: pointer; color: #2563eb; font-weight: 500;">📝 Show Example Criteria</summary>
-                        <div style="margin-top: 0.75rem; padding: 1rem; background: #f8f9fa; border-radius: 8px; font-size: 0.875rem;">
-                            <strong>Example 1: Brand Safety Focus</strong>
-                            <pre style="background: white; padding: 0.75rem; border-radius: 4px; margin: 0.5rem 0; overflow-x: auto;">Approve the creative if:
-1. It clearly promotes the advertised product/offering
-2. Contains no offensive, violent, or inappropriate content
-3. Does not make false or misleading claims
-4. Follows standard advertising guidelines
-5. Image quality is professional (no blurry or pixelated images)
-
-Reject if any of these conditions are violated.</pre>
-
-                            <strong>Example 2: Product Match Focus</strong>
-                            <pre style="background: white; padding: 0.75rem; border-radius: 4px; margin: 0.5rem 0; overflow-x: auto;">The creative must:
-- Clearly advertise the promoted offering specified
-- Not promote competing or unrelated products
-- Include visible product/brand name or logo
-- Be appropriate for general audiences
-- Meet basic quality standards (clear image, readable text)
-
-Approve if all conditions are met, otherwise reject with explanation.</pre>
-
-                            <strong>Example 3: Comprehensive Guidelines</strong>
-                            <pre style="background: white; padding: 0.75rem; border-radius: 4px; margin: 0.5rem 0; overflow-x: auto;">Creative Review Guidelines:
-
-APPROVE if:
-✓ Promoted offering matches creative content
-✓ Professional quality (clear images, readable text)
-✓ Appropriate for all audiences
-✓ No misleading claims or fine print
-✓ Brand/product clearly visible
-✓ Meets industry advertising standards
-
-REJECT if:
-✗ Wrong product/service advertised
-✗ Poor quality or unprofessional
-✗ Inappropriate content
-✗ Misleading or deceptive
-✗ Violates advertising regulations
-✗ Contains competitor branding</pre>
-                        </div>
-                    </details>
-                </div>
-
-                <div class="form-section" style="background: #f0f9ff; padding: 1.5rem; border-radius: 8px; border: 1px solid #bfdbfe;">
-                    <h3 style="margin-top: 0;">Quick Links</h3>
-                    <div style="display: flex; gap: 1rem; flex-wrap: wrap;">
-                        <a href="{{ url_for('creatives.review_creatives', tenant_id=tenant.tenant_id) }}" class="btn btn-primary">
-                            🎨 Review Pending Creatives
-                        </a>
-                        <a href="{{ url_for('creatives.list_creatives', tenant_id=tenant.tenant_id) }}" class="btn btn-secondary">
-                            📚 View All Creatives
-                        </a>
-                    </div>
-                </div>
-
-                <div class="button-group">
-                    <button type="submit" class="btn btn-primary">
-                        💾 Save Creative Review Settings
-                    </button>
-                </div>
-            </form>
         </div>
 
         <!-- Advertisers Settings -->
@@ -1912,8 +1936,17 @@ function useNamingPreset(presetName) {
     const preset = NAMING_PRESETS[presetName];
     if (!preset) return;
 
-    document.getElementById('gam_order_name_template').value = preset.order;
-    document.getElementById('gam_line_item_name_template').value = preset.lineItem;
+    // Support both GAM section and Business Rules section
+    const orderTemplateElement = document.getElementById('order_name_template') || document.getElementById('gam_order_name_template');
+    const lineItemTemplateElement = document.getElementById('line_item_name_template') || document.getElementById('gam_line_item_name_template');
+
+    if (orderTemplateElement) {
+        orderTemplateElement.value = preset.order;
+    }
+    if (lineItemTemplateElement) {
+        lineItemTemplateElement.value = preset.lineItem;
+    }
+
     updateNamingPreview();
 }
 
@@ -1938,10 +1971,37 @@ function applyTemplateVariables(template, context) {
     return result;
 }
 
+// Validate template variables against known variables
+function validateTemplateVariables(template, knownVars) {
+    const warnings = [];
+    const pattern = /\{([^}]+)\}/g;
+    let match;
+
+    while ((match = pattern.exec(template)) !== null) {
+        const variables = match[1].split('|').map(v => v.trim());
+        const hasValidVar = variables.some(v => knownVars.includes(v));
+
+        if (!hasValidVar) {
+            warnings.push(`Unknown variable: ${match[0]} (available: ${variables.map(v => knownVars.includes(v) ? v : v + '?').join('|')})`);
+        }
+    }
+
+    return warnings;
+}
+
 // Update live preview
 function updateNamingPreview() {
-    const orderTemplate = document.getElementById('gam_order_name_template').value;
-    const lineItemTemplate = document.getElementById('gam_line_item_name_template').value;
+    // Support both GAM section (gam_* IDs) and Business Rules section (no prefix)
+    const orderTemplateElement = document.getElementById('order_name_template') || document.getElementById('gam_order_name_template');
+    const lineItemTemplateElement = document.getElementById('line_item_name_template') || document.getElementById('gam_line_item_name_template');
+
+    if (!orderTemplateElement || !lineItemTemplateElement) {
+        console.warn('Naming template elements not found');
+        return;
+    }
+
+    const orderTemplate = orderTemplateElement.value;
+    const lineItemTemplate = lineItemTemplateElement.value;
 
     // Sample context data
     const orderContext = {
@@ -1979,6 +2039,23 @@ function updateNamingPreview() {
     const validationDiv = document.getElementById('validation-messages');
     const errors = [];
 
+    // Known variables for validation
+    const orderKnownVars = ['campaign_name', 'promoted_offering', 'buyer_ref', 'date_range', 'month_year', 'package_count', 'start_date', 'end_date'];
+    const lineItemKnownVars = ['order_name', 'product_name', 'package_index'];
+
+    // Check for unknown variables
+    const orderVarWarnings = validateTemplateVariables(orderTemplate, orderKnownVars);
+    const lineItemVarWarnings = validateTemplateVariables(lineItemTemplate, lineItemKnownVars);
+
+    orderVarWarnings.forEach(warning => {
+        errors.push('⚠️ Order template: ' + warning);
+    });
+
+    lineItemVarWarnings.forEach(warning => {
+        errors.push('⚠️ Line item template: ' + warning);
+    });
+
+    // Check result length and content
     if (!orderName || orderName.trim() === '') {
         errors.push('⚠️ Order template produces empty name - add fallback variables');
     }
@@ -2010,42 +2087,58 @@ function updateNamingPreview() {
 
 // Initialize preview on page load
 document.addEventListener('DOMContentLoaded', function() {
-    // Initialize preview if templates section exists
-    if (document.getElementById('gam_order_name_template')) {
+    // Initialize preview if templates section exists (GAM or Business Rules)
+    if (document.getElementById('gam_order_name_template') || document.getElementById('order_name_template')) {
         updateNamingPreview();
     }
 });
 
-// Creative Review Form Handler
-document.getElementById('creative-review-form')?.addEventListener('submit', function(e) {
-    e.preventDefault();
+// Save Business Rules
+function saveBusinessRules() {
+    const data = {
+        max_daily_budget: document.getElementById('max_daily_budget').value,
+        order_name_template: document.getElementById('order_name_template').value,
+        line_item_name_template: document.getElementById('line_item_name_template').value,
+        human_review_required: document.getElementById('human_review_required').checked,
+        approval_mode: document.getElementById('approval_mode').value,
+        creative_review_criteria: document.getElementById('creative_review_criteria').value,
+    };
 
-    const geminiApiKey = document.getElementById('gemini_api_key').value;
-    const reviewCriteria = document.getElementById('creative_review_criteria').value;
-
-    fetch('/admin/tenant/{{ tenant.tenant_id }}/settings/creative-review', {
+    fetch('/tenant/{{ tenant.tenant_id }}/settings/business-rules', {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-            gemini_api_key: geminiApiKey,
-            creative_review_criteria: reviewCriteria
-        })
+        body: JSON.stringify(data)
     })
-    .then(response => response.json())
+    .then(response => {
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+        return response.json();
+    })
     .then(data => {
         if (data.success) {
-            alert('✅ Creative review settings saved successfully!');
+            // Show success message
+            const messageDiv = document.createElement('div');
+            messageDiv.className = 'alert alert-success';
+            messageDiv.style.cssText = 'position: fixed; top: 20px; right: 20px; z-index: 9999; padding: 1rem; border-radius: 8px; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1); max-width: 400px;';
+            messageDiv.textContent = '✓ Business rules updated successfully';
+            document.body.appendChild(messageDiv);
+
+            // Remove message after 3 seconds
+            setTimeout(() => {
+                messageDiv.remove();
+            }, 3000);
         } else {
-            alert('Error: ' + (data.error || 'Unknown error'));
+            alert('Error updating business rules: ' + (data.error || 'Unknown error'));
         }
     })
     .catch(error => {
-        console.error('Error:', error);
-        alert('Failed to save settings: ' + error);
+        console.error('Error details:', error);
+        alert('Error updating business rules: ' + error.message);
     });
-});
+}
 
 // Save GAM configuration
 function saveGAMConfig() {
@@ -2671,6 +2764,34 @@ function confirmDeactivation() {
         'Are you absolutely sure you want to proceed?'
     );
 }
+
+// Creative Review: Update UI based on selected approval mode
+function updateApprovalModeUI() {
+    const mode = document.getElementById('approval_mode').value;
+    const aiConfigSection = document.getElementById('ai-config-section');
+
+    // Hide all mode descriptions
+    document.getElementById('desc-auto-approve').style.display = 'none';
+    document.getElementById('desc-require-human').style.display = 'none';
+    document.getElementById('desc-ai-powered').style.display = 'none';
+
+    // Show selected mode description
+    if (mode === 'auto-approve') {
+        document.getElementById('desc-auto-approve').style.display = 'block';
+        aiConfigSection.style.display = 'none';
+    } else if (mode === 'require-human') {
+        document.getElementById('desc-require-human').style.display = 'block';
+        aiConfigSection.style.display = 'none';
+    } else if (mode === 'ai-powered') {
+        document.getElementById('desc-ai-powered').style.display = 'block';
+        aiConfigSection.style.display = 'block';
+    }
+}
+
+// Initialize approval mode UI on page load
+document.addEventListener('DOMContentLoaded', function() {
+    updateApprovalModeUI();
+});
 </script>
 
 <!-- Edit Principal Mappings Modal -->

@@ -4,6 +4,15 @@
 
 {% block content %}
 <div class="container-fluid mt-4">
+    <!-- Breadcrumb Navigation -->
+    <nav aria-label="breadcrumb">
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item"><a href="{{ url_for('core.index') }}">Dashboard</a></li>
+            <li class="breadcrumb-item"><a href="{{ url_for('tenants.tenant_settings', tenant_id=tenant.tenant_id) }}">{{ tenant.name }}</a></li>
+            <li class="breadcrumb-item active" aria-current="page">Inventory Browser</li>
+        </ol>
+    </nav>
+
     <div class="row">
         <div class="col-12">
             <h2>GAM Inventory Browser</h2>
@@ -306,7 +315,11 @@ function syncInventory() {
 
     fetch(`{{ script_name }}/api/tenant/${tenantId}/inventory/sync`, {
         method: 'POST',
-        credentials: 'same-origin'
+        credentials: 'same-origin',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({})  // Send empty JSON object for full sync
     })
         .then(response => response.json())
         .then(data => {
@@ -326,7 +339,7 @@ function syncInventory() {
         })
         .finally(() => {
             btn.disabled = false;
-            btn.innerHTML = '<i class="bi bi-arrow-clockwise"></i> Sync Now';
+            btn.innerHTML = '<i class="bi bi-arrow-clockwise"></i> Sync All';
         });
 }
 

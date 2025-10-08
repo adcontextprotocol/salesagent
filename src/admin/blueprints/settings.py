@@ -25,6 +25,28 @@ tenant_management_settings_bp = Blueprint("tenant_management_settings", __name__
 settings_bp = Blueprint("settings", __name__)
 
 
+def validate_naming_template(template: str, field_name: str) -> str | None:
+    """Validate naming template.
+
+    Returns error message if invalid, None if valid.
+    """
+    if not template:
+        return f"{field_name} cannot be empty"
+
+    if len(template) > 500:
+        return f"{field_name} exceeds 500 character limit ({len(template)} chars)"
+
+    # Check for balanced braces
+    if template.count("{") != template.count("}"):
+        return f"{field_name} has unbalanced braces"
+
+    # Check for empty variable names
+    if "{}" in template:
+        return f"{field_name} contains empty variable placeholder {{}}"
+
+    return None
+
+
 # Tenant management settings routes
 @tenant_management_settings_bp.route("/settings")
 @require_auth(admin_only=True)
@@ -230,6 +252,7 @@ def update_slack(tenant_id):
     """Update Slack integration settings."""
     try:
         webhook_url = request.form.get("slack_webhook_url", "").strip()
+        audit_webhook_url = request.form.get("slack_audit_webhook_url", "").strip()
 
         with get_db_session() as db_session:
             tenant = db_session.scalars(select(Tenant).filter_by(tenant_id=tenant_id)).first()
@@ -237,12 +260,13 @@ def update_slack(tenant_id):
                 flash("Tenant not found", "error")
                 return redirect(url_for("core.index"))
 
-            # Update Slack webhook
-            tenant.slack_webhook_url = webhook_url
+            # Update Slack webhooks
+            tenant.slack_webhook_url = webhook_url if webhook_url else None
+            tenant.slack_audit_webhook_url = audit_webhook_url if audit_webhook_url else None
             tenant.updated_at = datetime.now(UTC)
             db_session.commit()
 
-            if webhook_url:
+            if webhook_url or audit_webhook_url:
                 flash("Slack integration updated successfully", "success")
             else:
                 flash("Slack integration disabled", "info")
@@ -553,40 +577,95 @@ def test_domain_access(tenant_id):
     return redirect(url_for("tenants.tenant_settings", tenant_id=tenant_id, section="access"))
 
 
-@settings_bp.route("/creative-review", methods=["POST"])
+@settings_bp.route("/business-rules", methods=["POST"])
 @require_tenant_access()
-def update_creative_review_settings(tenant_id, **kwargs):
-    """Update creative review settings including AI configuration."""
+def update_business_rules(tenant_id):
+    """Update business rules (budget, naming, approvals, features)."""
     try:
-        data = request.get_json()
+        # Get form data
+        data = request.get_json() if request.is_json else request.form
 
         with get_db_session() as db_session:
-            tenant = db_session.query(Tenant).filter_by(tenant_id=tenant_id).first()
-
+            tenant = db_session.scalars(select(Tenant).filter_by(tenant_id=tenant_id)).first()
             if not tenant:
-                return jsonify({"success": False, "error": "Tenant not found"}), 404
+                if request.is_json:
+                    return jsonify({"success": False, "error": "Tenant not found"}), 404
+                flash("Tenant not found", "error")
+                return redirect(url_for("tenants.tenant_settings", tenant_id=tenant_id))
+
+            # Update budget controls
+            if "max_daily_budget" in data:
+                try:
+                    tenant.max_daily_budget = int(data.get("max_daily_budget"))
+                except (ValueError, TypeError):
+                    if request.is_json:
+                        return jsonify({"success": False, "error": "Invalid max_daily_budget value"}), 400
+                    flash("Invalid maximum daily budget value", "error")
+                    return redirect(url_for("tenants.tenant_settings", tenant_id=tenant_id, section="business-rules"))
+
+            # Update naming templates with validation
+            if "order_name_template" in data:
+                order_template = data.get("order_name_template", "").strip()
+                if order_template:
+                    # Validate template
+                    validation_error = validate_naming_template(order_template, "Order name template")
+                    if validation_error:
+                        if request.is_json:
+                            return jsonify({"success": False, "error": validation_error}), 400
+                        flash(validation_error, "error")
+                        return redirect(
+                            url_for("tenants.tenant_settings", tenant_id=tenant_id, section="business-rules")
+                        )
+                    tenant.order_name_template = order_template
+
+            if "line_item_name_template" in data:
+                line_item_template = data.get("line_item_name_template", "").strip()
+                if line_item_template:
+                    # Validate template
+                    validation_error = validate_naming_template(line_item_template, "Line item name template")
+                    if validation_error:
+                        if request.is_json:
+                            return jsonify({"success": False, "error": validation_error}), 400
+                        flash(validation_error, "error")
+                        return redirect(
+                            url_for("tenants.tenant_settings", tenant_id=tenant_id, section="business-rules")
+                        )
+                    tenant.line_item_name_template = line_item_template
+
+            # Update approval workflow
+            if "human_review_required" in data:
+                tenant.human_review_required = data.get("human_review_required") in [True, "true", "on", 1, "1"]
+            elif not request.is_json:
+                # Checkbox not present in form data means unchecked
+                tenant.human_review_required = False
 
             # Update creative review settings
-            gemini_api_key = data.get("gemini_api_key", "").strip()
-            creative_review_criteria = data.get("creative_review_criteria", "").strip()
+            if "approval_mode" in data:
+                approval_mode = data.get("approval_mode", "").strip()
+                if approval_mode in ["auto-approve", "require-human", "ai-powered"]:
+                    tenant.approval_mode = approval_mode
 
-            # Only update if values are provided
-            if gemini_api_key:
-                tenant.gemini_api_key = gemini_api_key
-            elif "gemini_api_key" in data:  # Empty string means clear it
-                tenant.gemini_api_key = None
-
-            if creative_review_criteria:
-                tenant.creative_review_criteria = creative_review_criteria
-            elif "creative_review_criteria" in data:  # Empty string means clear it
-                tenant.creative_review_criteria = None
+            if "creative_review_criteria" in data:
+                creative_review_criteria = data.get("creative_review_criteria")
+                if creative_review_criteria is not None:
+                    creative_review_criteria = creative_review_criteria.strip()
+                    # Allow empty string or set to None if empty
+                    tenant.creative_review_criteria = creative_review_criteria if creative_review_criteria else None
 
             tenant.updated_at = datetime.now(UTC)
             db_session.commit()
 
-            logger.info(f"Updated creative review settings for tenant {tenant_id}")
-            return jsonify({"success": True})
+            if request.is_json:
+                return jsonify({"success": True, "message": "Business rules updated successfully"}), 200
+
+            flash("Business rules updated successfully", "success")
+            return redirect(url_for("tenants.tenant_settings", tenant_id=tenant_id, section="business-rules"))
 
     except Exception as e:
-        logger.error(f"Error updating creative review settings: {e}", exc_info=True)
-        return jsonify({"success": False, "error": str(e)}), 500
+        logger.error(f"Error updating business rules: {e}", exc_info=True)
+
+        if request.is_json:
+            return jsonify({"success": False, "error": str(e)}), 500
+
+        flash(f"Error updating business rules: {str(e)}", "error")
+        return redirect(url_for("tenants.tenant_settings", tenant_id=tenant_id, section="business-rules"))

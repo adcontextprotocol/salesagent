@@ -113,6 +113,12 @@
                     <span class="detail-value">{{ creative.approved_at.strftime('%Y-%m-%d %H:%M') }}</span>
                 </div>
                 {% endif %}
+                <div class="detail-row" style="margin-top: 0.5rem;">
+                    <a href="{{ url_for('creatives.review_creatives', tenant_id=tenant_id) }}#{{ creative.creative_id }}"
+                       class="btn btn-sm btn-outline-primary">
+                        👁️ Preview & Details
+                    </a>
+                </div>
             </div>
 
             <!-- Media Buy Associations -->

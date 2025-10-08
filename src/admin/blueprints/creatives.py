@@ -33,6 +33,46 @@ logger = logging.getLogger(__name__)
 creatives_bp = Blueprint("creatives", __name__)
 
 
+def _call_webhook_for_creative_status(webhook_url: str, creative_id: str, status: str, creative_data: dict = None):
+    """Call webhook to notify about creative status change (AdCP task-status spec).
+
+    Args:
+        webhook_url: URL to POST notification to
+        creative_id: Creative ID
+        status: New status (approved, rejected, pending)
+        creative_data: Optional creative data to include
+    """
+    import requests
+
+    try:
+        payload = {
+            "object_type": "creative",
+            "object_id": creative_id,
+            "status": status,
+            "timestamp": datetime.now(UTC).isoformat(),
+        }
+
+        if creative_data:
+            payload["creative_data"] = creative_data
+
+        response = requests.post(
+            webhook_url,
+            json=payload,
+            headers={"Content-Type": "application/json"},
+            timeout=10,
+        )
+
+        if response.status_code >= 400:
+            logger.warning(
+                f"Webhook call failed for creative {creative_id}: HTTP {response.status_code} - {response.text}"
+            )
+        else:
+            logger.info(f"Successfully called webhook for creative {creative_id} status={status}")
+
+    except Exception as e:
+        logger.error(f"Error calling webhook for creative {creative_id}: {e}", exc_info=True)
+
+
 @creatives_bp.route("/", methods=["GET"])
 @require_tenant_access()
 def index(tenant_id, **kwargs):
@@ -84,108 +124,37 @@ def index(tenant_id, **kwargs):
 @creatives_bp.route("/review", methods=["GET"])
 @require_tenant_access()
 def review_creatives(tenant_id, **kwargs):
-    """Review pending creatives with preview and approval workflow."""
-    from src.core.database.models import Creative, MediaBuy, Principal, Product
+    """Unified creative management: view, review, and manage all creatives."""
+    from src.core.database.models import Creative, CreativeAssignment, MediaBuy, Principal, Product
 
     with get_db_session() as db_session:
         # Get tenant
-        tenant = db_session.query(Tenant).filter_by(tenant_id=tenant_id).first()
+        stmt = select(Tenant).filter_by(tenant_id=tenant_id)
+        tenant = db_session.scalars(stmt).first()
         if not tenant:
             return "Tenant not found", 404
 
-        # Get creatives that need review (pending status)
-        creatives = (
-            db_session.query(Creative)
-            .filter_by(tenant_id=tenant_id, status="pending")
-            .order_by(Creative.created_at.desc())
-            .all()
-        )
+        # Get all creatives ordered by status (pending first) then date
+        stmt = select(Creative).filter_by(tenant_id=tenant_id).order_by(Creative.status, Creative.created_at.desc())
+        creatives = db_session.scalars(stmt).all()
 
         # Build creative data with context
         creative_list = []
         for creative in creatives:
             # Get principal name
-            principal = (
-                db_session.query(Principal).filter_by(tenant_id=tenant_id, principal_id=creative.principal_id).first()
-            )
+            stmt = select(Principal).filter_by(tenant_id=tenant_id, principal_id=creative.principal_id)
+            principal = db_session.scalars(stmt).first()
             principal_name = principal.name if principal else creative.principal_id
 
-            # Get media buy if creative is assigned
-            media_buy = None
-            if creative.data.get("media_buy_id"):
-                media_buy = db_session.query(MediaBuy).filter_by(media_buy_id=creative.data["media_buy_id"]).first()
-
-            # Get promoted offering from media buy
-            promoted_offering = None
-            if media_buy and media_buy.raw_request:
-                packages = media_buy.raw_request.get("packages", [])
-                if packages:
-                    product_id = packages[0].get("product_id")
-                    if product_id:
-                        product = db_session.query(Product).filter_by(product_id=product_id).first()
-                        if product:
-                            promoted_offering = product.name
-
-            creative_list.append(
-                {
-                    "creative_id": creative.creative_id,
-                    "name": creative.name,
-                    "format": creative.format,
-                    "status": creative.status,
-                    "principal_name": principal_name,
-                    "principal_id": creative.principal_id,
-                    "data": creative.data,
-                    "created_at": creative.created_at,
-                    "media_buy_id": creative.data.get("media_buy_id"),
-                    "promoted_offering": promoted_offering,
-                    "media_buy_name": media_buy.order_name if media_buy else None,
-                }
-            )
-
-    return render_template(
-        "creative_review.html",
-        tenant_id=tenant_id,
-        tenant_name=tenant.name,
-        creatives=creative_list,
-        has_ai_review=bool(tenant.gemini_api_key and tenant.creative_review_criteria),
-    )
-
-
-@creatives_bp.route("/list", methods=["GET"])
-@require_tenant_access()
-def list_creatives(tenant_id, **kwargs):
-    """List all uploaded creatives and their media buy associations."""
-    from src.core.database.models import Creative, CreativeAssignment, MediaBuy, Principal
-
-    with get_db_session() as db_session:
-        # Get tenant name
-        tenant = db_session.scalars(select(Tenant).filter_by(tenant_id=tenant_id)).first()
-        if not tenant:
-            return "Tenant not found", 404
-
-        tenant_name = tenant.name
-
-        # Get all creatives for this tenant with their assignments
-        stmt = select(Creative).filter_by(tenant_id=tenant_id).order_by(Creative.created_at.desc())
-        creatives = db_session.scalars(stmt).all()
-
-        # Build creative data with media buy associations
-        creative_list = []
-        for creative in creatives:
-            # Get principal name
-            principal = db_session.scalars(
-                select(Principal).filter_by(tenant_id=tenant_id, principal_id=creative.principal_id)
-            ).first()
-            principal_name = principal.name if principal else creative.principal_id
-
-            # Get all assignments for this creative
+            # Get all media buy assignments for this creative
             stmt = select(CreativeAssignment).filter_by(tenant_id=tenant_id, creative_id=creative.creative_id)
             assignments = db_session.scalars(stmt).all()
 
             # Get media buy details for each assignment
             media_buys = []
             for assignment in assignments:
-                media_buy = db_session.scalars(select(MediaBuy).filter_by(media_buy_id=assignment.media_buy_id)).first()
+                stmt = select(MediaBuy).filter_by(media_buy_id=assignment.media_buy_id)
+                media_buy = db_session.scalars(stmt).first()
                 if media_buy:
                     media_buys.append(
                         {
@@ -198,6 +167,24 @@ def list_creatives(tenant_id, **kwargs):
                         }
                     )
 
+            # Get promoted offering from first media buy (if any)
+            promoted_offering = None
+            if media_buys and media_buys[0]:
+                stmt = select(MediaBuy).filter_by(media_buy_id=media_buys[0]["media_buy_id"])
+                first_buy = db_session.scalars(stmt).first()
+                if first_buy and first_buy.raw_request:
+                    packages = first_buy.raw_request.get("packages", [])
+                    if packages:
+                        product_id = packages[0].get("product_id")
+                        if product_id:
+                            stmt = select(Product).filter_by(product_id=product_id)
+                            product = db_session.scalars(stmt).first()
+                            if product:
+                                promoted_offering = product.name
+
+            # Extract AI review reasoning from creative.data if available
+            ai_reasoning = creative.data.get("ai_review_reasoning") if creative.data else None
+
             creative_list.append(
                 {
                     "creative_id": creative.creative_id,
@@ -207,20 +194,32 @@ def list_creatives(tenant_id, **kwargs):
                     "principal_name": principal_name,
                     "principal_id": creative.principal_id,
                     "group_id": creative.group_id,
+                    "data": creative.data,
                     "created_at": creative.created_at,
                     "approved_at": creative.approved_at,
                     "approved_by": creative.approved_by,
                     "media_buys": media_buys,
                     "assignment_count": len(media_buys),
+                    "promoted_offering": promoted_offering,
+                    "ai_reasoning": ai_reasoning,
                 }
             )
 
     return render_template(
-        "creatives_list.html",
+        "creative_management.html",
         tenant_id=tenant_id,
-        tenant_name=tenant_name,
+        tenant_name=tenant.name,
         creatives=creative_list,
+        has_ai_review=bool(tenant.gemini_api_key and tenant.creative_review_criteria),
+        approval_mode=tenant.approval_mode,
     )
+
+
+@creatives_bp.route("/list", methods=["GET"])
+@require_tenant_access()
+def list_creatives(tenant_id, **kwargs):
+    """Redirect to unified creative management page."""
+    return redirect(url_for("creatives.review_creatives", tenant_id=tenant_id))
 
 
 @creatives_bp.route("/add/ai", methods=["GET"])
@@ -572,6 +571,31 @@ def approve_creative(tenant_id, creative_id, **kwargs):
 
             db_session.commit()
 
+            # Find webhook_url from workflow step if it exists
+            from src.core.database.models import ObjectWorkflowMapping, WorkflowStep
+
+            stmt = select(ObjectWorkflowMapping).filter_by(object_type="creative", object_id=creative_id)
+            mapping = db_session.scalars(stmt).first()
+
+            webhook_url = None
+            if mapping:
+                stmt = select(WorkflowStep).filter_by(step_id=mapping.step_id)
+                workflow_step = db_session.scalars(stmt).first()
+                if workflow_step and workflow_step.request_data:
+                    webhook_url = workflow_step.request_data.get("webhook_url")
+
+            # Call webhook if configured
+            if webhook_url:
+                creative_data = {
+                    "creative_id": creative.creative_id,
+                    "name": creative.name,
+                    "format": creative.format,
+                    "status": "approved",
+                    "approved_by": approved_by,
+                    "approved_at": creative.approved_at.isoformat(),
+                }
+                _call_webhook_for_creative_status(webhook_url, creative_id, "approved", creative_data)
+
             # Send Slack notification if configured
             tenant = db_session.query(Tenant).filter_by(tenant_id=tenant_id).first()
             if tenant and tenant.slack_webhook_url:
@@ -639,6 +663,32 @@ def reject_creative(tenant_id, creative_id, **kwargs):
 
             db_session.commit()
 
+            # Find webhook_url from workflow step if it exists
+            from src.core.database.models import ObjectWorkflowMapping, WorkflowStep
+
+            stmt = select(ObjectWorkflowMapping).filter_by(object_type="creative", object_id=creative_id)
+            mapping = db_session.scalars(stmt).first()
+
+            webhook_url = None
+            if mapping:
+                stmt = select(WorkflowStep).filter_by(step_id=mapping.step_id)
+                workflow_step = db_session.scalars(stmt).first()
+                if workflow_step and workflow_step.request_data:
+                    webhook_url = workflow_step.request_data.get("webhook_url")
+
+            # Call webhook if configured
+            if webhook_url:
+                creative_data = {
+                    "creative_id": creative.creative_id,
+                    "name": creative.name,
+                    "format": creative.format,
+                    "status": "rejected",
+                    "rejected_by": rejected_by,
+                    "rejection_reason": rejection_reason,
+                    "rejected_at": creative.data["rejected_at"],
+                }
+                _call_webhook_for_creative_status(webhook_url, creative_id, "rejected", creative_data)
+
             # Send Slack notification if configured
             tenant = db_session.query(Tenant).filter_by(tenant_id=tenant_id).first()
             if tenant and tenant.slack_webhook_url:
@@ -668,45 +718,71 @@ def reject_creative(tenant_id, creative_id, **kwargs):
         return jsonify({"error": str(e)}), 500
 
 
-@creatives_bp.route("/review/<creative_id>/ai-review", methods=["POST"])
-@require_tenant_access()
-def ai_review_creative(tenant_id, creative_id, **kwargs):
-    """Run AI-based review on a creative using tenant's Gemini key and criteria."""
+def _ai_review_creative_impl(tenant_id, creative_id, db_session=None, promoted_offering=None):
+    """Internal implementation: Run AI review and return dict result.
+
+    Returns dict with keys:
+    - status: "approved", "pending", or "rejected"
+    - reason: explanation from AI
+    - confidence: "high", "medium", or "low"
+    - error: error message if failed
+    """
+    from sqlalchemy import select
+
     from src.core.database.models import Creative
 
     try:
-        with get_db_session() as db_session:
-            tenant = db_session.query(Tenant).filter_by(tenant_id=tenant_id).first()
+        # Use provided session or create new one
+        should_close = False
+        if db_session is None:
+            db_session = get_db_session().__enter__()
+            should_close = True
+
+        try:
+            stmt = select(Tenant).filter_by(tenant_id=tenant_id)
+            tenant = db_session.scalars(stmt).first()
             if not tenant:
-                return jsonify({"error": "Tenant not found"}), 404
+                return {"status": "pending", "error": "Tenant not found", "reason": "Configuration error"}
 
             if not tenant.gemini_api_key:
-                return jsonify({"error": "Gemini API key not configured for this tenant"}), 400
+                return {
+                    "status": "pending",
+                    "error": "Gemini API key not configured",
+                    "reason": "AI review unavailable - requires manual approval",
+                }
 
             if not tenant.creative_review_criteria:
-                return jsonify({"error": "Creative review criteria not configured"}), 400
+                return {
+                    "status": "pending",
+                    "error": "Creative review criteria not configured",
+                    "reason": "AI review unavailable - requires manual approval",
+                }
 
-            creative = db_session.query(Creative).filter_by(tenant_id=tenant_id, creative_id=creative_id).first()
+            stmt = select(Creative).filter_by(tenant_id=tenant_id, creative_id=creative_id)
+            creative = db_session.scalars(stmt).first()
 
             if not creative:
-                return jsonify({"error": "Creative not found"}), 404
+                return {"status": "pending", "error": "Creative not found", "reason": "Configuration error"}
 
-            # Get media buy and promoted offering
-            promoted_offering = "Unknown"
-            if creative.data.get("media_buy_id"):
-                from src.core.database.models import MediaBuy, Product
+            # Get media buy and promoted offering if not provided
+            if promoted_offering is None:
+                promoted_offering = "Unknown"
+                if creative.data.get("media_buy_id"):
+                    from src.core.database.models import MediaBuy, Product
 
-                media_buy = db_session.query(MediaBuy).filter_by(media_buy_id=creative.data["media_buy_id"]).first()
-                if media_buy and media_buy.raw_request:
-                    packages = media_buy.raw_request.get("packages", [])
-                    if packages:
-                        product_id = packages[0].get("product_id")
-                        if product_id:
-                            product = db_session.query(Product).filter_by(product_id=product_id).first()
-                            if product:
-                                promoted_offering = product.name
+                    stmt = select(MediaBuy).filter_by(media_buy_id=creative.data["media_buy_id"])
+                    media_buy = db_session.scalars(stmt).first()
+                    if media_buy and media_buy.raw_request:
+                        packages = media_buy.raw_request.get("packages", [])
+                        if packages:
+                            product_id = packages[0].get("product_id")
+                            if product_id:
+                                stmt = select(Product).filter_by(product_id=product_id)
+                                product = db_session.scalars(stmt).first()
+                                if product:
+                                    promoted_offering = product.name
 
-            # Build review prompt
+            # Build review prompt with three-state instructions
             review_prompt = f"""You are reviewing a creative asset for approval.
 
 Review Criteria:
@@ -718,10 +794,15 @@ Creative Details:
 - Promoted Offering: {promoted_offering}
 - Creative Data: {json.dumps(creative.data, indent=2)}
 
-Based on the review criteria, should this creative be approved?
+Based on the review criteria, determine the appropriate action for this creative.
+You MUST respond with one of three decisions:
+- APPROVE: Creative clearly meets all criteria
+- REQUIRE HUMAN APPROVAL: Unsure or needs human judgment
+- REJECT: Creative clearly violates criteria
+
 Respond with a JSON object containing:
 {{
-    "approved": true/false,
+    "decision": "APPROVE" or "REQUIRE HUMAN APPROVAL" or "REJECT",
     "reason": "brief explanation of the decision",
     "confidence": "high/medium/low"
 }}
@@ -731,7 +812,7 @@ Respond with a JSON object containing:
             import google.generativeai as genai
 
             genai.configure(api_key=tenant.gemini_api_key)
-            model = genai.GenerativeModel("gemini-1.5-flash")
+            model = genai.GenerativeModel("gemini-2.5-flash-lite")
 
             response = model.generate_content(review_prompt)
             response_text = response.text.strip()
@@ -745,15 +826,44 @@ Respond with a JSON object containing:
 
             review_result = json.loads(response_text)
 
-            return jsonify(
-                {
-                    "success": True,
-                    "approved": review_result.get("approved", False),
-                    "reason": review_result.get("reason", ""),
-                    "confidence": review_result.get("confidence", "medium"),
-                }
-            )
+            # Map AI decision to status
+            decision = review_result.get("decision", "REQUIRE HUMAN APPROVAL").upper()
+            if "APPROVE" in decision and "REQUIRE" not in decision:
+                status = "approved"
+            elif "REJECT" in decision:
+                status = "rejected"
+            else:
+                status = "pending"
+
+            return {
+                "status": status,
+                "reason": review_result.get("reason", ""),
+                "confidence": review_result.get("confidence", "medium"),
+            }
+
+        finally:
+            if should_close:
+                db_session.close()
 
     except Exception as e:
         logger.error(f"Error running AI review: {e}", exc_info=True)
-        return jsonify({"error": str(e)}), 500
+        return {"status": "pending", "error": str(e), "reason": "AI review failed - requires manual approval"}
+
+
+@creatives_bp.route("/review/<creative_id>/ai-review", methods=["POST"])
+@require_tenant_access()
+def ai_review_creative(tenant_id, creative_id, **kwargs):
+    """Flask endpoint wrapper for AI review."""
+    result = _ai_review_creative_impl(tenant_id, creative_id)
+
+    if "error" in result:
+        return jsonify({"success": False, "error": result["error"]}), 400
+
+    return jsonify(
+        {
+            "success": True,
+            "status": result["status"],
+            "reason": result["reason"],
+            "confidence": result.get("confidence", "medium"),
+        }
+    )
