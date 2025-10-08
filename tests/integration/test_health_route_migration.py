@@ -11,7 +11,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 
 @pytest.mark.requires_db
-def test_health_routes_in_refactored_app():
+def test_health_routes_in_refactored_app(integration_db):
     """Test that both health routes work in the refactored app."""
     from src.admin.app import create_app
 
@@ -33,7 +33,7 @@ def test_health_routes_in_refactored_app():
 
 
 @pytest.mark.requires_db
-def test_health_routes_in_original_app():
+def test_health_routes_in_original_app(integration_db):
     """Test that health routes still work in original app for comparison."""
     from src.admin.app import create_app
 
@@ -56,9 +56,9 @@ def test_health_routes_in_original_app():
 
 if __name__ == "__main__":
     print("Testing health routes in refactored app...")
-    test_health_routes_in_refactored_app()
+    test_health_routes_in_refactored_app(None)
 
     print("\nTesting health routes in original app...")
-    test_health_routes_in_original_app()
+    test_health_routes_in_original_app(None)
 
     print("\n🎉 All health route tests passed!")
